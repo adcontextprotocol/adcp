@@ -414,6 +414,593 @@ async function runTests() {
     'Create media buy with natural key account'
   );
 
+  await testSchemaValidation(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'shared-budget-create-0001',
+      account: { account_id: 'acc_test_001' },
+      total_budget: { amount: 100000, currency: 'USD' },
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [
+          { kind: 'metric', metric: 'clicks' }
+        ]
+      },
+      pacing: 'even',
+      bidding: {
+        cost_per: { amount: 25, strength: 'cap' },
+        max_bid: 8
+      },
+      packages: [
+        {
+          product_id: 'prospecting',
+          pricing_option_id: 'cpm_auction',
+          budget: 70000,
+          min_spend_target: 20000
+        },
+        {
+          product_id: 'retargeting',
+          pricing_option_id: 'cpm_auction',
+          pacing: 'front_loaded'
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Create media buy accepts seller-optimized shared budget with package constraints'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/bidding-policy.json',
+    {
+      cost_per: { amount: 25, strength: 'target' },
+      max_bid: 4.5
+    },
+    'Bidding policy accepts average-cost target with a provider-supported auction ceiling'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/bidding-policy.json',
+    { automatic: true },
+    'Bidding policy accepts an explicit automatic policy override'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/bidding-policy.json',
+    { automatic: true, max_bid: 4.5 },
+    'Bidding policy rejects automatic combined with a monetary mode'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/media-buy-features.json',
+    {
+      bidding_policy: {
+        package: {
+          fixed: {
+            modes: ['cost_per'],
+            cost_per_strengths: ['cap']
+          }
+        }
+      }
+    },
+    'Bidding capability can advertise only package cost caps'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/media-buy-features.json',
+    {
+      bidding_policy: {
+        media_buy: {
+          fixed: {
+            modes: ['max_bid', 'roas'],
+            roas_strengths: ['floor', 'target'],
+            supported_combinations: [
+              { kind: 'max_bid_with_roas', roas_strengths: ['floor'] }
+            ]
+          }
+        },
+        package: {
+          seller_optimized: {
+            modes: ['automatic', 'bid_amount']
+          }
+        }
+      }
+    },
+    'Bidding capability declares independent scopes, strengths, and combinations'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/media-buy-features.json',
+    { bidding_policy: true },
+    'Bidding capability rejects the former coarse boolean claim'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/bidding-policy-capability.json',
+    {
+      package: { fixed: { modes: ['cost_per'] } }
+    },
+    'Bidding capability requires strengths for cost_per support'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/bidding-policy-capability.json',
+    {
+      media_buy: {
+        fixed: {
+          supported_combinations: [
+            { kind: 'max_bid_with_cost_per', cost_per_strengths: ['cap'] }
+          ]
+        }
+      }
+    },
+    'Bidding capability advertises combination-only support without standalone component modes'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/bidding-policy-capability.json',
+    {
+      package: {
+        modes: ['automatic']
+      }
+    },
+    'Bidding capability requires an explicit allocation context'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/sync-event-sources-request.json',
+    {
+      idempotency_key: 'value-currency-source-0001',
+      account: { account_id: 'acc_test_001' },
+      event_sources: [
+        {
+          event_source_id: 'commerce_events',
+          event_types: ['purchase'],
+          value_currencies: ['USD', 'EUR']
+        }
+      ]
+    },
+    'Event source declares the currencies available to canonical ROAS buys'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/event-custom-data.json',
+    { value: 25 },
+    'Legacy monetary event data remains compatible without a source currency contract'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'automatic-package-override-001',
+      account: { account_id: 'acc_test_001' },
+      total_budget: { amount: 20000, currency: 'USD' },
+      bidding: { max_bid: 5 },
+      packages: [
+        {
+          product_id: 'display_default',
+          pricing_option_id: 'cpm_usd_auction',
+          budget: 10000
+        },
+        {
+          product_id: 'display_automatic',
+          pricing_option_id: 'cpm_usd_auction',
+          budget: 10000,
+          bidding: { automatic: true }
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Package automatic policy explicitly overrides a media-buy bidding default'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_automatic_001',
+      bidding: { automatic: true }
+    },
+    'Package update accepts an explicit automatic bidding override'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/package.json',
+    {
+      package_id: 'pkg_automatic_001',
+      bidding: { automatic: true }
+    },
+    'Package readback preserves an explicit automatic bidding override'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'search_clicks',
+      pricing_option_id: 'cpc_auction',
+      budget: 10000,
+      bidding: { bid_amount: 2.25 },
+      optimization_goals: [
+        { kind: 'metric', metric: 'clicks' }
+      ]
+    },
+    'Package accepts explicit manual bidding separately from its objective'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_search_001',
+      bidding: null
+    },
+    'Package update accepts clearing an authored bidding override to restore inheritance'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_shared_001',
+      budget: null,
+      min_spend_target: null
+    },
+    'Package update accepts clearing seller-optimized package spend constraints'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_search_001',
+      bidding: null,
+      bid_price: 2.25
+    },
+    'Package update accepts atomically clearing canonical bidding and setting legacy bid_price'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_conversion_001',
+      bidding: null,
+      optimization_goals: [
+        {
+          kind: 'event',
+          event_sources: [{ event_source_id: 'purchases', event_type: 'purchase' }],
+          target: { kind: 'cost_per', value: 25 }
+        }
+      ]
+    },
+    'Package update accepts clearing canonical bidding with a legacy monetary goal target'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_search_001',
+      bidding: { max_bid: 3 },
+      bid_price: 2.25
+    },
+    'Package update rejects non-null canonical bidding combined with legacy bid_price'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_conversion_001',
+      bidding: { cost_per: { amount: 25, strength: 'target' } },
+      optimization_goals: [
+        {
+          kind: 'event',
+          event_sources: [{ event_source_id: 'purchases', event_type: 'purchase' }],
+          target: { kind: 'cost_per', value: 25 }
+        }
+      ]
+    },
+    'Package update rejects non-null canonical bidding with a legacy monetary goal target'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/bidding-policy.json',
+    {
+      bid_amount: 2.25,
+      max_bid: 3
+    },
+    'Bidding policy rejects simultaneous manual bid and hard auction ceiling'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/bidding-policy.json',
+    {
+      cost_per: { amount: 25, strength: 'cap' },
+      roas: { value: 4, strength: 'floor' }
+    },
+    'Bidding policy rejects multiple primary policy modes'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'search_clicks',
+      pricing_option_id: 'cpc_auction',
+      budget: 10000,
+      bid_price: 2.25,
+      bidding: { max_bid: 3 }
+    },
+    'Package rejects canonical bidding combined with legacy bid_price'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'conversion_search',
+      pricing_option_id: 'cpc_auction',
+      budget: 10000,
+      bidding: { cost_per: { amount: 25, strength: 'target' } },
+      optimization_goals: [
+        {
+          kind: 'event',
+          event_sources: [{ event_source_id: 'purchases', event_type: 'purchase' }],
+          target: { kind: 'cost_per', value: 25 }
+        }
+      ]
+    },
+    'Package rejects canonical bidding combined with a legacy monetary goal target'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'ambiguous-media-bidding-001',
+      account: { account_id: 'acc_test_001' },
+      bidding: { max_bid: 5 },
+      packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_auction',
+          budget: 10000,
+          bid_price: 4
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Media-buy bidding rejects an inheriting package with legacy bid_price'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'ambiguous-new-package-bid-001',
+      account: { account_id: 'acc_test_001' },
+      media_buy_id: 'mb_bidding_001',
+      bidding: { max_bid: 5 },
+      new_packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_auction',
+          budget: 10000,
+          bid_price: 4
+        }
+      ]
+    },
+    'Media-buy bidding rejects an inheriting new package with legacy bid_price'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'ambiguous-new-package-goal-01',
+      account: { account_id: 'acc_test_001' },
+      media_buy_id: 'mb_bidding_002',
+      bidding: { max_bid: 5 },
+      new_packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_auction',
+          budget: 10000,
+          optimization_goals: [
+            {
+              kind: 'event',
+              event_sources: [{ event_source_id: 'purchases', event_type: 'purchase' }],
+              target: { kind: 'cost_per', value: 25 }
+            }
+          ]
+        }
+      ]
+    },
+    'Media-buy bidding rejects an inheriting new package with a legacy monetary goal target'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'fixed-missing-budget-001',
+      account: { account_id: 'acc_test_001' },
+      packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed'
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Create media buy keeps package budget required in fixed mode'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'fixed-add-missing-budget-001',
+      account: { account_id: 'acc_test_001' },
+      media_buy_id: 'mb_fixed_001',
+      new_packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed'
+        }
+      ]
+    },
+    'Update media buy keeps new-package budget required when allocation is fixed or omitted'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'explicit-fixed-add-missing-001',
+      account: { account_id: 'acc_test_001' },
+      media_buy_id: 'mb_fixed_002',
+      budget_allocation: { mode: 'fixed' },
+      new_packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed'
+        }
+      ]
+    },
+    'Update media buy requires new-package budget when fixed allocation is explicit'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'shared-add-uncapped-001',
+      account: { account_id: 'acc_test_001' },
+      media_buy_id: 'mb_shared_001',
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [
+          { kind: 'metric', metric: 'clicks' }
+        ]
+      },
+      new_packages: [
+        {
+          product_id: 'retargeting',
+          pricing_option_id: 'cpm_auction',
+          min_spend_target: 5000
+        }
+      ]
+    },
+    'Update media buy accepts an uncapped new package with explicit seller-optimized allocation context'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'shared-missing-total-001',
+      account: { account_id: 'acc_test_001' },
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [
+          { kind: 'metric', metric: 'clicks' }
+        ]
+      },
+      packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed'
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Create media buy rejects seller-optimized allocation without total_budget'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'lowercase-currency-0001',
+      account: { account_id: 'acc_test_001' },
+      total_budget: { amount: 10000, currency: 'usd' },
+      packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed',
+          budget: 10000
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Create media buy rejects a malformed media-buy currency'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'allocation-legacy-target-0001',
+      account: { account_id: 'acc_test_001' },
+      total_budget: { amount: 10000, currency: 'USD' },
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [
+          {
+            kind: 'metric',
+            metric: 'clicks',
+            target: { kind: 'cost_per', value: 3 }
+          }
+        ]
+      },
+      packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed'
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Seller-optimized allocation goals reject legacy monetary targets'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/proposal.json',
+    {
+      proposal_id: 'prop_shared_001',
+      name: 'Seller-optimized performance plan',
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [
+          { kind: 'metric', metric: 'clicks' }
+        ]
+      },
+      pacing: 'even',
+      allocations: [
+        {
+          product_id: 'prospecting',
+          min_spend_target_percentage: 20,
+          max_spend_percentage: 70,
+          pacing: 'even'
+        },
+        {
+          product_id: 'retargeting',
+          max_spend_percentage: 60,
+          pacing: 'front_loaded'
+        }
+      ]
+    },
+    'Proposal accepts seller-optimized percentage constraints without exact allocations'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/proposal.json',
+    {
+      proposal_id: 'prop_fixed_invalid_001',
+      name: 'Invalid fixed plan',
+      allocations: [
+        { product_id: 'display_standard' }
+      ]
+    },
+    'Proposal keeps allocation_percentage required in fixed mode'
+  );
+
   log('');
 
   log('Build Creative Request Schema (push_notification_config field):', 'info');

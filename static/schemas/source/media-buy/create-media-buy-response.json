@@ -57,13 +57,31 @@
         },
         "currency": {
           "type": "string",
-          "description": "ISO 4217 currency code (e.g., USD, EUR, GBP) for monetary values at this media buy level. total_budget is denominated in this currency. Package-level fields may override with package.currency. In proposal mode the seller derives this from the request's total_budget object (total_budget.currency); in manual mode it is present when all packages share a currency. Matches the currency field in subsequent get_media_buys responses.",
+          "description": "Single ISO 4217 currency code for total_budget, package budget constraints, and canonical BiddingPolicy monetary fields. Every selected pricing option MUST declare this currency; packages needing another currency belong in another media buy. In proposal mode the seller derives it from total_budget.currency; in explicit-package mode the seller derives or validates one common pricing-option currency. Matches subsequent get_media_buys responses.",
           "pattern": "^[A-Z]{3}$"
         },
         "total_budget": {
           "type": "number",
-          "description": "Total budget amount across all packages, denominated in currency. Note: the create_media_buy request encodes total_budget as an object {amount, currency} (proposal mode only); this response field is the flattened scalar amount, with currency promoted to the sibling currency field. Present when the seller can compute a deterministic aggregate — always in proposal mode, conditionally in manual mode when all packages share a currency. Matches the total_budget field in subsequent get_media_buys responses.",
+          "description": "Hard aggregate lifetime budget, denominated in currency. The request encodes total_budget as an object {amount, currency}; this response flattens amount and promotes currency to its sibling field. Present for proposal and seller-optimized modes, and when supplied or deterministically derived in fixed explicit-package mode. Matches subsequent get_media_buys responses.",
           "minimum": 0
+        },
+        "budget_allocation": {
+          "allOf": [
+            {
+              "$ref": "/schemas/core/budget-allocation.json"
+            }
+          ],
+          "description": "Accepted cross-package allocation configuration. Omitted means fixed allocation for legacy buys."
+        },
+        "pacing": {
+          "$ref": "/schemas/enums/pacing.json",
+          "description": "Accepted aggregate media-buy pacing strategy."
+        },
+        "bidding": {
+          "allOf": [
+            { "$ref": "/schemas/core/bidding-policy.json" }
+          ],
+          "description": "Accepted media-buy-authored bidding policy with goal binding and monetary denomination preserved. Packages that inherit it omit package.bidding; explicit package policies, including `{automatic:true}`, remain at package scope."
         },
         "valid_actions": {
           "type": "array",
