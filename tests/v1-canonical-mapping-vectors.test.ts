@@ -40,6 +40,19 @@ type NarrowingVector = {
   expected: { narrows: true } | { narrows: false; conflict: string };
 };
 
+type ResolutionPrecedenceVector = {
+  id: string;
+  format_id: string;
+  requirements: Record<string, unknown>;
+  seller_canonical: {
+    kind: string;
+    asset_source?: string;
+    slots_override?: Array<Record<string, unknown>>;
+  };
+  expected_v2: V2Mapping;
+  ignored_registry_parameters: string[];
+};
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const registry = JSON.parse(fs.readFileSync(
   path.join(root, 'static/schemas/source/registries/v1-canonical-mapping.json'),
@@ -48,7 +61,12 @@ const registry = JSON.parse(fs.readFileSync(
 const fixture = JSON.parse(fs.readFileSync(
   path.join(root, 'static/test-vectors/v1-canonical-mapping.json'),
   'utf8',
-)) as { registry_version: string; vectors: Vector[]; narrowing_vectors: NarrowingVector[] };
+)) as {
+  registry_version: string;
+  vectors: Vector[];
+  narrowing_vectors: NarrowingVector[];
+  resolution_precedence_vectors: ResolutionPrecedenceVector[];
+};
 
 function sameValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
@@ -82,6 +100,19 @@ function narrowsV1Baseline(
   }
 
   return { narrows: true };
+}
+
+/** Reference implementation of seller-canonical precedence over registry fallback. */
+function resolveSellerCanonical(vector: ResolutionPrecedenceVector): V2Mapping {
+  const parameters: Record<string, unknown> = { ...vector.requirements };
+  if (vector.seller_canonical.asset_source !== undefined) {
+    parameters.asset_source = vector.seller_canonical.asset_source;
+  }
+  if (vector.seller_canonical.slots_override !== undefined) {
+    parameters.slots = vector.seller_canonical.slots_override;
+  }
+
+  return { canonical: vector.seller_canonical.kind, parameters };
 }
 
 const literalMappings = registry.mappings.filter(
@@ -172,9 +203,33 @@ describe('v1 canonical literal mapping vectors', () => {
   it('scopes mapped rendition validation to 3.2-aware SDKs', () => {
     expect(registry.description).toContain('Pixel-density version boundary (normative)');
     expect(registry.description).toContain('MUST NOT interpret them as 3.1 constraints');
+    expect(registry.description).toContain('not merely SDK capability');
+    expect(registry.description).toContain('processing a negotiated 3.1 exchange');
     expect(registry.description).toContain('Image rendition-set exception (AdCP 3.2+, normative)');
     expect(registry.description).toContain('MUST NOT');
     expect(registry.description).toContain('generic alias-collision rule');
+  });
+
+  it('does not merge registry defaults into seller-authored canonical projections', () => {
+    expect(fixture.resolution_precedence_vectors.length).toBeGreaterThan(0);
+
+    for (const vector of fixture.resolution_precedence_vectors) {
+      const registryProjection = literalById.get(vector.format_id);
+      expect(registryProjection, vector.id).toBeDefined();
+      for (const parameter of vector.ignored_registry_parameters) {
+        expect(registryProjection?.parameters, vector.id).toHaveProperty(parameter);
+      }
+
+      const resolved = resolveSellerCanonical(vector);
+      expect(resolved, vector.id).toEqual(vector.expected_v2);
+      for (const parameter of vector.ignored_registry_parameters) {
+        if (parameter === 'slots' && vector.seller_canonical.slots_override !== undefined) {
+          expect(resolved.parameters?.slots, vector.id).toEqual(vector.seller_canonical.slots_override);
+        } else {
+          expect(resolved.parameters, vector.id).not.toHaveProperty(parameter);
+        }
+      }
+    }
   });
 
   it('applies the documented one-way v2-narrows-v1 relation', () => {
