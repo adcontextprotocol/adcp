@@ -140,6 +140,16 @@
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },
+    "audience_evidence_requirements": {
+      "$ref": "/schemas/core/audience-evidence-requirements.json",
+      "description": "Buyer policy that the selected product and constructed package MUST satisfy using product audience evidence. This remains planning and suitability evidence, not a targeting instruction. Sellers MUST reject an unsatisfied required policy rather than silently drop it, and a confirmed package MUST include every evidence snapshot used to satisfy this policy in audience_evidence_selections with decision_use package_construction."
+    },
+    "audience_evidence_pins": {
+      "type": "array",
+      "description": "Exact immutable evidence snapshots selected by the buyer during discovery. The seller MUST match evidence_id, snapshot_id, version, and content_digest against one published snapshot and MUST reject catalog mutation, snapshot reuse, missing snapshots, or substitutions. Every accepted pin MUST be echoed in the confirmed package's audience_evidence_selections with decision_use package_construction.",
+      "items": { "$ref": "/schemas/core/audience-evidence-pin.json" },
+      "minItems": 1
+    },
     "measurement_terms": {
       "$ref": "/schemas/core/measurement-terms.json",
       "description": "Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with TERMS_REJECTED, or adjusts. When absent, product's measurement_terms apply."

@@ -39,6 +39,103 @@ The orchestrator calls `check_governance` with `tool` and `payload` before sendi
 5. If `conditions`, orchestrator adjusts the payload and re-calls `check_governance`
 6. If the governance agent needs human review, the task goes async and eventually resolves to `approved` or `denied`
 
+### Runtime signal attestations
+
+For an `activate_signal` intent check, the orchestrator MAY attach `runtime_attestations[]`: independently issued evidence that a signal-quality claim still holds at activation time. Each item is the shared [portable `AttestationReference`](/docs/building/by-layer/L1/security#portable-attestations), not a governance decision supplied by the buyer.
+
+AdCP does not define a credential issuance API or an orchestrator-side API for discovering or retrieving these references. Before calling `check_governance`, the orchestrator obtains each reference through an issuer-defined or other out-of-band mechanism. Evaluator-side resolution of a supplied credential locator still follows the portable-attestation procedure and the governance agent's published allowlist.
+
+The governance agent advertises support in two capability locations:
+
+- `adcp.attestations` is the shared issuer, resolver, verifier, proof-format, and delivery allowlist.
+- `governance.runtime_attestations.signal_activation` declares whether evidence is `optional` or `required` for signal activation and which signal-quality claim types apply.
+
+```json
+{
+  "plan_id": "plan_nova_signal_launch",
+  "caller": "https://buying.pinnacle-agency.example",
+  "target_agent": "https://signals.meridian.example/adcp",
+  "purchase_type": "signal_activation",
+  "proposed_commitment": {
+    "amount": 0,
+    "currency": "USD"
+  },
+  "tool": "activate_signal",
+  "payload": {
+    "idempotency_key": "67da3ce4-f2aa-4b63-93a1-215106690f73",
+    "signal_agent_segment_id": "segment_urban_commuters",
+    "destinations": [
+      {
+        "type": "agent",
+        "agent_url": "https://sales.streamhaus.example"
+      }
+    ]
+  },
+  "runtime_attestations": [
+    {
+      "issuer": {
+        "type": "origin",
+        "origin": "https://credentials.example"
+      },
+      "claim_type": "https://claims.example/audience/population-stability",
+      "subject": {
+        "type": "resource",
+        "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+        "namespace": "https://signals.meridian.example/adcp",
+        "id": "segment_urban_commuters"
+      },
+      "locator": {
+        "type": "issuer_credential_id",
+        "credential_id": "cred_population_2026_08",
+        "resolver_id": "primary"
+      },
+      "content_digest": "sha256:cee39fac0bff75b76b0dd193c19e259d7bfed089dd9ae4a528a132d32ec7449a"
+    }
+  ]
+}
+```
+
+For `tool: activate_signal`, the governance agent MUST confirm that each subject is the signal resource governed by the action. `subject.id` MUST match `payload.signal_agent_segment_id`; `subject.namespace` and any richer signal identity MUST match the signals agent and plan/action state known to the governance agent. The comparison is on the complete typed subject, not the opaque id alone.
+
+Runtime attestations apply only when `payload.action` is `activate` or omitted (the default). They MUST NOT be supplied for `payload.action: deactivate`. A capability with `requirement: required` requires evidence only for activation; missing evidence MUST NOT block deactivation.
+
+`runtime_attestations[]` is per-check evidence. It is not stored inside the plan and is not part of the `plan_hash` preimage. Delegation continuity remains plan-owned through `delegations[]`; runtime attestations do not create another delegation mechanism.
+
+For each presentation the response returns one `runtime_attestation_evaluations[]` item in the same order. The governance agent produces `outcome`, optional `confidence`, and `reason_codes`; buyer input cannot make those values authoritative. Each evaluation's `action_binding.action_id` equals the response `check_id`.
+
+```json
+{
+  "check_id": "check_signal_001",
+  "check_type": "intent",
+  "verdict": "approved",
+  "plan_id": "plan_nova_signal_launch",
+  "explanation": "Signal activation is within plan policy and the required population-stability credential verified.",
+  "runtime_attestation_evaluations": [
+    {
+      "reference_digest": "sha256:c3eeeaaad0916bb04f14940f21303ce0abf27296c4cf979ba9c22e2e8245ac07",
+      "credential_digest": "sha256:cee39fac0bff75b76b0dd193c19e259d7bfed089dd9ae4a528a132d32ec7449a",
+      "proof_format": "https://formats.example/jcs-signed-json",
+      "outcome": "verified",
+      "confidence": 0.98,
+      "evaluated_at": "2026-08-04T12:00:00Z",
+      "evaluated_by": "https://governance.example/adcp",
+      "valid_until": "2026-08-04T13:00:00Z",
+      "action_binding": {
+        "action_type": "https://adcontextprotocol.org/actions/governance-check",
+        "action_id": "check_signal_001"
+      }
+    }
+  ],
+  "runtime_attestation_binding_digest": "sha256:3a746f172de517f24ad53ec0c12a4ad39d0f02dcf7187aa92eb26760d9438934",
+  "governance_context": "eyJhbGciOiJFZERTQSIsImtpZCI6ImdvdjIwMjYwOCIsInR5cCI6ImFkY3AtZ292K2p3cyJ9...",
+  "expires_at": "2026-08-04T12:15:00Z"
+}
+```
+
+`runtime_attestation_binding_digest` binds the ordered evaluations plus findings that carry `attestation_reference_digest`. The signed `governance_context` carries the same digest, and `get_plan_audit_logs` retains ordered `{ reference, evaluation }` pairs plus the full attestation-bound findings. An auditor first recomputes each evaluation's `reference_digest` from its paired reference, then recomputes the binding digest.
+
+When the capability says `requirement: required`, missing evidence cannot approve the signal activation. A supplied expired, revoked, invalid, subject-mismatched, or digest-mismatched credential MUST NOT be ignored or treated as verified. Off-policy issuers, resolver IDs, credential origins, and verifier nominations are rejected before network access. Resolution failures surface as normalized outcomes and are evaluated under plan policy; they never silently become `verified`.
+
 ### Execution checks (seller)
 
 The seller calls `check_governance` with `governance_context` and `planned_delivery` when processing a request on an account that has a governance agent configured (set via [`sync_governance`](/docs/accounts/tasks/sync_governance)). Execution checks are always binding — if the governance agent denies, the seller must not proceed.
@@ -445,6 +542,7 @@ The seller MUST pause delivery immediately and correct the geo targeting before 
 | `delivery_metrics.audience_distribution.indices` | object | Yes | Index values for the current reporting period. Key format: `dimension:value` (e.g., `age:25-34`, `gender:female`). Value of 1.0 means parity with baseline; above 1.0 means over-indexed; below 1.0 means under-indexed. |
 | `delivery_metrics.audience_distribution.cumulative_indices` | object | No | Index values across all reporting periods. Same format as `indices`. Helps governance agents detect trends vs. one-period noise. |
 | `modification_summary` | string | No | Human-readable summary of what changed. SHOULD be present for `modification` phase. |
+| `runtime_attestations` | AttestationReference[] | No | Signal-quality evidence for `purchase_type: signal_activation`; maximum 10. When `tool` is present it must be `activate_signal`. Items use the shared portable-attestation schema and cannot carry an authoritative buyer decision or confidence. |
 
 ### Delivery metrics
 
@@ -469,7 +567,7 @@ The seller MUST pause delivery immediately and correct the geo targeting before 
 | `verdict` | enum | `approved`, `denied`, or `conditions`. |
 | `plan_id` | string | Echoed on an initial plan-addressed check; optional on context-addressed continuation checks. |
 | `explanation` | string | Human-readable explanation of the decision. |
-| `findings` | array | Per-category issues found. Present when `verdict` is `denied` or `conditions`. MAY also be present on `approved` for informational findings. Each finding has `category_id`, `severity`, `explanation`, and optionally `policy_id`, `details`, `confidence` (0-1), and `uncertainty_reason`. `category_id` is an **agent-internal label**, not a protocol-level enum — treat as opaque for display/audit, not for machine pattern-matching. |
+| `findings` | array | Per-category issues found. Present when `verdict` is `denied` or `conditions`. MAY also be present on `approved` for informational findings. Each finding has `category_id`, `severity`, `explanation`, and optionally `policy_id`, `details`, `confidence` (0-1), `uncertainty_reason`, and `attestation_reference_digest` when it relies on a runtime evaluation. `category_id` is an **agent-internal label**, not a protocol-level enum — treat as opaque for display/audit, not for machine pattern-matching. |
 | `conditions` | array | Intent-only counterproposal. `field` is rooted at the complete check request arguments (for example `payload.total_budget.amount` or `proposed_commitment.amount`). Adjustments must be re-checked and never authorize execution. |
 | `consultation_context` | string | Present only with `conditions`. Correlates negotiation attempts but carries no authorization. |
 | `categories_evaluated` | string[] | Governance categories evaluated during this check (e.g., `budget_authority`, `geo_compliance`, `channel_compliance`). **Agent-internal labels** — each string is defined by the governance agent's policy model and is how internal specialist review (legal, brand safety, category) surfaces for audit from behind the agent's single endpoint. Not a protocol enum; not safe to pattern-match against a fixed list. |
@@ -477,7 +575,9 @@ The seller MUST pause delivery immediately and correct the geo targeting before 
 | `mode` | enum | `audit`, `advisory`, or `enforce` — governance mode active when this check was evaluated. Recorded by the governance agent from its runtime configuration at check time, not from a plan field. Lets counterparties, regulators, and auditors distinguish whether an `approved` decision reflects deliberate `enforce` enforcement or `audit`-mode silent logging. |
 | `expires_at` | string | Present only when `verdict` is `approved`. The caller must act before this time or re-call. |
 | `next_check` | string | When the seller should next call `check_governance` with delivery metrics. Present when the governance agent expects ongoing delivery reporting. |
-| `governance_context` | string | Opaque authorization context. Present only when `verdict` is `approved`. Attach it to the protocol envelope and forward it on subsequent governance calls; conditions and denied responses never carry one. |
+| `runtime_attestation_evaluations` | AttestationEvaluation[] | Ordered evaluator-of-record results, exactly one per request presentation. Each result binds to `check_id`. |
+| `runtime_attestation_binding_digest` | string | Required with runtime evaluations. Digest of ordered evaluations and attestation-bound findings; the signed governance context and audit log carry the same value. |
+| `governance_context` | string | Opaque authorization context. Present only when `verdict` is `approved`. Attach it to the protocol envelope and forward it on subsequent governance calls; conditions and denied responses never carry one. When runtime attestations are evaluated, the signed context carries the same `runtime_attestation_binding_digest` returned in the response. |
 
 ## Error codes
 
