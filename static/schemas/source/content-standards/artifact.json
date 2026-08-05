@@ -283,26 +283,26 @@
   "$defs": {
     "asset_access": {
       "type": "object",
-      "description": "Access instructions for a secured asset URL. Producers SHOULD use `signed_url` for one-off delivery unless the parties already have an identity-based access relationship. New producers MUST NOT carry long-lived credentials in this object; consumers continue accepting the deprecated legacy field during the 3.x compatibility window.",
+      "description": "Access instructions for a secured asset URL. Producers SHOULD use `signed_url` for one-off delivery unless the parties already have an identity-based access relationship. New producers MUST NOT emit `service_account.credentials`; `bearer_token` is the explicit short-lived credential path. Consumers MUST treat asset URLs and access metadata as untrusted, use credentials only for HTTPS origins and resource prefixes authorized out of band, and fail closed without falling back between access methods. The deprecated legacy field remains parseable during the 3.x compatibility window but MUST NOT be activated automatically.",
       "discriminator": {
         "propertyName": "method"
       },
       "oneOf": [
         {
           "type": "object",
-          "description": "Short-lived bearer-token access for origins that cannot use signed URLs or pre-configured workload identity. The token is a live secret and must be scoped to the asset.",
+          "description": "Short-lived bearer-token access for origins that cannot use signed URLs or pre-configured workload identity. The token is a live secret and must be scoped to the asset. Consumers MUST send it only to the HTTPS origin authorized for that asset and MUST NOT forward the Authorization header across redirects.",
           "properties": {
             "method": { "type": "string", "const": "bearer_token" },
             "token": {
               "type": "string",
-              "description": "Short-lived, asset-scoped bearer token for the Authorization header. Producers MUST NOT issue a standing or broadly scoped credential here. Consumers MUST treat the token as a secret and MUST NOT log it, persist it beyond the access window, or place it in model context."
+              "description": "Short-lived, asset-scoped bearer token for the Authorization header. Producers MUST NOT issue a standing or broadly scoped credential here. Consumers MUST redact the token from logs, traces, errors, metrics, analytics, model context, and durable storage. Any temporary encrypted cache MUST be bounded by the credential expiry and the consumer's configured maximum lifetime."
             }
           },
           "required": ["method", "token"]
         },
         {
           "type": "object",
-          "description": "Credential-free workload-identity access. The asset origin authorizes an identity already controlled by the consumer, such as a GCP service account or AWS IAM role, through out-of-band onboarding. No provider key or access secret crosses the AdCP payload.",
+          "description": "Credential-free workload-identity access. The asset origin authorizes an identity already controlled by the component that performs the asset fetch, such as a GCP service account or AWS IAM role, through authenticated out-of-band onboarding. The consumer MUST use workload credentials only for the pre-authorized HTTPS origin and resource prefix; the payload's method, provider, and URL are not authorization. No provider key or access secret crosses the AdCP payload.",
           "properties": {
             "method": { "type": "string", "const": "service_account" },
             "provider": {
@@ -313,7 +313,7 @@
             "credentials": {
               "type": "object",
               "deprecated": true,
-              "description": "Deprecated in AdCP 3.2 and removed in 4.0. Legacy integrations may still supply provider credentials here during the compatibility window, but new producers MUST omit this field. Consumers MUST treat any value as secret and MUST NOT log it, persist it beyond the access window, or place it in model context. Use the consumer's pre-authorized workload identity or `signed_url` instead.",
+              "description": "Deprecated in AdCP 3.2 and eligible for removal in 4.0 or later only after the deprecation-policy notice and release-cycle gates are satisfied. Presence denotes the legacy inline-credential form, not workload-identity authorization. New producers MUST omit this field. Consumers MUST NOT activate received credentials automatically; they may process them only for an explicitly allowlisted legacy peer and otherwise MUST reject or quarantine them. Consumers MUST redact the complete value from logs, traces, errors, metrics, analytics, model context, and durable storage. Use the consumer's pre-authorized workload identity or `signed_url` instead.",
               "additionalProperties": true
             }
           },
@@ -321,7 +321,7 @@
         },
         {
           "type": "object",
-          "description": "Recommended default for one-off access. The asset `url` is a time-limited bearer capability and requires no additional authentication. Producers SHOULD scope it to one asset and the shortest practical access window. Consumers MUST treat the complete URL as a secret and MUST NOT place it in logs or model context.",
+          "description": "Recommended default for one-off access. The asset `url` is a time-limited bearer capability and requires no additional authentication. Producers SHOULD scope it to one asset and the shortest practical access window under their documented maximum TTL. Consumers MUST redact the complete URL from logs, traces, errors, metrics, analytics, model context, and durable storage, and MUST NOT forward it outside the intended recipient trust boundary.",
           "properties": {
             "method": { "type": "string", "const": "signed_url" }
           },

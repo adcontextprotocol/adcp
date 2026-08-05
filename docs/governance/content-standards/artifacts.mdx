@@ -235,11 +235,11 @@ For one-off access, place the complete pre-signed URL in the asset's `url` and m
 }
 ```
 
-The URL itself is a bearer capability. Producers should scope it to one asset and the shortest practical access window. Consumers must redact the complete URL from logs, traces, error messages, and model context because providers may place credential material in either its path or query string.
+The URL itself is a bearer capability. Producers should scope it to one asset and the shortest practical access window under a documented maximum TTL. Consumers must redact the complete URL from logs, traces, errors, metrics, analytics, model context, and durable storage because providers may place credential material in either its path or query string. Do not forward a signed URL outside its intended recipient or trust boundary.
 
 ### Workload identity
 
-For ongoing partnerships, the asset origin can authorize an identity already controlled by the consumer. At fetch time, the consumer uses its normal cloud credential chain, such as GCP Application Default Credentials or AWS SigV4. No credential is sent in the artifact.
+For ongoing partnerships, the asset origin can authorize an identity already controlled by the component that performs the asset fetch. At fetch time, that component uses its normal cloud credential chain, such as GCP Application Default Credentials or AWS SigV4. No credential is sent in the artifact. If an orchestrator forwards an artifact to a governance agent, it must either fetch the asset itself or arrange out-of-band authorization for the governance agent's identity.
 
 ```json
 {
@@ -252,7 +252,7 @@ For ongoing partnerships, the asset origin can authorize an identity already con
 }
 ```
 
-The `service_account.credentials` field is deprecated in AdCP 3.2 and removed in 4.0. Existing 3.x consumers must continue accepting the field during the compatibility window, treat any value as secret, and keep it out of logs and model context. New producers must omit it.
+The `service_account.credentials` field is deprecated in AdCP 3.2. Its presence denotes only the legacy inline-credential form, not workload-identity authorization. Consumers must continue parsing and validating the field for 3.x wire compatibility, but must not activate received credentials automatically. They may process the legacy form only for a peer explicitly allowlisted for legacy compatibility; otherwise they must reject or quarantine it. New producers must omit it. The field is eligible for removal in 4.0 or later only after the six-month notice and full-release-cycle gates in the deprecation policy are satisfied.
 
 ### Bearer tokens
 
@@ -269,11 +269,17 @@ When neither signed URLs nor pre-configured workload identity is available, atta
 }
 ```
 
-Send the token only in the `Authorization` header when fetching that asset. Never log it, retain it beyond the access window, or place it in model context.
+Send the token only in the `Authorization` header to the HTTPS origin authorized for that asset. Never forward the header across redirects. Redact the token from logs, traces, errors, metrics, analytics, model context, and durable storage.
 
 For artifacts with many assets, prefer signed URLs or pre-configured workload identity rather than repeating bearer tokens throughout the payload.
 
 The asset `url` may differ from the artifact's canonical or published URL. For example, a published article at `https://news.pinnacle.example/article/123` might have assets served from `https://assets.pinnacle.example/secured/...`.
+
+### Safe fetching
+
+Treat every asset URL and its access metadata as untrusted input. Consumers must require HTTPS and, after DNS resolution and after every redirect, reject loopback, link-local, metadata-service, private, and other locally disallowed destinations unless a specific destination was explicitly approved during authenticated onboarding. Access metadata alone must never select an ambient credential: workload identity is limited to the pre-authorized origin and resource prefix, and bearer tokens are limited to the authorized origin.
+
+Fail closed on authorization or destination-check failures. Do not retry by switching among signed URLs, workload identity, bearer tokens, or legacy inline credentials. Temporary encrypted caching of signed URLs, tokens, or legacy credentials must end no later than both the credential expiry and the consumer's configured maximum lifetime.
 
 ### Access methods at a glance
 

@@ -60,7 +60,7 @@
     },
     "artifact": {
       "$ref": "/schemas/content-standards/artifact.json",
-      "description": "Full content artifact adjacent to this ad opportunity. Same schema used for content standards evaluation. The publisher sends the artifact when they want the buyer to evaluate the full content. Contractual protections govern buyer use. TEE deployment upgrades contractual trust to cryptographic verification. Publishers MUST NOT include asset access credentials (bearer tokens, service accounts) — the router fans out to multiple buyer agents. For secured assets, use signed URLs with short expiry. Routers MUST strip access fields from artifacts before forwarding."
+      "description": "Full content artifact adjacent to this ad opportunity. Same schema used for content standards evaluation. The publisher sends the artifact when they want the buyer to evaluate the full content. Contractual protections govern buyer use. TEE deployment upgrades contractual trust to cryptographic verification. Because the router fans out to multiple buyer agents, publishers MUST NOT include bearer tokens, service-account credentials, or signed URLs in this artifact. Routers MUST remove every asset `access` object and remove or replace every credential-bearing asset `url` before forwarding; only public asset URLs that recipients can resolve independently may remain."
     },
     "artifact_refs": {
       "type": "array",
