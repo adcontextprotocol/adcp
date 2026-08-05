@@ -335,10 +335,10 @@ describe('portable demographic targeting', () => {
     assert.equal(targeting.properties.demographics.$ref, '/schemas/core/demographic-targeting-intent.json');
     assert.equal(product.properties.demographic_targeting.$ref, '/schemas/core/demographic-targeting-capability.json');
     assert.equal(capabilities.properties.media_buy.properties.execution.properties.targeting.properties.demographics.properties.supported.type, 'boolean');
-    assert.equal(packageSchema.properties.demographic_targeting_resolution.$ref, '/schemas/core/demographic-targeting-resolution.json');
+    assert.equal(packageSchema.properties.targeting_resolution.$ref, '/schemas/core/targeting-resolution.json');
     assert.equal(
-      getMediaBuys.properties.media_buys.items.properties.packages.items.properties.demographic_targeting_resolution.$ref,
-      '/schemas/core/demographic-targeting-resolution.json'
+      getMediaBuys.properties.media_buys.items.properties.packages.items.properties.targeting_resolution.$ref,
+      '/schemas/core/targeting-resolution.json'
     );
   });
 });

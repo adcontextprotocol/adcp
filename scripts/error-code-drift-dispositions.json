@@ -51,6 +51,11 @@
       "target_version": "3.1",
       "note": "Pairs with allowed_actions[] / available_actions[] surface (#4480). Returned when an update_media_buy mutation maps to an action not currently available on the buy; carries structured error.details (attempted_action, reason, currently_available_actions) so buyer SDKs can offer recovery without re-fetching. Wire change — held for 3.1."
     },
+    "PLACEMENT_SELECTION_INVALID": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Purchased-placement selection (#6132) — distinguishes invalid placement identity, selectability, combinations, and orphaned creative routes from unsupported actions and price-envelope requotes. New 3.2 media-buy wire code."
+    },
     "AUTH_INVALID": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",

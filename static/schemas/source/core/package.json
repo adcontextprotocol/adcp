@@ -74,11 +74,12 @@
       "additionalProperties": true
     },
     "targeting_overlay": {
-      "$ref": "/schemas/core/targeting.json"
+      "$ref": "/schemas/core/targeting.json",
+      "description": "Complete buyer-requested targeting intent persisted for this package. Sellers MUST echo it after create, update, and subsequent reads. This is requested state; targeting_resolution carries the complete applied result."
     },
-    "demographic_targeting_resolution": {
-      "$ref": "/schemas/core/demographic-targeting-resolution.json",
-      "description": "Requested-versus-applied demographic targeting and the seller execution mechanism. Sellers MUST include this whenever demographic targeting was requested or applied."
+    "targeting_resolution": {
+      "$ref": "/schemas/core/targeting-resolution.json",
+      "description": "Complete seller-confirmed applied targeting. Required whenever targeting_overlay is present and also emitted when the seller applied targetable defaults without an explicit buyer overlay. Includes specialized demographic execution evidence and joint property-placement-collection inventory resolution when applicable."
     },
     "measurement_terms": {
       "$ref": "/schemas/core/measurement-terms.json",
@@ -201,7 +202,95 @@
     "package_id"
   ],
   "dependencies": {
-    "params": ["format_kind"]
+    "params": ["format_kind"],
+    "targeting_overlay": ["targeting_resolution"]
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "targeting_overlay": {
+            "required": ["demographics"]
+          }
+        },
+        "required": ["targeting_overlay"]
+      },
+      "then": {
+        "properties": {
+          "targeting_resolution": {
+            "required": ["demographics"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "targeting_overlay": {
+            "anyOf": [
+              { "required": ["property_list"] },
+              { "required": ["property_list_exclude"] },
+              { "required": ["collection_list"] },
+              { "required": ["collection_list_exclude"] },
+              { "required": ["placement_selection"] }
+            ]
+          }
+        },
+        "required": ["targeting_overlay"]
+      },
+      "then": {
+        "properties": {
+          "targeting_resolution": {
+            "required": ["inventory"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "targeting_overlay": {
+            "required": ["placement_selection"]
+          }
+        },
+        "required": ["targeting_overlay"]
+      },
+      "then": {
+        "properties": {
+          "targeting_resolution": {
+            "properties": {
+              "inventory": {
+                "required": ["placements"]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "targeting_overlay": {
+            "anyOf": [
+              { "required": ["collection_list"] },
+              { "required": ["collection_list_exclude"] }
+            ]
+          }
+        },
+        "required": ["targeting_overlay"]
+      },
+      "then": {
+        "properties": {
+          "targeting_resolution": {
+            "properties": {
+              "inventory": {
+                "required": ["collections"]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "additionalProperties": true
 }

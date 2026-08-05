@@ -67,6 +67,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `cancellation` | Cancellation metadata (present only when `status` is `canceled`). Object with `canceled_at` (ISO 8601), `canceled_by` (`"buyer"` or `"seller"`), and optional `reason`. |
 | `revision` | Current revision number. Pass in `update_media_buy` for optimistic concurrency. |
 | `valid_actions` | Actions the buyer can perform in the current state (e.g., `["pause", "cancel", "update_budget"]`). See [valid actions mapping](#valid-actions-mapping). |
+| `available_actions` | Authoritative structured actions available on this buy, including mode and optional SLA/terms metadata. `update_placements` authorizes `packages[].targeting_overlay.placement_selection` changes. |
 | `history` | Revision history entries, most recent first. Only present when `include_history > 0`. Append-only — entries are never modified or deleted. |
 | `webhook_activity` | Recent reporting and health webhook fires for the calling principal, most-recent first. Only present when `include_webhook_activity` is true AND the seller surfaces fire history for this buy. See [Webhook activity](#webhook-activity) for three-state presence semantics. |
 | `context` | Opaque media-buy-level correlation data echoed unchanged from `create_media_buy`. Sellers MUST include persisted context when the media buy was created through AdCP with context, and MAY omit it for media buys created outside AdCP or without context. Use it to reconcile `media_buy_id` with buyer tracking state. |
@@ -84,8 +85,8 @@ Returns an array of media buys with current status, creative approval state, and
 | `format_option_refs` | Structured 3.1+ format option references supplied on `create_media_buy`, echoed whenever the original request included them. |
 | `format_kind` | Direct canonical selector supplied on `create_media_buy`, echoed whenever the original request included it, including informational-echo cases where another selector won precedence. |
 | `params` | Parameters for the direct canonical selector in `format_kind`, echoed whenever the original request included them; requires `format_kind`. |
-| `targeting_overlay` | Targeting currently applied to the package. Demographic targeting preserves the buyer's age predicate and accepted determination bases. |
-| `demographic_targeting_resolution` | Lossless demographic readback containing `requested`, `applied`, exact-only `equivalent: true`, execution mechanism, and effective `applied_bases` / `applied_verification_methods` when the buyer constrained determination. Required whenever demographics were requested or applied. Sellers reject non-equivalent predicates, unsupported bases, and empty compliance intersections. |
+| `targeting_overlay` | Complete buyer-requested targeting preserved from create or the latest full-overlay update. This is intent, not provider-effective state. |
+| `targeting_resolution` | Complete seller-applied targeting. `applied` uses the same canonical vocabulary and `equivalent` is always true for stored packages. `inventory` jointly resolves properties, placements, and collections; `demographics` contains lossless predicate, execution, basis, and verification detail. |
 | `start_time` | Flight start time (ISO 8601). Check this before interpreting delivery status. |
 | `end_time` | Flight end time (ISO 8601) |
 | `paused` | Whether buyer has paused this package |
@@ -334,6 +335,8 @@ The `valid_actions` array tells agents what operations are permitted on a media 
 | `canceled` | *(empty array)* |
 
 Sellers MAY omit actions based on business rules (e.g., omit `cancel` when the media buy has contractual obligations that prevent cancellation).
+
+The flat `valid_actions` values above are the legacy compatibility view. Consumers MUST prefer `available_actions[]` when present. A package placement change is permitted only when that authoritative array contains `action: "update_placements"`; otherwise the seller rejects with `ACTION_NOT_ALLOWED`.
 
 For creative changes, `sync_creatives` in `valid_actions` is a legacy creative-change action label, not proof that the `sync_creatives` task exists. Use the creative path the seller advertises: `sync_creatives` and `creative_assignments` for sellers with `creative.has_creative_library: true`, or `packages[].creatives` on `update_media_buy` for inline-only sellers.
 

@@ -268,11 +268,11 @@
                 },
                 "targeting_overlay": {
                   "$ref": "/schemas/core/targeting.json",
-                  "description": "Targeting overlay applied to this package, echoed from the most recent create_media_buy or update_media_buy. Sellers SHOULD echo any persisted targeting so buyers can verify what was stored without replaying their own request. Sellers claiming the property-lists or collection-lists specialisms MUST include, within this targeting_overlay, the PropertyListReference / CollectionListReference they persisted."
+                  "description": "Complete buyer-requested targeting echoed from the most recent create_media_buy or update_media_buy. Sellers MUST preserve it so buyers can distinguish requested intent from the seller-confirmed targeting_resolution."
                 },
-                "demographic_targeting_resolution": {
-                  "$ref": "/schemas/core/demographic-targeting-resolution.json",
-                  "description": "Lossless requested-versus-applied demographic readback. Sellers MUST include this whenever demographic targeting was requested or applied. targeting_overlay.demographics preserves the buyer predicate and determination constraints; this object's applied predicate and applied_bases report the effective booked state."
+                "targeting_resolution": {
+                  "$ref": "/schemas/core/targeting-resolution.json",
+                  "description": "Complete seller-confirmed applied targeting. Required whenever targeting_overlay is present and may also report seller-applied defaults. Inventory resolution preserves property-placement-collection relationships; demographics preserves exact requested/applied predicates and execution evidence."
                 },
                 "start_time": {
                   "type": "string",
@@ -435,8 +435,96 @@
                 "package_id"
               ],
               "dependencies": {
-                "params": ["format_kind"]
+                "params": ["format_kind"],
+                "targeting_overlay": ["targeting_resolution"]
               },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "targeting_overlay": {
+                        "required": ["demographics"]
+                      }
+                    },
+                    "required": ["targeting_overlay"]
+                  },
+                  "then": {
+                    "properties": {
+                      "targeting_resolution": {
+                        "required": ["demographics"]
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "targeting_overlay": {
+                        "anyOf": [
+                          { "required": ["property_list"] },
+                          { "required": ["property_list_exclude"] },
+                          { "required": ["collection_list"] },
+                          { "required": ["collection_list_exclude"] },
+                          { "required": ["placement_selection"] }
+                        ]
+                      }
+                    },
+                    "required": ["targeting_overlay"]
+                  },
+                  "then": {
+                    "properties": {
+                      "targeting_resolution": {
+                        "required": ["inventory"]
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "targeting_overlay": {
+                        "required": ["placement_selection"]
+                      }
+                    },
+                    "required": ["targeting_overlay"]
+                  },
+                  "then": {
+                    "properties": {
+                      "targeting_resolution": {
+                        "properties": {
+                          "inventory": {
+                            "required": ["placements"]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "targeting_overlay": {
+                        "anyOf": [
+                          { "required": ["collection_list"] },
+                          { "required": ["collection_list_exclude"] }
+                        ]
+                      }
+                    },
+                    "required": ["targeting_overlay"]
+                  },
+                  "then": {
+                    "properties": {
+                      "targeting_resolution": {
+                        "properties": {
+                          "inventory": {
+                            "required": ["collections"]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
               "additionalProperties": true
             }
           },

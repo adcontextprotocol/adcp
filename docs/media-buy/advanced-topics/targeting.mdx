@@ -153,9 +153,11 @@ Multiple intervals or signals may be unioned only when their canonical predicate
 
 Age is a registered restricted-attribute category because some campaign plans prohibit its use in regulated contexts. A direct `targeting_overlay.demographics.age` predicate and a signal carrying `demographic_predicate.age` are both age-based targeting for governance evaluation. They are blocked only when the applicable campaign plan lists `age` in `restricted_attributes`; the registry entry does not create a global prohibition on otherwise lawful demographic targeting.
 
-### Exact readback
+### Exact targeting readback
 
-Whenever demographic targeting was requested or applied, package state includes `demographic_targeting_resolution`. It preserves both predicates and the execution mechanism:
+Package state separates buyer intent from seller-applied targeting. `targeting_overlay` preserves the complete request; `targeting_resolution.applied` reports the complete applied result in the same vocabulary. `equivalent` is always `true` for stored packages—sellers reject silent drift. Specialized evidence lives under the same resolution object: `demographics` records predicate execution, while `inventory` preserves property-placement-collection relationships.
+
+Whenever demographic targeting was requested or applied, `targeting_resolution.demographics` preserves both predicates and the execution mechanism:
 
 ```json
 {
@@ -169,27 +171,36 @@ Whenever demographic targeting was requested or applied, package state includes 
       }
     }
   },
-  "demographic_targeting_resolution": {
-    "requested": {
-      "age": {
-        "min": 21,
-        "include_unknown": false,
-        "accepted_bases": ["verified", "declared"],
-        "accepted_verification_methods": ["world_id"]
+  "targeting_resolution": {
+    "applied": {
+      "demographics": {
+        "age": { "min": 21, "include_unknown": false }
       }
     },
-    "applied": {
-      "age": { "min": 21, "include_unknown": false }
-    },
     "equivalent": true,
-    "execution": { "type": "continuous_bounds" },
-    "applied_bases": ["verified"],
-    "applied_verification_methods": ["world_id"]
+    "resolved_at": "2026-09-01T10:00:00Z",
+    "demographics": {
+      "requested": {
+        "age": {
+          "min": 21,
+          "include_unknown": false,
+          "accepted_bases": ["verified", "declared"],
+          "accepted_verification_methods": ["world_id"]
+        }
+      },
+      "applied": {
+        "age": { "min": 21, "include_unknown": false }
+      },
+      "equivalent": true,
+      "execution": { "type": "continuous_bounds" },
+      "applied_bases": ["verified"],
+      "applied_verification_methods": ["world_id"]
+    }
   }
 }
 ```
 
-`targeting_overlay.demographics` preserves the booked predicate and buyer determination constraints. The resolution's `applied` field contains the canonical predicate actually applied; `equivalent` is always `true` for stored packages, and buyers should still recompute predicate equality from `requested` and `applied`. `applied_bases` and `applied_verification_methods` record the effective configured eligibility paths after intersecting buyer constraints, product capability, and age compliance. They do not assert which path every individual impression used. A seller rejects any non-equivalent or unsupported compilation. The same core `Package` schema carries this readback in synchronous `CreateMediaBuySuccess` responses and terminal async completion artifacts; `get_media_buys` exposes the corresponding `PackageStatus` field. Updates use the normal full-overlay replacement semantics and refresh the resolution atomically.
+`targeting_overlay.demographics` preserves the requested predicate and buyer determination constraints. `targeting_resolution.applied.demographics` is the canonical applied overlay value, while `targeting_resolution.demographics` carries the lossless execution proof. Buyers should recompute predicate equality from its `requested` and `applied` values. `applied_bases` and `applied_verification_methods` record effective configured eligibility paths; they do not assert which path every impression used. The same Package shape appears on create, update, async completion, and `get_media_buys`. Updates replace the requested overlay and refresh the entire resolution atomically.
 
 ## Why Brief-Based Targeting?
 

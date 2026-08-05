@@ -1,7 +1,7 @@
 {
   "version": 1,
   "schema": "/schemas/media-buy/get-media-buys-response.json",
-  "description": "Positive wire-level vectors for PackageStatus targeting readback in get_media_buys responses, including targeting_overlay and AdCP 3.2 demographic_targeting_resolution. Vectors are dedicated JSON payloads that MUST validate against the bundled schema and whose shape is asserted by SDK code generators. Each vector contains a stable `id` (kebab-case; the stable reference for cross-SDK conformance), a human-readable `description`, the `payload` returned by the seller, and `assertions` — dotted JSON paths that MUST be present with the given value. Downstream tests SHOULD look up vectors by `id`; `description` prose may be revised without notice. Covers the `SHOULD` echo path for plain overlay fields, the `MUST` echo path for sellers claiming the property-lists / collection-lists specialisms, and lossless requested/applied demographic readback.",
+  "description": "Positive wire-level vectors for PackageStatus targeting readback in get_media_buys responses. targeting_overlay preserves complete buyer intent; targeting_resolution carries the complete seller-applied result, joint inventory evidence, and specialized demographic execution detail. Vectors are dedicated JSON payloads that MUST validate against the bundled schema and whose shape is asserted by SDK code generators.",
   "vectors": [
     {
       "id": "property-and-collection-list-echo",
@@ -37,6 +37,52 @@
                     "agent_url": "https://governance.pinnacle-agency.example",
                     "list_id": "acme_outdoor_collections_v1"
                   }
+                },
+                "targeting_resolution": {
+                  "applied": {
+                    "property_list": {
+                      "agent_url": "https://governance.pinnacle-agency.example",
+                      "list_id": "acme_outdoor_allowlist_v1"
+                    },
+                    "collection_list": {
+                      "agent_url": "https://governance.pinnacle-agency.example",
+                      "list_id": "acme_outdoor_collections_v1"
+                    }
+                  },
+                  "equivalent": true,
+                  "resolved_at": "2026-06-25T12:00:00Z",
+                  "inventory": {
+                    "properties": [
+                      {
+                        "publisher_domain": "streaming.example",
+                        "selection_type": "all"
+                      }
+                    ],
+                    "collections": [
+                      {
+                        "publisher_domain": "streaming.example",
+                        "collection_ids": ["outdoor_lifestyle"]
+                      }
+                    ],
+                    "list_snapshots": [
+                      {
+                        "kind": "property_include",
+                        "agent_url": "https://governance.pinnacle-agency.example",
+                        "list_id": "acme_outdoor_allowlist_v1",
+                        "version": "v1",
+                        "resolved_at": "2026-06-25T12:00:00Z",
+                        "matched_count": 12
+                      },
+                      {
+                        "kind": "collection_include",
+                        "agent_url": "https://governance.pinnacle-agency.example",
+                        "list_id": "acme_outdoor_collections_v1",
+                        "version": "v1",
+                        "resolved_at": "2026-06-25T12:00:00Z",
+                        "matched_count": 1
+                      }
+                    ]
+                  }
                 }
               }
             ]
@@ -59,6 +105,10 @@
         {
           "path": "media_buys[0].packages[0].targeting_overlay.collection_list.agent_url",
           "value": "https://governance.pinnacle-agency.example"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_resolution.inventory.properties[0].publisher_domain",
+          "value": "streaming.example"
         }
       ]
     },
@@ -98,6 +148,22 @@
                       "unit": "days"
                     }
                   }
+                },
+                "targeting_resolution": {
+                  "applied": {
+                    "geo_countries": ["US", "CA"],
+                    "device_type": ["ctv"],
+                    "frequency_cap": {
+                      "max_impressions": 3,
+                      "per": "households",
+                      "window": {
+                        "interval": 7,
+                        "unit": "days"
+                      }
+                    }
+                  },
+                  "equivalent": true,
+                  "resolved_at": "2026-06-02T14:22:00Z"
                 }
               }
             ]
@@ -201,6 +267,56 @@
                       }
                     ]
                   }
+                },
+                "targeting_resolution": {
+                  "applied": {
+                    "signal_targeting_groups": {
+                      "operator": "all",
+                      "groups": [
+                        {
+                          "operator": "any",
+                          "signals": [
+                            {
+                              "signal_ref": {
+                                "scope": "product",
+                                "signal_id": "high_intent_shoppers"
+                              },
+                              "value_type": "binary",
+                              "value": true,
+                              "pricing_option_id": "signal_cpm_usd_250",
+                              "signal_agent_segment_id": "sig_high_intent_shoppers"
+                            },
+                            {
+                              "signal_ref": {
+                                "scope": "product",
+                                "signal_id": "loyalty_members"
+                              },
+                              "value_type": "binary",
+                              "value": true,
+                              "pricing_option_id": "signal_cpm_usd_250",
+                              "signal_agent_segment_id": "sig_loyalty_members"
+                            }
+                          ]
+                        },
+                        {
+                          "operator": "none",
+                          "signals": [
+                            {
+                              "signal_ref": {
+                                "scope": "product",
+                                "signal_id": "recent_purchasers"
+                              },
+                              "value_type": "binary",
+                              "value": true,
+                              "signal_agent_segment_id": "sig_recent_purchasers"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  "equivalent": true,
+                  "resolved_at": "2026-08-15T10:00:00Z"
                 }
               }
             ]
@@ -227,6 +343,108 @@
         {
           "path": "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[1].signals[0].signal_agent_segment_id",
           "value": "sig_recent_purchasers"
+        }
+      ]
+    },
+    {
+      "id": "joint-placement-property-resolution",
+      "description": "Placement selection is buyer intent inside targeting_overlay; targeting_resolution.inventory returns the effective placement together with the property and collection scopes where it can actually run.",
+      "payload": {
+        "status": "completed",
+        "media_buys": [
+          {
+            "media_buy_id": "mb_joint_inventory_001",
+            "status": "pending_start",
+            "currency": "USD",
+            "total_budget": 12000,
+            "confirmed_at": "2026-08-20T10:00:00Z",
+            "revision": 1,
+            "packages": [
+              {
+                "package_id": "pkg_joint_inventory_video",
+                "product_id": "prod_multi_property_video",
+                "budget": 12000,
+                "currency": "USD",
+                "targeting_overlay": {
+                  "placement_selection": {
+                    "mode": "selected",
+                    "placement_refs": [
+                      {
+                        "publisher_domain": "publisher.example",
+                        "placement_id": "premium_video"
+                      }
+                    ]
+                  }
+                },
+                "targeting_resolution": {
+                  "applied": {
+                    "placement_selection": {
+                      "mode": "selected",
+                      "placement_refs": [
+                        {
+                          "publisher_domain": "publisher.example",
+                          "placement_id": "premium_video"
+                        }
+                      ]
+                    }
+                  },
+                  "equivalent": true,
+                  "resolved_at": "2026-08-20T10:00:00Z",
+                  "inventory": {
+                    "properties": [
+                      {
+                        "publisher_domain": "publisher.example",
+                        "selection_type": "by_id",
+                        "property_ids": ["streaming_app"]
+                      }
+                    ],
+                    "placements": [
+                      {
+                        "placement_ref": {
+                          "publisher_domain": "publisher.example",
+                          "placement_id": "premium_video"
+                        },
+                        "selection_source": "selected",
+                        "property_scope": [
+                          {
+                            "publisher_domain": "publisher.example",
+                            "selection_type": "by_id",
+                            "property_ids": ["streaming_app"]
+                          }
+                        ],
+                        "collection_scope": [
+                          {
+                            "publisher_domain": "publisher.example",
+                            "collection_ids": ["premium_series"]
+                          }
+                        ]
+                      }
+                    ],
+                    "collections": [
+                      {
+                        "publisher_domain": "publisher.example",
+                        "collection_ids": ["premium_series"]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.placement_selection.placement_refs[0].placement_id",
+          "value": "premium_video"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_resolution.inventory.placements[0].property_scope[0].property_ids[0]",
+          "value": "streaming_app"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_resolution.inventory.placements[0].collection_scope[0].collection_ids[0]",
+          "value": "premium_series"
         }
       ]
     },
@@ -264,24 +482,37 @@
                     }
                   }
                 },
-                "demographic_targeting_resolution": {
-                  "requested": {
-                    "age": {
-                      "min": 21,
-                      "max": 35,
-                      "include_unknown": false
-                    }
-                  },
+                "targeting_resolution": {
                   "applied": {
-                    "age": {
-                      "min": 21,
-                      "max": 35,
-                      "include_unknown": false
+                    "demographics": {
+                      "age": {
+                        "min": 21,
+                        "max": 35,
+                        "include_unknown": false
+                      }
                     }
                   },
                   "equivalent": true,
-                  "execution": {
-                    "type": "continuous_bounds"
+                  "resolved_at": "2026-09-01T10:00:00Z",
+                  "demographics": {
+                    "requested": {
+                      "age": {
+                        "min": 21,
+                        "max": 35,
+                        "include_unknown": false
+                      }
+                    },
+                    "applied": {
+                      "age": {
+                        "min": 21,
+                        "max": 35,
+                        "include_unknown": false
+                      }
+                    },
+                    "equivalent": true,
+                    "execution": {
+                      "type": "continuous_bounds"
+                    }
                   }
                 }
               }
@@ -299,11 +530,11 @@
           "value": false
         },
         {
-          "path": "media_buys[0].packages[0].demographic_targeting_resolution.equivalent",
+          "path": "media_buys[0].packages[0].targeting_resolution.demographics.equivalent",
           "value": true
         },
         {
-          "path": "media_buys[0].packages[0].demographic_targeting_resolution.execution.type",
+          "path": "media_buys[0].packages[0].targeting_resolution.demographics.execution.type",
           "value": "continuous_bounds"
         }
       ]

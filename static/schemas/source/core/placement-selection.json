@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/placement-selection.json",
+  "title": "Placement Selection",
+  "description": "The buyer-selected targetable placement set inside a package targeting_overlay. It is resolved jointly with property and collection targeting. Creative assignment placement_refs route only within the applied placement selection and never change it. Sellers validate the selection against the package product and effective inventory scope and reject invalid or silently adjusted selections.",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "selected",
+          "description": "Use the complete buyer-selected set in placement_refs. This has replacement semantics, not add/remove semantics."
+        },
+        "placement_refs": {
+          "type": "array",
+          "description": "The complete selected set of targetable placements. Every reference MUST match a placement on the package product whose mode is targetable. publisher_domain is required here even though legacy creative-routing PlacementRef inputs may omit it. Unknown, cross-publisher, duplicate, included-only, or seller-incompatible references are rejected with PLACEMENT_SELECTION_INVALID. Product placements whose mode is included remain part of the purchased package and are not listed here.",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "/schemas/core/placement-ref.json"
+              },
+              {
+                "required": [
+                  "publisher_domain"
+                ]
+              }
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "mode",
+        "placement_refs"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "default",
+          "description": "Request the product or seller default targetable placement set. Package targeting_overlay echoes mode: default as requested; targeting_resolution.applied SHOULD expand the actual refs as mode: selected when enumerable, and targeting_resolution.inventory records the effective property-placement mapping."
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

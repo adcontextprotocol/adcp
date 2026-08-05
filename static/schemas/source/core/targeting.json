@@ -141,7 +141,7 @@
     },
     "signal_targeting_groups": {
       "$ref": "/schemas/core/package-signal-targeting-groups.json",
-      "description": "Basic Boolean grouping for seller-offered signals. v1 supports a required top-level operator 'all' and child groups with operator 'any' for include groups or 'none' for exclusion groups. Example semantics: group 1 any(A, B) plus group 2 none(C, D) means (A OR B) AND NOT (C OR D). Signal entries reference named signal definitions with signal_ref scope 'product' for product-local signal options or scope 'data_provider' for external signals published in adagents.json signals[]. For simple include-only targeting, send one child group with operator 'any'. Sellers SHOULD reject entries that are not available for the product through inline signal_targeting_options or get_signals, are not active for the account, or exceed the product's signal_targeting_allowed/signal_targeting_rules/product terms. Signal targeting limits are product-scoped, not declared in get_adcp_capabilities, because products may be backed by different ad servers. Sellers MUST echo applied signal_targeting_groups on the resulting package state, including fixed/default selections. On update_media_buy, sellers MAY reject changes that require repricing with REQUOTE_REQUIRED."
+      "description": "Basic Boolean grouping for seller-offered signals. v1 supports a required top-level operator 'all' and child groups with operator 'any' for include groups or 'none' for exclusion groups. Example semantics: group 1 any(A, B) plus group 2 none(C, D) means (A OR B) AND NOT (C OR D). Signal entries reference named signal definitions with signal_ref scope 'product' for product-local signal options or scope 'data_provider' for external signals published in adagents.json signals[]. For simple include-only targeting, send one child group with operator 'any'. Sellers SHOULD reject entries that are not available for the product through inline signal_targeting_options or get_signals, are not active for the account, or exceed the product's signal_targeting_allowed/signal_targeting_rules/product terms. Signal targeting limits are product-scoped, not declared in get_adcp_capabilities, because products may be backed by different ad servers. targeting_overlay preserves buyer-requested groups; targeting_resolution.applied MUST contain the complete applied groups, including fixed/default selections. On update_media_buy, sellers MAY reject changes that require repricing with REQUOTE_REQUIRED."
     },
     "signal_targeting": {
       "type": "array",
@@ -166,6 +166,10 @@
     "property_list_exclude": {
       "$ref": "/schemas/core/property-list-ref.json",
       "description": "Reference to a property list whose properties must not carry the buyer's ads. Matched properties are removed from delivery. Use for brand-safety do-not-run lists (apps, sites). Exclude wins on overlap with property_list, and applies regardless of the product's property_targeting_allowed flag. Seller must declare support in get_adcp_capabilities."
+    },
+    "placement_selection": {
+      "$ref": "/schemas/core/placement-selection.json",
+      "description": "Purchased targetable-placement selection, resolved jointly with property and collection targeting. mode: selected supplies the complete selected set; mode: default requests the product or seller default. Every selected ref MUST resolve to a mode: targetable placement on the package product and have at least one eligible property-placement pair after property targeting. Product placements with mode: included remain included. Sellers reject invalid combinations with PLACEMENT_SELECTION_INVALID and never silently drop or widen a selection."
     },
     "collection_list": {
       "$ref": "/schemas/core/collection-list-ref.json",

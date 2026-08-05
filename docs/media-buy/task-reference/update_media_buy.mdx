@@ -37,6 +37,7 @@ The mapping is normative — sellers and SDKs MUST use this table to translate b
 The direction-of-change actions (`extend_flight` / `shorten_flight`, `increase_budget` / `decrease_budget` / `reallocate_budget`) share their `update_fields` paths; the action is determined by comparing the requested value against the buy's current state, not by which field is set. Server-side dispatch enforcement MUST diff request-vs-current to pick the right action and reject with `ACTION_NOT_ALLOWED` if the resolved action is not in the buy's `available_actions[]`.
 
 | `update_targeting` | `packages[].targeting_overlay`, `packages[].keyword_targets_add`, `packages[].keyword_targets_remove`, `packages[].negative_keywords_add`, `packages[].negative_keywords_remove` |  |
+| `update_placements` | `packages[].targeting_overlay.placement_selection` | Replaces the complete buyer-selected targetable-placement set as part of the atomic full-overlay replacement; `mode: "default"` restores the product or seller default |
 | `update_pacing` | `packages[].pacing` |  |
 | `update_frequency_caps` | `packages[].targeting_overlay.frequency_cap` | Renegotiated mid-flight more often than other targeting. Field is singular `frequency_cap` (single rule), not plural. |
 | `replace_creative` | `packages[].creatives[]` swap (assignments unchanged) | Distinct AM workflow from changing assignment set |
@@ -239,7 +240,7 @@ Configure automated delivery reporting for this media buy:
 | `pacing` | string | Updated pacing strategy |
 | `bid_price` | number | Updated bid price (auction products only). This is the exact bid/price to honor unless the selected pricing option has `max_bid: true`, in which case it is treated as the buyer's maximum willingness to pay (ceiling). |
 | `optimization_goals` | OptimizationGoal[] | Replace all optimization goals for this package. Uses replacement semantics — omit to leave goals unchanged. |
-| `targeting_overlay` | TargetingOverlay | Updated targeting restrictions. Uses replacement semantics; changing `signal_targeting_groups` can alter priced signal selection, so sellers MAY reject with `REQUOTE_REQUIRED` when the selected signal, group expression, or signal `pricing_option_id` falls outside the original quote. Sellers SHOULD reject attempts to change fixed signal selections and MUST echo applied fixed/default signal groups on the resulting package state. A demographic change is compiled against the product's current `demographic_targeting` declaration and refreshes `demographic_targeting_resolution` atomically; unsupported or inexact changes are rejected rather than broadened. |
+| `targeting_overlay` | TargetingOverlay | Complete targeting replacement. Omit the field to leave all targeting unchanged; when present, omitted nested axes are removed or restored to their product defaults. `placement_selection` changes require `update_placements` in `available_actions[]` and are validated jointly with property and collection targeting. Demographic changes compile against the product's current capability. The response echoes requested intent and refreshes `targeting_resolution` atomically. Unsupported, inexact, or empty intersections are rejected rather than silently adjusted. Priced changes may return `REQUOTE_REQUIRED`. |
 | `catalogs` | Catalog[] | Replace the catalogs this package promotes. Uses replacement semantics — omit to leave unchanged. |
 | `keyword_targets_add` | KeywordTarget[] | Keyword targets to add or upsert by (keyword, match_type) identity. On create, these are set as `keyword_targets` inside `targeting_overlay`. |
 | `keyword_targets_remove` | KeywordTarget[] | Keyword targets to remove by (keyword, match_type) identity. |
@@ -249,6 +250,8 @@ Configure automated delivery reporting for this media buy:
 | `creatives` | CreativeAsset[] | Replace assigned inline creative bodies for this package. Requires `media_buy.features.inline_creative_management: true`; when the seller also advertises `creative.has_creative_library: true`, new `creative_id` values must not already exist in the library. |
 
 `package_id` is required to identify the package to update.
+
+Placement changes are atomic with the rest of the targeting overlay and use the request's normal revision and idempotency rules. Every selected reference must resolve to a `mode: "targetable"` placement on the package product, with `publisher_domain` present, and retain at least one eligible property-placement pair after property and collection targeting. `mode: "included"` placements remain included. Unknown, cross-publisher, duplicate, included-only, property-incompatible, collection-incompatible, or invalid combinations are rejected with `PLACEMENT_SELECTION_INVALID`. If narrowing would orphan an existing creative route, the seller rejects unless the same request supplies compatible replacement assignments. A valid selection that changes priced terms is rejected with `REQUOTE_REQUIRED`.
 
 For how `budget`, `pacing`, `impressions`, and flight dates interact — and the current lack of an explicit daily-cap field — see [Budget & Pacing Controls](/docs/media-buy/task-reference/create_media_buy#budget--pacing-controls) on the `create_media_buy` reference.
 
@@ -266,7 +269,7 @@ For how `budget`, `pacing`, `impressions`, and flight dates interact — and the
 | `invoice_recipient` | Updated invoice recipient, echoed from request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
 | `valid_actions` | Flat-vocabulary actions the buyer can perform after this update. Saves a round-trip to `get_media_buys`. Deprecated in favor of `available_actions[]` and removed in 4.0. |
 | `available_actions` | Structured per-buy resolution of actions available after this update, each entry with action, resolved `mode`, optional `sla`, optional `terms_ref`. Authoritative — buyer SDKs SHOULD prefer this over `valid_actions` when both are present. |
-| `affected_packages` | For package-level updates, array of full Package objects showing complete post-update state for each directly modified package. This is a state snapshot, not a sparse delta: sellers MUST NOT return `{ package_id }`-only stubs. Campaign-level updates that do not modify packages may return an empty array. |
+| `affected_packages` | Full post-update Package state for each directly modified package. Sellers MUST return the requested `targeting_overlay` and complete applied `targeting_resolution`, including joint inventory and demographic detail when applicable; `{package_id}`-only stubs are invalid. |
 
 ### Error Response
 
@@ -743,6 +746,8 @@ Common errors and resolutions:
 | `CREATIVE_ID_EXISTS` | Creative ID already exists in the seller's creative namespace | For library-backed sellers, assign existing creatives via `creative_assignments` or update via `sync_creatives`; for inline-only sellers, use a different package-scoped `creative_id` |
 | `BUDGET_EXCEEDED` | Operation would exceed allocated budget | Reduce the amount or increase media buy total budget |
 | `CONFLICT` | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
+| `ACTION_NOT_ALLOWED` | The buy does not currently advertise the action mapped from the requested field, including `update_placements` for `packages[].targeting_overlay.placement_selection` | Inspect `error.details.currently_available_actions`; switch to the advertised flow or choose a different product/package |
+| `PLACEMENT_SELECTION_INVALID` | Placement identity, selectability, combination, or post-update creative routing is invalid | Branch on `error.details.reason`; choose a valid complete set from the product's targetable placements, update creative assignments atomically, or restore `mode: "default"` |
 | `REQUOTE_REQUIRED` | Requested change (budget, dates, volume, targeting, or signal targeting price) falls outside the envelope the original quote was priced against | Adjust the update to fit the current quote, rediscover products/terms, add packages when `add_packages` is available, or create a separate media buy. 3.1 does not define an amendment-quote artifact for `update_media_buy`. Seller's `error.details.envelope_field` names which fields breached. |
 | `VALIDATION_ERROR` | Request format or business rule violation | Check error `field` and `message` for specifics |
 

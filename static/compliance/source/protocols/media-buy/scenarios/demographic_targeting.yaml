@@ -258,27 +258,27 @@ phases:
           - check: response_schema
             description: "Response matches get-media-buys-response.json"
           - check: field_value
-            path: "media_buys[0].packages[0].demographic_targeting_resolution.equivalent"
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.equivalent"
             value: true
             description: "Ages 21–35 were applied exactly"
           - check: field_value
-            path: "media_buys[0].packages[0].demographic_targeting_resolution.execution.type"
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.execution.type"
             value: "continuous_bounds"
             description: "Readback names the execution mechanism"
           - check: field_value
-            path: "media_buys[0].packages[1].demographic_targeting_resolution.applied.age.include_unknown"
+            path: "media_buys[0].packages[1].targeting_resolution.demographics.applied.age.include_unknown"
             value: true
             description: "Unknown-age inclusion is preserved explicitly"
           - check: field_value
-            path: "media_buys[0].packages[1].demographic_targeting_resolution.requested.age.min"
+            path: "media_buys[0].packages[1].targeting_resolution.demographics.requested.age.min"
             value: 65
             description: "Open-upper request preserves its inclusive lower bound"
           - check: field_value
-            path: "media_buys[0].packages[1].demographic_targeting_resolution.applied.age.min"
+            path: "media_buys[0].packages[1].targeting_resolution.demographics.applied.age.min"
             value: 65
             description: "Applied predicate remains 65+"
           - check: field_absent
-            path: "media_buys[0].packages[1].demographic_targeting_resolution.applied.age.max"
+            path: "media_buys[0].packages[1].targeting_resolution.demographics.applied.age.max"
             description: "Seller does not narrow the open upper bound to max_supported_age"
 
   - id: execute_exact_interval_union
@@ -344,27 +344,27 @@ phases:
           - check: response_schema
             description: "Response matches get-media-buys-response.json"
           - check: field_value
-            path: "media_buys[0].packages[0].demographic_targeting_resolution.equivalent"
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.equivalent"
             value: true
             description: "Bucket union is exactly equal to the buyer request"
           - check: field_value
-            path: "media_buys[0].packages[0].demographic_targeting_resolution.applied.age.min"
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.applied.age.min"
             value: 18
             description: "Applied union starts at age 18"
           - check: field_value
-            path: "media_buys[0].packages[0].demographic_targeting_resolution.applied.age.max"
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.applied.age.max"
             value: 34
             description: "Applied union ends at age 34"
           - check: field_value
-            path: "media_buys[0].packages[0].demographic_targeting_resolution.execution.type"
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.execution.type"
             value: "enumerated_intervals"
             description: "Readback identifies interval execution"
           - check: field_contains
-            path: "media_buys[0].packages[0].demographic_targeting_resolution.execution.interval_ids"
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.execution.interval_ids"
             value: "age_18_24"
             description: "Readback includes the first contributing interval"
           - check: field_contains
-            path: "media_buys[0].packages[0].demographic_targeting_resolution.execution.interval_ids"
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.execution.interval_ids"
             value: "age_25_34"
             description: "Readback includes the second contributing interval"
 
@@ -602,14 +602,14 @@ phases:
           - check: response_schema
             description: "Response matches get-media-buys-response.json"
           - check: field_value
-            path: "media_buys[0].packages[0].demographic_targeting_resolution.equivalent"
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.equivalent"
             value: true
             description: "Signal predicate exactly matches buyer intent"
           - check: field_value
-            path: "media_buys[0].packages[0].demographic_targeting_resolution.execution.type"
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.execution.type"
             value: "signals"
             description: "Readback identifies signal-backed execution"
           - check: field_value
-            path: "media_buys[0].packages[0].demographic_targeting_resolution.execution.signal_refs[0].signal_id"
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.execution.signal_refs[0].signal_id"
             value: "adults_25_34"
             description: "Readback carries the authoritative signal identity"

@@ -100,7 +100,8 @@
       "minItems": 1
     },
     "targeting_overlay": {
-      "$ref": "/schemas/core/targeting.json"
+      "$ref": "/schemas/core/targeting.json",
+      "description": "Complete buyer-requested targeting. Inventory axes inside this object are resolved jointly: property and collection lists constrain targeting_overlay.placement_selection. Sellers MUST reject an empty or invalid intersection rather than silently dropping an axis. A successful create echoes this requested overlay and returns the applied result in targeting_resolution."
     },
     "measurement_terms": {
       "$ref": "/schemas/core/measurement-terms.json",

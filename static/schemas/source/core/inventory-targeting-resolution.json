@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/inventory-targeting-resolution.json",
+  "title": "Inventory Targeting Resolution",
+  "description": "Seller-confirmed effective inventory scope after jointly resolving the product's publisher_properties, placements, and collections against the buyer's property, placement, and collection targeting. These axes are not independent: each resolved placement carries the property and optional collection scope where it can actually run. Sellers MUST reject an empty effective scope or any explicitly selected placement with no eligible property-placement pair rather than silently dropping a property, placement, or collection selection.",
+  "type": "object",
+  "properties": {
+    "properties": {
+      "type": "array",
+      "description": "Effective non-empty property scope after intersecting product publisher_properties with property_list and subtracting property_list_exclude. Selectors keep large all/tag-based scopes compact; by_id may enumerate a bounded resolved set.",
+      "items": {
+        "$ref": "/schemas/core/publisher-property-selector.json"
+      },
+      "minItems": 1
+    },
+    "placements": {
+      "type": "array",
+      "description": "Effective placements and the inventory scope on which each can run. Every buyer-selected placement MUST appear exactly once. Product-included placements appear with selection_source: included. A seller-default placement appears with selection_source: default when it was not explicitly selected.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "placement_ref": {
+            "allOf": [
+              {
+                "$ref": "/schemas/core/placement-ref.json"
+              },
+              {
+                "required": [
+                  "publisher_domain"
+                ]
+              }
+            ]
+          },
+          "selection_source": {
+            "type": "string",
+            "enum": [
+              "selected",
+              "default",
+              "included"
+            ],
+            "description": "Why this placement is in the effective package inventory."
+          },
+          "property_scope": {
+            "type": "array",
+            "description": "Non-empty subset of properties on which this placement can run after product, publisher-catalog, authorization, and property-targeting validation. Every selector MUST address the same publisher_domain as placement_ref and be a subset of top-level properties.",
+            "items": {
+              "$ref": "/schemas/core/publisher-property-selector.json"
+            },
+            "minItems": 1
+          },
+          "collection_scope": {
+            "type": "array",
+            "description": "Optional effective collection scope for this placement after collection targeting. Every entry MUST be a subset of top-level collections.",
+            "items": {
+              "$ref": "/schemas/core/collection-selector.json"
+            },
+            "minItems": 1
+          },
+          "ext": {
+            "$ref": "/schemas/core/ext.json"
+          }
+        },
+        "required": [
+          "placement_ref",
+          "selection_source",
+          "property_scope"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "collections": {
+      "type": "array",
+      "description": "Effective collection scope after intersecting product collections with collection_list and subtracting collection_list_exclude.",
+      "items": {
+        "$ref": "/schemas/core/collection-selector.json"
+      },
+      "minItems": 1
+    },
+    "list_snapshots": {
+      "type": "array",
+      "description": "Resolution evidence for external property or collection lists. This deliberately omits auth_token even when the request-side list reference carried one.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "property_include",
+              "property_exclude",
+              "collection_include",
+              "collection_exclude"
+            ]
+          },
+          "agent_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "list_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "version": {
+            "type": "string",
+            "description": "List-provider version, ETag, content digest, or other stable snapshot identifier when exposed by the list agent."
+          },
+          "resolved_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "matched_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "ext": {
+            "$ref": "/schemas/core/ext.json"
+          }
+        },
+        "required": [
+          "kind",
+          "agent_url",
+          "list_id",
+          "resolved_at",
+          "matched_count"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "properties"
+  ],
+  "additionalProperties": false
+}

@@ -1,11 +1,11 @@
 /**
- * Validates positive wire-level test vectors for PackageStatus.targeting_overlay
- * echo in static/test-vectors/media-buy/package-status-targeting-overlay-echo.json.
+ * Validates positive wire-level test vectors for PackageStatus requested
+ * targeting_overlay and applied targeting_resolution readback.
  *
  * Three layers of defense:
  *
- *   1. Schema-shape lock — PackageStatus.properties.targeting_overlay.$ref points
- *      at /schemas/core/targeting.json. Because PackageStatus and TargetingOverlay
+ *   1. Schema-shape lock — PackageStatus declares both canonical refs. Because
+ *      PackageStatus, TargetingOverlay, and TargetingResolution
  *      both set additionalProperties:true, payload-level validation alone would
  *      not catch a regeneration that drops the property declaration; this direct
  *      schema read does.
@@ -58,7 +58,7 @@ function resolvePath(obj, dottedPath) {
 
 const data = JSON.parse(fs.readFileSync(VECTORS_PATH, 'utf8'));
 
-describe('PackageStatus targeting_overlay echo vectors', () => {
+describe('PackageStatus targeting request and resolution vectors', () => {
   let validate;
   let rootSchema;
 
@@ -85,7 +85,7 @@ describe('PackageStatus targeting_overlay echo vectors', () => {
     });
   });
 
-  it('PackageStatus declares targeting_overlay with the core/targeting.json $ref', () => {
+  it('PackageStatus declares requested and applied targeting refs', () => {
     // Direct schema-shape lock: additionalProperties:true on PackageStatus means payload
     // validation alone does not catch regeneration that drops this declaration. This
     // assertion is the actual wire-level contract for downstream SDK codegen.
@@ -99,6 +99,10 @@ describe('PackageStatus targeting_overlay echo vectors', () => {
     assert.equal(
       packageStatusSchema.properties.targeting_overlay.$ref,
       '/schemas/core/targeting.json'
+    );
+    assert.equal(
+      packageStatusSchema.properties.targeting_resolution.$ref,
+      '/schemas/core/targeting-resolution.json'
     );
   });
 
@@ -124,9 +128,11 @@ describe('PackageStatus targeting_overlay echo vectors', () => {
     });
   }
 
-  it('covers both the specialism MUST and the general SHOULD paths', () => {
+  it('covers general, list, joint inventory, and demographic targeting paths', () => {
     const ids = new Set(data.vectors.map(v => v.id));
     assert.ok(ids.has('property-and-collection-list-echo'), 'specialism MUST vector required');
     assert.ok(ids.has('plain-overlay-fields-echo'), 'general SHOULD vector required');
+    assert.ok(ids.has('joint-placement-property-resolution'), 'joint inventory vector required');
+    assert.ok(ids.has('demographic-targeting-exact-readback'), 'demographic resolution vector required');
   });
 });

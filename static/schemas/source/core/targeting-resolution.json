@@ -1,0 +1,147 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-resolution.json",
+  "title": "Targeting Resolution",
+  "description": "Seller-confirmed applied targeting for a stored package. targeting_overlay is the complete buyer-requested intent; this object is the complete applied result. Sellers MUST reject unsupported or non-equivalent targeting rather than silently broadening, narrowing, dropping, or substituting an axis. Shape differences are allowed only when they are provably equivalent, such as expanding a requested default into explicit effective placement references.",
+  "type": "object",
+  "properties": {
+    "applied": {
+      "$ref": "/schemas/core/targeting.json",
+      "description": "Complete targeting overlay actually applied by the seller, expressed in the same canonical vocabulary as the request. Seller-applied defaults SHOULD be expanded here when they can be enumerated."
+    },
+    "equivalent": {
+      "type": "boolean",
+      "const": true,
+      "description": "Always true for stored package state. The requested targeting_overlay and applied targeting MUST denote the same eligible set; sellers reject non-equivalent requests."
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller resolved the applied targeting and any referenced external lists or catalogs."
+    },
+    "inventory": {
+      "$ref": "/schemas/core/inventory-targeting-resolution.json",
+      "description": "Joint property, placement, and collection resolution. Required whenever any of those inventory axes were requested or applied."
+    },
+    "demographics": {
+      "$ref": "/schemas/core/demographic-targeting-resolution.json",
+      "description": "Lossless demographic predicate and execution evidence. Required whenever demographic targeting was requested or applied. Its requested value MUST equal targeting_overlay.demographics, and its applied predicate MUST agree with applied.demographics."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "applied",
+    "equivalent",
+    "resolved_at"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "applied": {
+            "required": [
+              "demographics"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "demographics"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "applied": {
+            "anyOf": [
+              {
+                "required": [
+                  "property_list"
+                ]
+              },
+              {
+                "required": [
+                  "property_list_exclude"
+                ]
+              },
+              {
+                "required": [
+                  "collection_list"
+                ]
+              },
+              {
+                "required": [
+                  "collection_list_exclude"
+                ]
+              },
+              {
+                "required": [
+                  "placement_selection"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "inventory"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "applied": {
+            "required": [
+              "placement_selection"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "inventory": {
+            "required": [
+              "placements"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "applied": {
+            "anyOf": [
+              {
+                "required": [
+                  "collection_list"
+                ]
+              },
+              {
+                "required": [
+                  "collection_list_exclude"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "inventory": {
+            "required": [
+              "collections"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}
