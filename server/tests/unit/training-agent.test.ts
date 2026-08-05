@@ -60,7 +60,7 @@ const VALID_PRICING_MODELS = [
 const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
 const CURRENT_ADCP_VERSION = '3.1-rc.15';
 
-const DEFAULT_CTX: TrainingContext = { mode: 'open' };
+const DEFAULT_CTX: TrainingContext = { mode: 'open', authenticatedAgentUrl: 'https://buyer.example' };
 
 describe('canonical package readiness parameter matching', () => {
   const manifest = (width: number, height: number) => ({
@@ -122,12 +122,29 @@ async function simulateListTools(
  * pass an explicit `idempotency_key`, which this helper preserves.
  */
 function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
-  if (toolName === 'validate_input' && args.adcp_version === undefined) {
-    return { ...args, adcp_version: CURRENT_ADCP_VERSION };
+  let normalizedArgs = args;
+  if (toolName === 'check_governance' && typeof args.tool === 'string' && args.payload) {
+    const rawPayload = args.payload as Record<string, unknown>;
+    const { target_seller: legacyTarget, ...payload } = rawPayload;
+    const defaultTarget = args.tool === 'activate_signal'
+      ? 'http://localhost/signals'
+      : args.tool === 'acquire_rights' || args.tool === 'update_rights'
+        ? 'http://localhost/brand'
+        : args.tool === 'build_creative'
+          ? 'http://localhost/creative'
+          : 'http://localhost/sales';
+    normalizedArgs = {
+      ...args,
+      target_agent: args.target_agent ?? legacyTarget ?? defaultTarget,
+      payload,
+    };
   }
-  if (!MUTATING_TOOLS.has(toolName)) return args;
-  if (args.idempotency_key !== undefined) return args;
-  return { ...args, idempotency_key: `test-${randomUUID()}` };
+  if (toolName === 'validate_input' && args.adcp_version === undefined) {
+    return { ...normalizedArgs, adcp_version: CURRENT_ADCP_VERSION };
+  }
+  if (!MUTATING_TOOLS.has(toolName)) return normalizedArgs;
+  if (normalizedArgs.idempotency_key !== undefined) return normalizedArgs;
+  return { ...normalizedArgs, idempotency_key: `test-${randomUUID()}` };
 }
 
 /**
@@ -5078,18 +5095,40 @@ describe('get_media_buys handler', () => {
     const account = { brand: { domain: 'govctx.example' }, operator: 'govctx.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
 
-    // Create with governance_context
-    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+    const createArgs = {
+      idempotency_key: 'govctx-roundtrip-0001',
       account,
       brand: { domain: 'govctx.example' },
       start_time: '2027-06-01T00:00:00Z',
       end_time: '2027-07-01T00:00:00Z',
-      governance_context: 'gc-round-trip-test',
       packages: [{
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
         budget: 10000,
       }],
+    };
+    await simulateCallTool(server, 'sync_plans', {
+      brand: { domain: 'govctx.example' },
+      plans: [{
+        plan_id: 'plan-govctx-roundtrip',
+        brand: { domain: 'govctx.example' },
+        objectives: 'Test governed context persistence.',
+        budget: { total: 20000, currency: 'USD', reallocation_threshold: 20000 },
+        flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+      }],
+    });
+    const { result: approval } = await simulateCallTool(server, 'check_governance', {
+      brand: { domain: 'govctx.example' },
+      plan_id: 'plan-govctx-roundtrip',
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
+      payload: createArgs,
+    });
+
+    // Create with a task- and payload-bound governance_context.
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      ...createArgs,
+      governance_context: approval.governance_context,
     });
     expect(created.media_buy_id).toBeDefined();
 
@@ -5102,7 +5141,7 @@ describe('get_media_buys handler', () => {
 
     const buys = result.media_buys as Array<Record<string, unknown>>;
     expect(buys.length).toBe(1);
-    expect(buys[0].governance_context).toBe('gc-round-trip-test');
+    expect(buys[0].governance_context).toBe(approval.governance_context);
   });
 
   it('returns SNAPSHOT_UNSUPPORTED when include_snapshot is true', async () => {
@@ -9415,7 +9454,29 @@ describe('activate_signal handler', () => {
     });
 
     expect(result.code).toBe('PERMISSION_DENIED');
-    expect(result.message).toContain('does not match any governance approval');
+    expect(result.message).toContain('compact JWS');
+  });
+
+  it('requires governance for rights services from account registration without a local plan', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await syncGovernedAccount(server);
+
+    const acquired = await simulateCallTool(server, 'acquire_rights', {
+      account,
+      rights_id: 'janssen_likeness_voice',
+      pricing_option_id: 'monthly_exclusive',
+      buyer: { domain: 'signal-test.example' },
+      campaign: { description: 'Athletic campaign', uses: ['likeness'] },
+    });
+    expect(acquired.result.status).toBe('rejected');
+    expect(acquired.result.reason).toContain('governance approval');
+
+    const updated = await simulateCallTool(server, 'update_rights', {
+      account,
+      rights_id: 'janssen_likeness_voice',
+      end_date: '2099-12-31',
+    });
+    expect(updated.result.code).toBe('GOVERNANCE_DENIED');
   });
 
   it('accepts an approved governance_context for a governed signal account', async () => {
@@ -9439,11 +9500,14 @@ describe('activate_signal handler', () => {
       binding: 'proposed',
       caller: 'https://buyer.example',
       purchase_type: 'signal_activation',
+      proposed_commitment: { amount: 50, currency: 'USD' },
       tool: 'activate_signal',
       payload: {
+        account,
+        idempotency_key: 'signal-governance-0001',
+        target_seller: 'http://localhost/signals',
         signal_agent_segment_id: 'trident_likely_ev_buyers',
         pricing_option_id: 'po_trident_ev_cpm',
-        total_budget: 50,
         destinations: [{ type: 'agent', agent_url: 'https://test.example' }],
       },
     });
@@ -9453,6 +9517,7 @@ describe('activate_signal handler', () => {
 
     const { result } = await simulateCallTool(server, 'activate_signal', {
       account,
+      idempotency_key: 'signal-governance-0001',
       signal_agent_segment_id: 'trident_likely_ev_buyers',
       pricing_option_id: 'po_trident_ev_cpm',
       governance_context: check.governance_context,
@@ -9919,6 +9984,38 @@ describe('get_adcp_capabilities handler', () => {
     expect(tasks).not.toContain('get_adcp_capabilities');
   });
 
+  it('advertises the governed commitment tasks the training seller enforces', async () => {
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, tenantId: 'sales' });
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
+
+    expect((result.adcp as Record<string, any>).governance_enforcement).toEqual({
+      tasks: [
+        { task: 'create_media_buy', modes: ['signed_context'] },
+        { task: 'update_media_buy', modes: ['signed_context'] },
+      ],
+    });
+    expect(result.experimental_features).toContain('governance.campaign');
+  });
+
+  it('scopes governance enforcement claims to the receiving tenant', async () => {
+    const signals = await simulateCallTool(
+      createTrainingAgentServer({ ...DEFAULT_CTX, tenantId: 'signals' }),
+      'get_adcp_capabilities',
+      {},
+    );
+    expect((signals.result.adcp as Record<string, any>).governance_enforcement).toEqual({
+      tasks: [{ task: 'activate_signal', modes: ['signed_context'] }],
+    });
+    expect(signals.result.experimental_features).toContain('governance.campaign');
+
+    const legacy = await simulateCallTool(
+      createTrainingAgentServer(DEFAULT_CTX),
+      'get_adcp_capabilities',
+      {},
+    );
+    expect((legacy.result.adcp as Record<string, any>).governance_enforcement).toBeUndefined();
+  });
+
   it('advertises the compliance test controller scenarios it implements', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
@@ -10186,7 +10283,7 @@ describe('check_governance seller compliance', () => {
   };
 
   it('approves caller in approved_sellers list', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, authenticatedAgentUrl: 'https://buyer.example' });
     await simulateCallTool(server, 'sync_plans', {
       plans: [{ ...PLAN_BASE, approved_sellers: ['https://seller-a.example'] }],
     });
@@ -10194,14 +10291,16 @@ describe('check_governance seller compliance', () => {
     const { result } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-seller',
       binding: 'proposed',
-      caller: 'https://seller-a.example',
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
+      payload: { target_seller: 'https://seller-a.example', total_budget: 1 },
     });
 
     expect(result.status).toBe('approved');
   });
 
   it('denies caller not in approved_sellers list', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, authenticatedAgentUrl: 'https://buyer.example' });
     await simulateCallTool(server, 'sync_plans', {
       plans: [{ ...PLAN_BASE, approved_sellers: ['https://seller-a.example'] }],
     });
@@ -10209,7 +10308,9 @@ describe('check_governance seller compliance', () => {
     const { result } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-seller',
       binding: 'proposed',
-      caller: 'https://unauthorized.example',
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
+      payload: { target_seller: 'https://unauthorized.example', total_budget: 1 },
     });
 
     expect(result.status).toBe('denied');
@@ -10218,7 +10319,7 @@ describe('check_governance seller compliance', () => {
   });
 
   it('denies all callers when approved_sellers is empty array', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, authenticatedAgentUrl: 'https://buyer.example' });
     await simulateCallTool(server, 'sync_plans', {
       plans: [{ ...PLAN_BASE, approved_sellers: [] }],
     });
@@ -10226,7 +10327,9 @@ describe('check_governance seller compliance', () => {
     const { result } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-seller',
       binding: 'proposed',
-      caller: 'https://any-seller.example',
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
+      payload: { target_seller: 'https://any-seller.example', total_budget: 1 },
     });
 
     expect(result.status).toBe('denied');
@@ -10241,7 +10344,7 @@ describe('check_governance seller compliance', () => {
     const { result } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-seller',
       binding: 'proposed',
-      caller: 'https://any-seller.example',
+      caller: 'https://buyer.example',
     });
 
     expect(result.status).toBe('approved');
@@ -10258,7 +10361,7 @@ describe('check_governance seller compliance', () => {
     const { result } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-seller',
       binding: 'proposed',
-      caller: 'https://any-seller.example',
+      caller: 'https://buyer.example',
     });
 
     expect(result.status).toBe('approved');
@@ -10367,7 +10470,7 @@ describe('sync_plans input validation', () => {
     const { result } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-valid',
       binding: 'proposed',
-      caller: 'https://test.example',
+      caller: 'https://buyer.example',
     });
     expect(result.status).toBe('denied');
     expect(result.explanation).toContain('Plan not found');
@@ -10400,10 +10503,18 @@ describe('check_governance delegation enforcement', () => {
       markets: ['US', 'GB'],
     }],
   };
+  const DELEGATED_CTX = { ...DEFAULT_CTX, authenticatedAgentUrl: 'https://delegated.example' };
+  const DELEGATION_OWNER_CTX = { ...DEFAULT_CTX, authenticatedAgentUrl: 'https://delegation-owner.example' };
+
+  async function serverForDelegatedCheck() {
+    const ownerServer = createTrainingAgentServer(DELEGATION_OWNER_CTX);
+    const synced = await simulateCallTool(ownerServer, 'sync_plans', { plans: [DELEGATED_PLAN] });
+    expect(synced.result.errors).toBeUndefined();
+    return createTrainingAgentServer(DELEGATED_CTX);
+  }
 
   it('approves delegation within budget limit', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    await simulateCallTool(server, 'sync_plans', { plans: [DELEGATED_PLAN] });
+    const server = await serverForDelegatedCheck();
 
     const { result } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-deleg',
@@ -10421,8 +10532,7 @@ describe('check_governance delegation enforcement', () => {
   });
 
   it('denies delegation exceeding budget limit', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    await simulateCallTool(server, 'sync_plans', { plans: [DELEGATED_PLAN] });
+    const server = await serverForDelegatedCheck();
 
     const { result } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-deleg',
@@ -10444,8 +10554,7 @@ describe('check_governance delegation enforcement', () => {
   });
 
   it('denies delegation targeting unauthorized markets', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    await simulateCallTool(server, 'sync_plans', { plans: [DELEGATED_PLAN] });
+    const server = await serverForDelegatedCheck();
 
     const { result } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-deleg',
@@ -10453,6 +10562,7 @@ describe('check_governance delegation enforcement', () => {
       caller: 'https://delegated.example',
       tool: 'create_media_buy',
       payload: {
+        target_seller: 'https://delegated.example',
         total_budget: { amount: 10000, currency: 'USD' },
         geo: { countries: ['US', 'DE'] },
       },
@@ -10467,8 +10577,7 @@ describe('check_governance delegation enforcement', () => {
   });
 
   it('approves delegation within allowed markets', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    await simulateCallTool(server, 'sync_plans', { plans: [DELEGATED_PLAN] });
+    const server = await serverForDelegatedCheck();
 
     const { result } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-deleg',
@@ -10485,8 +10594,7 @@ describe('check_governance delegation enforcement', () => {
   });
 
   it('issues governance_context and accepts it on subsequent calls', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    await simulateCallTool(server, 'sync_plans', { plans: [DELEGATED_PLAN] });
+    const server = await serverForDelegatedCheck();
 
     // First check — governance agent issues governance_context
     const { result: check1 } = await simulateCallTool(server, 'check_governance', {
@@ -10495,6 +10603,7 @@ describe('check_governance delegation enforcement', () => {
       caller: 'https://delegated.example',
       tool: 'create_media_buy',
       payload: {
+        target_seller: 'https://delegated.example',
         total_budget: { amount: 10000, currency: 'USD' },
         geo: { countries: ['US'] },
       },
@@ -11295,6 +11404,7 @@ describe('governance purchase_type and allocations', () => {
       binding: 'proposed',
       caller: 'https://buyer.example',
       purchase_type: 'rights_license',
+      proposed_commitment: { amount: 20000, currency: 'USD' },
       tool: 'acquire_rights',
       payload: { budget: 20000 },
     });
@@ -11311,6 +11421,7 @@ describe('governance purchase_type and allocations', () => {
       binding: 'proposed',
       caller: 'https://buyer.example',
       purchase_type: 'rights_license',
+      proposed_commitment: { amount: 35000, currency: 'USD' },
       tool: 'acquire_rights',
       payload: { budget: 35000 },
     });
@@ -11330,6 +11441,7 @@ describe('governance purchase_type and allocations', () => {
       binding: 'proposed',
       caller: 'https://buyer.example',
       purchase_type: 'signal_activation',
+      proposed_commitment: { amount: 35000, currency: 'USD' },
       tool: 'activate_signal',
       payload: { budget: 35000 },
     });
@@ -11338,15 +11450,24 @@ describe('governance purchase_type and allocations', () => {
   });
 
   it('tracks committedByType across outcomes', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, authenticatedAgentUrl: 'https://buyer.example' });
     await simulateCallTool(server, 'sync_plans', { plans: [PLAN_WITH_ALLOCATIONS] });
 
-    // Commit $25K to rights_license
+    // Commit $25K to rights_license under an exact approved check binding.
+    const { result: rightsApproval } = await simulateCallTool(server, 'check_governance', {
+      plan_id: 'plan-multi',
+      caller: 'https://buyer.example',
+      purchase_type: 'rights_license',
+      proposed_commitment: { amount: 25000, currency: 'USD' },
+      tool: 'acquire_rights',
+      payload: { budget: 25000 },
+    });
     await simulateCallTool(server, 'report_plan_outcome', {
       plan_id: 'plan-multi',
+      check_id: rightsApproval.check_id,
       outcome: 'completed',
       purchase_type: 'rights_license',
-      governance_context: 'ctx_rights_1',
+      governance_context: rightsApproval.governance_context,
       seller_response: { committed_budget: 25000 },
     });
 
@@ -11356,6 +11477,7 @@ describe('governance purchase_type and allocations', () => {
       binding: 'proposed',
       caller: 'https://buyer.example',
       purchase_type: 'rights_license',
+      proposed_commitment: { amount: 10000, currency: 'USD' },
       tool: 'acquire_rights',
       payload: { budget: 10000 },
     });
@@ -11433,6 +11555,7 @@ describe('governance rights payload extraction', () => {
       binding: 'proposed',
       caller: 'https://buyer.example',
       purchase_type: 'rights_license',
+      proposed_commitment: { amount: 0, currency: 'USD' },
       tool: 'acquire_rights',
       payload: {
         campaign: { countries: ['US', 'DE'] },
@@ -11453,6 +11576,7 @@ describe('governance rights payload extraction', () => {
       binding: 'proposed',
       caller: 'https://buyer.example',
       purchase_type: 'rights_license',
+      proposed_commitment: { amount: 0, currency: 'USD' },
       tool: 'acquire_rights',
       payload: {
         campaign: { countries: ['US'] },
@@ -11471,6 +11595,7 @@ describe('governance rights payload extraction', () => {
       binding: 'proposed',
       caller: 'https://buyer.example',
       purchase_type: 'rights_license',
+      proposed_commitment: { amount: 0, currency: 'USD' },
       tool: 'acquire_rights',
       payload: {
         campaign: { start_date: '2026-01-01', end_date: '2027-06-30' },
@@ -11494,7 +11619,7 @@ describe('governance audit logs by governance_context', () => {
   });
 
   it('groups governed_actions by governance_context with purchase_type', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, authenticatedAgentUrl: 'https://buyer.example' });
     const plan = {
       plan_id: 'plan-audit',
       brand: { name: 'Acme' },
@@ -11521,13 +11646,16 @@ describe('governance audit logs by governance_context', () => {
       binding: 'proposed',
       caller: 'https://buyer.example',
       purchase_type: 'rights_license',
+      proposed_commitment: { amount: 5000, currency: 'USD' },
       tool: 'acquire_rights',
+      payload: {},
     });
     const rCtx = rCheck.governance_context as string;
 
     // Report outcomes
     await simulateCallTool(server, 'report_plan_outcome', {
       plan_id: 'plan-audit',
+      check_id: mbCheck.check_id,
       outcome: 'completed',
       purchase_type: 'media_buy',
       governance_context: mbCtx,
@@ -11535,6 +11663,7 @@ describe('governance audit logs by governance_context', () => {
     });
     await simulateCallTool(server, 'report_plan_outcome', {
       plan_id: 'plan-audit',
+      check_id: rCheck.check_id,
       outcome: 'completed',
       purchase_type: 'rights_license',
       governance_context: rCtx,
@@ -11568,7 +11697,9 @@ describe('governance audit logs by governance_context', () => {
       binding: 'proposed',
       caller: 'https://buyer.example',
       purchase_type: 'rights_license',
+      proposed_commitment: { amount: 0, currency: 'USD' },
       tool: 'acquire_rights',
+      payload: {},
     });
     const ctx = check.governance_context as string;
 
@@ -11598,6 +11729,7 @@ describe('governance audit logs by governance_context', () => {
     const { result } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan-infer',
       caller: 'https://buyer.example',
+      proposed_commitment: { amount: 10000, currency: 'USD' },
       tool: 'acquire_rights',
       payload: { budget: 10000 },
     });
@@ -11627,7 +11759,7 @@ describe('governance creative_services purchase type', () => {
   });
 
   it('governs creative_services end-to-end: check, report, audit', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, authenticatedAgentUrl: 'https://buyer.example' });
     const plan = {
       plan_id: 'plan-creative',
       brand: { name: 'Acme' },
@@ -11647,6 +11779,7 @@ describe('governance creative_services purchase type', () => {
       plan_id: 'plan-creative',
       caller: 'https://buyer.example',
       purchase_type: 'creative_services',
+      proposed_commitment: { amount: 5000, currency: 'USD' },
       tool: 'build_creative',
       payload: { budget: 5000 },
     });
@@ -11657,6 +11790,7 @@ describe('governance creative_services purchase type', () => {
     // Report outcome with seller_reference
     const { result: outcome } = await simulateCallTool(server, 'report_plan_outcome', {
       plan_id: 'plan-creative',
+      check_id: check.check_id,
       governance_context: ctx,
       purchase_type: 'creative_services',
       outcome: 'completed',
@@ -11669,6 +11803,7 @@ describe('governance creative_services purchase type', () => {
       plan_id: 'plan-creative',
       caller: 'https://buyer.example',
       purchase_type: 'creative_services',
+      proposed_commitment: { amount: 6000, currency: 'USD' },
       tool: 'build_creative',
       payload: { budget: 6000 },
     });
@@ -11810,7 +11945,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
   }
 
   it('media_buy_seller: check_governance with tool+payload pattern', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, authenticatedAgentUrl: 'https://buying.pinnacle-agency.example' });
     await setupPlan(server);
 
     const { result, isError } = await simulateCallTool(server, 'check_governance', {
@@ -11835,7 +11970,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
   });
 
   it('media_buy_seller: report_plan_outcome with seller_reference', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, authenticatedAgentUrl: 'https://buying.pinnacle-agency.example' });
     await setupPlan(server);
 
     // First check to get governance_context
@@ -11850,6 +11985,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
 
     const { result, isError } = await simulateCallTool(server, 'report_plan_outcome', {
       plan_id: 'plan_acme_summer_2026',
+      check_id: check.check_id,
       governance_context: ctx,
       purchase_type: 'media_buy',
       outcome: 'completed',
@@ -11865,7 +12001,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
   });
 
   it('creative_services: check + report cycle from storyboard payloads', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, authenticatedAgentUrl: 'https://buying.pinnacle-agency.example' });
     await setupPlan(server);
 
     // check_governance for build_creative (creative_template pattern)
@@ -11873,6 +12009,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
       plan_id: 'plan_acme_summer_2026',
       caller: 'https://buying.pinnacle-agency.example',
       purchase_type: 'creative_services',
+      proposed_commitment: { amount: 300, currency: 'USD' },
       tool: 'build_creative',
       payload: {
         creative_manifest: {
@@ -11889,6 +12026,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     // report_plan_outcome (creative_template pattern)
     const { result: outcome } = await simulateCallTool(server, 'report_plan_outcome', {
       plan_id: 'plan_acme_summer_2026',
+      check_id: check.check_id,
       governance_context: ctx,
       purchase_type: 'creative_services',
       outcome: 'completed',
@@ -11899,13 +12037,14 @@ describe('storyboard governance sample_requests accepted by training agent', () 
   });
 
   it('rights_license: check + report cycle from brand_rights storyboard', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, authenticatedAgentUrl: 'https://buying.pinnacle-agency.example' });
     await setupPlan(server);
 
     const { result: check } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan_acme_summer_2026',
       caller: 'https://buying.pinnacle-agency.example',
       purchase_type: 'rights_license',
+      proposed_commitment: { amount: 2500, currency: 'USD' },
       tool: 'acquire_rights',
       payload: {
         brand: { domain: 'acmeoutdoor.com' },
@@ -11920,6 +12059,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
 
     const { result: outcome } = await simulateCallTool(server, 'report_plan_outcome', {
       plan_id: 'plan_acme_summer_2026',
+      check_id: check.check_id,
       governance_context: ctx,
       purchase_type: 'rights_license',
       outcome: 'completed',
@@ -11930,13 +12070,14 @@ describe('storyboard governance sample_requests accepted by training agent', () 
   });
 
   it('signal_activation: check + report cycle from signal storyboards', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, authenticatedAgentUrl: 'https://buying.pinnacle-agency.example' });
     await setupPlan(server);
 
     const { result: check } = await simulateCallTool(server, 'check_governance', {
       plan_id: 'plan_acme_summer_2026',
       caller: 'https://buying.pinnacle-agency.example',
       purchase_type: 'signal_activation',
+      proposed_commitment: { amount: 1000, currency: 'USD' },
       tool: 'activate_signal',
       payload: {
         signal_agent_segment_id: 'prism_high_ltv',
@@ -11950,6 +12091,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
 
     const { result: outcome } = await simulateCallTool(server, 'report_plan_outcome', {
       plan_id: 'plan_acme_summer_2026',
+      check_id: check.check_id,
       governance_context: ctx,
       purchase_type: 'signal_activation',
       outcome: 'completed',
@@ -11960,7 +12102,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
   });
 
   it('governance_delivery_monitor: delivery phase check with delivery_metrics', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, authenticatedAgentUrl: 'https://buying.pinnacle-agency.example' });
     await setupPlan(server);
 
     // Initial approval to get governance_context
@@ -11969,17 +12111,24 @@ describe('storyboard governance sample_requests accepted by training agent', () 
       caller: 'https://buying.pinnacle-agency.example',
       purchase_type: 'media_buy',
       tool: 'create_media_buy',
-      payload: { packages: [{ budget: 40000 }] },
+      payload: {
+        target_seller: 'https://buying.pinnacle-agency.example',
+        packages: [{ budget: 40000 }],
+      },
     });
     const ctx = initial.governance_context as string;
 
     // Delivery phase re-check (from governance_delivery_monitor storyboard)
     const { result, isError } = await simulateCallTool(server, 'check_governance', {
-      plan_id: 'plan_acme_summer_2026',
       caller: 'https://buying.pinnacle-agency.example',
       purchase_type: 'media_buy',
       phase: 'delivery',
       governance_context: ctx,
+      planned_delivery: {
+        media_buy_id: 'mb_delivery_monitor',
+        total_budget: 40000,
+        currency: 'USD',
+      },
       delivery_metrics: {
         reporting_period: { start: '2026-04-01T00:00:00Z', end: '2026-05-15T23:59:59Z' },
         spend: 20000,
@@ -11995,7 +12144,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
   });
 
   it('governance_spend_authority/denied: buy exceeding media_buy allocation is denied', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, authenticatedAgentUrl: 'https://buying.pinnacle-agency.example' });
     // Plan with tight media_buy allocation
     await simulateCallTool(server, 'sync_plans', {
       plans: [{
@@ -12068,7 +12217,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     expect(result.code).toBe('GOVERNANCE_DENIED');
   });
 
-  it('create_media_buy returns GOVERNANCE_DENIED when governance_context maps to denied check', async () => {
+  it('denied checks issue no context and create_media_buy rejects a fabricated context', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const catalog = buildCatalog();
     const product = catalog[0].product;
@@ -12087,18 +12236,19 @@ describe('storyboard governance sample_requests accepted by training agent', () 
       }],
     });
 
-    // check_governance with a governance_context — gets denied
+    // A denied intent check never issues governance_context.
     const { result: checkResult } = await simulateCallTool(server, 'check_governance', {
       brand: { domain: 'gov-ctx-denied.example' },
       plan_id: 'gov_ctx_deny',
-      caller: 'https://test-buyer.example',
-      governance_context: 'gc-for-deny-test',
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
       payload: {
         total_budget: 50000,
         packages: [{ product_id: 'test', budget: 50000 }],
       },
     });
     expect(checkResult.status).toBe('denied');
+    expect(checkResult.governance_context).toBeUndefined();
 
     // Attempt create_media_buy with the denied governance_context
     const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
@@ -12106,7 +12256,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
       brand: { domain: 'gov-ctx-denied.example' },
       start_time: '2027-04-01T00:00:00Z',
       end_time: '2027-06-30T23:59:59Z',
-      governance_context: 'gc-for-deny-test',
+      governance_context: 'fabricated-denied-context',
       packages: [{
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
@@ -12115,7 +12265,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     });
 
     expect(isError).toBe(true);
-    expect(result.code).toBe('GOVERNANCE_DENIED');
+    expect(result.code).toBe('PERMISSION_DENIED');
   });
 
   it('create_media_buy succeeds when governance_context maps to approved check', async () => {
@@ -12141,8 +12291,20 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     const { result: checkResult } = await simulateCallTool(server, 'check_governance', {
       brand: { domain: 'gov-ok.example' },
       plan_id: 'gov_approve_buy',
-      caller: 'https://test-buyer.example',
-      payload: { total_budget: 25000 },
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
+      payload: {
+        account,
+        brand: { domain: 'gov-ok.example' },
+        idempotency_key: 'gov-ok-create-buy-0001',
+        start_time: '2027-04-01T00:00:00Z',
+        end_time: '2027-06-30T23:59:59Z',
+        packages: [{
+          product_id: product.product_id,
+          pricing_option_id: pricingOptions[0].pricing_option_id,
+          budget: 25000,
+        }],
+      },
     });
     expect(checkResult.status).toBe('approved');
 
@@ -12150,6 +12312,7 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
       account,
       brand: { domain: 'gov-ok.example' },
+      idempotency_key: 'gov-ok-create-buy-0001',
       start_time: '2027-04-01T00:00:00Z',
       end_time: '2027-06-30T23:59:59Z',
       governance_context: checkResult.governance_context,
@@ -12198,8 +12361,8 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     });
 
     expect(isError).toBe(true);
-    expect(result.code).toBe('GOVERNANCE_DENIED');
-    expect(result.message).toContain('does not match any governance check');
+    expect(result.code).toBe('PERMISSION_DENIED');
+    expect(result.message).toContain('compact JWS');
   });
 });
 
@@ -12834,7 +12997,7 @@ describe('AdCP protocol compliance', () => {
     expect(result.message).toContain('http');
   });
 
-  it('GOVERNANCE_DENIED via task-augmented call completes the task with structured error', async () => {
+  it('invalid governance token via task-augmented call completes with PERMISSION_DENIED', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.com' };
     // Seed a denied governance check via sync_plans + check_governance (shared session key)
@@ -12848,15 +13011,15 @@ describe('AdCP protocol compliance', () => {
         flight: { start: new Date().toISOString(), end: new Date(Date.now() + 90 * 86_400_000).toISOString() },
       }],
     });
-    const govContext = 'gov-ctx-test-denied';
     const checkResponse = await simulateCallTool(server, 'check_governance', {
       account,
       plan_id: 'gov_test_strict',
-      governance_context: govContext,
-      caller: 'acmeoutdoor.example',
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
       payload: { type: 'media_buy', account, total_budget: 50000 },
     });
     expect(checkResponse.result.status).toBe('denied');
+    expect(checkResponse.result.governance_context).toBeUndefined();
 
     const productsResponse = await simulateCallTool(server, 'get_products', {
       account, brand: { domain: 'acmeoutdoor.example' }, buying_mode: 'brief', brief: 'display',
@@ -12868,11 +13031,11 @@ describe('AdCP protocol compliance', () => {
       ? (pricing.floor_price ?? 5) * 1.5
       : undefined;
 
-    // Task-augmented create_media_buy with denied governance_context
+    // Task-augmented create_media_buy with a fabricated context must fail.
     const response = await simulateCallToolAsTask(server, 'create_media_buy', {
       account,
       brand: { domain: 'acmeoutdoor.example' },
-      governance_context: govContext,
+      governance_context: 'fabricated-denied-context',
       start_time: new Date(Date.now() + 86_400_000).toISOString(),
       end_time: new Date(Date.now() + 8 * 86_400_000).toISOString(),
       packages: [{
@@ -12888,7 +13051,7 @@ describe('AdCP protocol compliance', () => {
     const taskResult = await simulateGetTaskResult(server, task.taskId as string);
     expect(taskResult.isError).toBe(true);
     const body = JSON.parse((taskResult.content as Array<{ text: string }>)[0]!.text) as { adcp_error?: { code: string } };
-    expect(body.adcp_error?.code).toBe('GOVERNANCE_DENIED');
+    expect(body.adcp_error?.code).toBe('PERMISSION_DENIED');
   });
 });
 
@@ -13326,7 +13489,8 @@ describe('human_review_required auto-flip and enforcement', () => {
     const { result } = await simulateCallTool(server, 'check_governance', {
       account,
       plan_id: PLAN_BASE.plan_id,
-      caller: 'test.example',
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
       payload: { type: 'media_buy', account, total_budget: 5000 },
     });
     // Industries alone are advisory — plan proceeds unless a category/policy/custom triggers.
@@ -13351,7 +13515,8 @@ describe('human_review_required auto-flip and enforcement', () => {
     const { result } = await simulateCallTool(server, 'check_governance', {
       account,
       plan_id: PLAN_BASE.plan_id,
-      caller: 'test.example',
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
       payload: { type: 'media_buy', account, total_budget: 20 },
     });
     expect(result.status).toBe('denied');
@@ -13374,7 +13539,8 @@ describe('human_review_required auto-flip and enforcement', () => {
     const { result } = await simulateCallTool(server, 'check_governance', {
       account,
       plan_id: PLAN_BASE.plan_id,
-      caller: 'test.example',
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
       payload: { type: 'media_buy', account, total_budget: 50000 },
     });
     expect(result.status).toBe('denied');
@@ -13400,19 +13566,20 @@ describe('human_review_required auto-flip and enforcement', () => {
     const { result: denied } = await simulateCallTool(server, 'check_governance', {
       account,
       plan_id: PLAN_BASE.plan_id,
-      caller: 'test.example',
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
       payload,
     });
 
     expect(denied.status).toBe('denied');
     expect(denied.check_id).toBeDefined();
-    expect(denied.governance_context).toBeDefined();
+    expect(denied.governance_context).toBeUndefined();
 
     const { result: approved } = await simulateCallTool(server, 'check_governance', {
       account,
       plan_id: PLAN_BASE.plan_id,
-      caller: 'test.example',
-      governance_context: denied.governance_context,
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
       ext: {
         human_approval: {
           approved_by: 'human-reviewer-1',
@@ -13444,7 +13611,8 @@ describe('human_review_required auto-flip and enforcement', () => {
     const { result } = await simulateCallTool(server, 'check_governance', {
       account,
       plan_id: PLAN_BASE.plan_id,
-      caller: 'test.example',
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
       payload: { type: 'media_buy', account, total_budget: 100 },
     });
     expect(result.status).toBe('denied');
@@ -13468,7 +13636,8 @@ describe('human_review_required auto-flip and enforcement', () => {
     const { result } = await simulateCallTool(server, 'check_governance', {
       account,
       plan_id: PLAN_BASE.plan_id,
-      caller: 'test.example',
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
       payload: { type: 'media_buy', account, total_budget: 5000 },
     });
     // Without human_review_required, mode=audit would return approved.
@@ -13781,7 +13950,8 @@ describe('human_review registry parity and edge cases', () => {
     // Inspect session state directly — revisionHistory must actually accumulate prior snapshots.
     const sessionKey = sessionKeyFromArgs({ account }, DEFAULT_CTX.mode, DEFAULT_CTX.userId, DEFAULT_CTX.moduleId);
     const session = await getSession(sessionKey);
-    const plan = session.governancePlans.get(PLAN_BASE.plan_id)!;
+    const plan = [...session.governancePlans.values()].find(candidate =>
+      candidate.planId === PLAN_BASE.plan_id)!;
     expect(plan.version).toBe(4);
     expect(plan.revisionHistory).toHaveLength(3); // snapshots of v1, v2, v3 before current v4
     expect(plan.revisionHistory.map(r => r.version)).toEqual([1, 2, 3]);

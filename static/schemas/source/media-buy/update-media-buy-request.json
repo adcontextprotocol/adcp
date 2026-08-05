@@ -100,7 +100,20 @@
     }
   ],
   "x-mutates-state": true,
+  "x-governed-commitment": {
+    "scope": "conditional",
+    "triggers": ["increases_obligation", "extends_term", "resumes_execution", "reallocates_delivery"],
+    "exemptions": ["cancel", "pause", "decrease_only"],
+    "precedence": "trigger_overrides_exemption"
+  },
   "properties": {
+    "governance_context": {
+      "type": "string",
+      "description": "Opaque intent authorization for a commitment-increasing media-buy update.",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
+    },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
       "description": "Account that owns this media buy. Pass a natural key (brand, operator, optional sandbox) or a seller-assigned account_id from list_accounts. Required for governance checks and account resolution."

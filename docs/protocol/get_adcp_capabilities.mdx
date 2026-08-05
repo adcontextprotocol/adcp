@@ -66,7 +66,7 @@ Version Negotiation Flow:
 - If `adcp_major_version` is provided but unsupported → return `VERSION_UNSUPPORTED` (buyer should call without `adcp_major_version` to discover supported versions)
 - If `adcp_major_version` is omitted → assume the highest supported version
 
-**Why major versions, not minor?** Semver policy guarantees backward compatibility within a major version. A seller at 3.1 can serve a buyer at 3.0 without negotiation. The capability model handles feature-level differences — buyers check specific capabilities (targeting systems, features, extensions) rather than version numbers to determine compatibility.
+**Why major versions, not minor?** Semver policy guarantees backward compatibility within a major version for stable surfaces. Explicitly experimental surfaces follow the narrower [experimental-status contract](/docs/reference/experimental-status): they require runtime opt-in through `experimental_features` and may change inside 3.x after the required notice. A seller at 3.1 can otherwise serve a buyer at 3.0 without negotiation. The capability model handles feature-level differences — buyers check specific capabilities (targeting systems, features, extensions) rather than version numbers to determine compatibility.
 
 ## Request Parameters
 
@@ -156,6 +156,37 @@ A **material capability change** is any externally advertised contract change th
 Non-contract operational changes that do not alter the `get_adcp_capabilities` response body do not require a revision or webhook fire.
 
 `capabilities.changed` webhooks are invalidation signals, not replacement documents. The payload identifies the agent, change time, reason, required post-change `capabilities_version`, and optional advisory `changed_paths[]`; receivers SHOULD re-run `get_adcp_capabilities` and replace their cached snapshot from the fresh response. Sellers MUST publish the new capability snapshot before firing the webhook so the webhook's `capabilities_version` is observable on read. If a receiver reads before the webhook revision is observable, it SHOULD retry with normal transient-error backoff and retain the prior cached snapshot until a matching or newer authoritative snapshot is available. The payload schema is [`/schemas/v3/core/capabilities-changed-webhook.json`](https://adcontextprotocol.org/schemas/v3/core/capabilities-changed-webhook.json).
+
+### adcp.governance_enforcement
+
+Declares cross-role enforcement of buyer governance for consequential tasks. This core capability is intentionally separate from the top-level `governance` block: `governance` describes an agent that provides governance services, while `adcp.governance_enforcement` describes a media, signal, brand, creative, or other service that consumes governance authorization before committing state.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tasks` | object[] | Task-scoped enforcement claims. Each entry has `task` and `modes`; the corresponding request schema defines when the operation is commitment-bearing through `x-governed-commitment`. `task` is the semantic uniqueness key: emit one entry per task and combine modes in that entry. |
+
+```json
+{
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 },
+    "governance_enforcement": {
+      "tasks": [
+        { "task": "create_media_buy", "modes": ["signed_context", "online_execution_check"] },
+        { "task": "activate_signal", "modes": ["signed_context"] }
+      ]
+    }
+  }
+}
+```
+
+The declaration is part of the experimental `governance.campaign` surface, so an implementing service also lists `governance.campaign` in top-level `experimental_features`. `signed_context` is defined for every governed role. `online_execution_check` is currently available only for `create_media_buy` and `update_media_buy`, where `planned_delivery` provides a standardized prepared-result shape; it always implies `signed_context`. The state transition follows prepare → check → commit and commits atomically only when the response is `approved`. Execution checks are binary (`approved` or `denied`).
+
+Advertising a task also commits the service to deterministic applicability. It resolves the commercial account from the request or existing resource before the side effect; when it cannot do so, it returns `ACCOUNT_REQUIRED`. It never treats a missing token as evidence that the buyer is ungoverned. Conditional task annotations use `trigger_overrides_exemption`: any commitment-increasing part of a mixed atomic update requires governance.
+
+Current conformance runners continue to grade the legacy `media_buy.governance_aware` create path. Task-scoped grading for this new block will land with role-specific observable workflows; until then, registries MUST NOT present the experimental declaration as a certified claim.
+
+The legacy `media_buy.governance_aware` boolean remains the compatibility claim for the historically graded `create_media_buy` consultation path. Agents use the core block for explicit task-scoped claims.
 
 ### supported_protocols
 

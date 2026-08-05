@@ -605,6 +605,8 @@ They compose: estimate to get `cost_high`, then execute with `max_spend` = `cost
 
 <Warning>
 `max_spend` and `mode: "estimate"` require the agent to advertise `creative.supports_spend_controls`; otherwise they're rejected with `UNSUPPORTED_FEATURE`. They're only meaningful with `bills_through_adcp: true` (an out-of-band biller has no AdCP cost to cap against).
+
+**Governance applicability.** A creative service advertising `adcp.governance_enforcement` for `build_creative` requires an approved `governance_context` only when the execution incurs positive vendor cost. Estimate-only calls and zero-cost retrieval are exempt. A creative ad server that never commits or meters spend through AdCP does not acquire a `sync_governance` obligation merely by trafficking creative; if it later exposes an AdCP-billed mutation, that commitment-bearing task must be declared and governed explicitly.
 </Warning>
 
 ### Estimate response

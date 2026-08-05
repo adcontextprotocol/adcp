@@ -255,48 +255,32 @@ If you cannot meaningfully enforce a buyer's content standards, reject the buy r
 
 ### Execution checks
 
-When a buyer's account has governance agents configured (via [`sync_governance`](/docs/accounts/tasks/sync_governance)), the seller MUST call [`check_governance`](/docs/governance/campaign/tasks/check_governance) with `media_buy_id` and `planned_delivery` before confirming a media buy. This is a binding validation — the governance agent verifies the seller's planned delivery against the buyer's campaign plan.
+When a request carries `governance_context`, a service declaring `adcp.governance_enforcement` first verifies the signed intent token, including its audience, task, canonical payload hash, and monetary ceiling. A media seller whose task claim includes `online_execution_check` additionally prepares its candidate delivery, calls [`check_governance`](/docs/governance/campaign/tasks/check_governance) with the preserved context and `planned_delivery`, and commits only after approval. A `signed_context`-only task commits after the inbound token passes verification. The buyer's plan ID is not part of this service boundary.
 
 ```javascript
-// Before confirming create_media_buy
+// Before confirming create_media_buy: prepare without external side effects.
+const candidate = await prepareMediaBuy(request);
 const check = await governanceAgent.checkGovernance({
-  plan_id: mediaBuy.plan_id,  // from the create_media_buy request
   caller: "https://seller.example.com",
-  governance_context: mediaBuy.governance_context,  // opaque — pass through, do not parse
-  media_buy_id: mediaBuy.media_buy_id,
+  governance_context: request.governance_context,  // preserve byte-for-byte after standard-claim verification
   phase: "purchase",
   planned_delivery: {
+    media_buy_id: candidate.media_buy_id,
     geo: { countries: ["US"] },
     channels: ["olv"],
-    start_time: mediaBuy.start_time,
-    end_time: mediaBuy.end_time,
-    total_budget: mediaBuy.total_budget.amount,
-    currency: mediaBuy.total_budget.currency
+    start_time: candidate.start_time,
+    end_time: candidate.end_time,
+    total_budget: candidate.total_budget.amount,
+    currency: candidate.total_budget.currency
   }
 });
 
-if (check.status === "denied") {
-  // Committed checks are always binding — do not confirm the media buy
+if (check.verdict !== "approved") {
+  // Execution checks are binary. Do not commit on denied or malformed responses.
   return { error: "GOVERNANCE_DENIED", detail: check.explanation };
 }
 
-if (check.status === "conditions" && retries < 3) {
-  // Conditions restrict what the seller can deliver — e.g., narrower geo,
-  // blocked channels, reduced frequency. The seller adjusts their own
-  // delivery parameters (not the buyer's budget) and re-calls check_governance.
-  // If the seller cannot satisfy the conditions, reject the media buy.
-  const adjusted = applyConditions(plannedDelivery, check.conditions);
-  if (!adjusted) {
-    return { error: "GOVERNANCE_CONDITIONS_UNSATISFIABLE", detail: check.conditions };
-  }
-  // Re-check with adjusted delivery (governance agents SHOULD deny after 3 re-calls)
-  return await checkGovernanceWithRetry(request, adjusted, retries + 1);
-}
-if (check.status === "conditions") {
-  return { error: "GOVERNANCE_CONDITIONS_RETRY_LIMIT", detail: check.conditions };
-}
-
-// check.status === "approved" — proceed with confirmation
+return await commitMediaBuy(candidate); // atomic state transition after approval
 ```
 
 Execution checks cover three phases of the media buy lifecycle:
@@ -307,7 +291,7 @@ Execution checks cover three phases of the media buy lifecycle:
 | `modification` | Before confirming [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) | Change magnitude, reallocation, new parameters |
 | `delivery` | Periodically during delivery | Pacing, spend rate, geo drift, channel distribution |
 
-Sellers can adopt execution checks incrementally — start with purchase-only (one call per `create_media_buy`), then add modification and delivery checks. See [`check_governance`](/docs/governance/campaign/tasks/check_governance) for the full specification.
+Agents declare exactly which modes they enforce per task in `adcp.governance_enforcement.tasks`. See [`check_governance`](/docs/governance/campaign/tasks/check_governance) for the full specification.
 
 ### Campaign governance context
 

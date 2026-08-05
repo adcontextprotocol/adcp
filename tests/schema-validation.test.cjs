@@ -393,6 +393,222 @@ async function runTests() {
     return true;
   });
 
+  await test('governed commitment annotations match the cross-role capability task enum', () => {
+    const annotatedTasks = schemas
+      .filter(([schemaPath, schema]) => schemaPath.endsWith('-request.json') && schema['x-governed-commitment'])
+      .map(([schemaPath, schema]) => {
+        if (schema['x-mutates-state'] !== true) {
+          throw new Error(`${path.basename(schemaPath)} is governed but does not mutate state`);
+        }
+        const annotation = schema['x-governed-commitment'];
+        if (!['always', 'conditional'].includes(annotation.scope)) {
+          throw new Error(`${path.basename(schemaPath)} has invalid governed commitment scope`);
+        }
+        if (annotation.scope === 'conditional' && (!annotation.triggers?.length || !annotation.exemptions?.length)) {
+          throw new Error(`${path.basename(schemaPath)} conditional governance needs triggers and exemptions`);
+        }
+        return path.basename(schemaPath, '-request.json').replaceAll('-', '_');
+      })
+      .sort();
+    const capabilities = loadSchema(path.join(SCHEMA_BASE_DIR, 'protocol/get-adcp-capabilities-response.json'));
+    const taskBranches = capabilities.properties.adcp.properties.governance_enforcement
+      .properties.tasks.items.oneOf;
+    const declaredTasks = taskBranches.flatMap(branch => {
+      const task = branch.properties.task;
+      return task.const ? [task.const] : task.enum;
+    }).sort();
+
+    if (JSON.stringify(annotatedTasks) !== JSON.stringify(declaredTasks)) {
+      return `x-governed-commitment tasks (${annotatedTasks.join(', ')}) do not match capability enum (${declaredTasks.join(', ')})`;
+    }
+    const enforcementSchema = capabilities.properties.adcp.properties.governance_enforcement;
+    const validateEnforcement = new Ajv({ strict: false }).compile(enforcementSchema);
+    if (!validateEnforcement({ tasks: [{ task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] }] })) {
+      return 'valid media-buy online enforcement claim was rejected';
+    }
+    if (validateEnforcement({ tasks: [{ task: 'create_media_buy', modes: ['online_execution_check'] }] })) {
+      return 'online execution must imply signed_context';
+    }
+    if (validateEnforcement({ tasks: [{ task: 'activate_signal', modes: ['signed_context', 'online_execution_check'] }] })) {
+      return 'non-media tasks must not claim online execution without a prepared-result contract';
+    }
+    return true;
+  });
+
+  await test('governance checks separate intent negotiation from execution authorization', async () => {
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+    const validateRequest = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/check-governance-request.json'))
+    );
+    const validateResponse = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/check-governance-response.json'))
+    );
+    const validateOutcome = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/report-plan-outcome-request.json'))
+    );
+    const validatePlannedDelivery = testAjv.getSchema('/schemas/core/planned-delivery.json');
+    if (!validatePlannedDelivery) {
+      return 'planned-delivery schema was not loaded with the governance request';
+    }
+
+    const intent = {
+      caller: 'https://buyer.example',
+      plan_id: 'plan_123',
+      target_agent: 'https://seller.example',
+      tool: 'create_media_buy',
+      payload: { total_budget: 1000 }
+    };
+    const execution = {
+      caller: 'https://seller.example',
+      governance_context: 'signed.context.token',
+      planned_delivery: {
+        media_buy_id: 'mb_123',
+        start_time: '2026-08-10T00:00:00Z',
+        end_time: '2026-08-20T00:00:00Z',
+        total_budget: 1000,
+        currency: 'USD'
+      }
+    };
+    if (!validateRequest(intent) || !validateRequest(execution)) {
+      return `valid governance request rejected: ${testAjv.errorsText(validateRequest.errors)}`;
+    }
+    const purchaseBeforeId = {
+      caller: 'https://seller.example',
+      governance_context: 'signed.context.token',
+      phase: 'purchase',
+      planned_delivery: { total_budget: 1000, currency: 'USD' }
+    };
+    if (!validateRequest(purchaseBeforeId)) {
+      return `purchase prepare without media_buy_id rejected: ${testAjv.errorsText(validateRequest.errors)}`;
+    }
+    if (validateRequest({ ...purchaseBeforeId, phase: 'modification' })) {
+      return 'modification execution must require planned_delivery.media_buy_id';
+    }
+    if (validateRequest({ ...execution, ...intent })) {
+      return 'a request must not mix intent and execution fields';
+    }
+    if (validateRequest({ ...execution, proposed_commitment: { amount: 1000, currency: 'USD' } })) {
+      return 'proposed_commitment must be intent-only';
+    }
+    for (const tool of ['acquire_rights', 'update_rights', 'activate_signal', 'build_creative']) {
+      const indirectIntent = {
+        caller: 'https://buyer.example',
+        plan_id: 'plan_123',
+        target_agent: 'https://service.example',
+        tool,
+        payload: { pricing_option_id: 'standard_monthly' }
+      };
+      if (validateRequest(indirectIntent)) {
+        return `${tool} intent must require proposed_commitment`;
+      }
+      if (!validateRequest({ ...indirectIntent, proposed_commitment: { amount: 0, currency: 'USD' } })) {
+        return `explicit zero-cost ${tool} intent rejected: ${testAjv.errorsText(validateRequest.errors)}`;
+      }
+    }
+    if (validateRequest({
+      caller: 'https://seller.example',
+      governance_context: 'signed.context.token',
+      planned_delivery: { total_budget: 1000 }
+    })) {
+      return 'planned_delivery.total_budget must require currency';
+    }
+    if (!validatePlannedDelivery({ total_budget: 1000 })) {
+      return 'stable core planned_delivery must continue to allow total_budget without currency';
+    }
+
+    const approved = {
+      check_id: 'check_1',
+      check_type: 'intent',
+      verdict: 'approved',
+      explanation: 'Allowed',
+      expires_at: '2026-08-04T12:00:00Z',
+      governance_context: 'signed.context.token'
+    };
+    const conditions = {
+      check_id: 'check_2',
+      check_type: 'intent',
+      verdict: 'conditions',
+      explanation: 'Reduce spend',
+      consultation_context: 'consult_123',
+      conditions: [{ field: 'payload.total_budget', reason: 'Above authority' }]
+    };
+    if (!validateResponse(approved) || !validateResponse(conditions)) {
+      return `valid governance response rejected: ${testAjv.errorsText(validateResponse.errors)}`;
+    }
+    const legacyConditions = {
+      check_id: 'legacy_check',
+      plan_id: 'legacy_plan',
+      verdict: 'conditions',
+      explanation: 'Legacy conditional response',
+      expires_at: '2026-08-04T12:00:00Z',
+      governance_context: 'legacy.context.token',
+      conditions: [{ field: 'payload.total_budget', reason: 'Reduce spend' }]
+    };
+    if (!validateResponse(legacyConditions)) {
+      return `legacy 3.x governance response rejected: ${testAjv.errorsText(validateResponse.errors)}`;
+    }
+    if (validateResponse({ ...conditions, governance_context: 'signed.context.token' })) {
+      return 'conditions must not carry authorization context';
+    }
+    if (validateResponse({ ...conditions, check_type: 'execution' })) {
+      return 'execution checks must not return conditions';
+    }
+    if (validateResponse({ check_id: 'check_3', check_type: 'intent', verdict: 'approved', explanation: 'Allowed' })) {
+      return 'approved must carry expires_at and governance_context';
+    }
+    if (validateResponse({ ...approved, conditions: [{ field: 'payload.total_budget', reason: 'Adjust' }] })) {
+      return 'approved must not carry unresolved conditions';
+    }
+    const denied = {
+      check_id: 'check_4',
+      check_type: 'execution',
+      verdict: 'denied',
+      explanation: 'Blocked',
+      findings: [{ category_id: 'budget', severity: 'critical', explanation: 'Above authority' }]
+    };
+    if (!validateResponse(denied) || validateResponse({ ...denied, expires_at: '2026-08-04T12:00:00Z' })) {
+      return 'denied must validate without, and reject, authorization expiry';
+    }
+
+    const legacyDelivery = {
+      plan_id: 'plan_123',
+      idempotency_key: 'delivery-vector-0001',
+      outcome: 'delivery',
+      delivery: { reporting_period: { start: '2026-08-01T00:00:00Z', end: '2026-08-02T00:00:00Z' } }
+    };
+    if (!validateOutcome(legacyDelivery)) {
+      return `legacy plan-owner delivery snapshot rejected: ${testAjv.errorsText(validateOutcome.errors)}`;
+    }
+    if (!validateOutcome({
+      ...legacyDelivery,
+      check_id: 'check_1',
+      governance_context: 'signed.context.token'
+    })) {
+      return `exact-tuple delivery snapshot rejected: ${testAjv.errorsText(validateOutcome.errors)}`;
+    }
+    if (validateOutcome({ ...legacyDelivery, check_id: 'check_1' })
+      || validateOutcome({ ...legacyDelivery, governance_context: 'signed.context.token' })) {
+      return 'delivery snapshots must provide check_id and governance_context together or omit both';
+    }
+    if (validateOutcome({
+      plan_id: 'plan_123',
+      check_id: 'check_1',
+      idempotency_key: 'completed-vector-0001',
+      outcome: 'completed',
+      seller_response: {}
+    })) {
+      return 'completed outcomes must require governance_context with check_id';
+    }
+    return true;
+  });
+
   // Test 5: Validate enum schemas
   await test('All enum schemas have proper enum values', () => {
     const enumSchemas = schemas.filter(([path]) => path.includes('/enums/'));
