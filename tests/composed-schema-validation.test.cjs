@@ -122,7 +122,7 @@ function duplicateValues(items, property) {
   return [...duplicates];
 }
 
-function validateLocalizationRequestSemantics(localization) {
+function validateLocalizationRequestSemantics(localization, sourceAssets) {
   const errors = [];
   const targets = localization.target_variants || [];
   for (const property of ['locale_variant_id', 'locale']) {
@@ -155,6 +155,15 @@ function validateLocalizationRequestSemantics(localization) {
       errors.push('locale fallback must reference a source or target variant');
     }
   }
+  if (localization.source && sourceAssets) {
+    errors.push(...validateLocalizedAssetLanguages(localization.source, sourceAssets));
+  }
+  for (const target of targets) {
+    const resolvedAssets = sourceAssets
+      ? { ...sourceAssets, ...(target.assets || {}) }
+      : target.assets;
+    errors.push(...validateLocalizedAssetLanguages(target, resolvedAssets));
+  }
   return errors;
 }
 
@@ -166,6 +175,29 @@ function isCanonicalLocaleTag(locale) {
   } catch {
     return false;
   }
+}
+
+function validateLocalizedAssetLanguages(variant, assets) {
+  const errors = [];
+  for (const [slot, value] of Object.entries(assets || {})) {
+    const items = Array.isArray(value) ? value : [value];
+    for (const [index, asset] of items.entries()) {
+      if (!['text', 'markdown'].includes(asset?.asset_type) || asset.language === undefined) {
+        continue;
+      }
+      const assetLabel = Array.isArray(value) ? `${slot}[${index}]` : slot;
+      if (!isCanonicalLocaleTag(asset.language)) {
+        errors.push(
+          `${variant.locale_variant_id} asset ${assetLabel} language must use the AdCP canonical wire profile`
+        );
+      } else if (asset.language !== variant.locale) {
+        errors.push(
+          `${variant.locale_variant_id} asset ${assetLabel} language must equal enclosing variant locale`
+        );
+      }
+    }
+  }
+  return errors;
 }
 
 function rfc4647Candidates(preference) {
@@ -287,6 +319,9 @@ function validateLocalizationReadbackSemantics(localization, enclosingAssets) {
   const source = variants.find((variant) => variant.role === 'source');
   if (source && enclosingAssets && JSON.stringify(source.assets) !== JSON.stringify(enclosingAssets)) {
     errors.push('source localization assets must equal enclosing creative assets');
+  }
+  for (const variant of variants) {
+    errors.push(...validateLocalizedAssetLanguages(variant, variant.assets));
   }
   return errors;
 }
@@ -3758,7 +3793,10 @@ async function runTests() {
     'sync_creatives accepts source-only locale topology for a monolingual creative'
   );
   testSemanticValidation(
-    validateLocalizationRequestSemantics(frenchSourceOnlyCreative.localization),
+    validateLocalizationRequestSemantics(
+      frenchSourceOnlyCreative.localization,
+      frenchSourceOnlyCreative.assets
+    ),
     undefined,
     'Source-only localization semantic verifier accepts an empty target set'
   );
@@ -3767,10 +3805,12 @@ async function runTests() {
     '/schemas/core/locale-tag.json',
     {
       well_formed: 'rfc5646',
-      canonical_form: 'rfc5646',
-      non_canonical: 'reject'
+      semantic_scope: 'language_identity_only',
+      canonical_wire_profile: 'adcp_bcp47_casing',
+      rfc5646_comparison: 'case_insensitive',
+      non_profile: 'reject'
     },
-    'Locale tags expose machine-readable RFC 5646 canonical-form enforcement'
+    'Locale tags expose the stricter AdCP canonical wire profile'
   );
 
   await testSchemaValidation(
@@ -3785,6 +3825,37 @@ async function runTests() {
       `Locale tag schema rejects non-canonical or malformed ${invalidLocale}`
     );
   }
+
+  testValidationAnnotation(
+    '/schemas/core/localized-creative-asset.json',
+    {
+      language_asset_types: ['text', 'markdown'],
+      language_when_present: {
+        schema: '/schemas/core/locale-tag.json',
+        must_equal: 'enclosing_variant.locale'
+      },
+      language_omitted: 'no_asset_language_claim'
+    },
+    'Localized assets expose contextual text and markdown language rules'
+  );
+  await testSchemaValidation(
+    '/schemas/core/localized-creative-asset.json',
+    {
+      asset_type: 'markdown',
+      content: '**Bonjour**',
+      language: 'fr-CA'
+    },
+    'Localized markdown accepts an AdCP-profile language tag'
+  );
+  await testSchemaRejection(
+    '/schemas/core/localized-creative-asset.json',
+    {
+      asset_type: 'text',
+      content: 'Bonjour',
+      language: 'fr_CA'
+    },
+    'Localized text rejects a legacy underscore language key'
+  );
 
   const nonCanonicalFallbackRange = structuredClone(localizedCreative);
   nonCanonicalFallbackRange.localization.locale_fallbacks[0].language_range = 'ES';
@@ -3823,10 +3894,16 @@ async function runTests() {
       default_locale_variant_id: 'must_reference_exactly_one_source_or_target_variant',
       locale_matching: 'rfc4647_lookup',
       locale_match_comparison: 'canonical_tag_equality_after_requested_range_truncation',
+      delivery_locale_preferences: 'ordered_external_input_not_defined_by_adcp',
       unique_locale_fallback_properties: ['language_range'],
       locale_fallback_variant_ids: 'must_reference_exactly_one_source_or_target_variant',
       selection_order:
         'for_each_preference_strict_lookup_then_most_specific_explicit_fallback_then_next_preference_then_unmatched_action',
+      localized_asset_language: {
+        asset_types: ['text', 'markdown'],
+        when_present: 'must_equal_enclosing_variant.locale',
+        omitted: 'no_asset_language_claim'
+      },
       replacement_atomicity: 'all_or_prior_state_unchanged',
       request_sync_list_round_trip: {
         source_match: { role: 'source' },
@@ -3886,9 +3963,41 @@ async function runTests() {
   );
 
   testSemanticValidation(
-    validateLocalizationRequestSemantics(localizedCreative.localization),
+    validateLocalizationRequestSemantics(localizedCreative.localization, localizedCreative.assets),
     undefined,
     'Localization request semantic verifier accepts unique source and target identities'
+  );
+
+  const mismatchedTargetAssetLanguage = structuredClone(localizedCreative);
+  mismatchedTargetAssetLanguage.localization.target_variants[0].assets.headline.language = 'es-MX';
+  await testSchemaValidation(
+    '/schemas/creative/sync-creatives-request.json',
+    localizedSyncRequest(mismatchedTargetAssetLanguage),
+    'Localized sync schema accepts a well-formed asset tag for semantic comparison'
+  );
+  testSemanticValidation(
+    validateLocalizationRequestSemantics(
+      mismatchedTargetAssetLanguage.localization,
+      mismatchedTargetAssetLanguage.assets
+    ),
+    'asset headline language must equal enclosing variant locale',
+    'Localization verifier rejects asset language that contradicts its variant locale'
+  );
+
+  const nonProfileSourceAssetLanguage = structuredClone(localizedCreative);
+  nonProfileSourceAssetLanguage.assets.headline.language = 'en_US';
+  await testSchemaValidation(
+    '/schemas/creative/sync-creatives-request.json',
+    localizedSyncRequest(nonProfileSourceAssetLanguage),
+    'Legacy top-level text schema remains backwards compatible'
+  );
+  testSemanticValidation(
+    validateLocalizationRequestSemantics(
+      nonProfileSourceAssetLanguage.localization,
+      nonProfileSourceAssetLanguage.assets
+    ),
+    'asset headline language must use the AdCP canonical wire profile',
+    'Localized source verifier rejects a legacy underscore asset language key'
   );
 
   for (const [property, duplicateValue] of [
@@ -4125,10 +4234,16 @@ async function runTests() {
       source_assets: 'must_equal_enclosing_creative.assets',
       locale_matching: 'rfc4647_lookup',
       locale_match_comparison: 'canonical_tag_equality_after_requested_range_truncation',
+      delivery_locale_preferences: 'ordered_external_input_not_defined_by_adcp',
       unique_locale_fallback_properties: ['language_range'],
       locale_fallback_variant_ids: 'must_reference_exactly_one_variant',
       selection_order:
-        'for_each_preference_strict_lookup_then_most_specific_explicit_fallback_then_next_preference_then_unmatched_action'
+        'for_each_preference_strict_lookup_then_most_specific_explicit_fallback_then_next_preference_then_unmatched_action',
+      localized_asset_language: {
+        asset_types: ['text', 'markdown'],
+        when_present: 'must_equal_enclosing_variant.locale',
+        omitted: 'no_asset_language_claim'
+      }
     },
     'Localization readback exposes machine-readable exactness rules'
   );
@@ -4168,6 +4283,17 @@ async function runTests() {
     validateLocalizationReadbackSemantics(localizationReadback, localizedCreative.assets),
     undefined,
     'Localization readback verifier accepts exact roles, identities, default, and source assets'
+  );
+
+  const mismatchedReadbackAssetLanguage = structuredClone(localizationReadback);
+  mismatchedReadbackAssetLanguage.variants[1].assets.headline.language = 'es-MX';
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(
+      mismatchedReadbackAssetLanguage,
+      localizedCreative.assets
+    ),
+    'asset headline language must equal enclosing variant locale',
+    'Localization readback verifier rejects contradictory asset language metadata'
   );
 
   for (const role of ['target', 'source']) {

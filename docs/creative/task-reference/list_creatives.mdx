@@ -252,11 +252,13 @@ At delivery, sellers apply strict RFC 4647 Lookup: progressively truncate the
 requested range and match only an equal seller-eligible canonical tag. A
 selected product or placement `locale_policy` first filters this readback with
 RFC 4647 Basic Filtering; it never mutates or removes the globally stored
-variants. When no
-variant matches for a preference, sellers apply the most-specific explicit
+variants. When no variant matches for a preference, sellers apply the most-specific explicit
 `locale_fallbacks` rule for that preference before moving to the next one. When
 all preferences miss both paths, they follow `unmatched_locale_action`: serve
 `default_locale_variant_id` or do not serve.
+The ordered preference list itself comes from the seller's serving environment;
+AdCP neither carries it here nor defines how browser, content, geography, user,
+app, or platform signals produce it or their precedence.
 The chosen `locale_variant_id` is reported by `get_creative_delivery`.
 
 ### Pricing

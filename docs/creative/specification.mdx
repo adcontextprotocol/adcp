@@ -180,12 +180,36 @@ sync the localized library creative and then assign it to a package.
   not inferred equivalence between regional variants.
 - `unmatched_locale_action` is `serve_default` or `do_not_serve`.
 
-Locale tags MUST use the canonical representation from
-[RFC 5646](https://www.rfc-editor.org/rfc/rfc5646): lower-case language and
+In this contract, `locale` is a BCP 47 language tag used only for language
+identity. Script and region may refine that identity; other valid subtags remain
+part of tag matching but do not make this a general locale-settings object. It
+does not determine currency, time zone, number/date formatting, market, or legal
+jurisdiction; those require their own fields and policies.
+
+AdCP defines a canonical wire profile for those tags: lower-case language and
 variants, title-case script, and upper-case region (for example `en-US` and
-`zh-Hant-TW`). A receiver MUST reject malformed, duplicate, non-canonical,
-unsupported, or lossily mapped locales before mutating seller systems or the
-creative library.
+`zh-Hant-TW`). This is intentionally stricter than
+[RFC 5646](https://www.rfc-editor.org/rfc/rfc5646), where tags compare
+case-insensitively and case regularization is optional. A receiver MUST reject
+malformed, duplicate, non-profile, unsupported, or lossily mapped tags rather
+than silently normalizing them or mutating seller systems or the creative
+library.
+
+Within a localized creative, `language` on `text` and `markdown` assets is
+optional. When present, it is an explicit content-language claim: it MUST use
+the shared tag schema and exactly equal the enclosing variant's `locale` after
+source inheritance. Omit it for an asset that makes no independent language
+claim. This contextual rule avoids tightening legacy non-localized asset
+payloads while preventing contradictory metadata such as an `es-ES` variant
+containing a text asset labeled `en-US`.
+
+`brand.json` localized name/tagline keys are a deliberate legacy boundary:
+values such as `en_US` use underscore notation and are not valid values of the
+shared tag schema. A bridge into creative localization replaces `_` with `-`,
+applies the AdCP canonical wire profile, and validates the result; it MUST NOT
+copy the legacy key unchanged. The current brand schema retains that syntax for
+compatibility pending a separately versioned migration.
+
 After source inheritance, each fully resolved variant MUST satisfy the selected
 creative format.
 
@@ -205,6 +229,13 @@ preferences and the creative's seller-eligible locale tags. Lookup progressively
 truncates the requested range until it finds an available canonical tag equal
 to that range. Matching is equality, not prefix/subordination: `es-MX` does not
 match an available `es-ES` after truncation to `es`.
+
+That ordered preference list is an external input from the seller's serving
+environment; it is not carried by this contract. AdCP does not standardize how
+browser or app preferences, page/content language, geography, user settings,
+or platform settings produce the list or their precedence. Once the seller has
+an ordered list, AdCP standardizes only the deterministic filtering, Lookup,
+explicit fallback, and unmatched behavior described here.
 
 For each preference in order, if strict Lookup finds no equality match, the
 seller repeats the same most-specific-to-least-specific truncation against

@@ -1,13 +1,15 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/locale-tag.json",
-  "title": "Locale Tag",
-  "description": "A well-formed BCP 47 language tag. Senders MUST use the RFC 5646 canonical representation: lower-case language and variants, title-case script, and upper-case region (for example `en-US`, `zh-Hant-TW`, or `x-private`). The schema pattern enforces canonical casing and extension structure for commonly used tags; conforming receivers additionally validate the complete RFC 5646 grammar and registry rules. Receivers MUST reject invalid or non-canonical tags rather than silently normalizing them.",
+  "title": "Language Tag",
+  "description": "A well-formed BCP 47 language tag used by AdCP only as language identity. Script and region may refine that identity; other valid BCP 47 subtags remain part of tag matching but do not make this a general locale-settings object. It does not determine currency, time zone, number/date formatting, market, or legal jurisdiction. The AdCP canonical wire profile requires lower-case language and variants, title-case script, and upper-case region (for example `en-US`, `zh-Hant-TW`, or `x-private`). RFC 5646 comparisons are case-insensitive and its case regularization is optional; AdCP intentionally requires this stricter single wire spelling and receivers MUST reject differently cased tags rather than silently normalizing them. The schema pattern enforces the AdCP casing profile and extension structure for commonly used tags; conforming receivers additionally validate the complete RFC 5646 grammar and registry rules.",
   "x-adcp-validation": {
     "verifier_constraints": {
       "well_formed": "rfc5646",
-      "canonical_form": "rfc5646",
-      "non_canonical": "reject"
+      "semantic_scope": "language_identity_only",
+      "canonical_wire_profile": "adcp_bcp47_casing",
+      "rfc5646_comparison": "case_insensitive",
+      "non_profile": "reject"
     },
     "spec": "docs/creative/specification.mdx#native-creative-localization"
   },

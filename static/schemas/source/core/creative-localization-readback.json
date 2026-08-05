@@ -11,9 +11,15 @@
       "source_assets": "must_equal_enclosing_creative.assets",
       "locale_matching": "rfc4647_lookup",
       "locale_match_comparison": "canonical_tag_equality_after_requested_range_truncation",
+      "delivery_locale_preferences": "ordered_external_input_not_defined_by_adcp",
       "unique_locale_fallback_properties": ["language_range"],
       "locale_fallback_variant_ids": "must_reference_exactly_one_variant",
-      "selection_order": "for_each_preference_strict_lookup_then_most_specific_explicit_fallback_then_next_preference_then_unmatched_action"
+      "selection_order": "for_each_preference_strict_lookup_then_most_specific_explicit_fallback_then_next_preference_then_unmatched_action",
+      "localized_asset_language": {
+        "asset_types": ["text", "markdown"],
+        "when_present": "must_equal_enclosing_variant.locale",
+        "omitted": "no_asset_language_claim"
+      }
     },
     "spec": "docs/creative/task-reference/list_creatives.mdx#localized-creative-readback"
   },
@@ -34,7 +40,7 @@
     "locale_matching": {
       "type": "string",
       "const": "rfc4647_lookup",
-      "description": "Strict RFC 4647 section 3.4 Lookup applied to ordered locale preferences. The seller progressively truncates the requested range and matches only an available canonical tag equal to that range; it does not prefix-match sibling regional tags."
+      "description": "Strict RFC 4647 section 3.4 Lookup applied to an ordered language-preference list supplied by the seller's serving environment. AdCP does not carry or define how that list is derived. The seller progressively truncates each requested range and matches only an available canonical tag equal to that range; it does not prefix-match sibling regional tags."
     },
     "locale_fallbacks": {
       "type": "array",
@@ -163,10 +169,10 @@
       "patternProperties": {
         "^[a-z0-9_]+$": {
           "anyOf": [
-            { "$ref": "/schemas/core/assets/asset-union.json" },
+            { "$ref": "/schemas/core/localized-creative-asset.json" },
             {
               "type": "array",
-              "items": { "$ref": "/schemas/core/assets/asset-union.json" },
+              "items": { "$ref": "/schemas/core/localized-creative-asset.json" },
               "minItems": 1
             }
           ]

@@ -63,11 +63,15 @@
         },
         "locale-tag": {
           "$ref": "/schemas/core/locale-tag.json",
-          "description": "Canonical BCP 47 locale tag; strict RFC 5646 casing required — shared cross-task primitive"
+          "description": "BCP 47 language tag using the strict AdCP canonical wire profile — shared cross-task primitive"
         },
         "creative-localization": {
           "$ref": "/schemas/core/creative-localization.json",
           "description": "Explicit source and target locale variants requested on a creative"
+        },
+        "localized-creative-asset": {
+          "$ref": "/schemas/core/localized-creative-asset.json",
+          "description": "Creative variant asset with contextual language-tag conformance"
         },
         "creative-localization-readback": {
           "$ref": "/schemas/core/creative-localization-readback.json",

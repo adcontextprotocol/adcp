@@ -259,6 +259,9 @@ translation/transformation agent first, then sync the resulting assets.
 At delivery, the seller applies RFC 4647 Lookup to ordered locale preferences.
 Each progressively truncated requested range matches only an equal available
 canonical tag; it does not prefix-match sibling regional tags.
+The ordered list comes from the seller's serving environment and is outside
+this task: AdCP does not define how browser, content, geography, user, app, or
+platform signals produce it or their precedence.
 For each preference, a strict miss is followed by the most-specific matching
 `locale_fallbacks` rule before the next preference is tried. The example's `es`
 rule lets an `es-ES` preference use `loc_es_mx`; without that rule, no regional
