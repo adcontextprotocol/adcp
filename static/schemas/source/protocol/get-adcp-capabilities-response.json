@@ -226,6 +226,109 @@
             }
           ],
           "additionalProperties": true
+        },
+        "governance_enforcement": {
+          "type": "object",
+          "description": "Cross-role declaration that this agent enforces buyer-provided governance authorization when performing consequential tasks. This is distinct from the top-level `governance` capability block, which describes an agent that provides governance services. An agent can enforce governance without implementing the governance protocol itself. Absence means the agent makes no governance-enforcement conformance claim.",
+          "properties": {
+            "tasks": {
+              "type": "array",
+              "description": "Task-scoped enforcement claims. The task field is a semantic uniqueness key: an agent MUST emit at most one entry per task and combine all supported modes in that entry. JSON Schema uniqueItems only rejects structurally identical objects, so producers and capability validators MUST enforce task-key uniqueness separately. Values correspond to request schemas annotated with x-governed-commitment. Online execution checks are currently defined only for media-buy tasks, whose prepared result has the PlannedDelivery contract; other roles can enforce signed intent authorization without inventing media-buy fields.",
+              "items": {
+                "oneOf": [
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "create_media_buy" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "contains": { "const": "signed_context" },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "update_media_buy" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "contains": { "const": "signed_context" },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "build_creative" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "const": "signed_context" },
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "activate_signal" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "const": "signed_context" },
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "acquire_rights" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "const": "signed_context" },
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "update_rights" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "const": "signed_context" },
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "required": ["tasks"],
+          "x-status": "experimental",
+          "additionalProperties": false
         }
       },
       "required": ["major_versions", "idempotency"]
@@ -420,7 +523,7 @@
         },
         "governance_aware": {
           "type": "boolean",
-          "description": "Conformance declaration that this seller consults a registered governance agent (via sync_governance plus an outbound check_governance call) before committing a media buy, and surfaces GOVERNANCE_DENIED when the governance agent denies. A declaration of true opts the seller into governance-denial grading (media_buy_seller/governance_denied, media_buy_seller/governance_denied_recovery). When false or absent, conformance runners skip those storyboards - a seller that does not implement outbound governance consultation is not expected to produce GOVERNANCE_DENIED. This is independent of baseline sync_governance registration, which remains gradeable on its own.",
+          "description": "Compatibility claim used by existing media-buy conformance runners. A value of true corresponds only to online governance consultation for create_media_buy, the historically graded surface. Agents use adcp.governance_enforcement for explicit task-scoped claims, including update_media_buy and cross-role signed-context enforcement.",
           "default": false
         },
         "propagation_surfaces": {

@@ -2,11 +2,38 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/governance/report-plan-outcome-request.json",
   "title": "Report Plan Outcome Request",
-  "description": "Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side agent) after a seller responds. This is the 'after' half of the governance loop. Sellers do not call this task -- they report delivery data via check_governance with phase 'delivery'.",
+  "description": "Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side agent) after a seller responds. The authenticated reporter must match the caller on the original approved intent, purchase_type must match that intent, and only one terminal settlement is allowed across all lifecycle checks sharing the opaque action binding. This is the 'after' half of the governance loop. Sellers do not call this task -- they report delivery data via check_governance with phase 'delivery'.",
   "type": "object",
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "if": {
+        "properties": { "outcome": { "const": "completed" } },
+        "required": ["outcome"]
+      },
+      "then": { "required": ["check_id", "governance_context", "seller_response"] }
+    },
+    {
+      "if": {
+        "properties": { "outcome": { "const": "failed" } },
+        "required": ["outcome"]
+      },
+      "then": { "required": ["check_id", "governance_context", "error"] }
+    },
+    {
+      "if": {
+        "properties": { "outcome": { "const": "delivery" } },
+        "required": ["outcome"]
+      },
+      "then": {
+        "required": ["delivery"],
+        "dependencies": {
+          "check_id": ["governance_context"],
+          "governance_context": ["check_id"]
+        }
+      }
     }
   ],
   "x-status": "experimental",
@@ -14,24 +41,24 @@
   "properties": {
     "plan_id": {
       "type": "string",
-      "description": "The plan this outcome is for. The plan uniquely scopes the account and operator; do not include a separate `account` field — the governance agent resolves account from the plan. Including `account` is rejected by `additionalProperties: false`.",
+      "description": "The plan this outcome is for. The plan is owned by the authenticated buyer that synchronized it; plan_id is an identifier, not an account credential. Completed and failed settlements inherit their commercial binding from the exact approved check tuple.",
       "x-entity": "governance_plan"
     },
     "check_id": {
       "type": "string",
-      "description": "The check_id from check_governance. Links the outcome to the governance check that authorized it. Required for 'completed' and 'failed' outcomes.",
+      "description": "The check_id from check_governance. Required for completed and failed outcomes, where it must form an exact tuple with plan_id and governance_context. A deprecated delivery snapshot must provide both check_id and governance_context or neither; when provided, the pair is validated.",
       "x-entity": "governance_check"
     },
     "idempotency_key": {
       "type": "string",
-      "description": "Client-generated unique key for this request. Prevents duplicate outcome reports on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "description": "Buyer-generated unique key for this outcome report. An identical retry returns the cached response without another settlement; reuse with a different canonical payload returns IDEMPOTENCY_CONFLICT. Use a fresh UUID v4 for each distinct report.",
       "minLength": 16,
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
     "purchase_type": {
       "$ref": "/schemas/enums/purchase-type.json",
-      "description": "The type of financial commitment this outcome is for. Determines which budget allocation (if any) to charge against. Defaults to 'media_buy' when omitted.",
+      "description": "The type of financial commitment this outcome is for. Must equal the original approved intent's purchase_type. Determines which budget allocation (if any) to charge against. Defaults to 'media_buy' when omitted.",
       "default": "media_buy"
     },
     "outcome": {
@@ -50,7 +77,7 @@
         "committed_budget": {
           "type": "number",
           "minimum": 0,
-          "description": "Total budget committed across all confirmed packages. When present, the governance agent uses this directly instead of summing package budgets."
+          "description": "Buyer-reported seller amount retained for reconciliation and audit. It is never ledger authority: the governance agent derives the reserved commitment from its own approved intent check, or from the matching purchase execution check when one exists. A report above that authorized amount is rejected; a lower report does not restore headroom."
         },
         "packages": {
           "type": "array",
@@ -80,7 +107,7 @@
     },
     "delivery": {
       "type": "object",
-      "description": "Delivery metrics. Required when outcome is 'delivery'.",
+      "description": "Deprecated buyer-reported delivery snapshot. Required when outcome is 'delivery'. It is audit evidence only and MUST NOT increase committed obligation; sellers use check_governance phase 'delivery' for authoritative monitoring.",
       "properties": {
         "reporting_period": {
           "type": "object",
@@ -108,7 +135,8 @@
         },
         "spend": {
           "type": "number",
-          "description": "Spend in the period."
+          "minimum": 0,
+          "description": "Finite, non-negative spend in the period. Audit evidence only; it does not add a second commitment."
         },
         "cpm": {
           "type": "number",
@@ -142,7 +170,7 @@
     },
     "governance_context": {
       "type": "string",
-      "description": "Opaque governance context from the check_governance response that authorized this action. Enables the governance agent to correlate the outcome to the original check.",
+      "description": "Opaque governance context from the check_governance response that authorized this action. Required with check_id for completed and failed outcomes. A deprecated delivery snapshot must provide both fields or neither.",
       "minLength": 1,
       "maxLength": 4096,
       "pattern": "^[\\x20-\\x7E]+$"
@@ -157,8 +185,7 @@
   "required": [
     "idempotency_key",
     "plan_id",
-    "outcome",
-    "governance_context"
+    "outcome"
   ],
   "additionalProperties": true
 }

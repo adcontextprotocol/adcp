@@ -6,6 +6,9 @@ version: 2
 # Paths to ignore - scripts with CLI argument documentation
 paths-ignore:
   - scripts/migrate-csv-via-api.ts
+  # Generated public compact-JWS conformance fixtures. The generator and
+  # byte-exact test prove their provenance; none is a production credential.
+  - static/compliance/source/test-vectors/governance-authorization.json
 
 # Ignore test tokens that are documented and meant to be public
 matches-ignore:
@@ -31,3 +34,11 @@ matches-ignore:
       explicit WARNING field and secret_provenance field documenting
       non-production status; negative vectors verify the WARNING remains
       present and that weak-secret configurations are rejected.
+  - name: Governance Ed25519 Conformance Test Key
+    match: bag_KLehHhOb-giX2u8kEfm9Djo6Fldl6_dFoRiC_eE
+    comment: |
+      Public test-only Ed25519 private component for deterministic governance
+      compact-JWS conformance vectors. The same key already ships as
+      test-gov-2026 in the request-signing fixture to prove cross-purpose
+      rejection. It has no production authority; the governance fixture and
+      catalog explicitly forbid installing it as a production trust anchor.

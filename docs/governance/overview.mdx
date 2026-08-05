@@ -132,6 +132,7 @@ The `check_governance` task goes async. The orchestrator polls or receives a web
 ```json
 {
   "check_id": "chk-q2-ctv-001",
+  "check_type": "intent",
   "verdict": "denied",
   "plan_id": "acme-q2-trail-pro",
   "explanation": "Budget authority exceeded. Transaction amount $25,000 exceeds agent authority limit of $20,000.",
@@ -175,9 +176,10 @@ First, the orchestrator reports that the seller accepted the purchase and commit
 
 ```javascript
 await governance.reportPlanOutcome({
+  idempotency_key: "outcome-acme-q2-ctv-0001",
   plan_id: "acme-q2-trail-pro",
-  governance_context: check.governance_context,
   check_id: "chk-q2-ctv-001",
+  governance_context: check.governance_context,
   outcome: "completed",
   seller_response: {
     media_buy_id: "mb-streamhaus-001",
@@ -190,7 +192,9 @@ Then, as delivery data comes in, the orchestrator reports delivery outcomes so g
 
 ```javascript
 await governance.reportPlanOutcome({
+  idempotency_key: "delivery-acme-q2-ctv-0001",
   plan_id: "acme-q2-trail-pro",
+  check_id: "chk-q2-ctv-001",
   governance_context: check.governance_context,
   outcome: "delivery",
   delivery: {
@@ -205,7 +209,7 @@ await governance.reportPlanOutcome({
 });
 ```
 
-The \$25,000 buy committed budget, and actual delivery came in at \$24,850. The governance agent updates the ledger — \$25,150 remains of the \$50K plan budget for the next buy.
+The \$25,000 buy remains the committed obligation, and the \$24,850 delivery snapshot is recorded as audit evidence without being counted again. Seller-originated delivery monitoring uses `check_governance` with `phase: "delivery"`.
 
 ## Step 6: The audit trail
 
@@ -245,9 +249,9 @@ Budget tracking has three phases:
 
 1. **Proposed**: `check_governance` evaluates whether the amount fits within the plan. No money reserved — this is a hypothetical check.
 2. **Execute**: The seller runs the campaign. The governance agent tracks the authorized amount as reserved, but actual spend may differ.
-3. **Committed**: `report_plan_outcome` records the actual amount. The governance agent updates the ledger with real numbers.
+3. **Committed**: `report_plan_outcome` settles the authorization. The ledger uses governance-owned approved state; a seller-side purchase execution check can narrow the amount before commit, while a buyer report alone cannot restore headroom.
 
-A \$25,000 buy might deliver \$24,850. Governance tracks the difference and frees the remaining \$150.
+A \$25,000 intent that the seller prepares at \$24,850 frees the \$150 only when that prepared amount passes the seller-side purchase execution check. A buyer-reported lower number alone is audit evidence, not authority to release budget.
 
 </Accordion>
 
