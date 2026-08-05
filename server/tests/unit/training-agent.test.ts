@@ -4735,6 +4735,40 @@ describe('create_media_buy handler', () => {
     expect((await read('2026-07-01')).missing_metrics).toEqual([{ scope: 'vendor', ...metric }]);
   });
 
+  it('uses a requested end_date as the delivery pacing cutoff', async () => {
+    const account = { brand: { domain: 'delivery-period.example' }, operator: 'delivery-period.example', sandbox: true };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_media_buy',
+      params: {
+        media_buy_id: 'delivery_period_buy',
+        fixture: {
+          status: 'active',
+          currency: 'USD',
+          start_time: '2026-01-01T00:00:00Z',
+          end_time: '2026-12-31T23:59:59Z',
+          packages: [{ package_id: 'delivery_period_package', budget: 1000 }],
+        },
+      },
+    });
+
+    const read = async (end_date: string) => {
+      const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        account,
+        media_buy_ids: ['delivery_period_buy'],
+        end_date,
+      });
+      return (result.media_buy_deliveries as Array<{ by_package: Array<Record<string, number>> }>)[0]!.by_package[0]!;
+    };
+    const firstQuarter = await read('2026-03-31');
+    const firstHalf = await read('2026-06-30');
+
+    expect(firstQuarter.spend).toBeLessThan(firstHalf.spend);
+    expect(firstQuarter.impressions).toBeLessThan(firstHalf.impressions);
+    expect(firstQuarter.clicks).toBeLessThan(firstHalf.clicks);
+  });
+
   it('rejects standalone committed metrics outside product reporting capabilities', async () => {
     const account = { brand: { domain: 'unsupported-commitment.example' }, operator: 'unsupported-commitment.example', sandbox: true };
     const server = createTrainingAgentServer(DEFAULT_CTX);

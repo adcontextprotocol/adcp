@@ -6178,7 +6178,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   }
   const durationMs = end.getTime() - start.getTime();
   const elapsed = durationMs > 0
-    ? Math.max(0, Math.min(1, (now.getTime() - start.getTime()) / durationMs))
+    ? Math.max(0, Math.min(1, (reportingEnd.getTime() - start.getTime()) / durationMs))
     : 0;
 
   // Read simulated delivery upfront so vendor_metric_values can be spread into
