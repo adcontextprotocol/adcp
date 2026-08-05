@@ -103,7 +103,6 @@ async function syncCreative(server: ReturnType<typeof createTrainingAgentServer>
       creative_id: creativeId,
       name: 'Test Creative',
       format_kind: 'image',
-      assets: {},
     }],
   });
   if (isError || (result as any).errors) {
@@ -131,7 +130,7 @@ async function createMediaBuyWithCreatives(server: ReturnType<typeof createTrain
     idempotency_key: crypto.randomUUID(),
     account: ACCOUNT,
     brand: BRAND,
-    creatives: [{ creative_id: creativeId, name: 'Test Creative', format_kind: 'image', assets: {} }],
+    creatives: [{ creative_id: creativeId, name: 'Test Creative', format_kind: 'image' }],
     assignments: [{ creative_id: creativeId, package_id: packageId, media_buy_id: mediaBuyId }],
   });
 
@@ -173,6 +172,7 @@ describe('comply_test_controller', () => {
       // training-agent wrapper) without coupling to enumeration order.
       expect(scenarios).toEqual(expect.arrayContaining([
         'force_creative_status',
+        'force_audience_status',
         'force_account_status',
         'force_media_buy_status',
         'force_session_status',
@@ -198,7 +198,7 @@ describe('comply_test_controller', () => {
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(21);
+      expect(scenarios.length).toBe(22);
       // Dedup invariant — see SCENARIO_ENUM dedup in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });

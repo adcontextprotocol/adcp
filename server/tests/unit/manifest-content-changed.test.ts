@@ -4,7 +4,7 @@
  * every routine 60-minute crawl. (#4200 item 2.)
  */
 import { describe, it, expect } from 'vitest';
-import { manifestChangedFields, manifestContentChanged } from '../../src/crawler.js';
+import { manifestContentChanged } from '../../src/crawler.js';
 import type { AdagentsManifest } from '../../src/db/publisher-db.js';
 
 const baseManifest: AdagentsManifest = {
@@ -67,39 +67,6 @@ describe('manifestContentChanged', () => {
       ],
     };
     expect(manifestContentChanged(baseManifest, next)).toBe(true);
-  });
-
-  it('returns formats as the only changed section for a formats-only revision', () => {
-    const previous: AdagentsManifest = {
-      ...baseManifest,
-      formats: [{ format_option_id: 'video', format_kind: 'video_hosted', params: { duration_ms_exact: 15000 } }],
-    };
-    const next: AdagentsManifest = {
-      ...baseManifest,
-      formats: [{ format_option_id: 'video', format_kind: 'video_hosted', params: { duration_ms_exact: 30000 } }],
-    };
-
-    expect(manifestChangedFields(previous, next)).toEqual(['formats']);
-    expect(manifestContentChanged(previous, next)).toBe(true);
-  });
-
-  it('returns placements as the only changed section for a placements-only revision', () => {
-    const previous: AdagentsManifest = {
-      ...baseManifest,
-      placements: [{ placement_id: 'article', format_options: [{ format_option_id: 'video' }] }],
-    };
-    const next: AdagentsManifest = {
-      ...baseManifest,
-      placements: [{ placement_id: 'article', format_options: [{ format_option_id: 'video' }, { format_option_id: 'display' }] }],
-    };
-
-    expect(manifestChangedFields(previous, next)).toEqual(['placements']);
-    expect(manifestContentChanged(previous, next)).toBe(true);
-  });
-
-  it('reports other semantic top-level sections without a hard-coded allowlist', () => {
-    const next: AdagentsManifest = { ...baseManifest, catalog_etag: 'revision-2' };
-    expect(manifestChangedFields(baseManifest, next)).toEqual(['catalog_etag']);
   });
 
   it('returns true when authorized_agents reorders (order semantically distinct)', () => {

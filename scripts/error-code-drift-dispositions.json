@@ -1,6 +1,16 @@
 {
   "$comment": "Disposition registry for error codes that are present in the current source enum but absent from the 3.0.x maintenance branch. Read by scripts/lint-error-code-drift.cjs. Every code in the AHEAD set (main \\ 3.0.x) MUST have an entry here; codes missing from this file fail the lint. Policy: 3.0.x is wire-stable. Adding a new enum value is a wire change (a 3.0.x receiver decoding a 3.1 sender's error.code cannot match against an enum it doesn't carry, and JSON Schema enum is closed by default), so the default disposition for any new code is 'held-for-next-minor' with target_version='3.1'. 'held-for-next-major' (target_version='4.0') is for codes that should defer past 3.x \u2014 typically because the surrounding subsystem is being reworked. 'backport-pending' is reserved for prose-only or doc-comment-only changes to a code that already exists on 3.0.x; the lint rejects backport-pending entries whose code is not on 3.0.x. Valid `disposition` values: 'backport-pending', 'held-for-next-minor', 'held-for-next-major', 'unclassified'. `target_version` (required for held-*) is a 'MAJOR.MINOR' string. When a code lands on 3.0.x its entry SHOULD be removed; the lint flags stale entries.",
   "dispositions": {
+    "AMBIGUOUS_BIDDING_POLICY": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Canonical 3.2 bidding-policy migration guard. Returned when a package combines the new bidding block with legacy bid_price or legacy monetary optimization targets, leaving execution policy ambiguous. New wire code — held for 3.2."
+    },
+    "BIDDING_PLACEMENT_CONFLICT": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Canonical 3.2 bidding-policy placement validation. Returned when media-buy and package policies cannot be represented together by the provider's campaign/ad-set hierarchy. New wire code — held for 3.2."
+    },
     "SIGNAL_TARGETING_INCOMPATIBLE": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
@@ -235,6 +245,16 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
       "note": "From sync_accounts polymorphic-key refactor (#2261). Returned per-entry when the seller does not implement the entry's `sync_accounts` mode — settings-update sellers (explicit-account platforms) reject natural-key entries; provisioning-only sellers reject AccountRef-keyed entries. Wire change — held for 3.1."
+    },
+    "INVALID_PRICING_OPTION": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Canonical pricing-option rejection for report_usage and create_media_buy (#5892). Additive standard vocabulary; held for 3.2."
+    },
+    "INVALID_USAGE_DATA": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Per-record usage validation rejection for report_usage (#5892). Additive standard vocabulary; held for 3.2."
     }
   }
 }

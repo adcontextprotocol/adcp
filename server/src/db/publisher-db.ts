@@ -73,41 +73,6 @@ export interface AdagentsManifest {
   [key: string]: unknown;
 }
 
-const ADAGENTS_METADATA_FIELDS = new Set(['$schema', 'last_updated']);
-const ADAGENTS_ARRAY_FIELDS = new Set([
-  'authorized_agents',
-  'properties',
-  'collections',
-  'formats',
-  'placements',
-  'signals',
-]);
-
-function stableManifestString(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
-  if (Array.isArray(value)) return '[' + value.map(stableManifestString).join(',') + ']';
-  const object = value as Record<string, unknown>;
-  return '{' + Object.keys(object).sort()
-    .map(key => JSON.stringify(key) + ':' + stableManifestString(object[key]))
-    .join(',') + '}';
-}
-
-/** Semantic top-level fields changed between two normalized manifests. */
-export function adagentsChangedFields(
-  previous: AdagentsManifest | null,
-  next: AdagentsManifest,
-): string[] {
-  const keys = new Set([...Object.keys(previous ?? {}), ...Object.keys(next)]);
-  return [...keys].sort().filter(key => {
-    if (ADAGENTS_METADATA_FIELDS.has(key)) return false;
-    const normalized = (manifest: AdagentsManifest | null): unknown => {
-      const value = manifest?.[key];
-      return ADAGENTS_ARRAY_FIELDS.has(key) && !Array.isArray(value) ? [] : value;
-    };
-    return stableManifestString(normalized(previous)) !== stableManifestString(normalized(next));
-  });
-}
-
 export interface UpsertAdagentsCacheInput {
   domain: string;
   manifest: AdagentsManifest;
@@ -143,8 +108,6 @@ export interface UpsertAdagentsCacheInput {
   managerDomain?: string;
   eventsDb?: CatalogEventsDatabase;
   collectionEventActor?: string;
-  publisherEventActor?: string;
-  publisherEventSource?: string;
 }
 
 export interface RecordAdagentsValidationFailureInput {
@@ -158,8 +121,6 @@ export interface RecordAdagentsValidationFailureInput {
 
 export interface UpsertAdagentsCacheResult {
   collectionEvents: CollectionProjectionEvent[];
-  changedFields: string[];
-  managerRevalidationsEnqueued: number;
 }
 
 export interface UpsertCommunityAdagentsCatalogInput {
@@ -1116,16 +1077,6 @@ export class PublisherDatabase {
     try {
       await client.query('BEGIN');
 
-      // Serialize writers for one publisher, including first discovery where
-      // no row exists yet. A row lock alone cannot prevent concurrent first
-      // crawls from both observing "missing" and emitting duplicate events.
-      await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [domain]);
-      const previousResult = await client.query<{ adagents_json: AdagentsManifest | null }>(
-        `SELECT adagents_json FROM publishers WHERE domain = $1 FOR UPDATE`,
-        [domain],
-      );
-      const previousManifest = previousResult.rows[0]?.adagents_json ?? null;
-
       // Normalize array fields before caching. The validator only enforces
       // `authorized_agents` shape, so a publisher serving a JSON-valid file
       // with `properties: "x"` could otherwise land non-array JSONB that
@@ -1138,53 +1089,6 @@ export class PublisherDatabase {
         authorized_agents: Array.isArray(input.manifest.authorized_agents)
           ? input.manifest.authorized_agents
           : [],
-      };
-      const changedFields = adagentsChangedFields(previousManifest, safeManifest);
-      const writePublisherRevisionEvent = async (): Promise<void> => {
-        if (!input.eventsDb || changedFields.length === 0) return;
-        const count = (field: string): number => {
-          const value = safeManifest[field];
-          return Array.isArray(value) ? value.length : 0;
-        };
-        await input.eventsDb.writeEvent({
-          event_type: previousManifest ? 'publisher.adagents_changed' : 'publisher.adagents_discovered',
-          entity_type: 'publisher',
-          entity_id: domain,
-          payload: {
-            publisher_domain: domain,
-            agent_count: count('authorized_agents'),
-            property_count: count('properties'),
-            collection_count: count('collections'),
-            format_count: count('formats'),
-            placement_count: count('placements'),
-            changed_fields: changedFields,
-            source: input.publisherEventSource ?? 'catalog_crawl',
-            discovery_method: input.discoveryMethod,
-            manager_domain: input.managerDomain,
-          },
-          actor: input.publisherEventActor ?? (input.discoveryMethod === 'ads_txt_managerdomain'
-            ? 'pipeline:manager_revalidation'
-            : 'pipeline:catalog_crawl'),
-        }, client);
-      };
-      const enqueueDelegatingPublishers = async (): Promise<number> => {
-        if (changedFields.length === 0) return 0;
-        const result = await client.query(
-          `INSERT INTO manager_revalidation_queue
-             (publisher_domain, manager_domain, enqueued_at, next_attempt_after, attempts, last_attempted_at, last_error)
-           SELECT domain, $1, NOW(), NOW(), 0, NULL, NULL
-             FROM publishers
-            WHERE manager_domain = $1
-           ON CONFLICT (publisher_domain) DO UPDATE SET
-             manager_domain = EXCLUDED.manager_domain,
-             enqueued_at = NOW(),
-             next_attempt_after = NOW(),
-             attempts = 0,
-             last_attempted_at = NULL,
-             last_error = NULL`,
-          [domain],
-        );
-        return result.rowCount ?? 0;
       };
 
       await client.query(
@@ -1274,10 +1178,8 @@ export class PublisherDatabase {
             client,
           );
         }
-        await writePublisherRevisionEvent();
-        const managerRevalidationsEnqueued = await enqueueDelegatingPublishers();
         await client.query('COMMIT');
-        return { collectionEvents, changedFields, managerRevalidationsEnqueued };
+        return { collectionEvents };
       }
 
       const properties = Array.isArray(safeManifest.properties) ? safeManifest.properties : [];
@@ -1419,11 +1321,8 @@ export class PublisherDatabase {
         );
       }
 
-      await writePublisherRevisionEvent();
-      const managerRevalidationsEnqueued = await enqueueDelegatingPublishers();
-
       await client.query('COMMIT');
-      return { collectionEvents, changedFields, managerRevalidationsEnqueued };
+      return { collectionEvents };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

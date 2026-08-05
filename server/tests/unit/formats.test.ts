@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Agent } from '../../src/types.js';
 
-const mockGetAdcpCapabilities = vi.fn();
+const mockExecuteTask = vi.fn();
 const mockAdCPClientConstructor = vi.fn();
 
 // Mock @adcp/sdk with a proper class constructor
@@ -13,7 +13,7 @@ vi.mock('@adcp/sdk', () => ({
 
     agent() {
       return {
-        getAdcpCapabilities: mockGetAdcpCapabilities,
+        executeTask: mockExecuteTask,
       };
     }
   },
@@ -21,30 +21,13 @@ vi.mock('@adcp/sdk', () => ({
 
 import { FormatsService } from '../../src/formats.js';
 
-function capabilityResponse(entries: Array<Record<string, unknown>>) {
-  return {
-    success: true,
-    data: { creative: { supported_formats: entries } },
-  };
-}
-
-const IMAGE_CAPABILITY = {
-  capability_id: 'display_300x250',
-  format: {
-    format_kind: 'image',
-    display_name: 'Medium rectangle',
-    params: { width: 300, height: 250, aspect_ratio: '6:5' },
-  },
-  operations: ['preview'],
-};
-
 describe('FormatsService', () => {
   let service: FormatsService;
   let mockAgent: Agent;
 
   beforeEach(() => {
     service = new FormatsService();
-    mockGetAdcpCapabilities.mockReset();
+    mockExecuteTask.mockReset();
     mockAdCPClientConstructor.mockReset();
     mockAgent = {
       name: 'Test Creative Agent',
@@ -64,14 +47,13 @@ describe('FormatsService', () => {
 
   describe('getFormatsForAgent', () => {
     it('fetches formats successfully', async () => {
-      mockGetAdcpCapabilities.mockResolvedValue(capabilityResponse([
-        IMAGE_CAPABILITY,
-        {
-          capability_id: 'display_728x90',
-          format: { format_kind: 'image', params: { width: 728, height: 90 } },
-          operations: ['preview'],
-        },
-      ]));
+      mockExecuteTask.mockResolvedValue({
+        success: true,
+        data: [
+          { name: 'iab_standard_display', dimensions: '300x250', type: 'display' },
+          { name: 'iab_standard_display', dimensions: '728x90', type: 'display' }
+        ]
+      });
 
       const profile = await service.getFormatsForAgent(mockAgent);
 
@@ -84,7 +66,12 @@ describe('FormatsService', () => {
     });
 
     it('returns format objects with expected structure', async () => {
-      mockGetAdcpCapabilities.mockResolvedValue(capabilityResponse([IMAGE_CAPABILITY]));
+      mockExecuteTask.mockResolvedValue({
+        success: true,
+        data: [
+          { name: 'iab_standard_display', dimensions: '300x250', type: 'display' },
+        ]
+      });
 
       const profile = await service.getFormatsForAgent(mockAgent);
 
@@ -95,43 +82,52 @@ describe('FormatsService', () => {
     });
 
     it('caches results for 15 minutes', async () => {
-      mockGetAdcpCapabilities.mockResolvedValue(capabilityResponse([IMAGE_CAPABILITY]));
+      mockExecuteTask.mockResolvedValue({
+        success: true,
+        data: [{ name: 'format1' }]
+      });
 
       // First call
       await service.getFormatsForAgent(mockAgent);
-      expect(mockGetAdcpCapabilities).toHaveBeenCalledTimes(1);
+      expect(mockExecuteTask).toHaveBeenCalledTimes(1);
 
       // Second call within cache period
       await service.getFormatsForAgent(mockAgent);
-      expect(mockGetAdcpCapabilities).toHaveBeenCalledTimes(1); // Should not call again
+      expect(mockExecuteTask).toHaveBeenCalledTimes(1); // Should not call again
       expect(mockAdCPClientConstructor).toHaveBeenCalledTimes(1);
     });
 
     it('reuses SDK clients for authenticated calls without caching responses', async () => {
-      mockGetAdcpCapabilities.mockResolvedValue(capabilityResponse([IMAGE_CAPABILITY]));
+      mockExecuteTask.mockResolvedValue({
+        success: true,
+        data: [{ name: 'format1' }]
+      });
 
       const auth = { type: 'bearer' as const, token: 'secret-token' };
 
       await service.getFormatsForAgent(mockAgent, auth);
       await service.getFormatsForAgent(mockAgent, auth);
 
-      expect(mockGetAdcpCapabilities).toHaveBeenCalledTimes(2);
+      expect(mockExecuteTask).toHaveBeenCalledTimes(2);
       expect(mockAdCPClientConstructor).toHaveBeenCalledTimes(1);
       expect(service.getFormatsProfile(mockAgent.url)).toBeUndefined();
     });
 
     it('keeps authenticated SDK clients separate by auth identity', async () => {
-      mockGetAdcpCapabilities.mockResolvedValue(capabilityResponse([IMAGE_CAPABILITY]));
+      mockExecuteTask.mockResolvedValue({
+        success: true,
+        data: [{ name: 'format1' }]
+      });
 
       await service.getFormatsForAgent(mockAgent, { type: 'bearer', token: 'token-a' });
       await service.getFormatsForAgent(mockAgent, { type: 'bearer', token: 'token-b' });
 
-      expect(mockGetAdcpCapabilities).toHaveBeenCalledTimes(2);
+      expect(mockExecuteTask).toHaveBeenCalledTimes(2);
       expect(mockAdCPClientConstructor).toHaveBeenCalledTimes(2);
     });
 
     it('handles agent errors gracefully', async () => {
-      mockGetAdcpCapabilities.mockResolvedValue({
+      mockExecuteTask.mockResolvedValue({
         success: false,
         error: 'Agent offline'
       });
@@ -143,42 +139,70 @@ describe('FormatsService', () => {
     });
 
     it('handles missing tool gracefully', async () => {
-      mockGetAdcpCapabilities.mockRejectedValue(new Error('Tool not found'));
+      mockExecuteTask.mockRejectedValue(new Error('Tool not found'));
 
       const profile = await service.getFormatsForAgent(mockAgent);
 
       expect(profile.formats).toEqual([]);
-      expect(profile.error).toContain('does not support canonical capability discovery');
+      expect(profile.error).toContain('does not support list_creative_formats');
     });
   });
 
-  describe('canonical capability projection', () => {
-    it('projects capability identity and canonical dimensions', async () => {
-      mockGetAdcpCapabilities.mockResolvedValue(capabilityResponse([IMAGE_CAPABILITY]));
+  describe('normalizeFormat', () => {
+    it('handles string format names', async () => {
+      mockExecuteTask.mockResolvedValue({
+        success: true,
+        data: ['format1', 'format2']
+      });
 
       const profile = await service.getFormatsForAgent(mockAgent);
 
-      expect(profile.formats).toEqual([{
-        name: 'display_300x250',
-        dimensions: '300x250',
-        aspect_ratio: '6:5',
-        description: 'Medium rectangle',
-      }]);
+      expect(profile.formats).toHaveLength(2);
+      expect(profile.formats[0].name).toBe('format1');
+      expect(profile.formats[1].name).toBe('format2');
     });
 
-    it('reports a missing creative catalog instead of accepting legacy response shapes', async () => {
-      mockGetAdcpCapabilities.mockResolvedValue({ success: true, data: {} });
+    it('handles object with formats array', async () => {
+      mockExecuteTask.mockResolvedValue({
+        success: true,
+        data: {
+          formats: [
+            { name: 'display', dimensions: '300x250' }
+          ]
+        }
+      });
 
       const profile = await service.getFormatsForAgent(mockAgent);
 
-      expect(profile.formats).toEqual([]);
-      expect(profile.error).toContain('creative.supported_formats');
+      expect(profile.formats).toHaveLength(1);
+      expect(profile.formats[0].name).toBe('display');
+      expect(profile.formats[0].dimensions).toBe('300x250');
+    });
+
+    it('handles different property naming conventions', async () => {
+      mockExecuteTask.mockResolvedValue({
+        success: true,
+        data: [{
+          format: 'video',
+          size: '1920x1080',
+          aspectRatio: '16:9',
+        }]
+      });
+
+      const profile = await service.getFormatsForAgent(mockAgent);
+
+      expect(profile.formats[0].name).toBe('video');
+      expect(profile.formats[0].dimensions).toBe('1920x1080');
+      expect(profile.formats[0].aspect_ratio).toBe('16:9');
     });
   });
 
   describe('enrichAgentsWithFormats', () => {
     it('fetches formats for multiple agents in parallel', async () => {
-      mockGetAdcpCapabilities.mockResolvedValue(capabilityResponse([IMAGE_CAPABILITY]));
+      mockExecuteTask.mockResolvedValue({
+        success: true,
+        data: [{ name: 'format1' }]
+      });
 
       const agents = [
         mockAgent,
@@ -195,7 +219,10 @@ describe('FormatsService', () => {
 
   describe('cache management', () => {
     it('getFormatsProfile returns cached profile', async () => {
-      mockGetAdcpCapabilities.mockResolvedValue(capabilityResponse([IMAGE_CAPABILITY]));
+      mockExecuteTask.mockResolvedValue({
+        success: true,
+        data: [{ name: 'format1' }]
+      });
 
       await service.getFormatsForAgent(mockAgent);
       const cached = service.getFormatsProfile(mockAgent.url);
@@ -205,7 +232,10 @@ describe('FormatsService', () => {
     });
 
     it('getAllFormatsProfiles returns all cached profiles', async () => {
-      mockGetAdcpCapabilities.mockResolvedValue(capabilityResponse([IMAGE_CAPABILITY]));
+      mockExecuteTask.mockResolvedValue({
+        success: true,
+        data: [{ name: 'format1' }]
+      });
 
       const agents = [
         mockAgent,

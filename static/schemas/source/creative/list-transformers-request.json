@@ -23,34 +23,15 @@
     },
     "input_format_ids": {
       "type": "array",
-      "deprecated": true,
-      "description": "**DEPRECATED in 3.2.** Filter by legacy named input formats. Use input_format_kinds.",
+      "description": "Filter to transformers that accept any of these formats as input.",
       "items": { "$ref": "/schemas/core/format-id.json" },
       "minItems": 1
     },
     "output_format_ids": {
       "type": "array",
-      "deprecated": true,
-      "description": "**DEPRECATED in 3.2.** Filter by legacy named output formats. Use output_capability_ids.",
+      "description": "Filter to transformers that can produce any of these output formats.",
       "items": { "$ref": "/schemas/core/format-id.json" },
       "minItems": 1
-    },
-    "input_format_kinds": {
-      "type": "array",
-      "description": "Filter to transformers whose canonical input_formats include any of these canonical format kinds.",
-      "items": { "$ref": "/schemas/core/canonical-format-kind.json" },
-      "minItems": 1,
-      "uniqueItems": true
-    },
-    "output_capability_ids": {
-      "type": "array",
-      "description": "Filter to transformers that can produce any of these canonical creative.supported_formats capability IDs.",
-      "items": {
-        "type": "string",
-        "pattern": "^[a-zA-Z0-9_-]+$"
-      },
-      "minItems": 1,
-      "uniqueItems": true
     },
     "name_search": {
       "type": "string",

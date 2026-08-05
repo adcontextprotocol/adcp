@@ -158,8 +158,11 @@ For package-level line-item correlation, keep the buy-level context separate fro
     {
       "product_id": "prod_weekday_display",
       "pricing_option_id": "cpm_usd_auction",
-      "format_option_refs": [
-        { "scope": "product", "format_option_id": "display_image_300x250" }
+      "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_300x250_image"
+        }
       ],
       "budget": 12000,
       "context": {
@@ -169,8 +172,11 @@ For package-level line-item correlation, keep the buy-level context separate fro
     {
       "product_id": "prod_weekend_video",
       "pricing_option_id": "cpm_usd_auction",
-      "format_option_refs": [
-        { "scope": "product", "format_option_id": "video_hosted_30s" }
+      "format_ids": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "video_standard_30s"
+        }
       ],
       "budget": 18000,
       "context": {

@@ -20,7 +20,7 @@ interface AssetValue {
 type AssetsMap = Record<string, AssetValue>;
 
 interface ManifestInput {
-  format_id?: { agent_url?: string; id?: string; width?: number; height?: number };
+  format_id?: { agent_url?: string; id?: string; width?: number; height?: number; pixel_ratio?: number };
   name?: string;
   assets?: AssetsMap;
   [key: string]: unknown;

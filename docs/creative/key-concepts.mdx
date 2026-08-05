@@ -4,7 +4,7 @@ description: "Assets, formats, manifests, and creative agents are the four build
 "og:title": "AdCP — Creative key concepts"
 ---
 
-> **AdCP 3.2:** products use canonical `format_options[]`, manifests use `format_kind` plus optional `format_option_ref`, and creative agents declare operations through `get_adcp_capabilities.creative.supported_formats[]`.
+> **Canonical formats in 3.1**: this page describes the v1 model. For the canonical-formats architectural shift (inline `format_options` on products, production-source axis, `validate_input` primitive), see [canonical-formats](/docs/creative/canonical-formats).
 
 One upload, every format. This guide explains how creatives work in AdCP, from defining format requirements to assembling and delivering ads.
 
@@ -22,9 +22,9 @@ Assets are the individual building blocks used to compose a creative. Each asset
 - An HTML or JavaScript tag
 - A tracking or clickthrough URL
 
-### 2. **Canonical format declarations**
+### 2. **Formats**
 
-Canonical declarations define the buyer deliverable and its constraints. Publisher acceptance lives in `adagents.json.formats[]`; seller deliverability lives in each product's `format_options[]`. A declaration specifies:
+Formats define how assets are assembled and rendered, based on IAB format taxonomy. A format specifies:
 - Media family (e.g., Display, Video, Audio, Native)
 - The required asset types
 - Technical constraints (duration, dimensions, codecs, file size)
@@ -36,25 +36,27 @@ Canonical declarations define the buyer deliverable and its constraints. Publish
 
 ### 3. **Manifests**
 
-Manifests are portable creative payloads. They identify a canonical `format_kind`, optionally bind to a concrete product or publisher option with `format_option_ref`, and supply typed assets keyed by the declaration's slots.
+Manifests define a creative preset: a reusable configuration that captures what a brand wants to say and show, independent of where or how it is ultimately delivered.
 
-**Example**: A `video_hosted` manifest supplies `video_main: { asset_type: "video", ... }`, plus any declared landing-page and tracker assets.
+A manifest does not describe an ad format or rendering logic. Instead, it declares a named set of creative choices—media, messaging, destinations, and tracking intent—that can be applied consistently wherever a compatible format is supported.
+
+**Example**: A manifest for "video_30s" provides the URL to your actual 30-second video file, plus tracking pixels and landing page URL.
 
 ### 4. **Creative Agents**
 
 Creative agents are services that:
-- Declare which canonical contracts they can build, validate, or preview
-- Explain and execute their renderer or production behavior
+- Define and document formats (authoritative source)
+- Explain how each format renders
 - Validate manifests against format requirements
 - Generate previews showing how creatives will appear
 - Optionally build manifests from natural-language briefs
 
-Creative agents are capability providers, not the authority for publisher acceptance or seller deliverability.
+Each format identifies its authoritative creative agent.
 
 ## How They Fit Together
 
 ```
-Canonical Format Declaration (by Publisher or Seller)
+Format Definition (by Creative Agent)
   ↓
   "video_30s format requires:
    - One video file asset (MP4, 30s, 1920x1080)
@@ -77,7 +79,7 @@ Sales Agent (validates & delivers)
 
 ### 1. **Discovery** - "What formats do you support?"
 
-Buyers read publisher acceptance from `adagents.json.formats[]` and seller deliverability from each product's `format_options[]`. When they need production, they inspect a creative agent's `get_adcp_capabilities.creative.supported_formats[]`.
+Buyers call `list_creative_formats` on sales or creative agents to discover available formats and their full specifications. Each format includes an `agent_url` identifying the creative agent that is authoritative for that format.
 
 See [Creative Formats](/docs/creative/formats) for format discovery details.
 
@@ -113,18 +115,18 @@ Assets are the raw materials of a creative. Each asset has a type that defines i
 
 See [Asset Types](/docs/creative/asset-types) for detailed specifications.
 
-### Format authority and capability
+### Formats & Format Authority
 
-Authority is contextual:
-
-- Publishers declare accepted inventory shapes in `adagents.json.formats[]`.
-- Sales agents declare the closed executable set on `Product.format_options[]`.
-- Creative agents self-declare build, validation, and preview operations in `creative.supported_formats[]`.
+Each format has an authoritative source—the creative agent that defines it (indicated by `agent_url`). That agent:
+- Hosts the definitive documentation
+- Explains how to assemble assets
+- Describes how the format renders
+- Provides validation rules
 
 **Standard vs. Custom Formats:**
-- **Canonical formats** use a registered `format_kind` and its shared parameter/slot vocabulary.
-- **Custom formats** use `format_kind: "custom"` with required `format_shape` and digest-pinned `format_schema`.
-- A renderer is discovered separately; its endpoint-local `capability_id` never becomes portable manifest identity.
+- **Standard formats** are based on IAB specifications and hosted by the reference creative agent (`https://creative.adcontextprotocol.org`)
+- **Custom formats** are defined by individual publishers or creative platforms for specialized inventory
+- Technically, both work the same way—the `agent_url` field identifies which agent is authoritative for each format
 
 See the [Channel Guides](/docs/creative/channels/video) for format examples and patterns across video, display, audio, DOOH, and carousels.
 
@@ -183,7 +185,7 @@ For detailed information on creatives by channel and format family, see [Creativ
 
 ## Getting Started
 
-1. **Discover formats**: Read canonical `format_options[]` on products and publisher declarations when referenced
+1. **Discover formats**: Call `list_creative_formats` to see what's available
 2. **Choose your channel guide**: Pick the guide that matches your campaign type
 3. **Build your manifest**: Follow the format requirements
 4. **Use universal macros**: Add tracking with standardized macros
@@ -192,5 +194,5 @@ For detailed information on creatives by channel and format family, see [Creativ
 
 ## Additional Resources
 
-- [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) - Creative-agent operation discovery
+- [Creative Task Reference](/docs/creative/task-reference/list_creative_formats) - API documentation for creative tasks
 - [Generative Creative](/docs/creative/generative-creative) - AI-powered creative generation guide

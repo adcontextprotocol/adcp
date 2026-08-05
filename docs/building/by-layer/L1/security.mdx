@@ -57,6 +57,7 @@ These operations are publicly accessible:
 |-----------|------|
 | `get_adcp_capabilities` | Agent capability discovery |
 | `get_products` | Public inventory discovery |
+| `list_creative_formats` | Public format catalog |
 
 ## Webhook Security
 
@@ -81,7 +82,7 @@ Normative rules for the legacy scheme when a seller elects to support it:
 - **Timing-safe comparison**: MUST use constant-time comparison (e.g., `timingSafeEqual`)
 - **Replay window**: Reject requests where `|current_time - timestamp| > 300` seconds
 - **Minimum secret length**: 32 bytes
-- **Header format**: `X-ADCP-Signature: sha256=<hex digest>` and `X-ADCP-Timestamp: <unix seconds>`. Any body-level `signature` field is a convenience copy and MUST NOT be trusted over the headers.
+- **Header format**: `X-ADCP-Signature: sha256=<hex digest>` and `X-ADCP-Timestamp: <unix seconds>`. Receivers MUST ignore any deprecated body-level `signature` field when authenticating the delivery; the headers are authoritative.
 
 **Verification order** (legacy scheme):
 1. Reject if `X-ADCP-Signature` or `X-ADCP-Timestamp` header is missing
@@ -1807,7 +1808,7 @@ Outbound-fetch code paths (governance JWKS, brand.json, revocation list, webhook
 - TLS 1.2 **secure renegotiation** (RFC 5746) MUST be enabled if renegotiation is supported at all. Insecure-renegotiation-tolerant stacks are a MUST-disable.
 - **TLS compression** (CRIME) MUST be off.
 - **Heartbeat extension** MUST be off on TLS 1.2 endpoints (Heartbleed lineage).
-- **0-RTT / early-data** on TLS 1.3 MUST NOT be enabled for any endpoint that accepts mutating AdCP operations. 0-RTT is replayable by design; idempotency and signature-nonce dedup are not free rescues once the request has hit application logic. Read-only `get_adcp_capabilities` MAY use 0-RTT; everything else MUST NOT.
+- **0-RTT / early-data** on TLS 1.3 MUST NOT be enabled for any endpoint that accepts mutating AdCP operations. 0-RTT is replayable by design; idempotency and signature-nonce dedup are not free rescues once the request has hit application logic. Read-only discovery endpoints (`get_adcp_capabilities`, `list_creative_formats`) MAY use 0-RTT; everything else MUST NOT.
 
 ### mTLS transport
 

@@ -23,8 +23,8 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `audio_distribution_types` (list[string], optional): Declared audio distribution types that may be included in this product, using IAB Tech Lab/OpenRTB 2.6 `audio.feed` definitions with AdCP-native names: `music_streaming_service`, `fm_am_broadcast`, `podcast`, `catch_up_radio`, `web_radio`, `video_game`, and `text_to_speech`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
 - `sponsored_placement_types` (list[string], optional): Declared sponsored-placement types for catalog-driven retail-media products: `sponsored_search`, `sponsored_display`, and `sponsored_native`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
 - `social_placement_surfaces` (list[string], optional): Declared social-placement surfaces for social products: `feed`, `stories`, `short_video`, `explore`, and `search`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
-- `format_options` (list[ProductFormatDeclaration], required for 3.2 authoring): Canonical format declarations accepted by this product. Product-level formats are the upper bound for the sellable product; placement-level formats can narrow this set but cannot add formats the product does not accept. Buyer `FormatOptionRef` selectors use `{scope: "publisher", publisher_domain, format_option_id}` for publisher-declared options and `{scope: "product", format_option_id}` for product-local options.
-- `format_ids` (list[FormatID], deprecated compatibility only): Optional projection for older 3.x peers. A 3.2 seller must not use this field as its only authored creative contract. When both fields are emitted, every legacy reference must resolve to the same underlying declaration in `format_options`. See [Creative Formats](/docs/creative/formats).
+- `format_ids` (list[FormatID], conditional): Legacy named-format references. Products must include `format_ids`, `format_options`, or both. See [Creative Formats](/docs/creative/formats).
+- `format_options` (list[ProductFormatDeclaration], conditional): 3.1+ canonical format-option declarations accepted by this product. Buyers prefer `format_options` when both format fields are present. Product-level formats are the upper bound for the sellable product; placement-level formats can narrow this set but cannot add formats the product does not accept. Buyer `FormatOptionRef` selectors use `{scope: "publisher", publisher_domain, format_option_id}` for publisher-declared options and `{scope: "product", format_option_id}` for product-local options.
 - `placements` (list[Placement], optional): Specific public ad placements within this product. Each placement declares `kind` (`publisher_ref` or `seller_inline`) and `mode` (`targetable` or `included`); seller-private delivery objects are not exposed here. See [Placements](#placements).
 - `shows` (list[CollectionSelector], optional): Shows covered by this product, grouped by publisher. Each entry has `publisher_domain` and `collection_ids` referencing shows in the publisher's `adagents.json`. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments).
 - `episodes` (list[Episode], optional): Specific episodes available within this product. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments).
@@ -125,7 +125,7 @@ Each pricing option includes:
 }
 ```
 
-For auction-based pricing (no `fixed_price`), use `floor_price` for minimum bid constraints and optional `price_guidance` for percentile hints. Bid-based auction models (`cpm`, `vcpm`, `cpc`, `cpcv`, `cpv`) may also include `max_bid` as a boolean signal that `bid_price` switches from exact honored price to buyer ceiling mode:
+For auction-based pricing (no `fixed_price`), use `floor_price` for the seller's minimum and optional `price_guidance` for non-binding percentile hints. The buyer expresses execution intent separately through `bidding.bid_amount`, `bidding.max_bid`, `bidding.cost_per`, or `bidding.roas` on `create_media_buy`. Pricing-option `max_bid` and package `bid_price` are deprecated legacy migration fields in 3.2:
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/pricing-options/cpm-option.json",
@@ -133,7 +133,6 @@ For auction-based pricing (no `fixed_price`), use `floor_price` for minimum bid 
   "pricing_model": "cpm",
   "currency": "USD",
   "floor_price": 10.00,
-  "max_bid": true,
   "price_guidance": {
     "p25": 12.50,
     "p50": 15.00,
@@ -207,7 +206,7 @@ Products can optionally declare specific public ad placements within their inven
 - **Creative assignment** - Different creatives can be assigned to targetable placements
 - **Omitting placement targeting** - Creatives without `placement_refs` or legacy `placement_ids` run on all buyer-targetable placements in the package, and the seller still controls included-only delivery composition
 - **Use registered IDs when available** - If the publisher declares canonical `placements` in `adagents.json`, product placements SHOULD use the catalog ID as `placement_id`
-- **Preserve registry semantics** - When a product references a registered placement, it is referring to that same placement. The product may narrow canonical `format_options` or add operational detail, but it should not change the placement's meaning incompatibly
+- **Preserve registry semantics** - When a product references a registered placement, it is referring to that same placement. The product may narrow `format_ids` or `format_options`, or add operational detail, but it should not change the placement's meaning incompatibly
 - **Tags stay useful at product level** - Product placements can carry `tags` for grouping and should align with registry tags when the placement comes from the publisher registry
 
 `mode` is required for new senders as of May 25, 2026. During the six-month migration window ending November 25, 2026, buyers may tolerate legacy products where `placements[]` entries omit `mode` and treat those placements as targetable for creative assignment. After November 25, 2026, buyers should fail closed on missing `mode`.
@@ -279,19 +278,13 @@ This is a discovery signal, not a verification claim. Buyers can filter for prod
 
 #### Format precedence with placements
 
-Product-level `format_options` define the creative formats accepted by the product as a whole. Placement-level `format_options`, whether returned inline on the product placement or inherited from a public publisher placement declaration, only narrow that product-wide set for the specific placement. Deprecated `format_ids` may appear only as a 3.x compatibility projection of the same declarations.
-
-For a multi-publisher or multi-placement product, the product-level list is the union of formats the seller can traffic somewhere in the product. It is not a promise that every option works on every placement. Compute each placement's effective set independently by intersecting the product declaration with that placement's publisher declaration.
+Product-level `format_ids` and `format_options` define the creative formats accepted by the product as a whole. Placement-level `format_ids` or `format_options`, whether returned inline on the product placement or inherited from a public publisher placement declaration, only narrow that product-wide set for the specific placement.
 
 If both product and placement format declarations are present, buyers compute the effective accepted formats for that placement as their intersection. For legacy `format_ids`, first project named formats to canonical declarations through `canonical`, `v1_format_ref`, or the canonical mapping registry; do not compare raw `(agent_url, id)` values after projection. A legacy 300x250 display ID and a canonical `image` declaration with `width: 300` and `height: 250` are compatible. For 3.1+ `format_options`, match publisher-declared options by `{publisher_domain, format_option_id}`, match product-local options by `format_option_id` when `publisher_domain` is omitted, and otherwise match declarations with the same `format_kind` whose placement parameters narrow the product declaration.
-
-For a multi-publisher product without explicit `placements[]`, each `publisher_properties[]` selector is an eligibility slice. A publisher-scoped format option applies only to slices for the matching `publisher_domain`; a product-local option applies to every slice. One creative intended for the entire product must satisfy the intersection across all slices. A set of distinct creatives may use the union only when it covers every slice. If a seller or buyer cannot determine a slice's effective formats from the product and resolved publisher catalog, it must fail closed and require the seller to add placements or return a refined product.
 
 Product gating is stricter than equivalence matching. When the product or placement declares fixed constraints such as `width`, `height`, `duration_ms_exact`, or a duration range, the buyer's selected format or creative manifest must declare and satisfy those constraints. A broad request (`format_kind: "image"` with no dimensions, or `video_hosted` with no duration) does not satisfy a fixed-size or fixed-duration product. For ranges, satisfaction means containment: a range-based request satisfies a product only when every value it permits falls within the product's accepted range; overlap alone is insufficient. An exact duration satisfies a range when the exact value falls inside it. The reverse is allowed: a broad product declaration can accept a specific 300x250 image or 30-second video unless another product constraint excludes it. See [format matching vs product satisfaction](/docs/creative/canonical-formats#format-matching-vs-product-satisfaction).
 
 If a placement has no format declaration, it inherits the product-level formats. A placement-only format that is absent from the product-level declaration is a seller conformance error, not an expansion of the product's creative contract; buyers should fail closed for that format and not treat it as accepted.
-
-For a product or selected package containing multiple included placements, a single creative intended to run everywhere must be in the intersection of all selected placements' effective sets. If distinct creatives may be assigned by placement, the package can expose the union, but the selected creative set must cover every included delivery placement. If any placement has an empty intersection or remains uncovered, the seller must reject or refine the product/package; it must not silently remove that inventory after purchase. Price, floor, availability, and deal eligibility stay on the product or pricing option—they are commercial facts, not creative-format parameters.
 
 #### Placement Object Structure
 
@@ -305,9 +298,9 @@ For a product or selected package containing multiple included placements, a sin
   "description": "Above-the-fold banner on the homepage",
   "mode": "targetable",
   "tags": ["homepage", "display", "premium"],
-  "format_options": [
-    {"format_option_id": "display_728x90", "format_kind": "image", "params": {"width": 728, "height": 90}},
-    {"format_option_id": "display_970x250", "format_kind": "image", "params": {"width": 970, "height": 250}}
+  "format_ids": [
+    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_970x250"}
   ]
 }
 ```
@@ -319,9 +312,9 @@ For a product or selected package containing multiple included placements, a sin
   "product_id": "news_site_premium",
   "name": "News Site Premium Package",
   "description": "Premium placements across news site",
-  "format_options": [
-    {"format_option_id": "display_728x90", "format_kind": "image", "params": {"width": 728, "height": 90}},
-    {"format_option_id": "display_300x250", "format_kind": "image", "params": {"width": 300, "height": 250}}
+  "format_ids": [
+    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
+    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}
   ],
   "placements": [
     {
@@ -331,7 +324,7 @@ For a product or selected package containing multiple included placements, a sin
       "name": "Homepage Banner",
       "mode": "targetable",
       "tags": ["homepage", "display", "premium"],
-      "format_options": [{"format_option_id": "display_728x90", "format_kind": "image", "params": {"width": 728, "height": 90}}]
+      "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"}]
     },
     {
       "kind": "publisher_ref",
@@ -340,7 +333,7 @@ For a product or selected package containing multiple included placements, a sin
       "name": "Article Sidebar",
       "mode": "targetable",
       "tags": ["article", "display"],
-      "format_options": [{"format_option_id": "display_300x250", "format_kind": "image", "params": {"width": 300, "height": 250}}]
+      "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}]
     },
     {
       "kind": "seller_inline",
@@ -427,9 +420,9 @@ A product combining `delivery_type: "guaranteed"`, `exclusivity: "exclusive"`, a
   "publisher_properties": [
     { "publisher_domain": "crestnetwork.example", "property_ids": ["crest_podcasts"] }
   ],
-  "format_options": [
-    { "format_option_id": "audio_pre_roll_30s", "format_kind": "audio_hosted", "params": { "duration_ms_exact": 30000 } },
-    { "format_option_id": "audio_mid_roll_60s", "format_kind": "audio_hosted", "params": { "duration_ms_exact": 60000 } }
+  "format_ids": [
+    { "agent_url": "https://ads.crestnetwork.example", "id": "audio_pre_roll_30s" },
+    { "agent_url": "https://ads.crestnetwork.example", "id": "audio_mid_roll_60s" }
   ],
   "collections": [{ "publisher_domain": "crestnetwork.example", "collection_ids": ["signal_noise"] }],
   "delivery_type": "guaranteed",
@@ -455,9 +448,9 @@ Category exclusivity works for multi-collection bundles where the publisher sepa
   "publisher_properties": [
     { "publisher_domain": "crestnetwork.example", "property_ids": ["crest_podcasts"] }
   ],
-  "format_options": [
-    { "format_option_id": "audio_pre_roll_30s", "format_kind": "audio_hosted", "params": { "duration_ms_exact": 30000 } },
-    { "format_option_id": "audio_mid_roll_60s", "format_kind": "audio_hosted", "params": { "duration_ms_exact": 60000 } }
+  "format_ids": [
+    { "agent_url": "https://ads.crestnetwork.example", "id": "audio_pre_roll_30s" },
+    { "agent_url": "https://ads.crestnetwork.example", "id": "audio_mid_roll_60s" }
   ],
   "collections": [{ "publisher_domain": "crestnetwork.example", "collection_ids": ["signal_noise", "market_beat", "founder_stories"] }],
   "delivery_type": "guaranteed",
@@ -652,9 +645,15 @@ A server can offer a general catalog, but it can also return:
   "publisher_properties": [
     { "publisher_domain": "streaming.example.com", "selection_type": "all" }
   ],
-  "format_options": [
-    { "format_option_id": "video_15s", "format_kind": "video_hosted", "params": { "duration_ms_exact": 15000 } },
-    { "format_option_id": "video_30s", "format_kind": "video_hosted", "params": { "duration_ms_exact": 30000 } }
+  "format_ids": [
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "video_15s"
+    },
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "video_30s"
+    }
   ],
   "delivery_type": "guaranteed",
   "pricing_options": [
@@ -700,9 +699,15 @@ A server can offer a general catalog, but it can also return:
   "publisher_properties": [
     { "publisher_domain": "gaming.example.com", "selection_type": "all" }
   ],
-  "format_options": [
-    { "format_option_id": "display_300x250", "format_kind": "image", "params": { "width": 300, "height": 250 } },
-    { "format_option_id": "display_728x90", "format_kind": "image", "params": { "width": 728, "height": 90 } }
+  "format_ids": [
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_300x250"
+    },
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_728x90"
+    }
   ],
   "delivery_type": "non_guaranteed",
   "pricing_options": [
@@ -745,10 +750,19 @@ A server can offer a general catalog, but it can also return:
   "publisher_properties": [
     { "publisher_domain": "groceryretail.example.com", "selection_type": "all" }
   ],
-  "format_options": [
-    { "format_option_id": "display_300x250", "format_kind": "image", "params": { "width": 300, "height": 250 } },
-    { "format_option_id": "display_728x90", "format_kind": "image", "params": { "width": 728, "height": 90 } },
-    { "format_option_id": "video_15s", "format_kind": "video_hosted", "params": { "duration_ms_exact": 15000 } }
+  "format_ids": [
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_300x250"
+    },
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_728x90"
+    },
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "video_15s"
+    }
   ],
   "delivery_type": "guaranteed",
   "pricing_options": [
@@ -780,7 +794,7 @@ A server can offer a general catalog, but it can also return:
 
 ## Product Cards
 
-Product cards provide visual representations of products for user interfaces. They are typed inline and do not use creative format references.
+Product cards provide visual representations of products for display in user interfaces. Publishers can optionally include card definitions that reference card formats and provide the assets needed to render attractive visual cards.
 
 ### Card Types
 
@@ -805,28 +819,31 @@ Publishers should provide at least the standard card, and optionally a detailed 
   // ... other product fields ...
 
   "product_card": {
-    "title": "Premium CTV - Living Room Audiences",
-    "description": "Reach cord-cutters on premium streaming content.",
-    "image": {
-      "asset_type": "image",
-      "url": "https://cdn.example.com/products/ctv_hero.jpg"
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "product_card_standard"
     },
-    "price_label": "From $22 CPM",
-    "cta_label": "View details"
+    "manifest": {
+      "display_name": "Premium CTV - Living Room Audiences",
+      "hero_image_url": "https://cdn.example.com/products/ctv_hero.jpg",
+      "brief_highlight": "Perfect for reaching cord-cutters and premium streaming audiences"
+    }
   },
 
   "product_card_detailed": {
-    "title": "Premium CTV - Living Room Audiences",
-    "description": "Reach high-income households during peak viewing hours.",
-    "hero_image": { "asset_type": "image", "url": "https://cdn.example.com/products/ctv_hero.jpg" },
-    "carousel_images": [
-      { "asset_type": "image", "url": "https://cdn.example.com/products/ctv_context1.jpg" },
-      { "asset_type": "image", "url": "https://cdn.example.com/products/ctv_context2.jpg" }
-    ],
-    "specifications": [
-      { "label": "Resolution", "value": "1920x1080" },
-      { "label": "Duration", "value": "30 seconds" }
-    ]
+    "format_id": {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "product_card_detailed"
+    },
+    "manifest": {
+      "display_name": "Premium CTV - Living Room Audiences",
+      "description": "Reach high-income households with premium CTV inventory during peak viewing hours...",
+      "carousel_images": [
+        "https://cdn.example.com/products/ctv_context1.jpg",
+        "https://cdn.example.com/products/ctv_context2.jpg"
+      ],
+      "specifications_markdown": "# Technical Specifications\n\n..."
+    }
   }
 }
 ```
@@ -881,7 +898,8 @@ A proposal is a recommended buying strategy that groups products with suggested 
 
 Key characteristics:
 - **Actionable**: A returned proposal is buyable through its lifecycle. `proposal_status: "draft"` means finalize first; `proposal_status: "committed"` means execute via `create_media_buy` with `proposal_id` before `expires_at`.
-- **Budget-agnostic**: Allocations use percentages, allowing the same proposal to scale to any budget
+- **Budget-agnostic**: Fixed allocations and seller-optimized constraints use percentages, allowing the same proposal to scale to any budget
+- **Allocation-aware**: Fixed proposals prescribe the split; seller-optimized proposals delegate continuous cross-package allocation to the seller within explicit goals and constraints
 - **Forecast-equipped**: Proposals and allocations can include delivery forecasts to help buyers evaluate expected performance before purchase
 
 ### Proposal Structure
@@ -953,6 +971,46 @@ The `tags` field enables grouping allocations by dimension:
 - **By channel**: desktop (50%) + mobile (20%) + in-app (30%) = 100%
 - **By language**: German (40%) + French (60%) = 100%
 
+#### Seller-optimized proposals
+
+A seller-optimized proposal names the eligible products and cross-package goal without locking an exact split. Optional minimum-spend targets are soft; maximum-spend percentages are hard caps:
+
+```json
+{
+  "proposal_id": "performance_shared_v1",
+  "name": "Seller-optimized performance plan",
+  "budget_allocation": {
+    "mode": "seller_optimized",
+    "optimization_goals": [
+      {
+        "kind": "event",
+        "event_sources": [
+          {
+            "event_source_id": "checkout_events",
+            "event_type": "purchase"
+          }
+        ]
+      }
+    ]
+  },
+  "pacing": "even",
+  "allocations": [
+    {
+      "product_id": "prospecting",
+      "min_spend_target_percentage": 20,
+      "max_spend_percentage": 70
+    },
+    {
+      "product_id": "retargeting",
+      "max_spend_percentage": 60,
+      "pacing": "front_loaded"
+    }
+  ]
+}
+```
+
+Seller-optimized allocations MUST omit `allocation_percentage`. Minimum targets across allocations must sum to no more than 100, and maximums must collectively permit 100 percent of the budget to be spent. Optional allocation `pacing` becomes subordinate package pacing on execution; aggregate proposal pacing remains the media-buy pacing ceiling. When executed, the seller converts percentage constraints into absolute package constraints and continuously allocates the shared total budget. The seller's internal allocation changes are delivery decisions, not `update_media_buy` mutations.
+
 ### Iterating on Proposals
 
 Proposals can be refined using `buying_mode: "refine"` with the `refine` array. Reference proposals by ID — the seller returns an updated proposal with revised allocations, forecasts, and pricing:
@@ -1002,14 +1060,14 @@ To execute a committed proposal, provide the `proposal_id` and `total_budget` in
 }
 ```
 
-The publisher converts the proposal's allocation percentages into packages:
+For a fixed proposal, the publisher converts allocation percentages into packages:
 - `ch_desktop_de`: 20% × \$50,000 = \$10,000
 
 Finalization is the seller commitment step: it firms pricing, terms, availability, and any inventory hold. It is not buyer acceptance. `create_media_buy(proposal_id)` is the acceptance/execution step. Sellers reject attempts to execute a draft proposal with `PROPOSAL_NOT_COMMITTED`; finalize with `get_products` in `refine` mode and `action: "finalize"` before retrying create.
 - `ch_desktop_fr`: 30% × \$50,000 = \$15,000
 - etc.
 
-This approach simplifies complex multi-line-item campaigns to a single proposal execution.
+For a seller-optimized proposal, the publisher instead converts minimum and maximum percentage constraints into absolute package constraints, activates the proposal's cross-package optimization goals and aggregate pacing, and copies allocation pacing onto the corresponding derived package. In either mode, proposal execution simplifies a complex multi-package campaign to one acceptance call.
 
 ### When Publishers Return Proposals
 

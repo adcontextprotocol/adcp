@@ -200,24 +200,14 @@ Returns **either** `{ media_buy_id, packages: [...], confirmed_at }` (sync) **or
     {
       "creative_id": "cr_1",
       "name": "My Creative",
-      "format_kind": "video_hosted",
-      "format_option_ref": { "scope": "product", "format_option_id": "video_1920x1080_30s" },
-      "assets": {
-        "video_main": {
-          "asset_type": "video",
-          "url": "https://cdn.acme.example/video-30s.mp4",
-          "mime_type": "video/mp4",
-          "width": 1920,
-          "height": 1080,
-          "duration_ms": 30000
-        }
-      }
+      "format_id": { "agent_url": "https://creatives.adcontextprotocol.org", "id": "video_1920x1080" },
+      "assets": {}
     }
   ]
 }
 ```
 
-Per-creative required: `creative_id`, `name`, canonical `format_kind`, and `assets`. Include `format_option_ref` when the selected product has multiple declarations with the same kind or when you need to route to one exact product option. Asset keys and constraints come from the selected canonical product declaration. Returns `{ creatives: [{ creative_id, action, status }] }` — items may fail individually without failing the batch.
+Per-creative required: `creative_id`, `name`, `format_id: { agent_url, id }`, `assets` (shape depends on `format_id`; start with `{}` then fill required asset keys per format spec). Returns `{ creatives: [{ creative_id, action, status }] }` — items may fail individually without failing the batch.
 
 ### get_signals
 
@@ -257,7 +247,7 @@ Both transports share: idempotency, error shape, schema enforcement, and handler
 3. **`brand.brand_id` instead of `brand.domain`**: spec uses `domain`.
 4. **Forgetting `idempotency_key`**: required on every mutating tool; see the list above.
 5. **Treating A2A `Task.state: 'completed'` as AdCP completion**: A2A task state = transport call lifecycle. AdCP-level completion is in the artifact's payload (`structuredContent.status` or `data.status`). A `completed` A2A task can still carry a `submitted` AdCP response.
-6. **Using deprecated `format_id` in a new workflow**: AdCP 3.2 creatives use `format_kind` plus optional `format_option_ref`. Read these from the selected product's `format_options[]`; use `format_id` only when deliberately interoperating with an older 3.x peer.
+6. **`format_id` as a string**: `format_id` is always an object `{ agent_url, id }` (and sometimes `{ width, height, duration_ms }` for dimensions). Sending `"format_id": "video_1920x1080"` fails with an `additionalProperties` / `type` error — pass the object.
 
 ## Symptom → fix
 
@@ -271,7 +261,7 @@ Quick lookup before reading the full envelope. Match what you see in `adcp_error
 | 2-3 `additionalProperties` errors at the same pointer | You merged `oneOf` variants (`` `{account_id, brand, operator, …}` ``) | Drop to one variant. Don't keep "extra" fields "for completeness". |
 | `keyword: 'required'`, `pointer: '/idempotency_key'` | Mutating tool, no UUID | Generate fresh UUID per logical operation. Reuse it on retries. |
 | `keyword: 'type'` or `additionalProperties` at `/budget` | Sent `{amount, currency}` | `budget` is a number. Currency is implied by `pricing_option_id`. |
-| `required` at `/format_kind` | Sent only a deprecated `format_id`, or omitted the canonical selector | Copy `format_kind` and, when needed, `format_option_ref` from the selected product's `format_options[]`. |
+| `additionalProperties` at `/format_id` (string passed) | Sent `"format_id": "video_..."` | `format_id` is `{agent_url, id}` — always an object. |
 | `keyword: 'enum'` at `/destinations/*/type` | Made-up destination type | Use `'platform'` (with `platform`) or `'agent'` (with `agent_url`). |
 | Response carries `status: 'submitted'` and `task_id` | Async — work is queued, NOT done | Poll via `tasks/get` (A2A) or the MCP async task extension using `task_id`. |
 | `recovery: 'transient'` (rate limit, 5xx, timeout) | Server-side, retry-safe | Retry with the **same** `idempotency_key`. |

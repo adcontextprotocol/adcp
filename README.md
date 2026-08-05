@@ -24,7 +24,7 @@ AdCP is one protocol spanning two layers:
 | Surface | Description | Key tasks or schemas |
 |---------|-------------|----------------------|
 | **Media Buy** | Inventory discovery, campaign creation, delivery reporting | `get_products`, `create_media_buy`, `get_media_buy_delivery` |
-| **Creative** | Ad creative management across channels | `get_adcp_capabilities`, `build_creative`, `preview_creative`, `list_transformers` |
+| **Creative** | Ad creative management across channels | `build_creative`, `preview_creative`, `list_creative_formats` |
 | **Signals** | Audience and targeting data activation | `get_signals`, `activate_signal` |
 | **Accounts** | Commercial identity and billing | `sync_accounts`, `list_accounts`, `report_usage` |
 | **Governance** | Brand suitability and content standards | `create_content_standards`, `calibrate_content` |
@@ -78,7 +78,7 @@ npm install
 docker compose up --build    # Starts PostgreSQL + app with auto-migrations
 ```
 
-The server runs on port 3000. Docs run separately with `mintlify dev` on port 3333.
+The server runs on port 3000. Docs run separately with `mint dev` on port 3333.
 
 ### Commands
 

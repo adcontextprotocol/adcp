@@ -107,8 +107,6 @@ Three endpoints answer different questions about who is in the registry. They sp
 
 **`GET /api/registry/publisher?domain=X`** — use this when you have one publisher in hand and want its inventory and delegations.
 
-The response's `formats[]` is a lossy display projection, not the complete publisher contract. It omits custom-format schema pointers, channel applicability, and legacy projection metadata. Pass `include=placements` to receive provenance-labeled placement summaries with resolved canonical format options for placement eligibility. Consumers doing creative validation or needing omitted declaration fields must fetch the resolved raw catalog using the returned community `registry_url` or publisher `hosting.resolved_url` / `hosting.expected_url`. The registry lookup chooses the publisher-origin/community rung and reports provenance; the raw document supplies the complete declarations.
-
 ### Brand Resolution
 
 These endpoints resolve domains to brand identities. The `source` field identifies the provenance of the selected registry record. When more than one candidate fact exists for a domain, selection is deterministic: `hosted` wins over `brand_json`, then `community`, then `enriched`. Ties among stored rows use the most recently validated record and a stable ID tie-breaker. A normal read prefers that durable stored winner on a source tie; `fresh=true` lets a successful live origin read win a tie, but never override a higher-provenance stored record. Identical normal requests therefore do not randomly change records or labels.
@@ -199,9 +197,20 @@ This returns every measurement agent enrolled in the registry by an AAO member.
 
 | Param | Match | Notes |
 |-------|-------|-------|
-| `metric_id=attention_units` | Exact match on `metrics[].metric_id` | Repeatable; multiple values are OR'd within the param. |
-| `accreditation=MRC` | Exact match on `metrics[].accreditations[].accrediting_body` | Repeatable. Vendor-asserted — `verified_by_aao` is always `false` in the response; renderers should mark these as vendor claims, not AAO endorsements. |
+| `metric_id=attention_units` | Exact match on `metrics[].metric_id` | Repeatable; multiple values are AND'd (vendor must carry all named metrics). |
+| `accreditation=MRC` | Exact match on `metrics[].accreditations[].accrediting_body` | Repeatable; multiple values are AND'd (vendor must carry all named accreditations). When combined with `metric_id`, a cross-product AND applies — see combined filter semantics below. Vendor-asserted — `verified_by_aao` is always `false` in the response; renderers should mark these as vendor claims, not AAO endorsements. |
 | `q=attention` | Case-insensitive substring on `metric_id` | v1 scope: metric_id only. Max 64 chars; SQL wildcards (`%`, `_`) rejected. Description/standard fuzzy search is a follow-up. |
+
+**Combined filter semantics.** When both `metric_id` and `accreditation` are present, per-metric semantics apply: the same `metrics[]` element must satisfy both constraints simultaneously. A vendor with an `attention_units` metric and a separately MRC-accredited `viewability` metric does **not** match — only a vendor whose `attention_units` metric itself carries MRC accreditation does.
+
+With multiple values, every `(metric_id, accreditation)` pair must be satisfied by at least one metrics element. This is a cross-product AND, not an OR within accreditation:
+
+```bash
+# Vendor must have MRC-accredited attention_units AND MRC-accredited emissions
+curl "https://agenticadvertising.org/api/registry/agents?metric_id=attention_units&metric_id=emissions&accreditation=MRC"
+```
+
+Using multiple `accreditation` values alongside multiple `metric_id` values produces an all-pairs AND (`M × N` constraints) and typically returns few or no results. Prefer single `accreditation` with multiple `metric_id` values for discovery.
 
 ```bash
 # All vendors offering attention measurement
@@ -218,30 +227,6 @@ curl "https://agenticadvertising.org/api/registry/agents?type=measurement&accred
 | Discovery / planning ("which vendors offer attention?") | AAO index (`?metric_id=...`) | Pre-aggregated, cached, fast. Cross-vendor in one call. Stale up to the AAO TTL window (typically 24h). |
 | Settlement / audit ("does Adelaide currently support metric X?") | Direct call to `get_adcp_capabilities` | Live, canonical, no staleness. The buyer is already calling the measurement agent at delivery / reconciliation time; one extra call is cheap and removes index staleness from the audit trail. |
 | Filtering at `get_products` time | AAO index | Buyer is in a fast-path query and the seller's product catalog already needs to know which vendors are valid. |
-
-#### Creative-agent discovery
-
-Endpoints publish their canonical build, validation, and preview surface in [`get_adcp_capabilities.creative.supported_formats[]`](/docs/protocol/get_adcp_capabilities). The registry snapshots those self-declarations and supports reverse lookup without calling every candidate. Results can include standalone creative agents and mixed sales/creative agents; registry `type` is the endpoint's primary role, not an exclusion of its other capability blocks.
-
-Creative filters do not force a primary `type`, because mixed sales/creative endpoints are valid renderer candidates. Multiple `format_kind` or `creative_operation` values are OR'd within that parameter; different parameters must match the same `supported_formats[]` entry.
-
-| Param | Match |
-|---|---|
-| `format_kind` | Exact canonical `format.format_kind` |
-| `publisher_domain` | Exact publisher namespace on `format` |
-| `format_option_id` | Exact publisher format option on `format` |
-| `capability_id` | Exact agent-local capability identifier |
-| `creative_operation` | `build`, `validate`, or `preview` |
-
-```bash
-# Agents claiming they can build a fictional publisher's exact vertical-video contract
-curl "https://agenticadvertising.org/api/registry/agents?publisher_domain=shorts.streamhaus.example&format_option_id=vertical_video&creative_operation=build&capabilities=true"
-
-# Generic hosted-video builders
-curl "https://agenticadvertising.org/api/registry/agents?format_kind=video_hosted&creative_operation=build"
-```
-
-These are endpoint self-claims, not publisher endorsements. Before production use, call the selected endpoint's `get_adcp_capabilities` directly to refresh the declaration and then route `build_creative` with that entry's `capability_id` when `operations` includes `build`.
 
 ### Change Feed
 
@@ -283,7 +268,7 @@ Authorization validation checks both sides: the publisher's `adagents.json` (doe
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/public/discover-agent` | Probe an agent URL for capabilities |
-| GET | `/api/public/agent-formats` | Get canonical `creative.supported_formats[]` capabilities from an agent |
+| GET | `/api/public/agent-formats` | Get creative formats from an agent |
 | GET | `/api/public/agent-products` | Get products from a sales agent |
 | GET | `/api/public/validate-publisher` | Validate a publisher domain |
 
@@ -573,7 +558,7 @@ Poll a cursor-based feed of registry changes. Use this to keep a local copy of t
 | `agent.verification_earned` | Agent earned an AAO Verified badge |
 | `agent.verification_lost` | Agent lost an AAO Verified badge |
 | `publisher.adagents_discovered` | A publisher's adagents.json was discovered and projected into the registry |
-| `publisher.adagents_changed` | A semantic field of a publisher's adagents.json changed, including a formats-only or placements-only revision. The payload includes `changed_fields`, `format_count`, and `placement_count` on newly emitted 3.2 events. |
+| `publisher.adagents_changed` | A publisher's adagents.json was updated |
 | `authorization.granted` | An agent was authorized for a property |
 | `authorization.revoked` | An authorization was removed |
 | `authorization.modified` | An authorization stayed visible, but externally visible metadata changed |
@@ -606,8 +591,6 @@ feed = requests.get(
 ```
 
 </CodeGroup>
-
-The crawler compares every semantic top-level field of the normalized document. Changes confined to `formats[]` or `placements[]` therefore emit `publisher.adagents_changed`; changes only to transport/version metadata (`$schema` or `last_updated`) do not. Consumers may use `changed_fields` to target their refresh, but should re-resolve every field they depend on when reading an older retained event that lacks this field.
 
 ```json Response
 {
@@ -716,7 +699,7 @@ agents = requests.get(
       "categories": ["IAB-7", "IAB-7-1"],
       "tags": ["premium"],
       "delivery_types": ["guaranteed"],
-      "format_kinds": ["video_hosted", "video_vast"],
+      "format_ids": [],
       "property_count": 42,
       "publisher_count": 3,
       "has_tmp": true,

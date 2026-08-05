@@ -7,10 +7,6 @@ testable: true
 
 # Migrating creatives
 
-<Note>
-This page records the 3.0 migration. For new AdCP 3.2 integrations, use canonical `format_kind` / `format_option_ref`, discover creative operations through `get_adcp_capabilities.creative.supported_formats[]`, and treat `list_creative_formats` plus compound `format_id` as deprecated 3.x compatibility surfaces.
-</Note>
-
 AdCP 3.0 makes three breaking changes to creative handling: the `FormatCategory` enum and format `type` field are removed, weighted creative assignments replace simple ID arrays, and a unified `assets` array replaces `assets_required` for format discovery.
 
 ## Format category removal

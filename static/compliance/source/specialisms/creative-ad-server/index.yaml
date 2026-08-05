@@ -77,7 +77,8 @@ fixtures:
   creatives:
     - creative_id: "campaign_hero_video"
       status: "approved"
-      format_kind: "video_vast"
+      format_id:
+        id: "vast_30s"
       pricing_options:
         - pricing_option_id: "po_vast_30s_cpm"
           model: "cpm"
@@ -163,7 +164,7 @@ phases:
         expected: |
           Return creatives from your library. Each creative should include:
           - creative_id (your platform's identifier)
-          - format_kind declaring the creative's canonical format
+          - format_id referencing the creative's format
           - name and status (approved, pending_review, rejected)
           - concept_id grouping related creatives across sizes
           - pricing_options array with pricing_option_id, model, cpm, currency —
@@ -191,6 +192,24 @@ phases:
             path: "context.correlation_id"
             value: "creative_ad_server--list_creatives"
             description: "Context correlation_id returned unchanged"
+      - id: list_output_formats
+        title: "Check available output formats"
+        narrative: |
+          The buyer checks what output formats your ad server supports. For an ad
+          server, this is typically the tag formats you can generate — HTML, JavaScript,
+          VAST, native. The input formats are less relevant because creatives are already
+          in your system.
+        task: list_creative_formats
+        requires_tool: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_sync
+        stateful: false
+        expected: |
+          Return the output formats you support. For an ad server, these are typically
+          tag formats (HTML, JavaScript, VAST) rather than visual ad formats.
+
   - id: generate_tags
     title: "Generate serving tags"
     narrative: |
@@ -227,7 +246,7 @@ phases:
         expected: |
           Return a creative manifest with the serving tag. The output should include:
           - An HTML, JavaScript, or VAST asset containing the tag
-          - The canonical format_kind matching the selected capability
+          - The format_id matching the target format
           - Macro placeholders (CLICK_URL, CACHEBUSTER) if applicable
           - pricing_option_id, vendor_cost, and currency — only when your agent
             bills through AdCP. Agents billing out of band omit these fields.
@@ -236,7 +255,9 @@ phases:
           creative_id: "campaign_hero_video"
           account:
             account_id: "acct_acme_creative"
-          target_capability_id: "vast_30s"
+          target_format_id:
+            agent_url: "https://your-ad-server.example.com"
+            id: "vast_30s"
           media_buy_id: "mb_summer_campaign_001"
           package_id: "pkg_ctv_premium"
 

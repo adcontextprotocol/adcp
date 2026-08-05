@@ -15,7 +15,6 @@ export interface AgentInventoryProfile {
   tags: string[];
   delivery_types: string[];
   format_ids: unknown[];
-  format_kinds: string[];
   property_count: number;
   publisher_count: number;
   has_tmp: boolean;
@@ -32,7 +31,6 @@ export interface ProfileUpsertInput {
   tags?: string[];
   delivery_types?: string[];
   format_ids?: unknown[];
-  format_kinds?: string[];
   property_count?: number;
   publisher_count?: number;
   has_tmp?: boolean;
@@ -61,7 +59,6 @@ export interface SearchResult {
   tags: string[];
   delivery_types: string[];
   format_ids: unknown[];
-  format_kinds: string[];
   property_count: number;
   publisher_count: number;
   has_tmp: boolean;
@@ -93,26 +90,9 @@ export class AgentInventoryProfilesDatabase {
     await query(
       `INSERT INTO agent_inventory_profiles (
         agent_url, channels, property_types, markets, categories, tags,
-        delivery_types, format_ids, format_kinds, property_count, publisher_count, has_tmp,
+        delivery_types, format_ids, property_count, publisher_count, has_tmp,
         category_taxonomy, updated_at
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8,
-        COALESCE($13::text[], ARRAY(
-          SELECT DISTINCT capability->'format'->>'format_kind'
-          FROM agent_capabilities_snapshot snapshot
-          CROSS JOIN LATERAL jsonb_array_elements(
-            CASE
-              WHEN jsonb_typeof(snapshot.creative_capabilities_json->'supported_formats') = 'array'
-                THEN snapshot.creative_capabilities_json->'supported_formats'
-              ELSE '[]'::jsonb
-            END
-          ) capability
-          WHERE snapshot.agent_url = $1
-            AND NULLIF(capability->'format'->>'format_kind', '') IS NOT NULL
-          ORDER BY capability->'format'->>'format_kind'
-        )),
-        $9, $10, $11, $12, NOW()
-      )
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
       ON CONFLICT (agent_url) DO UPDATE SET
         channels = EXCLUDED.channels,
         property_types = EXCLUDED.property_types,
@@ -121,7 +101,6 @@ export class AgentInventoryProfilesDatabase {
         tags = EXCLUDED.tags,
         delivery_types = EXCLUDED.delivery_types,
         format_ids = EXCLUDED.format_ids,
-        format_kinds = EXCLUDED.format_kinds,
         property_count = EXCLUDED.property_count,
         publisher_count = EXCLUDED.publisher_count,
         has_tmp = EXCLUDED.has_tmp,
@@ -140,7 +119,6 @@ export class AgentInventoryProfilesDatabase {
         input.publisher_count ?? 0,
         input.has_tmp ?? false,
         input.category_taxonomy ?? null,
-        input.format_kinds ?? null,
       ]
     );
   }
@@ -156,26 +134,9 @@ export class AgentInventoryProfilesDatabase {
       for (const input of inputs) {
         const sql = `INSERT INTO agent_inventory_profiles (
           agent_url, channels, property_types, markets, categories, tags,
-          delivery_types, format_ids, format_kinds, property_count, publisher_count, has_tmp,
+          delivery_types, format_ids, property_count, publisher_count, has_tmp,
           category_taxonomy, updated_at
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8,
-          COALESCE($13::text[], ARRAY(
-            SELECT DISTINCT capability->'format'->>'format_kind'
-            FROM agent_capabilities_snapshot snapshot
-            CROSS JOIN LATERAL jsonb_array_elements(
-              CASE
-                WHEN jsonb_typeof(snapshot.creative_capabilities_json->'supported_formats') = 'array'
-                  THEN snapshot.creative_capabilities_json->'supported_formats'
-                ELSE '[]'::jsonb
-              END
-            ) capability
-            WHERE snapshot.agent_url = $1
-              AND NULLIF(capability->'format'->>'format_kind', '') IS NOT NULL
-            ORDER BY capability->'format'->>'format_kind'
-          )),
-          $9, $10, $11, $12, NOW()
-        )
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
         ON CONFLICT (agent_url) DO UPDATE SET
           channels = EXCLUDED.channels,
           property_types = EXCLUDED.property_types,
@@ -184,7 +145,6 @@ export class AgentInventoryProfilesDatabase {
           tags = EXCLUDED.tags,
           delivery_types = EXCLUDED.delivery_types,
           format_ids = EXCLUDED.format_ids,
-          format_kinds = EXCLUDED.format_kinds,
           property_count = EXCLUDED.property_count,
           publisher_count = EXCLUDED.publisher_count,
           has_tmp = EXCLUDED.has_tmp,
@@ -203,7 +163,6 @@ export class AgentInventoryProfilesDatabase {
           input.publisher_count ?? 0,
           input.has_tmp ?? false,
           input.category_taxonomy ?? null,
-          input.format_kinds ?? null,
         ]);
       }
       await client.query('COMMIT');

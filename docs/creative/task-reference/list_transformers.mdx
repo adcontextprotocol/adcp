@@ -28,8 +28,8 @@ The agent chooses granularity: a distinct voice or model may be its own transfor
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `transformer_ids` | string[] | No | Return only these specific transformer IDs |
-| `input_format_kinds` | string[] | No | Filter to transformers accepting any of these canonical format kinds |
-| `output_capability_ids` | string[] | No | Filter to transformers that can produce any of these `creative.supported_formats[].capability_id` values |
+| `input_format_ids` | FormatID[] | No | Filter to transformers that accept any of these formats as input |
+| `output_format_ids` | FormatID[] | No | Filter to transformers that can produce any of these output formats |
 | `name_search` | string | No | Search transformers by name (case-insensitive partial match) |
 | `brief` | string | No | Natural-language brief to rank/filter transformers and their option values (e.g. "warm female Spanish-language voiceover"). Curates to intent rather than returning the full set. |
 | `expand_params` | string[] | No | Param `field` names for which to return the **first page** of account-scoped option **values** inline on `params[].options[]`. Omit for the lean default (descriptors only). |
@@ -56,9 +56,9 @@ Each transformer carries:
 |-------|-------------|
 | `transformer_id` | Stable id; pass to `build_creative` `transformer_id` |
 | `name` | Human-readable name |
-| `input_formats` / `output_capability_ids` | Canonical declarations it accepts and creative capabilities it produces. A `build_creative` target MUST be a subset of `output_capability_ids`. Omitted `input_formats` means it builds from a brief or raw assets. |
+| `input_format_ids` / `output_format_ids` | What it accepts and produces. A `build_creative` target MUST be a subset of `output_format_ids`. Empty `input_format_ids` means it builds from a brief (pure generation). |
 | `params` | Config knobs (see [Transformer Param](https://adcontextprotocol.org/schemas/v3/core/transformer-param.json)): `field`, `type`, `value_source` (`inline`/`range`/`enumerable`/`free_text`), `allowed_values`/`minimum`/`maximum`, `options[]`+`options_cursor` (when expanded), `max_length` (for `free_text`), `default`. `free_text` is an open buyer-authored string (e.g. a `negative_prompt`); a param MUST NOT be a generation-count knob — count rides `max_variants`/`max_creatives`. |
-| `pricing_options` | Per-account rate card. `applies_to_output_capability_ids` may price different canonical outputs differently; an unscoped option is the default. |
+| `pricing_options` | Per-account rate card (when `include_pricing`). Uses the `per_unit` model (e.g. $/generated image, $/second). A pricing option may carry `applies_to_output_format_ids` to price different outputs differently (e.g. a multi-publisher template per publisher format); an unscoped option is the default, and an output matching no option (with no unscoped default) is rejected `UNPRICEABLE_OUTPUT` (no fallback). The applied option is echoed per-leaf on the `build_creative` response and reconciled via `report_usage`. |
 
 See [Transformer schema](https://adcontextprotocol.org/schemas/v3/core/transformer.json) for the complete object.
 
@@ -75,7 +75,7 @@ import { ListTransformersResponseSchema } from '@adcp/sdk';
 const result = await testAgent.listTransformers({
   account: { account_id: 'acct_acme' },
   brief: 'warm female Spanish-language voiceover',
-  output_capability_ids: ['audio_vo'],
+  output_format_ids: [{ agent_url: 'https://creative.audiostack.example', id: 'audio_vo' }],
   expand_params: ['voice'],
   include_pricing: true,
 });
@@ -97,7 +97,7 @@ async def main():
     result = await test_agent.list_transformers(
         account={"account_id": "acct_acme"},
         brief="warm female Spanish-language voiceover",
-        output_capability_ids=["audio_vo"],
+        output_format_ids=[{"agent_url": "https://creative.audiostack.example", "id": "audio_vo"}],
         expand_params=["voice"],
         include_pricing=True,
     )
@@ -118,8 +118,8 @@ Pass the chosen `transformer_id` and a typed `config` (keyed by each param's `fi
 {
   "transformer_id": "audiostack_voiceover",
   "config": { "voice": "isaac", "speaking_rate": 1.1, "mastering_preset": "podcast" },
-  "creative_manifest": { "format_kind": "audio_hosted", "assets": { "script": { "asset_type": "text", "content": "Discover the new winter collection." } } },
-  "target_capability_id": "audio_vo",
+  "creative_manifest": { "format_id": { "agent_url": "https://creative.audiostack.example", "id": "script" }, "assets": { "script": { "asset_type": "text", "content": "Discover the new winter collection." } } },
+  "target_format_id": { "agent_url": "https://creative.audiostack.example", "id": "audio_vo" },
   "account": { "account_id": "acct_acme" },
   "idempotency_key": "0c1d2e3f-4a5b-6c7d-8e9f-a0b1c2d3e4f5"
 }

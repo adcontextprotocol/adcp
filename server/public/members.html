@@ -1122,6 +1122,7 @@
   <script src="/registry-nav.js"></script>
   <script src="/member-card.js"></script>
   <script src="/perspective-url.js"></script>
+  <script src="/external-url.js"></script>
 
   <!-- List View -->
   <div id="list-view">
@@ -2126,7 +2127,7 @@
                 <div class="product-card-meta">
                   ${product.property_name ? `<span class="product-card-tag">${escapeHtml(product.property_name)}</span>` : ''}
                   ${price ? `<span class="product-card-price">${price}</span>` : ''}
-                  ${(product.format_options || []).length > 0 ? `<span class="product-card-tag">${product.format_options.length} format${product.format_options.length > 1 ? 's' : ''}</span>` : ''}
+                  ${(product.format_ids || []).length > 0 ? `<span class="product-card-tag">${product.format_ids.length} format${product.format_ids.length > 1 ? 's' : ''}</span>` : ''}
                 </div>
               </div>
             `;
@@ -2257,44 +2258,52 @@
       const html = `
         <div class="format-cards-grid">
           ${formats.map(format => {
-            const declaration = format.format || {};
-            const params = declaration.params || {};
-            const capabilityId = String(format.capability_id || 'N/A');
-            const formatKind = declaration.format_kind || 'Unknown';
-            const name = declaration.display_name || capabilityId;
-            const description = declaration.description || '';
-            const hasPreview = Array.isArray(format.operations) && format.operations.includes('preview');
-            const isGenerative = Array.isArray(format.operations) && format.operations.includes('build');
-            const dimensions = params.width && params.height
-              ? `${params.width}×${params.height}`
-              : Array.isArray(params.sizes) && params.sizes.length > 0
-                ? params.sizes.map(size => `${size.w}×${size.h}`).join(', ')
-                : 'Variable';
-            const typeEmoji = getTypeEmoji(formatKind.split('_')[0]);
+            const formatId = typeof format.format_id === 'object'
+              ? format.format_id.id
+              : String(format.format_id || 'N/A');
+            const hasPreview = format.preview_image;
+            const exampleUrl = safeExternalHttpUrl(format.example_url);
+            const hasExample = Boolean(exampleUrl);
+            const isGenerative = format.output_format_ids && format.output_format_ids.length > 0;
+            const dimensions = format.renders && format.renders[0]?.dimensions
+              ? `${format.renders[0].dimensions.width}×${format.renders[0].dimensions.height}`
+              : 'Variable';
+            const typeEmoji = getTypeEmoji(format.type);
 
             const cardContent = `
               <div class="format-card-preview">
-                <div class="placeholder">${typeEmoji}</div>
-                <div class="format-card-type-badge">${escapeHtml(formatKind)}</div>
+                ${hasPreview
+                  ? `<img src="${format.preview_image}" alt="${escapeHtml(format.name)}" onerror="this.parentElement.innerHTML='<div class=\\'placeholder\\'>${typeEmoji}</div>'">`
+                  : `<div class="placeholder">${typeEmoji}</div>`
+                }
+                <div class="format-card-type-badge">${format.type || 'Unknown'}</div>
               </div>
               <div class="format-card-content">
-                <div class="format-card-title">${escapeHtml(name)}</div>
-                <div class="format-card-format-id">${escapeHtml(capabilityId)}</div>
-                ${description
-                  ? `<div class="format-card-description">${escapeHtml(description)}</div>`
+                <div class="format-card-title">${escapeHtml(format.name || 'Unnamed Format')}</div>
+                <div class="format-card-format-id">${escapeHtml(formatId)}</div>
+                ${format.description
+                  ? `<div class="format-card-description">${escapeHtml(format.description)}</div>`
                   : ''
                 }
                 <div class="format-card-details">
                   <span class="format-card-dimension">${dimensions}</span>
                   ${isGenerative
-                    ? '<span class="format-card-generative-badge">Build</span>'
-                    : hasPreview ? '<span class="format-card-generative-badge">Preview</span>' : ''
+                    ? '<span class="format-card-generative-badge">✨ Generative</span>'
+                    : ''
                   }
                 </div>
               </div>
             `;
 
-            return `<div class="format-card">${cardContent}</div>`;
+            if (hasExample) {
+              return `
+                <a href="${escapeHtml(exampleUrl)}" target="_blank" rel="noopener noreferrer" class="format-card-link">
+                  <div class="format-card">${cardContent}</div>
+                </a>
+              `;
+            } else {
+              return `<div class="format-card">${cardContent}</div>`;
+            }
           }).join('')}
         </div>
       `;

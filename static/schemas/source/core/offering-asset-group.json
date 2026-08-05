@@ -7,7 +7,7 @@
   "properties": {
     "asset_group_id": {
       "type": "string",
-      "description": "Identifies the creative role this group fills. Values are defined by each canonical format declaration's offering_asset_constraints — not protocol constants. Discover creative-agent declarations via get_adcp_capabilities creative.supported_formats[] and sales-product declarations via Product.format_options[] (e.g., 'headlines', 'images', or 'videos')."
+      "description": "Identifies the creative role this group fills. Values are defined by each format's offering_asset_constraints — not protocol constants. Discover them via list_creative_formats (e.g., a format might declare 'headlines', 'images', or 'videos')."
     },
     "asset_type": {
       "$ref": "/schemas/enums/asset-content-type.json",

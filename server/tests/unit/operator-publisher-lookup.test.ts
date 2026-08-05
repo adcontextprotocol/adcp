@@ -219,38 +219,6 @@ describe('PublisherLookupResult schema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('validates opt-in placement summaries with resolved canonical formats', () => {
-    const data = {
-      domain: 'streamhaus.example',
-      member: null,
-      adagents_valid: true,
-      hosting: {
-        mode: 'self' as const,
-        expected_url: 'https://streamhaus.example/.well-known/adagents.json',
-      },
-      properties: [{ id: 'news', type: 'website', name: 'Streamhaus News' }],
-      placements: [{
-        placement_id: 'article_video',
-        name: 'Article video',
-        property_ids: ['news'],
-        channels: ['olv'],
-        format_options: [{
-          format_option_id: 'video_30s',
-          format_kind: 'video_hosted',
-          params: { duration_ms_exact: 30000 },
-        }],
-        source: 'adagents_json' as const,
-      }],
-      authorized_agents: [],
-    };
-
-    const result = PublisherLookupResultSchema.safeParse(data);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.placements?.[0].format_options?.[0].format_kind).toBe('video_hosted');
-    }
-  });
-
   it('validates with null adagents_valid', () => {
     const data = {
       domain: 'test.com',

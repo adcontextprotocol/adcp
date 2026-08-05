@@ -22,7 +22,12 @@ requires_scenarios:
   - media_buy_seller/inline_creatives_without_sync
   - media_buy_seller/create_media_buy_async
   - media_buy_seller/dependency_impairment
+  - media_buy_seller/dependency_impairment_audience
   - media_buy_seller/dependency_impairment_cardinality
+  - media_buy_seller/seller_optimized_budget
+  - media_buy_seller/bidding_policy_placement
+  - media_buy_seller/bidding_cost_binding
+  - media_buy_seller/package_automatic_bidding
 
 narrative: |
   You run a sell-side platform — a publisher, SSP, retail media network, or any system that
@@ -73,25 +78,22 @@ prerequisites:
 # base flow (create_buy + the dependent steps) for that entire seller class. The
 # guaranteed lifecycle (human IO approval, proposal_finalize) is covered by the
 # `sales-guaranteed` specialism bundle, which carries its own guaranteed fixtures.
+# The seeded products below intentionally exercise the v1 `format_ids` wire path,
+# which remains supported through 4.x independently of whether the seller exposes
+# `list_creative_formats` as a discovery tool. Canonical-only product declarations
+# are covered by the opt-in canonical-formats scenario.
 fixtures:
   products:
     - product_id: "sports_preroll_q2"
       delivery_type: "non_guaranteed"
       channels: ["video"]
-      format_options:
-        - format_option_id: "video_30s"
-          format_kind: "video_hosted"
-          params:
-            duration_ms_exact: 30000
+      format_ids:
+        - id: "video_30s"
     - product_id: "lifestyle_display_q2"
       delivery_type: "non_guaranteed"
       channels: ["display"]
-      format_options:
-        - format_option_id: "display_300x250"
-          format_kind: "image"
-          params:
-            width: 300
-            height: 250
+      format_ids:
+        - id: "display_300x250"
   pricing_options:
     - product_id: "sports_preroll_q2"
       pricing_option_id: "cpm_non_guaranteed"
@@ -298,7 +300,7 @@ phases:
           - delivery_type: guaranteed or non_guaranteed
           - pricing_models: available pricing options (CPM, CPC, etc.)
           - forecast: estimated impressions, reach
-          - format_options: canonical creative contracts this product accepts
+          - creative_format_ids: what creative formats this product requires
           - targeting: what audiences or contexts this product reaches
 
           Optionally return proposals — curated media plans that bundle products
@@ -319,8 +321,8 @@ phases:
             correlation_id: "media_buy_seller--get_products_brief"
 
         context_outputs:
-          - name: product_format_kind
-            path: 'products[0].format_options[0].format_kind'
+          - name: product_format_id
+            path: 'products[0].format_ids[0]'
           - name: product_id
             path: 'products[0].product_id'
           - name: pricing_option_id
@@ -338,11 +340,14 @@ phases:
             path: "products[0].delivery_type"
             description: "Each product declares guaranteed or non_guaranteed delivery"
           - check: field_present
-            path: "products[0].format_options"
-            description: "Products include canonical format_options for creative requirements"
+            path: "products[0].format_ids"
+            description: "Products include format_ids for creative requirements"
           - check: field_present
-            path: "products[0].format_options[0].format_kind"
-            description: "Every canonical product option declares format_kind"
+            path: "products[0].format_ids[0].agent_url"
+            description: "Format IDs include agent_url — must match this agent's URL"
+          - check: field_present
+            path: "products[0].format_ids[0].id"
+            description: "Format IDs include id — must be accepted back in sync_creatives"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
@@ -354,6 +359,71 @@ phases:
           - check: field_present
             path: "products[0].publisher_properties"
             description: "Products include publisher_properties"
+      - id: list_formats_integrity
+        title: "Verify format_ids on products resolve to real formats"
+        narrative: |
+          The buyer asks the sales agent to filter `list_creative_formats` by
+          `products[0].format_ids[0]`. The sales agent MUST return the format
+          it advertised on its own product — whether it hosts that format
+          directly or proxies to the creative agent named in
+          `format_ids[0].agent_url`. An empty `formats[]` means the sales
+          agent's product catalog references a format that does not resolve —
+          a stale or typo'd entry that would have failed silently at
+          `sync_creatives` after the media buy was already committed.
+        task: list_creative_formats
+        requires_tool: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expected: |
+          The sales agent resolves `products[0].format_ids[0]` and returns
+          the matching format entry:
+          - formats[] contains at least one entry
+          - formats[0].format_id matches the id captured from get_products
+
+          An empty formats[] means the sales agent's product catalog references
+          a format that does not resolve — a common production failure mode
+          when creative agents deprecate formats without sellers updating
+          their product catalog.
+        sample_request:
+          format_ids:
+            - "$context.product_format_id"
+          context:
+            correlation_id: "media_buy_seller--list_formats_integrity"
+        # The @adcp/client `list_creative_formats` request builder up
+        # through 5.10.0 (the currently-published release) returns `{}`,
+        # and the runner's post-builder merge only forwards envelope
+        # fields (context / ext / idempotency_key /
+        # push_notification_config) from sample_request — so `format_ids`
+        # above never reaches the wire and the seller answers with its
+        # full format catalog. `context_inputs` is applied after the
+        # builder runs, so this injects the captured `product_format_id`
+        # (the `{agent_url, id}` object from `products[0].format_ids[0]`)
+        # at `format_ids[0]` and lets the round-trip invariant actually
+        # grade. Drop once we bump past the @adcp/client release that
+        # ships adcontextprotocol/adcp-client#789.
+        context_inputs:
+          - key: product_format_id
+            inject_at: "format_ids[0]"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats[0]"
+            description: "Sales agent resolves the format_id — products[0].format_ids[0] exists in the catalog"
+          - check: field_value
+            path: "formats[0].format_id"
+            value: "$context.product_format_id"
+            description: "Returned format_id round-trips verbatim — the agent cannot substitute a different format in response to the filter"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_seller--list_formats_integrity"
+            description: "Context correlation_id returned unchanged"
   - id: create_buy
     title: "Create the media buy"
     narrative: |
@@ -532,22 +602,94 @@ phases:
       Each package in the buy has creative format requirements — the buyer discovered
       these during product discovery and now pushes matching assets.
 
-      The canonical manifest must satisfy an option returned by the product. If the
-      seller advertises a format option but rejects a conforming manifest at sync time,
-      the buyer cannot fulfill the creative requirements.
+      This seeded base lifecycle deliberately exercises the still-supported v1 wire
+      path. The format_ids used in sync_creatives must match those returned by your
+      platform in get_products (and by list_creative_formats when that compatibility
+      tool is advertised). If your platform returns a format_id in a product but
+      rejects it when the buyer echoes it back in sync_creatives, the buyer cannot
+      fulfill the creative requirements. This is a common compliance failure.
 
       Your platform validates each creative against the format specs and returns
       per-creative status. If assets need review or transcoding, the operation may
       go async.
 
     steps:
+      - id: list_formats
+        title: "Check creative format requirements"
+        narrative: |
+          The buyer confirms the first creative format referenced by the discovered
+          product. Your platform returns that format spec with asset requirements,
+          dimensions, and constraints. This is a bounded integrity check, not a
+          full format-catalog dump.
+        task: list_creative_formats
+        requires_tool: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expected: |
+          Return the creative format referenced by the discovered product. The format should define:
+          - format_id with your agent_url and unique id
+          - Asset requirements (dimensions, file sizes, mime types)
+          - Render dimensions
+
+        sample_request:
+          format_ids:
+            - "$context.product_format_id"
+          pagination:
+            max_results: 1
+          context:
+            correlation_id: "media_buy_seller--list_formats"
+
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats"
+            description: "Response contains formats array"
+          - check: field_present
+            path: "formats[0].format_id.agent_url"
+            description: "Format IDs include agent_url"
+          - check: field_present
+            path: "formats[0].format_id.id"
+            description: "Format IDs include id — must match those in get_products"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_seller--list_formats"
+            description: "Context correlation_id returned unchanged"
+          - check: refs_resolve
+            description: |
+              The captured format_id returned on the first product resolves to a
+              format in this agent's list_creative_formats. Broken references here surface as a
+              grading failure instead of a silent mismatch that only breaks at
+              sync_creatives time, after the buy is committed. Third-party
+              format_ids (agent_url pointing at a different creative agent)
+              can't be verified without calling that agent and are reported as
+              observations rather than failures.
+            source:
+              from: context
+              path: "product_format_id"
+            target:
+              from: current_step
+              path: "formats[*].format_id"
+            match_keys: [agent_url, id]
+            scope:
+              key: agent_url
+              equals: $agent_url
+            on_out_of_scope: warn
+
       - id: sync_creatives
-        title: "Push canonical creative assets"
+        title: "Push creative assets (format_id roundtrip)"
         narrative: |
           The buyer uploads creative assets for the confirmed packages. The first
-          creative uses $context.product_format_kind captured from the product's
-          canonical format_options[] declaration. This is the acceptance roundtrip:
-          the seller must accept a manifest satisfying its own declaration.
+          creative uses $context.product_format_id — the exact format_id object
+          returned by get_products. This is the roundtrip test: the seller must
+          accept its own format_ids without modification. If the seller's validation
+          rejects a format_id that it returned in products, this step fails.
 
           Your platform validates each creative against the format specs, transcodes
           if necessary, and returns per-creative status.
@@ -564,7 +706,8 @@ phases:
           - Validation errors for rejected creatives
           - Platform-assigned IDs if applicable
 
-          The first creative uses the canonical format_kind extracted from get_products.
+          The first creative uses a format_id extracted from get_products.
+          If this is rejected, your format_ids do not roundtrip correctly.
 
         sample_request:
           account:
@@ -574,7 +717,7 @@ phases:
           creatives:
             - creative_id: "video_30s_trail_pro"
               name: "Trail Pro 3000 - 30s CTV Spot"
-              format_kind: "$context.product_format_kind"
+              format_id: "$context.product_format_id"
               assets:
                 video:
                   asset_type: "video"
@@ -585,7 +728,9 @@ phases:
                   mime_type: "video/mp4"
             - creative_id: "display_trail_pro_300x250"
               name: "Trail Pro 3000 - Display 300x250"
-              format_kind: "image"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
               assets:
                 image:
                   asset_type: "image"

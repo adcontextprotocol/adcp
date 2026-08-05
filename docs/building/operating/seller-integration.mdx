@@ -120,7 +120,9 @@ Your response includes structured product objects with pricing, formats, and del
       "product_id": "homepage_leaderboard",
       "name": "Homepage leaderboard",
       "channels": ["display"],
-      "format_option_refs": [{ "scope": "product", "format_option_id": "display_728x90" }],
+      "format_ids": [
+        { "agent_url": "https://ads.publisher.example.com", "id": "display_728x90" }
+      ],
       "pricing_options": [
         {
           "pricing_option_id": "cpm_standard",
@@ -154,7 +156,9 @@ For content-centric inventory like podcasts, CTV, or live events, products refer
       ],
       "delivery_type": "guaranteed",
       "exclusivity": "category",
-      "format_option_refs": [{ "scope": "product", "format_option_id": "audio_30s" }],
+      "format_ids": [
+        { "agent_url": "https://ads.publisher.example.com", "id": "audio_30s" }
+      ],
       "pricing_options": [
         {
           "pricing_option_id": "flat_monthly",
@@ -229,7 +233,7 @@ Different inventory types use different AdCP features:
 
 | Inventory type | Key features |
 |---|---|
-| Standard display/video | Canonical `format_options`, `delivery_type: "non_guaranteed"`, auction pricing |
+| Standard display/video | `format_ids`, `delivery_type: "non_guaranteed"`, auction pricing |
 | Podcast sponsorship | `shows`, `placements` (host read), `delivery_type: "guaranteed"`, flat_rate |
 | CTV series sponsorship | `shows`, `exclusivity`, `delivery_type: "guaranteed"` |
 | Live event | `shows` (cadence: event), `episodes` (flexible_end, tentative), `exclusivity` |

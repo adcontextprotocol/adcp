@@ -57,9 +57,15 @@ The publisher's AI interprets this and returns relevant products. Future version
 
 ### Q: Should buyers call `list_creative_formats` before or after `get_products`?
 
-**A:** Neither for a new AdCP 3.2 workflow. Sales-agent `list_creative_formats` is deprecated. Call `get_products` and read each product's canonical `format_options[]`; those declarations express what that product can deliver in the current account and inventory context.
+**A:** **After `get_products`**. The recommended flow is:
 
-If a creative must be produced, find a compatible creative agent through the registry and confirm its `get_adcp_capabilities.creative.supported_formats[]`. Select the matching agent-local `capability_id` when calling `build_creative`.
+1. Call `get_products` with your campaign brief/filters
+2. Review the products returned (they include `format_ids` arrays)
+3. Call `list_creative_formats` for the specific format IDs you need details on
+4. Verify creative requirements match your capabilities
+5. Call `create_media_buy` for selected products
+
+**Why:** You don't know which format IDs you need until you see which products are available. Getting all formats upfront is inefficient.
 
 ## Policy Compliance
 
@@ -122,14 +128,14 @@ The brand's `brand.json` (resolved from the domain) provides category and other 
 
 It's not a single filter—it's a collection of filter criteria for product catalog search.
 
-### Q: What replaces `format_ids` and ad units?
+### Q: Why is it called `format_ids` instead of `ad_units`?
 
 **A:** AdCP uses protocol-agnostic terminology:
 
-- **`format_options`**: Product-bound canonical creative contracts, including kind and constraints
-- **Ad units**: Platform-specific terminology (such as a 300×250 banner placement)
+- **`format_ids`**: Structured references to creative format specifications (e.g., `{agent_url: "...", id: "video_30s_hosted"}`)
+- **Ad units**: Platform-specific terminology (like "300x250 banner")
 
-Canonical declarations are portable across platforms. A publisher option can be referenced by `{publisher_domain, format_option_id}`; a creative agent separately assigns an agent-local `capability_id` to a producible contract. Match the declarations, not the identifiers.
+Formats are abstract specifications that work across all ad platforms. The `_ids` suffix indicates these are references—use `list_creative_formats` to get full format objects.
 
 ### Q: How do I specify what's being promoted?
 
@@ -152,13 +158,11 @@ For catalog-driven creatives, reference a synced catalog:
 ```json test=false
 {
   "creative_id": "product-carousel",
-  "format_kind": "sponsored_placement",
-  "assets": {
-    "source_catalog": {
-      "asset_type": "catalog",
-      "catalog_id": "product-feed"
-    }
-  }
+  "format_id": { "agent_url": "...", "id": "product_carousel" },
+  "catalogs": [{
+    "catalog_id": "product-feed",
+    "type": "product"
+  }]
 }
 ```
 
@@ -210,9 +214,7 @@ Best practice: Always require it. Policy checking should happen during discovery
 {
   "product_id": "local_radio_midwest",
   "property_tags": ["local_radio", "midwest"],
-  "format_options": [
-    { "format_kind": "audio_hosted", "params": { "duration_ms_exact": 30000 } }
-  ]
+  "format_ids": [...]
 }
 ```
 
@@ -252,17 +254,25 @@ assert(response.message.includes("policy"));
 
 ### Q: Why aren't my format filters working?
 
-**A:** In AdCP 3.2, filter on canonical format kinds or exact format-option references:
+**A:** Check that you're using structured `format_ids`, not strings:
 
+**Wrong:**
 ```json
 {
   "filters": {
-    "format_kinds": ["video_hosted"],
-    "format_option_refs": [
+    "format_ids": ["video_30s"]  // ❌ Strings don't work
+  }
+}
+```
+
+**Correct:**
+```json
+{
+  "filters": {
+    "format_ids": [
       {
-        "scope": "publisher",
-        "publisher_domain": "streamhaus.example",
-        "format_option_id": "preroll_30s"
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "video_30s_hosted"
       }
     ]
   }

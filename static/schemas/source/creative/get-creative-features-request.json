@@ -12,7 +12,7 @@
   "properties": {
     "creative_manifest": {
       "$ref": "/schemas/core/creative-manifest.json",
-      "description": "The canonical creative manifest to evaluate. In 3.2 it contains `format_kind`, optional `format_option_ref`, and typed assets. The deprecated named `format_id` branch remains available only for older 3.x peers."
+      "description": "The creative manifest to evaluate. Contains format_id and assets."
     },
     "feature_ids": {
       "type": "array",

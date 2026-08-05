@@ -34,25 +34,29 @@ export class FormatsService {
     try {
       const multiClient = this.getClient(agent, auth);
       const client = multiClient.agent(agent.name);
-      const result = await client.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
+      const result = await client.executeTask("list_creative_formats", {});
 
       if (result.success && result.data) {
-        const creative = (result.data as unknown as Record<string, unknown>).creative;
-        const supported = creative && typeof creative === 'object' && !Array.isArray(creative)
-          ? (creative as Record<string, unknown>).supported_formats
-          : undefined;
-        if (!Array.isArray(supported)) {
-          error = 'Agent did not declare creative.supported_formats in get_adcp_capabilities';
-        } else {
-          formats = supported
-            .filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object' && !Array.isArray(entry)))
-            .map(entry => this.normalizeCapability(entry));
+        const response = result.data;
+
+        // Handle different response formats:
+        // 1. Array of formats directly
+        if (Array.isArray(response)) {
+          formats = response.map(this.normalizeFormat);
+        }
+        // 2. Object with formats array
+        else if (response?.formats && Array.isArray(response.formats)) {
+          formats = response.formats.map(this.normalizeFormat);
+        }
+        // 3. Single format object
+        else if (response && typeof response === "object") {
+          formats = [this.normalizeFormat(response)];
         }
       } else if (!result.success) {
         error = `Agent returned error: ${result.error || "Unknown error"}`;
       }
     } catch (toolError: any) {
-      error = `Agent does not support canonical capability discovery: ${toolError.message}`;
+      error = `Agent does not support list_creative_formats: ${toolError.message}`;
     }
 
     const profile: AgentFormatsProfile = {
@@ -105,22 +109,18 @@ export class FormatsService {
     return `${agent.name}:${protocol}:${agent.url}`;
   }
 
-  private normalizeCapability(entry: Record<string, unknown>): FormatInfo {
-    const format = entry.format && typeof entry.format === 'object' && !Array.isArray(entry.format)
-      ? entry.format as Record<string, unknown>
-      : {};
-    const params = format.params && typeof format.params === 'object' && !Array.isArray(format.params)
-      ? format.params as Record<string, unknown>
-      : {};
-    const width = typeof params.width === 'number' ? params.width : undefined;
-    const height = typeof params.height === 'number' ? params.height : undefined;
+  private normalizeFormat(format: any): FormatInfo {
+    // Handle string format (just a name)
+    if (typeof format === "string") {
+      return { name: format };
+    }
+
+    // Handle object format
     return {
-      name: typeof entry.capability_id === 'string'
-        ? entry.capability_id
-        : typeof format.format_kind === 'string' ? format.format_kind : 'unknown',
-      ...(width !== undefined && height !== undefined ? { dimensions: `${width}x${height}` } : {}),
-      ...(typeof params.aspect_ratio === 'string' ? { aspect_ratio: params.aspect_ratio } : {}),
-      ...(typeof format.display_name === 'string' ? { description: format.display_name } : {}),
+      name: format.name || format.format || "unknown",
+      dimensions: format.dimensions || format.size,
+      aspect_ratio: format.aspect_ratio || format.aspectRatio,
+      description: format.description,
     };
   }
 

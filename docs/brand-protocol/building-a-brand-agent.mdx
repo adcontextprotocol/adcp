@@ -768,8 +768,8 @@ const creative = await creativeAgent.callTool({
   name: "build_creative",
   arguments: {
     brand: { domain: "bistro-oranje.nl" },
-    target_capability_id: "vertical_video_builder",
-    message: "15-second vertical video featuring Daan Janssen endorsing Bistro Oranje",
+    format_id: { agent_url: "https://ads.example.com", id: "video_social_1080x1920" },
+    brief: "15-second vertical video featuring Daan Janssen endorsing Bistro Oranje",
     generation_credentials: acquireResponse.generation_credentials,
     rights: [acquireResponse.rights_constraint],
   },

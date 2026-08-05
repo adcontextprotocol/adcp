@@ -469,6 +469,16 @@
       "pullRequestNo": 5837,
       "comment_id": 4906630684,
       "comment_url": "https://github.com/adcontextprotocol/adcp/pull/5837#issuecomment-4906630684"
+    },
+    {
+      "name": "coolmacool",
+      "id": 6821053,
+      "created_at": "2026-08-04T18:07:11Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 6211,
+      "comment_id": 5182835349,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/6211#issuecomment-5182835349"
     }
   ]
 }

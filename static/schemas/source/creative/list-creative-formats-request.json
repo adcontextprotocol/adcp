@@ -2,8 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/list-creative-formats-request.json",
   "title": "List Creative Formats Request (Creative Agent)",
-  "deprecated": true,
-  "description": "**DEPRECATED in 3.2.** Compatibility request for legacy named-format discovery. Creative agents advertise canonical operation capabilities on get_adcp_capabilities `creative.supported_formats[]`.",
+  "description": "Request parameters for discovering creative formats provided by this creative agent",
   "type": "object",
   "allOf": [
     {

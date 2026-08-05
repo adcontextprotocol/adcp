@@ -258,7 +258,7 @@ export function stubToolResult(toolName: string, input: unknown): string {
             id: 'creative/task-reference/build_creative',
             title: 'build_creative',
             snippet:
-              '`build_creative` accepts `target_capability_id` for one canonical output or `target_capability_ids[]` for multiple outputs. Multi-output returns `creative_manifests[]`; each portable manifest carries `format_kind` and optional `format_option_ref`. [Use get_doc for full content]',
+              '`build_creative` accepts `target_format_id` for single-format calls or `target_format_ids[]` for multi-format. Multi-format returns `creative_manifests[]`. Each manifest carries its own `format_id`. [Use get_doc for full content]',
           },
           {
             id: 'building/by-layer/L3/error-handling',
@@ -286,7 +286,7 @@ export function stubToolResult(toolName: string, input: unknown): string {
         id: 'creative/task-reference/build_creative',
         title: 'build_creative',
         content:
-          'Multi-output response semantics\n\nWhen the request uses `target_capability_ids[]`, the response carries `creative_manifests[]` — one manifest per requested capability, in request order. Multi-output requests are atomic: if any capability fails, the entire request fails. To refine one output, call `build_creative` again with the singular `target_capability_id` and pass back that manifest.',
+          'Multi-format response semantics\n\nWhen the request uses `target_format_ids[]`, the response carries `creative_manifests[]` — one manifest per requested format, in request order. Multi-format requests are atomic — if any format fails (e.g., `FORMAT_NOT_SUPPORTED`), the entire request fails with an error response. There is no per-manifest `errors[]` field; partial success is not allowed.\n\nTo refine a single format from a multi-format build, call `build_creative` again with `target_format_id` (singular) and pass back that format\'s manifest.',
       });
     }
     return JSON.stringify({ id: docId, content: '(stub content)' });

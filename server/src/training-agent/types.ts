@@ -471,6 +471,8 @@ export interface PackageTargeting {
   property_list?: ListReference;
   collection_list?: ListReference;
   collection_list_exclude?: ListReference;
+  audience_include?: string[];
+  audience_exclude?: string[];
 }
 
 /** A single asset slot inside a creative manifest (e.g., headline, hero_image). */
@@ -485,7 +487,6 @@ export interface ManifestAsset {
 
 /** Creative manifest with format and named asset slots. */
 export interface CreativeManifest {
-  /** @deprecated AdCP 3.x compatibility path. */
   format_id?: FormatID;
   format_kind?: string;
   format_option_ref?: Record<string, unknown>;
@@ -500,7 +501,6 @@ export interface CreativeState {
   formatId: FormatID;
   formatKind?: string;
   formatOptionRef?: Record<string, unknown>;
-  assets?: Record<string, ManifestAsset | ManifestAsset[]>;
   name?: string;
   status: string;
   syncedAt: string;

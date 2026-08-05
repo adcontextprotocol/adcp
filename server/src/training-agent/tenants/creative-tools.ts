@@ -25,8 +25,6 @@ export function buildCreativeTool(options: Partial<TrainingContext> = {}) {
       media_buy_id: z.string().optional(),
       package_id: z.string().optional(),
       creative_manifest: z.object({}).passthrough().optional(),
-      target_capability_id: z.string().optional(),
-      target_capability_ids: z.array(z.string()).optional(),
       target_format_id: FORMAT_ID_SCHEMA.optional(),
       target_format_ids: z.array(FORMAT_ID_SCHEMA).optional(),
       output_format: z.string().optional(),

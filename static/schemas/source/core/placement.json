@@ -44,7 +44,7 @@
     "format_ids": {
       "type": "array",
       "deprecated": true,
-      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format placement narrowing. Use canonical `format_options`.",
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format placement narrowing. Can include concrete, template, or parameterized format IDs. When present on a product placement, this field narrows the product-level `format_ids` contract and MUST NOT introduce formats the product does not accept. Use canonical `format_options`.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       },
@@ -52,7 +52,7 @@
     },
     "format_options": {
       "type": "array",
-      "description": "Canonical seller-side narrowing for this product placement. When present, these declarations are intersected with the product-level format_options and MUST NOT introduce a format outside that product upper bound. For kind publisher_ref, buyers MUST also resolve {publisher_domain, placement_id} in the publisher's adagents.json and intersect the publisher catalog constraint: use the public placement's format_options when present (resolving bare format_option_id references against same-file top-level formats[]), otherwise use applicable top-level formats[] scoped to that placement's properties. Omitting this inline field removes only the seller-inline layer; it does not bypass a publisher placement or property-scoped narrowing. The placement inherits the full product-level set only when no applicable publisher catalog narrowing exists. Unresolved publisher placement or format-option references fail closed.",
+      "description": "3.1+ canonical format-option declarations supported by this specific product placement. When present, this field narrows the product-level `format_options` contract for this placement and MUST NOT introduce formats the product does not accept. Buyers compute the effective accepted formats for a placement as the intersection of product-level and placement-level declarations; placements without a format declaration inherit the product-level formats.",
       "items": {
         "$ref": "/schemas/core/product-format-declaration.json"
       },

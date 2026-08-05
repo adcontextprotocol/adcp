@@ -195,7 +195,7 @@ Placement format support is a new 3.1 catalog feature and uses the 3.1+ canonica
 
 The canonical anchor is `format_kind`. A placement entry that carries only `{ "format_option_id": "..." }` inherits the canonical format by resolving that ID to the same file's top-level `formats[]` declaration, then reading its `format_kind`. Outside this file, a buyer-facing `FormatOptionRef` for a publisher-declared format option uses `{ "scope": "publisher", "publisher_domain": "...", "format_option_id": "..." }`.
 
-Placement catalog formats describe what the public placement can support. When a product later references that placement, product-level canonical `format_options` remain the buyable creative contract; placement `format_options` narrow that set for the specific placement. If the catalog placement and product declarations disagree, buyers use the intersection and should not treat a catalog-only format as accepted by the product. Deprecated product `format_ids` are only a 3.x compatibility projection.
+Placement catalog formats describe what the public placement can support. When a product later references that placement, the product-level `format_ids` or `format_options` remain the buyable creative contract; placement `format_options` narrow that set for the specific placement. If the catalog placement and product declarations disagree, buyers use the intersection and should not treat a catalog-only format as accepted by the product.
 
 ```json
 {
@@ -289,7 +289,7 @@ This field enables **governance agent discovery** - buyers can find which agents
 
 ## Community mirror lifecycle
 
-When a platform has not adopted AdCP (e.g., a walled garden that hasn't published its own `adagents.json`), the AdCP community registry can publish a **catalog-only community mirror** as an advisory translation — typically hosted at `https://creative.adcontextprotocol.org/translated/<platform>/adagents.json`. It is not published on the platform's behalf and is not publisher authority. A mirror exists to publish discovery metadata (`formats`, `properties`, `placements`) so buyers can reason about likely inventory shapes before the platform self-adopts.
+When a platform has not adopted AdCP (e.g., a walled garden that hasn't published its own `adagents.json`), the AdCP community registry can publish a **catalog-only community mirror** on the platform's behalf — typically hosted at `https://creative.adcontextprotocol.org/translated/<platform>/adagents.json`. A mirror exists to publish discovery metadata (`formats`, `properties`, `placements`) so buyers can reason about the platform's inventory shapes before the platform self-adopts.
 
 A community mirror:
 
@@ -300,14 +300,6 @@ A community mirror:
 Community contributions use a review-before-publication workflow. Any authenticated organization can submit a conforming catalog with `PUT /api/registry/mirrors/{platform}`. Registry moderators and AgenticAdvertising.org administrators publish immediately; other callers receive `202 Accepted` with an opaque proposal ID, status URL, and content digest. Contributors can follow their proposals through `/api/registry/mirror-proposals`, while moderators approve or reject the exact reviewed digest from the same review surface. Approval returns `409 Conflict` if either the proposal content or its base public mirror changed after review. Pending proposals are stored separately and never appear at `/translated/<platform>/adagents.json` or in derived publisher records before approval.
 
 See the worked example at [`static/examples/adagents/community/meta.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/examples/adagents/community/meta.json).
-
-### Resolving publisher and community catalogs
-
-Consumers that need the complete catalog resolution order—publisher-hosted `adagents.json`, then the AgenticAdvertising.org community catalog, then fail closed—should call the registry lookup at `GET /api/registry/publisher?domain=<publisher_domain>`. The response exposes `discovery_method`, hosting state, registry URL, and property provenance so callers can distinguish publisher assertions from community contributions.
-
-The lookup's `formats[]` field is a display-oriented, lossy summary. It preserves `format_kind`, `format_option_id`, canonical `params`, and property scoping, but omits fields needed for some validation and compatibility flows, including `format_shape`, `format_schema`, `applies_to_channels`, `v1_format_ref`, and `canonical_formats_only`. Add `include=placements` when computing placement-level eligibility; the response then includes provenance-labeled placement summaries with resolved canonical format options. To validate a custom declaration or inspect fields omitted by either summary, fetch the resolved raw `adagents.json`: use `files.adagents_json.registry_url` for a community catalog and `hosting.resolved_url` or `hosting.expected_url` for a publisher-hosted catalog. Treat a missing raw document or unresolved placement reference as fail-closed.
-
-The discovery-layer `validateAdAgents()` API and the `validate_adagents` diagnostic tool validate publisher-origin discovery (`direct`, `authoritative_location`, and `ads.txt` `MANAGERDOMAIN`). They do **not** consult the community catalog. A publisher-origin not-found result is therefore not proof that no community mirror exists. Until the discovery layer explicitly adds that fallback, implementations must not reconstruct the full resolution order on top of `validateAdAgents()`; use the registry lookup.
 
 ## URL Reference Pattern
 
@@ -739,7 +731,7 @@ Use `signing_keys` when the publisher wants to pin the public keys an authorized
 - Buyers should verify signed agent responses against the pinned keys in `adagents.json`
 - If an agent domain is compromised, pinned keys prevent the attacker from silently swapping both the endpoint and its advertised keys
 
-Publishers MUST populate `signing_keys` for any authorized agent whose delegated scopes include **mutating operations** — any AdCP task that writes state on behalf of the publisher. In the 3.x catalog this means the media-buy task set (`create_media_buy`, `update_media_buy`, `sync_creatives`, `update_performance_index`) and any future task flagged as mutating in the [media-buy task reference](/docs/media-buy/task-reference/update_media_buy). Read-only discovery tasks (`get_adcp_capabilities`, `get_products`, `get_signals`) are out of scope for this requirement. Leaving `signing_keys` empty for a mutating-scope authorization reduces the trust chain to counterparty-controlled `jwks_uri` discovery and forfeits the publisher's pin as a cross-check.
+Publishers MUST populate `signing_keys` for any authorized agent whose delegated scopes include **mutating operations** — any AdCP task that writes state on behalf of the publisher. In the 3.x catalog this means the media-buy task set (`create_media_buy`, `update_media_buy`, `sync_creatives`, `update_performance_index`) and any future task flagged as mutating in the [media-buy task reference](/docs/media-buy/task-reference/update_media_buy). Read-only discovery tasks (`get_products`, `get_signals`, `list_creative_formats`) are out of scope for this requirement. Leaving `signing_keys` empty for a mutating-scope authorization reduces the trust chain to counterparty-controlled `jwks_uri` discovery and forfeits the publisher's pin as a cross-check.
 
 Verifier requirement: if the publisher's `adagents.json` entry for an agent contains `signing_keys`, the verifier MUST reject any signature whose `keyid` is not in that pinned set, regardless of `jwks_uri` contents. The pin is authoritative; the agent-hosted JWKS is advisory and MUST NOT override it.
 
@@ -859,7 +851,7 @@ Set `exclusive: true` when this agent is the publisher's sole authorized path fo
 
 This lets a publisher say "buy host reads directly from us in some markets, but use a network path for pre-roll in others" without implying that every authorized path is equivalent.
 
-`adagents.json` now provides a canonical publisher-level placement registry. Products still return their own `placements`, but placement IDs are publisher-scoped: catalog-backed placements SHOULD reference the publisher registry with `{ publisher_domain, placement_id }`. When a product spans multiple publishers and catalog IDs collide, the `publisher_domain` disambiguates them; creative assignments should use structured `placement_refs` for those cases. Referencing a catalog placement means the product is inheriting that placement's identity; the product can narrow canonical `format_options`, preserve or narrow placement tags, or add operational detail, but it should not redefine the placement into something incompatible.
+`adagents.json` now provides a canonical publisher-level placement registry. Products still return their own `placements`, but placement IDs are publisher-scoped: catalog-backed placements SHOULD reference the publisher registry with `{ publisher_domain, placement_id }`. When a product spans multiple publishers and catalog IDs collide, the `publisher_domain` disambiguates them; creative assignments should use structured `placement_refs` for those cases. Referencing a catalog placement means the product is inheriting that placement's identity; the product can narrow `format_ids`, preserve or narrow placement tags, or add operational detail, but it should not redefine the placement into something incompatible.
 
 ## Domain Matching Rules
 

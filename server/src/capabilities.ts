@@ -1,15 +1,11 @@
 import type { Agent } from "./types.js";
+import { FormatsService } from "./formats.js";
 import { createLogger } from "./logger.js";
 import { is401Error, AuthenticationRequiredError } from "@adcp/sdk";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { logOutboundRequest } from "./db/outbound-log-db.js";
 import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
 import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
-import Ajv, { type ValidateFunction } from "ajv";
-import addFormats from "ajv-formats";
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 const logger = createLogger('capabilities');
 
@@ -30,22 +26,10 @@ export interface StandardOperations {
 }
 
 export interface CreativeCapabilities {
-  supported_formats: Array<{
-    capability_id?: string;
-    format: {
-      format_kind: string;
-      publisher_domain?: string;
-      format_option_id?: string;
-      params?: Record<string, unknown>;
-      [key: string]: unknown;
-    };
-    operations: Array<'build' | 'validate' | 'preview'>;
-    [key: string]: unknown;
-  }>;
+  formats_supported: string[];
   can_generate: boolean;
   can_validate: boolean;
   can_preview: boolean;
-  [key: string]: unknown;
 }
 
 export interface SignalsCapabilities {
@@ -105,123 +89,6 @@ export interface AgentCapabilityProfile {
   last_discovered: string;
   discovery_error?: string;
   oauth_required?: boolean;
-  /**
-   * Internal persistence hint. A transient/invalid creative capability probe
-   * must not erase the last successfully indexed supported_formats catalog.
-   */
-  creative_capabilities_probe_failed?: boolean;
-}
-
-// Resolve from this module rather than process.cwd(): the server test runner
-// and production entry points are both valid callers, but they start from
-// different working directories.
-const SOURCE_SCHEMAS_DIR = path.resolve(fileURLToPath(
-  new URL('../../static/schemas/source/', import.meta.url),
-));
-let productFormatValidatorPromise: Promise<ValidateFunction> | null = null;
-
-function loadLocalSchema(uri: string): object {
-  if (!uri.startsWith('/schemas/')) {
-    throw new Error(`Cannot resolve non-local schema reference: ${uri}`);
-  }
-  const fullPath = path.resolve(SOURCE_SCHEMAS_DIR, uri.slice('/schemas/'.length));
-  if (fullPath !== SOURCE_SCHEMAS_DIR && !fullPath.startsWith(`${SOURCE_SCHEMAS_DIR}${path.sep}`)) {
-    throw new Error(`Refusing schema reference outside source tree: ${uri}`);
-  }
-  return JSON.parse(readFileSync(fullPath, 'utf8')) as object;
-}
-
-function getProductFormatValidator(): Promise<ValidateFunction> {
-  if (!productFormatValidatorPromise) {
-    productFormatValidatorPromise = (async () => {
-      const ajv = new Ajv({
-        strict: false,
-        allErrors: true,
-        discriminator: true,
-        loadSchema: async (uri: string) => loadLocalSchema(uri),
-      });
-      addFormats(ajv);
-      return ajv.compileAsync(loadLocalSchema('/schemas/core/product-format-declaration.json'));
-    })().catch(error => {
-      productFormatValidatorPromise = null;
-      throw error;
-    });
-  }
-  return productFormatValidatorPromise;
-}
-
-function schemaErrors(validate: ValidateFunction): string {
-  return (validate.errors ?? [])
-    .slice(0, 8)
-    .map(error => `${error.instancePath || '(root)'} ${error.message ?? 'is invalid'}`)
-    .join('; ');
-}
-
-export async function sanitizeCreativeCapabilities(raw: unknown): Promise<CreativeCapabilities> {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new Error('creative: expected object');
-  }
-  const block = raw as Record<string, unknown>;
-  const rawFormats = block.supported_formats;
-  if (rawFormats !== undefined && !Array.isArray(rawFormats)) {
-    throw new Error('creative.supported_formats: expected array');
-  }
-  if (Array.isArray(rawFormats) && rawFormats.length > 500) {
-    throw new Error('creative.supported_formats: exceeds 500 entries');
-  }
-
-  const validateFormat = await getProductFormatValidator();
-  const capabilityIds = new Set<string>();
-  const supportedFormats: CreativeCapabilities['supported_formats'] = [];
-  for (const [index, rawEntry] of (rawFormats ?? []).entries()) {
-    if (!rawEntry || typeof rawEntry !== 'object' || Array.isArray(rawEntry)) {
-      throw new Error(`creative.supported_formats[${index}]: expected object`);
-    }
-    const entry = rawEntry as Record<string, unknown>;
-    const capabilityId = entry.capability_id;
-    const format = entry.format;
-    const operations = entry.operations ?? ['build'];
-    if (capabilityId !== undefined) {
-      if (typeof capabilityId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(capabilityId)) {
-        throw new Error(`creative.supported_formats[${index}].capability_id: expected stable identifier when present`);
-      }
-      if (capabilityIds.has(capabilityId)) {
-        throw new Error(`creative.supported_formats[${index}].capability_id: duplicate '${capabilityId}'`);
-      }
-      capabilityIds.add(capabilityId);
-    }
-    if (!validateFormat(format)) {
-      throw new Error(`creative.supported_formats[${index}].format: ${schemaErrors(validateFormat)}`);
-    }
-    if (!Array.isArray(operations)
-      || operations.length === 0
-      || new Set(operations).size !== operations.length
-      || operations.some(operation => !['build', 'validate', 'preview'].includes(String(operation)))) {
-      throw new Error(`creative.supported_formats[${index}].operations: unique non-empty build/validate/preview array required`);
-    }
-    supportedFormats.push({
-      ...entry,
-      ...(capabilityId === undefined ? {} : { capability_id: capabilityId }),
-      format: format as CreativeCapabilities['supported_formats'][number]['format'],
-      operations: operations as CreativeCapabilities['supported_formats'][number]['operations'],
-    });
-  }
-
-  const hasBuildCapability = supportedFormats.some(entry => entry.operations.includes('build'));
-  const declaresBuild = ['supports_generation', 'supports_transformation', 'supports_transformers', 'supports_refinement']
-    .some(flag => block[flag] === true);
-
-  const sanitized: CreativeCapabilities = {
-    ...block,
-    supported_formats: supportedFormats,
-    can_generate: hasBuildCapability || declaresBuild,
-    can_validate: supportedFormats.some(entry => entry.operations.includes('validate')),
-    can_preview: supportedFormats.some(entry => entry.operations.includes('preview')),
-  };
-  if (Buffer.byteLength(JSON.stringify(sanitized), 'utf8') >= 262144) {
-    throw new Error('creative: serialized payload exceeds 256KB ceiling');
-  }
-  return sanitized;
 }
 
 /**
@@ -390,11 +257,15 @@ export function sanitizeMeasurementCapabilities(raw: unknown): MeasurementCapabi
 export class CapabilityDiscovery {
   private cache: Map<string, AgentCapabilityProfile> = new Map();
   private readonly CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+  private formatsService: FormatsService;
+
   private static readonly SALES_TOOLS = ['get_products', 'create_media_buy', 'list_authorized_properties'];
-  private static readonly CREATIVE_TOOLS = ['list_creative_formats', 'build_creative', 'generate_creative', 'validate_creative', 'validate_input', 'preview_creative'];
+  private static readonly CREATIVE_TOOLS = ['list_creative_formats', 'build_creative', 'generate_creative', 'validate_creative'];
   private static readonly SIGNALS_TOOLS = ['get_signals', 'list_signals', 'match_audience', 'activate_signal', 'activate_audience'];
 
-  constructor() {}
+  constructor() {
+    this.formatsService = new FormatsService();
+  }
 
   async discoverCapabilities(agent: Agent, auth?: SdkAuth, forceRefresh = false): Promise<AgentCapabilityProfile> {
     // Skip cache when auth is provided — manual owner-triggered refresh
@@ -438,9 +309,7 @@ export class CapabilityDiscovery {
         profile.standard_operations = this.analyzeSalesCapabilities(tools);
       }
       if (CapabilityDiscovery.CREATIVE_TOOLS.some(t => toolNames.has(t))) {
-        const creativeResult = await this.analyzeCreativeCapabilities(agent, tools, auth);
-        profile.creative_capabilities = creativeResult.capabilities;
-        if (creativeResult.probeFailed) profile.creative_capabilities_probe_failed = true;
+        profile.creative_capabilities = await this.analyzeCreativeCapabilities(agent, tools, auth, forceRefresh);
       }
       if (CapabilityDiscovery.SIGNALS_TOOLS.some(t => toolNames.has(t))) {
         profile.signals_capabilities = this.analyzeSignalsCapabilities(tools);
@@ -629,67 +498,26 @@ export class CapabilityDiscovery {
     };
   }
 
-  private async analyzeCreativeCapabilities(
-    agent: Agent,
-    tools: ToolCapability[],
-    auth?: SdkAuth,
-  ): Promise<{ capabilities: CreativeCapabilities; probeFailed: boolean }> {
+  private async analyzeCreativeCapabilities(agent: Agent, tools: ToolCapability[], auth?: SdkAuth, forceRefresh = false): Promise<CreativeCapabilities> {
     const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
-    const declared = toolNames.has('get_adcp_capabilities')
-      ? await this.fetchCreativeCapabilities(agent, auth)
-      : { ok: true as const, capabilities: undefined };
-    const legacyToolFallback = !declared.ok
-      || (declared.capabilities?.supported_formats.length ?? 0) === 0;
+    const hasFormatTool = toolNames.has("list_creative_formats");
+
+    let formats: string[] = [];
+    if (hasFormatTool) {
+      try {
+        const formatsProfile = await this.formatsService.getFormatsForAgent(agent, auth, forceRefresh);
+        formats = formatsProfile.formats.map(f => f.name);
+      } catch (error: any) {
+        logger.debug({ url: agent.url, error: error.message }, 'Format discovery failed');
+      }
+    }
 
     return {
-      probeFailed: !declared.ok,
-      capabilities: {
-        ...(declared.ok ? declared.capabilities : undefined),
-        supported_formats: declared.ok ? declared.capabilities?.supported_formats ?? [] : [],
-        can_generate: (declared.ok && declared.capabilities?.can_generate === true)
-          || (legacyToolFallback && (toolNames.has("build_creative") || toolNames.has("generate_creative"))),
-        can_validate: (declared.ok && declared.capabilities?.can_validate === true)
-          || (legacyToolFallback && (toolNames.has("validate_input") || toolNames.has("validate_creative"))),
-        can_preview: (declared.ok && declared.capabilities?.can_preview === true)
-          || (legacyToolFallback && (toolNames.has("preview_creative") || toolNames.has("get_preview"))),
-      },
+      formats_supported: formats,
+      can_generate: toolNames.has("build_creative") || toolNames.has("generate_creative"),
+      can_validate: toolNames.has("validate_creative"),
+      can_preview: toolNames.has("preview_creative") || toolNames.has("get_preview"),
     };
-  }
-
-  /**
-   * Read the canonical creative capability catalog directly from
-   * get_adcp_capabilities. list_creative_formats is a deprecated compatibility
-   * task in 3.2 and must never be the registry's source of truth.
-   */
-  private async fetchCreativeCapabilities(
-    agent: Agent,
-    auth?: SdkAuth,
-  ): Promise<{ ok: true; capabilities?: CreativeCapabilities } | { ok: false }> {
-    try {
-      const { AdCPClient } = await import("@adcp/sdk");
-      const multiClient = new AdCPClient([{
-        id: "discovery",
-        name: "Discovery Client",
-        agent_uri: agent.url,
-        protocol: agent.protocol || "mcp",
-        ...agentConfigAuthFields(auth),
-      }], withSdkSafeTransport({
-        userAgent: AAO_UA_DISCOVERY,
-        transport: { maxResponseBytes: 1024 * 1024 },
-      }));
-      const client = multiClient.agent("discovery");
-      const result = await client.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
-      if (!result?.success) {
-        logger.debug({ url: agent.url, error: result?.error }, 'Creative capability probe returned an error result');
-        return { ok: false };
-      }
-      const creative = (result?.data as Record<string, unknown> | undefined)?.creative;
-      if (creative === undefined || creative === null) return { ok: true };
-      return { ok: true, capabilities: await sanitizeCreativeCapabilities(creative) };
-    } catch (err: any) {
-      logger.debug({ url: agent.url, err: err?.message }, 'Creative capability fetch failed');
-      return { ok: false };
-    }
   }
 
   private analyzeSignalsCapabilities(tools: ToolCapability[]): SignalsCapabilities {

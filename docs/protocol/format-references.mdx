@@ -1,70 +1,113 @@
 ---
 title: Format References
-description: "How canonical format declarations, format-option references, and creative capability IDs differ in AdCP 3.2."
-"og:title": "AdCP — Canonical format references"
+description: "Normative reference for format_id (structured identifier object) vs format (full definition object) in AdCP."
+"og:title": "AdCP — Format References"
 ---
 
-AdCP 3.2 has three deliberately different format-related shapes. Do not substitute one for another.
+AdCP uses two related but distinct concepts when working with creative formats. Their names are similar, which causes a recurring implementation error — this page defines both precisely and names the two failure modes.
 
-| Shape | Scope | Used for |
-|---|---|---|
-| `ProductFormatDeclaration` | Publisher or product contract | Full `format_kind` + `params` declaration in `adagents.json.formats[]`, `Product.format_options[]`, placements, and creative capabilities |
-| `FormatOptionRef` | Product/package delivery routing | Selects a publisher or product option without copying its declaration |
-| `capability_id` | One creative agent | Selects that agent's build, validation, or preview path |
+## format\_id — structured reference object
 
-## Full declaration
+`format_id` is **always a JSON object**, never a plain string. It identifies a format by the agent that declared it and the format's local slug:
 
 ```json
 {
-  "format_option_id": "homepage_image",
-  "format_kind": "image",
-  "params": {
-    "width": 300,
-    "height": 250,
-    "slots": [
-      { "asset_group_id": "image_main", "asset_type": "image", "required": true }
-    ]
-  }
+  "agent_url": "https://creative.adcontextprotocol.org",
+  "id": "display_300x250"
 }
 ```
 
-Products always carry full declarations in `format_options[]`. A product never contains a bare capability reference.
-
-## Option reference
-
-Publisher option:
+Optional dimension and duration fields extend it for parameterized template formats:
 
 ```json
 {
-  "scope": "publisher",
-  "publisher_domain": "daily-pulse.example",
-  "format_option_id": "homepage_image"
+  "agent_url": "https://creative.adcontextprotocol.org",
+  "id": "display_static",
+  "width": 300,
+  "height": 250
 }
 ```
 
-Product-local option:
+`format_id` is a **pointer** — it names a format without carrying its definition.
+
+## format — full definition object
+
+`format` is the complete specification of a creative format. It is returned by `list_creative_formats` and related tasks. A `format` object contains a `format_id` as one of its properties, plus the asset requirements, render specs, and all other metadata:
 
 ```json
 {
-  "scope": "product",
-  "format_option_id": "homepage_image"
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
+  "name": "Display Banner 300×250",
+  "assets": [
+    { "asset_id": "image", "asset_type": "image", "item_type": "individual", "required": true }
+  ],
+  "renders": [
+    { "role": "primary", "dimensions": { "width": 300, "height": 250 } }
+  ]
 }
 ```
 
-Use these in package selectors and `creative_manifest.format_option_ref`. A publisher-scoped reference resolves by `{publisher_domain, format_option_id}`; a product-scoped reference resolves only inside the enclosing product/package context.
+A `format` is a **definition** — it describes what the format requires and how it renders.
 
-## Creative capability selector
+## Contrast at a glance
+
+| Concept | Field name | JSON type | Use |
+|---------|-----------|-----------|-----|
+| Format identifier | `format_id` | `object` — `{ agent_url, id }` | Pointer. Used in creative manifests, request filters, placement declarations. |
+| Format definition | `format` | `object` — full spec | Returned by `list_creative_formats`. Contains `format_id` as a nested field. |
+| Array of identifiers | `format_ids` | `array` of `format_id` objects | Filter parameter on `list_creatives`, `list_creative_formats`, and related requests. |
+| Array of definitions | `formats` | `array` of `format` objects | Response field on `list_creative_formats`. |
+
+## Two named failure modes
+
+### Anti-pattern A — string in a `format_id` slot
+
+Wrong — `format_id` must be an object, not a plain string:
+
+```json
+{ "format_id": "display_300x250" }
+```
+
+Correct:
+
+```json
+{ "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" } }
+```
+
+AJV error: `format_id must be of type object`. Cause: the `.id` string inside the `format_id` object looks like a self-contained name and is sometimes extracted and used directly.
+
+### Anti-pattern B — format\_id object in a `format` / `formats` slot
+
+Wrong — a `formats[]` element must be a full definition object, not a bare `format_id`:
 
 ```json
 {
-  "target_capability_id": "homepage_image_builder"
+  "formats": [
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" }
+  ]
 }
 ```
 
-The value comes from the selected creative agent's `get_adcp_capabilities.creative.supported_formats[].capability_id`. It is meaningful only at that agent endpoint. It must not appear on products, placements, manifests, or creative assets.
+Correct:
 
-## Deprecated named references
+```json
+{
+  "formats": [
+    {
+      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
+      "name": "Display Banner 300×250",
+      "assets": [ { "asset_id": "image", "asset_type": "image", "item_type": "individual", "required": true } ]
+    }
+  ]
+}
+```
 
-The compound `{agent_url, id}` `format_id` shape and `format_ids[]` arrays are deprecated in 3.2. Implementations may read or project them for older 3.x peers, but new examples and authored resources use canonical declarations. When canonical and legacy fields coexist, canonical fields are authoritative and both projections must describe the same underlying contract.
+AJV error: `formats[0] must have required property 'name'`. Cause: `format_id` and `format` are both objects; the shorter object is sometimes put in the slot that expects the larger one.
 
-See [Canonical formats](/docs/creative/canonical-formats) for matching, narrowing, publisher resolution, and migration details.
+## See also
+
+- [Creative Formats](/docs/creative/formats) — full format object structure, asset types, and render specs
+- [Template Format IDs](/docs/creative/template-format-ids) — parameterized format IDs for dimension-variable templates

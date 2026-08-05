@@ -195,7 +195,7 @@ The request includes a structured \`filters\` object.
       expect(enumResults.map((doc) => doc.id)).toContain('schema:enums/property-type');
 
       const formatResults = searchDocs(
-        'canonical creative format contracts publisher acceptance product deliverability',
+        'standard format registry creative.adcontextprotocol.org',
         { limit: 5 },
       );
       expect(formatResults.map((doc) => doc.id)).toContain('doc:creative/formats');

@@ -12,26 +12,13 @@
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["canonical", "product", "third_party_format", "capability"]
+          "enum": ["canonical", "product", "third_party_format"]
         },
         "id": {
           "type": "string",
-          "description": "Canonical format name (e.g., 'image'), product_id, URI-form third-party format identifier, or agent-local creative capability_id."
+          "description": "Canonical format name (e.g., 'image'), product_id, or URI-form format_id."
         }
       },
-      "allOf": [
-        {
-          "if": {
-            "properties": { "kind": { "const": "capability" } },
-            "required": ["kind"]
-          },
-          "then": {
-            "properties": {
-              "id": { "pattern": "^[a-zA-Z0-9_-]+$" }
-            }
-          }
-        }
-      ],
       "additionalProperties": true
     },
     "result_kind": {

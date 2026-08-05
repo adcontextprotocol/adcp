@@ -64,11 +64,14 @@ The buyer agent evaluates each package against the context. Package B is homepag
       "brand": { "domain": "bluebottle.example.com", "brand_id": "blue_bottle" },
       "summary": "Cold brew coffee carousel — featuring top-rated blends",
       "creative_manifest": {
-        "format_kind": "sponsored_placement",
+        "format_id": { "agent_url": "https://retailer.example.com", "id": "sponsored_carousel" },
         "assets": {
-          "source_catalog": {
-            "asset_type": "catalog",
-            "catalog_id": "bluebottle-products"
+          "items": {
+            "type": "catalog-asset",
+            "items": [
+              { "gtin": "gtin-001", "image_url": "https://cdn.example.com/gtin-001.jpg" },
+              { "gtin": "gtin-002", "image_url": "https://cdn.example.com/gtin-002.jpg" }
+            ]
           }
         }
       },
@@ -81,11 +84,11 @@ The buyer agent evaluates each package against the context. Package B is homepag
       "summary": "Free shipping on iced beverages — summer promotion",
       "price": { "amount": 0, "currency": "USD", "model": "flat" },
       "creative_manifest": {
-        "format_kind": "native_in_feed",
+        "format_id": { "agent_url": "https://retailer.example.com", "id": "native_text" },
         "assets": {
-          "title": { "asset_type": "text", "content": "Free shipping on iced beverages" },
-          "body_text": { "asset_type": "text", "content": "Summer promotion — order any iced beverage and get free delivery." },
-          "landing_page_url": { "asset_type": "url", "url": "https://shop.example.com/promo/summer-iced" }
+          "headline": { "content": "Free shipping on iced beverages" },
+          "body": { "content": "Summer promotion — order any iced beverage and get free delivery." },
+          "cta": { "content": "https://shop.example.com/promo/summer-iced" }
         }
       }
     }

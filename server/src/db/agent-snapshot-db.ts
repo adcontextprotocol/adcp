@@ -164,10 +164,7 @@ export class AgentSnapshotDatabase {
            protocol = EXCLUDED.protocol,
            discovered_tools_json = EXCLUDED.discovered_tools_json,
            standard_operations_json = EXCLUDED.standard_operations_json,
-           creative_capabilities_json = CASE
-             WHEN $16::boolean THEN agent_capabilities_snapshot.creative_capabilities_json
-             ELSE EXCLUDED.creative_capabilities_json
-           END,
+           creative_capabilities_json = EXCLUDED.creative_capabilities_json,
            signals_capabilities_json = EXCLUDED.signals_capabilities_json,
            measurement_capabilities_json = EXCLUDED.measurement_capabilities_json,
            inferred_type = CASE
@@ -219,7 +216,6 @@ export class AgentSnapshotDatabase {
           unknownState?.lastAttemptAt ?? null,
           unknownState?.nextProbeAfter ?? null,
           unknownState?.terminalState ?? null,
-          profile.creative_capabilities_probe_failed === true,
         ],
       );
     } catch (err) {
@@ -303,14 +299,29 @@ export class AgentSnapshotDatabase {
     const conditions: string[] = [`measurement_capabilities_json IS NOT NULL`];
     const params: unknown[] = [];
 
-    for (const id of filters.metric_ids ?? []) {
-      params.push(JSON.stringify({ metrics: [{ metric_id: id }] }));
-      conditions.push(`measurement_capabilities_json @> $${params.length}::jsonb`);
-    }
-
-    for (const body of filters.accreditations ?? []) {
-      params.push(JSON.stringify({ metrics: [{ accreditations: [{ accrediting_body: body }] }] }));
-      conditions.push(`measurement_capabilities_json @> $${params.length}::jsonb`);
+    if (filters.metric_ids?.length && filters.accreditations?.length) {
+      // Per-metric semantics: the same metrics element must satisfy both constraints.
+      // Cross-product AND: every (metric_id, accreditation) pair gets its own containment
+      // probe so each combination must be covered by at least one element in metrics[].
+      for (const id of filters.metric_ids) {
+        for (const body of filters.accreditations) {
+          params.push(
+            JSON.stringify({ metrics: [{ metric_id: id, accreditations: [{ accrediting_body: body }] }] }),
+          );
+          conditions.push(`measurement_capabilities_json @> $${params.length}::jsonb`);
+        }
+      }
+    } else {
+      for (const id of filters.metric_ids ?? []) {
+        params.push(JSON.stringify({ metrics: [{ metric_id: id }] }));
+        conditions.push(`measurement_capabilities_json @> $${params.length}::jsonb`);
+      }
+      for (const body of filters.accreditations ?? []) {
+        params.push(
+          JSON.stringify({ metrics: [{ accreditations: [{ accrediting_body: body }] }] }),
+        );
+        conditions.push(`measurement_capabilities_json @> $${params.length}::jsonb`);
+      }
     }
 
     if (filters.q) {
@@ -321,61 +332,6 @@ export class AgentSnapshotDatabase {
       conditions.push(`EXISTS (
         SELECT 1 FROM jsonb_array_elements(measurement_capabilities_json->'metrics') AS m
         WHERE m->>'metric_id' ILIKE $${params.length} ESCAPE '\\'
-      )`);
-    }
-
-    const sql = `SELECT agent_url FROM agent_capabilities_snapshot WHERE ${conditions.join(' AND ')}`;
-    const result = await query<{ agent_url: string }>(sql, params);
-    return new Set(result.rows.map(r => r.agent_url));
-  }
-
-  /**
-   * Reverse discovery for canonical creative capabilities. All supplied
-   * predicates must match the same supported_formats[] entry so a publisher
-   * identity cannot accidentally combine with an unrelated generic format
-   * capability on the same agent.
-   */
-  async filterCreativeAgents(filters: {
-    format_kinds?: string[];
-    publisher_domain?: string;
-    format_option_id?: string;
-    capability_id?: string;
-    operations?: string[];
-  }): Promise<Set<string>> {
-    const params: unknown[] = [];
-    const entryConditions: string[] = [];
-
-    if (filters.format_kinds?.length) {
-      params.push(filters.format_kinds);
-      entryConditions.push(`entry->'format'->>'format_kind' = ANY($${params.length}::text[])`);
-    }
-    if (filters.publisher_domain) {
-      params.push(filters.publisher_domain.toLowerCase());
-      entryConditions.push(`LOWER(entry->'format'->>'publisher_domain') = $${params.length}`);
-    }
-    if (filters.format_option_id) {
-      params.push(filters.format_option_id);
-      entryConditions.push(`entry->'format'->>'format_option_id' = $${params.length}`);
-    }
-    if (filters.capability_id) {
-      params.push(filters.capability_id);
-      entryConditions.push(`entry->>'capability_id' = $${params.length}`);
-    }
-    if (filters.operations?.length) {
-      params.push(filters.operations);
-      entryConditions.push(`entry ? 'capability_id'`);
-      entryConditions.push(`entry->'operations' ?| $${params.length}::text[]`);
-    }
-
-    const conditions = [
-      `creative_capabilities_json IS NOT NULL`,
-      `jsonb_typeof(creative_capabilities_json->'supported_formats') = 'array'`,
-    ];
-    if (entryConditions.length > 0) {
-      conditions.push(`EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements(creative_capabilities_json->'supported_formats') AS entry
-        WHERE ${entryConditions.join(' AND ')}
       )`);
     }
 

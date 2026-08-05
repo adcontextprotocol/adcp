@@ -77,33 +77,48 @@ phases:
   - id: discover_native_formats
     title: "Discover native creative formats"
     narrative: |
-      The buyer reads the endpoint's canonical creative capability catalog and confirms
-      a native_in_feed declaration with the required slot constraints.
+      The buyer queries for formats that accept text and image assets — the combination
+      that characterises native in-feed units. The seller returns its native_in_feed
+      format declaration including declared slot constraints.
 
     steps:
       - id: list_native_formats
-        title: "Read the native format capability"
+        title: "List formats accepting text and image assets"
         narrative: |
-          The buyer calls get_adcp_capabilities and reads creative.supported_formats[].
-          The native capability declares format.format_kind native_in_feed and exposes
-          the canonical params/slots needed before submission.
-        task: get_adcp_capabilities
-        schema_ref: "protocol/get-adcp-capabilities-request.json"
-        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
-        doc_ref: "/protocol/get_adcp_capabilities"
-        comply_scenario: capability_discovery
+          The buyer calls list_creative_formats filtered to asset_types ["text", "image"].
+          There is no format_kind filter in the protocol; the buyer identifies the
+          native_in_feed format from the returned format metadata (name, slots, params).
+          The test validates that at least one format is returned and that the response
+          is schema-valid — sellers surface their native format here so buyers can
+          discover slot requirements before submitting creatives.
+
+          Note: the `format_id` used in later phases (`id: "native_in_feed"`,
+          `agent_url: "https://your-platform.example.com"`) is a placeholder the
+          implementer substitutes with an actual format_id from this response.
+          This follows the established pattern for storyboard format references.
+        task: list_creative_formats
+        requires_tool: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_lifecycle
         stateful: false
         expected: |
-          Return a canonical creative capability catalog containing native_in_feed.
+          Return at least one format that accepts text and image assets, with declared
+          slot constraints (title_max_chars, main_image_sizes, cta_values) visible in
+          the format's parameter block so the buyer can prepare a compliant asset bundle.
         sample_request:
+          asset_types:
+            - "text"
+            - "image"
           context:
             correlation_id: "creative_native_in_feed--list_native_formats"
         validations:
           - check: response_schema
-            description: "Response matches get-adcp-capabilities-response.json schema"
+            description: "Response matches list-creative-formats-response.json schema"
           - check: field_present
-            path: "creative.supported_formats"
-            description: "Response contains the canonical creative capability catalog"
+            path: "formats"
+            description: "Response contains formats array"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
@@ -149,7 +164,9 @@ phases:
           creatives:
             - creative_id: "native_trail_pro_full_bundle"
               name: "Trail Pro 3000 — Native Content Recommendation"
-              format_kind: "native_in_feed"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "native_in_feed"
               assets:
                 title:
                   asset_type: "text"
@@ -256,7 +273,9 @@ phases:
           creatives:
             - creative_id: "native_reject_title_long"
               name: "Reject — title too long"
-              format_kind: "native_in_feed"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "native_in_feed"
               assets:
                 title:
                   asset_type: "text"
@@ -307,7 +326,9 @@ phases:
           creatives:
             - creative_id: "native_reject_image_size"
               name: "Reject — image wrong size"
-              format_kind: "native_in_feed"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "native_in_feed"
               assets:
                 title:
                   asset_type: "text"
@@ -362,7 +383,9 @@ phases:
           creatives:
             - creative_id: "native_reject_cta_enum"
               name: "Reject — CTA not in enum"
-              format_kind: "native_in_feed"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "native_in_feed"
               assets:
                 title:
                   asset_type: "text"
@@ -415,7 +438,9 @@ phases:
           creatives:
             - creative_id: "native_reject_custom_tracker"
               name: "Reject — pixel_tracker custom without name"
-              format_kind: "native_in_feed"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "native_in_feed"
               assets:
                 title:
                   asset_type: "text"
@@ -481,7 +506,9 @@ phases:
           request_type: "single"
           creative_manifest:
             creative_id: "native_trail_pro_full_bundle"
-            format_kind: "native_in_feed"
+            format_id:
+              agent_url: "https://your-platform.example.com"
+              id: "native_in_feed"
             assets:
               title:
                 asset_type: "text"

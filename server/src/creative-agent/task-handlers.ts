@@ -1,9 +1,8 @@
 /**
  * MCP tool handlers for the reference creative agent.
  *
- * Implements canonical capability discovery and preview_creative using the
- * shared format library and template-based rendering. list_creative_formats
- * remains as a deprecated 3.x compatibility projection.
+ * Implements list_creative_formats and preview_creative using
+ * the shared canonical format library and template-based rendering.
  *
  * Uses the low-level Server class (like the training agent) so tool
  * schemas are plain JSON Schema objects — no Zod round-trip that drops
@@ -54,119 +53,6 @@ export function buildReferenceFormats(agentUrl: string): Format[] {
     fid.agent_url = agentUrl;
   }
   return formats;
-}
-
-/**
- * Project the reviewed legacy reference catalog into the canonical 3.2
- * creative-capability surface. UI scaffolding formats have no canonical
- * projection and are intentionally excluded.
- */
-export function buildCreativeCapabilities(formats: Format[]): Array<Record<string, unknown>> {
-  return formats.flatMap(format => {
-    const canonical = format.canonical as {
-      kind?: string;
-      asset_source?: string;
-      slots_override?: unknown[];
-      parameters?: Record<string, unknown>;
-    } | undefined;
-    if (!canonical?.kind) return [];
-
-    const params: Record<string, unknown> = { ...(canonical.parameters ?? {}) };
-    const renders = format.renders as Array<{
-      dimensions?: { width?: number; height?: number };
-      duration_ms?: number;
-    }> | undefined;
-    const dimensions = renders?.[0]?.dimensions;
-    if (dimensions?.width) params.width = dimensions.width;
-    if (dimensions?.height) params.height = dimensions.height;
-
-    // Preserve constraints carried by the reviewed legacy catalog instead of
-    // reducing every projection to only its canonical kind. Some older fixed-
-    // duration entries encode duration in requirements (or, for the earliest
-    // VAST entries, in their stable ID), while hosted assets carry file/container
-    // constraints that remain meaningful on the canonical declaration.
-    const assets = [
-      ...(Array.isArray(format.assets) ? format.assets : []),
-      ...(Array.isArray(format.assets_required) ? format.assets_required : []),
-    ] as Array<{ requirements?: Record<string, unknown> }>;
-    const requirements = assets
-      .map(asset => asset.requirements)
-      .filter((value): value is Record<string, unknown> => Boolean(value));
-    const minDurations = requirements
-      .map(value => value.min_duration_ms)
-      .filter((value): value is number => typeof value === 'number');
-    const maxDurations = requirements
-      .map(value => value.max_duration_ms)
-      .filter((value): value is number => typeof value === 'number');
-    const renderedDuration = renders?.find(render => typeof render.duration_ms === 'number')?.duration_ms;
-    const idDurationMatch = getFormatId(format).id.match(/_(\d+)s$/);
-    const idDuration = idDurationMatch ? Number(idDurationMatch[1]) * 1000 : undefined;
-    const minimumDuration = minDurations.length ? Math.max(...minDurations) : undefined;
-    const maximumDuration = maxDurations.length ? Math.min(...maxDurations) : undefined;
-    if (renderedDuration) {
-      params.duration_ms_exact = renderedDuration;
-    } else if (minimumDuration !== undefined && minimumDuration === maximumDuration) {
-      params.duration_ms_exact = minimumDuration;
-    } else if (minimumDuration !== undefined || maximumDuration !== undefined) {
-      params.duration_ms_range = [minimumDuration ?? 0, maximumDuration ?? Number.MAX_SAFE_INTEGER];
-    } else if (idDuration && ['video_hosted', 'video_vast', 'audio_hosted', 'audio_daast'].includes(canonical.kind)) {
-      params.duration_ms_exact = idDuration;
-    }
-
-    const maxFileSizes = requirements
-      .map(value => value.max_file_size_bytes)
-      .filter((value): value is number => typeof value === 'number');
-    if (maxFileSizes.length) {
-      const maxBytes = Math.min(...maxFileSizes);
-      if (canonical.kind === 'video_hosted') params.max_file_size_mb = Math.max(1, Math.ceil(maxBytes / 1_000_000));
-      else params.max_file_size_kb = Math.max(1, Math.ceil(maxBytes / 1000));
-    }
-    const containers = [...new Set(requirements.flatMap(value =>
-      Array.isArray(value.containers)
-        ? value.containers.filter((item): item is string => typeof item === 'string')
-        : []
-    ))];
-    if (containers.length && canonical.kind === 'video_hosted') params.containers = containers;
-    if (containers.length && canonical.kind === 'audio_hosted') {
-      const codecByLegacyContainer: Record<string, string> = {
-        mp3: 'mp3',
-        wav: 'wav',
-        m4a: 'aac',
-        ogg: 'opus',
-        flac: 'flac',
-      };
-      const audioCodecs = [...new Set(containers.flatMap(container =>
-        codecByLegacyContainer[container] ? [codecByLegacyContainer[container]] : []
-      ))];
-      if (audioCodecs.length) params.audio_codecs = audioCodecs;
-    }
-    if (canonical.asset_source) params.asset_source = canonical.asset_source;
-    if (canonical.slots_override) params.slots = canonical.slots_override;
-
-    return [{
-      capability_id: `preview_${getFormatId(format).id}`,
-      operations: ['preview'],
-      format: {
-        format_kind: canonical.kind,
-        params,
-      },
-    }];
-  });
-}
-
-export function handleGetAdcpCapabilities(formats: Format[]): Record<string, unknown> {
-  return {
-    adcp_version: '3.2',
-    adcp: {
-      major_versions: [3],
-      supported_versions: ['3.2'],
-    },
-    supported_protocols: ['creative'],
-    creative: {
-      can_preview: true,
-      supported_formats: buildCreativeCapabilities(formats),
-    },
-  };
 }
 
 // ── Format filtering helpers ────────────────────────────────────────
@@ -259,87 +145,12 @@ export function handleListCreativeFormats(args: Record<string, unknown>, formats
 // ── preview_creative ────────────────────────────────────────────────
 
 interface PreviewRequest {
-  creative_manifest: Record<string, unknown> & { format_kind?: string };
-  capability_id?: string;
-  target_capability_id?: string;
-  format_id?: { agent_url?: string; id?: string; width?: number; height?: number };
+  creative_manifest: Record<string, unknown>;
+  format_id?: { agent_url?: string; id?: string; width?: number; height?: number; pixel_ratio?: number };
   inputs?: Array<{ name: string; macros?: Record<string, string>; context_description?: string }>;
   output_format?: 'url' | 'html' | 'both';
   template_id?: string;
   item_limit?: number;
-}
-
-function manifestDimensions(manifest: Record<string, unknown>): { width?: number; height?: number } {
-  const params = manifest.params;
-  if (params && typeof params === 'object' && !Array.isArray(params)) {
-    const width = (params as Record<string, unknown>).width;
-    const height = (params as Record<string, unknown>).height;
-    if (typeof width === 'number' || typeof height === 'number') {
-      return {
-        ...(typeof width === 'number' ? { width } : {}),
-        ...(typeof height === 'number' ? { height } : {}),
-      };
-    }
-  }
-  const assets = manifest.assets;
-  if (!assets || typeof assets !== 'object' || Array.isArray(assets)) return {};
-  for (const value of Object.values(assets as Record<string, unknown>)) {
-    const candidates = Array.isArray(value) ? value : [value];
-    for (const candidate of candidates) {
-      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue;
-      const width = (candidate as Record<string, unknown>).width;
-      const height = (candidate as Record<string, unknown>).height;
-      if (typeof width === 'number' || typeof height === 'number') {
-        return {
-          ...(typeof width === 'number' ? { width } : {}),
-          ...(typeof height === 'number' ? { height } : {}),
-        };
-      }
-    }
-  }
-  return {};
-}
-
-function resolveCanonicalPreviewFormat(req: PreviewRequest, formats: Format[]): Format | undefined {
-  const selector = req.target_capability_id ?? req.capability_id;
-  if (selector) {
-    const legacyId = selector.startsWith('preview_') ? selector.slice('preview_'.length) : '';
-    const selected = formats.find(format => getFormatId(format).id === legacyId);
-    if (!selected || !(selected.canonical as { kind?: string } | undefined)?.kind) {
-      throw new Error(`Unknown preview capability_id "${selector}".`);
-    }
-    return selected;
-  }
-
-  const manifest = req.creative_manifest;
-  const formatId = req.format_id || manifest.format_id as { id?: string } | undefined;
-  if (formatId?.id) return formats.find(format => getFormatId(format).id === formatId.id);
-  if (!manifest.format_kind) return undefined;
-
-  const candidates = formats.filter(format =>
-    (format.canonical as { kind?: string } | undefined)?.kind === manifest.format_kind
-  );
-  if (candidates.length <= 1) return candidates[0];
-
-  const dimensions = manifestDimensions(manifest);
-  if (dimensions.width !== undefined || dimensions.height !== undefined) {
-    const exact = candidates.filter(format => {
-      const declared = buildCreativeCapabilities([format])[0]?.format as { params?: Record<string, unknown> } | undefined;
-      const params = declared?.params ?? {};
-      return (dimensions.width === undefined || params.width === dimensions.width)
-        && (dimensions.height === undefined || params.height === dimensions.height);
-    });
-    if (exact.length === 1) return exact[0];
-  }
-
-  const generic = candidates.filter(format => {
-    const declared = buildCreativeCapabilities([format])[0]?.format as { params?: Record<string, unknown> } | undefined;
-    return declared?.params?.width === undefined && declared?.params?.height === undefined;
-  });
-  if (generic.length === 1) return generic[0];
-  throw new Error(
-    `Canonical format_kind "${manifest.format_kind}" matches multiple preview capabilities; provide target_capability_id.`,
-  );
 }
 
 function renderSinglePreview(
@@ -348,11 +159,11 @@ function renderSinglePreview(
   baseUrl: string,
 ): { previews: unknown[]; expires_at: string } {
   const manifest = req.creative_manifest;
-  const format = resolveCanonicalPreviewFormat(req, formats);
+  const formatId = req.format_id || manifest.format_id as PreviewRequest['format_id'];
+  const format = formatId?.id ? formats.find(f => getFormatId(f).id === formatId.id) : undefined;
 
-  // The renderer still consumes the catalog's internal template key. Keep that
-  // projection private; the caller-facing manifest remains canonical.
-  const renderManifest = { ...manifest, ...(format && { format_id: getFormatId(format) }) };
+  // Merge format_id into manifest for the renderer
+  const renderManifest = { ...manifest, format_id: formatId };
 
   const inputs = req.inputs?.length
     ? req.inputs
@@ -370,8 +181,11 @@ function renderSinglePreview(
       role: 'primary',
     };
 
-    // Add dimensions if known
-    if (format) {
+    // Parameterized legacy ids carry logical render dimensions directly. Pixel
+    // ratio changes intrinsic asset pixels, never the preview box size.
+    if (formatId?.width && formatId?.height) {
+      render.dimensions = { width: formatId.width, height: formatId.height };
+    } else if (format) {
       const renders = format.renders as Array<{ dimensions?: { width?: number; height?: number } }> | undefined;
       if (renders?.[0]?.dimensions?.width && renders?.[0]?.dimensions?.height) {
         render.dimensions = {
@@ -448,17 +262,8 @@ export function handlePreviewCreative(args: Record<string, unknown>, formats: Fo
     return { errors: [{ code: 'validation_error', message: 'creative_manifest is required.' }] };
   }
 
-  try {
-    const result = renderSinglePreview(args as unknown as PreviewRequest, formats, baseUrl);
-    return { response_type: 'single', ...result };
-  } catch (err) {
-    return {
-      errors: [{
-        code: 'validation_error',
-        message: err instanceof Error ? err.message : 'Preview capability could not be resolved.',
-      }],
-    };
-  }
+  const result = renderSinglePreview(args as unknown as PreviewRequest, formats, baseUrl);
+  return { response_type: 'single', ...result };
 }
 
 // ── Tool definitions (plain JSON Schema — matches canonical specs) ───
@@ -483,28 +288,8 @@ const FORMAT_ID_SCHEMA = {
 
 const TOOLS = [
   {
-    name: 'get_adcp_capabilities',
-    description: 'Discover this endpoint\'s canonical AdCP 3.2 creative preview capabilities.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: { adcp_major_version: ADCP_MAJOR_VERSION_PROP },
-      additionalProperties: true,
-    },
-    outputSchema: {
-      type: 'object' as const,
-      properties: {
-        adcp_version: { type: 'string' },
-        adcp: { type: 'object', additionalProperties: true },
-        supported_protocols: { type: 'array', items: { type: 'string' } },
-        creative: { type: 'object', additionalProperties: true },
-      },
-      required: ['adcp', 'supported_protocols', 'creative'],
-      additionalProperties: true,
-    },
-  },
-  {
     name: 'list_creative_formats',
-    description: 'DEPRECATED in AdCP 3.2. Legacy named-format compatibility projection; use get_adcp_capabilities creative.supported_formats[].',
+    description: 'List supported creative formats with asset requirements, dimensions, and rendering specifications. Use filters to avoid large responses. Do not call without filters if you already know the format_id.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -538,10 +323,8 @@ const TOOLS = [
       properties: {
         adcp_major_version: ADCP_MAJOR_VERSION_PROP,
         request_type: { type: 'string', enum: ['single', 'batch', 'variant'], description: 'Request type. Defaults to single.' },
-        creative_manifest: { type: 'object', description: 'Canonical creative manifest with format_kind and typed assets (required for single mode)', additionalProperties: true },
-        target_capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$', description: 'Exact preview capability advertised by get_adcp_capabilities.' },
-        capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$', description: 'Alias for target_capability_id.' },
-        format_id: { ...FORMAT_ID_SCHEMA, deprecated: true, description: 'Deprecated named-format override for older 3.x peers.' },
+        creative_manifest: { type: 'object', description: 'Creative manifest with format_id and assets (required for single mode)', additionalProperties: true },
+        format_id: { ...FORMAT_ID_SCHEMA, description: 'Format identifier for rendering. Defaults to manifest format_id.' },
         inputs: {
           type: 'array', description: 'Array of input sets for multiple preview variants', minItems: 1,
           items: {
@@ -557,9 +340,7 @@ const TOOLS = [
             type: 'object',
             properties: {
               creative_manifest: { type: 'object', additionalProperties: true },
-              target_capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$' },
-              capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$' },
-              format_id: { ...FORMAT_ID_SCHEMA, deprecated: true },
+              format_id: FORMAT_ID_SCHEMA,
               output_format: { type: 'string', enum: ['url', 'html', 'both'] },
               inputs: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
             },
@@ -595,7 +376,6 @@ export function createCreativeAgentServer(agentBaseUrl: string) {
   const formats = buildReferenceFormats(agentBaseUrl);
 
   const handlers: Record<string, ToolHandler> = {
-    get_adcp_capabilities: () => handleGetAdcpCapabilities(formats),
     list_creative_formats: (args) => handleListCreativeFormats(args, formats),
     preview_creative: (args) => handlePreviewCreative(args, formats, agentBaseUrl),
   };

@@ -19,7 +19,7 @@ A creative library organizes assets at three levels:
 |---|---|---|
 | Account | Account (via [accounts protocol](/docs/accounts/overview)) | Advertiser in CM360, brand workspace in Celtra |
 | Concept | `concept_id` / `concept_name` | Flashtalking concept, CM360 creative group, Celtra campaign folder |
-| Creative | Creative item with `creative_id`, `format_kind`, `assets` | A 300x250 display ad, a 30s video spot |
+| Creative | Creative item with `creative_id`, `format_id`, `assets` | A 300x250 display ad, a 30s video spot |
 
 **Concepts** group related creatives across sizes and formats. A "Holiday 2026" concept might contain a 300x250 banner, a 728x90 leaderboard, and a 30s video — all expressing the same campaign idea. Use `concept_id` to filter and manage them as a group.
 
@@ -76,7 +76,10 @@ Use [`list_creatives`](/docs/creative/task-reference/list_creatives) to browse t
   "filters": {
     "concept_ids": ["concept_holiday_2026"],
     "statuses": ["approved"],
-    "format_kinds": ["image"]
+    "format_ids": [{
+      "agent_url": "https://ads.flashtalking-example.com",
+      "id": "display_300x250"
+    }]
   },
   "include": {
     "variables": true,
@@ -91,7 +94,10 @@ Each creative in the response includes:
 {
   "creative_id": "ft_88201",
   "name": "Holiday 2026 - Medium Rectangle",
-  "format_kind": "image",
+  "format_id": {
+    "agent_url": "https://ads.flashtalking-example.com",
+    "id": "display_300x250"
+  },
   "status": "approved",
   "concept_id": "concept_holiday_2026",
   "concept_name": "Holiday 2026 Campaign",
@@ -124,7 +130,10 @@ Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) to upload n
     {
       "creative_id": "acme_video_001",
       "name": "Holiday Sale 30s",
-      "format_kind": "video_hosted",
+      "format_id": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "video_standard_30s"
+      },
       "assets": {
         "video": {
           "url": "https://cdn.acme-example.com/holiday-sale-30s.mp4",
@@ -166,7 +175,7 @@ Assign creatives to packages in the same call:
     {
       "creative_id": "acme_video_001",
       "name": "Holiday Sale 30s",
-      "format_kind": "video_hosted",
+      "format_id": { "agent_url": "...", "id": "video_standard_30s" },
       "assets": { "...": "..." }
     }
   ],
@@ -187,7 +196,10 @@ When you need a serving tag for a creative in the library, use [`build_creative`
 {
   "creative_id": "ft_88201",
   "concept_id": "concept_holiday_2026",
-  "target_capability_id": "display_300x250"
+  "target_format_id": {
+    "agent_url": "https://ads.flashtalking-example.com",
+    "id": "display_300x250"
+  }
 }
 ```
 
@@ -199,7 +211,10 @@ The creative agent resolves the `creative_id` from its library and returns a man
 ```json
 {
   "creative_id": "cm360_creative_12345",
-  "target_capability_id": "display_300x250",
+  "target_format_id": {
+    "agent_url": "https://ads.cm360-example.com",
+    "id": "display_300x250"
+  },
   "media_buy_id": "buy_holiday_q4",
   "package_id": "pkg_premium_display"
 }
@@ -240,7 +255,7 @@ Upload the creative directly with the media buy — no separate sync step:
     "creatives": [{
       "creative_id": "acme_banner_001",
       "name": "Holiday banner",
-      "format_kind": "image",
+      "format_id": { "agent_url": "...", "id": "display_300x250" },
       "assets": { "...": "..." }
     }]
   }]
@@ -265,7 +280,10 @@ When you work with multiple sellers, build creatives once and distribute them:
 ```json
 {
   "message": "Create a holiday promotion banner",
-  "target_capability_ids": ["display_300x250", "display_728x90"]
+  "target_format_ids": [
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90" }
+  ]
 }
 ```
 
@@ -277,7 +295,7 @@ When you work with multiple sellers, build creatives once and distribute them:
       "creative_id": "holiday_2026_300x250",
       "name": "Holiday 2026 - Medium Rectangle",
       "concept_id": "concept_holiday_2026",
-      "format_kind": "image",
+      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
       "assets": { }
     }
   ]

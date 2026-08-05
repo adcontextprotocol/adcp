@@ -229,14 +229,14 @@ phases:
             value: "sales_proposal_mode--get_products_brief"
             description: "Context correlation_id returned unchanged"
           - check: field_present
-            path: "products[0].format_options"
-            description: "Products include canonical format_options for creative requirements"
+            path: "products[0].format_ids"
+            description: "Products include format_ids for creative requirements"
           - check: field_present
-            path: "products[0].format_options[0].format_kind"
-            description: "Canonical format options include a format_kind discriminator"
+            path: "products[0].format_ids[0].agent_url"
+            description: "Format IDs include agent_url — must match this agent's URL"
           - check: field_present
-            path: "products[0].format_options[0].format_option_id"
-            description: "Canonical format options include a stable ID accepted by sync_creatives"
+            path: "products[0].format_ids[0].id"
+            description: "Format IDs include id — must be accepted back in sync_creatives"
   - id: review_refine
     title: "Refine a proposal"
     narrative: |
@@ -295,14 +295,14 @@ phases:
             value: "sales_proposal_mode--get_products_refine"
             description: "Context correlation_id returned unchanged"
           - check: field_present
-            path: "products[0].format_options"
-            description: "Products include canonical format_options for creative requirements"
+            path: "products[0].format_ids"
+            description: "Products include format_ids for creative requirements"
           - check: field_present
-            path: "products[0].format_options[0].format_kind"
-            description: "Canonical format options include a format_kind discriminator"
+            path: "products[0].format_ids[0].agent_url"
+            description: "Format IDs include agent_url — must match this agent's URL"
           - check: field_present
-            path: "products[0].format_options[0].format_option_id"
-            description: "Canonical format options include a stable ID accepted by sync_creatives"
+            path: "products[0].format_ids[0].id"
+            description: "Format IDs include id — must be accepted back in sync_creatives"
   - id: finalize_proposal
     title: "Finalize the proposal"
     narrative: |
@@ -432,6 +432,48 @@ phases:
       pushes matching creative assets.
 
     steps:
+      - id: list_formats
+        title: "Check creative format requirements"
+        narrative: |
+          The buyer confirms what creative formats the accepted proposal's products
+          require. Your platform returns format specs with asset requirements.
+        task: list_creative_formats
+        requires_tool: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expected: |
+          Return creative formats your platform accepts. Each format should define:
+          - format_id with your agent_url and unique id
+          - Asset requirements (dimensions, file sizes, mime types)
+          - Render dimensions
+
+        sample_request:
+          context:
+            correlation_id: "sales_proposal_mode--list_formats"
+
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats"
+            description: "Response contains formats array"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_proposal_mode--list_formats"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "formats[0].format_id.agent_url"
+            description: "Format IDs include agent_url"
+          - check: field_present
+            path: "formats[0].format_id.id"
+            description: "Format IDs include id — must match those in get_products"
       - id: sync_creatives
         title: "Push creative assets"
         narrative: |
@@ -458,7 +500,9 @@ phases:
           creatives:
             - creative_id: "video_30s_trail_pro"
               name: "Trail Pro 3000 - 30s CTV Spot"
-              format_kind: "video_hosted"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "ssai_30s"
               assets:
                 video:
                   asset_type: "video"
@@ -469,7 +513,9 @@ phases:
                   mime_type: "video/mp4"
             - creative_id: "video_15s_trail_pro"
               name: "Trail Pro 3000 - 15s Online Video"
-              format_kind: "video_hosted"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "preroll_15s"
               assets:
                 video:
                   asset_type: "video"

@@ -92,7 +92,7 @@ Sellers that implement compliance test controller MUST:
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?}. seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
       }
     },
     "required": ["scenario"]
@@ -468,7 +468,7 @@ Creates (or upserts) a product fixture with a caller-supplied `product_id` so su
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `product_id` | string | Yes | Stable identifier the storyboard will reference |
-| `fixture` | object | No | Product shape. Minimum useful fields: `delivery_type`, `channels`, `pricing_options[]`, `format_options[]`. Sellers MAY fill in defaults for omitted fields. |
+| `fixture` | object | No | Product shape. Minimum useful fields: `delivery_type`, `channels`, `pricing_options[]`, `format_ids[]`. Sellers MAY fill in defaults for omitted fields. |
 
 For vendor-metric precondition tests, prefer `seed_measurement_catalog` for the external vendor catalog. A product fixture may also carry `measurement_catalogs[]` entries shaped as `{ vendor, metrics[] }` as a compatibility fallback for local harnesses that need the product contract and referenced measurement snapshot in one fixture. If both are supplied for the same vendor, the explicit `seed_measurement_catalog` snapshot takes precedence for that compliance session.
 
@@ -485,7 +485,7 @@ For vendor-metric precondition tests, prefer `seed_measurement_catalog` for the 
       "pricing_options": [
         { "pricing_option_id": "test-pricing", "pricing_model": "cpm", "currency": "USD", "floor_price": 1.0 }
       ],
-      "format_options": [{ "format_option_id": "display_300x250", "format_kind": "image", "params": { "width": 300, "height": 250 } }]
+      "format_ids": [{ "id": "display_300x250" }]
     }
   }
 }
@@ -529,7 +529,7 @@ Creates a creative fixture at a specific lifecycle status. Lets governance and d
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `creative_id` | string | Yes | Stable identifier |
-| `fixture` | object | No | Creative shape. Typical fields: `status`, `format_kind`, `assets`, `click_through_url`. |
+| `fixture` | object | No | Creative shape. Typical fields: `status`, `format_id`, `assets`, `click_through_url`. |
 
 **Example:**
 
@@ -540,7 +540,7 @@ Creates a creative fixture at a specific lifecycle status. Lets governance and d
     "creative_id": "campaign_hero_video",
     "fixture": {
       "status": "approved",
-      "format_kind": "video_hosted",
+      "format_id": { "id": "video_30s" },
       "assets": [{ "type": "video", "url": "https://example.com/hero.mp4" }]
     }
   }

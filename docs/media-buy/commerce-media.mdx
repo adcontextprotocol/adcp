@@ -44,7 +44,7 @@ The table below maps familiar retail media concepts to their AdCP equivalents.
 | Brand's product catalog | `brand.product_catalog` | [Brand identity](/docs/brand-protocol/brand-json) |
 | GTIN / SKU selection for promotion | Catalog selectors (`ids`, `gtins`, `tags`) on `Catalog` | [Catalogs](/docs/creative/catalogs) |
 | Sponsored product listing | Product with catalog-rendered creative | [Creative Formats](/docs/creative/formats) |
-| On-site display / video | Product with canonical `format_options` | [Media Products](/docs/media-buy/product-discovery/media-products) |
+| On-site display / video | Product with standard `format_ids` | [Media Products](/docs/media-buy/product-discovery/media-products) |
 | Retailer-owned shopper signal | Brief-based; optional named segments discovered in `signal_targeting_options` and selected with package-level `signal_targeting_groups` | [Targeting](/docs/media-buy/advanced-topics/targeting) |
 | ROAS target / max conversions | `optimization_goals` on package | [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) |
 | Closed-loop measurement | `outcome_measurement` + `conversion_tracking` on product | [Delivery Reporting](/docs/media-buy/task-reference/get_media_buy_delivery) |
@@ -74,8 +74,8 @@ The simplest commerce media product. The retailer renders the creative from the 
   "publisher_properties": [
     { "publisher_domain": "shopgrid.example", "selection_type": "all" }
   ],
-  "format_options": [
-    { "format_option_id": "sponsored_product_listing", "format_kind": "sponsored_placement", "params": {} }
+  "format_ids": [
+    { "agent_url": "https://ads.shopgrid.example", "id": "sponsored_product_listing" }
   ],
   "delivery_type": "non_guaranteed",
   "pricing_options": [
@@ -141,10 +141,10 @@ Display and video ads on retailer properties, targeted using retailer first-part
   "publisher_properties": [
     { "publisher_domain": "shopgrid.example", "selection_type": "all" }
   ],
-  "format_options": [
-    { "format_option_id": "display_300x250", "format_kind": "image", "params": { "width": 300, "height": 250 } },
-    { "format_option_id": "display_728x90", "format_kind": "image", "params": { "width": 728, "height": 90 } },
-    { "format_option_id": "video_15s", "format_kind": "video_hosted", "params": { "duration_ms_exact": 15000 } }
+  "format_ids": [
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90" },
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s" }
   ],
   "delivery_type": "guaranteed",
   "pricing_options": [
@@ -194,9 +194,9 @@ The retailer uses first-party purchase data to target audiences on third-party i
   "publisher_properties": [
     { "publisher_domain": "shopgrid.example", "selection_type": "all" }
   ],
-  "format_options": [
-    { "format_option_id": "display_300x250", "format_kind": "image", "params": { "width": 300, "height": 250 } },
-    { "format_option_id": "video_15s", "format_kind": "video_hosted", "params": { "duration_ms_exact": 15000 } }
+  "format_ids": [
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s" }
   ],
   "delivery_type": "guaranteed",
   "pricing_options": [
@@ -239,9 +239,9 @@ Homepage takeovers, category sponsorships, seasonal event placements. These high
   "publisher_properties": [
     { "publisher_domain": "shopgrid.example", "selection_type": "all" }
   ],
-  "format_options": [
-    { "format_option_id": "display_970x250", "format_kind": "image", "params": { "width": 970, "height": 250 } },
-    { "format_option_id": "display_300x250", "format_kind": "image", "params": { "width": 300, "height": 250 } }
+  "format_ids": [
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_970x250" },
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" }
   ],
   "placements": [
     {
@@ -249,14 +249,14 @@ Homepage takeovers, category sponsorships, seasonal event placements. These high
       "placement_id": "homepage_hero",
       "name": "Homepage Hero Banner",
       "mode": "targetable",
-      "format_options": [{ "format_option_id": "display_970x250", "format_kind": "image", "params": { "width": 970, "height": 250 } }]
+      "format_ids": [{ "agent_url": "https://creative.adcontextprotocol.org", "id": "display_970x250" }]
     },
     {
       "kind": "seller_inline",
       "placement_id": "homepage_sidebar",
       "name": "Homepage Sidebar",
       "mode": "targetable",
-      "format_options": [{ "format_option_id": "display_300x250", "format_kind": "image", "params": { "width": 300, "height": 250 } }]
+      "format_ids": [{ "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" }]
     }
   ],
   "delivery_type": "guaranteed",
@@ -303,9 +303,9 @@ In-store is where retail media networks have inventory that no one else can repl
   "publisher_properties": [
     { "publisher_domain": "shopgrid.example", "selection_type": "all" }
   ],
-  "format_options": [
-    { "format_option_id": "display_1080x1920", "format_kind": "image", "params": { "width": 1080, "height": 1920 } },
-    { "format_option_id": "video_15s", "format_kind": "video_hosted", "params": { "duration_ms_exact": 15000 } }
+  "format_ids": [
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_1080x1920" },
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s" }
   ],
   "placements": [
     {
@@ -313,9 +313,9 @@ In-store is where retail media networks have inventory that no one else can repl
       "placement_id": "checkout_screen",
       "name": "Checkout Lane Screens",
       "mode": "targetable",
-      "format_options": [
-        { "format_option_id": "display_1080x1920", "format_kind": "image", "params": { "width": 1080, "height": 1920 } },
-        { "format_option_id": "video_15s", "format_kind": "video_hosted", "params": { "duration_ms_exact": 15000 } }
+      "format_ids": [
+        { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_1080x1920" },
+        { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s" }
       ]
     },
     {
@@ -323,8 +323,8 @@ In-store is where retail media networks have inventory that no one else can repl
       "placement_id": "endcap_screen",
       "name": "Aisle End-Cap Displays",
       "mode": "targetable",
-      "format_options": [
-        { "format_option_id": "display_1080x1920", "format_kind": "image", "params": { "width": 1080, "height": 1920 } }
+      "format_ids": [
+        { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_1080x1920" }
       ]
     },
     {
@@ -332,9 +332,9 @@ In-store is where retail media networks have inventory that no one else can repl
       "placement_id": "pharmacy_waiting",
       "name": "Pharmacy Waiting Area",
       "mode": "targetable",
-      "format_options": [
-        { "format_option_id": "display_1080x1920", "format_kind": "image", "params": { "width": 1080, "height": 1920 } },
-        { "format_option_id": "video_15s", "format_kind": "video_hosted", "params": { "duration_ms_exact": 15000 } }
+      "format_ids": [
+        { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_1080x1920" },
+        { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_15s" }
       ]
     }
   ],
@@ -370,7 +370,7 @@ In-store products pair with the retailer's store catalog. The catalog exposes st
 
 ### Beyond these examples
 
-Retail media portfolios often extend beyond the five product types above. Sponsored brand ads — a headline, brand logo, and 2-3 featured products — sit between sponsored product listings and display, with a custom headline from the buyer and catalog-rendered product tiles. Digital coupons and cashback offers tie directly to purchase and don't fit neatly into impression-based models — they can be modeled as products with CPA pricing and `conversion_tracking`. Sponsored placements in retailer email newsletters and app push notifications are high-performing, low-funnel products modeled the same way as on-site display with different canonical `format_options`. Shoppable video — where products are tagged within the video frame and viewers can add items to cart — combines video formats with catalog-rendered product overlays. Keyword-level search sponsorships, sampling programs, and recipe integrations each have distinct economics but follow the same pattern: a product with the right pricing model, format, and measurement declarations.
+Retail media portfolios often extend beyond the five product types above. Sponsored brand ads — a headline, brand logo, and 2-3 featured products — sit between sponsored product listings and display, with a custom headline from the buyer and catalog-rendered product tiles. Digital coupons and cashback offers tie directly to purchase and don't fit neatly into impression-based models — they can be modeled as products with CPA pricing and `conversion_tracking`. Sponsored placements in retailer email newsletters and app push notifications are high-performing, low-funnel products modeled the same way as on-site display with different `format_ids`. Shoppable video — where products are tagged within the video frame and viewers can add items to cart — combines video formats with catalog-rendered product overlays. Keyword-level search sponsorships, sampling programs, and recipe integrations each have distinct economics but follow the same pattern: a product with the right pricing model, format, and measurement declarations.
 
 ## End-to-end workflow
 

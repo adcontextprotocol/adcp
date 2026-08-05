@@ -9,6 +9,40 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ---
 
+## Version 3.2.0
+
+**Status:** In development — minor release targeting the 3.2.0 milestone. Stable wire shapes remain backward compatible; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
+
+### Cross-role governance enforcement
+
+**Breaking-change notice for an experimental surface. The implementation may merge during 3.2 development; the beta-to-GA period provides the six-week notice window before production availability.**
+
+The proposed campaign-governance update adds task-scoped service enforcement, opaque plan binding, intent-only conditions negotiation, authenticated caller binding, phase-correct media-buy identifiers, and governance-authoritative outcome accounting. The implementation and migration guide may merge during 3.2 development, before the first beta. See [#5944](https://github.com/adcontextprotocol/adcp/issues/5944) for the governing use case.
+
+### Creative-format discovery deprecation posture (#5779)
+
+`list_creative_formats` is **deprecated for new discovery**. Prefer:
+
+| Role | Preferred 3.2+ discovery | Notes |
+|---|---|---|
+| Sales agents | `get_products.format_options[]` | Product-level accepted formats |
+| Creative agents | `get_adcp_capabilities.creative.supported_formats` | Producible-format catalog |
+
+The v1 task remains **functional through 4.x** on its own compatibility schedule. Its lifecycle is not coupled to exact plural `format_ids`, which is deprecated in 3.2 and removed in 4.0.
+
+**Not deprecated by this change:**
+
+- [`list_creatives`](/docs/creative/task-reference/list_creatives) remains the creative-library query task.
+- Singular `format_id` and named-format definitions retain their separate compatibility schedules; exact plural `format_ids` fields are removed in 4.0.
+
+**Consumer conformance:** buyers and other consumers MUST NOT assume `list_creative_formats` is present on 3.2+ agents when equivalent canonical-format discovery is declared.
+
+**Compliance:** storyboard steps that call `list_creative_formats` are gated with `requires_tool`, producing an explicit non-failing `missing_tool` skip when an agent has migrated to canonical discovery. The creative lifecycle requires either a non-empty `creative.supported_formats` catalog or a passing v1 discovery call. Agents that still implement the v1 tool continue to conform.
+
+See [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats), [Creative Protocol specification § Conformance](/docs/creative/specification#conformance), and [Implementing creative agents](/docs/creative/implementing-creative-agents).
+
+---
+
 ## Version 3.1.3 — withdrawn
 
 **Status:** Withdrawn. Do not use 3.1.3 as an implementation target. Use 3.1.2 for the supported 3.1 line.
@@ -118,7 +152,7 @@ Product signal targeting also clarifies the broad-feed workflow. Products may se
 
 ### Canonical formats, badges, and discovery precision
 
-**Creative-agent canonical build capabilities.** Creative agents declare what they can produce via `creative.supported_formats[]` on `get_adcp_capabilities`. Every targetable entry carries an agent-local stable `capability_id`; buyers pass that ID as `target_capability_id` in `build_creative`. This is intentionally separate from media-buy `format_option_id`, which selects a product-local or publisher-catalog format option. The training agent and storyboards verify advertised capability IDs, canonical `format_kind` manifests, unsupported target rejection, and 3.0 compatibility gating. See [Canonical formats](/docs/creative/canonical-formats) and [`build_creative`](/docs/creative/task-reference/build_creative).
+**Creative-agent canonical build capabilities.** Creative agents declare what they can produce via `creative.supported_formats[]` on `get_adcp_capabilities`. Entries that buyers can target over time SHOULD carry an agent-local stable `capability_id`; buyers use that ID as `target_format_id.id` in `build_creative` when present. This is intentionally separate from media-buy `format_option_id`, which selects a product-local or publisher-catalog format option. The training agent and storyboards verify advertised capability IDs, canonical `format_kind` manifests, unsupported target rejection, and 3.0 compatibility gating. See [Canonical formats](/docs/creative/canonical-formats) and [`build_creative`](/docs/creative/task-reference/build_creative).
 
 **Canonical format satisfaction at create time.** Media-buy create/update/read surfaces now preserve package-level canonical selectors, including direct `format_kind`/`params` requests. The conformance suite tests that under-specified selectors fail closed instead of matching products by loose overlap. See [Product discovery](/docs/media-buy/product-discovery/media-products).
 

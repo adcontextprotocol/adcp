@@ -33,16 +33,39 @@ When `true`, all assets with accessibility-relevant fields must include those fi
 
 ```json
 {
-  "format_kind": "image",
-  "params": {
-    "width": 300,
-    "height": 250,
-    "accessibility": { "wcag_level": "AA", "requires_accessible_assets": true },
-    "slots": [
-      { "asset_group_id": "image_main", "asset_type": "image", "required": true },
-      { "asset_group_id": "headline", "asset_type": "text", "required": true }
-    ]
-  }
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
+  "name": "Display Banner 300x250",
+  "accessibility": {
+    "wcag_level": "AA",
+    "requires_accessible_assets": true
+  },
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "hero_image",
+      "asset_type": "image",
+      "required": true,
+      "requirements": {
+        "min_width": 300,
+        "max_width": 300,
+        "min_height": 250,
+        "max_height": 250,
+        "formats": ["jpg", "png", "webp"]
+      }
+    },
+    {
+      "item_type": "individual",
+      "asset_id": "headline",
+      "asset_type": "text",
+      "required": true,
+      "requirements": {
+        "max_length": 90
+      }
+    }
+  ]
 }
 ```
 
@@ -69,7 +92,10 @@ These assets provide structured data that the format uses to render accessibly.
 ```json
 {
   "creative_id": "brand_video_001",
-  "format_kind": "video_hosted",
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "video_30s_hosted"
+  },
   "assets": {
     "video_file": {
       "url": "https://cdn.example.com/video.mp4",
@@ -100,7 +126,10 @@ HTML and JavaScript assets are black boxes — the format can't inspect their re
 ```json
 {
   "creative_id": "rich_media_001",
-  "format_kind": "html5",
+  "format_id": {
+    "agent_url": "https://publisher.com",
+    "id": "rich_media_expandable"
+  },
   "assets": {
     "creative_html": {
       "content": "<div class='ad-container'>...</div>",
@@ -139,16 +168,16 @@ Some asset types don't produce standalone rendered content and have no accessibi
 
 ## Discovering Accessible Formats
 
-Buyers inspect canonical declarations returned in product `format_options[]` or creative-agent `supported_formats[]` and filter them client-side by declared accessibility constraints:
+Buyers can filter for accessible formats using the `wcag_level` parameter in `list_creative_formats`:
 
 ```json
-const accessible = product.format_options.filter(option =>
-  ["AA", "AAA"].includes(option.params.accessibility?.wcag_level) &&
-  option.params.slots.some(slot => slot.asset_type === "image")
-);
+{
+  "wcag_level": "AA",
+  "asset_types": ["image", "text"]
+}
 ```
 
-This selects formats that claim at least WCAG AA conformance and include an image slot. Accessibility claims remain declaration-specific and should be substantiated by the renderer or required asset metadata.
+This returns formats that meet at least WCAG AA conformance and accept image and text assets. The filter uses "at least" logic: requesting `AA` returns formats with `AA` or `AAA`.
 
 ## Implementation Notes
 
@@ -169,4 +198,4 @@ This selects formats that claim at least WCAG AA conformance and include an imag
 - [Creative Formats](/docs/creative/formats) — Format structure and requirements
 - [Asset Types](/docs/creative/asset-types) — Asset specifications and payload schemas
 - [Creative Manifests](/docs/creative/creative-manifests) — Pairing assets with formats
-- [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) — Creative-agent capability discovery
+- [list_creative_formats](/docs/creative/task-reference/list_creative_formats) — Format discovery with filtering

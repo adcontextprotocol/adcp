@@ -59,6 +59,7 @@ describe('public external URL navigation guard', () => {
   it.each([
     ['admin-content.html', 'safeExternalHttpUrl(item.external_url)'],
     ['admin-account-detail.html', 'safeExternalHttpUrl(invoice.hosted_invoice_url)'],
+    ['members.html', 'safeExternalHttpUrl(format.example_url)'],
     ['working-groups/detail.html', 'safeExternalHttpUrl(currentGroup.slack_channel_url)'],
     ['working-groups/detail.html', 'safeExternalHttpUrl(meeting.zoom_join_url)'],
     ['working-groups/detail.html', 'safeExternalHttpUrl(doc.document_url)'],

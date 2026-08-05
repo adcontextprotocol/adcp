@@ -74,11 +74,11 @@ The router sends you page context. You evaluate your active packages against tha
       "brand": { "domain": "acmeoutdoor.example.com" },
       "summary": "Hiking gear seasonal promotion",
       "creative_manifest": {
-        "format_kind": "image",
+        "format_id": { "agent_url": "https://streamhaus.example", "id": "sidebar_display" },
         "assets": {
-          "headline": { "asset_type": "text", "content": "Trail-ready gear for every summit" },
-          "image_main": { "asset_type": "image", "url": "https://cdn.acme.example/hiking-hero.jpg", "width": 300, "height": 250 },
-          "cta": { "asset_type": "text", "content": "Shop now" }
+          "headline": { "content": "Trail-ready gear for every summit" },
+          "image": { "url": "https://cdn.acme.example/hiking-hero.jpg", "width": 300, "height": 250 },
+          "cta": { "content": "Shop now" }
         }
       },
       "price": { "amount": 12.50, "currency": "USD", "model": "cpm" }

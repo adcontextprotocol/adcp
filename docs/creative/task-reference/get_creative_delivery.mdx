@@ -7,7 +7,7 @@ description: "get_creative_delivery retrieves variant-level delivery data with m
 
 Retrieve creative delivery data including variant-level breakdowns with manifests and metrics. This task returns what variants were created from your creatives, what they looked like (via manifests), and how they performed.
 
-This is a Creative Protocol task. Call it on any agent that declares `"creative"` in `supported_protocols` and exposes the `get_creative_delivery` tool — whether that's a dedicated creative service or a [sales agent implementing the Creative Protocol](/docs/creative/sales-agent-creative-capabilities).
+This is a Creative Protocol task. Call it on any agent that declares `"creative"` in `supported_protocols` and `"delivery"` in its [creative agent capabilities](#capability-declaration) — whether that's a dedicated creative service or a [sales agent implementing the Creative Protocol](/docs/creative/sales-agent-creative-capabilities).
 
 **Request Schema**: [`/schemas/v3/creative/get-creative-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/creative/get-creative-delivery-request.json)
 **Response Schema**: [`/schemas/v3/creative/get-creative-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/creative/get-creative-delivery-response.json)
@@ -45,7 +45,7 @@ At least one scoping filter (`media_buy_ids` or `creative_ids`) is required.
 |-------|-------------|
 | `creative_id` | Creative identifier |
 | `media_buy_id` | Seller's media buy identifier (present when the request spanned multiple media buys) |
-| `format_kind` | Canonical format of this creative |
+| `format_id` | Format of this creative |
 | `totals` | Aggregate delivery metrics across all variants — see [Delivery metrics fields](#delivery-metrics-fields) below |
 | `variant_count` | Total number of variants (may exceed `variants` array length when `max_variants` is used) |
 | `variants` | Array of variant-level delivery data (empty if creative has no variants yet) |
@@ -99,7 +99,7 @@ Each variant represents a specific execution: a fixed creative (Tier 1), an asse
 | Field | Description |
 |-------|-------------|
 | `variant_id` | Platform-assigned variant identifier |
-| `manifest` | (Optional) The rendered canonical creative manifest—the actual output served, with `format_kind` and resolved assets. |
+| `manifest` | (Optional) The rendered creative manifest — the actual output that was served, not the input assets. Contains format_id and resolved assets. Not all platforms can provide manifests for every variant. |
 | `generation_context` | (Optional, Tier 3) Input signals that triggered generation — e.g., page topic, conversation theme, query category. Platforms provide summarized/anonymized signals, not raw user input. When content context is managed through AdCP content standards, includes an `artifact` reference linking to the specific content artifact. Supports `ext` for vendor-specific context structures. |
 | `ext` | (Optional) Platform-specific data. Social platforms use this for engagement metrics (upvotes, comments, shares) that vary by platform. |
 | Standard metrics | All [Delivery metrics fields](#delivery-metrics-fields) — same shape as `creative.totals` |
@@ -197,7 +197,10 @@ Buyer provides multiple asset alternatives using a format with `selection_mode: 
         {
           "variant_id": "var_headline_a_image_c",
           "manifest": {
-            "format_kind": "image",
+            "format_id": {
+              "agent_url": "https://creative.example.com",
+              "id": "display_300x250"
+            },
             "assets": {
               "headline_0_text": {
                 "asset_type": "text",
@@ -219,7 +222,10 @@ Buyer provides multiple asset alternatives using a format with `selection_mode: 
         {
           "variant_id": "var_headline_b_image_d",
           "manifest": {
-            "format_kind": "image",
+            "format_id": {
+              "agent_url": "https://creative.example.com",
+              "id": "display_300x250"
+            },
             "assets": {
               "headline_0_text": {
                 "asset_type": "text",
@@ -281,7 +287,10 @@ When the publisher uses AdCP content standards, `generation_context` can include
             "device_class": "mobile"
           },
           "manifest": {
-            "format_kind": "image",
+            "format_id": {
+              "agent_url": "https://creative.example.com",
+              "id": "display_300x250_generative"
+            },
             "assets": {
               "hero_image": {
                 "asset_type": "image",
@@ -308,7 +317,10 @@ When the publisher uses AdCP content standards, `generation_context` can include
             "device_class": "desktop"
           },
           "manifest": {
-            "format_kind": "image",
+            "format_id": {
+              "agent_url": "https://creative.example.com",
+              "id": "display_728x90_generative"
+            },
             "assets": {
               "hero_image": {
                 "asset_type": "image",
@@ -418,15 +430,15 @@ for (const c of Object.values(merged)) {
 
 ## Capability declaration
 
-Agents that support this task expose `get_creative_delivery` in their tool surface and declare Creative Protocol support through `get_adcp_capabilities`:
+Agents that support this task declare `"delivery"` in their `capabilities` array within `list_creative_formats` responses:
 
 ```json
 {
-  "supported_protocols": ["creative"],
-  "creative": {
-    "has_creative_library": true
-  }
+  "creative_agents": [{
+    "agent_url": "https://ads.seller-example.com",
+    "capabilities": ["validation", "assembly", "preview", "delivery"]
+  }]
 }
 ```
 
-Buyers discover candidate creative agents through the registry, then confirm the live endpoint's tool and `get_adcp_capabilities` surfaces. This applies to any endpoint implementing the Creative Protocol, including a sales agent with creative capabilities.
+Buyers discover this by calling `list_creative_formats` and checking the `creative_agents` array for agents with `"delivery"` in their capabilities. This applies to any agent implementing the Creative Protocol, including sales agents.

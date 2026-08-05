@@ -17,9 +17,8 @@
         }
       },
       "then": {
-        "anyOf": [
-          { "required": ["creative_manifest"] },
-          { "required": ["creative_id"] }
+        "required": [
+          "creative_manifest"
         ]
       }
     },
@@ -50,38 +49,6 @@
           "variant_id"
         ]
       }
-    },
-    {
-      "$comment": "Canonical and deprecated preview route selectors are mutually exclusive at the request level.",
-      "not": {
-        "required": ["target_capability_id", "format_id"]
-      }
-    },
-    {
-      "$comment": "A batch uses one routing generation: canonical capability selectors or deprecated named-format selectors, never both across defaults and items.",
-      "not": {
-        "anyOf": [
-          {
-            "allOf": [
-              { "required": ["target_capability_id", "requests"] },
-              { "properties": { "requests": { "contains": { "required": ["format_id"] } } } }
-            ]
-          },
-          {
-            "allOf": [
-              { "required": ["format_id", "requests"] },
-              { "properties": { "requests": { "contains": { "required": ["target_capability_id"] } } } }
-            ]
-          },
-          {
-            "allOf": [
-              { "required": ["requests"] },
-              { "properties": { "requests": { "contains": { "required": ["target_capability_id"] } } } },
-              { "properties": { "requests": { "contains": { "required": ["format_id"] } } } }
-            ]
-          }
-        ]
-      }
     }
   ],
   "properties": {
@@ -98,15 +65,9 @@
       "$ref": "/schemas/core/creative-manifest.json",
       "description": "Complete creative manifest with all required assets for the format. Required when request_type is 'single'. Also accepted per item in batch mode."
     },
-    "target_capability_id": {
-      "type": "string",
-      "pattern": "^[a-zA-Z0-9_-]+$",
-      "description": "Canonical preview-operation selector. Identifies one get_adcp_capabilities creative.supported_formats[].capability_id entry whose operations contains preview. In single mode it selects the renderer for this request; in batch mode it is the default for items that omit their own target_capability_id. When omitted, the agent MAY resolve the renderer only if exactly one advertised preview capability satisfies the manifest's canonical declaration; zero matches or multiple matches MUST be rejected with FORMAT_NOT_SUPPORTED rather than choosing nondeterministically. Mutually exclusive with deprecated format_id."
-    },
     "format_id": {
       "$ref": "/schemas/core/format-id.json",
-      "description": "**DEPRECATED in 3.2.** Legacy named-format preview route. New requests select an advertised preview renderer with target_capability_id and carry portable format identity in creative_manifest.format_kind plus optional creative_manifest.format_option_ref.",
-      "deprecated": true
+      "description": "Always a structured object {agent_url, id} — never a plain string. Format identifier for rendering the preview. Defaults to creative_manifest.format_id if omitted. Used in single mode."
     },
     "inputs": {
       "type": "array",
@@ -161,15 +122,9 @@
       "items": {
         "type": "object",
         "properties": {
-          "target_capability_id": {
-            "type": "string",
-            "pattern": "^[a-zA-Z0-9_-]+$",
-            "description": "Canonical preview-operation selector for this batch item. Overrides the batch-level target_capability_id and MUST identify an advertised capability whose operations contains preview. If neither item nor batch supplies one, renderer inference is permitted only for a unique compatible preview capability."
-          },
           "format_id": {
             "$ref": "/schemas/core/format-id.json",
-            "description": "**DEPRECATED in 3.2.** Legacy named-format preview route. Use target_capability_id plus the canonical identity in creative_manifest.",
-            "deprecated": true
+            "description": "Format identifier for rendering the preview. Defaults to creative_manifest.format_id if omitted."
           },
           "creative_manifest": {
             "$ref": "/schemas/core/creative-manifest.json",
@@ -223,13 +178,9 @@
             "description": "Maximum number of catalog items to render in this preview."
           }
         },
-        "anyOf": [
-          { "required": ["creative_manifest"] },
-          { "required": ["creative_id"] }
+        "required": [
+          "creative_manifest"
         ],
-        "not": {
-          "required": ["target_capability_id", "format_id"]
-        },
         "additionalProperties": true
       },
       "minItems": 1,
@@ -241,7 +192,7 @@
     },
     "creative_id": {
       "type": "string",
-      "description": "Creative-library identifier. In single mode, previews the stored canonical creative without requiring the caller to reconstruct its manifest. Also available as context in variant mode.",
+      "description": "Creative identifier for context. Used in variant mode.",
       "x-entity": "creative"
     },
     "context": {

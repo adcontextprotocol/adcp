@@ -17,11 +17,11 @@
     "format_id": {
       "$ref": "/schemas/core/format-id.json",
       "deprecated": true,
-      "description": "**DEPRECATED in 3.2.** Legacy named-format path retained for older 3.x peers. New creative assets use `format_kind` and optional `format_option_ref`."
+      "description": "Legacy named-format path. Always a structured object {agent_url, id} — never a plain string. Format identifier specifying which format this creative conforms to. Can be: (1) concrete format_id referencing a format with fixed dimensions, (2) template format_id referencing a template format, or (3) parameterized format_id with dimensions/duration parameters for template formats. Mutually exclusive with `format_kind`."
     },
     "format_kind": {
       "$ref": "/schemas/core/canonical-format-kind.json",
-      "description": "Canonical format name this creative targets (e.g., `image`, `video_hosted`). Mutually exclusive with deprecated `format_id`."
+      "description": "3.1+ canonical-format path. The canonical format name this creative targets (e.g., `image`, `video_hosted`). Mutually exclusive with `format_id`."
     },
     "format_option_ref": {
       "$ref": "/schemas/core/format-option-ref.json",

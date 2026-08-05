@@ -381,7 +381,7 @@
       "required": ["event_type"]
     },
     {
-      "description": "publisher.adagents_changed - the registry crawler detected a semantic change anywhere in a publisher adagents.json document, including formats-only or placements-only revisions. Transport metadata such as $schema and last_updated does not trigger this event by itself.",
+      "description": "publisher.adagents_changed - the registry crawler detected a publisher adagents.json change.",
       "properties": {
         "event_type": { "type": "string", "const": "publisher.adagents_changed" },
         "entity_type": { "type": "string", "const": "publisher" },
@@ -468,17 +468,6 @@
             "agent_count": { "type": "integer", "minimum": 0 },
             "property_count": { "type": "integer", "minimum": 0 },
             "collection_count": { "type": "integer", "minimum": 0 },
-            "format_count": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Number of top-level formats[] declarations after this revision."
-            },
-            "placement_count": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Number of top-level placements[] declarations after this revision."
-            },
-            "changed_fields": { "$ref": "#/$defs/changedFields" },
             "discovery_method": { "type": "string" },
             "manager_domain": { "type": ["string", "null"] },
             "source": { "type": "string" }
@@ -497,8 +486,7 @@
       "type": "array",
       "items": { "type": "string" },
       "minItems": 1,
-      "uniqueItems": true,
-      "description": "Advisory list of changed top-level field names. For publisher.adagents_changed, producers SHOULD enumerate every changed semantic field, explicitly including formats and placements for catalog-only revisions. Consumers MAY use this for targeted index refresh but MUST re-resolve every depended-on field when reading an older retained event that lacks this list."
+      "description": "Advisory list of changed top-level field names. Consumers MAY use this for targeted index refresh but MUST treat the event payload as authoritative."
     },
     "classification": {
       "type": "string",
@@ -605,11 +593,6 @@
           "deprecated": true,
           "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Named-format profile projection. Use canonical `format_kinds` and `format_option_refs`.",
           "items": { "$ref": "/schemas/core/format-id.json" }
-        },
-        "format_kinds": {
-          "type": "array",
-          "items": { "$ref": "/schemas/core/canonical-format-kind.json" },
-          "uniqueItems": true
         },
         "tags": { "$ref": "#/$defs/stringArray" },
         "delivery_types": { "$ref": "#/$defs/stringArray" },

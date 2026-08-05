@@ -24,6 +24,7 @@ interface AssetRequirements {
   max_duration_ms?: number;
   min_resolution_dpi?: number;
   catalog_type?: string;
+  parameters_from_format_id?: boolean;
 }
 
 interface IndividualAsset {
@@ -72,14 +73,14 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
   return [
     // ── Display ──────────────────────────────────────────────
     {
-      format_id: { agent_url: agentUrl, id: 'display_static' },
+      format_id: { agent_url: agentUrl, id: 'display_image' },
       name: 'Static display',
-      description: 'Static image display ad. Provide width and height in format_id to specify dimensions (e.g., 300x250, 728x90, 160x600, 320x50).',
-      accepts_parameters: ['dimensions'],
+      description: 'Static image display ad. Provide logical width and height plus optional pixel_ratio in format_id (for example, 300x250 at 2x uses a 600x500 asset).',
+      accepts_parameters: ['dimensions', 'pixel_ratio'],
       renders: [{ role: 'primary', parameters_from_format_id: true }],
       assets: [
         { item_type: 'individual', asset_id: 'image', asset_type: 'image', asset_role: 'hero_image', required: true,
-          requirements: { mime_types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], max_file_size_bytes: 200000 } },
+          requirements: { parameters_from_format_id: true, mime_types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], max_file_size_bytes: 200000 } },
         { item_type: 'individual', asset_id: 'click_url', asset_type: 'url', asset_role: 'click_through', required: true,
           requirements: { url_type: 'click_through' } },
         { item_type: 'individual', asset_id: 'impression_tracker', asset_type: 'url', asset_role: 'third_party_tracking', required: false,
@@ -436,11 +437,11 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
     {
       format_id: { agent_url: agentUrl, id: 'print_full_page' },
       name: 'Print full page',
-      description: 'Full-page print ad. High-resolution raster artwork at 300 DPI (2550x3300 pixels).',
-      renders: [{ role: 'primary', dimensions: { width: 2550, height: 3300 } }],
+      description: 'Full-page print ad. High-resolution image with bleed area. Delivered as print-ready PDF.',
+      renders: [{ role: 'primary', dimensions: { width: 8.5, height: 11, unit: 'inches' } }],
       assets: [
         { item_type: 'individual', asset_id: 'artwork', asset_type: 'image', asset_role: 'print_creative', required: true,
-          requirements: { mime_types: ['image/jpeg', 'image/png'], min_width: 2550, min_height: 3300, min_resolution_dpi: 300, max_file_size_bytes: 50000000 } },
+          requirements: { mime_types: ['application/pdf'], min_resolution_dpi: 300, max_file_size_bytes: 50000000 } },
       ],
     },
 
@@ -598,7 +599,7 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
  * Used by the product factory to assign appropriate formats to products.
  */
 export const FORMAT_CHANNEL_MAP: Record<string, string[]> = {
-  display_static: ['display'],
+  display_image: ['display'],
   display_300x250: ['display'],
   display_728x90: ['display'],
   display_320x50: ['display'],
