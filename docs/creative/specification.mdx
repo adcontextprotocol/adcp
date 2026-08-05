@@ -157,6 +157,11 @@ for every locale, format, or account. Because exact `list_creatives` readback
 is part of the contract, advertising localization also requires
 `creative.has_creative_library: true`.
 
+This section implements the executable-creative pattern from the
+[cross-protocol language and localization architecture](/docs/protocol/language-and-localization).
+Other language-bearing surfaces reuse the tag and matching primitives without
+inheriting creative variant topology.
+
 `sync_creatives.creatives[].localization` carries only materialized assets. It
 never asks the receiving seller to translate or generate creative. A buyer may
 produce those assets itself, through `build_creative`, or through a separate

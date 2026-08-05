@@ -63,7 +63,7 @@
         },
         "locale-tag": {
           "$ref": "/schemas/core/locale-tag.json",
-          "description": "BCP 47 language tag using the strict AdCP canonical wire profile — shared cross-task primitive"
+          "description": "BCP 47 language-identity tag using the AdCP canonical wire profile — required shared primitive for new language-bearing fields"
         },
         "creative-localization": {
           "$ref": "/schemas/core/creative-localization.json",
