@@ -867,6 +867,8 @@ export class AddieClaudeClient {
       };
     }
     let iteration = 0;
+    let retriedEmptyPostToolResponse = false;
+    let hasExecutedCustomTool = false;
 
     while (iteration < maxIterations) {
       iteration++;
@@ -880,7 +882,7 @@ export class AddieClaudeClient {
             model: effectiveModel,
             max_tokens: 4096,
             system: systemBlocks,
-            tools: [
+            tools: retriedEmptyPostToolResponse ? [] : [
               ...customTools,
               // Add web search tool via beta API
               ...(this.webSearchEnabled ? [{
@@ -924,6 +926,18 @@ export class AddieClaudeClient {
         inputTokens: response.usage?.input_tokens,
         outputTokens: response.usage?.output_tokens,
       }, 'Addie: Claude response received');
+
+      // The empty-response recovery call is intentionally text-only. Defend
+      // against a malformed provider response that nevertheless contains a
+      // tool request: discard it instead of risking a duplicate mutation.
+      if (retriedEmptyPostToolResponse && response.stop_reason === 'tool_use') {
+        logger.warn({ iteration }, 'Addie: Ignoring tool use from text-only recovery');
+        response = {
+          ...response,
+          stop_reason: 'end_turn',
+          content: [],
+        };
+      }
 
       // Check for web search results in the response (can appear even with end_turn)
       const earlyWebSearchResults = response.content.filter((c) => c.type === 'web_search_tool_result');
@@ -982,6 +996,14 @@ export class AddieClaudeClient {
           .map(block => block.type === 'text' ? block.text : '')
           .join('\n\n')
           .trim();
+        // Anthropic can occasionally return an empty end_turn immediately
+        // after a tool result. Resampling the unchanged post-tool turn once is
+        // safe because no assistant response has reached the caller yet.
+        if (!rawText && hasExecutedCustomTool && !retriedEmptyPostToolResponse && iteration < maxIterations) {
+          retriedEmptyPostToolResponse = true;
+          logger.warn({ iteration, toolsUsed }, 'Addie: Retrying empty response after tool use');
+          continue;
+        }
         const emptyResponse = applyResponsePipelineWithEmptyMonitoring(userMessage, rawText, toolExecutions);
         const text = emptyResponse.text;
 
@@ -1162,6 +1184,7 @@ export class AddieClaudeClient {
           if (block.type !== 'tool_use') continue;
 
           const toolName = block.name;
+          hasExecutedCustomTool = true;
           const toolInput = block.input as Record<string, unknown>;
           const toolUseId = block.id;
           const startTime = Date.now();
@@ -1470,6 +1493,7 @@ export class AddieClaudeClient {
     }
     const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
+    let retriedEmptyPostToolResponse = false;
 
     try {
       while (iteration < maxIterations) {
@@ -1494,7 +1518,7 @@ export class AddieClaudeClient {
               model: effectiveModel,
               max_tokens: 4096,
               system: systemBlocks,
-              tools: customTools,
+              tools: retriedEmptyPostToolResponse ? [] : customTools,
               messages,
             });
 
@@ -1503,10 +1527,12 @@ export class AddieClaudeClient {
               if (event.type === 'content_block_delta') {
                 const delta = event.delta;
                 if ('text' in delta && delta.text) {
-                  hasYieldedContent = true;
                   textChunks.push(delta.text);
-                  fullText += delta.text;
-                  yield { type: 'text', text: delta.text };
+                  if (!retriedEmptyPostToolResponse) {
+                    hasYieldedContent = true;
+                    fullText += delta.text;
+                    yield { type: 'text', text: delta.text };
+                  }
                 }
               } else if (event.type === 'message_stop') {
                 // Get the final message
@@ -1626,6 +1652,26 @@ export class AddieClaudeClient {
           outputTokens: currentResponse.usage?.output_tokens,
         }, 'Addie Stream: Claude response received');
 
+        // The recovery iteration has no tools. If the provider still returns
+        // a tool_use block, ignore it rather than executing a mutation twice.
+        if (retriedEmptyPostToolResponse && currentResponse.stop_reason === 'tool_use') {
+          logger.warn({ iteration }, 'Addie Stream: Ignoring tool use from text-only recovery');
+          currentResponse = {
+            ...currentResponse,
+            stop_reason: 'end_turn',
+            content: [],
+          };
+        } else if (retriedEmptyPostToolResponse) {
+          const recoveredText = textChunks.join('') || currentResponse.content
+            .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === 'text')
+            .map((block) => block.text)
+            .join('');
+          if (recoveredText) {
+            fullText += recoveredText;
+            yield { type: 'text', text: recoveredText };
+          }
+        }
+
         // Build the final usage block + charge the user's cost
         // budget (#2790). Both stream terminal paths (end_turn and
         // no-tool-blocks) share this; kept inline as a local const
@@ -1649,6 +1695,20 @@ export class AddieClaudeClient {
 
         // Done - no tool use
         if (currentResponse.stop_reason === 'end_turn') {
+          const iterationText = currentResponse.content
+            .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === 'text')
+            .map(block => block.text)
+            .join('\n\n')
+            .trim();
+
+          // No deltas were emitted for this iteration, so retrying the same
+          // post-tool turn once cannot duplicate text in streaming clients.
+          if (!iterationText && toolExecutions.length > 0 && !retriedEmptyPostToolResponse && iteration < maxIterations) {
+            retriedEmptyPostToolResponse = true;
+            logger.warn({ iteration, toolsUsed }, 'Addie Stream: Retrying empty response after tool use');
+            continue;
+          }
+
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
 
           // Run both detectors against the post-pipeline text — same as the
