@@ -47,7 +47,7 @@ contextually, as localized creative does for text and markdown assets.
 
 ## Name the matching operation
 
-“Language matching” is not a complete interoperability rule. Every surface
+"Language matching" is not a complete interoperability rule. Every surface
 MUST name the RFC 4647 operation and the direction in which it is applied.
 
 | Purpose | Operation | Direction | Example |
@@ -56,7 +56,7 @@ MUST name the RFC 4647 operation and the direction in which it is applied.
 | Select one representation from available tags | RFC 4647 §3.4 Lookup | Requested range is progressively truncated and compared by equality | Request `fr-CA` can select available `fr`; it does not select sibling `fr-FR` |
 
 Eligibility is a set-membership question; selection chooses one value. A
-surface must not call an eligibility set “Lookup” merely because a simple test
+surface must not call an eligibility set "Lookup" merely because a simple test
 case happens to produce the same result.
 
 ## Four distinct localization patterns
@@ -86,6 +86,29 @@ input-language declaration authoritative, and echo the actual response
 language. Published-content work should reuse the tag profile while defining
 whole-value maps and explicit defaults rather than agent capability or error
 semantics.
+
+**`targeting.language` is a known vocabulary divergence.** The language filter
+in `get_products` and related tasks uses ISO 639-1 two-letter codes only
+(`^[a-z]{2}$`), not the shared BCP 47 tag profile. It is the one legacy field
+that can appear in the same request as creative locale eligibility: a buyer
+targeting `language: ["fr"]` against a creative with
+`accepted_language_ranges: ["fr-CA"]` carries two distinct vocabularies in one
+request — `fr` is valid for targeting and is a valid Basic Filtering range, but
+the creative policy is constrained to `fr-CA` and its more-specific descendants.
+This is a documented divergence; neither side is wrong. The `^[a-z]{2}$`
+pattern also cannot express ISO 639-3-only languages, which is an additional
+pre-existing limitation on that field.
+
+**`locale_policy` absence, populated array, and `und` have distinct semantics.**
+Omitting `locale_policy` entirely means unconstrained — no locale restriction,
+and any creative variant is eligible for assignment. A populated
+`accepted_language_ranges` array means a closed set — at least one materialized
+creative variant must match a seller range via Basic Filtering. Including `und`
+in that array means unknown language: `und` is not a wildcard and matches only
+creative variants explicitly tagged `und`, not untagged or generic creatives.
+Use `zxx` explicitly when a creative has no linguistic content (for example, an
+animation with no text or speech); `zxx` must appear in `accepted_language_ranges`
+for the policy to cover it.
 
 Legacy underscore keys such as `en_US` in `brand.json` are not shared language
 tags. A bridge replaces `_` with `-`, applies the AdCP wire profile, and
