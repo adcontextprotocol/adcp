@@ -26,7 +26,7 @@ describe('AgentSnapshotDatabase.filterCreativeAgents', () => {
     expect(sql).toContain("entry->'format'->>'format_kind'");
     expect(sql).toContain("LOWER(entry->'format'->>'publisher_domain')");
     expect(sql).toContain("entry->'format'->>'format_option_id'");
-    expect(sql).toContain("entry ? 'capability_id'");
+    expect(sql).not.toContain("entry ? 'capability_id'");
     expect(sql).toContain("entry->'operations' ?|");
     expect(params).toEqual([
       ['video_hosted'],
@@ -43,6 +43,16 @@ describe('AgentSnapshotDatabase.filterCreativeAgents', () => {
     const [sql, params] = queryMock.mock.calls[0];
     expect(sql).toContain("entry->>'capability_id'");
     expect(params).toEqual(['vertical_video_builder']);
+  });
+
+  it('does not require capability_id when filtering legacy entries by normalized operation', async () => {
+    const db = new AgentSnapshotDatabase();
+    await db.filterCreativeAgents({ format_kinds: ['image'], operations: ['build'] });
+
+    const [sql, params] = queryMock.mock.calls[0];
+    expect(sql).not.toContain("entry ? 'capability_id'");
+    expect(sql).toContain("entry->'operations' ?|");
+    expect(params).toEqual([['image'], ['build']]);
   });
 });
 

@@ -240,8 +240,12 @@ describe('reference formats', () => {
   });
 
   it('projects reviewed mappings into canonical preview capabilities', () => {
-    const capabilities = buildCreativeCapabilities(buildReferenceFormats(TEST_AGENT_URL));
-    expect(capabilities).toHaveLength(55);
+    const formats = buildReferenceFormats(TEST_AGENT_URL);
+    const capabilities = buildCreativeCapabilities(formats);
+    const canonicalFormats = formats.filter(format =>
+      Boolean((format.canonical as { kind?: string } | undefined)?.kind)
+    );
+    expect(capabilities).toHaveLength(canonicalFormats.length);
     expect(capabilities[0]).toMatchObject({
       capability_id: expect.stringMatching(/^preview_[a-zA-Z0-9_-]+$/),
       operations: ['preview'],
@@ -952,7 +956,10 @@ describe('MCP tool responses include structuredContent', () => {
   it('get_adcp_capabilities returns canonical supported_formats', async () => {
     const response = await client.callTool({ name: 'get_adcp_capabilities', arguments: {} });
     const structured = response.structuredContent as Record<string, any>;
-    expect(structured.creative.supported_formats).toHaveLength(55);
+    const canonicalFormatCount = buildReferenceFormats(TEST_AGENT_URL).filter(format =>
+      Boolean((format.canonical as { kind?: string } | undefined)?.kind)
+    ).length;
+    expect(structured.creative.supported_formats).toHaveLength(canonicalFormatCount);
     expect(structured.creative.supported_formats[0]).toMatchObject({ operations: ['preview'] });
     expect(structured).toMatchObject({
       adcp_version: '3.2',

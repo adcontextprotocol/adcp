@@ -537,12 +537,18 @@ export function canonicalParamsSatisfied(manifest: CreativeManifest, params: Rec
 
   // image_formats: primary image asset url extension must match the allowed list.
   if (Array.isArray(params.image_formats) && params.image_formats.length > 0) {
-    const allowedFmts = params.image_formats as string[];
+    const allowedFmts = (params.image_formats as unknown[])
+      .filter((format): format is string => typeof format === 'string')
+      .map(format => format.startsWith('.') ? format.slice(1).toLowerCase() : format.toLowerCase());
     const rawImage = (manifest.assets as Record<string, unknown>).image;
     const imageAsset = Array.isArray(rawImage) ? rawImage[0] : rawImage;
     if (isRecord(imageAsset) && typeof imageAsset.url === 'string') {
-      const ext = imageAsset.url.split('.').pop()?.toLowerCase() ?? '';
-      if (ext && !allowedFmts.includes(ext)) return false;
+      const withoutFragment = imageAsset.url.split('#', 1)[0] ?? '';
+      const withoutQuery = withoutFragment.split('?', 1)[0] ?? '';
+      const filename = withoutQuery.split('/').pop() ?? '';
+      const finalDot = filename.lastIndexOf('.');
+      const extension = finalDot >= 0 ? filename.slice(finalDot + 1).toLowerCase() : undefined;
+      if (extension && !allowedFmts.includes(extension)) return false;
     }
   }
 

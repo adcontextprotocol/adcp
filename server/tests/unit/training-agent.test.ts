@@ -82,6 +82,18 @@ describe('canonical package readiness parameter matching', () => {
     expect(canonicalParamsSatisfied(manifest(1200, 90), params)).toBe(false);
     expect(canonicalParamsSatisfied(manifest(728, 60), params)).toBe(false);
   });
+
+  it('matches image formats against URL paths without treating query strings as extensions', () => {
+    const imageManifest = (url: string) => ({
+      format_kind: 'image',
+      assets: { image: { asset_type: 'image', url } },
+    });
+    const params = { image_formats: ['jpg', '.PNG'] };
+
+    expect(canonicalParamsSatisfied(imageManifest('https://cdn.example/hero.jpg?w=1200#crop'), params)).toBe(true);
+    expect(canonicalParamsSatisfied(imageManifest('https://cdn.example/assets/opaque-id?w=1200'), params)).toBe(true);
+    expect(canonicalParamsSatisfied(imageManifest('https://cdn.example/hero.gif?w=1200'), params)).toBe(false);
+  });
 });
 
 /**

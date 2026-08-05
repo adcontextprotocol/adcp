@@ -256,6 +256,10 @@ function formatIdsForChannels(channels: string[], agentUrl: string): FormatID[] 
  * format_ids are retained only so older 3.x clients can consume the catalog.
  */
 const CANONICAL_FORMAT_PROJECTION_BY_LEGACY_ID: Record<string, CanonicalFormatProjection> = {
+  display_image: {
+    format_kind: 'image',
+    params: {},
+  },
   display_static: {
     format_kind: 'image',
     params: {},

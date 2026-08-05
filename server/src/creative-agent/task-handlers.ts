@@ -409,6 +409,7 @@ function renderSinglePreview(
     throw new PreviewCreativeNotFoundError(`Creative "${req.creative_id ?? 'unknown'}" was not found in this agent's creative library.`);
   }
   const manifest = req.creative_manifest;
+  const formatId = req.format_id || manifest.format_id as PreviewRequest['format_id'];
   const format = resolveCanonicalPreviewFormat(req, formats);
 
   // The renderer still consumes the catalog's internal template key. Keep that

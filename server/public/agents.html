@@ -1333,8 +1333,8 @@
 
             const formats = (data.products || []).flatMap(product =>
                 (product.format_options || []).map(option => ({
-                    name: option.label || option.format_option_id || option.format?.format_kind,
-                    format: option.format,
+                    name: option.display_name || option.label || option.format_option_id || option.format_kind,
+                    format: option,
                     description: product.description
                 }))
             );

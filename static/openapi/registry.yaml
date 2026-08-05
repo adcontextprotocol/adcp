@@ -6404,7 +6404,7 @@ paths:
         - schema:
             type: string
             description: "Canonical creative-capability filter: exact publisher_domain on the same supported-format entry. Pair with format_option_id to find endpoints claiming an exact publisher format."
-            example: snapchat.com
+            example: shorts.streamhaus.example
           required: false
           description: "Canonical creative-capability filter: exact publisher_domain on the same supported-format entry. Pair with format_option_id to find endpoints claiming an exact publisher format."
           name: publisher_domain

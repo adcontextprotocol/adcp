@@ -1379,7 +1379,7 @@ registry.registerPath({
       }),
       publisher_domain: z.string().optional().openapi({
         description: "Canonical creative-capability filter: exact publisher_domain on the same supported-format entry. Pair with format_option_id to find endpoints claiming an exact publisher format.",
-        example: "snapchat.com",
+        example: "shorts.streamhaus.example",
       }),
       format_option_id: z.string().optional().openapi({
         description: "Canonical creative-capability filter: exact publisher format_option_id on the same supported-format entry.",
