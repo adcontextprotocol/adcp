@@ -2285,7 +2285,7 @@
         } else if (status === 'opted_out') {
           hint = 'Compliance monitoring is opted out for this agent — no badges will issue. Re-enable monitoring to be eligible.';
         } else if (status === 'passing' && declaredSpecialisms.length === 0) {
-          hint = 'Storyboards are passing, but your agent isn\'t declaring any specialisms in <code>get_adcp_capabilities</code> — without that declaration, AAO doesn\'t know which badges to issue. <a href="/docs/building/aao-verified#declare-specialisms" target="_blank" rel="noopener">How to declare specialisms</a>.';
+          hint = 'Storyboards are passing, but your agent isn\'t declaring any specialisms in <code>get_adcp_capabilities</code> — without that declaration, AAO doesn\'t know which badges to issue. <a href="/docs/building/verification/aao-verified#declare-specialisms" target="_blank" rel="noopener">How to declare specialisms</a>.';
         } else if (status === 'passing') {
           if (tierEligibleSentence) {
             hint = `Storyboards are passing. ${tierEligibleSentence}. Your badge should issue ${nextCheckCopy}.`;
@@ -2296,10 +2296,10 @@
           }
         } else if (status === 'failing' || status === 'degraded') {
           hint = declaredSpecialisms.length === 0
-            ? 'Storyboards are failing — fix the failing storyboards in this card to earn AAO Verified (Spec). <a href="/docs/building/aao-verified" target="_blank" rel="noopener">Learn more</a>.'
-            : 'Some declared specialisms are failing — fix the failing storyboards in this card to earn AAO Verified (Spec). <a href="/docs/building/aao-verified" target="_blank" rel="noopener">Learn more</a>.';
+            ? 'Storyboards are failing — fix the failing storyboards in this card to earn AAO Verified (Spec). <a href="/docs/building/verification/aao-verified" target="_blank" rel="noopener">Learn more</a>.'
+            : 'Some declared specialisms are failing — fix the failing storyboards in this card to earn AAO Verified (Spec). <a href="/docs/building/verification/aao-verified" target="_blank" rel="noopener">Learn more</a>.';
         } else {
-          hint = `Compliance check will run ${nextCheckCopy}. Earn AAO Verified (Spec) by declaring specialisms in <code>get_adcp_capabilities</code> and passing their storyboards. <a href="/docs/building/aao-verified" target="_blank" rel="noopener">Learn more</a>.`;
+          hint = `Compliance check will run ${nextCheckCopy}. Earn AAO Verified (Spec) by declaring specialisms in <code>get_adcp_capabilities</code> and passing their storyboards. <a href="/docs/building/verification/aao-verified" target="_blank" rel="noopener">Learn more</a>.`;
         }
 
         const renderSpecialismChip = (s) => {
@@ -2442,12 +2442,6 @@
           </div>`;
       }).join('');
 
-      // Surface the (Live) upgrade path inline when no badge holds it yet.
-      const hasLive = badges.some(b => Array.isArray(b.verification_modes) && b.verification_modes.includes('live'));
-      const liveHint = hasLive
-        ? ''
-        : '<div class="verification-eligibility-hint">Want <strong>(Live)</strong> too? Once AAO\'s canonical-campaign runner ships in 3.1, agents that flow real production traffic will earn the <strong>(Live)</strong> qualifier on the same badge — same URL, no embed swap. <a href="/docs/building/aao-verified#verified-live" target="_blank" rel="noopener">Learn more</a>.</div>';
-
       // Header count: "1 badge" / "N badges" / "N badges across M roles"
       // The "across M roles" suffix only appears when at least one role
       // has parallel-version badges (i.e. distinctRoleCount < badges.length).
@@ -2465,7 +2459,6 @@
             <span style="font-weight: normal; text-transform: none; letter-spacing: 0;">${badgeCountSummary}</span>
           </div>
           ${rowsHtml}
-          ${liveHint}
           ${buildNoticesSectionHtml(cs)}
         </div>`;
     }
