@@ -245,6 +245,14 @@
           "$ref": "/schemas/core/proposal.json",
           "description": "A proposed media plan with budget allocations across products - actionable via create_media_buy"
         },
+        "budget-allocation": {
+          "$ref": "/schemas/core/budget-allocation.json",
+          "description": "Fixed or seller-optimized allocation of a media-buy total budget across packages"
+        },
+        "bidding-policy": {
+          "$ref": "/schemas/core/bidding-policy.json",
+          "description": "Buyer-authored bidding, average-cost, or return policy at media-buy or package scope"
+        },
         "insertion-order": {
           "$ref": "/schemas/core/insertion-order.json",
           "description": "A formal insertion order attached to a committed proposal for agreement signing"
@@ -1895,6 +1903,18 @@
         "provider-registration": {
           "$ref": "/schemas/trusted-match/provider-registration.json",
           "description": "TMP provider registration — endpoint, capabilities, and operational parameters for router configuration"
+        },
+        "provider-identity-match-response": {
+          "$ref": "/schemas/trusted-match/provider-identity-match-response.json",
+          "description": "Provider-to-router Identity Match response shape — carries ordered TMPX `{slot_id, value}` chunks with no publisher-local names"
+        },
+        "publisher-tmpx-config": {
+          "$ref": "/schemas/trusted-match/publisher-tmpx-config.json",
+          "description": "Publisher-owned deployment configuration that maps (provider_id, slot_id) to the ad-server macro name, GAM key-value, VAST substitution, or play-log field for that surface"
+        },
+        "tmpx-chunk": {
+          "$ref": "/schemas/trusted-match/tmpx-chunk.json",
+          "description": "A single TMPX chunk — provider-local slot_id and opaque URL-safe value; shared between provider→router and router→publisher hops"
         }
       },
       "operations": {

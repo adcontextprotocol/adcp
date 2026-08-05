@@ -61,7 +61,10 @@ Returns an array of media buys with current status, creative approval state, and
 | `status` | Current status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`). Maps to `media_buy_status` on `create_media_buy` / `update_media_buy` success responses (3.1 vocabulary note above). |
 | `status_as_of` | ISO 8601 timestamp when the seller last refreshed the returned media-buy-level `status` from its source of truth. For rolled-up statuses, this MUST NOT be later than the oldest upstream status observation that could affect the returned roll-up. Optional; omitted or `null` makes no freshness assertion, and buyers MUST NOT infer live status from absence. Use this to interpret cached or rolled-up statuses separately from `updated_at`, which means the media buy's last modification time. |
 | `currency` | ISO 4217 currency for media-buy-level monetary values |
-| `total_budget` | Total campaign budget (in `currency`) |
+| `total_budget` | Hard aggregate lifetime budget (in `currency`) |
+| `budget_allocation` | Fixed or seller-optimized cross-package allocation configuration. Omission means fixed for legacy buys. |
+| `pacing` | Aggregate media-buy pacing strategy |
+| `bidding` | Media-buy-authored bidding policy. Packages that inherit it omit their own `bidding` block. |
 | `creative_deadline` | Creative upload deadline (ISO 8601) |
 | `confirmed_at` | ISO 8601 timestamp when the seller committed to this media buy. May be `null` until seller commitment occurs in deferred/manual approval flows; stable after it is set. |
 | `cancellation` | Cancellation metadata (present only when `status` is `canceled`). Object with `canceled_at` (ISO 8601), `canceled_by` (`"buyer"` or `"seller"`), and optional `reason`. |
@@ -78,8 +81,13 @@ Returns an array of media buys with current status, creative approval state, and
 |-------|-------------|
 | `package_id` | Seller's package identifier |
 | `product_id` | Product identifier this package is purchased from. For packages created from an explicit `create_media_buy` package request, sellers MUST echo the request package's `product_id` on every response package object that represents that requested package. |
-| `currency` | Optional package-level currency override (defaults to media buy `currency`) |
-| `bid_price` | Current bid price for auction-based packages (in package `currency` if present, otherwise media buy `currency`) |
+| `budget` | Hard lifetime package spend cap in `media_buy.currency`. In seller-optimized mode this is not a current allocation and may be absent. |
+| `min_spend_target` | Soft lifetime package spend target in `media_buy.currency` accepted for seller-optimized allocation. |
+| `pacing` | Package pacing preference. It is subordinate to media-buy aggregate `pacing` and cannot cause aggregate delivery to exceed that strategy. |
+| `currency` | Legacy/external-buy package denomination. For AdCP-authored buys this equals `media_buy.currency`; it does not reinterpret canonical budget or bidding amounts. |
+| `bidding` | Package-authored bidding override. `{automatic: true}` explicitly overrides media-buy controls; omission inherits media-buy `bidding`. |
+| `bid_price` | Deprecated legacy bid representation; 3.2 sellers should normalize and echo `bidding`. |
+| `optimization_goals` | Current package objective functions, separate from currency-bearing `bidding` policy. |
 | `format_ids` | Legacy named-format IDs supplied on `create_media_buy`, echoed whenever the original request included them, including dual-emission cases where another selector won precedence. |
 | `format_option_refs` | Structured 3.1+ format option references supplied on `create_media_buy`, echoed whenever the original request included them. |
 | `format_kind` | Direct canonical selector supplied on `create_media_buy`, echoed whenever the original request included it, including informational-echo cases where another selector won precedence. |
@@ -144,7 +152,7 @@ History entries are **append-only** — sellers MUST NOT modify or delete previo
 
 **`not_delivering`** means the package is within its scheduled flight but has delivered zero impressions for at least one full staleness cycle. Implementers must not return `not_delivering` until `staleness_seconds` have elapsed since package activation — a new package with no impressions in its first minutes is expected, not a problem. Check `start_time` to confirm the package is within its flight before acting on this status.
 
-Money fields use this currency precedence: `snapshot.currency` -> `package.currency` -> `media_buy.currency`.
+For AdCP-authored buys, budget constraints and canonical bidding always use `media_buy.currency`. `snapshot.currency` identifies the reporting denomination for snapshot spend, and legacy/external buys may still carry `package.currency`; neither changes the denomination of buyer-authored 3.2 controls.
 
 ### Webhook Activity
 

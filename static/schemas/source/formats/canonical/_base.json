@@ -90,6 +90,26 @@
             "minimum": 1,
             "description": "Per-slot file size limit in kilobytes. Valid only when `asset_type` is `image`, `video`, `audio`, or `zip`. Mutually exclusive with `max_chars` (which applies to text asset types). Schema enforces via if/then so a producer can't set both on the same slot."
           },
+          "pixel_ratios": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "description": "Accepted intrinsic-pixel densities for this image-bearing slot. Valid when `asset_type` is `image`, and on a `card` slot where it constrains each card's image media (video media is unaffected). This makes density available to every canonical carrying image assets (native, carousel, responsive, companion images, and image itself), not only `format_kind: image`. When the image canonical also declares top-level `params.pixel_ratios`, the effective set is the intersection; an empty intersection is invalid. One matching asset satisfies the slot unless `required_pixel_ratios` requires rendition coverage."
+          },
+          "required_pixel_ratios": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "description": "Required density coverage for an image rendition set. Valid only when `asset_type` is `image` and `pixel_ratios` is also declared. Every value MUST appear in the effective accepted set after intersecting any top-level image `params.pixel_ratios`, and the manifest slot value MUST be an array containing exactly one matching image rendition for each required ratio. Other accepted ratios remain optional. For example, `pixel_ratios: [1, 1.5, 2]` with `required_pixel_ratios: [1, 2]` requires the 1x and 2x renditions while making 1.5x optional. SDKs enforce intersection, subset, coverage, and duplicate-ratio rules because JSON Schema draft-07 cannot express them generically."
+          },
           "logo_slots": {
             "type": "array",
             "items": { "$ref": "/schemas/enums/logo-slot.json" },
@@ -142,6 +162,28 @@
                 { "required": ["logo_slots"] },
                 { "required": ["required_logo_slots"] }
               ] }
+            }
+          },
+          {
+            "if": {
+              "properties": { "asset_type": { "enum": ["image", "card"] } },
+              "required": ["asset_type"]
+            },
+            "else": {
+              "not": {
+                "anyOf": [
+                  { "required": ["pixel_ratios"] },
+                  { "required": ["required_pixel_ratios"] }
+                ]
+              }
+            }
+          },
+          {
+            "$comment": "A rendition set is representable only by an array-valued image slot. Card media is singular in card-asset.json, so card slots may accept densities but cannot require multiple density renditions.",
+            "if": { "required": ["required_pixel_ratios"] },
+            "then": {
+              "properties": { "asset_type": { "const": "image" } },
+              "required": ["pixel_ratios"]
             }
           },
           {

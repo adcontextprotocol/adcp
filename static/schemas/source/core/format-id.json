@@ -3,7 +3,7 @@
   "$id": "/schemas/core/format-id.json",
   "title": "Format Reference (Structured Object)",
   "deprecated": true,
-  "description": "**DEPRECATED in 3.2.** Legacy named-format reference retained for 3.x compatibility. New products and manifests use canonical `format_options`, `format_kind`, and `format_option_ref`; creative-agent build routing uses `creative.supported_formats[].capability_id`. This object identifies a legacy creative format by declaring agent and local slug.",
+  "description": "**DEPRECATED in 3.2.** Legacy named-format reference retained for 3.x compatibility. This JSON object — never a plain string — identifies a format by its declaring agent and local slug, and may carry legacy logical dimensions, pixel ratio, or duration parameters. New products and manifests use canonical `format_options`, `format_kind`, and `format_option_ref`; creative-agent build routing uses `creative.supported_formats[].capability_id`.",
   "x-entity": "creative_format",
   "type": "object",
   "properties": {
@@ -31,6 +31,11 @@
       "type": "number",
       "minimum": 1,
       "description": "Duration in milliseconds for time-based formats (video, audio). When specified, creates a parameterized format ID. Omit to reference a template format without parameters."
+    },
+    "pixel_ratio": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Required intrinsic-pixel density for a parameterized visual format, expressed as intrinsic pixels per logical pixel. Requires `width` and `height`. Example: `{id: \"display_image\", width: 300, height: 250, pixel_ratio: 2}` identifies a 300×250 logical render supplied by a 600×500 image. Omit for the backward-compatible 1x variant."
     }
   },
   "required": [
@@ -44,6 +49,10 @@
     ],
     "height": [
       "width"
+    ],
+    "pixel_ratio": [
+      "width",
+      "height"
     ]
   }
 }

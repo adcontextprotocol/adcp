@@ -62,8 +62,31 @@
     },
     "total_budget": {
       "type": "number",
-      "description": "Total budget amount",
+      "description": "Hard aggregate lifetime budget amount",
       "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "description": "Single ISO 4217 denomination for total_budget, every package budget/minimum, and every canonical BiddingPolicy monetary field. Every package's selected pricing option MUST declare this currency; packages requiring another currency belong in a separate media buy.",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "budget_allocation": {
+      "allOf": [
+        {
+          "$ref": "/schemas/core/budget-allocation.json"
+        }
+      ],
+      "description": "Accepted cross-package budget allocation configuration. Omitted means fixed allocation for legacy buys."
+    },
+    "pacing": {
+      "$ref": "/schemas/enums/pacing.json",
+      "description": "Aggregate pacing strategy for total_budget across the media-buy flight."
+    },
+    "bidding": {
+      "allOf": [
+        { "$ref": "/schemas/core/bidding-policy.json" }
+      ],
+      "description": "Media-buy-authored bidding policy. This is the complete default inherited by packages that omit package.bidding; `{automatic:true}` is an explicit authored automatic policy. In seller-optimized mode, cost_per/roas bind to the primary budget_allocation optimization goal. In fixed mode, inherited cost_per requires compatible package primary-goal result units and inherited roas requires value-bearing primary goals. Monetary fields use media_buy.currency; every affected pricing option MUST declare the same currency. Package overrides are permitted only where advertised; conflicts MUST be rejected atomically with BIDDING_PLACEMENT_CONFLICT."
     },
     "packages": {
       "type": "array",

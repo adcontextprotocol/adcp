@@ -16,10 +16,6 @@ name: Claude Issue Triage
 # Required repo secrets:
 #   CLAUDE_ROUTINE_TRIAGE_URL    — full /fire URL including routine ID
 #   CLAUDE_ROUTINE_TRIAGE_TOKEN  — bearer token for that routine
-#   TRIAGE_DISPATCH_PAT          — PAT for reaction on the /triage-triggering
-#                                  comment (same secret as slash-command-dispatch.yml)
-#
-# Token last rotated: 2026-04-23 — rotate every 90 days.
 
 on:
   issues:
@@ -31,8 +27,8 @@ on:
 
 permissions:
   contents: read
-  issues: read
-  pull-requests: read
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: claude-triage-${{ github.event.issue.number || github.event.client_payload.github.payload.issue.number }}
@@ -270,7 +266,7 @@ jobs:
         if: steps.ctx.outputs.kind == 'manual' && success() && steps.ctx.outputs.comment_id != ''
         uses: peter-evans/create-or-update-comment@v5
         with:
-          token: ${{ secrets.TRIAGE_DISPATCH_PAT }}
+          token: ${{ github.token }}
           repository: ${{ github.event.client_payload.github.payload.repository.full_name }}
           comment-id: ${{ steps.ctx.outputs.comment_id }}
           reactions: "+1"
@@ -279,7 +275,7 @@ jobs:
         if: steps.ctx.outputs.kind == 'manual' && failure() && steps.ctx.outputs.comment_id != ''
         uses: peter-evans/create-or-update-comment@v5
         with:
-          token: ${{ secrets.TRIAGE_DISPATCH_PAT }}
+          token: ${{ github.token }}
           repository: ${{ github.event.client_payload.github.payload.repository.full_name }}
           comment-id: ${{ steps.ctx.outputs.comment_id }}
           reactions: "-1"

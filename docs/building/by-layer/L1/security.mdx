@@ -81,7 +81,7 @@ Normative rules for the legacy scheme when a seller elects to support it:
 - **Timing-safe comparison**: MUST use constant-time comparison (e.g., `timingSafeEqual`)
 - **Replay window**: Reject requests where `|current_time - timestamp| > 300` seconds
 - **Minimum secret length**: 32 bytes
-- **Header format**: `X-ADCP-Signature: sha256=<hex digest>` and `X-ADCP-Timestamp: <unix seconds>`. Any body-level `signature` field is a convenience copy and MUST NOT be trusted over the headers.
+- **Header format**: `X-ADCP-Signature: sha256=<hex digest>` and `X-ADCP-Timestamp: <unix seconds>`. Receivers MUST ignore any deprecated body-level `signature` field when authenticating the delivery; the headers are authoritative.
 
 **Verification order** (legacy scheme):
 1. Reject if `X-ADCP-Signature` or `X-ADCP-Timestamp` header is missing

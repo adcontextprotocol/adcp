@@ -11,8 +11,13 @@
       "x-entity": "package"
     },
     "budget": {
-      "type": "number",
-      "description": "Updated budget allocation for this package in the currency specified by the pricing option",
+      "type": ["number", "null"],
+      "description": "Updated hard spend cap for this package in the media-buy currency. Every selected pricing option in an AdCP-authored media buy MUST declare that same currency. In seller-optimized mode a number changes the package ceiling and null removes it so only the shared total and other constraints bound the package. null is invalid when the resulting allocation mode is fixed.",
+      "minimum": 0
+    },
+    "min_spend_target": {
+      "type": ["number", "null"],
+      "description": "Updated soft lifetime spend target for this package. A number is valid only for seller-optimized allocation and must not exceed the resulting package budget when one exists. null removes the target. Sellers MUST validate the complete post-update state atomically.",
       "minimum": 0
     },
     "pacing": {
@@ -20,8 +25,16 @@
     },
     "bid_price": {
       "type": "number",
-      "description": "Updated bid price for auction-based pricing options. This is the exact bid/price to honor unless selected pricing_option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
+      "deprecated": true,
+      "description": "DEPRECATED in 3.2 and removed in the next major. Use bidding. A package update MUST NOT supply both a non-null bidding object and bid_price. During migration, bidding:null MAY accompany bid_price to clear the canonical block and set the legacy representation atomically.",
       "minimum": 0
+    },
+    "bidding": {
+      "description": "Replace the complete package-authored bidding policy. An object replaces any prior package block and remains a complete override of the media-buy default. `{automatic:true}` explicitly selects provider automatic bidding at package scope. null clears the package-authored block so the package inherits media-buy bidding; if the media-buy block is also absent, provider automatic delivery applies. Monetary fields use the media-buy currency and require the package pricing option to declare that currency. During legacy migration, null MAY accompany bid_price or monetary optimization-goal targets; only a non-null canonical bidding object conflicts with those representations.",
+      "anyOf": [
+        { "$ref": "/schemas/core/bidding-policy.json" },
+        { "type": "null" }
+      ]
     },
     "impressions": {
       "type": "number",
@@ -184,6 +197,33 @@
   "required": [
     "package_id"
   ],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "bidding": { "type": "object" } },
+        "required": ["bidding"]
+      },
+      "then": {
+        "properties": {
+          "optimization_goals": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "target": {
+                    "properties": {
+                      "kind": { "enum": ["cost_per", "per_ad_spend"] }
+                    },
+                    "required": ["kind"]
+                  }
+                },
+                "required": ["target"]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "not": {
     "anyOf": [
       { "required": ["product_id"] },
@@ -192,7 +232,11 @@
       { "required": ["format_kind"] },
       { "required": ["params"] },
       { "required": ["capability_ids"] },
-      { "required": ["pricing_option_id"] }
+      { "required": ["pricing_option_id"] },
+      {
+        "properties": { "bidding": { "type": "object" } },
+        "required": ["bidding", "bid_price"]
+      }
     ]
   },
   "additionalProperties": true

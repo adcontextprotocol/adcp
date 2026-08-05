@@ -7,13 +7,13 @@
   "properties": {
     "value": {
       "type": "number",
-      "description": "Monetary value of the event (should be accompanied by currency)",
+      "description": "Monetary value of the event. For an event source that declares value_currencies, currency is required and MUST appear in that list. Legacy sources without the new contract remain schema-compatible but are ineligible for canonical ROAS.",
       "minimum": 0
     },
     "currency": {
       "type": "string",
       "pattern": "^[A-Z]{3}$",
-      "description": "ISO 4217 currency code"
+      "description": "ISO 4217 currency code. For a source declaring value_currencies, monetary records MUST carry a currency from that list."
     },
     "order_id": {
       "type": "string",

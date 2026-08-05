@@ -2105,12 +2105,11 @@
 # task: expect_webhook_signature_valid
 #   Assert that the inbound webhook passed the 9421 webhook-signing verifier
 #   checklist (see docs/building/implementation/security.mdx#verifier-checklist-for-webhooks).
-#   Runner delegates verification to the `@adcp/client` 9421 webhook verifier;
-#   this step is gated on the client library having that verifier available
-#   (see test-kit contract). Negative conformance — signatures that MUST be
-#   rejected with a specific webhook_signature_* code — is tested via static
-#   conformance vectors under /compliance/{version}/test-vectors/webhook-signing/
-#   when those land, not by this step type.
+#   Runner delegates verification to `verifyWebhookSignature` from
+#   `@adcp/sdk/signing` (see test-kit contract). Negative conformance —
+#   signatures that MUST be rejected with a specific webhook_signature_* code —
+#   is exercised through the published static conformance vectors under
+#   /compliance/{version}/test-vectors/webhook-signing/, not by this step type.
 #
 #   Cross-step replay dedup: the runner MUST share a single (keyid, nonce) replay
 #   store across ALL expect_webhook_signature_valid invocations (and all retry

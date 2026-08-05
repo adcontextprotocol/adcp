@@ -63,6 +63,24 @@
       "description": "ISO 4217 currency code for the budget.",
       "pattern": "^[A-Z]{3}$"
     },
+    "budget_allocation": {
+      "allOf": [
+        {
+          "$ref": "/schemas/core/budget-allocation.json"
+        }
+      ],
+      "description": "Seller-accepted cross-package allocation authority and goals. Presence with seller_optimized mode means automatic within-buy reallocations are part of the committed delivery, not separate modification actions."
+    },
+    "pacing": {
+      "$ref": "/schemas/enums/pacing.json",
+      "description": "Aggregate pacing strategy the seller will apply to total_budget."
+    },
+    "bidding": {
+      "allOf": [
+        { "$ref": "/schemas/core/bidding-policy.json" }
+      ],
+      "description": "Seller-interpreted media-buy bidding policy used for governance and delivery transparency. Goal-bound controls follow budget-allocation scope semantics and monetary fields use the planned delivery currency. Package-authored overrides, including explicit automatic overrides, remain on packages rather than being copied into this aggregate field."
+    },
     "enforced_policies": {
       "type": "array",
       "description": "Registry policy IDs the seller will enforce for this delivery.",

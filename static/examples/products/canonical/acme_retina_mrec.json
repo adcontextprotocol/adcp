@@ -1,0 +1,69 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "acme_homepage_retina_mrec",
+  "name": "Acme homepage high-density medium rectangle",
+  "description": "A logical 300×250 image placement requiring both standard 300×250 and 600×500 2x renditions, with an optional 450×375 1.5x rendition for device-density selection. The unversioned legacy catalog IDs remain separate concrete formats; canonical rendition-set semantics begin in 3.2.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "acme.example",
+      "selection_type": "by_id",
+      "property_ids": ["acme_homepage"]
+    }
+  ],
+  "channels": ["display"],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "acme_retina_mrec_cpm",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 12
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 60,
+    "timezone": "UTC",
+    "supports_webhooks": false,
+    "available_metrics": ["impressions", "clicks", "spend"],
+    "date_range_support": "date_range"
+  },
+  "format_ids": [
+    {
+      "agent_url": "https://creative.adcontextprotocol.org",
+      "id": "display_300x250_image_1x_2x"
+    }
+  ],
+  "format_options": [
+    {
+      "format_kind": "image",
+      "format_option_id": "acme_homepage_mrec_image",
+      "display_name": "Acme homepage image rendition set — 1x and 2x required",
+      "v1_format_ref": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org",
+          "id": "display_300x250_image_1x_2x"
+        }
+      ],
+      "params": {
+        "width": 300,
+        "height": 250,
+        "pixel_ratios": [1, 1.5, 2],
+        "slots": [
+          {
+            "asset_group_id": "image_main",
+            "asset_type": "image",
+            "required": true,
+            "min": 2,
+            "max": 3,
+            "pixel_ratios": [1, 1.5, 2],
+            "required_pixel_ratios": [1, 2]
+          }
+        ],
+        "max_file_size_kb": 400,
+        "image_formats": ["jpg", "png", "webp"],
+        "ssl_required": true
+      }
+    }
+  ]
+}

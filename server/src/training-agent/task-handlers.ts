@@ -744,16 +744,36 @@ function validateTargeting(t: unknown, pathLabel: string): { targeting?: Package
   const pl = validateListRef(src.property_list, `${pathLabel}.property_list`);
   const cl = validateListRef(src.collection_list, `${pathLabel}.collection_list`);
   const cle = validateListRef(src.collection_list_exclude, `${pathLabel}.collection_list_exclude`);
+  const validateAudienceIds = (value: unknown, field: string): string[] | undefined => {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value)) {
+      errors.push({ code: 'VALIDATION_ERROR', message: `${pathLabel}.${field}: must be an array of audience IDs`, field: `${pathLabel}.${field}` });
+      return undefined;
+    }
+    const ids: string[] = [];
+    for (let i = 0; i < value.length; i++) {
+      if (typeof value[i] !== 'string' || value[i].length === 0) {
+        errors.push({ code: 'VALIDATION_ERROR', message: `${pathLabel}.${field}[${i}]: must be a non-empty audience ID`, field: `${pathLabel}.${field}[${i}]` });
+      } else {
+        ids.push(value[i]);
+      }
+    }
+    return ids;
+  };
+  const audienceInclude = validateAudienceIds(src.audience_include, 'audience_include');
+  const audienceExclude = validateAudienceIds(src.audience_exclude, 'audience_exclude');
   if (pl.error) errors.push(pl.error);
   if (cl.error) errors.push(cl.error);
   if (cle.error) errors.push(cle.error);
   if (errors.length) return { errors };
-  if (!pl.ref && !cl.ref && !cle.ref) return { errors: [] };
+  if (!pl.ref && !cl.ref && !cle.ref && !audienceInclude && !audienceExclude) return { errors: [] };
   return {
     targeting: {
       ...(pl.ref && { property_list: pl.ref }),
       ...(cl.ref && { collection_list: cl.ref }),
       ...(cle.ref && { collection_list_exclude: cle.ref }),
+      ...(audienceInclude && { audience_include: audienceInclude }),
+      ...(audienceExclude && { audience_exclude: audienceExclude }),
     },
     errors: [],
   };
@@ -4019,7 +4039,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   return response;
 }
 
-export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
+export async function handleListCreativeFormats(args: ToolArgs, ctx: TrainingContext): Promise<object> {
   const req = args as unknown as ListCreativeFormatsRequest & { channels?: string[] };
 
   // When comply_test_controller.seed_creative_format has pre-populated formats,
@@ -4059,6 +4079,21 @@ export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingCo
   if (req.format_ids?.length) {
     const requestedIds = new Set(req.format_ids.map(f => f.id));
     formats = formats.filter(f => requestedIds.has(f.format_id.id));
+  }
+
+  // The 3.0 FormatIDParameter enum predates pixel-density negotiation. Keep
+  // the template available to compatibility runners, but do not advertise an
+  // enum member their pinned response schema cannot represent.
+  if (ctx.storyboardCompat?.version === '3.0') {
+    formats = formats.map(format => format.accepts_parameters?.includes('pixel_ratio')
+      ? {
+          ...format,
+          accepts_parameters: format.accepts_parameters.filter(parameter => parameter !== 'pixel_ratio'),
+          description: format.format_id.id === 'display_image'
+            ? 'Static image display ad. Provide logical width and height in format_id.'
+            : format.description,
+        }
+      : format);
   }
 
   const totalMatching = formats.length;
@@ -6828,19 +6863,21 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       }
     }
 
-    // Recompute open impairments: a creative-impairment is cleared when no
-    // package on the buy still references it. Recovery via assignment swap
-    // is the canonical clearing path (the buyer replaces a rejected creative
-    // with an approved sibling), so the same-buy union of all package
-    // creativeAssignments is the authoritative dependency set.
+    // Recompute open impairments when package dependencies change. Creative
+    // bindings use creativeAssignments; audience bindings use the targeting
+    // overlay include/exclude arrays.
     if (mb.impairments?.length) {
       const stillReferenced = new Set<string>();
+      const stillReferencedAudiences = new Set<string>();
       for (const pkg of mb.packages) {
         for (const cid of pkg.creativeAssignments) stillReferenced.add(cid);
+        for (const audienceId of pkg.targeting?.audience_include ?? []) stillReferencedAudiences.add(audienceId);
+        for (const audienceId of pkg.targeting?.audience_exclude ?? []) stillReferencedAudiences.add(audienceId);
       }
       const before = mb.impairments.length;
       mb.impairments = mb.impairments.filter(
-        i => i.resourceType !== 'creative' || stillReferenced.has(i.resourceId),
+        i => (i.resourceType !== 'creative' || stillReferenced.has(i.resourceId))
+          && (i.resourceType !== 'audience' || stillReferencedAudiences.has(i.resourceId)),
       );
       if (mb.impairments.length !== before) {
         mb.updatedAt = now;
@@ -6982,6 +7019,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
   const wholesaleProfile = wholesaleCapabilityProfile(ctx);
   const complianceScenarios = [
     'force_creative_status',
+    'force_audience_status',
     'force_account_status',
     'force_media_buy_status',
     'force_create_media_buy_arm',
@@ -8638,8 +8676,12 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   const sessionScopeReq = withUsageAccountScope(req as unknown as Record<string, unknown>) as unknown as ToolArgs;
   const session = await getSession(sessionKeyFromArgs(sessionScopeReq, ctx.mode, ctx.userId, ctx.moduleId));
 
-  if (!req.reporting_period || !req.usage?.length) {
-    return { errors: [{ code: 'INVALID_USAGE_DATA', message: 'reporting_period and at least one usage record are required.' }] };
+  if (!req.reporting_period) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'reporting_period is required.', field: 'reporting_period' }] };
+  }
+
+  if (!req.usage?.length) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'At least one usage record is required.', field: 'usage' }] };
   }
 
   if (session.usageRecords.length + req.usage.length > MAX_USAGE_RECORDS_PER_SESSION) {

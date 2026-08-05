@@ -41,6 +41,11 @@ import { verifyGovernanceToken, mintRevokedDemoToken, mintWrongAudDemoToken } fr
 import { emitAccountNotificationWebhook } from './webhooks.js';
 import { buildCatalog } from './product-factory.js';
 import { getAllSignals } from './signal-providers.js';
+import {
+  findAudienceInSession,
+  forceAudienceStatusInSession,
+  type TrainingAudienceStatus,
+} from './audience-handlers.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -55,6 +60,21 @@ const CREATIVE_TRANSITIONS: Record<string, string[]> = {
   rejected: ['processing'],
   archived: ['approved'],
 };
+
+const AUDIENCE_TRANSITIONS: Record<string, string[]> = {
+  processing: ['ready', 'too_small', 'suspended'],
+  ready: ['processing', 'too_small', 'suspended'],
+  too_small: ['processing', 'ready', 'suspended'],
+  suspended: ['processing', 'ready'],
+};
+
+const AUDIENCE_IMPAIRMENT_REASONS = new Set([
+  'policy_violation',
+  'consent_expired',
+  'ttl_expired',
+  'pii_audit_failed',
+  'seller_removed',
+]);
 
 const ACCOUNT_TRANSITIONS: Record<string, string[]> = {
   pending_approval: ['active', 'rejected'],
@@ -270,6 +290,65 @@ function propagateCreativeImpairment(
   }
 }
 
+function packageAudienceIds(pkg: PackageState): string[] {
+  const targeting = pkg.targeting;
+  if (!targeting) return [];
+  return [
+    ...(Array.isArray(targeting.audience_include) ? targeting.audience_include : []),
+    ...(Array.isArray(targeting.audience_exclude) ? targeting.audience_exclude : []),
+  ];
+}
+
+/** Propagate an audience suspension/recovery to every dependent package. */
+function propagateAudienceImpairment(
+  session: SessionState,
+  audienceId: string,
+  prev: string,
+  next: string,
+  reason?: string,
+): void {
+  const isOfflineTransition = next === 'suspended' && prev !== 'suspended';
+  const isOnlineTransition = next !== 'suspended' && prev === 'suspended';
+  if (!isOfflineTransition && !isOnlineTransition) return;
+
+  for (const mb of session.mediaBuys.values()) {
+    const dependentPackages = mb.packages
+      .filter(pkg => packageAudienceIds(pkg).includes(audienceId))
+      .map(pkg => pkg.packageId);
+    if (dependentPackages.length === 0) continue;
+
+    if (isOfflineTransition) {
+      const existing = (mb.impairments ?? []).find(
+        i => i.resourceType === 'audience' && i.resourceId === audienceId,
+      );
+      if (existing) continue;
+      const reasonCode = reason && AUDIENCE_IMPAIRMENT_REASONS.has(reason)
+        ? reason
+        : 'policy_violation';
+      mb.impairments = [
+        ...(mb.impairments ?? []),
+        {
+          impairmentId: `imp_${randomUUID().replace(/-/g, '')}`,
+          resourceType: 'audience',
+          resourceId: audienceId,
+          packageIds: dependentPackages,
+          transition: { from: prev, to: 'suspended' },
+          reasonCode,
+          ...(reason && !AUDIENCE_IMPAIRMENT_REASONS.has(reason) && { reason }),
+          observedAt: new Date().toISOString(),
+        },
+      ];
+      mb.updatedAt = new Date().toISOString();
+    } else {
+      const before = mb.impairments?.length ?? 0;
+      mb.impairments = (mb.impairments ?? []).filter(
+        i => !(i.resourceType === 'audience' && i.resourceId === audienceId),
+      );
+      if (mb.impairments.length !== before) mb.updatedAt = new Date().toISOString();
+    }
+  }
+}
+
 function validateTransition(
   transitions: Record<string, string[]>,
   terminalSet: Set<string>,
@@ -407,6 +486,39 @@ function recordCreativeWebhookActivity(
 
 function createStore(session: SessionState, sessionKey: string, principal?: string): TestControllerStore {
   return {
+    async forceAudienceStatus(audienceId, status, reason) {
+      const audience = findAudienceInSession(sessionKey, audienceId);
+      if (!audience) {
+        throw new TestControllerError('NOT_FOUND', `Audience ${audienceId} not found`, null);
+      }
+
+      const prev = audience.status;
+      if (prev === status) {
+        return { success: true, previous_state: prev, current_state: status, message: `Audience ${audienceId} is already ${status}` };
+      }
+      validateTransition(AUDIENCE_TRANSITIONS, new Set(), prev, status, 'audience');
+      if (status === 'suspended' && !reason) {
+        throw new TestControllerError('INVALID_PARAMS', 'reason is required when audience status = suspended', prev);
+      }
+
+      const transition = forceAudienceStatusInSession(
+        sessionKey,
+        audienceId,
+        status as TrainingAudienceStatus,
+        reason,
+      );
+      if (!transition) {
+        throw new TestControllerError('NOT_FOUND', `Audience ${audienceId} not found`, null);
+      }
+      propagateAudienceImpairment(session, audienceId, transition.previous, transition.current, reason);
+      return {
+        success: true,
+        previous_state: transition.previous,
+        current_state: transition.current,
+        message: `Audience ${audienceId} transitioned from ${transition.previous} to ${transition.current}`,
+      };
+    },
+
     async forceCreativeStatus(creativeId, status, rejectionReason) {
       const creative = session.creatives.get(creativeId);
       if (!creative) {
