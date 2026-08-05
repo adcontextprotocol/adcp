@@ -174,6 +174,26 @@ fixed `mode: included` placements use the product default and do not advertise
 selectable placement support. Placement, property, and collection changes all
 use the existing `update_targeting` action.
 
+This placement lifecycle supersedes the separate top-level selection proposed
+in [issue #6132](https://github.com/adcontextprotocol/adcp/issues/6132). It is
+nested in `targeting_overlay` so purchased inventory follows the same
+discovery, forecasting, authorization, and readback rules as other targeting.
+There is no separate `update_placements` action: a seller advertises
+`update_targeting`, and an unavailable action is rejected with
+`ACTION_NOT_ALLOWED` and `attempted_action: "update_targeting"`.
+
+On `update_media_buy`, omission has two different meanings:
+
+- Omit `targeting_overlay` to leave all targeting unchanged.
+- Supply `targeting_overlay` as the complete desired post-update overlay.
+  Omitting `placement_selection` from that replacement removes the prior
+  placement constraint; it does not preserve that nested field.
+
+Invalid placement identities or orphaned creative routing return
+`INVALID_REQUEST`; unsupported selection returns `UNSUPPORTED_FEATURE`; and a
+selection outside the priced envelope returns `REQUOTE_REQUIRED`. Every
+rejection leaves the prior package targeting and assignments unchanged.
+
 ## Compatibility window
 
 Sellers may translate a legacy targeting filter into its overlay equivalent.

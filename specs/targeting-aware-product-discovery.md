@@ -287,6 +287,23 @@ separate top-level package-selection system. Properties and collections are
 already represented in the overlay through list references and should follow
 the same discovery, resolution, forecast, update, and readback rules.
 
+### How this supersedes issue #6132
+
+Issue #6132 identified the missing purchased-placement lifecycle correctly,
+but its proposed wire shape predated the unified inventory-targeting model in
+this design. The 3.2 contract resolves the same requirements as follows:
+
+| #6132 proposal | 3.2 contract | Reason for the change |
+| --- | --- | --- |
+| Top-level `placement_selection` on package request, update, and state | `targeting_overlay.placement_selection` on those lifecycle surfaces | Placement, property, and collection selection all constrain purchased inventory. One overlay prevents a second targeting system with different discovery, forecast, update, and readback rules. |
+| Dedicated `update_placements` action | Existing `update_targeting` action | Authorization follows the mutation surface. A placement-only action would make placement behave differently from property and collection targeting without adding execution precision. |
+| Omit only `placement_selection` to leave it unchanged | Omit the entire `targeting_overlay` to leave targeting unchanged; when supplied, the overlay is the complete desired post-state | `update_targeting` already has full-replacement semantics. Keeping one nested field patch-like would make omission ambiguous and could retain stale inventory constraints accidentally. |
+| Select targetable placements while every `included` placement remains implicitly purchased | A selectable product has a complete targetable set; a product with fixed `included` placements uses `mode: default` or a separate all-targetable configuration | A complete selected set cannot truthfully omit unavoidable inventory. The split makes the purchased set auditable and prevents a seller from widening it silently. |
+
+This is a supersession rather than a second implementation path. Sellers MUST
+NOT expose both a top-level placement selection and an overlay placement
+selection as competing sources of truth.
+
 For updates, the existing `update_targeting` action governs placement,
 property, and collection changes together with other overlay dimensions. A
 placement-only `update_placements` action is unnecessary unless sellers need a
@@ -294,6 +311,23 @@ more granular authorization signal. `mode: default` can remain the explicit
 way to restore a seller or product placement default. Successful updates echo
 the committed selection; unsupported, commercially incompatible, or partial
 application is rejected rather than silently changed.
+
+Placement update failures use the existing media-buy error taxonomy:
+
+- `INVALID_REQUEST` for unknown, cross-publisher, duplicate, fixed-placement,
+  or orphaned creative-routing references. `error.field` points at the
+  offending placement or creative-assignment path.
+- `ACTION_NOT_ALLOWED` when `update_targeting` is not currently available;
+  `error.details.attempted_action` is `update_targeting`.
+- `UNSUPPORTED_FEATURE` when the product does not support the requested
+  independently selectable targeting dimension or combination.
+- `REQUOTE_REQUIRED` when the desired placement set is executable but falls
+  outside the package's priced envelope; `error.details.envelope_field` points
+  at the package `targeting_overlay.placement_selection` path.
+
+Every failure is atomic. The seller preserves the prior overlay and creative
+assignments and MUST NOT return a successful package echo for a partially
+applied selection.
 
 ## `required_overlay_support`
 

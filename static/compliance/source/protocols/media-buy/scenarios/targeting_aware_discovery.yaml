@@ -73,6 +73,9 @@ fixtures:
           mode: "targetable"
       property_targeting_allowed: true
       collection_targeting_allowed: true
+      allowed_actions:
+        - action: "update_targeting"
+          modes: ["self_serve"]
       overlay_support:
         geo_metros:
           systems: ["nielsen_dma"]
@@ -436,6 +439,12 @@ phases:
             path: "packages[0].targeting_overlay.placement_selection.placement_refs[0].placement_id"
             value: "feed"
             description: "Feed is the purchased placement"
+          - check: field_contains
+            path: "available_actions[*]"
+            value:
+              action: "update_targeting"
+              mode: "self_serve"
+            description: "Placement changes use the existing update_targeting authorization"
 
       - id: update_to_short_video
         title: "Replace purchased placement targeting"
@@ -481,6 +490,81 @@ phases:
                       placement_id: "short_video"
             description: "Update response returns complete post-update placement targeting state"
 
+      - id: reject_cross_publisher_placement
+        title: "Reject a placement outside the product publisher scope"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_id: "$context.placement_media_buy_id"
+          idempotency_key: "$generate:uuid_v4#targeting_aware_discovery_cross_publisher_update"
+          packages:
+            - package_id: "$context.placement_package_id"
+              targeting_overlay:
+                geo_countries: ["US"]
+                placement_selection:
+                  mode: "selected"
+                  placement_refs:
+                    - publisher_domain: "unrelated-publisher.example"
+                      placement_id: "feed"
+        expected: |
+          Reject the schema-valid but cross-publisher placement reference with
+          INVALID_REQUEST. The prior short_video selection remains committed.
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST"]
+            description: "Cross-publisher placement identity is rejected"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.placement_selection.placement_refs[0]"
+            description: "Error.field identifies the invalid placement reference"
+
+      - id: reject_duplicate_placement
+        title: "Reject duplicate placement references"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        expect_error: true
+        negative_path: schema_invalid
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_id: "$context.placement_media_buy_id"
+          idempotency_key: "$generate:uuid_v4#targeting_aware_discovery_duplicate_placement_update"
+          packages:
+            - package_id: "$context.placement_package_id"
+              targeting_overlay:
+                geo_countries: ["US"]
+                placement_selection:
+                  mode: "selected"
+                  placement_refs:
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "feed"
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "feed"
+        expected: |
+          Reject with INVALID_REQUEST because placement_selection is a set and
+          duplicate references violate its uniqueItems schema constraint. The
+          prior short_video selection remains committed.
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST"]
+            description: "Duplicate placement references are rejected"
+
       - id: read_updated_placement
         title: "Verify purchased placement state"
         task: get_media_buys
@@ -498,7 +582,8 @@ phases:
         expected: |
           Return complete effective targeting with short_video selected. The
           stored package does not expose a separate effective-placement source
-          of truth.
+          of truth. Both rejected updates were atomic and left this state
+          unchanged.
         validations:
           - check: response_schema
             description: "Response matches get-media-buys-response.json"
