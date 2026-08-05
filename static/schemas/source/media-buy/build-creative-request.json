@@ -18,7 +18,20 @@
     }
   ],
   "x-mutates-state": true,
+  "x-governed-commitment": {
+    "scope": "conditional",
+    "triggers": ["incurs_vendor_cost"],
+    "exemptions": ["estimate", "zero_cost_retrieval"],
+    "precedence": "trigger_overrides_exemption"
+  },
   "properties": {
+    "governance_context": {
+      "type": "string",
+      "description": "Opaque intent authorization when this creative execution incurs vendor cost.",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
+    },
     "message": {
       "type": "string",
       "description": "Natural language instructions for the transformation or generation. For pure generation, this is the creative brief. For transformation, this provides guidance on how to adapt the creative. For refinement, this describes the desired changes."

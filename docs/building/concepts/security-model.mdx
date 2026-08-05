@@ -115,7 +115,7 @@ The full normative rules, including payload canonicalization and the oracle-resi
 
 When a plan is approved for spend, the governance agent issues a signed JWS token — not a shared secret, not an opaque cookie, but a public-key-verifiable attestation bound to:
 
-- **`sub`** — the specific plan being authorized
+- **`sub`** — an issuer-generated opaque governed-action binding; the seller cannot derive the buyer's plan ID from it
 - **`aud`** — the specific seller allowed to act on it
 - **`phase`** — whether this is intent, purchase, modification, or delivery
 - **`exp`** — when the authorization expires (15 min for intent, ≤30 days for execution)

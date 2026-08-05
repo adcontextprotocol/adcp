@@ -628,7 +628,8 @@ export function findMediaBuyAcrossSessions(mediaBuyId: string): Promise<SessionS
 }
 
 export function findGovernancePlanAcrossSessions(planId: string): Promise<SessionState | null> {
-  return findSessionMatching(s => s.governancePlans.has(planId));
+  return findSessionMatching(s =>
+    [...s.governancePlans.values()].some(plan => plan.planId === planId));
 }
 
 /** Clear all sessions (tests only). */

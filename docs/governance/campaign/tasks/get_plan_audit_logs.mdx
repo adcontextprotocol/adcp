@@ -171,7 +171,9 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
           "governance_context": "gc_mb_seller_456",
           "purchase_type": "media_buy",
           "outcome": "completed",
-          "committed_budget": 150000
+          "committed_budget": 150000,
+          "reported_committed_budget": 150000,
+          "seller_reference": "mb_seller_456"
         },
         {
           "id": "out_del_001",
@@ -181,6 +183,11 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
           "governance_context": "gc_mb_seller_456",
           "purchase_type": "media_buy",
           "outcome": "delivery",
+          "delivery": {
+            "media_buy_id": "mb_seller_456",
+            "impressions": 4200000,
+            "spend": 137500
+          },
           "outcome_status": "accepted"
         }
       ]
@@ -262,7 +269,10 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].entries[].plan_hash` | string | Audit-layer binding to the plan revision this attestation was evaluated over — `base64url_no_pad(SHA-256(JCS(plan_payload)))` per [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit). Present on `check` entries. Auditors and buyer-side compliance tooling verify by recomputing over the retained plan revision and byte-comparing the decoded 32-byte digests. |
 | `plans[].entries[].purchase_type` | enum | `media_buy`, `rights_license`, `signal_activation`, or `creative_services`. Present when the entry is associated with a specific governed action. |
 | `plans[].entries[].outcome` | enum | Outcome type (present for `outcome` entries). |
-| `plans[].entries[].committed_budget` | number | Budget committed (present for `completed` outcome entries). |
+| `plans[].entries[].committed_budget` | number | Governance-authorized budget reserved for the action (present for `completed` outcome entries). This is the ledger-authoritative amount, not a caller assertion. |
+| `plans[].entries[].reported_committed_budget` | number | Caller-reported seller amount retained for reconciliation. Never ledger authority. |
+| `plans[].entries[].seller_reference` | string | Seller resource identifier retained with the outcome, such as a media-buy ID. |
+| `plans[].entries[].delivery` | object | Deprecated buyer-reported delivery snapshot retained as audit evidence on a `delivery` outcome. Seller-originated delivery monitoring uses `check_governance` with `phase: "delivery"`. |
 | `plans[].entries[].outcome_status` | string | Outcome status (present for `outcome` entries). |
 
 ## Authorization

@@ -29,6 +29,7 @@
     "search_brands",
     "get_rights",
     "acquire_rights",
+    "update_rights",
     "sync_agent_notification_configs"
   ],
   "enumDescriptions": {
@@ -56,6 +57,7 @@
     "search_brands": "Brand domain: Discover brands on a brand agent's roster via natural language query; returns lightweight identity stubs",
     "get_rights": "Brand domain: Search for licensable rights across a brand agent's roster with pricing",
     "acquire_rights": "Brand domain: Acquire rights from a brand agent with contractual clearance and generation credentials",
+    "update_rights": "Brand domain: Update an existing rights grant, including its term, impression cap, pricing option, or pause state",
     "sync_agent_notification_configs": "Protocol domain: Register agent-level webhook subscribers such as capabilities.changed cache-invalidation notifications"
   },
   "notes": [
