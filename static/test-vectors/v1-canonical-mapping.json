@@ -1,7 +1,7 @@
 {
   "version": 2,
   "registry": "/schemas/registries/v1-canonical-mapping.json",
-  "registry_version": "1.5.0",
+  "registry_version": "1.5.1",
   "description": "Reference vectors for literal v1 format-id projection and the normative v2-narrows-v1 comparison. Resolution uses the first exact format_id_glob match; these vectors do not provide a format definition for structural fallback. Narrowing vectors express the registry-expanded v1 baseline as exact, range, or set constraints so every SDK can apply the same parameter-by-parameter subsumption rules.",
   "vectors": [
     {

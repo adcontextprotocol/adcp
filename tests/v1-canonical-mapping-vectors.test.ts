@@ -169,8 +169,10 @@ describe('v1 canonical literal mapping vectors', () => {
     }
   });
 
-  it('projects mapped rendition sets before generic asset-group collision handling', () => {
-    expect(registry.description).toContain('Image rendition-set exception (normative)');
+  it('scopes mapped rendition validation to 3.2-aware SDKs', () => {
+    expect(registry.description).toContain('Pixel-density version boundary (normative)');
+    expect(registry.description).toContain('MUST NOT interpret them as 3.1 constraints');
+    expect(registry.description).toContain('Image rendition-set exception (AdCP 3.2+, normative)');
     expect(registry.description).toContain('MUST NOT');
     expect(registry.description).toContain('generic alias-collision rule');
   });
