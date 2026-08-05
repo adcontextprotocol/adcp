@@ -45,6 +45,8 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
 // Publish gate dependencies. Defaults set in beforeEach.
 const isRegistryModerator = vi.hoisted(() => vi.fn());
 const isWebUserAAOAdmin = vi.hoisted(() => vi.fn());
+const notifyPendingCommunityMirrorProposal = vi.hoisted(() => vi.fn());
+const notifyCommunityMirrorProposalReviewed = vi.hoisted(() => vi.fn());
 vi.mock('../../src/services/brand-logo-auth.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../src/services/brand-logo-auth.js');
   return { ...actual, isRegistryModerator };
@@ -53,12 +55,21 @@ vi.mock('../../src/addie/admin-status-lookup.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../src/addie/admin-status-lookup.js');
   return { ...actual, isWebUserAAOAdmin };
 });
+vi.mock('../../src/notifications/registry.js', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('../../src/notifications/registry.js');
+  return {
+    ...actual,
+    notifyPendingCommunityMirrorProposal,
+    notifyCommunityMirrorProposalReviewed,
+  };
+});
 
 import { HTTPServer } from '../../src/http.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { PublisherDatabase } from '../../src/db/publisher-db.js';
 import { FederatedIndexDatabase } from '../../src/db/federated-index-db.js';
+import { CommunityMirrorDatabase } from '../../src/db/community-mirror-db.js';
 
 const PLATFORM = 'test-meta';
 const PLATFORM_LIKE = 'test-%';
@@ -179,6 +190,10 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
   beforeEach(async () => {
     isRegistryModerator.mockResolvedValue(true);
     isWebUserAAOAdmin.mockResolvedValue(false);
+    notifyPendingCommunityMirrorProposal.mockReset();
+    notifyPendingCommunityMirrorProposal.mockResolvedValue(null);
+    notifyCommunityMirrorProposalReviewed.mockReset();
+    notifyCommunityMirrorProposalReviewed.mockResolvedValue(undefined);
     authState.userId = 'user_test_mirrors';
     authState.email = 'mirrors@test.com';
     authState.organizationId = null;
@@ -621,6 +636,74 @@ describe('Community-mirror lifecycle — /api/registry/mirrors + /translated', (
     expect(list.status).toBe(200);
     expect(list.body.total).toBe(0);
     expect(detail.status).toBe(404);
+  });
+
+  it('shows proposer attribution only to registry managers', async () => {
+    isRegistryModerator.mockResolvedValue(false);
+    authState.userId = 'api_key_test_mirrors';
+    authState.organizationId = 'org_test_mirrors';
+    authState.email = 'contributor@test.example';
+    const submitted = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+
+    const ownDetail = await request(app)
+      .get(`/api/registry/mirror-proposals/${submitted.body.proposal_id}`);
+    expect(ownDetail.status).toBe(200);
+    expect(ownDetail.body.proposal).not.toHaveProperty('proposed_by_email');
+
+    authState.userId = 'user_registry_moderator';
+    authState.organizationId = null;
+    isRegistryModerator.mockResolvedValue(true);
+    const managerDetail = await request(app)
+      .get(`/api/registry/mirror-proposals/${submitted.body.proposal_id}`);
+    expect(managerDetail.status).toBe(200);
+    expect(managerDetail.body.proposal.proposed_by_email).toBe('contributor@test.example');
+  });
+
+  it('binds the Slack review thread to the exact proposal digest', async () => {
+    isRegistryModerator.mockResolvedValue(false);
+    authState.userId = 'api_key_test_mirrors';
+    authState.organizationId = 'org_test_mirrors';
+    notifyPendingCommunityMirrorProposal.mockResolvedValue('1779110411.874');
+    const submitted = await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+
+    await vi.waitFor(async () => {
+      const row = await pool.query(
+        'SELECT slack_thread_ts FROM community_mirror_proposals WHERE id = $1',
+        [submitted.body.proposal_id],
+      );
+      expect(row.rows[0]?.slack_thread_ts).toBe('1779110411.874');
+    });
+
+    const mirrorDb = new CommunityMirrorDatabase();
+    await mirrorDb.setProposalSlackThreadTs(
+      submitted.body.proposal_id,
+      'b'.repeat(64),
+      'wrong-revision-thread',
+    );
+    const row = await pool.query(
+      'SELECT slack_thread_ts FROM community_mirror_proposals WHERE id = $1',
+      [submitted.body.proposal_id],
+    );
+    expect(row.rows[0]?.slack_thread_ts).toBe('1779110411.874');
+  });
+
+  it('restricts the cross-organization review queue to moderators', async () => {
+    isRegistryModerator.mockResolvedValue(false);
+    authState.userId = 'api_key_test_mirrors';
+    authState.organizationId = 'org_test_mirrors';
+    await request(app).put(`/api/registry/mirrors/${PLATFORM}`).send(publishBody());
+
+    const denied = await request(app)
+      .get('/api/registry/mirror-proposals?status=pending&review_queue=true');
+    expect(denied.status).toBe(403);
+
+    authState.userId = 'user_registry_moderator';
+    authState.organizationId = null;
+    isRegistryModerator.mockResolvedValue(true);
+    const queue = await request(app)
+      .get('/api/registry/mirror-proposals?status=pending&review_queue=true');
+    expect(queue.status).toBe(200);
+    expect(queue.body.total).toBe(1);
   });
 
   it('requires organization context and caps contributor proposal bodies at 1 MiB', async () => {

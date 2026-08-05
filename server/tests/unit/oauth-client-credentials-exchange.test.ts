@@ -161,6 +161,21 @@ describe('exchangeClientCredentials', () => {
     expect(body).toMatch(/audience=aud-1/);
   });
 
+  it('emits one repeated resource= field per array entry (RFC 8707 multi-resource)', async () => {
+    const fetchImpl = mockFetch({ status: 200, body: { access_token: 'tok' } });
+    await exchangeClientCredentials(
+      { ...baseCreds, resource: ['https://api1.example', 'https://api2.example'] },
+      { fetchImpl: fetchImpl as unknown as typeof fetch },
+    );
+    const body = (fetchImpl.mock.calls[0][1] as RequestInit).body as string;
+    // URLSearchParams appends both values; the serialized form uses & between them
+    const pairs = body.split('&');
+    const resourcePairs = pairs.filter(p => p.startsWith('resource='));
+    expect(resourcePairs).toHaveLength(2);
+    expect(resourcePairs[0]).toBe('resource=https%3A%2F%2Fapi1.example');
+    expect(resourcePairs[1]).toBe('resource=https%3A%2F%2Fapi2.example');
+  });
+
   it('resolves $ENV references before sending', async () => {
     process.env.ADCP_OAUTH_ID = 'resolved-id';
     process.env.ADCP_OAUTH_SEC = 'resolved-sec';

@@ -45,6 +45,18 @@ describe('browser external URL defenses', () => {
     expect(source).toContain('getSafeHttpsUrl(member.twitter_url)');
   });
 
+  it('opens publisher format samples only as explicit, credential-free external navigation', async () => {
+    const source = await publicSource('publisher-home.html');
+    const safeUrl = extractFunction(source, 'safeHttpsUrl');
+    expect(safeUrl('javascript:alert(1)')).toBe('');
+    expect(safeUrl('https://user:pass@samples.publisher.example/format')).toBe('');
+    expect(safeUrl(' https://samples.publisher.example/format ')).toBe('https://samples.publisher.example/format');
+    expect(source).toContain('target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"');
+    expect(source).toContain('External sample hosted at');
+    expect(source).toContain("event.key === 'Escape'");
+    expect(source).toContain("event.key !== 'Enter' && event.key !== ' '");
+  });
+
   it('attaches and clears the SI capability without logging the token', async () => {
     const source = await publicSource('chat.html');
     expect(source).toMatch(/headers\['X-SI-Session-Capability'\] = siSessionCapability/);

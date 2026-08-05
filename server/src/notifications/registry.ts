@@ -434,6 +434,90 @@ export async function notifyBrandLogoReviewed(review: {
   }
 }
 
+/** Notify registry reviewers that a community mirror is awaiting review. */
+export async function notifyPendingCommunityMirrorProposal(proposal: {
+  proposal_id: string;
+  platform: string;
+  proposer_email?: string;
+  organization_id?: string;
+  catalog_item_count: number;
+}): Promise<string | null> {
+  const channelId = getChannelId();
+  if (!channelId || !isSlackConfigured()) return null;
+
+  const proposer = sanitizeMrkdwn(
+    proposal.proposer_email || proposal.organization_id || 'Authenticated organization',
+  );
+  const platform = sanitizeMrkdwn(proposal.platform);
+  const reviewUrl = `${APP_URL}/admin/community-mirrors`;
+  const message: SlackBlockMessage = {
+    text: `Community mirror pending review: ${proposal.platform}`,
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `🗂️ *Community mirror pending review:* <${reviewUrl}|${platform}>`,
+        },
+      },
+      {
+        type: 'section',
+        fields: [
+          { type: 'mrkdwn', text: `*Submitted by:*\n${proposer}` },
+          { type: 'mrkdwn', text: `*Catalog items:*\n${proposal.catalog_item_count}` },
+        ],
+      },
+    ],
+  };
+
+  try {
+    const result = await sendChannelMessage(channelId, message);
+    return result.ts || null;
+  } catch (error) {
+    logger.error(
+      { error, proposalId: proposal.proposal_id, platform: proposal.platform },
+      'Failed to send pending community-mirror notification',
+    );
+    return null;
+  }
+}
+
+/** Reply to the proposal's Slack thread after a moderator decision. */
+export async function notifyCommunityMirrorProposalReviewed(review: {
+  thread_ts: string | null;
+  platform: string;
+  action: 'approve' | 'reject';
+  reviewer_email?: string;
+  reviewer_name?: string;
+  note?: string;
+}): Promise<void> {
+  const channelId = getChannelId();
+  if (!channelId || !isSlackConfigured() || !review.thread_ts) return;
+
+  const approved = review.action === 'approve';
+  const label = approved ? 'Approved and published' : 'Rejected';
+  const reviewer = sanitizeMrkdwn(review.reviewer_name || review.reviewer_email || 'Moderator');
+  const note = review.note ? `\n_${sanitizeMrkdwn(review.note.slice(0, 500))}_` : '';
+  try {
+    await sendChannelMessage(channelId, {
+      text: `${label} by ${reviewer}`,
+      thread_ts: review.thread_ts,
+      blocks: [{
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `${approved ? '✅' : '❌'} *${label}* by ${reviewer}${note}`,
+        },
+      }],
+    });
+  } catch (error) {
+    logger.error(
+      { error, platform: review.platform },
+      'Failed to send community-mirror review thread reply',
+    );
+  }
+}
+
 /**
  * Notify when a user is banned from editing.
  */

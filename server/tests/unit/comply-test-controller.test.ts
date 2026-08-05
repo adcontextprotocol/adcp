@@ -174,6 +174,7 @@ describe('comply_test_controller', () => {
       // training-agent wrapper) without coupling to enumeration order.
       expect(scenarios).toEqual(expect.arrayContaining([
         'force_creative_status',
+        'force_audience_status',
         'force_account_status',
         'force_media_buy_status',
         'force_session_status',
@@ -200,7 +201,7 @@ describe('comply_test_controller', () => {
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(22);
+      expect(scenarios.length).toBe(23);
       // Dedup invariant — see SCENARIO_ENUM dedup in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });

@@ -282,6 +282,9 @@ export const CommunityMirrorProposalSchema = z
     }),
     status: z.enum(["pending", "approved", "rejected"]),
     proposed_by_organization_id: z.string().nullable(),
+    proposed_by_email: z.string().email().nullable().optional().openapi({
+      description: "Contributor email, returned only to registry moderators and AgenticAdvertising.org administrators.",
+    }),
     proposed_at: z.string().datetime(),
     reviewed_at: z.string().datetime().nullable(),
     review_notes: z.string().nullable(),
@@ -294,6 +297,7 @@ export const CommunityMirrorProposalSchema = z
 export const CommunityMirrorProposalSummarySchema = CommunityMirrorProposalSchema.omit({
   adagents_json: true,
   proposed_by_organization_id: true,
+  proposed_by_email: true,
   review_notes: true,
   created_at: true,
 }).openapi("CommunityMirrorProposalSummary");
@@ -377,6 +381,9 @@ export const CredentialSaveValidationErrorSchema = z
         "invalid_url",
         "invalid_env_reference",
         "invalid_auth_method_value",
+        "array_too_many",
+        "array_too_few",
+        "aggregate_too_long",
       ])
       .openapi({ description: "Stable rejection tag. UI maps this to operator-friendly prose." }),
     field: z
@@ -1053,6 +1060,10 @@ const PublisherFormatSummarySchema = z.object({
   format_option_id: z.string().optional().openapi({ description: "Stable format option identifier from adagents.json `formats[]`." }),
   display_name: z.string().openapi({ description: "Human-readable format label for catalog and publisher UI display." }),
   format_kind: z.string().openapi({ description: "Canonical format discriminator, such as `image`, `video_hosted`, `native_in_feed`, or `custom`." }),
+  sample_render_url: HttpsUrlSchema.optional().openapi({
+    description:
+      "Optional public HTTPS page where a human can inspect a sample render of this catalog format using publisher- or community-mirror-provided example assets. Informational only; this is not a renderer endpoint, buyer-asset preview, validation result, creative approval, proof of publisher acceptance, or live delivery guarantee.",
+  }),
   params: z.record(z.string(), z.unknown()).optional().openapi({ description: "Canonical format params from the publisher's adagents.json declaration." }),
   applies_to_property_ids: z.array(z.string()).optional().openapi({ description: "Property IDs this format applies to; absent means all properties." }),
   applies_to_property_tags: z.array(z.string()).optional().openapi({ description: "Property tags this format applies to; absent means all properties." }),

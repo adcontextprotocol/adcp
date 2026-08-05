@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Wraps `mintlify dev` so /schemas/... and post-autofix absolute prod URLs
+// Wraps `mint dev` so /schemas/... and post-autofix absolute prod URLs
 // rewrite to localhost during local preview. Lets contributors working on
 // in-flight schema fields click through to the local schema host instead of
 // hitting prod (which doesn't have the new field yet). See #3634.
@@ -167,7 +167,7 @@ async function main() {
   console.log(`🚀 starting mintlify dev on port ${MINTLIFY_PORT}...`);
   const child = spawn(
     'npx',
-    ['--yes', 'mintlify@latest', 'dev', '--port', String(MINTLIFY_PORT), '--no-open'],
+    ['--no-install', 'mint', 'dev', '--port', String(MINTLIFY_PORT), '--no-open'],
     {
       cwd: STAGING,
       env: { ...process.env, NODE_PATH: '', NODE_ENV: 'production' },

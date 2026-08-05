@@ -4,6 +4,7 @@ import {
   recordCost,
   formatCapExceededMessage,
   resolveUserTier,
+  buildSlackCostOptions,
   DAILY_BUDGET_USD,
   __setCostTrackerStore,
   __createInMemoryCostStore,
@@ -111,6 +112,64 @@ describe('recordCost', () => {
   });
 });
 
+describe('buildSlackCostOptions', () => {
+  it('charges a public home-workspace discussion to a bounded community scope, not the speaker', async () => {
+    await recordCost('slack:U-PUBLIC', 'claude-opus-4-7', {
+      input_tokens: 10_000_000,
+      output_tokens: 10_000_000,
+    });
+    expect((await checkCostCap('slack:U-PUBLIC', 'member_free')).ok).toBe(false);
+
+    const options = await buildSlackCostOptions(undefined, 'U-PUBLIC', {
+      channelId: 'C-PUBLIC',
+      isPrivate: false,
+      isShared: false,
+      isOrgShared: false,
+    });
+
+    expect(options).toEqual({
+      costScope: {
+        userId: 'slack-public-community',
+        tier: 'public_community',
+      },
+    });
+    await expect(buildSlackCostOptions(undefined, 'U-OTHER', {
+      channelId: 'C-OTHER',
+      isPrivate: false,
+      isShared: false,
+      isOrgShared: false,
+    })).resolves.toEqual(options);
+    expect((await checkCostCap(
+      options.costScope.userId,
+      options.costScope.tier,
+    )).ok).toBe(true);
+
+    await recordCost(options.costScope.userId, 'claude-opus-4-7', {
+      input_tokens: 10_000_000,
+      output_tokens: 10_000_000,
+    });
+    expect((await checkCostCap(
+      options.costScope.userId,
+      options.costScope.tier,
+    )).ok).toBe(false);
+  });
+
+  it.each([
+    ['DM / unresolved', undefined],
+    ['private channel', { channelId: 'G-PRIVATE', isPrivate: true, isShared: false, isOrgShared: false }],
+    ['Slack Connect channel', { channelId: 'C-SHARED', isPrivate: false, isShared: true, isOrgShared: false }],
+    ['org-shared channel', { channelId: 'C-ORG', isPrivate: false, isShared: false, isOrgShared: true }],
+    ['pending Slack Connect channel', { channelId: 'C-PENDING', isPrivate: false, isShared: false, isOrgShared: false, isPendingExtShared: true }],
+    ['unknown sharing state', { channelId: 'C-UNKNOWN', isPrivate: false, isShared: undefined, isOrgShared: undefined }],
+  ] as const)('keeps %s user-scoped', async (_label, channelContext) => {
+    const options = await buildSlackCostOptions(undefined, 'U-PRIVATE', channelContext);
+
+    expect(options).toEqual({
+      costScope: { userId: 'slack:U-PRIVATE', tier: 'member_free' },
+    });
+  });
+});
+
 describe('formatCapExceededMessage', () => {
   it('gives a clean member-facing message without internal dollar amounts', () => {
     const msg = formatCapExceededMessage({
@@ -137,6 +196,19 @@ describe('formatCapExceededMessage', () => {
     });
     expect(msg).toContain('AgenticAdvertising.org team');
     expect(msg).not.toContain('Upgrade');
+  });
+
+  it('describes a public channel capacity limit without blaming or upselling a participant', () => {
+    const msg = formatCapExceededMessage({
+      ok: false,
+      spentCents: 2500,
+      retryAfterMs: 60 * 60 * 1000,
+      tier: 'public_community',
+    });
+    expect(msg).toContain('Public Addie discussions');
+    expect(msg).toContain('conversation capacity');
+    expect(msg).not.toContain('Upgrade');
+    expect(msg).not.toContain('/dashboard/membership');
   });
 });
 

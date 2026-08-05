@@ -18,6 +18,42 @@ AdCP schemas are available from two sources:
 
 Both sources contain identical schemas. The GitHub repository includes all released versions with bundled schemas committed directly to the codebase.
 
+### Schema identity and offline resolution
+
+The `latest` tree and releases cut after this behavior was introduced use canonical HTTPS URIs for root `$id` values and external `$ref` values, for example `https://adcontextprotocol.org/schemas/{version}/core/product.json`. These URIs are stable schema identifiers; a validator does not have to fetch them over the network. Older release directories are immutable and retain their original `/schemas/...` references; for offline use of those releases, select their `bundled/` schemas.
+
+When using the modular schema tree from a downloaded tarball, configure the validator or code generator to map the canonical `https://adcontextprotocol.org/schemas/{version}/` prefix to the extracted `schemas/` directory. Tools that cannot register URI-to-file mappings should use the corresponding `schemas/bundled/` artifact, which has external `$ref` values resolved inline.
+
+For Python's `jsonschema`, the `referencing` registry can perform that mapping without network access:
+
+```python
+import json
+from pathlib import Path
+
+from jsonschema import Draft7Validator
+from referencing import Registry, Resource
+from referencing.exceptions import NoSuchResource
+
+VERSION = "3.2.0"
+SCHEMA_ROOT = Path(f"adcp-{VERSION}/schemas")
+CANONICAL_PREFIX = f"https://adcontextprotocol.org/schemas/{VERSION}/"
+
+def retrieve_local_schema(uri: str) -> Resource:
+    if not uri.startswith(CANONICAL_PREFIX):
+        raise NoSuchResource(ref=uri)
+    relative_path = uri.removeprefix(CANONICAL_PREFIX)
+    contents = json.loads((SCHEMA_ROOT / relative_path).read_text())
+    return Resource.from_contents(contents)
+
+root = json.loads(
+    (SCHEMA_ROOT / "media-buy/get-products-response.json").read_text()
+)
+validator = Draft7Validator(
+    root,
+    registry=Registry(retrieve=retrieve_local_schema),
+)
+```
+
 ## One-shot protocol bundle
 
 Syncing hundreds of individual schema files adds up. Every AdCP release also publishes a single gzipped tarball containing the complete protocol — schemas, compliance storyboards, and the OpenAPI registry — so clients can pull one artifact instead of crawling the tree.

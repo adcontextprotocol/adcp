@@ -71,8 +71,8 @@ export interface OAuthClientCredentials {
   client_id: string;
   client_secret: string;
   scope?: string;
-  /** RFC 8707 resource indicator. Single-resource only; multi-resource tracked as #2805. */
-  resource?: string;
+  /** RFC 8707 resource indicator. Scalar string or array of up to 8 URI strings. */
+  resource?: string | string[];
   audience?: string;
   /**
    * Client-credentials auth placement. `basic` = HTTP Basic header
@@ -875,7 +875,11 @@ export class AgentContextDatabase {
         secretEncrypted.encrypted,
         secretEncrypted.iv,
         creds.scope || null,
-        creds.resource || null,
+        Array.isArray(creds.resource)
+          ? `v1a:${JSON.stringify(creds.resource)}`
+          : creds.resource != null
+            ? `v1s:${creds.resource}`
+            : null,
         creds.audience || null,
         creds.auth_method || null,
         id,
@@ -929,7 +933,27 @@ export class AgentContextDatabase {
       ),
     };
     if (row.oauth_cc_scope) creds.scope = row.oauth_cc_scope;
-    if (row.oauth_cc_resource) creds.resource = row.oauth_cc_resource;
+    if (row.oauth_cc_resource) {
+      const raw: string = row.oauth_cc_resource;
+      if (raw.startsWith('v1a:')) {
+        try {
+          const parsed: unknown = JSON.parse(raw.slice(4));
+          creds.resource =
+            Array.isArray(parsed) && parsed.every((e): e is string => typeof e === 'string')
+              ? parsed
+              : raw;
+        } catch {
+          creds.resource = raw;
+        }
+      } else if (raw.startsWith('v1s:')) {
+        creds.resource = raw.slice(4);
+      } else {
+        // Untagged row (no v1a:/v1s: prefix) — treat as a legacy bare scalar.
+        // json1: rows from an unreleased draft also fall here; that encoding
+        // never reached main so there are no production array rows to preserve.
+        creds.resource = raw;
+      }
+    }
     if (row.oauth_cc_audience) creds.audience = row.oauth_cc_audience;
     if (row.oauth_cc_auth_method === 'basic' || row.oauth_cc_auth_method === 'body') {
       creds.auth_method = row.oauth_cc_auth_method;

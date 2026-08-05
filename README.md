@@ -78,7 +78,7 @@ npm install
 docker compose up --build    # Starts PostgreSQL + app with auto-migrations
 ```
 
-The server runs on port 3000. Docs run separately with `mintlify dev` on port 3333.
+The server runs on port 3000. Docs run separately with `mint dev` on port 3333.
 
 ### Commands
 

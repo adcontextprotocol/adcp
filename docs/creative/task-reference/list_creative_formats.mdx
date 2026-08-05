@@ -5,6 +5,16 @@ description: "list_creative_formats discovers available ad format specifications
 testable: true
 ---
 
+<Warning>
+**Deprecated for new discovery (3.2).** Prefer role-appropriate canonical-format discovery instead of calling `list_creative_formats` on new integrations:
+
+- **Sales agents:** product-level formats via `get_products.format_options[]`
+- **Creative agents:** producible formats via `get_adcp_capabilities.creative.supported_formats`
+
+The task remains functional through 4.x as a v1 compatibility surface. Removal is aligned with the v1 named-format / `format_ids` deprecation calendar in the [canonical formats migration guide](/docs/creative/canonical-formats-migration) (2027-Q4 floor / 2029-Q1 ceiling; 5.0 cut sequence).
+
+This deprecation does **not** affect [`list_creatives`](/docs/creative/task-reference/list_creatives), which remains the creative-library query task. Legacy named-format creatives and v1 `format_id` / `format_ids[]` remain supported through 4.x.
+</Warning>
 
 Discover creative formats supported by a creative agent. Returns full format specifications including asset requirements and technical constraints.
 

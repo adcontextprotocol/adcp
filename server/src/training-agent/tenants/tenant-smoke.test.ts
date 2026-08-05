@@ -710,6 +710,22 @@ describe('tenant routing smoke', () => {
     }
   }, 45000);
 
+  it('projects post-3.0 creative format parameters out of 3.0 tenant responses', async () => {
+    const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
+    try {
+      const url = `${baseUrl}/creative/mcp`;
+      await initializeTenant(url);
+      const body = await callTenantTool(url, 2, 'list_creative_formats', {
+        format_ids: [{ agent_url: baseUrl, id: 'display_image' }],
+      }) as {
+        result?: { structuredContent?: { formats?: Array<{ accepts_parameters?: string[] }> } };
+      };
+      expect(body.result?.structuredContent?.formats?.[0]?.accepts_parameters).toEqual(['dimensions']);
+    } finally {
+      await close();
+    }
+  }, 15000);
+
   it('hides the exact list_accounts account filter from 3.0 storyboard compat tool schemas', async () => {
     stageLatestThreeZeroSchemaBundle();
     const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });

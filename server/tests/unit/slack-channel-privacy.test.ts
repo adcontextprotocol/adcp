@@ -9,6 +9,7 @@ vi.hoisted(() => {
 
 import {
   sendChannelMessage,
+  getChannelInfo,
   verifyChannelStillPrivate,
   verifyChannelPrivacyForWrite,
   __resetChannelCacheForTests,
@@ -77,7 +78,34 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   globalThis.fetch = originalFetch;
+});
+
+describe('getChannelInfo({ forceRefresh: true })', () => {
+  it('bypasses cached channel metadata for current privacy decisions', async () => {
+    channelInfoResponses.set('C_fresh', { id: 'C_fresh', name: 'fresh', is_private: false });
+    expect((await getChannelInfo('C_fresh'))?.is_private).toBe(false);
+
+    channelInfoResponses.set('C_fresh', { id: 'C_fresh', name: 'fresh', is_private: true });
+    expect((await getChannelInfo('C_fresh'))?.is_private).toBe(false);
+    expect((await getChannelInfo('C_fresh', { forceRefresh: true }))?.is_private).toBe(true);
+  });
+
+  it('reuses metadata within maxAgeMs and refreshes after that short TTL', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-01T12:00:00Z'));
+
+    channelInfoResponses.set('C_recent', { id: 'C_recent', name: 'recent', is_private: false });
+    expect((await getChannelInfo('C_recent'))?.is_private).toBe(false);
+
+    channelInfoResponses.set('C_recent', { id: 'C_recent', name: 'recent', is_private: true });
+    vi.advanceTimersByTime(9_999);
+    expect((await getChannelInfo('C_recent', { maxAgeMs: 10_000 }))?.is_private).toBe(false);
+
+    vi.advanceTimersByTime(2);
+    expect((await getChannelInfo('C_recent', { maxAgeMs: 10_000 }))?.is_private).toBe(true);
+  });
 });
 
 describe('verifyChannelStillPrivate', () => {

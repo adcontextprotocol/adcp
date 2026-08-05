@@ -1,9 +1,22 @@
 {
-  "version": 1,
+  "version": 3,
   "registry": "/schemas/registries/v1-canonical-mapping.json",
-  "registry_version": "1.2.0",
-  "description": "Reference vectors for literal v1 format-id projection. Resolution uses the first exact format_id_glob match; these vectors do not provide a format definition for structural fallback.",
+  "registry_version": "1.5.1",
+  "description": "Reference vectors for literal v1 format-id projection, seller-authored projection precedence, and the normative v2-narrows-v1 comparison. Resolution uses the first exact format_id_glob match only when no higher-priority seller canonical annotation exists; these vectors do not provide a format definition for structural fallback. Narrowing vectors express the registry-expanded v1 baseline as exact, range, or set constraints so every SDK can apply the same parameter-by-parameter subsumption rules.",
   "vectors": [
+    {
+      "id": "parameterized-display-image-template",
+      "format_id": "display_image",
+      "expected_v2": {
+        "canonical": "image",
+        "parameter_mappings": [
+          { "source_field": "width", "target_parameter": "width" },
+          { "source_field": "height", "target_parameter": "height" },
+          { "source_field": "pixel_ratio", "target_parameter": "pixel_ratios", "transform": "singleton_array" }
+        ]
+      },
+      "notes": "SDKs consume these machine-readable rules to copy width, height, and pixel_ratio from the full structured format_id."
+    },
     {
       "id": "static-display-with-no-size-constraint",
       "format_id": "display_static",
@@ -71,6 +84,76 @@
       "expected_v2": { "canonical": "image", "parameters": { "width": 320, "height": 250 } }
     },
     {
+      "id": "display-300-by-250-2x",
+      "format_id": "display_300x250_image_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 300, "height": 250, "pixel_ratios": [2] } }
+    },
+    {
+      "id": "display-728-by-90-2x",
+      "format_id": "display_728x90_image_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 728, "height": 90, "pixel_ratios": [2] } }
+    },
+    {
+      "id": "display-320-by-50-2x",
+      "format_id": "display_320x50_image_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 320, "height": 50, "pixel_ratios": [2] } }
+    },
+    {
+      "id": "display-160-by-600-2x",
+      "format_id": "display_160x600_image_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 160, "height": 600, "pixel_ratios": [2] } }
+    },
+    {
+      "id": "display-336-by-280-2x",
+      "format_id": "display_336x280_image_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 336, "height": 280, "pixel_ratios": [2] } }
+    },
+    {
+      "id": "display-300-by-600-2x",
+      "format_id": "display_300x600_image_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 300, "height": 600, "pixel_ratios": [2] } }
+    },
+    {
+      "id": "display-970-by-250-2x",
+      "format_id": "display_970x250_image_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 970, "height": 250, "pixel_ratios": [2] } }
+    },
+    {
+      "id": "display-300-by-250-1x-2x",
+      "format_id": "display_300x250_image_1x_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 300, "height": 250, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } }
+    },
+    {
+      "id": "display-728-by-90-1x-2x",
+      "format_id": "display_728x90_image_1x_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 728, "height": 90, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } }
+    },
+    {
+      "id": "display-320-by-50-1x-2x",
+      "format_id": "display_320x50_image_1x_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 320, "height": 50, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } }
+    },
+    {
+      "id": "display-160-by-600-1x-2x",
+      "format_id": "display_160x600_image_1x_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 160, "height": 600, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } }
+    },
+    {
+      "id": "display-336-by-280-1x-2x",
+      "format_id": "display_336x280_image_1x_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 336, "height": 280, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } }
+    },
+    {
+      "id": "display-300-by-600-1x-2x",
+      "format_id": "display_300x600_image_1x_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 300, "height": 600, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } }
+    },
+    {
+      "id": "display-970-by-250-1x-2x",
+      "format_id": "display_970x250_image_1x_2x",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 970, "height": 250, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } }
+    },
+    {
       "id": "hosted-video-30-seconds",
       "format_id": "video_30s",
       "expected_v2": { "canonical": "video_hosted", "parameters": { "duration_ms_exact": 30000 } }
@@ -128,6 +211,101 @@
       "expected_v2": null,
       "expected_outcome": "no_literal_match",
       "notes": "Deliberately omitted because video_hosted without duration_ms_exact is untraffickable."
+    }
+  ],
+  "resolution_precedence_vectors": [
+    {
+      "id": "seller-slot-override-replaces-registry-retina-defaults",
+      "format_id": "display_300x250_image_1x_2x",
+      "requirements": { "width": 300, "height": 250 },
+      "seller_canonical": {
+        "kind": "image",
+        "asset_source": "agent_synthesized",
+        "slots_override": [
+          { "asset_group_id": "generation_prompt", "asset_type": "text", "required": true }
+        ]
+      },
+      "expected_v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 300,
+          "height": 250,
+          "asset_source": "agent_synthesized",
+          "slots": [
+            { "asset_group_id": "generation_prompt", "asset_type": "text", "required": true }
+          ]
+        }
+      },
+      "ignored_registry_parameters": ["pixel_ratios", "slots"],
+      "notes": "The seller canonical annotation is selected before the matching registry literal. Requirements still project, but registry pixel-density and rendition-slot defaults MUST NOT merge into the seller-authored declaration."
+    }
+  ],
+  "narrowing_vectors": [
+    {
+      "id": "scalar-inside-v1-range-narrows",
+      "v1_baseline": { "width": { "kind": "range", "min": 200, "max": 400 } },
+      "v2_params": { "width": 300 },
+      "expected": { "narrows": true }
+    },
+    {
+      "id": "scalar-outside-v1-range-conflicts",
+      "v1_baseline": { "width": { "kind": "range", "min": 200, "max": 400 } },
+      "v2_params": { "width": 500 },
+      "expected": { "narrows": false, "conflict": "width" }
+    },
+    {
+      "id": "enum-subset-narrows",
+      "v1_baseline": { "image_formats": { "kind": "set", "values": ["jpg", "png", "gif", "webp"] } },
+      "v2_params": { "image_formats": ["jpg", "png"] },
+      "expected": { "narrows": true }
+    },
+    {
+      "id": "enum-value-outside-v1-set-conflicts",
+      "v1_baseline": { "image_formats": { "kind": "set", "values": ["jpg", "png"] } },
+      "v2_params": { "image_formats": ["jpg", "webp"] },
+      "expected": { "narrows": false, "conflict": "image_formats" }
+    },
+    {
+      "id": "pixel-density-subset-narrows",
+      "v1_baseline": { "pixel_ratios": { "kind": "set", "values": [1, 1.5, 2] } },
+      "v2_params": { "pixel_ratios": [1, 2] },
+      "expected": { "narrows": true }
+    },
+    {
+      "id": "pixel-density-outside-v1-set-conflicts",
+      "v1_baseline": { "pixel_ratios": { "kind": "set", "values": [1, 2] } },
+      "v2_params": { "pixel_ratios": [1, 3] },
+      "expected": { "narrows": false, "conflict": "pixel_ratios" }
+    },
+    {
+      "id": "contained-range-narrows",
+      "v1_baseline": { "duration_ms_range": { "kind": "range", "min": 3000, "max": 90000 } },
+      "v2_params": { "duration_ms_range": [5000, 30000] },
+      "expected": { "narrows": true }
+    },
+    {
+      "id": "range-escaping-v1-upper-bound-conflicts",
+      "v1_baseline": { "duration_ms_range": { "kind": "range", "min": 3000, "max": 90000 } },
+      "v2_params": { "duration_ms_range": [5000, 120000] },
+      "expected": { "narrows": false, "conflict": "duration_ms_range" }
+    },
+    {
+      "id": "absent-v2-parameter-inherits-v1",
+      "v1_baseline": { "width": { "kind": "exact", "value": 300 } },
+      "v2_params": {},
+      "expected": { "narrows": true }
+    },
+    {
+      "id": "v2-constraint-against-open-v1-baseline-narrows",
+      "v1_baseline": {},
+      "v2_params": { "image_formats": ["jpg"] },
+      "expected": { "narrows": true }
+    },
+    {
+      "id": "exact-v1-value-mismatch-conflicts",
+      "v1_baseline": { "width": { "kind": "exact", "value": 300 } },
+      "v2_params": { "width": 320 },
+      "expected": { "narrows": false, "conflict": "width" }
     }
   ]
 }
