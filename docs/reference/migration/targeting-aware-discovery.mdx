@@ -1,6 +1,7 @@
 ---
 title: Targeting-aware product discovery
-description: Migrate get_products targeting filters and stable product-ID assumptions to targeting overlays, future overlay support, sparse resolution, and configured products.
+description: Migrate targeting filters and product-ID assumptions to targeting overlays, future support, sparse resolution, and configured products.
+"og:title": AdCP targeting-aware product discovery migration
 ---
 
 # Targeting-aware product discovery
@@ -212,11 +213,11 @@ Sellers may translate a legacy targeting filter into its overlay equivalent.
 When a request contains both forms, the seller accepts them only when they are
 semantically identical; conflicting forms are rejected as ambiguous.
 
-New schema surfaces are available through the development alias:
+Schema surfaces are available through the v3 alias:
 
-- [`get-products-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-products-request.json)
-- [`targeting-overlay-support.json`](https://adcontextprotocol.org/schemas/latest/core/targeting-overlay-support.json)
-- [`targeting-overlay-requirements.json`](https://adcontextprotocol.org/schemas/latest/core/targeting-overlay-requirements.json)
-- [`product-targeting-resolution.json`](https://adcontextprotocol.org/schemas/latest/core/product-targeting-resolution.json)
-- [`package-targeting-resolution.json`](https://adcontextprotocol.org/schemas/latest/core/package-targeting-resolution.json)
-- [`placement-selection.json`](https://adcontextprotocol.org/schemas/latest/core/placement-selection.json)
+- [`get-products-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json)
+- [`targeting-overlay-support.json`](https://adcontextprotocol.org/schemas/v3/core/targeting-overlay-support.json)
+- [`targeting-overlay-requirements.json`](https://adcontextprotocol.org/schemas/v3/core/targeting-overlay-requirements.json)
+- [`product-targeting-resolution.json`](https://adcontextprotocol.org/schemas/v3/core/product-targeting-resolution.json)
+- [`package-targeting-resolution.json`](https://adcontextprotocol.org/schemas/v3/core/package-targeting-resolution.json)
+- [`placement-selection.json`](https://adcontextprotocol.org/schemas/v3/core/placement-selection.json)
