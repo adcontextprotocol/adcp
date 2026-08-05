@@ -607,6 +607,14 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches get-media-buys-response.json"
+          - check: field_equals_context
+            path: "media_buys[0].media_buy_id"
+            context_key: "placement_media_buy_id"
+            description: "Readback returns the media buy created from the configured product"
+          - check: field_equals_context
+            path: "media_buys[0].packages[0].package_id"
+            context_key: "placement_package_id"
+            description: "Readback targeting belongs to the package created earlier"
           - check: field_value
             path: "media_buys[0].packages[0].targeting_overlay.placement_selection.mode"
             value: "selected"

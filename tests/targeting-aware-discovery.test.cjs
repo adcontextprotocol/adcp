@@ -215,6 +215,21 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
     );
   }
 
+  for (const [path, contextKey] of [
+    ["media_buys[0].media_buy_id", "placement_media_buy_id"],
+    ["media_buys[0].packages[0].package_id", "placement_package_id"],
+  ]) {
+    assert.ok(
+      step("read_updated_placement").validations.some(
+        (validation) =>
+          validation.check === "field_equals_context" &&
+          validation.path === path &&
+          validation.context_key === contextKey
+      ),
+      `${path} must be grounded in the identity captured during create`
+    );
+  }
+
   for (const dimension of ["property_list", "collection_list"]) {
     assert.ok(
       step("get_exact_targeted_product").sample_request.targeting_overlay[
