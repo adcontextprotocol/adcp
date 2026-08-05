@@ -1,8 +1,8 @@
 {
-  "version": 1,
+  "version": 2,
   "registry": "/schemas/registries/v1-canonical-mapping.json",
-  "registry_version": "1.3.0",
-  "description": "Reference vectors for literal v1 format-id projection. Resolution uses the first exact format_id_glob match; these vectors do not provide a format definition for structural fallback.",
+  "registry_version": "1.3.1",
+  "description": "Reference vectors for literal v1 format-id projection and seller-authored projection precedence. Resolution uses the first exact format_id_glob match only when no higher-priority seller canonical annotation exists; these vectors do not provide a format definition for structural fallback.",
   "vectors": [
     {
       "id": "static-display-with-no-size-constraint",
@@ -198,6 +198,33 @@
       "expected_v2": null,
       "expected_outcome": "no_literal_match",
       "notes": "Deliberately omitted because video_hosted without duration_ms_exact is untraffickable."
+    }
+  ],
+  "resolution_precedence_vectors": [
+    {
+      "id": "seller-slot-override-replaces-registry-retina-defaults",
+      "format_id": "display_300x250_image_1x_2x",
+      "requirements": { "width": 300, "height": 250 },
+      "seller_canonical": {
+        "kind": "image",
+        "asset_source": "agent_synthesized",
+        "slots_override": [
+          { "asset_group_id": "generation_prompt", "asset_type": "text", "required": true }
+        ]
+      },
+      "expected_v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 300,
+          "height": 250,
+          "asset_source": "agent_synthesized",
+          "slots": [
+            { "asset_group_id": "generation_prompt", "asset_type": "text", "required": true }
+          ]
+        }
+      },
+      "ignored_registry_parameters": ["pixel_ratios", "slots"],
+      "notes": "The seller canonical annotation is selected before the matching registry literal. Requirements still project, but registry pixel-density and rendition-slot defaults MUST NOT merge into the seller-authored declaration."
     }
   ]
 }
