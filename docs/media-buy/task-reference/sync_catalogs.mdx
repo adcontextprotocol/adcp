@@ -30,7 +30,7 @@ sequenceDiagram
 
 This task sits between format discovery and creative submission in the [account state setup sequence](/docs/building/by-layer/L2/account-state):
 
-1. `list_creative_formats` — check `catalog` asset types in each format's `assets` array to know what feeds to sync
+1. `get_products` — check canonical `format_options[].params.slots[]` for catalog requirements
 2. **`sync_catalogs`** — push the required feeds to the account
 3. `sync_creatives` — submit creatives that reference synced catalogs by `catalog_id`
 4. `create_media_buy` — launch the campaign
@@ -248,7 +248,7 @@ Configure `push_notification_config` on the request to receive webhook notificat
 
 ## Best practices
 
-1. **Check format requirements first** — Call `list_creative_formats` and check `catalog` asset types in each format's `assets` array before syncing. This tells you what catalog types to sync and what fields each item needs.
+1. **Check format requirements first** — Read the selected product's canonical declaration and inspect its catalog slots before syncing. This tells you what catalog types to sync and what fields each item needs.
 
 2. **Use discovery mode** — Before syncing, call without `catalogs` to see what the seller already has. The seller may have brand data from other sources.
 
@@ -265,4 +265,4 @@ Configure `push_notification_config` on the request to receive webhook notificat
 - [Catalogs](/docs/creative/catalogs) — Complete documentation on catalog types, sourcing, and format requirements
 - [Account state](/docs/building/by-layer/L2/account-state) — How catalogs fit into the account setup sequence
 - [sync_creatives](/docs/creative/task-reference/sync_creatives) — Submit creatives that reference synced catalogs
-- [list_creative_formats](/docs/creative/task-reference/list_creative_formats) — Discover format catalog requirements
+- [Canonical formats](/docs/creative/canonical-formats) — Discover format catalog requirements

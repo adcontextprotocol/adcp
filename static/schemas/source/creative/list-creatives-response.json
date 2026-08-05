@@ -77,15 +77,16 @@
           },
           "format_id": {
             "$ref": "/schemas/core/format-id.json",
-            "description": "Legacy named-format path. Structured format identifier specifying which legacy format this creative conforms to. Mutually exclusive with `format_kind`."
+            "deprecated": true,
+            "description": "**DEPRECATED in 3.2.** Legacy named-format path. New listed creatives use `format_kind` and optional `format_option_ref`."
           },
           "format_kind": {
             "$ref": "/schemas/core/canonical-format-kind.json",
-            "description": "3.1+ canonical-format path. The canonical format kind this creative targets. Mutually exclusive with `format_id`."
+            "description": "Canonical 3.2 path. The canonical format kind this creative targets. Mutually exclusive with deprecated `format_id`."
           },
           "format_option_ref": {
             "$ref": "/schemas/core/format-option-ref.json",
-            "description": "Optional 3.1+ reference to the concrete canonical format option this creative targets. Required when `format_kind` alone is ambiguous in the enclosing product context."
+            "description": "Optional reference to the concrete canonical format option this creative targets. Required when `format_kind` alone is ambiguous in the enclosing product context."
           },
           "status": {
             "$ref": "/schemas/enums/creative-status.json",
@@ -267,7 +268,7 @@
           },
           "pricing_options": {
             "type": "array",
-            "description": "Pricing options for using this creative (serving, delivery). Used by ad servers and library agents. Transformation agents expose format-level pricing on list_creative_formats instead. Present when include_pricing=true and account provided. The buyer passes the applied pricing_option_id in report_usage.",
+            "description": "Pricing options for using this creative (serving, delivery). Used by ad servers and library agents. Transformation agents expose build pricing on canonical transformer.pricing_options entries from list_transformers instead. Present when include_pricing=true and account provided. The buyer passes the applied pricing_option_id in report_usage.",
             "items": {
               "$ref": "/schemas/core/vendor-pricing-option.json"
             },
@@ -330,7 +331,7 @@
             }
           },
           {
-            "title": "3.1+ listed creative (canonical format kind)",
+            "title": "Canonical 3.2 listed creative",
             "required": [
               "format_kind"
             ],
@@ -366,7 +367,7 @@
     },
     "format_summary": {
       "type": "object",
-      "description": "Breakdown of creatives by format. Keys are agent-defined format identifiers, optionally including dimensions (e.g., 'display_static_300x250', 'video_30s_vast'). Key construction is platform-specific — there is no required format.",
+      "description": "Breakdown of creatives by canonical format kind. Keys SHOULD be `format_kind` values; an implementation may append a stable option suffix when separate product or publisher options must be distinguished.",
       "patternProperties": {
         "^[a-zA-Z0-9_-]+$": {
           "type": "integer",
@@ -453,12 +454,7 @@
           {
             "creative_id": "ft_88201",
             "name": "Holiday Sale - Medium Rectangle",
-            "format_id": {
-              "agent_url": "https://creative.example.com",
-              "id": "display_static",
-              "width": 300,
-              "height": 250
-            },
+            "format_kind": "image",
             "status": "approved",
             "created_date": "2026-01-10T14:00:00Z",
             "updated_date": "2026-02-20T09:30:00Z",
@@ -499,12 +495,7 @@
           {
             "creative_id": "ft_88202",
             "name": "Holiday Sale - Leaderboard",
-            "format_id": {
-              "agent_url": "https://creative.example.com",
-              "id": "display_static",
-              "width": 728,
-              "height": 90
-            },
+            "format_kind": "image",
             "status": "approved",
             "created_date": "2026-01-10T14:30:00Z",
             "updated_date": "2026-02-20T09:35:00Z",
@@ -561,12 +552,7 @@
           {
             "creative_id": "ft_88201",
             "name": "Holiday Sale - Medium Rectangle",
-            "format_id": {
-              "agent_url": "https://creative.example.com",
-              "id": "display_static",
-              "width": 300,
-              "height": 250
-            },
+            "format_kind": "image",
             "status": "rejected",
             "created_date": "2026-01-10T14:00:00Z",
             "updated_date": "2026-05-18T14:18:42Z",
@@ -590,12 +576,7 @@
           {
             "creative_id": "ft_87100",
             "name": "Holiday Sale - Leaderboard (purged)",
-            "format_id": {
-              "agent_url": "https://creative.example.com",
-              "id": "display_static",
-              "width": 728,
-              "height": 90
-            },
+            "format_kind": "image",
             "status": "approved",
             "created_date": "2025-11-01T10:00:00Z",
             "updated_date": "2026-05-18T02:59:48Z",

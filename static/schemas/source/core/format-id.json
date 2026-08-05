@@ -2,7 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/format-id.json",
   "title": "Format Reference (Structured Object)",
-  "description": "A JSON object — never a plain string — that identifies a creative format by its declaring agent and local slug. Required properties: agent_url (URI of the agent that owns the format) and id (slug matching [a-zA-Z0-9_-]+). Example: {\"agent_url\": \"https://creative.adcontextprotocol.org\", \"id\": \"display_image\", \"width\": 300, \"height\": 250, \"pixel_ratio\": 2}. Can reference: (1) a concrete format with fixed dimensions (id only), (2) a template format without parameters (id only), or (3) a template format with parameters (id + logical dimensions, pixel ratio, and/or duration). Parameterized format IDs create unique, specific variants without minting one format definition per combination. Using a plain string here is a schema violation.",
+  "deprecated": true,
+  "description": "**DEPRECATED in 3.2.** Legacy named-format reference retained for 3.x compatibility. This JSON object — never a plain string — identifies a format by its declaring agent and local slug, and may carry legacy logical dimensions, pixel ratio, or duration parameters. New products and manifests use canonical `format_options`, `format_kind`, and `format_option_ref`; creative-agent build routing uses `creative.supported_formats[].capability_id`.",
   "x-entity": "creative_format",
   "type": "object",
   "properties": {
