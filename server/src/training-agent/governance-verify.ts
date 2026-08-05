@@ -27,6 +27,7 @@ import { createHash, createPrivateKey, createPublicKey, type KeyObject } from 'n
 import { compactVerify, FlattenedSign, importJWK } from 'jose';
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import { getGovernanceSigningPublicJwk, getGovernanceSigningKey } from './governance-signing.js';
+import { computeGovernedPayloadHash } from './governance-payload-hash.js';
 
 /** Canonical seller audience a real training-agent governance token is bound to. */
 export const CANONICAL_SELLER_AUD = 'https://agenticadvertising.org/sales';
@@ -88,12 +89,181 @@ export async function mintWrongAudDemoToken(): Promise<string> {
 export interface ChecklistStep { step: number; name: string; pass: boolean; detail: string; }
 export interface ChecklistResult { verdict: 'valid' | 'rejected'; steps: ChecklistStep[]; error_code: string | null; }
 
+export interface GovernedServiceAuthorizationInput {
+  token: string;
+  expectedIssuer: string;
+  expectedAudience: string;
+  expectedTask: string;
+  payload: Record<string, unknown>;
+  actualCommitment: { amount: number; currency: string };
+  authenticatedCaller?: string;
+}
+
+export interface GovernedServiceAuthorizationResult {
+  ok: boolean;
+  errorCode?: 'PERMISSION_DENIED';
+  message?: string;
+  claims?: Record<string, unknown>;
+  replay?: boolean;
+}
+
+interface ConsumedGovernanceToken {
+  caller: string;
+  payloadHash: string;
+  idempotencyKey?: string;
+}
+
+const consumedGovernanceTokens = new Map<string, ConsumedGovernanceToken>();
+
+/** Tests clear process-local replay teaching state between isolated scenarios. */
+export function clearGovernanceTokenReplayRegistry(): void {
+  consumedGovernanceTokens.clear();
+}
+
 function resolveJwk(kid: string): AdcpJsonWebKey | null {
   const gov = getGovernanceSigningPublicJwk();
   if (kid === gov.kid) return gov;
   const revoked = getRevokedDemoKey().publicJwk;
   if (kid === revoked.kid) return revoked;
   return null;
+}
+
+/**
+ * Verify an authorization at a governed service boundary. Unlike the S6
+ * trace helper below, this is the enforcement path used by the training
+ * sales, signal, brand, and creative services.
+ */
+export async function verifyGovernedServiceAuthorization(
+  input: GovernedServiceAuthorizationInput,
+): Promise<GovernedServiceAuthorizationResult> {
+  const reject = (message: string): GovernedServiceAuthorizationResult => ({
+    ok: false,
+    errorCode: 'PERMISSION_DENIED',
+    message,
+  });
+  if (!input.authenticatedCaller) {
+    return reject('A governed service request requires an authenticated buyer agent.');
+  }
+  if (!Number.isFinite(input.actualCommitment.amount) || input.actualCommitment.amount < 0) {
+    return reject('The actual governed commitment must be finite and non-negative.');
+  }
+
+  const parts = input.token.split('.');
+  if (parts.length !== 3) return reject('governance_context is not a compact JWS.');
+  let header: Record<string, unknown>;
+  let claims: Record<string, unknown>;
+  try {
+    header = JSON.parse(Buffer.from(parts[0], 'base64url').toString()) as Record<string, unknown>;
+    claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString()) as Record<string, unknown>;
+  } catch {
+    return reject('governance_context contains invalid protected-header or claim JSON.');
+  }
+
+  if (header.alg !== 'EdDSA' || header.typ !== 'adcp-gov+jws') {
+    return reject('governance_context uses an unsupported alg or typ.');
+  }
+  const criticalNames = Array.isArray(header.crit)
+    ? header.crit.filter((name): name is string => typeof name === 'string')
+    : [];
+  const recognizedCritical = ['authorized_commitment', 'authorized_task', 'authorized_payload_hash'];
+  if (criticalNames.some(name => !recognizedCritical.includes(name))) {
+    return reject('governance_context contains an unrecognized critical extension.');
+  }
+  for (const name of recognizedCritical) {
+    const hasClaim = claims[name] !== undefined;
+    const hasMarker = criticalNames.includes(name) && header[name] === true;
+    if (hasClaim !== hasMarker) {
+      return reject(`${name} must appear with its matching critical protected-header marker.`);
+    }
+  }
+  if ((claims.authorized_task === undefined) !== (claims.authorized_payload_hash === undefined)) {
+    return reject('authorized_task and authorized_payload_hash must appear together.');
+  }
+
+  if (claims.iss !== input.expectedIssuer) {
+    return reject('governance_context issuer does not resolve to the training governance agent.');
+  }
+  const kid = typeof header.kid === 'string' ? header.kid : '';
+  const jwk = resolveJwk(kid);
+  if (!jwk || jwk.adcp_use !== 'governance-signing' || !jwk.key_ops?.includes('verify')) {
+    return reject('governance_context signing key is unknown or not authorized for governance verification.');
+  }
+  try {
+    const key = await importJWK({ kty: jwk.kty, crv: jwk.crv, x: jwk.x }, 'EdDSA');
+    await compactVerify(input.token, key, {
+      crit: {
+        authorized_commitment: true,
+        authorized_task: true,
+        authorized_payload_hash: true,
+      },
+    });
+  } catch {
+    return reject('governance_context signature verification failed.');
+  }
+  if (revokedGovernanceKids().includes(kid)) {
+    return reject('governance_context signing key is revoked.');
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const skew = 60;
+  if (claims.aud !== input.expectedAudience) return reject('governance_context audience does not match this service.');
+  if (claims.caller !== input.authenticatedCaller) return reject('Authenticated buyer does not match the authorized caller.');
+  if (claims.phase !== 'intent' || claims.media_buy_id !== undefined) {
+    return reject('The downstream service requires an intent-phase context without media_buy_id.');
+  }
+  if (typeof claims.sub !== 'string' || !claims.sub) return reject('governance_context has no opaque action binding.');
+  if (typeof claims.plan_hash !== 'string' || !claims.plan_hash) return reject('governance_context has no plan_hash.');
+  if (typeof claims.iat !== 'number' || claims.iat > now + skew) return reject('governance_context iat is invalid.');
+  if (typeof claims.nbf === 'number' && claims.nbf > now + skew) return reject('governance_context is not active yet.');
+  if (typeof claims.exp !== 'number' || claims.exp < now - skew) return reject('governance_context is expired.');
+  if (typeof claims.jti !== 'string' || !claims.jti) return reject('governance_context has no replay identifier.');
+  if (claims.authorized_task !== input.expectedTask) {
+    return reject(`governance_context does not authorize ${input.expectedTask}.`);
+  }
+
+  let expectedPayloadHash: string;
+  try {
+    expectedPayloadHash = computeGovernedPayloadHash(input.payload);
+  } catch {
+    return reject('The governed task payload is not finite canonical JSON.');
+  }
+  if (claims.authorized_payload_hash !== expectedPayloadHash) {
+    return reject('The governed task payload does not match the signed authorization.');
+  }
+  const commitment = claims.authorized_commitment;
+  if (!commitment || typeof commitment !== 'object' || Array.isArray(commitment)) {
+    return reject('governance_context has no signed monetary authorization.');
+  }
+  const amount = (commitment as Record<string, unknown>).amount;
+  const currency = (commitment as Record<string, unknown>).currency;
+  if (
+    typeof amount !== 'number'
+    || !Number.isFinite(amount)
+    || amount < 0
+    || currency !== input.actualCommitment.currency
+    || input.actualCommitment.amount > amount
+  ) {
+    return reject('The actual commitment exceeds or mismatches the signed monetary ceiling.');
+  }
+
+  const replayKey = `${claims.iss}\u001f${claims.aud}\u001f${claims.jti}`;
+  const idempotencyKey = typeof input.payload.idempotency_key === 'string'
+    ? input.payload.idempotency_key
+    : undefined;
+  const consumed = consumedGovernanceTokens.get(replayKey);
+  if (consumed) {
+    const exactRetry = consumed.caller === input.authenticatedCaller
+      && consumed.payloadHash === expectedPayloadHash
+      && consumed.idempotencyKey === idempotencyKey;
+    if (!exactRetry) return reject('governance_context replay was attempted for a different mutation.');
+    return { ok: true, claims, replay: true };
+  }
+  consumedGovernanceTokens.set(replayKey, {
+    caller: input.authenticatedCaller,
+    payloadHash: expectedPayloadHash,
+    ...(idempotencyKey ? { idempotencyKey } : {}),
+  });
+  return { ok: true, claims, replay: false };
 }
 
 /**
@@ -134,9 +304,27 @@ export async function verifyGovernanceToken(token: string): Promise<ChecklistRes
   if (header.typ !== 'adcp-gov+jws') { fail(3, 'typ_match', `typ=${String(header.typ)} != adcp-gov+jws`); return reject('governance_token_invalid'); }
   pass(3, 'typ_match', 'typ=adcp-gov+jws');
 
-  // 4. crit — reject any unrecognized critical header name (this verifier recognizes none).
-  if (Array.isArray(header.crit) && header.crit.length > 0) { fail(4, 'crit', `unrecognized crit header(s): ${(header.crit as unknown[]).join(', ')}`); return reject('governance_token_invalid'); }
-  pass(4, 'crit', 'no unrecognized critical headers');
+  // 4. crit — authorization-changing claims require matching protected
+  // markers so an older verifier fails closed.
+  const criticalNames = Array.isArray(header.crit) ? header.crit : [];
+  const recognizedCritical = ['authorized_commitment', 'authorized_task', 'authorized_payload_hash'];
+  const unknownCritical = criticalNames.filter(name => !recognizedCritical.includes(String(name)));
+  if (unknownCritical.length > 0) { fail(4, 'crit', `unrecognized crit header(s): ${unknownCritical.join(', ')}`); return reject('governance_token_invalid'); }
+  for (const name of recognizedCritical) {
+    const hasClaim = claims[name] !== undefined;
+    const isProtected = criticalNames.includes(name) && header[name] === true;
+    if (hasClaim !== isProtected) {
+      fail(4, 'crit', `${name} claim and critical protected-header marker must appear together`);
+      return reject('governance_token_invalid');
+    }
+  }
+  if ((claims.authorized_task === undefined) !== (claims.authorized_payload_hash === undefined)) {
+    fail(4, 'crit', 'authorized_task and authorized_payload_hash must appear together');
+    return reject('governance_token_invalid');
+  }
+  pass(4, 'crit', criticalNames.length > 0
+    ? `authorization extensions recognized and critical: ${criticalNames.join(', ')}`
+    : 'no unrecognized critical headers');
 
   // 5. Resolve iss -> JWKS -> kid. iss must be the canonical governance issuer; kid must be published.
   if (claims.iss !== CANONICAL_GOV_ISS) { fail(5, 'iss_resolve', `iss=${String(claims.iss)} is not the expected governance issuer`); return reject('governance_token_invalid'); }
@@ -154,7 +342,13 @@ export async function verifyGovernanceToken(token: string): Promise<ChecklistRes
   // 7. Cryptographic signature verification against the resolved key.
   try {
     const key = await importJWK({ kty: jwk.kty, crv: jwk.crv, x: jwk.x }, 'EdDSA');
-    await compactVerify(token, key);
+    await compactVerify(token, key, {
+      crit: {
+        authorized_commitment: true,
+        authorized_task: true,
+        authorized_payload_hash: true,
+      },
+    });
     pass(7, 'signature', 'signature valid for resolved key');
   } catch {
     fail(7, 'signature', 'signature verification failed (tampered token or wrong key)');
@@ -171,11 +365,10 @@ export async function verifyGovernanceToken(token: string): Promise<ChecklistRes
   if (claims.aud !== CANONICAL_SELLER_AUD) { fail(8, 'aud_binding', `aud=${String(claims.aud)} != this seller's ${CANONICAL_SELLER_AUD}`); return reject('governance_token_not_applicable'); }
   pass(8, 'aud_binding', `aud byte-matches ${CANONICAL_SELLER_AUD}`);
 
-  // 10. sub binding — the token must name the plan it authorizes. (The seller
-  // cross-checks this sub against the plan_id of the operation it is executing;
-  // that operation-side comparison is out of scope for this standalone verifier.)
-  if (typeof claims.sub !== 'string' || !claims.sub) { fail(10, 'sub_binding', 'sub claim missing — token not bound to a plan'); return reject('governance_token_not_applicable'); }
-  pass(10, 'sub_binding', `sub=${claims.sub} (token bound to a plan)`);
+  // 10. sub binding — an issuer-generated opaque governed-action identifier.
+  // Services retain it for lifecycle continuity but never compare it to plan_id.
+  if (typeof claims.sub !== 'string' || !claims.sub) { fail(10, 'sub_binding', 'opaque action binding is missing'); return reject('governance_token_not_applicable'); }
+  pass(10, 'sub_binding', `opaque action binding present (${claims.sub})`);
 
   // 11. phase present.
   if (typeof claims.phase !== 'string' || !claims.phase) { fail(11, 'phase_binding', 'phase claim missing'); return reject('governance_token_not_applicable'); }

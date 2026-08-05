@@ -8,7 +8,31 @@
 
 import type { TrainingContext, ToolArgs } from './types.js';
 import { getSandboxBrands } from '@adcp/sdk/testing';
-import { getSession, sessionKeyFromArgs, findSessionMatching } from './state.js';
+import { getSession, sessionKeyFromArgs } from './state.js';
+import { verifyGovernedServiceAuthorization } from './governance-verify.js';
+import { resolveGovernanceAgentsForAccount } from './account-handlers.js';
+import { getCanonicalBase } from './canonical-base.js';
+
+async function governedCommitmentRejection(
+  governanceContext: string,
+  authenticatedCaller: string | undefined,
+  task: string,
+  expectedAudience: string,
+  payload: Record<string, unknown>,
+  amount: number,
+  currency: string,
+): Promise<string | undefined> {
+  const result = await verifyGovernedServiceAuthorization({
+    token: governanceContext,
+    expectedIssuer: `${getCanonicalBase()}/governance`,
+    expectedTask: task,
+    expectedAudience,
+    payload,
+    actualCommitment: { amount, currency },
+    authenticatedCaller,
+  });
+  return result.ok ? undefined : result.message ?? 'The signed governance authorization is invalid.';
+}
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -568,14 +592,15 @@ export const BRAND_TOOLS = [
         },
         account: { type: 'object', description: 'Account reference (seller + operator/brand + sandbox flag)' },
         brand: { type: 'object', description: 'Brand identity the campaign is being produced for — session-keying and governance-plan lookup read this' },
+        governance_context: { type: 'string', maxLength: 4096, description: 'Opaque approved intent context for this rights commitment.' },
         revocation_webhook: { type: 'object', description: 'Webhook endpoint the brand agent calls when a previously-granted license is revoked.' },
       },
-      required: ['rights_id', 'pricing_option_id', 'buyer', 'campaign'],
+      required: ['account', 'rights_id', 'pricing_option_id', 'buyer', 'campaign'],
     },
   },
   {
     name: 'update_rights',
-    description: 'Update an existing rights grant — extend dates, adjust impression caps, or pause/resume. The training sandbox rejects push_notification_config until update_rights is added to the webhook task-type enum.',
+    description: 'Update an existing rights grant — extend dates, adjust impression caps, or pause/resume.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
@@ -585,12 +610,13 @@ export const BRAND_TOOLS = [
         end_date: { type: 'string', description: 'New end date (must be >= current end date)' },
         impression_cap: { type: 'number', description: 'New impression cap (must be >= current)' },
         paused: { type: 'boolean', description: 'Pause or resume the grant' },
+        governance_context: { type: 'string', maxLength: 4096, description: 'Opaque approved intent context for a commitment-increasing rights update.' },
         push_notification_config: {
           type: 'object',
-          description: 'Not currently supported by the training sandbox: requests that include this field are rejected until update_rights has a routable webhook task type.',
+          description: 'Webhook for async update notifications if the update requires approval.',
         },
       },
-      required: ['rights_id'],
+      required: ['account', 'rights_id'],
     },
   },
   {
@@ -887,6 +913,9 @@ export function handleGetRights(
 }
 
 interface AcquireRightsArgs {
+  account?: import('./types.js').AccountRef;
+  brand?: import('./types.js').BrandRef;
+  governance_context?: string;
   rights_id: string;
   pricing_option_id: string;
   buyer?: { domain: string; brand_id?: string };
@@ -920,6 +949,9 @@ export async function handleAcquireRights(
 
   if (!buyer) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'buyer is required' }] };
+  }
+  if (ctx.tenantId === 'brand' && !req.account) {
+    return { errors: [{ code: 'ACCOUNT_REQUIRED', message: 'account is required to determine whether governance applies.' }] };
   }
 
   let talent: TalentEntry | undefined;
@@ -972,14 +1004,47 @@ export async function handleAcquireRights(
   // are spending events and MUST be governed under the same plan as media
   // buys. Without this check, the brand_rights/governance_denied storyboard
   // gets a success response instead of GOVERNANCE_DENIED.
-  let session = await getSession(sessionKeyFromArgs(req as { account?: import('./types.js').AccountRef; brand?: import('./types.js').BrandRef }, ctx.mode, ctx.userId, ctx.moduleId));
-  // Framework-dispatch strips `account`, dropping the session to
-  // open:default while sync_plans wrote under open:<brand.domain>.
-  // Fall back to any session carrying governance plans so
-  // brand_rights/governance_denied still propagates the denial.
-  if (session.governancePlans.size === 0) {
-    const fallback = await findSessionMatching(s => s.governancePlans.size > 0);
-    if (fallback) session = fallback;
+  const priceModel = pricingOption.model;
+  const basePrice = pricingOption.price;
+  const estimatedImpressions = campaign.estimated_impressions ?? 1_000_000;
+  const estimatedCommitment = priceModel === 'cpm'
+    ? (basePrice / 1000) * estimatedImpressions
+    : basePrice;
+  const accountSessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = await getSession(accountSessionKey);
+  const registeredGovernanceAgents = resolveGovernanceAgentsForAccount(
+    accountSessionKey,
+    ctx.principal,
+    req.account,
+  );
+  const governanceContext = req.governance_context;
+  if (governanceContext) {
+    const rejection = await governedCommitmentRejection(
+      governanceContext,
+      ctx.authenticatedAgentUrl,
+      'acquire_rights',
+      `${getCanonicalBase()}/brand`,
+      req as unknown as Record<string, unknown>,
+      estimatedCommitment,
+      pricingOption.currency,
+    );
+    if (rejection) {
+      return {
+        rights_id: rightsId,
+        status: 'rejected',
+        rights_status: 'rejected',
+        brand_id: talent.brand_id,
+        reason: rejection,
+      };
+    }
+  } else if (session.governancePlans.size > 0 || registeredGovernanceAgents.length > 0) {
+    return {
+      rights_id: rightsId,
+      status: 'rejected',
+      rights_status: 'rejected',
+      brand_id: talent.brand_id,
+      reason: 'Rights acquisition requires governance approval. Call check_governance first.',
+    };
   }
   if (session.governancePlans.size > 0) {
     // Estimate total commitment: flat-rate pricing uses `price` as the fixed
@@ -990,12 +1055,6 @@ export async function handleAcquireRights(
     // remaining can't license a $3.50-CPM rights grant unless the campaign
     // is explicitly tiny; the default projection says $3500 > $50 and the
     // plan denies.
-    const priceModel = pricingOption.model;
-    const basePrice = pricingOption.price;
-    const estimatedImpressions = (campaign as unknown as { estimated_impressions?: number }).estimated_impressions ?? 1_000_000;
-    const estimatedCommitment = priceModel === 'cpm'
-      ? (basePrice / 1000) * estimatedImpressions
-      : basePrice;
     for (const plan of session.governancePlans.values()) {
       const remaining = plan.budget.total - plan.committedBudget;
       const typeAlloc = plan.budget.allocations?.rights_license;
@@ -1131,26 +1190,22 @@ export async function handleAcquireRights(
   };
 }
 
-export function handleUpdateRights(
+export async function handleUpdateRights(
   args: ToolArgs,
-  _ctx: TrainingContext,
+  ctx: TrainingContext,
 ) {
   const req = args as {
+    account?: import('./types.js').AccountRef;
+    brand?: import('./types.js').BrandRef;
     rights_id: string;
     end_date?: string;
     impression_cap?: number;
     paused?: boolean;
+    governance_context?: string;
     push_notification_config?: unknown;
   };
-  if (req.push_notification_config !== undefined) {
-    return {
-      errors: [{
-        code: 'VALIDATION_ERROR',
-        field: 'push_notification_config',
-        message: 'The training sandbox cannot emit update_rights completion webhooks until update_rights is added to the webhook task-type enum. Omit push_notification_config and poll the synchronous result.',
-        recovery: 'correctable',
-      }],
-    };
+  if (ctx.tenantId === 'brand' && !req.account) {
+    return { errors: [{ code: 'ACCOUNT_REQUIRED', message: 'account is required to determine whether governance applies.' }] };
   }
   const rightsId = req.rights_id;
   const endDate = req.end_date;
@@ -1187,6 +1242,38 @@ export function handleUpdateRights(
   const pricingOption = offering.pricing_options[0];
   const effectiveEndDate = endDate || currentEndDate;
   const effectiveImpressionCap = impressionCap ?? pricingOption.impression_cap;
+  const increasesObligation = paused === false
+    || Boolean(endDate && endDate > currentEndDate)
+    || Boolean(impressionCap !== undefined && impressionCap > (pricingOption.impression_cap ?? 0));
+  const accountSessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = await getSession(accountSessionKey);
+  const registeredGovernanceAgents = resolveGovernanceAgentsForAccount(
+    accountSessionKey,
+    ctx.principal,
+    req.account,
+  );
+  if (req.governance_context) {
+    const rejection = await governedCommitmentRejection(
+      req.governance_context,
+      ctx.authenticatedAgentUrl,
+      'update_rights',
+      `${getCanonicalBase()}/brand`,
+      req as unknown as Record<string, unknown>,
+      increasesObligation ? pricingOption.price : 0,
+      pricingOption.currency,
+    );
+    if (rejection) return { errors: [{ code: 'GOVERNANCE_DENIED', message: rejection }] };
+  } else if (
+    increasesObligation
+    && (session.governancePlans.size > 0 || registeredGovernanceAgents.length > 0)
+  ) {
+    return {
+      errors: [{
+        code: 'GOVERNANCE_DENIED',
+        message: 'This rights update increases or resumes the obligation. Call check_governance first.',
+      }],
+    };
+  }
 
   const talentName = getTalentName(talent);
   const campaignUses = pricingOption.uses;

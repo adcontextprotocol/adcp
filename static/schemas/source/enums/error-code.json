@@ -26,6 +26,7 @@
     "UNSUPPORTED_GRANULARITY",
     "UNSUPPORTED_PROVISIONING",
     "AUDIENCE_TOO_SMALL",
+    "ACCOUNT_REQUIRED",
     "ACCOUNT_NOT_FOUND",
     "ACCOUNT_SETUP_REQUIRED",
     "ACCOUNT_AMBIGUOUS",
@@ -125,6 +126,7 @@
     "UNSUPPORTED_GRANULARITY": "The requested `time_granularity` on `get_media_buy_delivery` is not in the product's declared `reporting_capabilities.windowed_pull_granularities`. Distinct from `UNSUPPORTED_FEATURE` (generic capability mismatch) by being narrowly about reporting-window granularity — the buyer asked for hourly pull-recovery on a product that only honors daily pulls, for example. Sellers MAY echo the declared set in `error.details.supported_granularities` when the caller is authorized to read the product's reporting capabilities — the same set is already available via `get_adcp_capabilities`, so the echo is a convenience, not load-bearing. Sellers MUST NOT echo a granularity set the caller could not otherwise read (per-product capability views vary by buyer entitlement). The `error.field` SHOULD point at `time_granularity`. Buyers that need higher-frequency recovery than the seller's pull set supports MUST rely on the webhook channel as primary at that frequency — the seller's `available_reporting_frequencies` may legitimately exceed `windowed_pull_granularities` (e.g., a stream-tap webhook on Kafka with warehouse pulls only at daily). Recovery: correctable (re-issue at a granularity in the declared set, or omit `time_granularity` to fall back to cumulative date-range pulls).",
     "UNSUPPORTED_PROVISIONING": "The seller does not support the `sync_accounts` mode the entry requested. Returned per-entry in the `sync_accounts` response when (a) an entry keyed by the natural-key trio (`brand` + `operator` + `billing`) is sent to a seller that does not provision accounts via AdCP — typical for account-id namespaces where accounts are pre-provisioned out of band or discovered via `list_accounts`; or (b) an entry keyed by `account` (AccountRef) is sent to a seller that has not implemented the settings-update mode. Distinct from `UNSUPPORTED_FEATURE` (generic capability mismatch) by being narrowly about which of the two `sync_accounts` modes the seller implements. The two modes are mutually exclusive per-entry — the seller MUST NOT silently downgrade or upgrade between them. Sellers MAY declare which modes they implement via `get_adcp_capabilities` (forward-looking — capability declaration shape is open). Recovery: correctable (re-issue with the entry shape the seller supports; for account-id namespaces that expose settings updates, that means `account: {account_id: ...}` entries; for sellers that only provision via natural key that means the flat `brand+operator+billing` shape). The `error.field` SHOULD point at the entry index where the unsupported shape was found.",
     "AUDIENCE_TOO_SMALL": "Audience segment is below the minimum required size for targeting. Recovery: correctable (broaden targeting or upload more audience members).",
+    "ACCOUNT_REQUIRED": "The service must resolve the commercial account before it can determine governance applicability, but the request and referenced resource do not identify one. Recovery: correctable (pass account, or use a resource bound to an account).",
     "ACCOUNT_NOT_FOUND": "The account reference could not be resolved. Recovery: terminal (verify account via list_accounts or contact seller).",
     "ACCOUNT_SETUP_REQUIRED": "Natural key resolved but the account needs setup before use. Recovery: correctable (check details.setup for URL or instructions).",
     "ACCOUNT_AMBIGUOUS": "Natural key resolves to multiple accounts. Recovery: correctable (pass explicit account_id or a more specific natural key).",
@@ -287,6 +289,10 @@
     "AUDIENCE_TOO_SMALL": {
       "recovery": "correctable",
       "suggestion": "broaden targeting or upload more audience members"
+    },
+    "ACCOUNT_REQUIRED": {
+      "recovery": "correctable",
+      "suggestion": "pass account, or reference an existing resource whose owning account the service can resolve"
     },
     "ACCOUNT_NOT_FOUND": {
       "recovery": "terminal",

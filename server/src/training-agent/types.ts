@@ -26,6 +26,11 @@ export interface TrainingContext {
    *  Derived from the bearer token in the MCP route; defaults to `anonymous`
    *  when no auth is configured (dev / test). */
   principal?: string;
+  /**
+   * Authenticated agent URL resolved by the server's credential-to-agent
+   * mapping. Never populate this from request arguments or principal text.
+   */
+  authenticatedAgentUrl?: string;
   /** Route is the grader-targeted `/mcp-strict` endpoint. Advertises
    *  `required_for: ['create_media_buy']` in capabilities and enforces
    *  presence-gated signing at the auth layer. Default `/mcp` does not
@@ -392,6 +397,11 @@ export interface MediaBuyState {
   brandRef?: BrandRef;
   status: string;
   currency: string;
+  /** Seller-authoritative hard lifetime cap; falls back to package sum for legacy fixtures. */
+  totalBudget?: number;
+  budgetAllocation?: Record<string, unknown>;
+  aggregatePacing?: string;
+  aggregateBidding?: Record<string, unknown>;
   packages: PackageState[];
   productAllowedActions?: MediaBuyProductAllowedActionState[];
   availableActions?: MediaBuyAvailableActionState[];
@@ -556,6 +566,8 @@ export interface GovernanceDelegation {
 
 export interface GovernancePlanState {
   planId: string;
+  /** Authenticated buyer agent that synchronized and owns this plan. */
+  ownerAgentUrl: string;
   version: number;
   status: 'active' | 'suspended' | 'completed';
   brand: BrandReference;
@@ -627,12 +639,29 @@ export interface GovernancePlanState {
 export interface GovernanceCheckState {
   checkId: string;
   planId: string;
+  /** Authenticated owner component of the canonical (owner, plan_id) identity. */
+  planOwnerAgentUrl?: string;
+  /** Opaque JWS sub claim; never a plan identifier. */
+  governanceBindingId?: string;
   governanceContext?: string;
+  consultationContext?: string;
+  consultationAttempts?: number;
+  /** Authenticated principal that owns a conditions negotiation. */
+  consultationPrincipal?: string;
+  /** Target service fixed for the lifetime of a conditions negotiation. */
+  consultationAudience?: string;
+  /** Service audience authorized for this governed action. */
+  targetAudience?: string;
   binding: 'proposed' | 'committed';
   status: 'approved' | 'denied' | 'conditions';
   caller: string;
   tool?: string;
+  /** JCS/SHA-256 binding of the task payload authorized by the intent. */
+  authorizedPayloadHash?: string;
   purchaseType?: string;
+  /** Budget approved from the governance agent's own evaluated input. */
+  authorizedBudget?: number;
+  authorizedCurrency?: string;
   phase?: string;
   findings: GovernanceFinding[];
   conditions?: GovernanceCondition[];
@@ -662,12 +691,26 @@ export interface GovernanceCondition {
 export interface GovernanceOutcomeState {
   outcomeId: string;
   planId: string;
+  /** Authenticated owner component of the canonical (owner, plan_id) identity. */
+  planOwnerAgentUrl?: string;
   checkId?: string;
+  /** Stable action identity shared by intent and execution checks. */
+  governanceBindingId?: string;
   governanceContext?: string;
   purchaseType?: string;
   sellerReference?: string;
   outcomeType: 'completed' | 'failed' | 'delivery';
   committedBudget: number;
+  /** Caller-reported amount retained for reconciliation, never ledger authority. */
+  reportedCommittedBudget?: number;
+  idempotencyKey?: string;
+  /** Authenticated buyer-side caller that owns this report/replay key. */
+  reporterCaller?: string;
+  requestPayloadHash?: string;
+  /** Exact successful response returned for idempotent replay. */
+  response?: Record<string, unknown>;
+  /** Deprecated buyer delivery snapshot retained as audit evidence only. */
+  delivery?: Record<string, unknown>;
   findings: GovernanceFinding[];
   timestamp: string;
 }

@@ -243,6 +243,7 @@ test('temporary snapshot redirects cover every available live page', () => {
   );
 
   const expectedUncoveredPages = [
+    'docs/reference/migration/cross-role-governance-enforcement',
     'docs/protocol/language-and-localization',
     'docs/protocol/sync_agent_notification_configs',
   ];

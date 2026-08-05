@@ -47,6 +47,8 @@ import type {
   CreativeManifest as AdcpCreativeManifest,
 } from '@adcp/sdk';
 import { CreativeManifestSchema } from '@adcp/sdk/schemas';
+import { verifyGovernedServiceAuthorization } from './governance-verify.js';
+import { getCanonicalBase } from './canonical-base.js';
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
 function escapeHtmlAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -1296,6 +1298,118 @@ function governanceErrorDetails(check: import('./types.js').GovernanceCheckState
     }));
   }
   return details;
+}
+
+/** Verify the signed authorization at the service boundary. */
+async function governedCommitmentError(
+  governanceContext: string,
+  authenticatedCaller: string | undefined,
+  expectedTool: string,
+  expectedAudience: string,
+  actualPayload: Record<string, unknown>,
+  actualAmount: number,
+  actualCurrency: string,
+): Promise<TaskError | undefined> {
+  const result = await verifyGovernedServiceAuthorization({
+    token: governanceContext,
+    expectedIssuer: `${getCanonicalBase()}/governance`,
+    expectedTask: expectedTool,
+    expectedAudience,
+    payload: actualPayload,
+    actualCommitment: { amount: actualAmount, currency: actualCurrency },
+    authenticatedCaller,
+  });
+  return result.ok ? undefined : {
+    code: 'PERMISSION_DENIED',
+    message: result.message ?? 'The signed governance authorization is invalid.',
+  };
+}
+
+function projectedPackageBudgetTotal(mb: MediaBuyState, req: UpdateMediaBuyArgs): number {
+  const currentBudgets = new Map(
+    mb.packages.map(pkg => [pkg.packageId, pkg.canceled ? 0 : pkg.budget]),
+  );
+  for (const update of req.packages ?? []) {
+    const packageId = update.package_id;
+    if (!packageId || !currentBudgets.has(packageId)) continue;
+    if ((update as PackageUpdateExt).canceled === true) {
+      currentBudgets.set(packageId, 0);
+    } else if (update.budget !== undefined) {
+      currentBudgets.set(packageId, update.budget);
+    }
+  }
+  const nextExisting = [...currentBudgets.values()].reduce((sum, budget) => sum + budget, 0);
+  const added = (req.new_packages ?? []).reduce((sum, pkg) => sum + pkg.budget, 0);
+  return nextExisting + added;
+}
+
+interface MediaBuyAggregateUpdate {
+  total_budget?: { amount: number; currency: string };
+  budget_allocation?: Record<string, unknown>;
+  pacing?: string;
+  bidding?: Record<string, unknown> | null;
+}
+
+function aggregateMediaBuyUpdate(req: UpdateMediaBuyArgs): MediaBuyAggregateUpdate {
+  return req as unknown as MediaBuyAggregateUpdate;
+}
+
+function resultingMediaBuyIsSellerOptimized(mb: MediaBuyState, req: UpdateMediaBuyArgs): boolean {
+  const update = aggregateMediaBuyUpdate(req);
+  return (update.budget_allocation ?? mb.budgetAllocation)?.mode === 'seller_optimized';
+}
+
+function positiveMediaBuyUpdateDelta(mb: MediaBuyState, req: UpdateMediaBuyArgs): number {
+  const packageBaseline = mb.packages.reduce(
+    (sum, pkg) => sum + (pkg.canceled ? 0 : pkg.budget),
+    0,
+  );
+  const baseline = mb.totalBudget ?? packageBaseline;
+  const requestedTotal = aggregateMediaBuyUpdate(req).total_budget?.amount;
+  // In seller-optimized mode package budgets are optional package caps, not
+  // allocations. They may sum above the shared hard total, and changing them
+  // MUST NOT silently replace or increase that total. Only an explicit
+  // total_budget changes the shared monetary obligation.
+  const nextTotal = requestedTotal
+    ?? (resultingMediaBuyIsSellerOptimized(mb, req)
+      ? baseline
+      : projectedPackageBudgetTotal(mb, req));
+  return Math.max(0, nextTotal - baseline);
+}
+
+function mediaBuyUpdateRequiresGovernance(mb: MediaBuyState, req: UpdateMediaBuyArgs, delta: number): boolean {
+  if (delta > 0 || req.paused === false || (req.new_packages?.length ?? 0) > 0) return true;
+  if (req.end_time && new Date(req.end_time) > new Date(mb.endTime)) return true;
+  if ((req.packages ?? []).some(update => {
+    const current = mb.packages.find(pkg => pkg.packageId === update.package_id);
+    if (!current || !Object.prototype.hasOwnProperty.call(update, 'budget')) return false;
+    const nextBudget = (update as unknown as { budget?: number | null }).budget;
+    // Removing a seller-optimized cap or raising any package cap widens the
+    // effective delivery envelope even when the shared/fixed aggregate total
+    // stays flat. A pure numeric decrease remains the decrease_only exemption.
+    return nextBudget === null
+      || (typeof nextBudget === 'number' && nextBudget > current.budget);
+  })) return true;
+  const aggregateUpdate = aggregateMediaBuyUpdate(req);
+  const currentAllocation = mb.budgetAllocation ?? { mode: 'fixed' };
+  if (
+    aggregateUpdate.budget_allocation !== undefined
+    && !isDeepStrictEqual(aggregateUpdate.budget_allocation, currentAllocation)
+  ) return true;
+  if (
+    aggregateUpdate.pacing !== undefined
+    && aggregateUpdate.pacing !== (mb.aggregatePacing ?? 'even')
+  ) return true;
+  if (aggregateUpdate.bidding !== undefined) {
+    const resultingBidding = aggregateUpdate.bidding === null ? undefined : aggregateUpdate.bidding;
+    if (!isDeepStrictEqual(resultingBidding, mb.aggregateBidding)) return true;
+  }
+  return (req.packages ?? []).some(update =>
+    update.paused === false
+    || Boolean(update.targeting_overlay ?? (update as PackageUpdateExt).targeting)
+    || Boolean(update.end_time && new Date(update.end_time) > new Date(
+      mb.packages.find(pkg => pkg.packageId === update.package_id)?.endTime ?? mb.endTime,
+    )));
 }
 
 /** Wire-format error shared by all training agent responses. */
@@ -2979,6 +3093,7 @@ const TOOLS = [
         new_packages: { type: 'array', items: { type: 'object', properties: { product_id: { type: 'string' }, pricing_option_id: { type: 'string' }, budget: { type: 'number' }, bid_price: { type: 'number' }, impressions: { type: 'number' }, paused: { type: 'boolean' }, start_time: { type: 'string' }, end_time: { type: 'string' }, format_ids: { type: 'array' } }, required: ['product_id', 'pricing_option_id', 'budget'] }, description: 'Add new packages to the media buy' },
         end_time: { type: 'string' },
         action: { type: 'string', description: 'Action to perform (pause, resume, cancel, extend)' },
+        governance_context: { type: 'string', maxLength: 4096, description: 'Opaque intent authorization for a governed update. The seller computes the actual positive delta from its current revision and enforces the signed ceiling.' },
       },
       required: ['account', 'media_buy_id'] as const,
     },
@@ -4568,80 +4683,31 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // check_governance first.
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const govCtx = typeof rawGovCtx === 'string' && rawGovCtx ? rawGovCtx : undefined;
+  const governanceAgents = resolveGovernanceAgentsForAccount(
+    sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+    ctx.principal,
+    req.account,
+  );
   if (govCtx) {
-    // Find the latest check for this governance_context (Map iterates in insertion order)
-    let latestCheck: import('./types.js').GovernanceCheckState | undefined;
-    for (const check of session.governanceChecks.values()) {
-      if (check.governanceContext === govCtx) {
-        latestCheck = check;
-      }
-    }
-    if (latestCheck?.status === 'denied') {
-      return {
-        errors: [{
-          code: 'GOVERNANCE_DENIED',
-          message: latestCheck.explanation || 'Governance check denied this purchase.',
-          details: governanceErrorDetails(latestCheck),
-        }] as TaskError[],
-      };
-    }
-    // governance_context provided but no matching check — reject if plans exist
-    if (!latestCheck && session.governancePlans.size > 0) {
-      return {
-        errors: [{
-          code: 'GOVERNANCE_DENIED',
-          message: `governance_context "${govCtx}" does not match any governance check. Call check_governance first.`,
-        }] as TaskError[],
-      };
-    }
-  } else if (session.governancePlans.size > 0) {
-    // No governance_context provided but plans exist — compute budget and check
     const buyBudget = req.total_budget?.amount
-      ?? (req.packages?.reduce((sum, pkg) => sum + ((pkg as unknown as { budget: number }).budget || 0), 0));
-    if (buyBudget !== undefined) {
-      for (const plan of session.governancePlans.values()) {
-        const remaining = plan.budget.total - plan.committedBudget;
-        if (buyBudget > remaining) {
-          const msg = `Buy budget $${buyBudget} exceeds governance plan "${plan.planId}" remaining budget $${remaining}. Call check_governance first.`;
-          return {
-            errors: [{
-              code: 'GOVERNANCE_DENIED',
-              message: msg,
-              details: {
-                findings: [{
-                  category_id: 'budget_authority',
-                  severity: 'critical',
-                  explanation: msg,
-                }],
-                plan_id: plan.planId,
-              },
-            }] as TaskError[],
-          };
-        }
-        const typeAllocation = plan.budget.allocations?.media_buy;
-        if (typeAllocation?.amount !== undefined) {
-          const typeCommitted = plan.committedByType?.media_buy ?? 0;
-          const typeRemaining = typeAllocation.amount - typeCommitted;
-          if (buyBudget > typeRemaining) {
-            const msg = `Buy budget $${buyBudget} exceeds media_buy allocation $${typeRemaining} remaining in plan "${plan.planId}". Call check_governance first.`;
-            return {
-              errors: [{
-                code: 'GOVERNANCE_DENIED',
-                message: msg,
-                details: {
-                  findings: [{
-                    category_id: 'budget_authority',
-                    severity: 'critical',
-                    explanation: msg,
-                  }],
-                  plan_id: plan.planId,
-                },
-              }] as TaskError[],
-            };
-          }
-        }
-      }
-    }
+      ?? req.packages?.reduce((sum, pkg) => sum + ((pkg as unknown as { budget: number }).budget || 0), 0);
+    const commitmentError = await governedCommitmentError(
+      govCtx,
+      ctx.authenticatedAgentUrl,
+      'create_media_buy',
+      `${getCanonicalBase()}/sales`,
+      req as unknown as Record<string, unknown>,
+      buyBudget ?? 0,
+      req.total_budget?.currency ?? 'USD',
+    );
+    if (commitmentError) return { errors: [commitmentError] };
+  } else if (session.governancePlans.size > 0 || governanceAgents.length > 0) {
+    return {
+      errors: [{
+        code: governanceAgents.length > 0 ? 'PERMISSION_DENIED' : 'GOVERNANCE_DENIED',
+        message: 'Media-buy creation requires governance approval. Call check_governance first.',
+      }] as TaskError[],
+    };
   }
 
   // Validate event-kind optimization_goals reference a previously-registered
@@ -5247,7 +5313,18 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     accountRef: req.account,
     brandRef: req.brand,
     status: req.paused === true ? 'paused' : 'active',
-    currency: 'USD',
+    currency: req.total_budget?.currency ?? 'USD',
+    totalBudget: req.total_budget?.amount
+      ?? createdPackages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0),
+    ...((req as unknown as { budget_allocation?: Record<string, unknown> }).budget_allocation
+      ? { budgetAllocation: structuredClone((req as unknown as { budget_allocation: Record<string, unknown> }).budget_allocation) }
+      : {}),
+    ...((req as unknown as { pacing?: string }).pacing
+      ? { aggregatePacing: (req as unknown as { pacing: string }).pacing }
+      : {}),
+    ...((req as unknown as { bidding?: Record<string, unknown> }).bidding
+      ? { aggregateBidding: structuredClone((req as unknown as { bidding: Record<string, unknown> }).bidding) }
+      : {}),
     packages: createdPackages,
     ...(productAllowedActions && { productAllowedActions }),
     startTime: resolvedStart,
@@ -5285,6 +5362,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     media_buy_status: status,
     revision: mediaBuy.revision,
     confirmed_at: mediaBuy.confirmedAt,
+    currency: mediaBuy.currency,
+    total_budget: mediaBuy.totalBudget,
+    ...(mediaBuy.budgetAllocation && { budget_allocation: mediaBuy.budgetAllocation }),
+    ...(mediaBuy.aggregatePacing && { pacing: mediaBuy.aggregatePacing }),
+    ...(mediaBuy.aggregateBidding && { bidding: mediaBuy.aggregateBidding }),
     valid_actions: validActionsForMediaBuy(mediaBuy, status),
     available_actions: availableActionsForMediaBuy(mediaBuy, status),
     packages: createdPackages.map(pkg => ({
@@ -5378,7 +5460,8 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
   return {
     media_buys: pageBuys.map(mb => {
       const status = deriveStatus(mb);
-      const totalBudget = mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
+      const totalBudget = mb.totalBudget
+        ?? mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
       const openImpairments = mb.impairments ?? [];
       const buy = {
         media_buy_id: mb.mediaBuyId,
@@ -5391,6 +5474,9 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
         available_actions: availableActionsForMediaBuy(mb, status),
         currency: mb.currency,
         total_budget: totalBudget,
+        ...(mb.budgetAllocation && { budget_allocation: mb.budgetAllocation }),
+        ...(mb.aggregatePacing && { pacing: mb.aggregatePacing }),
+        ...(mb.aggregateBidding && { bidding: mb.aggregateBidding }),
         start_time: mb.startTime,
         end_time: mb.endTime,
         health: (openImpairments.length > 0 ? 'impaired' : 'ok') as 'ok' | 'impaired',
@@ -6239,6 +6325,77 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mb.revision}, got ${reqRevision}` }] };
   }
 
+  // Compute the monetary delta from the seller's authoritative pre-update
+  // revision, then enforce the buyer intent's signed ceiling before mutating
+  // any state. The buyer's post-update totals are never trusted as the delta.
+  const submittedBudgets = [
+    ...(req.packages ?? []).flatMap(update => update.budget === undefined ? [] : [update.budget]),
+    ...(req.new_packages ?? []).map(pkg => pkg.budget),
+  ];
+  if (submittedBudgets.some(budget => !Number.isFinite(budget) || budget < 0)) {
+    return { errors: [{ code: 'VALIDATION_ERROR', message: 'Package budgets must be finite, non-negative numbers.' }] };
+  }
+  const aggregateUpdate = aggregateMediaBuyUpdate(req);
+  if (aggregateUpdate.total_budget && (
+    !Number.isFinite(aggregateUpdate.total_budget.amount)
+    || aggregateUpdate.total_budget.amount < 0
+    || aggregateUpdate.total_budget.currency !== mb.currency
+  )) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: `total_budget must be finite, non-negative, and denominated in ${mb.currency}.`,
+      }],
+    };
+  }
+  const resultingAllocation = aggregateUpdate.budget_allocation ?? mb.budgetAllocation;
+  const sellerOptimized = resultingAllocation?.mode === 'seller_optimized';
+  if (
+    aggregateUpdate.total_budget
+    && !sellerOptimized
+    && aggregateUpdate.total_budget.amount !== projectedPackageBudgetTotal(mb, req)
+  ) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'In fixed allocation mode, total_budget.amount must equal the resulting package budget sum.',
+      }],
+    };
+  }
+  const updateDelta = positiveMediaBuyUpdateDelta(mb, req);
+  if (!Number.isFinite(updateDelta)) {
+    return { errors: [{ code: 'VALIDATION_ERROR', message: 'Package budgets must be finite numbers.' }] };
+  }
+  const rawGovernanceContext = (req as unknown as Record<string, unknown>).governance_context;
+  const updateGovernanceContext = typeof rawGovernanceContext === 'string' && rawGovernanceContext
+    ? rawGovernanceContext
+    : undefined;
+  const requiresGovernance = mediaBuyUpdateRequiresGovernance(mb, req, updateDelta);
+  const updateGovernanceAgents = resolveGovernanceAgentsForAccount(
+    sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+    ctx.principal,
+    mb.accountRef,
+  );
+  if (updateGovernanceContext) {
+    const commitmentError = await governedCommitmentError(
+      updateGovernanceContext,
+      ctx.authenticatedAgentUrl,
+      'update_media_buy',
+      `${getCanonicalBase()}/sales`,
+      req as unknown as Record<string, unknown>,
+      updateDelta,
+      mb.currency,
+    );
+    if (commitmentError) return { errors: [commitmentError] };
+  } else if (requiresGovernance && (session.governancePlans.size > 0 || updateGovernanceAgents.length > 0)) {
+    return {
+      errors: [{
+        code: 'GOVERNANCE_DENIED',
+        message: 'This media-buy update increases or widens the governed obligation. Call check_governance and provide governance_context.',
+      }] as TaskError[],
+    };
+  }
+
   const now = new Date().toISOString();
   const affectedPackageIds = new Set<string>();
 
@@ -6482,6 +6639,30 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     }
   }
 
+  const packageBudgetChanged = Boolean(
+    req.packages?.some(update => update.budget !== undefined || (update as PackageUpdateExt).canceled === true)
+    || req.new_packages?.length,
+  );
+  if (aggregateUpdate.total_budget) {
+    mb.totalBudget = aggregateUpdate.total_budget.amount;
+  } else if (
+    !sellerOptimized
+    && (packageBudgetChanged || aggregateUpdate.budget_allocation !== undefined)
+  ) {
+    mb.totalBudget = mb.packages.reduce(
+      (sum, pkg) => sum + (pkg.canceled ? 0 : pkg.budget || 0),
+      0,
+    );
+  }
+  if (aggregateUpdate.budget_allocation !== undefined) {
+    mb.budgetAllocation = structuredClone(aggregateUpdate.budget_allocation);
+  }
+  if (aggregateUpdate.pacing !== undefined) mb.aggregatePacing = aggregateUpdate.pacing;
+  if (aggregateUpdate.bidding === null) delete mb.aggregateBidding;
+  else if (aggregateUpdate.bidding !== undefined) {
+    mb.aggregateBidding = structuredClone(aggregateUpdate.bidding);
+  }
+
   mb.updatedAt = now;
 
   const status = deriveStatus(mb);
@@ -6511,6 +6692,19 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     revision: mb.revision,
     valid_actions: validActionsForMediaBuy(mb, status),
     available_actions: availableActionsForMediaBuy(mb, status),
+    ...((aggregateUpdate.total_budget !== undefined || packageBudgetChanged) && {
+      currency: mb.currency,
+      total_budget: mb.totalBudget,
+    }),
+    ...(aggregateUpdate.budget_allocation !== undefined && mb.budgetAllocation
+      ? { budget_allocation: mb.budgetAllocation }
+      : {}),
+    ...(aggregateUpdate.pacing !== undefined && mb.aggregatePacing
+      ? { pacing: mb.aggregatePacing }
+      : {}),
+    ...(aggregateUpdate.bidding !== undefined && mb.aggregateBidding
+      ? { bidding: mb.aggregateBidding }
+      : {}),
     ...(mb.canceledAt && {
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
     }),
@@ -6572,14 +6766,35 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     'seed_measurement_catalog',
     ...(!isThreeZeroStoryboardCompat(ctx) ? ['query_provenance_audit_observations'] : []),
   ];
+  const governanceEnforcementTasks = ctx.tenantId === 'sales'
+    ? [
+      { task: 'create_media_buy', modes: ['signed_context'] },
+      { task: 'update_media_buy', modes: ['signed_context'] },
+    ]
+    : ctx.tenantId === 'signals'
+      ? [{ task: 'activate_signal', modes: ['signed_context'] }]
+      : ctx.tenantId === 'brand'
+        ? [
+          { task: 'acquire_rights', modes: ['signed_context'] },
+          { task: 'update_rights', modes: ['signed_context'] },
+        ]
+        : ctx.tenantId === 'creative' || ctx.tenantId === 'creative-builder'
+          ? [{ task: 'build_creative', modes: ['signed_context'] }]
+          : [];
   return {
     adcp_version: DEFAULT_ADCP_VERSION,
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
       supported_versions: [...SUPPORTED_RELEASE_VERSIONS],
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
+      ...(governanceEnforcementTasks.length > 0 && {
+        governance_enforcement: { tasks: governanceEnforcementTasks },
+      }),
     },
     supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand'],
+    ...((governanceEnforcementTasks.length > 0 || ctx.tenantId === 'governance') && {
+      experimental_features: ['governance.campaign'],
+    }),
     specialisms: [],
     request_signing: {
       supported: signingCap.supported,
@@ -7009,43 +7224,42 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
       }],
     };
   }
+  const validPricing = pricingOptionId
+    ? signal.pricingOptions.find(po => po.pricingOptionId === pricingOptionId)
+    : undefined;
+  if (pricingOptionId && !validPricing) {
+    return {
+      errors: [{
+        code: 'INVALID_PRICING_MODEL',
+        message: `Pricing option not found: ${pricingOptionId}. Available: ${signal.pricingOptions.map(po => po.pricingOptionId).join(', ')}`,
+      }],
+    };
+  }
+  const signalCommitment = action === 'deactivate'
+    ? 0
+    : validPricing?.model === 'flat_fee'
+      ? validPricing.amount ?? 0
+      : validPricing?.model === 'cpm'
+        ? validPricing.cpm ?? 0
+        : validPricing?.maxCpm ?? 0;
+  const signalCurrency = validPricing?.currency ?? 'USD';
 
   // Enforce governance: if the account has a registered governance agent, the
   // activation requires a valid approval token from check_governance. Fall back
   // to session plans for legacy storyboard setup where the governance agent was
   // called in-process but sync_governance was omitted.
   if (governanceContext) {
-    let latestCheck: import('./types.js').GovernanceCheckState | undefined;
-    for (const check of session.governanceChecks.values()) {
-      if (check.governanceContext === governanceContext) latestCheck = check;
-    }
-    if (latestCheck?.status === 'denied') {
-      return {
-        errors: [{
-          code: 'GOVERNANCE_DENIED',
-          message: latestCheck.explanation || 'Governance check denied this signal activation.',
-          details: governanceErrorDetails(latestCheck),
-        }] as TaskError[],
-      };
-    }
-    if (latestCheck?.status === 'conditions') {
-      return {
-        errors: [{
-          code: 'GOVERNANCE_DENIED',
-          message: latestCheck.explanation || 'Governance check returned conditions; re-call check_governance with an adjusted activation payload before activating this signal.',
-          details: governanceErrorDetails(latestCheck),
-        }] as TaskError[],
-      };
-    }
-    if (!latestCheck && (hasRegisteredGovernanceAgent || session.governancePlans.size > 0)) {
-      return {
-        errors: [{
-          code: 'PERMISSION_DENIED',
-          message: `governance_context "${governanceContext}" does not match any governance approval for this account. Call check_governance first.`,
-        }] as TaskError[],
-      };
-    }
-  } else if (hasRegisteredGovernanceAgent || session.governancePlans.size > 0) {
+    const commitmentError = await governedCommitmentError(
+      governanceContext,
+      ctx.authenticatedAgentUrl,
+      'activate_signal',
+      `${getCanonicalBase()}/signals`,
+      req as unknown as Record<string, unknown>,
+      signalCommitment,
+      signalCurrency,
+    );
+    if (commitmentError) return { errors: [commitmentError] };
+  } else if (action !== 'deactivate' && (hasRegisteredGovernanceAgent || session.governancePlans.size > 0)) {
     const msg = hasRegisteredGovernanceAgent
       ? `Signal activation requires governance approval. Call check_governance first — a governance agent is registered for this account.`
       : `Signal activation requires governance approval. Call check_governance first — a governance plan is registered for this account.`;
@@ -7059,23 +7273,10 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
             severity: 'critical',
             explanation: msg,
           }],
-          ...(session.governancePlans.size > 0 && { plan_id: [...session.governancePlans.keys()][0] }),
+          ...(session.governancePlans.size > 0 && { plan_id: [...session.governancePlans.values()][0].planId }),
         },
       }] as TaskError[],
     };
-  }
-
-  // Validate pricing option if provided
-  if (pricingOptionId) {
-    const validPricing = signal.pricingOptions.find(po => po.pricingOptionId === pricingOptionId);
-    if (!validPricing) {
-      return {
-        errors: [{
-          code: 'INVALID_PRICING_MODEL',
-          message: `Pricing option not found: ${pricingOptionId}. Available: ${signal.pricingOptions.map(po => po.pricingOptionId).join(', ')}`,
-        }],
-      };
-    }
   }
 
   const agentUrl = getAgentUrl();
@@ -7331,6 +7532,22 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
   const formats = getFormats();
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
+  if (governanceContext) {
+    const commitmentError = await governedCommitmentError(
+      governanceContext,
+      ctx.authenticatedAgentUrl,
+      'build_creative',
+      `${getCanonicalBase()}/${ctx.tenantId === 'creative-builder' ? 'creative-builder' : 'creative'}`,
+      req as unknown as Record<string, unknown>,
+      0,
+      'USD',
+    );
+    if (commitmentError) {
+      return buildCreativeCompleted({
+        errors: [{ code: commitmentError.code, message: commitmentError.message }],
+      });
+    }
+  }
   const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
   const canonicalBuildsEnabled = includeThreeOneFields(ctx);
   const acceptedTargetIds = new Set([
