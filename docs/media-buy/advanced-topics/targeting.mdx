@@ -424,6 +424,20 @@ geographic targeting. Select a targetable placement with
 `creative_assignments[].placement_refs` only to route creatives among the
 placements already selected by package targeting.
 
+### No raw ad-server key/value targeting
+
+External buyers MUST NOT send arbitrary ad-server keys, values, or expressions
+through a generic targeting map. A capability declaration would prove only
+that a seller recognizes a key; it would not make the key's semantics,
+authorization boundary, privacy behavior, or cross-seller meaning mechanically
+verifiable. Sellers compile AdCP's structured targeting, signal references,
+and configured products into their own ad-server controls internally.
+
+When a targeting concept is broadly useful, define a typed AdCP field and its
+resolution behavior. Use signals for seller-published targetable options and
+use property, collection, placement, and format selection for inventory. Do
+not use `ext` to expose or accept a generic ad-server targeting control plane.
+
 ## When to Use Targeting Overlays
 
 Targeting overlays are the normal home for exact, auditable delivery constraints
@@ -484,9 +498,22 @@ Use for **technical requirements**:
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
-  "device_platform": ["ios", "android"]
+  "device_platform": ["ios", "android"],
+  "device_platform_exclude": ["fire_os"]
 }
 ```
+
+Use `device_platform_exclude` when the campaign may run across several
+platforms except for a known incompatible platform. If the same value appears
+in both lists, exclusion wins. Sellers that cannot enforce the exclusion MUST
+reject it rather than silently broadening delivery.
+
+Platform inclusion and exclusion are independently selectable product
+capabilities. A buyer that plans to provide exclusions later requests
+`required_overlay_support.device_platform_exclude`; a matching product returns
+`overlay_support.device_platform_exclude`. Known exclusion values belong in
+`targeting_overlay` during discovery so availability, pricing, and forecast use
+the effective constraint.
 
 **Available platforms** (defined in [`device-platform.json`](https://adcontextprotocol.org/schemas/v3/enums/device-platform.json), based on Sec-CH-UA-Platform standard extended for CTV):
 - Browser: `ios`, `android`, `windows`, `macos`, `linux`, `chromeos`
@@ -829,6 +856,14 @@ For products where inventory and audience planning are inseparable, such as line
 - **Examples**: `["ios"]`, `["ios", "android"]`, `["tvos", "fire_os"]`
 - **Use cases**: App install campaigns (iOS-only app), CTV-specific campaigns
 - **Values**: `ios`, `android`, `windows`, `macos`, `linux`, `chromeos`, `tvos`, `tizen`, `webos`, `fire_os`, `roku_os`
+
+### device_platform_exclude
+- **Description**: Exclude specific operating-system platforms from delivery
+- **Format**: Array using the same identifiers as `device_platform`
+- **Examples**: `["fire_os"]`, `["tizen", "webos"]`
+- **Conflict rule**: Exclusion wins when the same value appears in both platform fields
+- **Discovery**: Require future package-level control with `required_overlay_support.device_platform_exclude`; products disclose it through `overlay_support.device_platform_exclude`
+- **Failure rule**: A seller that cannot enforce the exclusion rejects the request instead of dropping it
 
 ### device_type
 - **Description**: Restrict to specific device form factors

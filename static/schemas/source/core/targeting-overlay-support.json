@@ -150,6 +150,7 @@
     },
     "age_restriction": { "$ref": "#/definitions/supported" },
     "device_platform": { "$ref": "#/definitions/supported" },
+    "device_platform_exclude": { "$ref": "#/definitions/supported" },
     "device_type": { "$ref": "#/definitions/supported" },
     "device_type_exclude": { "$ref": "#/definitions/supported" },
     "store_catchments": { "$ref": "#/definitions/supported" },

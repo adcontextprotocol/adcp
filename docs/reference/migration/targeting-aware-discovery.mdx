@@ -88,6 +88,18 @@ the eventual values:
 
 This does not request one product per DMA, placement, property, or collection.
 It filters to products that allow those dimensions to be selected later.
+Operator-specific capabilities remain separate: for example,
+`device_platform` and `device_platform_exclude` are independently requested and
+disclosed so exclusion support is never inferred from inclusion support.
+
+## Do not migrate raw ad-server keys
+
+Do not replace legacy targeting-like filters with a `custom`,
+`key_value_pairs`, or equivalent generic map. External buyers use typed AdCP
+targeting fields, seller-published signal references, and structured inventory
+selection. Sellers keep backend key/value compilation private. If a recurring
+concept needs protocol support, standardize it as a typed field with explicit
+matching and resolution behavior.
 
 ## Accepting targeting modifications
 

@@ -411,6 +411,16 @@ conditions under which it can be used. If the buyer wants forecasts for known
 metros, it should provide those values as targeting or as a separate forecast
 breakdown request.
 
+Inclusion and exclusion operators are distinct capabilities. For example,
+support for `device_platform` does not imply support for
+`device_platform_exclude`. A buyer that needs to provide platform exclusions
+later requests `required_overlay_support.device_platform_exclude`, and a
+matching product declares `overlay_support.device_platform_exclude`. Known
+exclusion values belong in `targeting_overlay` and affect discovery forecasts
+like every other concrete constraint. If inclusion and exclusion overlap,
+exclusion wins; a seller that cannot enforce the result rejects the request
+rather than silently broadening it.
+
 ## Sparse targeting resolution
 
 ### Exact acceptance
@@ -672,6 +682,22 @@ Targeting-like filters move as follows:
 Soft semantic audience preferences remain in `brief`. Exact demographic
 predicates belong in `targeting_overlay.demographics`.
 
+## No arbitrary external targeting controls
+
+AdCP targeting is a typed external contract, not a remote control plane for a
+seller's ad server. A seller MUST NOT accept buyer-supplied arbitrary keys,
+values, or expressions through generic fields such as `custom` or
+`key_value_pairs`. A capability declaration cannot make an opaque key's
+semantics, authorization, privacy behavior, or cross-seller interoperability
+mechanically verifiable.
+
+Sellers compile structured AdCP targeting, signal references, and configured
+products into backend keys internally. Recurring cross-seller concepts should
+be standardized as typed fields with explicit resolution semantics. Seller-
+published targetable concepts use signals; inventory selection uses properties,
+collections, placements, and formats. The `ext` field MUST NOT be interpreted
+as generic buyer-controlled ad-server targeting.
+
 This removes the need for a separate buyer-visible “inventory coverage” filter.
 When the buyer supplies targeting, the seller may satisfy it inherently or
 selectably. Products incapable of satisfying the outcome are not returned.
@@ -842,6 +868,11 @@ The implemented schema surface is:
   - deprecate targeting-like filters
 - `targeting.json`
   - add `placement_selection` using publisher-scoped `PlacementRef` values
+  - add typed `device_platform_exclude`; exclusion wins on overlap and sellers
+    reject unenforceable exclusions rather than dropping them
+- `targeting-overlay-requirements.json` and
+  `targeting-overlay-support.json`
+  - represent `device_platform_exclude` independently from platform inclusion
 
 ### Response
 
@@ -906,6 +937,10 @@ The implemented schema surface is:
     creative placement references remain routing instructions only.
 11. A hard requirement remains binding in a brief, but buyers should use a
     structured field whenever one exists to reduce tokens and inference loss.
+12. Inclusion and exclusion operators declare support independently; typed
+    `device_platform_exclude` is the first explicit platform exclusion.
+13. External buyers never supply arbitrary ad-server keys or values. Sellers
+    keep backend compilation private and expose standardized fields or signals.
 
 ## Deferred follow-ups
 

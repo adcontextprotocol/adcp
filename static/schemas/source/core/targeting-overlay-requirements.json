@@ -106,6 +106,7 @@
     "placement_selection": { "$ref": "#/definitions/required" },
     "age_restriction": { "$ref": "#/definitions/required" },
     "device_platform": { "$ref": "#/definitions/required" },
+    "device_platform_exclude": { "$ref": "#/definitions/required" },
     "device_type": { "$ref": "#/definitions/required" },
     "device_type_exclude": { "$ref": "#/definitions/required" },
     "store_catchments": { "$ref": "#/definitions/required" },

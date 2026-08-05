@@ -214,6 +214,14 @@
       },
       "minItems": 1
     },
+    "device_platform_exclude": {
+      "type": "array",
+      "description": "Exclude specific operating-system platforms from delivery. When a platform appears in both device_platform and device_platform_exclude, exclusion wins. Sellers MUST reject a request they cannot enforce rather than silently dropping the exclusion.",
+      "items": {
+        "$ref": "/schemas/enums/device-platform.json"
+      },
+      "minItems": 1
+    },
     "device_type": {
       "type": "array",
       "description": "Restrict to specific device form factors. Use for campaigns targeting hardware categories rather than operating systems (e.g., mobile-only promotions, CTV campaigns).",

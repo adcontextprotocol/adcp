@@ -43,6 +43,7 @@ test("get_products accepts real targeting and future overlay support", async () 
     filters: { channels: ["olv"], pricing_currencies: ["USD"] },
     targeting_overlay: {
       geo_countries: ["US"],
+      device_platform_exclude: ["fire_os"],
       placement_selection: {
         mode: "selected",
         placement_refs: [
@@ -55,9 +56,58 @@ test("get_products accepts real targeting and future overlay support", async () 
       placement_selection: true,
       property_list: true,
       collection_list: true,
+      device_platform_exclude: true,
     },
   };
   assert.equal(validate(payload), true, errors(validate));
+});
+
+test("device-platform exclusion is typed and independently discoverable", async () => {
+  const [validateTargeting, validateRequirements, validateSupport] =
+    await Promise.all([
+      compile("/schemas/core/targeting.json"),
+      compile("/schemas/core/targeting-overlay-requirements.json"),
+      compile("/schemas/core/targeting-overlay-support.json"),
+    ]);
+
+  assert.equal(
+    validateTargeting({
+      device_platform: ["android", "fire_os"],
+      device_platform_exclude: ["fire_os"],
+    }),
+    true,
+    errors(validateTargeting)
+  );
+  assert.equal(
+    validateTargeting({ device_platform_exclude: ["beos"] }),
+    false,
+    "platform exclusions use the canonical device-platform enum"
+  );
+  assert.equal(
+    validateRequirements({ device_platform_exclude: true }),
+    true,
+    errors(validateRequirements)
+  );
+  assert.equal(
+    validateSupport({ device_platform_exclude: true }),
+    true,
+    errors(validateSupport)
+  );
+
+  const targetingSchema = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "static",
+      "schemas",
+      "source",
+      "core",
+      "targeting.json"
+    ),
+    "utf8"
+  );
+  assert.match(targetingSchema, /exclusion wins/i);
+  assert.match(targetingSchema, /MUST reject/);
 });
 
 test("product filters are valid in brief, wholesale, and refine modes", async () => {

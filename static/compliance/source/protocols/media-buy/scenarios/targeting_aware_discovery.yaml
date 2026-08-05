@@ -83,6 +83,7 @@ fixtures:
           max_values_per_package: 2
         property_list: true
         collection_list: true
+        device_platform_exclude: true
         demographics:
           age: true
       demographic_targeting:
@@ -125,13 +126,6 @@ phases:
           filters:
             channels: ["olv"]
             pricing_currencies: ["USD"]
-          fields:
-            - product_id
-            - pricing_options
-            - forecast
-            - targeting_resolution
-            - is_custom
-            - expires_at
           context:
             correlation_id: "targeting_aware_discovery--brief_confirmation"
         expected: |
@@ -212,22 +206,15 @@ phases:
             placement_selection: true
             property_list: true
             collection_list: true
-          fields:
-            - product_id
-            - pricing_options
-            - forecast
-            - overlay_support
-            - targeting_resolution
-            - is_custom
-            - expires_at
+            device_platform_exclude: true
           context:
             correlation_id: "targeting_aware_discovery--exact"
         expected: |
           Return one configured product whose price and availability forecast
           are scoped to US feed inventory. Exact acceptance omits
           targeting_resolution. overlay_support confirms later DMA, placement,
-          property-list, and collection-list selection without returning one
-          product per possible value.
+          property-list, collection-list, and device-platform exclusion
+          without returning one product per possible value.
         context_outputs:
           - key: "exact_product_id"
             path: "products[0].product_id"
@@ -256,6 +243,10 @@ phases:
             path: "products[0].overlay_support.property_list"
             value: true
             description: "Product supports later property-list selection"
+          - check: field_value
+            path: "products[0].overlay_support.device_platform_exclude"
+            value: true
+            description: "Platform exclusion support is declared independently"
 
       - id: get_unsupported_future_targeting
         title: "Exclude products that lack a required future dimension"
@@ -312,12 +303,6 @@ phases:
           targeting_overlay:
             demographics:
               age: { min: 21, max: 35, include_unknown: false }
-          fields:
-            - product_id
-            - pricing_options
-            - forecast
-            - targeting_resolution
-            - expires_at
           context:
             correlation_id: "targeting_aware_discovery--modified_age"
         expected: |
