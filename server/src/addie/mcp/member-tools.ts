@@ -948,6 +948,11 @@ const GITHUB_BODY_MAX_CHARS = 4000;
 const GITHUB_COMMENT_MAX_CHARS = 1000;
 const GITHUB_MAX_COMMENTS = 10;
 const GITHUB_DIFF_MAX_CHARS = 12000;
+// Keep generated issue links below a conservative cross-client URL ceiling.
+// This reduces the risk of Slack splitting a query string or GitHub clearing
+// an oversized prefill. Longer drafts still get a complete copyable preview
+// and a short link that pre-fills the title only.
+const GITHUB_PREFILL_URL_MAX_CHARS = 2000;
 
 type ParsedRepo =
   | { ok: true; org: string; repo: string }
@@ -6512,29 +6517,36 @@ export function createMemberToolHandlers(
       params.set('labels', labels.join(','));
     }
 
-    const issueUrl = `https://github.com/${org}/${repo}/issues/new?${params.toString()}`;
+    const newIssueUrl = `https://github.com/${org}/${repo}/issues/new`;
+    const issueUrl = `${newIssueUrl}?${params.toString()}`;
 
-    // Check URL length - browsers/GitHub have practical limits (~8000 chars)
+    // Avoid body-prefilled links that are likely to be truncated or rejected
+    // across browsers, Slack clients, and Addie's streamed responses.
     const urlLength = issueUrl.length;
-    const URL_LENGTH_WARNING_THRESHOLD = 6000;
-    const URL_LENGTH_MAX = 8000;
 
     // Build response with the draft details and link
     let response = `## GitHub Issue Draft\n\n`;
 
-    if (urlLength > URL_LENGTH_MAX) {
-      // URL too long - provide manual instructions instead
-      response += `⚠️ **Issue body is too long for a pre-filled URL.**\n\n`;
-      response += `Please create the issue manually:\n`;
-      response += `1. Go to https://github.com/${org}/${repo}/issues/new\n`;
-      response += `2. Copy the title and body from the preview below\n\n`;
+    if (urlLength > GITHUB_PREFILL_URL_MAX_CHARS) {
+      response += `⚠️ **This draft is too long for a reliable pre-filled link.**\n\n`;
+      const shortParams = new URLSearchParams();
+      shortParams.set('title', title);
+      if (labels.length > 0) {
+        shortParams.set('labels', labels.join(','));
+      }
+      const titlePrefillUrl = `${newIssueUrl}?${shortParams.toString()}`;
+
+      if (titlePrefillUrl.length <= GITHUB_PREFILL_URL_MAX_CHARS) {
+        response += `**👉 [Open GitHub with the title pre-filled](${titlePrefillUrl})**\n\n`;
+        response += `Copy the body from the preview below, then submit the issue.\n\n`;
+      } else {
+        response += `Please create the issue manually:\n`;
+        response += `1. Go to ${newIssueUrl}\n`;
+        response += `2. Copy the title and body from the preview below\n\n`;
+      }
     } else {
       response += `I've drafted a GitHub issue for you. Click the link below to create it:\n\n`;
       response += `**👉 [Create Issue on GitHub](${issueUrl})**\n\n`;
-
-      if (urlLength > URL_LENGTH_WARNING_THRESHOLD) {
-        response += `⚠️ _Note: The issue body is quite long. If the link doesn't work, you may need to shorten it or copy/paste manually._\n\n`;
-      }
     }
 
     response += `---\n\n`;
