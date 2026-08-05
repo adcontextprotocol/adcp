@@ -8,4 +8,6 @@ Buyers can now provide concrete `targeting_overlay` values during discovery and 
 
 Move purchased placement selection into `targeting_overlay` alongside property and collection selection, while preserving creative placement references as routing-only. Add typed device-platform exclusion with independently declared product support, and keep arbitrary buyer-supplied ad-server key/value targeting outside the protocol trust boundary. Put discovery and package resolution behind lifecycle-specific schemas, move demographic package execution readback to `targeting_resolution.demographics` before its 3.2 release, deprecate targeting-like product filters, add migration guidance and conformance coverage, and retain exact-only booked package execution.
 
+Clarify that deterministic product filters exclude non-matching products in `brief`, `wholesale`, and `refine` modes, and add seeded behavioral conformance coverage that detects full and partial filter no-ops.
+
 Update the buyer skill, Addie knowledge, and buyer learning modules to teach structured-first request decomposition and targeting-resolution review. Live training-agent support follows the generated 3.2 beta SDKs under issue #6199.

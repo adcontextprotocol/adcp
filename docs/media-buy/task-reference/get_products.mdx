@@ -82,6 +82,16 @@ uvx adcp \
 
 Use structured filters for hard product requirements such as channel, delivery type, format, currency, and reporting support. Filters are valid and have the same exclusion semantics in `brief`, `wholesale`, and `refine` modes; the mode changes curation and lifecycle behavior, not whether filters apply. Concrete delivery targeting belongs in `targeting_overlay`; future selectable targeting belongs in `required_overlay_support`.
 
+For every deterministic predicate in `filters`, every returned product MUST
+satisfy that predicate according to the field's documented match semantics.
+Sellers MUST exclude non-matching products in all three buying modes; they MUST
+NOT accept a schema-valid filter and return the unfiltered curated set, wholesale
+feed, or refinement result. A filter can validly produce the same result as an
+unfiltered request, so conformance is established from the returned products'
+membership and field values—not merely by requiring two responses to differ.
+Natural-language relevance to a `brief` remains a curation judgment and is not
+part of this deterministic filter rule.
+
 <CodeGroup>
 
 ```javascript JavaScript

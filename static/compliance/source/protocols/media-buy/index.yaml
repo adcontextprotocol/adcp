@@ -16,6 +16,7 @@ requires_scenarios:
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/product_signal_targeting
   - media_buy_seller/demographic_targeting
+  - media_buy_seller/product_filter_behavior
   - media_buy_seller/targeting_aware_discovery
   - media_buy_seller/available_actions
   - media_buy_seller/invalid_transitions

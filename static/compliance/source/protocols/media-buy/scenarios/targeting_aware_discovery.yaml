@@ -2,7 +2,7 @@ id: media_buy_seller/targeting_aware_discovery
 version: "1.0.0"
 title: "Seller resolves targeting during discovery and persists inventory selection"
 category: media_buy_seller
-summary: "Verifies targeting-scoped discovery forecasts, future overlay support, sparse configured-product modifications, opaque product acceptance, and placement selection across create/update/readback."
+summary: "Verifies targeting-scoped discovery forecasts, future overlay support, sparse configured-product modifications, opaque product acceptance, and inventory targeting across create/update/readback."
 track: media_buy
 
 required_tools:
@@ -114,7 +114,7 @@ phases:
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
-        stateful: true
+        stateful: false
         sample_request:
           buying_mode: "brief"
           brief: "Premium outdoor video. Hard requirements: deliver only in the US and only to people ages 18 through 44."
@@ -195,6 +195,13 @@ phases:
             pricing_currencies: ["USD"]
           targeting_overlay:
             geo_countries: ["US"]
+            device_platform_exclude: ["fire_os"]
+            property_list:
+              agent_url: "https://governance.pinnacle-agency.example"
+              list_id: "acme_outdoor_allowlist_v1"
+            collection_list:
+              agent_url: "https://governance.pinnacle-agency.example"
+              list_id: "acme_outdoor_collections_v1"
             placement_selection:
               mode: "selected"
               placement_refs:
@@ -211,10 +218,11 @@ phases:
             correlation_id: "targeting_aware_discovery--exact"
         expected: |
           Return one configured product whose price and availability forecast
-          are scoped to US feed inventory. Exact acceptance omits
+          are scoped to US feed inventory, the selected property and collection
+          lists, and the Fire OS exclusion. Exact acceptance omits
           targeting_resolution. overlay_support confirms later DMA, placement,
-          property-list, collection-list, and device-platform exclusion
-          without returning one product per possible value.
+          property-list, collection-list, and device-platform exclusion without
+          returning one product per possible value.
         context_outputs:
           - key: "exact_product_id"
             path: "products[0].product_id"
@@ -379,8 +387,8 @@ phases:
             value: true
             description: "Booked predicate remains exact"
 
-  - id: placement_lifecycle
-    title: "Persist purchased placement targeting through create and update"
+  - id: inventory_targeting_lifecycle
+    title: "Persist purchased inventory and platform targeting through create and update"
     steps:
       - id: create_feed_package
         title: "Create from exact discovery result"
@@ -406,8 +414,9 @@ phases:
               bid_price: 14.0
               budget: 5000
         expected: |
-          The configured product retains the US and feed targeting accepted at
-          discovery even though the buyer does not repeat it.
+          The configured product retains the US, Fire OS exclusion, property,
+          collection, and feed targeting accepted at discovery even though the
+          buyer does not repeat it.
         context_outputs:
           - key: "placement_media_buy_id"
             path: "media_buy_id"
@@ -424,6 +433,18 @@ phases:
             path: "packages[0].targeting_overlay.placement_selection.placement_refs[0].placement_id"
             value: "feed"
             description: "Feed is the purchased placement"
+          - check: field_value
+            path: "packages[0].targeting_overlay.device_platform_exclude[0]"
+            value: "fire_os"
+            description: "Configured-product platform exclusion is booked without repetition"
+          - check: field_value
+            path: "packages[0].targeting_overlay.property_list.list_id"
+            value: "acme_outdoor_allowlist_v1"
+            description: "Configured-product property selection is booked without repetition"
+          - check: field_value
+            path: "packages[0].targeting_overlay.collection_list.list_id"
+            value: "acme_outdoor_collections_v1"
+            description: "Configured-product collection selection is booked without repetition"
           - check: field_contains
             path: "available_actions[*]"
             value:
@@ -450,6 +471,13 @@ phases:
             - package_id: "$context.placement_package_id"
               targeting_overlay:
                 geo_countries: ["US"]
+                device_platform_exclude: ["fire_os"]
+                property_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_allowlist_v1"
+                collection_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_collections_v1"
                 placement_selection:
                   mode: "selected"
                   placement_refs:
@@ -468,6 +496,13 @@ phases:
               package_id: "$context.placement_package_id"
               targeting_overlay:
                 geo_countries: ["US"]
+                device_platform_exclude: ["fire_os"]
+                property_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_allowlist_v1"
+                collection_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_collections_v1"
                 placement_selection:
                   mode: "selected"
                   placement_refs:
@@ -580,3 +615,15 @@ phases:
             path: "media_buys[0].packages[0].targeting_overlay.placement_selection.placement_refs[0].placement_id"
             value: "short_video"
             description: "Readback preserves purchased placement identity"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.device_platform_exclude[0]"
+            value: "fire_os"
+            description: "Readback preserves the purchased platform exclusion"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.property_list.list_id"
+            value: "acme_outdoor_allowlist_v1"
+            description: "Readback preserves the purchased property selection"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.collection_list.list_id"
+            value: "acme_outdoor_collections_v1"
+            description: "Readback preserves the purchased collection selection"

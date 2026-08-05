@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
+const YAML = require("yaml");
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
@@ -127,6 +128,106 @@ test("product filters are valid in brief, wholesale, and refine modes", async ()
 
   for (const request of requests) {
     assert.equal(validate(request), true, errors(validate));
+  }
+});
+
+test("targeting-aware storyboard grades filters and configured targeting end to end", () => {
+  const scenario = (filename) =>
+    YAML.parse(
+      fs.readFileSync(
+        path.join(
+          __dirname,
+          "..",
+          "static",
+          "compliance",
+          "source",
+          "protocols",
+          "media-buy",
+          "scenarios",
+          filename
+        ),
+        "utf8"
+      )
+    );
+  const storyboard = scenario("targeting_aware_discovery.yaml");
+  const filterStoryboard = scenario("product_filter_behavior.yaml");
+  const steps = storyboard.phases.flatMap((phase) => phase.steps);
+  const filterSteps = filterStoryboard.phases.flatMap((phase) => phase.steps);
+  const step = (id) => steps.find((candidate) => candidate.id === id);
+  const filterStep = (id) =>
+    filterSteps.find((candidate) => candidate.id === id);
+  const hasCheck = (id, check, path, value) =>
+    step(id).validations.some(
+      (validation) =>
+        validation.check === check &&
+        validation.path === path &&
+        (value === undefined || validation.value === value)
+    );
+  const hasFilterCheck = (id, check, path) =>
+    filterStep(id).validations.some(
+      (validation) => validation.check === check && validation.path === path
+    );
+
+  assert.equal(filterStoryboard.fixtures.products.length, 3);
+  assert.deepEqual(
+    filterStoryboard.fixtures.products
+      .slice(1)
+      .map((product) => product.product_id),
+    ["filter_behavior_negative_channel", "filter_behavior_negative_delivery"]
+  );
+
+  assert.equal(
+    hasFilterCheck("get_filtered_brief_products", "field_absent", "products[1]"),
+    true,
+    "brief mode must grade exclusion of the negative-control product"
+  );
+  assert.equal(
+    hasFilterCheck(
+      "get_filtered_wholesale_products",
+      "field_absent",
+      "products[1]"
+    ),
+    true,
+    "wholesale mode must grade exclusion of the negative-control product"
+  );
+  assert.equal(
+    hasFilterCheck("filter_refined_product_out", "field_absent", "products[0]"),
+    true,
+    "refine mode must grade its replacement filters"
+  );
+
+  assert.deepEqual(
+    step("get_exact_targeted_product").sample_request.targeting_overlay
+      .device_platform_exclude,
+    ["fire_os"]
+  );
+  for (const [id, path] of [
+    ["create_feed_package", "packages[0].targeting_overlay.device_platform_exclude[0]"],
+    [
+      "read_updated_placement",
+      "media_buys[0].packages[0].targeting_overlay.device_platform_exclude[0]",
+    ],
+  ]) {
+    assert.equal(
+      hasCheck(id, "field_value", path, "fire_os"),
+      true,
+      `${id} must grade persistence of the concrete platform exclusion`
+    );
+  }
+
+  for (const dimension of ["property_list", "collection_list"]) {
+    assert.ok(
+      step("get_exact_targeted_product").sample_request.targeting_overlay[
+        dimension
+      ],
+      `${dimension} must participate in discovery-time targeting`
+    );
+    assert.ok(
+      step("read_updated_placement").validations.some((validation) =>
+        validation.path?.includes(`targeting_overlay.${dimension}.list_id`)
+      ),
+      `${dimension} must be graded on persisted readback`
+    );
   }
 });
 
