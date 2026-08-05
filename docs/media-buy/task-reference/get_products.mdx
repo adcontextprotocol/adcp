@@ -396,7 +396,9 @@ Publishers may return proposals alongside products - structured media plans with
 | `proposal_id` | string | Unique identifier for finalizing this proposal and, once committed, executing it via `create_media_buy` |
 | `proposal_status` | string | Lifecycle state. `draft` means the proposal must be finalized via `get_products` refine action `finalize` before create. `committed` means the proposal can be executed via `create_media_buy` before `expires_at`. When absent, treat the proposal as ready to buy for backward compatibility. |
 | `name` | string | Human-readable name for the media plan |
-| `allocations` | ProductAllocation[] | Budget allocations across products (percentages must sum to 100). Each allocation may include optional `start_time` and `end_time` for per-flight scheduling. |
+| `budget_allocation` | BudgetAllocation | Optional cross-product allocation configuration. Omission means a fixed proposal; `seller_optimized` delegates continuous allocation to the seller. |
+| `pacing` | string | Optional aggregate media-buy pacing recommendation. On a committed proposal this is part of the firm delivery terms. |
+| `allocations` | ProductAllocation[] | Fixed proposals use exact `allocation_percentage` values summing to 100. Seller-optimized proposals omit exact percentages and may use `min_spend_target_percentage` and `max_spend_percentage`. Each allocation may include optional flight dates and subordinate `pacing`, which becomes package pacing on execution. |
 | `forecast` | DeliveryForecast | Aggregate delivery forecast for the proposal. Contains forecast points with metric ranges. See [Delivery Forecasts](/docs/media-buy/product-discovery/media-products#delivery-forecasts) |
 | `total_budget_guidance` | object | Optional min/recommended/max budget guidance |
 | `brief_alignment` | string | How this proposal addresses the campaign brief |

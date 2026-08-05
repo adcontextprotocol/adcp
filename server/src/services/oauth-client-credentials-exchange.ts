@@ -84,7 +84,10 @@ export async function exchangeClientCredentials(
   const form = new URLSearchParams();
   form.set('grant_type', 'client_credentials');
   if (creds.scope) form.set('scope', creds.scope);
-  if (creds.resource) form.set('resource', creds.resource);
+  if (creds.resource) {
+    const resources = Array.isArray(creds.resource) ? creds.resource : [creds.resource];
+    for (const r of resources) form.append('resource', r);
+  }
   if (creds.audience) form.set('audience', creds.audience);
 
   const headers: Record<string, string> = {

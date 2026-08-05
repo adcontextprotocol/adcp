@@ -301,7 +301,8 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       );
       expect(r.rows[0]).toMatchObject({
         oauth_cc_scope: 'adcp',
-        oauth_cc_resource: TEST_AGENT_URL,
+        // scalar resources are stored with the v1s: prefix to prevent codec collisions
+        oauth_cc_resource: `v1s:${TEST_AGENT_URL}`,
         oauth_cc_auth_method: 'body',
       });
     });
@@ -327,6 +328,47 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       const res = await request(app).put(url).send(missing);
       expect(res.status).toBe(400);
       expect(res.body.error).toMatch(/client_id/);
+    });
+
+    it('saves an array resource and stores it with the v1a: storage prefix', async () => {
+      const resources = ['https://api1.example.com', 'https://api2.example.com'];
+      await request(app)
+        .put(url)
+        .send({ ...validBody, resource: resources })
+        .expect(200);
+
+      const r = await pool.query(
+        `SELECT oauth_cc_resource FROM agent_contexts WHERE organization_id = $1 AND agent_url = $2`,
+        [TEST_ORG_ID, TEST_AGENT_URL],
+      );
+      // Verify the typed codec prefix is written to the TEXT column
+      expect(r.rows[0].oauth_cc_resource).toBe(`v1a:${JSON.stringify(resources)}`);
+    });
+
+    it('codec collision: scalar resource starting with "v1a:" round-trips as a scalar string', async () => {
+      // A scalar value whose text starts with "v1a:" would be decoded as an array if stored
+      // bare. The encoder writes it as "v1s:v1a:..." so the decoder returns the original scalar.
+      const collisionValue = 'v1a:["https://a"]';
+      await request(app)
+        .put(url)
+        .send({ ...validBody, resource: collisionValue })
+        .expect(200);
+
+      const r = await pool.query(
+        `SELECT oauth_cc_resource FROM agent_contexts WHERE organization_id = $1 AND agent_url = $2`,
+        [TEST_ORG_ID, TEST_AGENT_URL],
+      );
+      // DB column must be the v1s:-tagged form
+      expect(r.rows[0].oauth_cc_resource).toBe(`v1s:${collisionValue}`);
+
+      // Round-trip via the test endpoint: the SDK should receive the original scalar
+      exchangeMock.mockResolvedValueOnce({ access_token: 'tok', token_type: 'Bearer' });
+      const testRes = await request(app).post(`${url}/test`).send({});
+      expect(testRes.status).toBe(200);
+      expect(exchangeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ resource: collisionValue }),
+        expect.anything(),
+      );
     });
 
     it('returns 403 for an agent the user does not own', async () => {
@@ -401,12 +443,37 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       });
     });
 
+    it('passes a decoded resource array to the exchange mock after save/load round-trip', async () => {
+      const resources = ['https://api1.example.com', 'https://api2.example.com'];
+      await request(app).put(saveUrl).send({ ...validBody, resource: resources }).expect(200);
+      exchangeMock.mockResolvedValueOnce({ access_token: 'tok', token_type: 'Bearer' });
+
+      const res = await request(app).post(testUrl).send({});
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+
+      // The credentials passed to the SDK exchange must carry the decoded array
+      expect(exchangeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ resource: resources }),
+        expect.anything(),
+      );
+    });
+
     it('returns 403 when the user does not own the agent', async () => {
       const res = await request(app)
         .post(`/api/registry/agents/${encodeURIComponent(OTHER_AGENT_URL)}/oauth-client-credentials/test`)
         .send({});
       expect(res.status).toBe(403);
     });
+
+    it('returns 400 when PUT receives an empty resource array', async () => {
+      const res = await request(app)
+        .put(saveUrl)
+        .send({ ...validBody, resource: [] });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/array/i);
+    });
+
   });
 
   // ── GET /auth-status ────────────────────────────────────────────

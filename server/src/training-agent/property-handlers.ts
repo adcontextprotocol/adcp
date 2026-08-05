@@ -12,6 +12,7 @@ import { getSession, sessionKeyFromArgs, MAX_PROPERTY_LISTS_PER_SESSION } from '
 import { ACCOUNT_REF_SCHEMA } from './account-handlers.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import { validateWebhookUrl } from './webhook-fetch.js';
+import { emitPropertyListChangedWebhook } from './webhooks.js';
 
 const MAX_PROPERTIES_PER_LIST = 10_000;
 
@@ -304,7 +305,7 @@ export async function handleUpdatePropertyList(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
-  const req = args as { list_id: string; name?: string; description?: string; base_properties?: unknown[]; filters?: unknown; brand?: unknown; webhook_url?: string };
+  const req = args as { list_id: string; name?: string; description?: string; base_properties?: unknown[]; filters?: unknown; brand?: unknown; webhook_url?: string; idempotency_key?: string };
   const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   const state = session.propertyLists.get(req.list_id);
@@ -316,6 +317,11 @@ export async function handleUpdatePropertyList(
     const webhookError = await validateWebhookUrl(req.webhook_url);
     if (webhookError) return { errors: [webhookError] };
   }
+
+  const priorDomains = new Set(extractDomains(state.baseProperties));
+  const resolvedContentChanged = req.base_properties !== undefined
+    || req.filters !== undefined
+    || req.brand !== undefined;
 
   if (req.name) {
     state.name = req.name;
@@ -347,6 +353,28 @@ export async function handleUpdatePropertyList(
 
   state.propertyCount = state.baseProperties.length;
   state.updatedAt = new Date().toISOString();
+
+  if (resolvedContentChanged && state.webhookUrl) {
+    const nextDomains = new Set(extractDomains(state.baseProperties));
+    const changeSummary: {
+      properties_added?: number;
+      properties_removed?: number;
+      total_properties: number;
+    } = { total_properties: nextDomains.size };
+    if (req.base_properties !== undefined) {
+      changeSummary.properties_added = [...nextDomains].filter(domain => !priorDomains.has(domain)).length;
+      changeSummary.properties_removed = [...priorDomains].filter(domain => !nextDomains.has(domain)).length;
+    }
+    emitPropertyListChangedWebhook({
+      url: state.webhookUrl,
+      listId: state.listId,
+      listName: state.name,
+      operationId: `property_list_changed:${state.listId}:${req.idempotency_key ?? state.updatedAt}`,
+      resolvedAt: state.updatedAt,
+      cacheValidUntil: new Date(Date.now() + state.cacheDurationHours * 3600_000).toISOString(),
+      changeSummary,
+    });
+  }
 
   return {
     list: toListResponse(state),

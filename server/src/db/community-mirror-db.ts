@@ -54,6 +54,7 @@ export interface CommunityMirrorProposal {
   reviewed_at: string | null;
   review_notes: string | null;
   published_at: string | null;
+  slack_thread_ts: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -219,6 +220,7 @@ export class CommunityMirrorDatabase {
          reviewed_at = NULL,
          review_notes = NULL,
          published_at = NULL,
+         slack_thread_ts = NULL,
          updated_at = NOW()
        RETURNING *`,
       [
@@ -242,6 +244,16 @@ export class CommunityMirrorDatabase {
       [id],
     );
     return result.rows[0] ?? null;
+  }
+
+  async setProposalSlackThreadTs(id: string, proposalDigest: string, threadTs: string): Promise<void> {
+    await query(
+      `UPDATE community_mirror_proposals
+          SET slack_thread_ts = $3,
+              updated_at = NOW()
+        WHERE id = $1 AND proposal_digest = $2 AND status = 'pending'`,
+      [id, proposalDigest, threadTs],
+    );
   }
 
   async getProposalByIdWithClient(client: PoolClient, id: string): Promise<CommunityMirrorProposal | null> {

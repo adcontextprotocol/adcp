@@ -42,7 +42,7 @@ export type ResolvedOwnerAuth =
         client_id: string;
         client_secret: string;
         scope?: string;
-        resource?: string;
+        resource?: string | string[];
         audience?: string;
         auth_method?: 'basic' | 'body';
       };
@@ -1351,7 +1351,27 @@ export class ComplianceDatabase {
           client_secret: clientSecret,
         };
         if (row.oauth_cc_scope) credentials.scope = row.oauth_cc_scope;
-        if (row.oauth_cc_resource) credentials.resource = row.oauth_cc_resource;
+        if (row.oauth_cc_resource) {
+          const raw: string = row.oauth_cc_resource;
+          if (raw.startsWith('v1a:')) {
+            try {
+              const parsed: unknown = JSON.parse(raw.slice(4));
+              credentials.resource =
+                Array.isArray(parsed) && parsed.every((e): e is string => typeof e === 'string')
+                  ? parsed
+                  : raw;
+            } catch {
+              credentials.resource = raw;
+            }
+          } else if (raw.startsWith('v1s:')) {
+            credentials.resource = raw.slice(4);
+          } else {
+            // Untagged row (no v1a:/v1s: prefix) — treat as a legacy bare scalar.
+            // json1: rows from an unreleased draft also fall here; that encoding
+            // never reached main so there are no production array rows to preserve.
+            credentials.resource = raw;
+          }
+        }
         if (row.oauth_cc_audience) credentials.audience = row.oauth_cc_audience;
         if (row.oauth_cc_auth_method === 'basic' || row.oauth_cc_auth_method === 'body') {
           credentials.auth_method = row.oauth_cc_auth_method;

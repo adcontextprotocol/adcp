@@ -27,6 +27,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <script src="/perspective-url.js"></script>
+  <script src="/external-url.js"></script>
   <style>
     body {
       background: var(--color-bg-page);
@@ -1604,9 +1605,11 @@
       }
 
       // Slack button
-      if (currentGroup.slack_channel_url) {
+      const slackChannelUrl = safeExternalHttpUrl(currentGroup.slack_channel_url);
+      if (slackChannelUrl) {
         const slackBtn = document.getElementById('slackBtn');
-        slackBtn.href = currentGroup.slack_channel_url;
+        slackBtn.href = slackChannelUrl;
+        slackBtn.rel = 'noopener noreferrer';
         slackBtn.style.display = 'inline-flex';
       }
 
@@ -1816,6 +1819,7 @@
 
         // Show host event prompt for members
         if (isMember) {
+          const slackChannelUrl = safeExternalHttpUrl(currentGroup.slack_channel_url);
           hostEventPrompt.style.display = 'block';
           if (isLeader) {
             hostEventPrompt.innerHTML = `
@@ -1834,9 +1838,9 @@
           } else {
             hostEventPrompt.innerHTML = `
               <p><strong>Want to host an event?</strong></p>
-              <p>Reach out to your chapter leaders${currentGroup.slack_channel_url ? ' in Slack' : ''} to propose a local meetup or event.</p>
-              ${currentGroup.slack_channel_url ? `
-                <a href="${escapeHtml(currentGroup.slack_channel_url)}" target="_blank" class="btn btn-secondary">
+              <p>Reach out to your chapter leaders${slackChannelUrl ? ' in Slack' : ''} to propose a local meetup or event.</p>
+              ${slackChannelUrl ? `
+                <a href="${escapeHtml(slackChannelUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313z"/>
                   </svg>
@@ -1890,6 +1894,7 @@
         const mins = Math.round((new Date(meeting.end_time) - startDate) / 60000);
         if (mins > 0) durationStr = `${mins} min`;
       }
+      const zoomJoinUrl = safeExternalHttpUrl(meeting.zoom_join_url);
 
       return `
         <a href="/meetings#meeting-${meeting.id}" class="meeting-card">
@@ -1905,9 +1910,9 @@
               ${meeting.accepted_count ? `<span>${meeting.accepted_count} attending</span>` : ''}
             </div>
           </div>
-          ${meeting.zoom_join_url ? `
+          ${zoomJoinUrl ? `
             <div class="meeting-actions">
-              <span class="btn btn-primary btn-small" onclick="event.preventDefault(); window.open('${escapeHtml(meeting.zoom_join_url)}', '_blank')">Join</span>
+              <span class="btn btn-primary btn-small" data-meeting-join-url="${escapeHtml(zoomJoinUrl)}">Join</span>
             </div>
           ` : ''}
         </a>
@@ -1994,6 +1999,9 @@
           const statusClass = doc.index_status === 'success' ? 'success' :
                               doc.index_status === 'pending' ? 'pending' : 'error';
           const lastModified = doc.last_modified_at ? formatRelativeDate(doc.last_modified_at) : null;
+          const documentUrl = doc.file_name
+            ? `/api/working-groups/${currentSlug}/documents/${doc.id}/file`
+            : safeExternalHttpUrl(doc.document_url);
 
           return `
             <div class="document-card${doc.is_featured ? ' featured' : ''}">
@@ -2002,7 +2010,7 @@
               </div>
               <div class="document-info">
                 <div class="document-title">
-                  <a href="${doc.file_name ? `/api/working-groups/${currentSlug}/documents/${doc.id}/file` : escapeHtml(doc.document_url || '#')}" target="_blank" rel="noopener">
+                  <a href="${escapeHtml(documentUrl || '#')}" target="_blank" rel="noopener noreferrer">
                     ${escapeHtml(doc.title)}
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.5;">
                       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
@@ -2666,6 +2674,16 @@
 
     // Event delegation for article links (safer than inline onclick)
     document.addEventListener('click', (e) => {
+      const meetingJoin = e.target.closest('[data-meeting-join-url]');
+      if (meetingJoin) {
+        const zoomJoinUrl = safeExternalHttpUrl(meetingJoin.dataset.meetingJoinUrl);
+        if (!zoomJoinUrl) return;
+        e.preventDefault();
+        e.stopPropagation();
+        window.open(zoomJoinUrl, '_blank', 'noopener,noreferrer');
+        return;
+      }
+
       const articleLink = e.target.closest('.article-link');
       if (articleLink) {
         e.preventDefault();

@@ -471,6 +471,8 @@ export interface PackageTargeting {
   property_list?: ListReference;
   collection_list?: ListReference;
   collection_list_exclude?: ListReference;
+  audience_include?: string[];
+  audience_exclude?: string[];
 }
 
 /** A single asset slot inside a creative manifest (e.g., headline, hero_image). */

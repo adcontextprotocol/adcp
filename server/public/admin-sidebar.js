@@ -62,6 +62,7 @@
           { href: '/admin/policies', label: 'Policy Registry', icon: '📜' },
           { href: '/admin/network-health', label: 'Network Health', icon: '🌐' },
           { href: '/admin/brand-logos', label: 'Brand Logo Review', icon: '🖼️' },
+          { href: '/admin/community-mirrors', label: 'Community mirror review', icon: '🗂️' },
         ]
       },
       {

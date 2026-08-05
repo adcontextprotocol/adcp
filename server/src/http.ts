@@ -26,6 +26,7 @@ import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "
 import { closeDatabase, getPool, healthCheck } from "./db/client.js";
 import { AuthenticationRequiredError, CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
 import { sdkSafeFetch, withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
+import { jsonBodyLimitForPath } from './utils/json-body-limit.js';
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";
@@ -161,15 +162,6 @@ const __dirname = path.dirname(__filename);
 const logger = createLogger('http-server');
 const PUBLIC_SITE_URL = 'https://agenticadvertising.org';
 const PERSPECTIVES_CRAWLER_LIMIT = 200;
-
-/**
- * Unauthenticated endpoints whose entire request body is a short list. Parsing
- * more than that is wasted work no legitimate caller needs.
- */
-const SMALL_BODY_JSON_ROUTES = new Set([
-  // 25 domains at the 253-byte DNS maximum is under 7 KB.
-  '/api/brands/resolve/bulk',
-]);
 
 interface PublicPerspectiveCrawlerItem {
   slug: string;
@@ -950,7 +942,7 @@ export class HTTPServer {
           // The 10MB default carries base64-encoded logo uploads in member
           // profiles. Unauthenticated endpoints that only take a short list get
           // a tight cap so a caller cannot make the parser the expensive part.
-          limit: SMALL_BODY_JSON_ROUTES.has(req.path) ? '16kb' : '10mb',
+          limit: jsonBodyLimitForPath(req.path),
           verify: (req, _res, buf) => {
             (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
           },
@@ -5400,6 +5392,8 @@ export class HTTPServer {
     // queue with a "not authorized" message rather than a hard 404.
     this.app.get('/admin/brand-logos', requireAuth, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-brand-logos.html'));
+    this.app.get('/admin/community-mirrors', requireAuth, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-community-mirrors.html'));
 
     // Redirects from old /manage paths (preserve query strings)
     const manageRedirect = (target: string) => (req: express.Request, res: express.Response) => {

@@ -215,6 +215,7 @@ type PublisherFormatSummary = {
   format_option_id?: string;
   display_name: string;
   format_kind: string;
+  sample_render_url?: string;
   params?: Record<string, unknown>;
   applies_to_property_ids?: string[];
   applies_to_property_tags?: string[];
@@ -230,6 +231,17 @@ function recordOrNull(value: unknown): Record<string, unknown> | null {
 
 function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function httpsUrlOrUndefined(value: unknown): string | undefined {
+  const raw = stringOrUndefined(value);
+  if (!raw) return undefined;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function stringArray(value: unknown, cap = 8): string[] {
@@ -365,6 +377,7 @@ function summarizeFormats(
         format_option_id: optionId,
         display_name: displayName,
         format_kind: formatKind,
+        sample_render_url: httpsUrlOrUndefined(format.sample_render_url),
         params,
         applies_to_property_ids: appliesToPropertyIds,
         applies_to_property_tags: appliesToPropertyTags,
@@ -1283,11 +1296,11 @@ registry.registerPath({
       properties: z.enum(["true"]).optional(),
       compliance: z.enum(["true"]).optional(),
       metric_id: z.union([z.string(), z.array(z.string())]).optional().openapi({
-        description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable (each value is OR'd within the param, AND'd with other filters). Implies `type=measurement`.",
+        description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable; multiple values are AND'd (vendor must carry all named metrics). When combined with `accreditation`, a cross-product AND applies — each (metric_id, accreditation) pair must be covered by the same metrics element. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`.",
         example: "attention_units",
       }),
       accreditation: z.union([z.string(), z.array(z.string())]).optional().openapi({
-        description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response).",
+        description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable; multiple values are AND'd. When combined with `metric_id`, a cross-product AND applies — see `metric_id` description. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response).",
         example: "MRC",
       }),
       q: z.string().max(64).optional().openapi({
@@ -1801,6 +1814,9 @@ registry.registerPath({
   request: {
     query: z.object({
       status: z.enum(["pending", "approved", "rejected"]).optional(),
+      review_queue: z.enum(["true", "false"]).optional().openapi({
+        description: "Set to `true` for the cross-organization moderator queue; non-moderators receive 403.",
+      }),
       limit: z.number().int().max(50).optional(),
       offset: z.number().int().optional(),
     }),
@@ -1809,6 +1825,7 @@ registry.registerPath({
     200: { description: "Community mirror proposal list", content: { "application/json": { schema: CommunityMirrorProposalListResponseSchema } } },
     400: { description: "Invalid status", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Moderator access required for the review queue", content: { "application/json": { schema: ErrorSchema } } },
     429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
     500: { description: "Failed to list proposals", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -3624,7 +3641,7 @@ registry.registerPath({
             client_id: z.string().max(2048).openapi({ description: "OAuth client ID. May be a `$ENV:VAR_NAME` reference." }),
             client_secret: z.string().max(8192).openapi({ description: "OAuth client secret. May be a `$ENV:VAR_NAME` reference. Stored encrypted at rest." }),
             scope: z.string().max(1024).optional().openapi({ description: "Space-separated OAuth scope values." }),
-            resource: z.string().max(2048).optional().openapi({ description: "RFC 8707 resource indicator." }),
+            resource: z.union([z.string().max(2048), z.array(z.string().max(2048)).min(1).max(8)]).optional().openapi({ description: 'RFC 8707 resource indicator. Accepts a single URI string or an array of 1–8 URI strings for multi-resource authorization servers (Keycloak strict, AWS Cognito multi-RS).' }),
             audience: z.string().max(2048).optional().openapi({ description: "Audience parameter for audience-validating authorization servers." }),
             auth_method: z.enum(["basic", "body"]).optional().openapi({ description: "Client-credentials placement: basic (HTTP Basic header, RFC 6749 §2.3.1 preferred) or body (form fields). SDK default is basic." }),
           }),
@@ -5588,10 +5605,37 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string" && x.length > 0);
         return [];
       };
-      const metricIds = toArray(req.query.metric_id);
-      const accreditations = toArray(req.query.accreditation);
+      // Deduplicate before limit checks so repeated values don't inflate counts.
+      const metricIds = [...new Set(toArray(req.query.metric_id))];
+      const accreditations = [...new Set(toArray(req.query.accreditation))];
       const qParam = typeof req.query.q === "string" ? req.query.q : undefined;
       const hasMeasurementFilter = metricIds.length > 0 || accreditations.length > 0 || (qParam !== undefined && qParam.length > 0);
+
+      // Per-filter and cross-product limits. No route rate-limiter exists on this
+      // endpoint, so we bound the M×N @> predicate count here to prevent
+      // inadvertent (or adversarial) query cost spikes and to stay well below
+      // PostgreSQL's 65 535 bind-parameter ceiling.
+      const METRIC_ID_LIMIT = 20;
+      const ACCREDITATION_LIMIT = 20;
+      const FILTER_PAIR_LIMIT = 100;
+      if (metricIds.length > METRIC_ID_LIMIT) {
+        return res.status(400).json({
+          error: `metric_id: too many values (${metricIds.length}); maximum is ${METRIC_ID_LIMIT}`,
+        });
+      }
+      if (accreditations.length > ACCREDITATION_LIMIT) {
+        return res.status(400).json({
+          error: `accreditation: too many values (${accreditations.length}); maximum is ${ACCREDITATION_LIMIT}`,
+        });
+      }
+      if (metricIds.length > 0 && accreditations.length > 0) {
+        const pairCount = metricIds.length * accreditations.length;
+        if (pairCount > FILTER_PAIR_LIMIT) {
+          return res.status(400).json({
+            error: `metric_id × accreditation cross-product (${metricIds.length} × ${accreditations.length} = ${pairCount}) exceeds the ${FILTER_PAIR_LIMIT}-pair limit`,
+          });
+        }
+      }
 
       if (hasMeasurementFilter) {
         if (type && type !== "measurement") {

@@ -28,7 +28,7 @@ For hands-on authoring practice, use the [S2 creative specialist module](/docs/l
 | **Canonical format** | One of 12 AdCP-defined format archetypes that products narrow (e.g., `image`, `video_vast`, `audio_hosted`, `native_in_feed`). The buyer's stable validation target. |
 | **`format_kind`** | Discriminator value naming a canonical format (e.g., `"image"`). Selects which canonical's parameter schema applies. |
 | **`format_options`** | On a product, an array of full `ProductFormatDeclaration`s. The 90% case is single-element; multi-element declares "accepts any of." Product entries are declarations, not bare references. |
-| **`ProductFormatDeclaration`** | Inline format declaration: required `format_kind` + required `params` + optional `format_option_id` (REQUIRED when entries share `format_kind`; SHOULD be set on every entry per 3.1 so V2 buyers can author against the product via `PackageRequest.format_option_refs[]`) + optional `publisher_domain` for publisher-catalog-backed options + optional `applies_to_channels` + optional `locale_policy` + optional `experimental` + optional `v1_format_ref[]` (always array — see below). Even when catalog-backed, the product still carries the full declaration. |
+| **`ProductFormatDeclaration`** | Inline format declaration: required `format_kind` + required `params` + optional `format_option_id` (REQUIRED when entries share `format_kind`; SHOULD be set on every entry per 3.1 so V2 buyers can author against the product via `PackageRequest.format_option_refs[]`) + optional `publisher_domain` for publisher-catalog-backed options + optional human-facing `sample_render_url` + optional `applies_to_channels` + optional `locale_policy` + optional `experimental` + optional `v1_format_ref[]` (always array — see below). Even when catalog-backed, the product still carries the full declaration. |
 | **`v1_format_ref`** | Array of `{agent_url, id}` references linking a v2 declaration to one or more v1 named formats. Always array; single-ref is `[{...}]`. Multi-size declarations carry one ref per size (see "Multi-size fan-out" below). |
 | **`canonical:` annotation** | The v1 catalog entry's projection annotation. Always object form — `{ kind: "image" }` minimum, `{ kind, asset_source, slots_override }` rich form for entries whose v1 shape doesn't follow the canonical's defaults (generative, brief-driven). Never bare-string. |
 | **Sibling refinement principle** | Before reaching for a new canonical, check whether `asset_source` + `slots_override` + `applies_to_channels` + event_log surface covers the case. Applied to: generative (image + asset_source: agent_synthesized), published-post references (video_hosted/image/native_in_feed + asset_source: publisher_owned_reference + published_post slot), broadcast TV (video_hosted + applies_to_channels: ["tv"]), DOOH (image + applies_to_channels: ["dooh"]), native (image + slots_override). No new canonical for any of them. |
@@ -337,6 +337,26 @@ Product declarations, buyer selectors, and placement references are intentionall
 `applies_to_property_ids` and `Placement.format_options[]` answer different questions: the first scopes a FORMAT to a subset of properties ("Reels applies to Instagram + Facebook but not WhatsApp"); the second binds a PLACEMENT to one or more formats ("Instagram Reels accepts the `meta_reels` format option"). Property-level format support → `applies_to_property_ids`. Placement-level binding → `placements[].format_options[]`.
 
 **Naming boundary:** `format_option_id` selects a buyable product or publisher-catalog format contract. Creative-agent `capability_id` remains separate: it selects a build path on `creative.supported_formats` when calling `build_creative`. Do not use `capability_id` on media-buy products, placements, package requests, creative manifests, or creative assets.
+
+### Sample renders and declaration authority
+
+Starting in 3.2, `sample_render_url` restores the human-preview path that publisher-owned canonical formats otherwise lose when there is no creative agent owning the format. It answers “what does this declared format look like?” using example assets selected by the declaring party. It does not render buyer assets.
+
+Authority follows the enclosing declaration rather than the shared `ProductFormatDeclaration` type:
+
+| Enclosing surface | Who asserts the sample |
+|---|---|
+| Publisher-hosted `adagents.json` top-level `formats[]` | Publisher |
+| AgenticAdvertising.org community-mirror `adagents.json` top-level `formats[]` | Community mirror, clearly labeled as such |
+| Inline `Placement.format_options[]` declaration | Party publishing that placement catalog |
+| `Product.format_options[]` | Seller publishing the product |
+| `creative.supported_formats[]` | Creative agent demonstrating its production capability; not evidence that a publisher accepts the format |
+
+A bare `{format_option_id}` in `Placement.format_options[]` resolves to the same file's top-level declaration and therefore inherits its `sample_render_url`. A product entry is always a full declaration and does not implicitly inherit presentation metadata. When a product entry carries `{publisher_domain, format_option_id}`, a UI MAY resolve the catalog. A tier-1 publisher-hosted sample SHOULD be preferred when presenting a preview as publisher-authored. A community-mirror result MUST be labeled community-maintained and MUST NOT be presented as publisher-authored. A sample copied directly onto the product remains seller-supplied unless it was verified against the publisher-hosted catalog.
+
+Sample URLs are untrusted external navigation. They SHOULD be public and unauthenticated. Consumers MUST NOT auto-fetch or iframe a sample solely because it appears in a declaration, and MUST NOT attach buyer assets, authorization credentials, source-origin or account context, or user-specific query parameters. Ordinary browser state belonging to the destination origin is outside AdCP's control. Human-facing clients SHOULD open the URL only after explicit user action in a new browsing context with opener and referrer information suppressed.
+
+Dynamic preview is a separate capability. Rendering a buyer's creative manifest requires an authorized renderer and canonical format context for `preview_creative`; `sample_render_url` is neither renderer discovery nor a substitute for that task.
 
 ### Format discovery (resolution order)
 
@@ -1090,6 +1110,72 @@ There are no separate min-only or max-only duration fields; one-sided `duration_
 
 When both modes appear on the same declaration, `duration_ms_exact` wins over `duration_ms_range`. Producers SHOULD emit only one mode. SDKs SHOULD lint a warning when both modes ship, but consumers MUST still apply the precedence rule. A fixed 60-second spot can use `duration_ms_exact: 60000` or the equivalent closed range `[60000, 60000]`; prefer `duration_ms_exact` when the product truly requires one duration.
 
+### Image pixel density
+
+Image `width`, `height`, and `sizes[]` are logical render dimensions. `pixel_ratios` declares the accepted intrinsic-pixel densities for the same logical placement:
+
+```json
+{
+  "format_kind": "image",
+  "params": {
+    "width": 300,
+    "height": 250,
+    "pixel_ratios": [1, 2]
+  }
+}
+```
+
+This declaration accepts one 300×250 image at 1x or one 600×500 image at 2x. It does not require both assets, and it does not declare a logical 600×500 placement. When `pixel_ratios` is absent, SDKs MUST use `[1]` so existing declarations retain their exact-dimension behavior.
+
+An image asset MAY carry `pixel_ratio`. When it is omitted, SDKs MUST infer density when the logical dimensions produce exactly one matching size/ratio pair. The intrinsic width and height must scale by the same accepted ratio. If multiple pairs match (for example, 600×500 could be 600×500@1x or 300×250@2x), validation MUST fail with `pixel_ratio_ambiguous` until the asset declares its ratio. If the declaration has no size constraint, omitted `pixel_ratios` remains an inferable 1x; a declared non-1x acceptance set requires `asset.pixel_ratio`.
+
+SDK validation MUST follow the reference vectors in `static/test-vectors/canonical-image-pixel-ratio.json`. In particular, size and density are independent axes, declared metadata must agree with intrinsic dimensions, and one matching asset satisfies one required image slot unless that slot declares required rendition coverage.
+
+The same acceptance constraint is available as `slots[].pixel_ratios` on every canonical image-bearing slot, including native images, carousel cards (where it applies to nested image media), responsive-creative image pools, and companion images. The top-level `image.params.pixel_ratios` shorthand applies to the canonical image's `image_main` slot. When both are present, SDKs MUST compute the effective acceptance set as their intersection for both single assets and rendition arrays; neither declaration takes precedence. An empty intersection is invalid and fails with `pixel_ratio_intersection_empty`. Pixel ratio is invalid on slots that cannot carry image media.
+
+#### Required rendition sets
+
+Some delivery systems select among multiple renditions of the same logical image at serve time. A slot declares that requirement with `required_pixel_ratios`, which is a required-coverage subset of its accepted `pixel_ratios`:
+
+```json
+{
+  "format_kind": "image",
+  "params": {
+    "width": 300,
+    "height": 250,
+    "slots": [
+      {
+        "asset_group_id": "image_main",
+        "asset_type": "image",
+        "required": true,
+        "min": 2,
+        "max": 3,
+        "pixel_ratios": [1, 1.5, 2],
+        "required_pixel_ratios": [1, 2]
+      }
+    ]
+  }
+}
+```
+
+The matching manifest supplies the slot as a rendition array. Each entry remains an ordinary image asset with intrinsic dimensions and optional explicit density:
+
+```json
+{
+  "format_kind": "image",
+  "assets": {
+    "image_main": [
+      { "asset_type": "image", "url": "https://cdn.example/mrec.png", "width": 300, "height": 250, "pixel_ratio": 1 },
+      { "asset_type": "image", "url": "https://cdn.example/mrec@2x.png", "width": 600, "height": 500, "pixel_ratio": 2 }
+    ]
+  }
+}
+```
+
+Every required ratio MUST appear in the effective acceptance intersection, and the array MUST contain exactly one valid rendition for each required ratio. A ratio present on the slot but excluded by top-level `image.params.pixel_ratios` is not accepted. Accepted ratios not listed as required are optional. All entries in a rendition set represent the same semantic image; only density-specific encoding properties such as URL, intrinsic dimensions, format, and file size may differ. SDKs MUST reject missing required coverage with `required_pixel_ratio_missing`, duplicate density entries with `pixel_ratio_duplicate`, and required ratios outside the effective accepted set with `required_pixel_ratio_not_accepted`. `min` and `max` SHOULD bound the expected rendition count, but density coverage—not array length alone—is authoritative.
+
+When `required_pixel_ratios` is absent, the original acceptance behavior remains: one image matching any accepted density satisfies the slot. Card media remains singular, so `required_pixel_ratios` is valid only on an `image` slot; a card slot may use `pixel_ratios` only as an acceptance constraint for each card's image.
+
 ### Format matching vs product satisfaction
 
 Sellers and SDKs MUST normalize legacy named formats before comparing them to canonical declarations. A legacy `format_id` such as `{ "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" }` resolves through the explicit `canonical` annotation, `v1_format_ref`, or the canonical mapping registry to a canonical declaration such as `format_kind: "image"` with `params.width: 300` and `params.height: 250`. After that projection, implementations compare the canonical shape and parameters, not the raw `(agent_url, id)` pair.
@@ -1108,6 +1194,8 @@ Concrete examples:
 | `image`, `width: 300`, `height: 250` | legacy `display_300x250`, projected to `image` 300x250 | Match |
 | `image`, `width: 300`, `height: 250` | `image` with no width/height | Reject for this product — request is under-specified |
 | `image` with no width/height constraint | `image` 300x250 | Match — a broad product can accept a specific creative |
+| `image`, 300×250, `pixel_ratios: [1, 2]` | 600×500 image, inferred or declared `pixel_ratio: 2` | Match — logical size remains 300×250 |
+| `image`, 300×250, no `pixel_ratios` | 600×500 image | Reject — absent density declaration means 1x |
 | `video_hosted`, `duration_ms_exact: 30000` | `video_hosted` with no duration | Reject for this product — duration is under-specified |
 
 This asymmetry prevents two failure modes: exact-ID comparison rejecting compatible legacy/canonical pairs, and overly-broad matching allowing an under-specified request to satisfy a fixed-size or fixed-duration product.
@@ -1234,6 +1322,7 @@ When the spec says a v2 `format_options` entry MUST refer to the same underlying
 
 - **Scalar constraints**: a v2 scalar value `narrows` a v1 range when the v2 value is contained within the v1 range. `v2.width: 300` narrows `v1.width_range: [200, 400]`; `v2.duration_ms_exact: 30000` narrows `v1.min_duration_ms: 3000`.
 - **Enum constraints**: v2.enum_value is a `narrowing` if it appears in v1.allowed_values (or v1.allowed_values is absent — open enum). `v2.image_formats: ["jpg", "png"]` narrows `v1.image_formats: ["jpg", "png", "gif", "webp"]`.
+- **Pixel-density constraints**: `pixel_ratios` is an acceptance set. A v2 set narrows a v1 set when every v2 ratio appears in the v1 set. A parameterized legacy `format_id.pixel_ratio` projects to a single-element v2 set. An omitted legacy ratio is 1x.
 - **Range constraints**: v2.range narrows v1.range when v2's lower bound ≥ v1's lower bound AND v2's upper bound ≤ v1's upper bound. `v2.duration_ms_range: [5000, 30000]` narrows `v1.duration_ms_range: [3000, 90000]`.
 - **Absent v2 parameter**: when v2.params omits a parameter that v1 specified, v2 inherits v1's value (no narrowing constraint added). Producers SHOULD omit rather than restate v1 defaults.
 - **Asymmetric narrowing**: when v1 says nothing about a parameter but v2 specifies one (e.g., v1 has no `image_formats` constraint, v2 declares `image_formats: ["jpg"]`), v2 is `narrowing` against the implicit "any value" v1 baseline. This is the expected v2-tightens-v1 pattern.
@@ -1242,6 +1331,8 @@ When the spec says a v2 `format_options` entry MUST refer to the same underlying
 The narrows relation is one-directional: v2 narrows v1 (v2 is the stricter shape). The reverse (v1 narrows v2) is NOT how the dual-emission contract is checked.
 
 SDK authors implementing the narrowing check SHOULD apply parameter-by-parameter subsumption per the rules above. Edge cases (composite parameters, platform_extensions, slot vocabulary changes) are not yet specified; SDKs MAY treat them as "unknown — pass" for 3.1 and surface a structured warning, with the working group tightening them per adopter feedback through 3.x.
+
+SDK conformance for the specified scalar, enum/set, pixel-density, range, inheritance, open-baseline, and conflict cases MUST follow `narrowing_vectors` in `static/test-vectors/v1-canonical-mapping.json`.
 
 ### v1 → v2 projection via `canonical:` annotation (object shape)
 
@@ -1295,6 +1386,23 @@ When the seller asserts fewer refs than sizes (`v1_format_ref[].length < sizes[]
 **Why MAY-do, not MUST-do or MUST-NOT-do.** SDKs without catalog access can't fan out; making it MUST creates an SDK-feature dependency. Making it MUST-NOT discards real value (a catalog with all three IAB sizes can losslessly expand a multi-size declaration). MAY-do with mandatory advisory preserves SDK choice while keeping the wire shape transparent — downstream consumers can always distinguish synthesized refs from seller-asserted ones via the advisory's `synthesized_refs`.
 
 **Inter-SDK convergence rule.** Two SDKs processing the same input MAY produce different `format_ids[]` (one fans out, one doesn't), but both MUST emit `FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE` with consistent `declared_sizes` / `covered_sizes` / `dropped_sizes`. Buyer agents reading the response stream can reconcile divergent `format_ids[]` against the advisory.
+
+#### Pixel-density projection (normative)
+
+**Unversioned legacy reference-catalog bridge.** For each of the seven fixed image sizes (300x250, 728x90, 320x50, 160x600, 336x280, 300x600, and 970x250), the reference catalog publishes three distinct legacy contracts: the existing `display_<width>x<height>_image` requires a 1x asset only; `display_<width>x<height>_image_2x` requires a 2x asset only; and `display_<width>x<height>_image_1x_2x` requires both 1x and 2x assets. All keep the logical size in `renders[].dimensions`, while ordinary v1 asset requirements carry the exact intrinsic dimensions. Sellers select the contract their delivery system actually needs; GAM-style device-density selection uses `_image_1x_2x`, while a renderer that accepts Retina alone may use `_image_2x`. The live legacy catalog is identified by `(agent_url, id)` and `list_creative_formats` exposes no catalog version or digest, so these additive IDs become discoverable across 3.x when the reference agent deploys; they do not require a 3.0.x or 3.1.x protocol backport. This remains legacy-format support only: canonical pixel-density and rendition-set semantics begin in AdCP 3.2, and permissive JSON acceptance does not give unknown properties protocol meaning. Density and coverage values under `canonical_parameters` are opaque forward-projection metadata that 3.2-aware SDKs may use when projecting the legacy ID into the 3.2 canonical model.
+
+For a mapped `_image_1x_2x` creative, the two v1 image assets intentionally share `asset_group_id: image_main`. A 3.2-aware SDK MUST collect them into the canonical `image_main` rendition array and validate their distinct densities before applying generic duplicate-asset-group collision handling. It MUST NOT drop the second rendition as an alias collision.
+
+**AdCP 3.2 authoring path.** Pixel density uses the parameterized `display_image` legacy template; new publishers SHOULD NOT mint `image_retina` or one hard-coded legacy format definition per size/density combination. A v1 placement advertises each accepted density as a parameterized reference:
+
+```json
+[
+  { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_image", "width": 300, "height": 250 },
+  { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_image", "width": 300, "height": 250, "pixel_ratio": 2 }
+]
+```
+
+SDKs project `width` and `height` as canonical logical dimensions and project a non-default `pixel_ratio` to `pixel_ratios: [pixel_ratio]`. Omitted `pixel_ratio` is 1x and MAY remain omitted canonically. A canonical declaration accepting multiple densities SHOULD carry one `v1_format_ref` per density, all pointing to the same `display_image` template with different parameter values. This is parameter fan-out, not format-definition proliferation. The concrete 3.1 `_image_2x` and `_image_1x_2x` aliases remain valid compatibility identifiers but SHOULD NOT be extended to new sizes after the parameterized form ships.
 
 ```json test=false
 {

@@ -7,10 +7,35 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "if": { "required": ["bidding"] },
+      "then": {
+        "properties": {
+          "optimization_goals": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "target": {
+                    "properties": {
+                      "kind": { "enum": ["cost_per", "per_ad_spend"] }
+                    },
+                    "required": ["kind"]
+                  }
+                },
+                "required": ["target"]
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "not": {
-    "required": ["capability_ids"]
+    "anyOf": [
+      { "required": ["capability_ids"] },
+      { "required": ["bidding", "bid_price"] }
+    ]
   },
   "properties": {
     "product_id": {
@@ -45,7 +70,12 @@
     },
     "budget": {
       "type": "number",
-      "description": "Budget allocation for this package in the media buy's currency",
+      "description": "Hard lifetime spend cap for this package in the media buy's currency. Required in fixed allocation mode. Optional in seller-optimized mode; when omitted, the package is bounded by the shared total_budget and any other package constraints. In seller-optimized mode this is a ceiling, not a reserved or current allocation.",
+      "minimum": 0
+    },
+    "min_spend_target": {
+      "type": "number",
+      "description": "Soft lifetime spend target for this package in the media buy's currency. Only valid with seller-optimized budget allocation. The seller SHOULD attempt to deliver at least this amount before allocating incremental spend elsewhere, but inventory, policy, optimization targets, or other delivery constraints may prevent it. This is not a billing guarantee. Must not exceed the package budget when both are present; sellers MUST reject with `INVALID_REQUEST` when this constraint is violated.",
       "minimum": 0
     },
     "pacing": {
@@ -58,8 +88,15 @@
     },
     "bid_price": {
       "type": "number",
-      "description": "Bid price for auction-based pricing options. This is the exact bid/price to honor unless selected pricing_option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
+      "deprecated": true,
+      "description": "DEPRECATED in 3.2 and removed in the next major. Use bidding.bid_amount or bidding.max_bid. Legacy normalization: selected pricing_option.max_bid=true maps to bidding.max_bid; otherwise maps to bidding.bid_amount. A package MUST NOT supply both representations.",
       "minimum": 0
+    },
+    "bidding": {
+      "allOf": [
+        { "$ref": "/schemas/core/bidding-policy.json" }
+      ],
+      "description": "Package-authored bidding policy. This complete block replaces, rather than field-merges with, any media-buy bidding policy for this package. `{automatic:true}` explicitly overrides a media-buy policy with provider automatic bidding; omission inherits the complete media-buy block. Monetary fields use the media-buy currency, while the selected pricing option supplies only the auction unit and MUST declare that same currency. Sellers MUST reject a new bidding block combined with legacy bid_price or legacy monetary optimization-goal targets on the same effective package with AMBIGUOUS_BIDDING_POLICY."
     },
     "impressions": {
       "type": "number",
@@ -218,7 +255,6 @@
   },
   "required": [
     "product_id",
-    "budget",
     "pricing_option_id"
   ],
   "dependencies": {

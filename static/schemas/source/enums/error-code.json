@@ -60,6 +60,8 @@
     "MULTI_FINALIZE_UNSUPPORTED",
     "IO_REQUIRED",
     "TERMS_REJECTED",
+    "BIDDING_PLACEMENT_CONFLICT",
+    "AMBIGUOUS_BIDDING_POLICY",
     "REQUOTE_REQUIRED",
     "VERSION_UNSUPPORTED",
     "CAMPAIGN_SUSPENDED",
@@ -97,7 +99,9 @@
     "FEED_FETCH_FAILED",
     "INVALID_FEED_FORMAT",
     "ITEM_VALIDATION_FAILED",
-    "CATALOG_LIMIT_EXCEEDED"
+    "CATALOG_LIMIT_EXCEEDED",
+    "INVALID_PRICING_OPTION",
+    "INVALID_USAGE_DATA"
   ],
   "enumDescriptions": {
     "INVALID_REQUEST": "Request is malformed, missing required fields, or violates schema constraints. Recovery: correctable (check request parameters and fix).",
@@ -155,6 +159,8 @@
     "MULTI_FINALIZE_UNSUPPORTED": "Returned by sellers that cannot guarantee atomic commit across multiple proposals in a single `get_products` call (multiple `action: 'finalize'` entries in `refine[]` targeting different `proposal_id` values). The buyer's intent — atomic multi-proposal finalize — is structurally well-formed and per spec atomic, but this seller's downstream stack cannot satisfy the atomicity guarantee (e.g., the proposals route to two different ad servers with no 2PC). More specific than `INVALID_REQUEST` so buyers can distinguish 'this seller doesn't support multi-finalize' from 'the request itself is malformed'. Recovery: correctable (sequence the finalize calls one-`proposal_id`-per-call; there is no capability flag for multi-finalize support, so a successful first-attempt is the only positive discovery signal). See [refinement guide § Finalize is exclusive](/docs/media-buy/product-discovery/refinement#finalize-is-exclusive-within-refine).",
     "IO_REQUIRED": "The committed proposal requires a signed insertion order but no io_acceptance was provided. Recovery: correctable (review the proposal's insertion_order, accept terms, and include io_acceptance on create_media_buy).",
     "TERMS_REJECTED": "Buyer-proposed measurement_terms were rejected by the seller. The error details SHOULD identify which specific term was rejected and the seller's acceptable range or supported vendors. Recovery: correctable (adjust the proposed terms and retry, or omit measurement_terms to accept the product's defaults).",
+    "BIDDING_PLACEMENT_CONFLICT": "The authored media-buy/package bidding scopes cannot be represented by the provider's native campaign, package, or shared-strategy placement rules. Sellers MUST detect this before any provider mutation and SHOULD identify the conflicting scopes and provider constraint in error.details. Recovery: correctable (remove or align package overrides, move the policy to the supported scope, or choose a compatible budget mode/product combination).",
+    "AMBIGUOUS_BIDDING_POLICY": "The same effective package combines the canonical bidding block with legacy bid_price or monetary optimization-goal target fields, so two bidding interpretations are present. Sellers MUST reject rather than choosing a winner. Recovery: correctable (emit only the 3.2 bidding block or only one legacy representation).",
     "REQUOTE_REQUIRED": "An update_media_buy request changes the parameter envelope (budget, flight dates, volume, targeting) the original quote was priced against. The pricing_option remains locked; the seller is declining the requested shape at that price. Distinct from TERMS_REJECTED (measurement) and POLICY_VIOLATION (content). Sellers SHOULD populate error.details.envelope_field with the field path(s) that breached the envelope (e.g., 'packages[0].budget', 'end_time') so the buyer's agent can decide whether to adjust the update, rediscover products, add packages where supported, or create a separate media buy. AdCP 3.1 does not define an amendment-quote artifact that can be attached to update_media_buy.",
     "VERSION_UNSUPPORTED": "The declared adcp_version (release-precision) or adcp_major_version (deprecated) is not supported by this seller. The error details SHOULD follow `error-details/version-unsupported.json` — `supported_versions` (release-precision strings) is authoritative for retry; `supported_majors` is deprecated. Recovery: correctable (re-pin to a release in supported_versions and retry; or call get_adcp_capabilities without a version pin to discover supported_versions).",
     "CAMPAIGN_SUSPENDED": "Campaign governance has been suspended pending human review; the governance agent MUST reject `check_governance` and `report_plan_outcome` calls on the affected plan until the escalation is resolved. Distinct from `ACCOUNT_SUSPENDED` (account-wide) — this is scoped to a single plan/campaign. Recovery: transient (wait for the escalation to resolve; contact the plan operator if the suspension persists).",
@@ -192,7 +198,9 @@
     "FEED_FETCH_FAILED": "Platform could not fetch the catalog feed URL during sync_catalogs. Recovery: correctable (check URL accessibility, authentication, and that the content matches the declared feed_format).",
     "INVALID_FEED_FORMAT": "Catalog feed content does not match the declared feed_format. Recovery: correctable (verify the feed content matches the declared format, e.g. XML for google_merchant_center).",
     "ITEM_VALIDATION_FAILED": "One or more catalog items failed schema validation during sync_catalogs. Recovery: correctable (check item_issues for per-item rejection reasons and fix the offending items).",
-    "CATALOG_LIMIT_EXCEEDED": "The account has reached its maximum catalog count. Recovery: correctable (remove unused catalogs, or contact the seller to raise the limit)."
+    "CATALOG_LIMIT_EXCEEDED": "The account has reached its maximum catalog count. Recovery: correctable (remove unused catalogs, or contact the seller to raise the limit).",
+    "INVALID_PRICING_OPTION": "A `pricing_option_id` referenced in the request does not exist on the target account or product. Returned per-record in `report_usage` responses and at the request level for `create_media_buy` when the submitted pricing option cannot be resolved. `error.field` SHOULD point at the offending record path (e.g., `usage[1].pricing_option_id` or `packages[0].pricing_option_id`). Distinct from `PRODUCT_NOT_FOUND` (the product itself is unknown) by being narrowly about a pricing option within a known product or account. Recovery: correctable (verify `pricing_option_id` against the product's `pricing_options` from `get_products` or the vendor's discovery response, then resubmit with a valid ID).",
+    "INVALID_USAGE_DATA": "A usage record in `report_usage` has missing or invalid fields — required fields absent, values out of range, or type mismatches. Returned per-record in the `report_usage` response `errors[]` array. `error.field` SHOULD point at the offending field path (e.g., `usage[0].vendor_cost`, `usage[0].currency`). Distinct from `INVALID_REQUEST` (top-level request malformed) by being scoped to individual usage records within an otherwise well-formed request. Recovery: correctable (check required fields for the vendor type — at minimum `vendor_cost`, `currency`, and `account` — fix the offending values, and resubmit)."
   },
   "enumMetadata": {
     "$comment": "Structured recovery classification and remediation hints for each error code. SDKs MUST consume this block instead of parsing 'Recovery: X' from enumDescriptions prose. Each entry is { recovery, suggestion }. recovery is one of: correctable (caller can fix and retry), transient (retry with backoff), terminal (no autonomous recovery - operator intervention required). enumDescriptions is retained for human readability and will continue to carry the canonical narrative; the recovery classification embedded in that prose is normative and MUST match the value here.",
@@ -416,6 +424,14 @@
       "recovery": "correctable",
       "suggestion": "adjust the proposed terms and retry, or omit measurement_terms to accept the product's defaults"
     },
+    "BIDDING_PLACEMENT_CONFLICT": {
+      "recovery": "correctable",
+      "suggestion": "align media-buy and package bidding scopes with the provider's supported placement, or choose a compatible budget mode/product combination"
+    },
+    "AMBIGUOUS_BIDDING_POLICY": {
+      "recovery": "correctable",
+      "suggestion": "remove either the canonical bidding block or all legacy bidding fields from the effective package"
+    },
     "REQUOTE_REQUIRED": {
       "recovery": "correctable",
       "suggestion": "adjust the update to stay within the current quote envelope, rediscover products/terms, add packages when available, or create a separate media buy; 3.1 does not define an amendment-quote artifact for update_media_buy"
@@ -567,6 +583,14 @@
     "CATALOG_LIMIT_EXCEEDED": {
       "recovery": "correctable",
       "suggestion": "remove unused catalogs, or contact the seller to raise the limit"
+    },
+    "INVALID_PRICING_OPTION": {
+      "recovery": "correctable",
+      "suggestion": "verify pricing_option_id against the product's pricing_options from get_products or the vendor's discovery response, then resubmit with a valid ID"
+    },
+    "INVALID_USAGE_DATA": {
+      "recovery": "correctable",
+      "suggestion": "check required fields for the vendor type (vendor_cost, currency, account at minimum), fix invalid values, and resubmit"
     }
   }
 }

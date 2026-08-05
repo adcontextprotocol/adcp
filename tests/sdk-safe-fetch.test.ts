@@ -147,6 +147,10 @@ describe('SDK safe fetch adapter', () => {
         res.writeHead(404).end();
         return;
       }
+      if (req.method === 'GET') {
+        res.writeHead(405, { Allow: 'POST, DELETE' }).end();
+        return;
+      }
       if (req.headers.authorization !== 'Bearer fresh-token') {
         res.writeHead(401, {
           'www-authenticate': `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"`,

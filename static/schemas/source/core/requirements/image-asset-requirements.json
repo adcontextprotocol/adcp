@@ -25,6 +25,20 @@
       "exclusiveMinimum": 0,
       "description": "Maximum height. Interpretation depends on unit (default: pixels). For exact dimensions, set min_height = max_height."
     },
+    "pixel_ratios": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "number",
+        "exclusiveMinimum": 0
+      },
+      "description": "Accepted intrinsic-pixel densities for this image slot. One submitted image matching any listed ratio satisfies the slot; the array does not require one asset per ratio. Absence imposes no density constraint beyond the existing dimension requirements."
+    },
+    "parameters_from_format_id": {
+      "type": "boolean",
+      "description": "When true on a legacy template format, logical width, logical height, and pixel ratio are supplied by the parameterized format_id. The image asset's intrinsic dimensions MUST equal logical dimensions multiplied by pixel_ratio (which defaults to 1 when omitted)."
+    },
     "unit": {
       "$ref": "/schemas/enums/dimension-unit.json",
       "description": "Unit of measurement for width/height values. Defaults to 'px' when absent. Print formats use 'inches' or 'cm'."

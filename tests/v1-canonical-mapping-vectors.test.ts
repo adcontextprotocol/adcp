@@ -6,6 +6,11 @@ import { describe, expect, it } from 'vitest';
 type V2Mapping = {
   canonical: string;
   parameters?: Record<string, unknown>;
+  parameter_mappings?: Array<{
+    source_field: string;
+    target_parameter: string;
+    transform?: 'identity' | 'singleton_array';
+  }>;
 };
 
 type RegistryMapping = {
@@ -23,15 +28,61 @@ type Vector = {
   expected_outcome?: string;
 };
 
+type V1Constraint =
+  | { kind: 'exact'; value: unknown }
+  | { kind: 'range'; min: number | null; max: number | null }
+  | { kind: 'set'; values: unknown[] };
+
+type NarrowingVector = {
+  id: string;
+  v1_baseline: Record<string, V1Constraint>;
+  v2_params: Record<string, unknown>;
+  expected: { narrows: true } | { narrows: false; conflict: string };
+};
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const registry = JSON.parse(fs.readFileSync(
   path.join(root, 'static/schemas/source/registries/v1-canonical-mapping.json'),
   'utf8',
-)) as { version: string; mappings: RegistryMapping[] };
+)) as { version: string; description: string; mappings: RegistryMapping[] };
 const fixture = JSON.parse(fs.readFileSync(
   path.join(root, 'static/test-vectors/v1-canonical-mapping.json'),
   'utf8',
-)) as { registry_version: string; vectors: Vector[] };
+)) as { registry_version: string; vectors: Vector[]; narrowing_vectors: NarrowingVector[] };
+
+function sameValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/** Reference implementation of the normative one-way v2-narrows-v1 relation. */
+function narrowsV1Baseline(
+  v1Baseline: Record<string, V1Constraint>,
+  v2Params: Record<string, unknown>,
+): { narrows: true } | { narrows: false; conflict: string } {
+  for (const [parameter, v2Value] of Object.entries(v2Params)) {
+    const constraint = v1Baseline[parameter];
+    if (!constraint) continue;
+
+    let narrows = false;
+    if (constraint.kind === 'exact') {
+      narrows = sameValue(v2Value, constraint.value);
+    } else if (constraint.kind === 'set') {
+      const values = Array.isArray(v2Value) ? v2Value : [v2Value];
+      narrows = values.every(value => constraint.values.some(allowed => sameValue(value, allowed)));
+    } else if (typeof v2Value === 'number') {
+      narrows = (constraint.min === null || v2Value >= constraint.min) &&
+        (constraint.max === null || v2Value <= constraint.max);
+    } else if (Array.isArray(v2Value) && v2Value.length === 2) {
+      const [lower, upper] = v2Value as [number | null, number | null];
+      narrows = (constraint.min === null || (lower !== null && lower >= constraint.min)) &&
+        (constraint.max === null || (upper !== null && upper <= constraint.max));
+    }
+
+    if (!narrows) return { narrows: false, conflict: parameter };
+  }
+
+  return { narrows: true };
+}
 
 const literalMappings = registry.mappings.filter(
   (mapping): mapping is RegistryMapping & { v1_pattern: { format_id_glob: string } } =>
@@ -80,6 +131,59 @@ describe('v1 canonical literal mapping vectors', () => {
     expect(mapping).toEqual({ canonical: 'image' });
     expect(mapping).not.toHaveProperty('parameters.width');
     expect(mapping).not.toHaveProperty('parameters.height');
+  });
+
+  it('projects legacy reference-catalog 2x-only ids to canonical 2x acceptance', () => {
+    const retinaMappings = literalMappings.filter(mapping =>
+      mapping.v1_pattern.format_id_glob.endsWith('_image_2x'),
+    );
+    expect(retinaMappings).toHaveLength(7);
+    for (const mapping of retinaMappings) {
+      expect(mapping.v2.canonical, mapping.v1_pattern.format_id_glob).toBe('image');
+      expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).toMatchObject({
+        pixel_ratios: [2],
+      });
+      expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).not.toHaveProperty('slots');
+    }
+  });
+
+  it('projects paired 1x/2x legacy ids to required canonical rendition sets', () => {
+    const pairedMappings = literalMappings.filter(mapping =>
+      mapping.v1_pattern.format_id_glob.endsWith('_image_1x_2x'),
+    );
+    expect(pairedMappings).toHaveLength(7);
+    for (const mapping of pairedMappings) {
+      expect(mapping.v2.canonical, mapping.v1_pattern.format_id_glob).toBe('image');
+      expect(mapping.v2.parameters, mapping.v1_pattern.format_id_glob).toMatchObject({
+        pixel_ratios: [1, 2],
+        slots: [{
+          asset_group_id: 'image_main',
+          asset_type: 'image',
+          required: true,
+          min: 2,
+          max: 2,
+          pixel_ratios: [1, 2],
+          required_pixel_ratios: [1, 2],
+        }],
+      });
+    }
+  });
+
+  it('projects mapped rendition sets before generic asset-group collision handling', () => {
+    expect(registry.description).toContain('Image rendition-set exception (normative)');
+    expect(registry.description).toContain('MUST NOT');
+    expect(registry.description).toContain('generic alias-collision rule');
+  });
+
+  it('applies the documented one-way v2-narrows-v1 relation', () => {
+    expect(fixture.narrowing_vectors.length).toBeGreaterThanOrEqual(2);
+    expect(fixture.narrowing_vectors.some(vector => vector.expected.narrows)).toBe(true);
+    expect(fixture.narrowing_vectors.some(vector => !vector.expected.narrows)).toBe(true);
+
+    for (const vector of fixture.narrowing_vectors) {
+      expect(narrowsV1Baseline(vector.v1_baseline, vector.v2_params), vector.id)
+        .toEqual(vector.expected);
+    }
   });
 
   it('treats small NxN tokens as aspect ratios rather than pixel dimensions', () => {

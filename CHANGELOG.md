@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased experimental-surface notices
+
+- Cross-role governance enforcement: the experimental `governance.campaign` surface will add typed `target_agent`, task-scoped `adcp.governance_enforcement`, critical task/payload/commitment JWS bindings, intent-only conditions negotiation, and governance-authoritative settlement. The implementation may merge during 3.2 development; the beta-to-GA period provides the experimental-surface notice window.
+
+## 3.1.10
+
+### Patch Changes
+
+- 30f10f1: Add audience dependency-impairment conformance coverage and clarify `list_accounts` as the recommended cold-start recovery read for buyer-declared accounts.
+- 648b820: Publish additive legacy Retina creative formats for seven standard display sizes. Each size now has a 2x-only format and a paired 1x-plus-2x rendition format, with registry mappings and shared vectors so current SDKs can discover and project the new catalog IDs while the canonical pixel-density protocol remains targeted at 3.2.
+
+## 3.1.9
+
+### Patch Changes
+
+- 04fb691: Remove a literal tab character from a comment line in
+  `static/compliance/source/universal/runner-output-contract.yaml` (line 303).
+  Tabs cannot start a token in YAML, so strict parsers fail to load the file
+  entirely — platform engines consuming the packaged 3.1.4/3.1.5 compliance
+  caches could not parse the runner output contract. Comment text unchanged;
+  no semantic content changes.
+- bd4dc10: TMP: publisher-owned TMPX macro mapping with provider-declared slot IDs and split provider→router / router→publisher response schemas.
+
+  **Provider slot contract.** Providers declare a stable, provider-local slot list on their registration (`tmpx_slots: [string]` in provider-registration.json), e.g. `["primary","secondary"]`. Slot IDs are opaque provider-namespaced tokens, NOT ad-server macro names — distinct providers MAY reuse the same slot_id because publisher lookup is keyed on `(provider_id, slot_id)`. Ordering carries the ordered-prefix invariant: shorter responses emit an ordered prefix of the registered slots and are never shifted or sparse.
+
+  **Response schemas.** Provider-to-router responses (`provider-identity-match-response.json`) carry `tmpx_chunks: [{slot_id, value}]`. Router-to-publisher responses (`identity-match-response.json`) reshape `tmpx_providers[provider_id]` to `{ chunks: [{slot_id, value}] }`, preserving the emitting provider's slot IDs and order. Chunks share a single definition — the new `trusted-match/tmpx-chunk.json` schema — `$ref`d from both hops. Both hop schemas add explicit negative constraints (`not: {anyOf: […]}`) that reject the other hop's fields (`tmpx_providers`/`tmpx` on the provider hop; `tmpx_chunks` on the publisher hop) and envelope-extension fields (`context`, `ext`) that would leak across the identity privacy boundary. Both maps carry `propertyNames` constraints matching the `provider_id` charset (and `slot_id` charset on inner maps), so the wire cannot carry map keys outside the registered form.
+
+  **Publisher-owned config.** `publisher-tmpx-config.json` captures the publisher-owned deployment configuration as `tmpx_macro_mapping: { provider_id: { slot_id: destination } }`. The publisher's adapter reads `tmpx_providers[provider_id].chunks[]` from the response and, for each chunk, substitutes `chunk.value` into `tmpx_macro_mapping[provider_id][chunk.slot_id]`. Publishers use registered `tmpx_slots` to validate the mapping at startup and to detect provider slot-contract drift before serve time. When a response carries a `slot_id` (or whole `provider_id`) the mapping does not cover, the adapter MUST fail closed for that provider on that impression — none of that provider's chunks are fired into the ad-serving path and the adapter logs a configuration error; other providers on the same response are unaffected.
+
+  **Security-motivated reshape.** Restores the direction described in #2203 by removing publisher-local names from the untrusted-provider boundary, and closes the cross-provider name-hijack surface tracked as #5945 by construction — the router never accepts destination names from providers.
+
+  **Why 3.1.x, not 3.2 — bounded pre-production correction.** TMP has no production use yet, and this corrected shape will be in place before any 3.1 TMP production deployment ships. That fact — not the general experimental-surface rule — is the primary justification: the surface exists but has no live consumers to migrate. `x-status: experimental` (see `docs/reference/experimental-status.mdx`) is what makes the reshape technically permissible inside 3.x; the pre-production posture is what makes it practically safe. #5729 shipped the surface being reshaped 26 days ago into 3.1.1–3.1.4, but this changeset does not lean on that as a general precedent — the reshape is bounded to the pre-production window regardless of what came before. The change lives on the single-source schema tree, so it rolls forward into 3.2 automatically with no 3.1.x fork to maintain.
+
+  **Migration.** Providers declare `tmpx_slots` on their registration (opaque provider-local IDs; drop the previous `tmpx_macros` list if adopted). Providers emit `tmpx_chunks: [{slot_id, value}]` on their identity-match response (previously `tmpx_macros[{name,value}]` or `tmpx_values[value]`). Routers produce `tmpx_providers[provider_id].chunks[{slot_id, value}]` (previously `.macros[{name,value}]` or `.values[value]`). Publishers configure `tmpx_macro_mapping[provider_id][slot_id] = destination` (a slot-keyed map, previously an ordered array). The legacy singular `tmpx` field remains supported through 3.x (removed in 4.0). Blast radius: the shape being replaced shipped only in 3.1.1–3.1.4 on an experimental field with no production adopters; the earlier working-tree ordinal variant introduced in this PR was never released.
+
+  **Test coverage.** `tests/example-validation-simple.test.cjs` adds twenty new fixtures (positive + negative) proving each schema-encoded invariant actually rejects the wrong shape: wrong-hop fields on both hop schemas, legacy carrier fields (`tmpx_values`, `tmpx_macros`) on both hops, envelope-extension bleed-through, `provider_id`/`slot_id` charset violations on both maps, and duplicate slot IDs on `tmpx_slots`.
+
+  **Router slot-contract enforcement.** The router MUST validate each provider's registered slot contract before forwarding: if the provider has no `tmpx_slots` registration, or if the returned `slot_id` sequence is not an exact non-empty ordered prefix of the registered list, the router MUST drop that provider's chunks atomically. This covers duplicate, reordered, sparse, and unregistered slot IDs before they reach publisher mappings.
+
 ## 3.1.8
 
 ### Patch Changes

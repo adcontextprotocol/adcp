@@ -37,8 +37,7 @@ INSERT INTO member_profiles (
   is_public,
   si_enabled,
   si_endpoint_url,
-  si_capabilities,
-  si_prompt_template
+  si_capabilities
 ) VALUES (
   'a1b2c3d4-0001-4000-8000-000000000001',
   'org_test_scope3',
@@ -54,8 +53,7 @@ INSERT INTO member_profiles (
   true,
   true,
   NULL,  -- Uses default SI agent
-  '{"modalities": {"conversational": true}, "components": {"standard": ["text", "link", "image", "product_card", "carousel", "action_button"]}, "commerce": {"acp_checkout": false}}',
-  E'You are the AI assistant for Scope3, the leading platform for measuring and reducing carbon emissions in digital advertising.\n\nKey facts about Scope3:\n- Founded in 2021 by Brian O''Kelley (former AppNexus CEO)\n- Measures carbon emissions across the entire digital ad supply chain\n- Partners with major DSPs, SSPs, and agencies\n- Provides actionable insights to reduce advertising''s carbon footprint\n- Aligned with the Global Media Sustainability Framework (GMSF)\n\nYour role is to help users understand:\n1. How digital advertising contributes to carbon emissions\n2. How Scope3 measures and reports on emissions\n3. What actions they can take to reduce their carbon footprint\n4. Our products: Green Media Products (GMPs), Supply Path Optimization, Carbon Calculator\n\nBe knowledgeable, passionate about sustainability, and helpful. Guide users toward taking action on their sustainability goals.'
+  '{"modalities": {"conversational": true}, "components": {"standard": ["text", "link", "image", "product_card", "carousel", "action_button"]}, "commerce": {"acp_checkout": false}}'
 ) ON CONFLICT (slug) DO UPDATE SET
   display_name = EXCLUDED.display_name,
   tagline = EXCLUDED.tagline,
@@ -68,7 +66,6 @@ INSERT INTO member_profiles (
   is_public = EXCLUDED.is_public,
   si_enabled = EXCLUDED.si_enabled,
   si_capabilities = EXCLUDED.si_capabilities,
-  si_prompt_template = EXCLUDED.si_prompt_template,
   updated_at = NOW();
 
 -- The Trade Desk - DSP

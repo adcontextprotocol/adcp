@@ -1517,12 +1517,12 @@ export function createCommitteeRouters(): {
       const effectiveExternalUrl = external_url === undefined
         ? normalizePerspectiveExternalUrl(post.external_url)
         : normalizedIncomingExternalUrl;
-      const persistedExternalUrl = external_url == null
+      const persistedExternalUrl = external_url === undefined
         ? normalizePerspectiveExternalUrl(post.external_url)
         : normalizedIncomingExternalUrl;
       if (
         (external_url != null && !normalizedIncomingExternalUrl) ||
-        (post.external_url != null && !persistedExternalUrl) ||
+        (external_url === undefined && post.external_url != null && !persistedExternalUrl) ||
         (effectiveContentType === 'link' && !effectiveExternalUrl)
       ) {
         return res.status(400).json({

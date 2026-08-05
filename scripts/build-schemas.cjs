@@ -40,6 +40,44 @@ const SOURCE_DIR = path.join(__dirname, '../static/schemas/source');
 const DIST_DIR = path.join(__dirname, '../dist/schemas');
 const PACKAGE_JSON = path.join(__dirname, '../package.json');
 const SKILLS_DIR = path.join(__dirname, '../skills');
+const SCHEMA_ORIGIN = 'https://adcontextprotocol.org';
+
+/**
+ * Turn a source-form schema URI into its canonical published identity.
+ * Source schemas intentionally use `/schemas/...` paths for local authoring;
+ * emitted artifacts use exact-version HTTPS URIs so their identity and refs
+ * do not depend on whether the retrieval URI was http(s) or file://.
+ */
+function canonicalPublishedSchemaUri(uri, version) {
+  if (typeof uri !== 'string' || !uri.startsWith('/schemas/')) return uri;
+  const versionPrefix = `/schemas/${version}/`;
+  return uri.startsWith(versionPrefix)
+    ? `${SCHEMA_ORIGIN}${uri}`
+    : `${SCHEMA_ORIGIN}${versionPrefix}${uri.slice('/schemas/'.length)}`;
+}
+
+/** Mutates schema objects, canonicalizing only URI-bearing schema keywords. */
+function canonicalizePublishedSchemaUris(node, version) {
+  if (!node || typeof node !== 'object') return node;
+  if (Array.isArray(node)) {
+    for (const item of node) canonicalizePublishedSchemaUris(item, version);
+    return node;
+  }
+  for (const [key, value] of Object.entries(node)) {
+    if ((key === '$id' || key === '$ref' || key === '$schema') && typeof value === 'string') {
+      node[key] = canonicalPublishedSchemaUri(value, version);
+    } else {
+      canonicalizePublishedSchemaUris(value, version);
+    }
+  }
+  return node;
+}
+
+function transformPublishedSchemaText(content, version) {
+  const schema = JSON.parse(content);
+  canonicalizePublishedSchemaUris(schema, version);
+  return `${JSON.stringify(schema, null, 2)}\n`;
+}
 
 // Keep generated file-based discovery aligned with the CDN and server
 // middleware. Exact artifacts remain available, but non-selectable releases
@@ -211,7 +249,7 @@ function buildRootSchemaDiscovery() {
 
   return {
     $schema: 'http://json-schema.org/draft-07/schema#',
-    $id: '/schemas/index.json',
+    $id: `${SCHEMA_ORIGIN}/schemas/index.json`,
     title: 'AdCP Schema Discovery',
     description: 'Root discovery document for file-based AdCP schema consumers. Use latest_stable or a major/minor alias target instead of choosing by directory listing.',
     latest: latestStable,
@@ -699,7 +737,7 @@ function generateExtensionRegistry(extensions, targetVersion) {
     }
   }
 
-  return registry;
+  return canonicalizePublishedSchemaUris(registry, targetVersion);
 }
 
 /**
@@ -723,11 +761,9 @@ function buildExtensions(sourceDir, targetDir, version) {
     // No extensions yet - just copy the meta schema and generate empty registry
     const metaSchemaPath = path.join(sourceExtensionsDir, 'extension-meta.json');
     if (fs.existsSync(metaSchemaPath)) {
-      let content = fs.readFileSync(metaSchemaPath, 'utf8');
-      // Update $id to include version
-      content = content.replace(
-        /"\$id":\s*"\/schemas\//g,
-        `"$id": "/schemas/${version}/`
+      const content = transformPublishedSchemaText(
+        fs.readFileSync(metaSchemaPath, 'utf8'),
+        version,
       );
       fs.writeFileSync(path.join(targetExtensionsDir, 'extension-meta.json'), content);
     }
@@ -748,21 +784,18 @@ function buildExtensions(sourceDir, targetDir, version) {
   // Copy extension-meta.json (with version transform)
   const metaSchemaPath = path.join(sourceExtensionsDir, 'extension-meta.json');
   if (fs.existsSync(metaSchemaPath)) {
-    let content = fs.readFileSync(metaSchemaPath, 'utf8');
-    content = content.replace(
-      /"\$id":\s*"\/schemas\//g,
-      `"$id": "/schemas/${version}/`
+    const content = transformPublishedSchemaText(
+      fs.readFileSync(metaSchemaPath, 'utf8'),
+      version,
     );
     fs.writeFileSync(path.join(targetExtensionsDir, 'extension-meta.json'), content);
   }
 
   // Copy each valid extension schema (with version transform)
   for (const ext of validExtensions) {
-    let content = JSON.stringify(ext.schema, null, 2);
-    // Update $id to include version
-    content = content.replace(
-      /"\$id":\s*"\/schemas\//g,
-      `"$id": "/schemas/${version}/`
+    const content = transformPublishedSchemaText(
+      JSON.stringify(ext.schema),
+      version,
     );
     fs.writeFileSync(
       path.join(targetExtensionsDir, `${ext.namespace}.json`),
@@ -1122,20 +1155,9 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
       ensureDir(targetPath);
       copyAndTransformSchemas(sourcePath, targetPath, version);
     } else if (entry.name.endsWith('.json')) {
-      let content = fs.readFileSync(sourcePath, 'utf8');
-
-      // Update $id, $ref, and $schema fields to include version
-      content = content.replace(
-        /"\$id":\s*"\/schemas\//g,
-        `"$id": "/schemas/${version}/`
-      );
-      content = content.replace(
-        /"\$ref":\s*"\/schemas\//g,
-        `"$ref": "/schemas/${version}/`
-      );
-      content = content.replace(
-        /"\$schema":\s*"\/schemas\//g,
-        `"$schema": "/schemas/${version}/`
+      let content = transformPublishedSchemaText(
+        fs.readFileSync(sourcePath, 'utf8'),
+        version,
       );
 
       // Update baseUrl and metadata in registry
@@ -1928,6 +1950,7 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       if (dereferenced.$id) {
         dereferenced.$id = dereferenced.$id.replace('/schemas/', `/schemas/${version}/bundled/`);
       }
+      canonicalizePublishedSchemaUris(dereferenced, version);
 
       // Add metadata indicating this is bundled
       dereferenced._bundled = {
@@ -2245,6 +2268,9 @@ async function main() {
 }
 
 module.exports = {
+  canonicalPublishedSchemaUri,
+  canonicalizePublishedSchemaUris,
+  generateExtensionRegistry,
   hoistDuplicateInlineEnums,
   hoistMarkedSchemas,
   resolveRefs,

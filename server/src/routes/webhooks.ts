@@ -55,6 +55,7 @@ import { emailDb } from '../db/email-db.js';
 import { getThreadService } from '../addie/thread-service.js';
 import { createEscalation } from '../db/escalation-db.js';
 import { Resend } from 'resend';
+import { boundedRawJson, type RawJsonRequest } from '../middleware/bounded-raw-json.js';
 
 const logger = createLogger('webhooks');
 
@@ -549,12 +550,8 @@ function extractInsightsSimple(data: {
  */
 function verifyResendWebhook(req: Request, rawBody: string): boolean {
   if (!RESEND_WEBHOOK_SECRET) {
-    if (process.env.NODE_ENV === 'production') {
-      logger.error('RESEND_WEBHOOK_SECRET not configured in production — rejecting webhook');
-      return false;
-    }
-    logger.warn('RESEND_WEBHOOK_SECRET not configured, skipping signature verification (dev mode)');
-    return true;
+    logger.error('RESEND_WEBHOOK_SECRET not configured — rejecting webhook');
+    return false;
   }
 
   const svixId = req.headers['svix-id'] as string | undefined;
@@ -905,6 +902,41 @@ async function handleUnroutedEmail(data: ResendInboundPayload['data']): Promise<
 // Certification Review Handler
 // ============================================================================
 
+export interface CertificationReviewEmailMetadata {
+  userId?: string;
+  learnerEmail?: string;
+  moduleId?: string;
+  status?: string;
+}
+
+/**
+ * Extract the structured fields emitted by the certification review route.
+ * Line-prefix parsing keeps runtime linear even when an inbound email contains
+ * very long whitespace sequences or other attacker-controlled text.
+ */
+export function parseCertificationReviewEmailMetadata(
+  emailText: string,
+): CertificationReviewEmailMetadata {
+  let userId: string | undefined;
+  let learnerEmail: string | undefined;
+  let moduleId: string | undefined;
+  let status: string | undefined;
+
+  for (const line of emailText.split('\n')) {
+    if (userId === undefined && line.startsWith('Learner ID:')) {
+      userId = line.slice('Learner ID:'.length).trim() || undefined;
+    } else if (learnerEmail === undefined && line.startsWith('Learner Email:')) {
+      learnerEmail = line.slice('Learner Email:'.length).trim() || undefined;
+    } else if (moduleId === undefined && line.startsWith('Module:')) {
+      moduleId = line.slice('Module:'.length).trim() || undefined;
+    } else if (status === undefined && line.startsWith('Status:')) {
+      status = line.slice('Status:'.length).trim() || undefined;
+    }
+  }
+
+  return { userId, learnerEmail, moduleId, status };
+}
+
 /**
  * Handle inbound emails addressed to addie+certification@updates.agenticadvertising.org.
  *
@@ -916,16 +948,8 @@ async function handleUnroutedEmail(data: ResendInboundPayload['data']): Promise<
  */
 async function handleCertificationEmail(data: ResendInboundPayload['data']): Promise<void> {
   const emailText = data.text || '';
-
-  const userIdMatch = emailText.match(/^Learner ID:\s*(.+)$/m);
-  const learnerEmailMatch = emailText.match(/^Learner Email:\s*(.+)$/m);
-  const moduleIdMatch = emailText.match(/^Module:\s*(.+)$/m);
-  const statusMatch = emailText.match(/^Status:\s*(.+)$/m);
-
-  const userId = userIdMatch?.[1]?.trim();
-  const learnerEmail = learnerEmailMatch?.[1]?.trim();
-  const moduleId = moduleIdMatch?.[1]?.trim();
-  const status = statusMatch?.[1]?.trim();
+  const { userId, learnerEmail, moduleId, status } =
+    parseCertificationReviewEmailMetadata(emailText);
 
   logger.info({
     emailId: data.email_id,
@@ -1256,31 +1280,12 @@ export function createWebhooksRouter(): Router {
 
   router.post(
     '/resend-inbound',
-    // Custom middleware to capture raw body while still parsing JSON
-    (req: Request, res: Response, next) => {
-      let rawBody = '';
-      req.setEncoding('utf8');
-
-      req.on('data', (chunk: string) => {
-        rawBody += chunk;
-      });
-
-      req.on('end', () => {
-        (req as Request & { rawBody: string }).rawBody = rawBody;
-        try {
-          req.body = JSON.parse(rawBody);
-          next();
-        } catch {
-          logger.warn({ rawBodyLength: rawBody.length }, 'Invalid JSON in webhook request');
-          res.status(400).json({ error: 'Invalid JSON' });
-        }
-      });
-    },
+    boundedRawJson,
     async (req: Request, res: Response) => {
       const requestStartTime = Date.now();
 
       try {
-        const rawBody = (req as Request & { rawBody: string }).rawBody;
+        const rawBody = (req as RawJsonRequest).rawBody;
 
         logger.info({ bodyLength: rawBody.length }, 'Received webhook request');
 
@@ -1491,27 +1496,10 @@ export function createWebhooksRouter(): Router {
 
   router.post(
     '/resend-tracking',
-    (req: Request, res: Response, next) => {
-      let rawBody = '';
-      req.setEncoding('utf8');
-
-      req.on('data', (chunk: string) => {
-        rawBody += chunk;
-      });
-
-      req.on('end', () => {
-        (req as Request & { rawBody: string }).rawBody = rawBody;
-        try {
-          req.body = JSON.parse(rawBody);
-          next();
-        } catch {
-          res.status(400).json({ error: 'Invalid JSON' });
-        }
-      });
-    },
+    boundedRawJson,
     async (req: Request, res: Response) => {
       try {
-        const rawBody = (req as Request & { rawBody: string }).rawBody;
+        const rawBody = (req as RawJsonRequest).rawBody;
 
         if (!verifyResendWebhook(req, rawBody)) {
           logger.warn('Rejecting tracking webhook: invalid signature');
@@ -1615,32 +1603,13 @@ export function createWebhooksRouter(): Router {
 
   router.post(
     '/zoom',
-    // Custom middleware to capture raw body for signature verification
-    (req: Request, res: Response, next) => {
-      let rawBody = '';
-      req.setEncoding('utf8');
-
-      req.on('data', (chunk: string) => {
-        rawBody += chunk;
-      });
-
-      req.on('end', () => {
-        (req as Request & { rawBody: string }).rawBody = rawBody;
-        try {
-          req.body = JSON.parse(rawBody);
-          next();
-        } catch {
-          logger.warn({ rawBodyLength: rawBody.length }, 'Invalid JSON in Zoom webhook request');
-          res.status(400).json({ error: 'Invalid JSON' });
-        }
-      });
-    },
+    boundedRawJson,
     async (req: Request, res: Response) => {
       const requestStartTime = Date.now();
 
       try {
         const body = req.body;
-        const rawBody = (req as Request & { rawBody: string }).rawBody;
+        const rawBody = (req as RawJsonRequest).rawBody;
 
         // Log incoming request immediately for debugging
         logger.info({
@@ -1650,37 +1619,9 @@ export function createWebhooksRouter(): Router {
           bodyLength: rawBody?.length,
         }, 'Received Zoom webhook request');
 
-        // Handle URL validation challenge from Zoom
-        // https://developers.zoom.us/docs/api/rest/webhook-reference/#validate-your-webhook-endpoint
-        // codeql[js/user-controlled-bypass] - Zoom URL validation challenge requires reading event type from webhook body
-        if (body.event === 'endpoint.url_validation') {
-          const plainToken = body.payload?.plainToken;
-          if (!plainToken) {
-            logger.warn('Zoom URL validation request missing plainToken');
-            return res.status(400).json({ error: 'Missing plainToken' });
-          }
-
-          const webhookSecret = process.env.ZOOM_WEBHOOK_SECRET;
-          if (!webhookSecret) {
-            logger.error('ZOOM_WEBHOOK_SECRET not configured - cannot validate endpoint');
-            notifySystemError({ source: 'zoom-webhook', errorMessage: 'ZOOM_WEBHOOK_SECRET not configured — all Zoom webhooks rejected' });
-            return res.status(500).json({ error: 'Webhook secret not configured' });
-          }
-
-          // Generate encrypted token using HMAC-SHA256
-          const encryptedToken = crypto
-            .createHmac('sha256', webhookSecret)
-            .update(plainToken)
-            .digest('hex');
-
-          logger.info('Responding to Zoom URL validation challenge');
-          return res.status(200).json({
-            plainToken,
-            encryptedToken,
-          });
-        }
-
-        // Verify webhook signature for real events
+        // Authenticate every Zoom request before branching on the event type.
+        // In particular, an unsigned URL-validation challenge must not become
+        // a chosen-message HMAC oracle for forging normal webhook events.
         const signature = req.headers['x-zm-signature'] as string;
         // codeql[js/user-controlled-bypass] - webhook signature verification requires reading headers
         const timestamp = req.headers['x-zm-request-timestamp'] as string;
@@ -1703,6 +1644,25 @@ export function createWebhooksRouter(): Router {
         if (!verifyZoomSignature(rawBody, signature, timestamp)) {
           logger.warn('Zoom webhook signature verification failed');
           return res.status(401).json({ error: 'Invalid signature' });
+        }
+
+        // Handle URL validation challenge from Zoom only after verification.
+        // https://developers.zoom.us/docs/api/rest/webhook-reference/#validate-your-webhook-endpoint
+        if (body.event === 'endpoint.url_validation') {
+          const plainToken = body.payload?.plainToken;
+          if (typeof plainToken !== 'string' || plainToken.length === 0 || plainToken.length > 256) {
+            logger.warn('Zoom URL validation request has invalid plainToken');
+            return res.status(400).json({ error: 'Invalid plainToken' });
+          }
+
+          const webhookSecret = process.env.ZOOM_WEBHOOK_SECRET!;
+          const encryptedToken = crypto
+            .createHmac('sha256', webhookSecret)
+            .update(plainToken)
+            .digest('hex');
+
+          logger.info('Responding to verified Zoom URL validation challenge');
+          return res.status(200).json({ plainToken, encryptedToken });
         }
 
         logger.info({ event: body.event, meetingId: body.payload?.object?.id }, 'Processing Zoom webhook');
