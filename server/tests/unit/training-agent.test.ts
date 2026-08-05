@@ -4506,6 +4506,264 @@ describe('create_media_buy handler', () => {
     )).toBe(true);
   });
 
+  it('reconciles committed vendor metrics per package and defers future-window gaps', async () => {
+    const account = { brand: { domain: 'vendor-audit.example' }, operator: 'vendor-audit.example', sandbox: true };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const metrics = [
+      { vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_units' },
+      { vendor: { domain: 'attentionvendor.example' }, metric_id: 'post_flight_brand_lift' },
+    ];
+
+    await seedVendorMetricProduct(server, account, 'vendor_audit_product', {
+      delivery_type: 'non_guaranteed',
+      channels: ['display'],
+      reporting_capabilities: {
+        available_metrics: ['impressions', 'clicks', 'spend'],
+        measurement_windows: [
+          { window_id: 'live', duration_days: 0, expected_availability_days: 0 },
+          { window_id: 'post_flight', duration_days: 0, expected_availability_days: 14, is_guarantee_basis: true },
+        ],
+        vendor_metrics: metrics,
+      },
+    });
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'vendor-audit.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [
+        {
+          product_id: 'vendor_audit_product',
+          pricing_option_id: 'vendor_audit_product_cpm',
+          budget: 1000,
+          bid_price: 5,
+          committed_metrics: metrics.slice(0, 2).map(metric => ({ scope: 'vendor', ...metric })),
+        },
+        {
+          product_id: 'vendor_audit_product',
+          pricing_option_id: 'vendor_audit_product_cpm',
+          budget: 1000,
+          bid_price: 5,
+          committed_metrics: [{ scope: 'vendor', ...metrics[0] }],
+        },
+      ],
+    });
+
+    const mediaBuyId = created.media_buy_id as string;
+    const createdPackages = created.packages as Array<{ committed_metrics: Array<{ committed_at: string }> }>;
+    expect(mediaBuyId).toBeDefined();
+    expect(createdPackages[0]!.committed_metrics[0]!.committed_at).toBe(created.confirmed_at);
+
+    const { result: ambiguousSimulation } = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: mediaBuyId,
+        vendor_metric_values: [{ ...metrics[0], value: 4.2 }],
+      },
+    });
+    expect(ambiguousSimulation.success).toBe(false);
+    expect(ambiguousSimulation.error).toBe('INVALID_PARAMS');
+
+    const { result: simulated } = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'vendor-audit.example' },
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: mediaBuyId,
+        impressions: 10_000,
+        measurement_window: 'live',
+        vendor_metric_values_by_package: {
+          'pkg-0': [{
+            ...metrics[0],
+            value: 4.2,
+            unit: 'score',
+            measurable_impressions: 9_000,
+          }],
+        },
+        not_yet_measurable_vendor_metrics_by_package: {
+          'pkg-0': [metrics[1]],
+        },
+      },
+    });
+    expect(simulated.success).toBe(true);
+
+    const { result: delivery } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      brand: { domain: 'vendor-audit.example' },
+      media_buy_ids: [mediaBuyId],
+      end_date: '2027-06-30',
+    });
+    const packages = (delivery.media_buy_deliveries as Array<{ by_package: Array<Record<string, unknown>> }>)[0]!.by_package;
+
+    expect(packages[0]!.vendor_metric_values).toEqual([expect.objectContaining({ metric_id: 'attention_units' })]);
+    expect(packages[0]!.missing_metrics).toEqual([]);
+    expect(packages[1]!.vendor_metric_values).toBeUndefined();
+    expect(packages[1]!.missing_metrics).toEqual([{
+      scope: 'vendor',
+      vendor: { domain: 'attentionvendor.example' },
+      metric_id: 'attention_units',
+    }]);
+
+    const { result: readback } = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const readbackPackages = (readback.media_buys as Array<{ packages: Array<Record<string, unknown>> }>)[0]!.packages;
+    expect(readbackPackages[0]!.committed_metrics).toEqual(createdPackages[0]!.committed_metrics);
+  });
+
+  it('falls back to product reporting capabilities when no committed snapshot exists', async () => {
+    const account = { brand: { domain: 'vendor-fallback.example' }, operator: 'vendor-fallback.example', sandbox: true };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const metric = { vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_units' };
+    await seedVendorMetricProduct(server, account, 'vendor_fallback_product', {
+      delivery_type: 'non_guaranteed',
+      channels: ['display'],
+      reporting_capabilities: {
+        available_metrics: ['impressions', 'clicks', 'spend'],
+        vendor_metrics: [metric],
+      },
+    });
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'vendor-fallback.example' },
+      start_time: 'asap',
+      end_time: '2099-07-01T00:00:00Z',
+      packages: [{
+        product_id: 'vendor_fallback_product',
+        pricing_option_id: 'vendor_fallback_product_cpm',
+        budget: 1000,
+        bid_price: 5,
+      }],
+    });
+    const mediaBuyId = created.media_buy_id as string;
+    expect((created.packages as Array<Record<string, unknown>>)[0]!.committed_metrics).toBeUndefined();
+
+    const { result: delivery } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_ids: [mediaBuyId],
+      end_date: '2099-01-01',
+    });
+    const packageDelivery = (delivery.media_buy_deliveries as Array<{ by_package: Array<Record<string, unknown>> }>)[0]!.by_package[0]!;
+    expect(packageDelivery.missing_metrics).toContainEqual({ scope: 'vendor', ...metric });
+  });
+
+  it('keeps missing_metrics honest for mixed standard and vendor commitments', async () => {
+    const account = { brand: { domain: 'mixed-metric-audit.example' }, operator: 'mixed-metric-audit.example', sandbox: true };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const vendorMetric = { vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_units' };
+    await seedVendorMetricProduct(server, account, 'mixed_metric_audit_product', {
+      delivery_type: 'non_guaranteed',
+      channels: ['display'],
+      reporting_capabilities: {
+        available_metrics: ['impressions', 'spend', 'conversion_value'],
+        vendor_metrics: [vendorMetric],
+      },
+    });
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'mixed-metric-audit.example' },
+      start_time: 'asap',
+      end_time: '2099-07-01T00:00:00Z',
+      packages: [{
+        product_id: 'mixed_metric_audit_product',
+        pricing_option_id: 'mixed_metric_audit_product_cpm',
+        budget: 1000,
+        bid_price: 5,
+        committed_metrics: [
+          { scope: 'standard', metric_id: 'conversion_value' },
+          { scope: 'vendor', ...vendorMetric },
+        ],
+      }],
+    });
+    const mediaBuyId = created.media_buy_id as string;
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: mediaBuyId,
+        vendor_metric_values: [{ ...vendorMetric, value: 4.2 }],
+      },
+    });
+
+    const { result: delivery } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_ids: [mediaBuyId],
+      end_date: '2099-01-01',
+    });
+    const packageDelivery = (delivery.media_buy_deliveries as Array<{ by_package: Array<Record<string, unknown>> }>)[0]!.by_package[0]!;
+    expect(packageDelivery.vendor_metric_values).toEqual([{ ...vendorMetric, value: 4.2 }]);
+    expect(packageDelivery.missing_metrics).toEqual([{ scope: 'standard', metric_id: 'conversion_value' }]);
+  });
+
+  it('applies the strict committed_at reporting-period boundary', async () => {
+    const account = { brand: { domain: 'metric-boundary.example' }, operator: 'metric-boundary.example', sandbox: true };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const committedAt = '2026-06-30T23:59:59.999Z';
+    const metric = { vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_units' };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_media_buy',
+      params: {
+        media_buy_id: 'metric_boundary_buy',
+        fixture: {
+          status: 'active',
+          currency: 'USD',
+          start_time: '2026-01-01T00:00:00Z',
+          end_time: '2026-12-31T23:59:59Z',
+          packages: [{
+            package_id: 'metric_boundary_package',
+            budget: 1000,
+            committed_metrics: [{ scope: 'vendor', ...metric, committed_at: committedAt }],
+          }],
+        },
+      },
+    });
+
+    const read = async (end_date: string) => {
+      const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        account,
+        media_buy_ids: ['metric_boundary_buy'],
+        start_date: '2026-01-01',
+        end_date,
+      });
+      return (result.media_buy_deliveries as Array<{ by_package: Array<Record<string, unknown>> }>)[0]!.by_package[0]!;
+    };
+    expect((await read('2026-06-30')).missing_metrics).toEqual([]);
+    expect((await read('2026-07-01')).missing_metrics).toEqual([{ scope: 'vendor', ...metric }]);
+  });
+
+  it('rejects standalone committed metrics outside product reporting capabilities', async () => {
+    const account = { brand: { domain: 'unsupported-commitment.example' }, operator: 'unsupported-commitment.example', sandbox: true };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await seedVendorMetricProduct(server, account, 'unsupported_commitment_product', {
+      delivery_type: 'non_guaranteed',
+      channels: ['display'],
+      reporting_capabilities: { available_metrics: ['impressions', 'spend'], vendor_metrics: [] },
+    });
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'unsupported-commitment.example' },
+      start_time: 'asap',
+      end_time: '2099-07-01T00:00:00Z',
+      packages: [{
+        product_id: 'unsupported_commitment_product',
+        pricing_option_id: 'unsupported_commitment_product_cpm',
+        budget: 1000,
+        bid_price: 5,
+        committed_metrics: [{
+          scope: 'vendor',
+          vendor: { domain: 'attentionvendor.example' },
+          metric_id: 'attention_units',
+        }],
+      }],
+    });
+    expect(result.code).toBe('TERMS_REJECTED');
+    expect(result.field).toBe('packages[0].committed_metrics[0].metric_id');
+  });
+
   it('rejects vendor_metric optimization_goal whose metric is not in supported_metrics', async () => {
     const { productId, pricingOptionId } = findProductWithVendorMetric();
     const account = { brand: { domain: 'phantom-vendor-goal.example' }, operator: 'phantom-vendor-goal.example' };
