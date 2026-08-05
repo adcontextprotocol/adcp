@@ -766,7 +766,27 @@ Accepted place targeting is pinned to the echoed `system_version` for the life o
 
 Place forecast and delivery breakdown rows are intentionally not part of this release: `geo_level: "place"` remains invalid on reporting surfaces. Package-state echo provides configuration auditability, but not delivery-by-place verification. Place-level forecast, delivery, pacing, and reconciliation require a follow-up reporting RFC.
 
-Product-level `forecast` and `pricing_options` returned from `get_products` are not revised to reflect `targeting_overlay.geo_places`. Firm pricing is unconditional on overlay granularity, following the same precedent as `geo_metros` and `geo_postal_areas`. Delivery risk for overlay-narrowed execution sits with the buyer.
+Known place IDs belong in `get_products.targeting_overlay.geo_places`, so every
+returned product, price, and aggregate forecast reflects that effective
+targeting even though a place-level breakdown is unavailable. If IDs will be
+chosen on packages later, the buyer requests `required_overlay_support.geo_places`
+(and independently `geo_places_exclude`) with the required system,
+country/type pairs, and optional catalog versions. Returned Product
+`overlay_support` is binding selectable permission, not a value-specific
+inventory, price, or forecast guarantee. At create, the seller applies this
+deterministic disposition matrix to the actual place overlay:
+
+| Condition | Result |
+|---|---|
+| The dimension, identifier system, country, place type, or combination is outside the selected Product `overlay_support` | `UNSUPPORTED_FEATURE` |
+| The tuple is supported, but an ID is invalid, unknown, or deprecated, or an explicit `system_version` is not supported | `INVALID_REQUEST`, with `error.field` identifying the offending field |
+| The identifiers are valid, but their effective intersection has zero executable inventory | `TARGETING_TOO_NARROW` |
+| The effective target is executable, but outside the configured product's priced or guaranteed envelope | `REQUOTE_REQUIRED`; rediscover with the exact place overlay |
+
+An accepted create confirms that the returned terms apply to the complete
+effective targeting. `PLACE_TARGET_UNAVAILABLE` is reserved for later
+degradation of a previously accepted, persisted place target; it is not a
+create-time substitute for any result above.
 
 ### geo_places_exclude
 

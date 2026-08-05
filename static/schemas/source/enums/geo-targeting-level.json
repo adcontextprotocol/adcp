@@ -1,8 +1,0 @@
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/enums/geo-targeting-level.json",
-  "title": "Geographic Targeting Level",
-  "description": "Geographic levels available for product discovery and execution targeting. Reporting uses the narrower geo-level vocabulary until place reporting is standardized.",
-  "type": "string",
-  "enum": ["country", "region", "metro", "postal_area", "place"]
-}

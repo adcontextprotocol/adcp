@@ -187,6 +187,36 @@ test('schema-valued additionalProperties resolves typed dynamic map keys', () =>
   );
 });
 
+test('pathResolves follows local definitions through typed dynamic maps', () => {
+  const schema = {
+    definitions: {
+      systemSupport: {
+        type: 'object',
+        properties: {
+          countries: {
+            type: 'object',
+            additionalProperties: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    properties: {
+      systems: {
+        type: 'object',
+        additionalProperties: { $ref: '#/definitions/systemSupport' },
+      },
+    },
+  };
+
+  assert.equal(
+    pathResolves(schema, parsePath('systems.geonames.countries.NL.0')),
+    true,
+  );
+});
+
 test('parsePath accepts both bracket and dotted forms', () => {
   assert.deepEqual(parsePath('rights[0].rights_id'), ['rights', '0', 'rights_id']);
   assert.deepEqual(parsePath('rights.0.rights_id'), ['rights', '0', 'rights_id']);

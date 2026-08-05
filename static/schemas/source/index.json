@@ -1055,10 +1055,6 @@
           "$ref": "/schemas/enums/geo-level.json",
           "description": "Geographic targeting granularity levels (country, region, metro, postal_area)"
         },
-        "geo-targeting-level": {
-          "$ref": "/schemas/enums/geo-targeting-level.json",
-          "description": "Geographic levels available for discovery and targeting, including place"
-        },
         "metro-system": {
           "$ref": "/schemas/enums/metro-system.json",
           "description": "Metro area classification systems for geographic targeting (nielsen_dma, uk_itl1, uk_itl2, eurostat_nuts2)"

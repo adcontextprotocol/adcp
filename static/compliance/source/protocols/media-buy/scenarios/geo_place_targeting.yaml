@@ -2,7 +2,7 @@ id: media_buy_seller/geo_place_targeting
 version: "1.0.0"
 title: "Seller resolves, validates, and echoes identifier-based place targeting"
 category: media_buy_seller
-summary: "Verifies version-aware place discovery, create/update persistence, package-state echo, and deterministic semantic rejection cases."
+summary: "Verifies known-now place discovery, declared-later place permission, create/update persistence, package-state echo, and deterministic semantic rejection cases."
 track: media_buy
 
 requires_capability:
@@ -28,12 +28,17 @@ narrative: |
   stale identifier.
 
   This scenario applies only to sellers declaring GeoNames city support in the
-  Netherlands. It captures the seller's current catalog version, requires that
-  exact version during product discovery, creates a buy targeting the active
-  GeoNames Amsterdam city ID, reads the buy back to verify the complete applied
-  tuple, adds The Hague as an exclusion through update_media_buy, and verifies
-  both persisted lists. A final negative probe sends a well-formed but unknown
-  GeoNames ID and requires rejection rather than silent dropping.
+  Netherlands. It captures the seller's current catalog version, supplies the
+  active Amsterdam ID during product discovery so the configured product and
+  forecast are scoped to it, and explicitly requests permission to select
+  GeoNames exclusions later. It creates that configured product without
+  repeating Amsterdam, reads the buy back to verify the complete applied tuple,
+  adds The Hague as an exclusion through update_media_buy, and verifies both
+  persisted lists. A final negative probe sends a well-formed but unknown
+  GeoNames ID and requires rejection rather than silent dropping. Create-time
+  probes cover every disposition in the place-overlay matrix: unsupported
+  capability, invalid version or identifier, zero inventory, and executable
+  targeting that requires rediscovery for new terms.
 
   The current compliance harness verifies the resolver declaration and schema
   contract but does not make an arbitrary HTTP call to the advertised URL.
@@ -60,7 +65,9 @@ prerequisites:
     through get_adcp_capabilities. The product and auction pricing fixtures are
     seeded through comply_test_controller. GeoNames IDs 2759794 (Amsterdam) and
     2747373 (The Hague) are external catalog identifiers, not seller-local
-    fixture IDs.
+    fixture IDs. The product fixture's namespaced compliance extension makes
+    the target-specific forecast, price, and create dispositions deterministic;
+    it is sandbox controller behavior, not a production Product contract.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
@@ -71,6 +78,53 @@ fixtures:
       channels: ["display"]
       format_ids:
         - id: "display_300x250"
+      overlay_support:
+        geo_places:
+          systems:
+            geonames:
+              countries:
+                NL: ["city"]
+              current_version: "2026-05"
+              system_versions: ["2026-05", "2025-11"]
+          max_values_per_package: 25
+        geo_places_exclude:
+          systems:
+            geonames:
+              countries:
+                NL: ["city"]
+              current_version: "2026-05"
+              system_versions: ["2026-05", "2025-11"]
+          max_values_per_package: 25
+      forecast:
+        forecast_range_unit: "availability"
+        method: "modeled"
+        currency: "EUR"
+        points:
+          - metrics:
+              impressions: { mid: 1000000 }
+      ext:
+        adcp_compliance:
+          geo_place_cases:
+            - country: "NL"
+              system: "geonames"
+              system_version: "2026-05"
+              place_type: "city"
+              value: "2759794"
+              outcome: "accepted"
+              forecast_impressions_mid: 240000
+              floor_price: 3.75
+            - country: "NL"
+              system: "geonames"
+              system_version: "2026-05"
+              place_type: "city"
+              value: "2747891"
+              outcome: "TARGETING_TOO_NARROW"
+            - country: "NL"
+              system: "geonames"
+              system_version: "2026-05"
+              place_type: "city"
+              value: "2745912"
+              outcome: "REQUOTE_REQUIRED"
   pricing_options:
     - product_id: "geo_place_display_nl"
       pricing_option_id: "geo_place_auction_cpm"
@@ -119,26 +173,35 @@ phases:
             description: "current_version is included in supported_versions"
 
       - id: get_place_targetable_product
-        title: "Filter products by exact place capability"
+        title: "Discover known Amsterdam targeting and later exclusion permission"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: true
         expected: |
-          Return the seeded product because the seller can enforce the exact
-          geonames/NL/city/current-version capability.
+          Return a configured product whose price and aggregate forecast are
+          scoped to Amsterdam. Its overlay_support grants later GeoNames
+          NL/city exclusions at the captured catalog version.
         sample_request:
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
             is_fixed_price: false
-            required_geo_targeting:
-              - level: "place"
-                country: "NL"
+          targeting_overlay:
+            geo_places:
+              - country: "NL"
                 system: "geonames"
                 system_version: "$context.place_system_version"
                 place_type: "city"
+                values: ["2759794"]
+          required_overlay_support:
+            geo_places_exclude:
+              systems:
+                geonames:
+                  countries:
+                    NL: ["city"]
+                  system_versions: ["$context.place_system_version"]
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -157,6 +220,93 @@ phases:
           - check: field_present
             path: "products[0].product_id"
             description: "At least one matching product is returned"
+          - check: field_value
+            path: "products[0].is_custom"
+            value: true
+            description: "Exact Amsterdam targeting produces a request-scoped configured product"
+          - check: field_present
+            path: "products[0].expires_at"
+            description: "The target-specific forecast and price are time-bound"
+          - check: field_present
+            path: "products[0].forecast"
+            description: "Aggregate forecast is scoped to the known Amsterdam target"
+          - check: field_value
+            path: "products[0].forecast.points[0].metrics.impressions.mid"
+            value: 240000
+            description: "Amsterdam discovery returns the deterministic target-scoped forecast, not the one-million-impression base forecast"
+          - check: field_value
+            path: "products[0].pricing_options[0].floor_price"
+            value: 3.75
+            description: "Amsterdam discovery returns the deterministic target-scoped price, not the EUR 3.00 base floor"
+          - check: field_contains
+            path: "products[0].overlay_support.geo_places_exclude.systems.geonames.countries.NL[*]"
+            value: "city"
+            description: "Product grants the requested collision-safe NL/city exclusion tuple"
+          - check: field_contains
+            path: "products[0].overlay_support.geo_places_exclude.systems.geonames.system_versions[*]"
+            value: "$context.place_system_version"
+            description: "Product grants the exact requested exclusion catalog version"
+
+      - id: get_place_deferred_product
+        title: "Declare that place values will be supplied later"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        expected: |
+          Return a product that binds selectable GeoNames NL/city inclusion and
+          exclusion support without claiming availability, price, or forecast
+          for any place value that the buyer has not supplied yet.
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            is_fixed_price: false
+          required_overlay_support:
+            geo_places:
+              systems:
+                geonames:
+                  countries:
+                    NL: ["city"]
+                  system_versions: ["$context.place_system_version"]
+            geo_places_exclude:
+              systems:
+                geonames:
+                  countries:
+                    NL: ["city"]
+                  system_versions: ["$context.place_system_version"]
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "geo_place_targeting--get_place_deferred_product"
+        context_outputs:
+          - key: "deferred_product_id"
+            path: "products[0].product_id"
+          - key: "deferred_pricing_option_id"
+            path: "products[0].pricing_options[0].pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_contains
+            path: "products[0].overlay_support.geo_places.systems.geonames.countries.NL[*]"
+            value: "city"
+            description: "Product grants the requested later NL/city inclusion tuple"
+          - check: field_contains
+            path: "products[0].overlay_support.geo_places.systems.geonames.system_versions[*]"
+            value: "$context.place_system_version"
+            description: "Product grants the exact requested inclusion catalog version"
+          - check: field_contains
+            path: "products[0].overlay_support.geo_places_exclude.systems.geonames.countries.NL[*]"
+            value: "city"
+            description: "Product independently grants the requested later exclusion tuple"
+          - check: field_contains
+            path: "products[0].overlay_support.geo_places_exclude.systems.geonames.system_versions[*]"
+            value: "$context.place_system_version"
+            description: "Product independently grants the exact exclusion catalog version"
 
   - id: create_and_echo_place
     title: "Create and read back applied place targeting"
@@ -169,8 +319,9 @@ phases:
         doc_ref: "/media-buy/task-reference/create_media_buy"
         stateful: true
         expected: |
-          Accept the active GeoNames city identifier and persist the exact
-          country/system/version/type/value tuple.
+          Selecting the configured product accepts and persists the Amsterdam
+          targeting already supplied during discovery; the buyer does not need
+          to repeat it on the package.
         sample_request:
           brand:
             domain: "acmeoutdoor.example"
@@ -186,14 +337,6 @@ phases:
               pricing_option_id: "$context.pricing_option_id"
               bid_price: 4.25
               budget: 12000
-              targeting_overlay:
-                geo_places:
-                  - country: "NL"
-                    system: "geonames"
-                    place_type: "city"
-                    values: ["2759794"]
-                    value_labels:
-                      "2759794": "Amsterdam, North Holland, Netherlands"
           idempotency_key: "$generate:uuid_v4#geo_place_targeting_create"
           context:
             correlation_id: "geo_place_targeting--create_place_targeted_buy"
@@ -349,6 +492,87 @@ phases:
             value: "$context.place_system_version"
             description: "Exclusion applied version is echoed"
 
+  - id: deferred_place_inclusion
+    title: "Supply a permitted place inclusion at create time"
+    depends_on: [discover_capability_and_product]
+    steps:
+      - id: create_deferred_inclusion_buy
+        title: "Create a buy with the later-selected Amsterdam target"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Accept a valid Amsterdam inclusion within the Product's declared
+          GeoNames/NL/city/version support. Success confirms that the selected
+          product terms cover the complete effective targeting.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.deferred_product_id"
+              pricing_option_id: "$context.deferred_pricing_option_id"
+              bid_price: 4.25
+              budget: 5000
+              targeting_overlay:
+                geo_places:
+                  - country: "NL"
+                    system: "geonames"
+                    system_version: "$context.place_system_version"
+                    place_type: "city"
+                    values: ["2759794"]
+          idempotency_key: "$generate:uuid_v4#geo_place_targeting_deferred_inclusion"
+          context:
+            correlation_id: "geo_place_targeting--create_deferred_inclusion_buy"
+        context_outputs:
+          - key: "deferred_inclusion_media_buy_id"
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller accepts the permitted later-selected place inclusion"
+
+      - id: get_deferred_inclusion_buy
+        title: "Verify the later-selected inclusion persisted"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        expected: |
+          Echo Amsterdam with the exact applied catalog version, proving the
+          accepted create compiled and persisted the deferred value.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids: ["$context.deferred_inclusion_media_buy_id"]
+          context:
+            correlation_id: "geo_place_targeting--get_deferred_inclusion_buy"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_contains
+            path: "media_buys[0].packages[0].targeting_overlay.geo_places[0].values[*]"
+            value: "2759794"
+            description: "Deferred Amsterdam inclusion persisted"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.geo_places[0].system_version"
+            value: "$context.place_system_version"
+            description: "Seller echoes the exact selected catalog version"
+
   - id: exclusion_only_place_targeting
     title: "Apply a place exclusion without a place inclusion"
     depends_on: [discover_capability_and_product]
@@ -375,8 +599,8 @@ phases:
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"
           packages:
-            - product_id: "$context.product_id"
-              pricing_option_id: "$context.pricing_option_id"
+            - product_id: "$context.deferred_product_id"
+              pricing_option_id: "$context.deferred_pricing_option_id"
               bid_price: 4.25
               budget: 5000
               targeting_overlay:
@@ -456,8 +680,8 @@ phases:
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"
           packages:
-            - product_id: "$context.product_id"
-              pricing_option_id: "$context.pricing_option_id"
+            - product_id: "$context.deferred_product_id"
+              pricing_option_id: "$context.deferred_pricing_option_id"
               bid_price: 4.25
               budget: 5000
               targeting_overlay:
@@ -474,11 +698,206 @@ phases:
           - check: response_schema
             description: "Error response matches create-media-buy-response.json"
           - check: error_code
-            expected: "INVALID_REQUEST"
+            value: "INVALID_REQUEST"
             description: "Unknown place identifier is a correctable request error"
-          - check: field_present
+          - check: field_value
             path: "errors[0].field"
-            description: "Error points to the offending place target"
+            value: "packages[0].targeting_overlay.geo_places[0].values[0]"
+            description: "Error points to the exact unknown identifier"
+
+      - id: create_with_unsupported_place_tuple
+        title: "Submit a country outside Product overlay support"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject with UNSUPPORTED_FEATURE because the Product declares
+          geonames/NL/city, not geonames/DE/city. This is capability failure,
+          not an invalid identifier within a supported tuple.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.deferred_product_id"
+              pricing_option_id: "$context.deferred_pricing_option_id"
+              bid_price: 4.25
+              budget: 5000
+              targeting_overlay:
+                geo_places:
+                  - country: "DE"
+                    system: "geonames"
+                    place_type: "city"
+                    values: ["2950159"]
+          idempotency_key: "$generate:uuid_v4#geo_place_targeting_unsupported_tuple"
+          context:
+            correlation_id: "geo_place_targeting--create_with_unsupported_place_tuple"
+        validations:
+          - check: response_schema
+            description: "Error response matches create-media-buy-response.json"
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "A place tuple outside Product overlay support is unsupported"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.geo_places[0].country"
+            description: "Error identifies the unsupported tuple field"
+
+      - id: create_with_unsupported_place_version
+        title: "Submit an unsupported version within a supported place tuple"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject with INVALID_REQUEST because the NL/city tuple is supported but
+          the explicitly requested catalog version is not in system_versions.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.deferred_product_id"
+              pricing_option_id: "$context.deferred_pricing_option_id"
+              bid_price: 4.25
+              budget: 5000
+              targeting_overlay:
+                geo_places:
+                  - country: "NL"
+                    system: "geonames"
+                    system_version: "1900-01"
+                    place_type: "city"
+                    values: ["2759794"]
+          idempotency_key: "$generate:uuid_v4#geo_place_targeting_unsupported_version"
+          context:
+            correlation_id: "geo_place_targeting--create_with_unsupported_place_version"
+        validations:
+          - check: response_schema
+            description: "Error response matches create-media-buy-response.json"
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "An unsupported explicit version on a supported tuple is invalid"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.geo_places[0].system_version"
+            description: "Error identifies the unsupported version field"
+
+      - id: create_with_zero_inventory_place
+        title: "Submit a valid place with zero executable inventory"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject valid Rotterdam identifier 2747891 with
+          TARGETING_TOO_NARROW because the deterministic fixture has no
+          executable inventory for its effective intersection.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.deferred_product_id"
+              pricing_option_id: "$context.deferred_pricing_option_id"
+              bid_price: 4.25
+              budget: 5000
+              targeting_overlay:
+                geo_places:
+                  - country: "NL"
+                    system: "geonames"
+                    system_version: "$context.place_system_version"
+                    place_type: "city"
+                    values: ["2747891"]
+          idempotency_key: "$generate:uuid_v4#geo_place_targeting_zero_inventory"
+          context:
+            correlation_id: "geo_place_targeting--create_with_zero_inventory_place"
+        validations:
+          - check: response_schema
+            description: "Error response matches create-media-buy-response.json"
+          - check: error_code
+            value: "TARGETING_TOO_NARROW"
+            description: "A valid target with zero executable inventory is too narrow"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.geo_places"
+            description: "Error identifies the place overlay that eliminated inventory"
+
+      - id: create_with_place_requiring_requote
+        title: "Submit an executable place outside the priced envelope"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject valid Utrecht identifier 2745912 with REQUOTE_REQUIRED. The
+          target is executable, but the deterministic fixture requires the
+          buyer to rediscover using this exact overlay for applicable terms.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.deferred_product_id"
+              pricing_option_id: "$context.deferred_pricing_option_id"
+              bid_price: 4.25
+              budget: 5000
+              targeting_overlay:
+                geo_places:
+                  - country: "NL"
+                    system: "geonames"
+                    system_version: "$context.place_system_version"
+                    place_type: "city"
+                    values: ["2745912"]
+          idempotency_key: "$generate:uuid_v4#geo_place_targeting_requote"
+          context:
+            correlation_id: "geo_place_targeting--create_with_place_requiring_requote"
+        validations:
+          - check: response_schema
+            description: "Error response matches create-media-buy-response.json"
+          - check: error_code
+            value: "REQUOTE_REQUIRED"
+            description: "Executable targeting outside selected terms requires rediscovery"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.geo_places"
+            description: "Error identifies the out-of-envelope place overlay"
 
       - id: create_with_mismatched_value_label
         title: "Submit a diagnostic label for a value not being targeted"
@@ -503,8 +922,8 @@ phases:
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"
           packages:
-            - product_id: "$context.product_id"
-              pricing_option_id: "$context.pricing_option_id"
+            - product_id: "$context.deferred_product_id"
+              pricing_option_id: "$context.deferred_pricing_option_id"
               bid_price: 4.25
               budget: 5000
               targeting_overlay:
@@ -523,7 +942,7 @@ phases:
           - check: response_schema
             description: "Error response matches create-media-buy-response.json"
           - check: error_code
-            expected: "INVALID_REQUEST"
+            value: "INVALID_REQUEST"
             description: "Mismatched diagnostic label is rejected"
 
       - id: create_with_include_exclude_overlap
@@ -549,8 +968,8 @@ phases:
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"
           packages:
-            - product_id: "$context.product_id"
-              pricing_option_id: "$context.pricing_option_id"
+            - product_id: "$context.deferred_product_id"
+              pricing_option_id: "$context.deferred_pricing_option_id"
               bid_price: 4.25
               budget: 5000
               targeting_overlay:
@@ -573,7 +992,7 @@ phases:
           - check: response_schema
             description: "Error response matches create-media-buy-response.json"
           - check: error_code
-            expected: "INVALID_REQUEST"
+            value: "INVALID_REQUEST"
             description: "Same-value include/exclude overlap is rejected"
 
   - id: reject_cross_version_place_overlap
@@ -611,8 +1030,8 @@ phases:
           start_time: "asap"
           end_time: "2099-09-30T23:59:59Z"
           packages:
-            - product_id: "$context.product_id"
-              pricing_option_id: "$context.pricing_option_id"
+            - product_id: "$context.deferred_product_id"
+              pricing_option_id: "$context.deferred_pricing_option_id"
               bid_price: 4.25
               budget: 5000
               targeting_overlay:
@@ -635,80 +1054,5 @@ phases:
           - check: response_schema
             description: "Error response matches create-media-buy-response.json"
           - check: error_code
-            expected: "INVALID_REQUEST"
+            value: "INVALID_REQUEST"
             description: "Cross-version same-value include/exclude overlap is rejected"
-
-  - id: brief_mode_place_filter_coverage
-    title: "Verify filters.places intersection semantics in brief mode"
-    depends_on: [discover_capability_and_product]
-    steps:
-      - id: get_products_brief_covered_place
-        title: "Brief-mode filter with a covered place returns at least one product"
-        task: get_products
-        schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
-        doc_ref: "/media-buy/task-reference/get_products"
-        stateful: false
-        expected: |
-          Return at least one product because the seller's coverage intersects
-          Amsterdam (GeoNames 2759794). Verifies ANY/intersection semantics:
-          a single matched value is sufficient for a product to appear.
-        sample_request:
-          buying_mode: "brief"
-          brief: "Display campaign reaching Amsterdam, Netherlands"
-          filters:
-            channels: ["display"]
-            places:
-              - country: "NL"
-                system: "geonames"
-                place_type: "city"
-                values: ["2759794"]
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            sandbox: true
-          context:
-            correlation_id: "geo_place_targeting--get_products_brief_covered_place"
-        validations:
-          - check: response_schema
-            description: "Response matches get-products-response.json"
-          - check: field_present
-            path: "products[0].product_id"
-            description: "At least one product covering the requested NL/geonames/city place is returned"
-
-      - id: get_products_brief_uncovered_place
-        title: "Brief-mode filter for a place outside seller coverage returns no products and no error"
-        task: get_products
-        schema_ref: "media-buy/get-products-request.json"
-        response_schema_ref: "media-buy/get-products-response.json"
-        doc_ref: "/media-buy/task-reference/get_products"
-        stateful: false
-        expected: |
-          Return an empty products list — not an error. The seller has no products
-          declared for Berlin, Germany (GeoNames 2950158), so intersection yields
-          zero matches. Verifies filter-not-fail: unmatched places in filters.places
-          produce empty results, not INVALID_REQUEST.
-        sample_request:
-          buying_mode: "brief"
-          brief: "Display campaign reaching Berlin, Germany"
-          filters:
-            channels: ["display"]
-            places:
-              - country: "DE"
-                system: "geonames"
-                place_type: "city"
-                values: ["2950158"]
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            sandbox: true
-          context:
-            correlation_id: "geo_place_targeting--get_products_brief_uncovered_place"
-        validations:
-          - check: response_schema
-            description: "Response matches get-products-response.json"
-          - check: field_absent
-            path: "products[0].product_id"
-            description: "No products match a place outside the seller's declared coverage"

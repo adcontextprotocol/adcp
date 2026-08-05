@@ -1517,7 +1517,6 @@ async function runTests() {
     addFormats(testAjv);
 
     const validateTargeting = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/targeting.json')));
-    const validateProductFilters = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/product-filters.json')));
     const validateCapabilities = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'protocol/get-adcp-capabilities-response.json')));
     const validateForecastGeo = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/forecast-dimension-geo.json')));
     const validateResolutionRequest = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/get-geo-place-resolution-request.json')));
@@ -1580,40 +1579,9 @@ async function runTests() {
     if (result !== true) return result;
 
     result = assertInvalid(
-      validateProductFilters,
-      { required_geo_targeting: [{ level: 'metro', system: 'nielsen_dma', system_version: '2026-05' }] },
-      'system_version on a non-place capability filter'
-    );
-    if (result !== true) return result;
-
-    result = assertInvalid(
       validateTargeting,
       { geo_places: [{ country: 'NL', system: 'geonames', values: ['2759794'] }] },
       'place target without place_type'
-    );
-    if (result !== true) return result;
-
-    result = assertValid(
-      validateProductFilters,
-      {
-        places: [{ country: 'NL', system: 'geonames', system_version: '2026-05', place_type: 'city', values: ['2759794'] }],
-        required_geo_targeting: [{ level: 'place', country: 'NL', system: 'geonames', system_version: '2026-05', place_type: 'city' }]
-      },
-      'product discovery with place coverage and capability filters'
-    );
-    if (result !== true) return result;
-
-    result = assertInvalid(
-      validateProductFilters,
-      { required_geo_targeting: [{ level: 'place', country: 'NL', system: 'geonames' }] },
-      'place capability filter without place_type'
-    );
-    if (result !== true) return result;
-
-    result = assertInvalid(
-      validateProductFilters,
-      { required_geo_targeting: [{ level: 'metro', system: 'nielsen_dma', place_type: 'city' }] },
-      'place_type on a non-place capability filter'
     );
     if (result !== true) return result;
 

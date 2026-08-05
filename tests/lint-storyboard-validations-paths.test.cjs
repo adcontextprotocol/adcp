@@ -130,6 +130,36 @@ test('field_contains accepts wildcard paths that resolve through array items', (
   assert.deepEqual(violations, []);
 });
 
+test('pathResolves follows local definitions through typed dynamic maps', () => {
+  const schema = {
+    definitions: {
+      systemSupport: {
+        type: 'object',
+        properties: {
+          countries: {
+            type: 'object',
+            additionalProperties: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    properties: {
+      systems: {
+        type: 'object',
+        additionalProperties: { $ref: '#/definitions/systemSupport' },
+      },
+    },
+  };
+
+  assert.equal(
+    pathResolves(schema, parsePath('systems.geonames.countries.NL[*]')),
+    true,
+  );
+});
+
 test('dependency_impairment verify_impaired matches impairment entries without index coupling', () => {
   const filePath = path.join(
     REPO_ROOT,

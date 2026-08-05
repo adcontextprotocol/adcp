@@ -122,20 +122,8 @@
             "description": "Metro code within the system (e.g., '501' for NYC DMA)"
           }
         },
-        "required": [
-          "system",
-          "code"
-        ],
+        "required": ["system", "code"],
         "additionalProperties": false
-      },
-      "minItems": 1
-    },
-    "places": {
-      "type": "array",
-      "description": "DEPRECATED. Use get_products.targeting_overlay.geo_places for known values or required_overlay_support.geo_places when values will be supplied on packages later.",
-      "deprecated": true,
-      "items": {
-        "$ref": "/schemas/core/geo-place-area.json"
       },
       "minItems": 1
     },
@@ -221,9 +209,7 @@
                 "description": "When true, require this provider to support identity match."
               }
             },
-            "required": [
-              "agent_url"
-            ],
+            "required": ["agent_url"],
             "additionalProperties": true
           },
           "minItems": 1
@@ -245,155 +231,73 @@
     },
     "required_geo_targeting": {
       "type": "array",
-      "description": "DEPRECATED. Use get_products.required_overlay_support, which is product-scoped and applies consistently to geographic and non-geographic targeting dimensions. Legacy place entries require country, system, and place_type and may require an exact system_version.",
+      "description": "DEPRECATED. Use get_products.required_overlay_support, which is product-scoped and applies consistently to geographic and non-geographic targeting dimensions.",
       "deprecated": true,
       "items": {
         "type": "object",
         "properties": {
           "level": {
-            "$ref": "/schemas/enums/geo-targeting-level.json"
+            "$ref": "/schemas/enums/geo-level.json",
+            "description": "Geographic targeting level (country, region, metro, postal_area)"
           },
           "country": {
             "type": "string",
             "pattern": "^[A-Z]{2}$",
-            "description": "ISO 3166-1 alpha-2 country code. Required for native postal_area system filters and place filters; not applicable to country, region, or metro filters."
+            "description": "ISO 3166-1 alpha-2 country code. Required for native postal_area system filters; not applicable to country, region, or metro filters."
           },
           "system": {
             "type": "string",
-            "description": "Optional classification system within the level. Use for a specific metro system (e.g., 'nielsen_dma'), native postal_area system (e.g., 'zip' with country 'US'), deprecated legacy postal alias (e.g., 'us_zip'), or place identifier namespace (e.g., 'geonames'). Not applicable for country/region which use ISO standards."
-          },
-          "place_type": {
-            "$ref": "/schemas/core/geo-place-type.json"
-          },
-          "system_version": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Exact place catalog version required for level=place. Not applicable to other levels."
+            "description": "Optional classification system within the level. Use for a specific metro system (e.g., 'nielsen_dma'), native postal_area system (e.g., 'zip' with country 'US'), or deprecated legacy postal alias (e.g., 'us_zip'). Not applicable for country/region which use ISO standards."
           }
         },
-        "required": [
-          "level"
-        ],
+        "required": ["level"],
         "allOf": [
           {
             "if": {
-              "properties": {
-                "level": {
-                  "enum": [
-                    "country",
-                    "region"
-                  ]
-                }
-              },
-              "required": [
-                "level"
-              ]
+              "properties": { "level": { "enum": ["country", "region"] } },
+              "required": ["level"]
             },
             "then": {
               "not": {
                 "anyOf": [
-                  {
-                    "required": [
-                      "country"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "system"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "place_type"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "system_version"
-                    ]
-                  }
+                  { "required": ["country"] },
+                  { "required": ["system"] }
                 ]
               }
             }
           },
           {
             "if": {
-              "properties": {
-                "level": {
-                  "const": "metro"
-                }
-              },
-              "required": [
-                "level"
-              ]
+              "properties": { "level": { "const": "metro" } },
+              "required": ["level"]
             },
             "then": {
               "anyOf": [
                 {
-                  "not": {
-                    "required": [
-                      "system"
-                    ]
-                  }
+                  "not": { "required": ["system"] }
                 },
                 {
                   "properties": {
-                    "system": {
-                      "$ref": "/schemas/enums/metro-system.json"
-                    }
+                    "system": { "$ref": "/schemas/enums/metro-system.json" }
                   },
-                  "required": [
-                    "system"
-                  ]
+                  "required": ["system"]
                 }
               ],
-              "not": {
-                "anyOf": [
-                  {
-                    "required": [
-                      "country"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "place_type"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "system_version"
-                    ]
-                  }
-                ]
-              }
+              "not": { "required": ["country"] }
             }
           },
           {
             "if": {
-              "properties": {
-                "level": {
-                  "const": "postal_area"
-                }
-              },
-              "required": [
-                "level"
-              ]
+              "properties": { "level": { "const": "postal_area" } },
+              "required": ["level"]
             },
             "then": {
               "anyOf": [
                 {
                   "not": {
                     "anyOf": [
-                      {
-                        "required": [
-                          "country"
-                        ]
-                      },
-                      {
-                        "required": [
-                          "system"
-                        ]
-                      }
+                      { "required": ["country"] },
+                      { "required": ["system"] }
                     ]
                   }
                 },
@@ -406,67 +310,9 @@
                       "$ref": "/schemas/enums/legacy-postal-system.json"
                     }
                   },
-                  "required": [
-                    "system"
-                  ],
-                  "not": {
-                    "required": [
-                      "country"
-                    ]
-                  }
+                  "required": ["system"],
+                  "not": { "required": ["country"] }
                 }
-              ]
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "level": {
-                  "const": "postal_area"
-                }
-              },
-              "required": [
-                "level"
-              ]
-            },
-            "then": {
-              "not": {
-                "anyOf": [
-                  {
-                    "required": [
-                      "place_type"
-                    ]
-                  },
-                  {
-                    "required": [
-                      "system_version"
-                    ]
-                  }
-                ]
-              }
-            }
-          },
-          {
-            "if": {
-              "properties": {
-                "level": {
-                  "const": "place"
-                }
-              },
-              "required": [
-                "level"
-              ]
-            },
-            "then": {
-              "properties": {
-                "system": {
-                  "$ref": "/schemas/core/geo-place-system.json"
-                }
-              },
-              "required": [
-                "country",
-                "system",
-                "place_type"
               ]
             }
           }
@@ -542,10 +388,7 @@
                 "$ref": "/schemas/enums/travel-time-unit.json"
               }
             },
-            "required": [
-              "value",
-              "unit"
-            ],
+            "required": ["value", "unit"],
             "additionalProperties": false
           },
           "transport_mode": {
@@ -566,10 +409,7 @@
                 "description": "Distance unit"
               }
             },
-            "required": [
-              "value",
-              "unit"
-            ],
+            "required": ["value", "unit"],
             "additionalProperties": false
           },
           "geometry": {
@@ -578,10 +418,7 @@
             "properties": {
               "type": {
                 "type": "string",
-                "enum": [
-                  "Polygon",
-                  "MultiPolygon"
-                ],
+                "enum": ["Polygon", "MultiPolygon"],
                 "description": "GeoJSON geometry type"
               },
               "coordinates": {
@@ -589,73 +426,35 @@
                 "description": "GeoJSON coordinates array"
               }
             },
-            "required": [
-              "type",
-              "coordinates"
-            ],
+            "required": ["type", "coordinates"],
             "additionalProperties": false
           }
         },
         "oneOf": [
           {
-            "required": [
-              "lat",
-              "lng",
-              "travel_time",
-              "transport_mode"
-            ],
+            "required": ["lat", "lng", "travel_time", "transport_mode"],
             "not": {
               "anyOf": [
-                {
-                  "required": [
-                    "radius"
-                  ]
-                },
-                {
-                  "required": [
-                    "geometry"
-                  ]
-                }
+                { "required": ["radius"] },
+                { "required": ["geometry"] }
               ]
             }
           },
           {
-            "required": [
-              "lat",
-              "lng",
-              "radius"
-            ],
+            "required": ["lat", "lng", "radius"],
             "not": {
               "anyOf": [
-                {
-                  "required": [
-                    "travel_time"
-                  ]
-                },
-                {
-                  "required": [
-                    "geometry"
-                  ]
-                }
+                { "required": ["travel_time"] },
+                { "required": ["geometry"] }
               ]
             }
           },
           {
-            "required": [
-              "geometry"
-            ],
+            "required": ["geometry"],
             "not": {
               "anyOf": [
-                {
-                  "required": [
-                    "travel_time"
-                  ]
-                },
-                {
-                  "required": [
-                    "radius"
-                  ]
-                }
+                { "required": ["travel_time"] },
+                { "required": ["radius"] }
               ]
             }
           }
@@ -681,18 +480,9 @@
       "minItems": 1,
       "uniqueItems": true,
       "examples": [
-        [
-          "completed_views"
-        ],
-        [
-          "completed_views",
-          "completion_rate"
-        ],
-        [
-          "impressions",
-          "spend",
-          "engagements"
-        ]
+        ["completed_views"],
+        ["completed_views", "completion_rate"],
+        ["impressions", "spend", "engagements"]
       ]
     },
     "required_vendor_metrics": {
@@ -745,9 +535,7 @@
             "default": "broad"
           }
         },
-        "required": [
-          "keyword"
-        ],
+        "required": ["keyword"],
         "additionalProperties": false
       },
       "minItems": 1

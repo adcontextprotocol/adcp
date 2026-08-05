@@ -265,6 +265,11 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.2",
       "note": "Per-record usage validation rejection for report_usage (#5892). Additive standard vocabulary; held for 3.2."
+    },
+    "TARGETING_TOO_NARROW": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Identifier-based place targeting (#5588). Create-time rejection when a valid effective place overlay yields zero executable inventory; additive vocabulary held for 3.2."
     }
   }
 }

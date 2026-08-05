@@ -301,6 +301,109 @@ test("required overlay requirements exclude seller limit fields", async () => {
   );
 });
 
+test("named-place targeting supports known-now and declared-later discovery", async () => {
+  const [validateRequest, validateRequirements, validateSupport] =
+    await Promise.all([
+      compile("/schemas/media-buy/get-products-request.json"),
+      compile("/schemas/core/targeting-overlay-requirements.json"),
+      compile("/schemas/core/targeting-overlay-support.json"),
+    ]);
+
+  const placeRequirement = {
+    systems: {
+      geonames: {
+        countries: { NL: ["city", "municipality"] },
+        system_versions: ["2026-05"],
+      },
+      "https://places.meridiangeo.example/catalog": {
+        countries: { GB: ["city_region"] },
+      },
+    },
+  };
+
+  assert.equal(
+    validateRequest({
+      buying_mode: "brief",
+      brief: "Local municipal campaign",
+      targeting_overlay: {
+        geo_places: [
+          {
+            country: "NL",
+            system: "geonames",
+            system_version: "2026-05",
+            place_type: "city",
+            values: ["2759794"],
+          },
+        ],
+      },
+      required_overlay_support: {
+        geo_places_exclude: placeRequirement,
+      },
+    }),
+    true,
+    errors(validateRequest)
+  );
+
+  assert.equal(
+    validateRequirements({ geo_places: placeRequirement }),
+    true,
+    errors(validateRequirements)
+  );
+  assert.equal(
+    validateRequirements({ geo_places: true }),
+    false,
+    "future named-place support must bind an identifier system and country/type pairs"
+  );
+  assert.equal(
+    validateRequirements({
+      geo_places: {
+        systems: { geonames: { countries: { Netherlands: ["city"] } } },
+      },
+    }),
+    false,
+    "country keys use collision-safe ISO alpha-2 identifiers"
+  );
+
+  const placeSupport = {
+    systems: {
+      geonames: {
+        countries: { NL: ["city", "municipality"] },
+        current_version: "2026-05",
+        system_versions: ["2026-05", "2025-11"],
+      },
+      "https://places.meridiangeo.example/catalog": {
+        countries: { GB: ["city_region"] },
+        current_version: "2026-Q2",
+        system_versions: ["2026-Q2"],
+      },
+    },
+    max_values_per_package: 50,
+    max_packages: 20,
+  };
+  assert.equal(
+    validateSupport({
+      geo_places: placeSupport,
+      geo_places_exclude: placeSupport,
+    }),
+    true,
+    errors(validateSupport)
+  );
+  assert.equal(
+    validateSupport({
+      geo_places: {
+        systems: {
+          geonames: {
+            countries: { NL: ["city"] },
+            system_versions: ["2026-05"],
+          },
+        },
+      },
+    }),
+    false,
+    "product support discloses the current catalog version used for omitted package versions"
+  );
+});
+
 test("product and package targeting resolutions reject cross-lifecycle fields", async () => {
   const validateProduct = await compile(
     "/schemas/core/product-targeting-resolution.json"

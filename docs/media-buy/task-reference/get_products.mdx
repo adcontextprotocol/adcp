@@ -221,9 +221,12 @@ or packages broken out by DMA or placement.
 
 Request requirements and product support deliberately use different schemas.
 The buyer request contains dimensions and required systems, never seller maxima.
-A product value of `true` satisfies any protocol-valid requirement for that
-dimension. When both sides use objects, every required boolean must be true in
+A product value of `true`, where the dimension permits that form, satisfies any
+protocol-valid requirement for that dimension. When both sides use objects, every required boolean must be true in
 the product and every required array must be a subset of the product array.
+Named places always use the object form: every requested identifier-system and country key must exist,
+and the requested place types and catalog versions must be subsets of the
+corresponding Product support arrays.
 Missing or unknown requirements do not match. Product-only limits such as
 `max_values_per_package` and `max_packages` are returned for planning after the
 match.
@@ -281,14 +284,12 @@ targeting filter and the legacy top-level `property_list`.
 | `countries` | string[] | Deprecated. Use `targeting_overlay.geo_countries`. |
 | `regions` | string[] | Deprecated. Use `targeting_overlay.geo_regions`. |
 | `metros` | object[] | Deprecated. Use `targeting_overlay.geo_metros` for known values or `required_overlay_support.geo_metros` for future selection. |
-| `places` | object[] | Deprecated. Use `targeting_overlay.geo_places` for known catalog-backed place IDs or `required_overlay_support.geo_places` for future selection. |
 | `channels` | string[] | Filter by advertising channels (e.g., `["display", "ctv", "social", "streaming_audio"]`). See [Media Channel Taxonomy](/docs/reference/media-channel-taxonomy) |
 | `video_placement_types` | string[] | Match product metadata when the declared video placement types intersect `instream`, `accompanying_content`, `interstitial`, or `standalone`. Classification only; it does not promise exclusive delivery on a requested type. |
 | `audio_distribution_types` | string[] | Match product metadata when declared audio distribution types intersect the requested values. Classification only; it does not promise exclusive delivery on a requested type. |
 | `sponsored_placement_types` | string[] | Match retail-media product metadata when declared sponsored-placement types intersect the requested values. Classification only. |
 | `social_placement_surfaces` | string[] | Match social-product metadata when declared surfaces intersect `feed`, `stories`, `short_video`, `explore`, or `search`. Classification only; exact public-placement inventory uses `targeting_overlay.placement_selection`. |
 | `postal_areas` | object[] | Deprecated. Use `targeting_overlay.geo_postal_areas` or `required_overlay_support.geo_postal_areas`. |
-| `required_geo_targeting` | object[] | Deprecated. Use `required_overlay_support`. Legacy place entries use `{ level: "place", country, system, place_type, system_version? }`. |
 | `geo_proximity` | object[] | Deprecated. Use `targeting_overlay.geo_proximity`. |
 | `keywords` | object[] | Deprecated. Use `targeting_overlay.keyword_targets`; broad thematic intent remains in `brief`. |
 | `signal_targeting` | SignalTargeting[] | Deprecated. Use `targeting_overlay.signal_targeting_groups` for known selections or `required_overlay_support.signal_targeting_groups` for later selection. |
@@ -318,10 +319,12 @@ version that the product must let the buyer select:
   },
   "required_overlay_support": {
     "geo_places": {
-      "country": "NL",
-      "system": "geonames",
-      "system_version": "2026-05",
-      "place_type": "city"
+      "systems": {
+        "geonames": {
+          "countries": { "NL": ["city"] },
+          "system_versions": ["2026-05"]
+        }
+      }
     }
   }
 }
@@ -329,7 +332,13 @@ version that the product must let the buyer select:
 
 The returned Product `overlay_support.geo_places` is binding permission to
 supply matching place IDs on packages later, subject to disclosed limits. It
-does not guarantee value-specific inventory before the IDs are provided.
+does not guarantee value-specific inventory or preserve an earlier forecast or
+price before the IDs are provided. If the eventual values fall outside the
+configured product's priced or guaranteed envelope, the seller rejects create
+with `REQUOTE_REQUIRED` and the buyer rediscovers with those exact values in
+`targeting_overlay.geo_places`. Inclusion and exclusion permission are
+independent; request `geo_places_exclude` separately when exclusions will be
+chosen later.
 
 ### Placement fields
 
