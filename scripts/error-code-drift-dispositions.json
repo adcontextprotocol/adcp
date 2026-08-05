@@ -26,6 +26,11 @@
       "target_version": "3.1",
       "note": "get_creative_features finalization — governance agent could not retrieve the creative_manifest assets for evaluation. Documented in get_creative_features.mdx error example but absent from the canonical enum; added to close the phantom as the task is promoted from 3.0 proposal to normative in 3.1 (#3456 enum-membership criterion). Wire change — held for 3.1."
     },
+    "CREATIVE_LOCALE_NOT_ACCEPTED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Native creative-localization assignment rejection when a package's effective format locale_policy has no eligible materialized variant. New 3.1 creative surface; wire change — held for 3.1."
+    },
     "FEED_FETCH_FAILED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
