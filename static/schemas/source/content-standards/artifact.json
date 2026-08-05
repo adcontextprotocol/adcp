@@ -19,7 +19,12 @@
     },
     "format_id": {
       "$ref": "/schemas/core/format-id.json",
-      "description": "Always a structured object {agent_url, id} — never a plain string. Optional reference to a format definition. Uses the same format registry as creative formats."
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.2.** Legacy named-format reference. Use `format_kind` for canonical artifact media classification."
+    },
+    "format_kind": {
+      "$ref": "/schemas/core/canonical-format-kind.json",
+      "description": "Optional canonical media/creative kind associated with this artifact."
     },
     "url": {
       "type": "string",

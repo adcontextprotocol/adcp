@@ -81,8 +81,11 @@ fixtures:
     - product_id: "async_signed_io_q2"
       delivery_type: "guaranteed"
       channels: ["video"]
-      format_ids:
-        - id: "video_30s"
+      format_options:
+        - format_option_id: "video_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
   pricing_options:
     - product_id: "async_signed_io_q2"
       pricing_option_id: "cpm_guaranteed"

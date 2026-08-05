@@ -1008,6 +1008,7 @@ async function runTests() {
     '/schemas/media-buy/build-creative-request.json',
     {
       idempotency_key: 'build-creative-webhook-001',
+      target_capability_id: 'outdoor_video_builder',
       message: 'Create a short video ad for a fictional outdoor brand',
       push_notification_config: {
         url: 'https://buyer.example.com/webhooks/adcp',
@@ -2467,6 +2468,9 @@ async function runTests() {
             agent_count: 2,
             property_count: 4,
             collection_count: 1,
+            format_count: 3,
+            placement_count: 6,
+            changed_fields: ['authorized_agents', 'formats', 'placements', 'properties'],
             source: 'catalog_crawl',
             discovery_method: 'direct',
             manager_domain: null
@@ -2485,6 +2489,27 @@ async function runTests() {
       }
     },
     'Registry feed response validates typed property, collection, authorization, and compliance events'
+  );
+  await testSchemaValidation(
+    '/schemas/core/registry-event.json',
+    {
+      event_id: '019539a0-1234-7000-8000-000000000014',
+      event_type: 'publisher.adagents_changed',
+      entity_type: 'publisher',
+      entity_id: 'streamer.example.com',
+      payload: {
+        publisher_domain: 'streamer.example.com',
+        agent_count: 2,
+        property_count: 4,
+        collection_count: 1,
+        format_count: 3,
+        placement_count: 6,
+        changed_fields: ['formats']
+      },
+      actor: 'pipeline:catalog_crawl',
+      created_at: '2026-03-31T10:04:00.000Z'
+    },
+    'Registry publisher change event accepts formats-only section observability'
   );
   await testSchemaRejection(
     '/schemas/core/registry-event.json',

@@ -21,6 +21,8 @@ const LIST_TRANSFORMERS_SCHEMA = {
   transformer_ids: z.array(z.string()).optional(),
   input_format_ids: z.array(FORMAT_ID_SCHEMA).optional(),
   output_format_ids: z.array(FORMAT_ID_SCHEMA).optional(),
+  input_format_kinds: z.array(z.string()).optional(),
+  output_capability_ids: z.array(z.string()).optional(),
   name_search: z.string().optional(),
   brief: z.string().optional(),
   expand_params: z.array(z.string()).optional(),

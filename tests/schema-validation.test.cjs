@@ -1935,6 +1935,238 @@ async function runTests() {
     return true;
   });
 
+  await test('build_creative accepts canonical capability selectors and rejects mixed legacy selectors', async () => {
+    const requestSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/build-creative-request.json'));
+    const testAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(testAjv);
+    const validate = await testAjv.compileAsync(requestSchema);
+
+    const canonical = {
+      idempotency_key: '8c4ec74d-8f7f-4d06-a4f3-bbe463631d9a',
+      target_capability_id: 'streamhaus_vertical_video',
+      message: 'Create a concise vertical video.'
+    };
+    if (!validate(canonical)) {
+      return `canonical selector rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const mixed = {
+      ...canonical,
+      target_format_id: { agent_url: 'https://legacy-creative.example/mcp', id: 'vertical_video' }
+    };
+    if (validate(mixed)) {
+      return 'request mixing target_capability_id and target_format_id must be rejected';
+    }
+
+    const noTarget = {
+      idempotency_key: 'd1c52370-3cd7-4fd2-a637-76620b1d5f87',
+      message: 'This request has no output route.'
+    };
+    if (validate(noTarget)) {
+      return 'non-refinement build without a target selector must be rejected';
+    }
+
+    const refinement = {
+      idempotency_key: 'd4751ca7-5e64-4b74-b421-19e853b8a341',
+      refine_from_build_variant_id: 'variant_parent_1',
+      message: 'Make the headline shorter.'
+    };
+    if (!validate(refinement)) {
+      return `refinement with inherited target rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    if (validate({ ...refinement, target_capability_id: 'streamhaus_vertical_video' })) {
+      return 'refinement must reject a conflicting explicit target selector';
+    }
+    if (validate({ ...refinement, transformer_id: 'different_transformer' })) {
+      return 'refinement must reject a conflicting explicit transformer selector';
+    }
+
+    const legacy = {
+      idempotency_key: '41f9eb33-bd37-4d46-bc76-a6de1e29f3bc',
+      target_format_id: { agent_url: 'https://legacy-creative.example/mcp', id: 'vertical_video' },
+      message: 'Legacy compatibility build.'
+    };
+    if (!validate(legacy)) {
+      return `deprecated selector compatibility rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    return true;
+  });
+
+  await test('preview_creative routes canonical preview capabilities without mixing legacy selectors', async () => {
+    const requestSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'creative/preview-creative-request.json'));
+    const testAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(testAjv);
+    const validate = await testAjv.compileAsync(requestSchema);
+    const manifest = {
+      format_kind: 'image',
+      assets: {
+        image_main: { asset_type: 'image', url: 'https://cdn.acme.example/banner.png', width: 300, height: 250 }
+      }
+    };
+
+    const canonical = {
+      request_type: 'single',
+      creative_manifest: manifest,
+      target_capability_id: 'image_preview'
+    };
+    if (!validate(canonical)) {
+      return `canonical preview selector rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const legacy = {
+      request_type: 'single',
+      creative_manifest: manifest,
+      format_id: { agent_url: 'https://legacy-creative.example/mcp', id: 'display_300x250' }
+    };
+    if (!validate(legacy)) {
+      return `legacy preview route rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    if (validate({ ...canonical, format_id: legacy.format_id })) {
+      return 'preview request mixing target_capability_id and format_id must be rejected';
+    }
+
+    const libraryCreative = {
+      request_type: 'single',
+      creative_id: 'stored_image_creative',
+      target_capability_id: 'image_preview'
+    };
+    if (!validate(libraryCreative)) {
+      return `single library creative preview rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (validate({ ...canonical, creative_id: 'conflicting_library_creative' })) {
+      return 'single preview must select exactly one of creative_manifest or creative_id';
+    }
+
+    const batch = {
+      request_type: 'batch',
+      target_capability_id: 'default_preview',
+      requests: [
+        { creative_manifest: manifest },
+        { creative_id: 'stored_square_creative', target_capability_id: 'square_preview' }
+      ]
+    };
+    if (!validate(batch)) {
+      return `canonical batch preview selectors rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (validate({
+      request_type: 'batch',
+      requests: [{ creative_manifest: manifest, creative_id: 'conflicting_library_creative' }]
+    })) {
+      return 'batch preview items must select exactly one of creative_manifest or creative_id';
+    }
+    if (validate({
+      request_type: 'batch',
+      target_capability_id: 'default_preview',
+      requests: [{ creative_manifest: manifest, format_id: legacy.format_id }]
+    })) {
+      return 'batch preview must not mix a canonical default with a legacy item route';
+    }
+    return true;
+  });
+
+  await test('validate_input accepts agent-local capability targets and echoes them in results', async () => {
+    const testAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(testAjv);
+    const validateRequest = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'creative/validate-input-request.json')));
+    const request = {
+      manifest: { format_kind: 'image', assets: {} },
+      targets: [{ kind: 'capability', id: 'publisher_image_validator' }]
+    };
+    if (!validateRequest(request)) {
+      return `capability validation target rejected: ${validateRequest.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (validateRequest({ ...request, targets: [{ kind: 'capability', id: 'invalid capability id' }] })) {
+      return 'malformed capability validation target must be rejected';
+    }
+
+    const resultAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(resultAjv);
+    const validateResult = await resultAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'creative/validate-input-result.json')));
+    if (!validateResult({ target: { kind: 'capability', id: 'publisher_image_validator' }, result_kind: 'validated_pass' })) {
+      return `capability validation result rejected: ${validateResult.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (validateResult({ target: { kind: 'capability', id: 'invalid capability id' }, result_kind: 'validated_pass' })) {
+      return 'malformed capability validation result target must be rejected';
+    }
+    return true;
+  });
+
+  await test('creative capability catalogs preserve 3.x compatibility while supporting canonical routes', async () => {
+    const schema = loadSchema(path.join(SCHEMA_BASE_DIR, 'protocol/get-adcp-capabilities-response.json'));
+    const testAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(testAjv);
+    const validate = await testAjv.compileAsync(schema);
+    const base = {
+      status: 'completed',
+      adcp: { major_versions: [3], idempotency: { supported: false } },
+      supported_protocols: ['creative']
+    };
+
+    if (!validate({ ...base, creative: { supports_generation: true } })) {
+      return `legacy build flag without supported_formats rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (!validate({ ...base, creative: { has_creative_library: true, supported_formats: [] } })) {
+      return `stateful library without build operations rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (!validate({
+      ...base,
+      creative: {
+        supports_generation: true,
+        supported_formats: [{
+          capability_id: 'image_preview',
+          operations: ['preview'],
+          format: { format_kind: 'image', params: {} }
+        }]
+      }
+    })) {
+      return `legacy build flag with preview-only catalog rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    if (!validate({
+      ...base,
+      creative: { supported_formats: [{ format: { format_kind: 'image', params: {} } }] }
+    })) return `legacy catalog entry without capability metadata rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+
+    const canonical = {
+      ...base,
+      creative: {
+        supports_generation: true,
+        supported_formats: [{
+          capability_id: 'image_builder',
+          operations: ['build'],
+          format: { format_kind: 'image', params: {} }
+        }]
+      }
+    };
+    if (!validate(canonical)) {
+      return `creative operation catalog rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    if (!validate({ ...base, creative: { supports_compliance: true } })) {
+      return `non-operation creative capability unexpectedly requires supported_formats: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    return true;
+  });
+
+  await test('canonical transformer outputs reference creative capability IDs', async () => {
+    const transformerSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/transformer.json'));
+    const testAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(testAjv);
+    const validate = await testAjv.compileAsync(transformerSchema);
+    const transformer = {
+      transformer_id: 'vertical_video_builder',
+      name: 'Vertical video builder',
+      output_capability_ids: ['streamhaus_vertical_video'],
+      params: []
+    };
+    if (!validate(transformer)) {
+      return validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ');
+    }
+    return true;
+  });
+
   // Test 13: Validate schema examples against their schemas
   await test('Schema examples validate against their own schemas', async () => {
     // Skip schemas that require format-aware validation (creative manifests need format context)

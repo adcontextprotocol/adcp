@@ -91,10 +91,7 @@ const createResult = await testAgent.createMediaBuy({
   packages: [{
     product_id: 'prod_d979b543',
     pricing_option_id: 'cpm_usd_fixed',
-    format_ids: [{
-      agent_url: 'https://creative.adcontextprotocol.org',
-      id: 'display_300x250_image'
-    }],
+    format_option_refs: [{ scope: 'product', format_option_id: 'display_300x250_image' }],
     budget: 800,
     bidding: { bid_amount: 5.00 }
   }],
@@ -152,10 +149,8 @@ async def create_and_pause_campaign():
         packages=[{
             'product_id': 'prod_d979b543',
             'pricing_option_id': 'cpm_usd_fixed',
-            'format_ids': [{
-                'agent_url': 'https://creative.adcontextprotocol.org',
-                'id': 'display_300x250_image'
-            }],
+            'format_kind': 'image',
+            'params': {'width': 300, 'height': 250},
             'budget': 800,
             'bidding': {'bid_amount': 5.00}
         }],
@@ -729,7 +724,7 @@ Cancel a single package while the media buy remains active:
 - Package ID
 - Product ID
 - Pricing option ID
-- Format selectors: `format_ids`, `format_option_refs`, `format_kind`, and `params` (creatives must match existing formats)
+- Format selectors: `format_option_refs`, `format_kind`, and `params` (plus deprecated `format_ids` on a legacy package); creatives must match the existing package contract
 
 ⚠️ **Append-only on update:**
 - `committed_metrics` — sellers accept new entries (mid-flight metric additions, each with its own `committed_at` timestamp) but MUST reject attempts to modify or remove existing entries with `validation_error` (code `IMMUTABLE_FIELD`). Runtime enforcement; the append-only semantics aren't expressible in the schema's `not` clause.

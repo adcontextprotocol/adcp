@@ -826,7 +826,8 @@
         },
         "format_id": {
           "type": "string",
-          "description": "Creative format ID to seed. Used by seed_creative_format. The seller MUST expose this format ID in list_creative_formats responses for the duration of the compliance session."
+          "deprecated": true,
+          "description": "**DEPRECATED 3.x compatibility fixture.** Legacy named-format ID to seed for seed_creative_format scenarios. The seller MUST expose it through the deprecated list_creative_formats projection for the duration of the compliance session. Canonical 3.2 scenarios seed creative.supported_formats capabilities instead."
         },
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",

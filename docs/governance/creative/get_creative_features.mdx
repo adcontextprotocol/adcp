@@ -21,12 +21,9 @@ Evaluates a creative manifest and returns feature values from a creative governa
 {
   "$schema": "/schemas/creative/get-creative-features-request.json",
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "html5-display-300x250"
-    },
+    "format_kind": "display_tag",
     "assets": {
-      "creative_html": {
+      "tag_url": {
         "asset_type": "url",
         "url": "https://cdn.agency.com/creative/abc123.html"
       }
@@ -40,7 +37,7 @@ Evaluates a creative manifest and returns feature values from a creative governa
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `creative_manifest` | object | Yes | Creative manifest with `format_id` and `assets` |
+| `creative_manifest` | object | Yes | Canonical creative manifest with `format_kind`, optional `format_option_ref`, and typed `assets` |
 | `feature_ids` | string[] | No | Filter to specific features. If omitted, evaluates all features the agent supports. |
 
 ### Authentication when used as a build evaluator

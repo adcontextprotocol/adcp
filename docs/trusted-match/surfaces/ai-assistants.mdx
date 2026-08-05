@@ -65,11 +65,11 @@ The buyer agent responds with an offer:
       "price": { "amount": 12.50, "currency": "USD", "model": "cpm" },
       "summary": "Apex Classic Low + Runner X — free shipping this month",
       "creative_manifest": {
-        "format_id": { "agent_url": "https://chatplatform.example.com", "id": "sponsored_recommendation" },
+        "format_kind": "native_in_feed",
         "assets": {
-          "headline": { "content": "Trending for spring" },
-          "body": { "content": "Apex Classic Low — clean lines, tons of colorways. Free shipping this month." },
-          "product_catalog": { "catalog_id": "catalog-sneakers", "ids": ["sku-classic-low", "sku-runner-x"] }
+          "title": { "asset_type": "text", "content": "Trending for spring" },
+          "body_text": { "asset_type": "text", "content": "Apex Classic Low — clean lines, tons of colorways. Free shipping this month." },
+          "source_catalog": { "asset_type": "catalog", "catalog_id": "catalog-sneakers" }
         }
       },
       "macros": {

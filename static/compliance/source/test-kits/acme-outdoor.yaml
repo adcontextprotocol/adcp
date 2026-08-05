@@ -15,8 +15,8 @@ name: "Acme Outdoor"
 description: "Fictional outdoor gear brand for storyboard testing"
 sandbox: true
 
-# Set to true when the agent under test declares at least one audio format in
-# list_creative_formats. Enables the audio_build phase in the creative_template
+# Set to true when the agent under test declares at least one audio build entry in
+# creative.supported_formats. Enables the audio_build phase in the creative_template
 # storyboard. Leave false for display-only template agents.
 supports_audio_formats: false
 

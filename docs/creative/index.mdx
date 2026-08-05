@@ -24,10 +24,10 @@ In AdCP, the brief is the `message` field on `build_creative`. Maya doesn't need
 {
   "message": "Holiday campaign for Acme Outdoor. Warm, adventurous tone. Hero product: Trail Pro 3000 hiking boot. Key message: 'Gift the adventure.' Use brand colors and winter imagery.",
   "brand": { "domain": "acmeoutdoor.com" },
-  "target_format_ids": [
-    { "agent_url": "https://streamhaus.example", "id": "ssai_30s" },
-    { "agent_url": "https://outdoornet.example", "id": "display_300x250" },
-    { "agent_url": "https://outdoornet.example", "id": "display_728x90" }
+  "target_capability_ids": [
+    "streamhaus_ssai_30s",
+    "outdoornet_display_300x250",
+    "outdoornet_display_728x90"
   ],
   "quality": "draft",
   "include_preview": true
@@ -53,9 +53,9 @@ The brand identity — colors, logos, typography, tone — lives at `acmeoutdoor
 
 Before generating anything, Maya's platform checks what formats each seller accepts. This happens automatically — but here's what's going on under the hood.
 
-Her platform calls `list_creative_formats` on each connected agent:
+Each seller's `get_products` response supplies its closed canonical `format_options[]` set. Her platform resolves publisher-owned contracts through each publisher's `adagents.json.formats[]`. It then queries the registry for compatible creative agents and confirms their `creative.supported_formats[]` directly with `get_adcp_capabilities`:
 
-<img src="/images/walkthrough/diagram-01-format-discovery.png" alt="Agency platform calls list_creative_formats on three sellers: StreamHaus returns CTV formats, Pinnacle Media returns display sizes, CommHub returns social formats" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+<img src="/images/walkthrough/diagram-01-format-discovery.png" alt="Agency platform compares canonical creative declarations from three sellers: StreamHaus returns CTV options, Pinnacle Media returns display options, and CommHub returns social options" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
 Now Maya's platform knows: StreamHaus needs video files and VAST tags. Pinnacle needs display banners. CommHub needs feed-native content assets. One brief, three different output types.
 
@@ -157,7 +157,7 @@ The platform renders exactly what was served — the generated headline, the com
 
 ## Step 9: Pricing and billing
 
-Creative agents can charge for their services. Pinnacle's account with each creative agent includes a rate card — the agreed pricing. For the ad server, Maya's platform calls `list_creatives` and each creative includes `pricing_options`. For the transformation agent, pricing appears on `list_creative_formats` instead — the format is the product. When `build_creative` runs, the response includes `vendor_cost` so the platform knows what each build cost.
+Creative agents can charge for their services. Pinnacle's account with each creative agent includes a rate card—the agreed pricing. For the ad server, Maya's platform calls `list_creatives` and each creative includes `pricing_options`. For a transformation agent, pricing appears on the selectable transformers returned by `list_transformers`. When `build_creative` runs, the response includes `vendor_cost` so the platform knows what each build cost.
 
 After the campaign, Maya's platform calls `report_usage` on each creative agent with the `creative_id` and `pricing_option_id` from the build response. This closes the billing loop — the creative agent can verify the reported cost matches its rate card.
 

@@ -105,7 +105,7 @@ type WholesaleFeedMeta = {
   cache_scope: 'public' | 'account';
 };
 type ValidateInputTarget = {
-  kind: 'canonical' | 'product' | 'third_party_format';
+  kind: 'canonical' | 'product' | 'capability' | 'third_party_format';
   id: string;
 };
 type ValidateInputArgs = ToolArgs & {
@@ -250,6 +250,7 @@ const BUILD_CREATIVE_FORMAT_ALIASES: Record<string, string> = {
 };
 const SUPPORTED_CANONICAL_BUILD_CAPABILITIES = [
   { capabilityId: 'training_image_generation', formatKind: 'image' },
+  { capabilityId: 'audio_vo', formatKind: 'audio_hosted' },
 ] as const;
 const MAX_VALIDATE_INPUT_TARGETS = 50;
 const VALID_CANONICAL_FORMAT_KINDS = new Set([...Object.keys(CANONICAL_FORMAT_SLOTS), 'custom']);
@@ -426,6 +427,290 @@ function validateDirectCanonicalPackageSelector(pkg: PackageInput, product: Prod
       received_params: requestParams,
     },
     recovery: 'correctable',
+  };
+}
+
+type CanonicalPackageFormat = Record<string, unknown> & {
+  format_kind?: string;
+  format_option_id?: string;
+  publisher_domain?: string;
+  params?: Record<string, unknown>;
+  v1_format_ref?: FormatID[];
+};
+
+function cloneCanonicalFormat(format: CanonicalPackageFormat): CanonicalPackageFormat {
+  return JSON.parse(JSON.stringify(format)) as CanonicalPackageFormat;
+}
+
+function flattenedManifestAssets(manifest: CreativeManifest): Array<Record<string, unknown>> {
+  return Object.values(manifest.assets ?? {}).flatMap(value => {
+    const values = Array.isArray(value) ? value : [value];
+    return values.filter(isRecord);
+  });
+}
+
+export function canonicalParamsSatisfied(manifest: CreativeManifest, params: Record<string, unknown>): boolean {
+  const assets = flattenedManifestAssets(manifest);
+  const width = typeof params.width === 'number' ? params.width : undefined;
+  const height = typeof params.height === 'number' ? params.height : undefined;
+  if (width !== undefined || height !== undefined) {
+    const matchesDimensions = assets.some(asset =>
+      (width === undefined || asset.width === width)
+      && (height === undefined || asset.height === height)
+    );
+    if (!matchesDimensions) return false;
+  }
+
+  const minWidth = typeof params.min_width === 'number' ? params.min_width : undefined;
+  const maxWidth = typeof params.max_width === 'number' ? params.max_width : undefined;
+  const minHeight = typeof params.min_height === 'number' ? params.min_height : undefined;
+  const maxHeight = typeof params.max_height === 'number' ? params.max_height : undefined;
+  if (minWidth !== undefined || maxWidth !== undefined || minHeight !== undefined || maxHeight !== undefined) {
+    const matchesBounds = assets.some(asset => {
+      if (typeof asset.width !== 'number' || typeof asset.height !== 'number') return false;
+      return (minWidth === undefined || asset.width >= minWidth)
+        && (maxWidth === undefined || asset.width <= maxWidth)
+        && (minHeight === undefined || asset.height >= minHeight)
+        && (maxHeight === undefined || asset.height <= maxHeight);
+    });
+    if (!matchesBounds) return false;
+  }
+
+  const durationExact = typeof params.duration_ms_exact === 'number' ? params.duration_ms_exact : undefined;
+  if (durationExact !== undefined && !assets.some(asset => asset.duration_ms === durationExact)) return false;
+
+  if (Array.isArray(params.duration_ms_range)) {
+    const [minimum, maximum] = params.duration_ms_range;
+    const matchesDuration = assets.some(asset => {
+      const duration = asset.duration_ms;
+      if (typeof duration !== 'number') return false;
+      return (typeof minimum !== 'number' || duration >= minimum)
+        && (typeof maximum !== 'number' || duration <= maximum);
+    });
+    if (!matchesDuration) return false;
+  }
+
+  if (typeof params.aspect_ratio === 'string') {
+    const [ratioWidth, ratioHeight] = params.aspect_ratio.split(':').map(Number);
+    if (!Number.isFinite(ratioWidth) || !Number.isFinite(ratioHeight) || ratioHeight === 0) return false;
+    const expectedRatio = ratioWidth / ratioHeight;
+    if (!assets.some(asset =>
+      typeof asset.width === 'number'
+      && typeof asset.height === 'number'
+      && asset.height > 0
+      && Math.abs(asset.width / asset.height - expectedRatio) < 0.01
+    )) return false;
+  }
+
+  if (params.orientation === 'horizontal' || params.orientation === 'vertical' || params.orientation === 'square') {
+    const matchesOrientation = assets.some(asset => {
+      if (typeof asset.width !== 'number' || typeof asset.height !== 'number') return false;
+      if (params.orientation === 'horizontal') return asset.width > asset.height;
+      if (params.orientation === 'vertical') return asset.height > asset.width;
+      return asset.width === asset.height;
+    });
+    if (!matchesOrientation) return false;
+  }
+
+  for (const [key, value] of Object.entries(params)) {
+    if ((key !== 'sizes' && !key.endsWith('_sizes')) || !Array.isArray(value) || value.length === 0) continue;
+    const allowedSizes = value.filter(isRecord);
+    if (!assets.some(asset => allowedSizes.some(size => asset.width === size.width && asset.height === size.height))) {
+      return false;
+    }
+  }
+
+  // title_max_chars: the manifest's title asset content must not exceed the limit.
+  if (typeof params.title_max_chars === 'number') {
+    const rawTitle = (manifest.assets as Record<string, unknown>).title;
+    const titleAsset = Array.isArray(rawTitle) ? rawTitle[0] : rawTitle;
+    if (isRecord(titleAsset) && typeof titleAsset.content === 'string') {
+      if (titleAsset.content.length > params.title_max_chars) return false;
+    }
+  }
+
+  // min_cards / max_cards: count card assets in the manifest (carousel formats).
+  if (typeof params.min_cards === 'number' || typeof params.max_cards === 'number') {
+    const rawCards = (manifest.assets as Record<string, unknown>).cards;
+    const cardCount = Array.isArray(rawCards) ? rawCards.length : (rawCards != null ? 1 : 0);
+    if (typeof params.min_cards === 'number' && cardCount < params.min_cards) return false;
+    if (typeof params.max_cards === 'number' && cardCount > params.max_cards) return false;
+  }
+
+  // image_formats: primary image asset url extension must match the allowed list.
+  if (Array.isArray(params.image_formats) && params.image_formats.length > 0) {
+    const allowedFmts = (params.image_formats as unknown[])
+      .filter((format): format is string => typeof format === 'string')
+      .map(format => format.startsWith('.') ? format.slice(1).toLowerCase() : format.toLowerCase());
+    const rawImage = (manifest.assets as Record<string, unknown>).image;
+    const imageAsset = Array.isArray(rawImage) ? rawImage[0] : rawImage;
+    if (isRecord(imageAsset) && typeof imageAsset.url === 'string') {
+      const withoutFragment = imageAsset.url.split('#', 1)[0] ?? '';
+      const withoutQuery = withoutFragment.split('?', 1)[0] ?? '';
+      const filename = withoutQuery.split('/').pop() ?? '';
+      const finalDot = filename.lastIndexOf('.');
+      const extension = finalDot >= 0 ? filename.slice(finalDot + 1).toLowerCase() : undefined;
+      if (extension && !allowedFmts.includes(extension)) return false;
+    }
+  }
+
+  // min_resolution_dpi: image asset must meet the minimum DPI when declared.
+  if (typeof params.min_resolution_dpi === 'number') {
+    const rawImage = (manifest.assets as Record<string, unknown>).image;
+    const imageAsset = Array.isArray(rawImage) ? rawImage[0] : rawImage;
+    if (isRecord(imageAsset) && typeof imageAsset.dpi === 'number') {
+      if (imageAsset.dpi < params.min_resolution_dpi) return false;
+    }
+  }
+
+  return true;
+}
+
+/** Resolve the package selector to an immutable canonical checklist. */
+function snapshotPackageFormats(
+  pkg: PackageInput,
+  product: Product,
+  packageIndex: number,
+): { formats?: CanonicalPackageFormat[]; error?: TaskError } {
+  const declarations = (Array.isArray(product.format_options) ? product.format_options : [])
+    .filter(isRecord) as CanonicalPackageFormat[];
+  if (declarations.length === 0) return {};
+
+  if (Array.isArray(pkg.format_option_refs) && pkg.format_option_refs.length > 0) {
+    const selected: CanonicalPackageFormat[] = [];
+    for (let i = 0; i < pkg.format_option_refs.length; i++) {
+      const ref = pkg.format_option_refs[i];
+      if (!isRecord(ref) || typeof ref.format_option_id !== 'string') {
+        return {
+          error: {
+            code: 'UNSUPPORTED_FEATURE',
+            message: `Package ${packageIndex}: format_option_refs[${i}] is not a resolvable canonical format option`,
+            field: `packages[${packageIndex}].format_option_refs[${i}]`,
+            recovery: 'correctable',
+          },
+        };
+      }
+      const match = declarations.find(declaration => {
+        if (declaration.format_option_id !== ref.format_option_id) return false;
+        if (ref.scope === 'publisher') {
+          return typeof ref.publisher_domain === 'string'
+            && declaration.publisher_domain === ref.publisher_domain;
+        }
+        if (ref.scope === 'product') return declaration.publisher_domain === undefined;
+        return ref.publisher_domain === undefined
+          || declaration.publisher_domain === ref.publisher_domain;
+      });
+      if (!match) {
+        return {
+          error: {
+            code: 'UNSUPPORTED_FEATURE',
+            message: `Package ${packageIndex}: format option "${ref.format_option_id}" is not declared by product ${pkg.product_id}`,
+            field: `packages[${packageIndex}].format_option_refs[${i}]`,
+            recovery: 'correctable',
+          },
+        };
+      }
+      selected.push(cloneCanonicalFormat(match));
+    }
+    return { formats: selected };
+  }
+
+  if (typeof pkg.format_kind === 'string') {
+    return {
+      formats: [{
+        format_kind: pkg.format_kind,
+        params: isRecord(pkg.params)
+          ? JSON.parse(JSON.stringify(pkg.params)) as Record<string, unknown>
+          : {},
+      }],
+    };
+  }
+
+  if (Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0) {
+    const selected = declarations.filter(declaration => {
+      const legacyRefs = Array.isArray(declaration.v1_format_ref) ? declaration.v1_format_ref : [];
+      return pkg.format_ids!.some(requested => legacyRefs.some(ref =>
+        ref?.id === requested.id
+        && (requested.agent_url === undefined || ref.agent_url === requested.agent_url)
+      ));
+    });
+    if (selected.length === 0) {
+      return {
+        error: {
+          code: 'UNSUPPORTED_FEATURE',
+          message: `Package ${packageIndex}: deprecated format_ids do not resolve to a canonical declaration on product ${pkg.product_id}`,
+          field: `packages[${packageIndex}].format_ids`,
+          recovery: 'correctable',
+        },
+      };
+    }
+    return { formats: selected.map(cloneCanonicalFormat) };
+  }
+
+  // Omitting selectors means every product format option is active.
+  return { formats: declarations.map(cloneCanonicalFormat) };
+}
+
+function creativeCoversPackageFormat(
+  creative: CreativeState | undefined,
+  requirement: CanonicalPackageFormat,
+  sameKindRequirementCount: number,
+): boolean {
+  if (!creative) return false;
+  const creativeKind = creative.formatKind ?? creative.manifest?.format_kind;
+  const requiredKind = requirement.format_kind;
+
+  const legacyRefs = Array.isArray(requirement.v1_format_ref) ? requirement.v1_format_ref : [];
+  if (legacyRefs.some(ref => ref?.id === creative.formatId.id
+    && (!ref.agent_url || !creative.formatId.agent_url || ref.agent_url === creative.formatId.agent_url))) {
+    return true;
+  }
+  if (!requiredKind || creativeKind !== requiredKind) return false;
+
+  const requiredOptionId = requirement.format_option_id;
+  const ref = creative.formatOptionRef ?? creative.manifest?.format_option_ref;
+  if (requiredOptionId && isRecord(ref)) {
+    if (ref.format_option_id !== requiredOptionId) return false;
+    return !requirement.publisher_domain || ref.publisher_domain === requirement.publisher_domain;
+  }
+  if (requiredOptionId && sameKindRequirementCount > 1) return false;
+
+  // An explicit option reference is the strongest coverage proof. Portable
+  // manifests may omit it, so for an unambiguous kind fall back to validating
+  // the actual manifest slots against the frozen package declaration.
+  const manifest = creative.manifest;
+  if (!manifest) return !requiredOptionId && !requirement.params;
+  const params = isRecord(requirement.params) ? requirement.params : {};
+  const slots = normalizeCanonicalSlots(requirement.slots)
+    ?? normalizeCanonicalSlots(params.slots)
+    ?? CANONICAL_FORMAT_SLOTS[requiredKind ?? '']
+    ?? [];
+  return validateManifestSlots(manifest, slots).length === 0
+    && canonicalParamsSatisfied(manifest, params);
+}
+
+function formatsPendingForPackage(pkg: PackageState, session: SessionState): CanonicalPackageFormat[] {
+  const requirements = (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[];
+  if (requirements.length === 0) return [];
+  return requirements.filter(requirement => {
+    const sameKindCount = requirements.filter(other => other.format_kind === requirement.format_kind).length;
+    return !pkg.creativeAssignments.some(creativeId =>
+      creativeCoversPackageFormat(session.creatives.get(creativeId), requirement, sameKindCount)
+    );
+  });
+}
+
+function packageNeedsCreative(pkg: PackageState, session: SessionState): boolean {
+  if (pkg.canceled) return false;
+  if (pkg.formatsToProvide?.length) return formatsPendingForPackage(pkg, session).length > 0;
+  return pkg.creativeAssignments.length === 0;
+}
+
+function packageReadinessFields(pkg: PackageState, session: SessionState): Record<string, unknown> {
+  if (!pkg.formatsToProvide?.length) return {};
+  return {
+    formats_to_provide: pkg.formatsToProvide,
+    formats_pending: formatsPendingForPackage(pkg, session),
   };
 }
 
@@ -607,6 +892,37 @@ function productMatchesAnyFormatId(product: Product, requestedFormatIds: FormatI
 
 function applyFormatIdsFilterToProducts(products: Product[], requestedFormatIds: FormatID[]): Product[] {
   return products.filter(product => productMatchesAnyFormatId(product, requestedFormatIds));
+}
+
+function productCanonicalFormatOptions(product: Product): Array<{
+  format_kind?: string;
+  format_option_id?: string;
+  publisher_domain?: string;
+}> {
+  const options = (product as unknown as { format_options?: unknown[] }).format_options;
+  return Array.isArray(options)
+    ? options.filter((option): option is { format_kind?: string; format_option_id?: string; publisher_domain?: string } => Boolean(option && typeof option === 'object'))
+    : [];
+}
+
+function applyCanonicalFormatFiltersToProducts(
+  products: Product[],
+  formatKinds: string[],
+  refs: Array<{ scope?: string; publisher_domain?: string; format_option_id?: string }>,
+): Product[] {
+  const kinds = new Set(formatKinds);
+  return products.filter(product => {
+    const options = productCanonicalFormatOptions(product);
+    const kindMatches = kinds.size === 0 || options.some(option => Boolean(option.format_kind && kinds.has(option.format_kind)));
+    const refMatches = refs.length === 0 || refs.some(ref => options.some(option => {
+      if (!ref.format_option_id || option.format_option_id !== ref.format_option_id) return false;
+      if (ref.scope === 'publisher') {
+        return Boolean(ref.publisher_domain && option.publisher_domain?.toLowerCase() === ref.publisher_domain.toLowerCase());
+      }
+      return ref.scope === 'product' && !option.publisher_domain;
+    }));
+    return kindMatches && refMatches;
+  });
 }
 
 function mandatoryProductSignalChargesSatisfied(product: Product, currencies: Set<string>): boolean {
@@ -1523,7 +1839,9 @@ interface CreativeVariant {
 interface CreativeDeliveryEntry {
   creative_id: string;
   media_buy_id?: string;
-  format_id: FormatID;
+  format_id?: FormatID;
+  format_kind?: string;
+  format_option_ref?: Record<string, unknown>;
   totals: { impressions: number; spend: number; clicks: number; ctr: number };
   variant_count: number;
   variants: CreativeVariant[];
@@ -1596,16 +1914,14 @@ const SYNONYM_MAP: Record<string, string[]> = {
 };
 
 /** Derive lifecycle status from stored status and flight dates. */
-export function deriveStatus(mb: MediaBuyState): string {
+export function deriveStatus(mb: MediaBuyState, session?: SessionState): string {
   if (mb.canceledAt) return 'canceled';
   if (mb.status === 'rejected') return 'rejected';
-  const hasCreatives = mb.packages.some(pkg => pkg.creativeAssignments.length > 0);
-  if (!hasCreatives && mb.status !== 'completed') {
-    if (mb.complyControllerForced) {
-      mb.complyControllerForced = false;
-    } else {
-      return 'pending_creatives';
-    }
+  const needsCreative = session
+    ? mb.packages.some(pkg => packageNeedsCreative(pkg, session))
+    : mb.packages.some(pkg => pkg.creativeAssignments.length === 0);
+  if (needsCreative && mb.status !== 'completed' && !mb.complyControllerForced) {
+    return 'pending_creatives';
   }
   const now = new Date();
   if (mb.status === 'active' || mb.status === 'paused') {
@@ -1977,7 +2293,11 @@ function backfillTrainingProductDefaults(product: Product, ownAgentUrl: string):
     reporting_capabilities?: Record<string, unknown>;
   };
   if ((!Array.isArray(p.format_ids) || p.format_ids.length === 0) && (!Array.isArray(p.format_options) || p.format_options.length === 0)) {
-    p.format_ids = [{ agent_url: ownAgentUrl, id: 'display_300x250' }];
+    p.format_options = [{
+      format_kind: 'image',
+      format_option_id: 'fixture_default_image_300x250',
+      params: { width: 300, height: 250 },
+    }];
   } else {
     for (const fid of p.format_ids ?? []) {
       if (typeof fid === 'object' && fid !== null && !fid.agent_url) {
@@ -2663,6 +2983,7 @@ function wholesaleCapabilityProfile(ctx: TrainingContext): {
 export function supportedCanonicalFormatsCapability(): Array<Record<string, unknown>> {
   return SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(({ capabilityId, formatKind }) => ({
     capability_id: capabilityId,
+    operations: ['build', 'validate', 'preview'],
     format: {
       format_kind: formatKind,
       params: {
@@ -2797,7 +3118,7 @@ const TOOLS = [
   },
   {
     name: 'list_creative_formats',
-    description: 'List supported creative formats with asset requirements, dimensions, and rendering specifications. Filter by channels to see formats relevant to specific media types. Not for uploading creatives (use sync_creatives) or checking creative status.',
+    description: 'DEPRECATED in AdCP 3.2. Legacy named-format compatibility projection only. Sales deliverability comes from get_products format_options[]; creative-agent operations come from get_adcp_capabilities creative.supported_formats[].',
     annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
@@ -2837,7 +3158,7 @@ const TOOLS = [
           items: {
             type: 'object',
             properties: {
-              kind: { type: 'string', enum: ['canonical', 'product', 'third_party_format'] },
+              kind: { type: 'string', enum: ['canonical', 'product', 'third_party_format', 'capability'] },
               id: { type: 'string' },
             },
             required: ['kind', 'id'],
@@ -3032,7 +3353,7 @@ const TOOLS = [
   },
   {
     name: 'build_creative',
-    description: 'Build a creative from assets and a target format. Supports two modes: (1) Stateless transformation — pass a creative_manifest with inline assets and a target_format_id to produce a serving tag. (2) Library retrieval — pass a creative_id referencing a synced creative to generate a tag. Returns a creative manifest with an HTML/JavaScript/VAST serving tag.',
+    description: 'Build a creative through a canonical capability advertised by get_adcp_capabilities creative.supported_formats. Pass target_capability_id (or target_capability_ids) with a creative_manifest, brief, or library creative_id. Returns canonical creative manifests.',
     annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
@@ -3041,8 +3362,10 @@ const TOOLS = [
         account: ACCOUNT_REF_SCHEMA,
         creative_id: { type: 'string', description: 'Reference to a synced creative (ad server mode)' },
         creative_manifest: { type: 'object', description: 'Inline manifest with assets (transformation mode)' },
-        target_format_id: { type: 'object', properties: { agent_url: { type: 'string' }, id: { type: 'string' } }, description: 'Target output format' },
-        target_format_ids: { type: 'array', items: { type: 'object', properties: { agent_url: { type: 'string' }, id: { type: 'string' } } }, description: 'Multiple target formats' },
+        target_capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$', description: 'Canonical output capability ID from creative.supported_formats' },
+        target_capability_ids: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$' }, description: 'Multiple canonical output capability IDs' },
+        target_format_id: { type: 'object', properties: { agent_url: { type: 'string' }, id: { type: 'string' } }, description: 'Deprecated 3.x named-format selector' },
+        target_format_ids: { type: 'array', minItems: 1, maxItems: 50, items: { type: 'object', properties: { agent_url: { type: 'string' }, id: { type: 'string' } } }, description: 'Deprecated 3.x named-format selectors' },
         brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Brand reference for identity resolution' },
         media_buy_id: { type: 'string', description: 'Media buy context for placement-level tags' },
         package_id: { type: 'string', description: 'Package context for placement-level tags' },
@@ -3063,15 +3386,37 @@ const TOOLS = [
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         request_type: { type: 'string', enum: ['single', 'batch', 'variant'], description: 'Preview mode: single, batch, or variant' },
-        creative_manifest: { type: 'object', description: 'Creative manifest with assets to preview (required for single mode)' },
-        creative_id: { type: 'string', description: 'Creative identifier for context (variant mode)' },
-        requests: { type: 'array', description: 'Array of preview requests for batch mode (1-50 items)', minItems: 1, maxItems: 50, items: { type: 'object', properties: { creative_manifest: { type: 'object' } }, required: ['creative_manifest'] } },
+        creative_manifest: { type: 'object', description: 'Creative manifest with assets to preview. In single mode, provide this or creative_id.' },
+        target_capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$', description: 'Preview capability ID from creative.supported_formats' },
+        format_id: { ...FORMAT_ID_INPUT_SCHEMA, deprecated: true, description: 'Deprecated 3.x named-format preview route.' },
+        creative_id: { type: 'string', description: 'Creative-library identifier used instead of creative_manifest in single mode.' },
+        requests: {
+          type: 'array', description: 'Array of preview requests for batch mode (1-50 items)', minItems: 1, maxItems: 50,
+          items: {
+            type: 'object',
+            properties: {
+              target_capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$' },
+              format_id: { ...FORMAT_ID_INPUT_SCHEMA, deprecated: true },
+              creative_manifest: { type: 'object' },
+              creative_id: { type: 'string' },
+              output_format: { type: 'string', enum: ['url', 'html', 'both'] },
+              quality: { type: 'string', enum: ['draft', 'production'] },
+              template_id: { type: 'string' },
+              item_limit: { type: 'integer', minimum: 1 },
+            },
+            oneOf: [{ required: ['creative_manifest'] }, { required: ['creative_id'] }],
+          },
+        },
         variant_id: { type: 'string', description: 'Variant ID from get_creative_delivery (required for variant mode)' },
         output_format: { type: 'string', enum: ['url', 'html', 'both'], description: 'Preview output format' },
         quality: { type: 'string', enum: ['draft', 'production'] },
         template_id: { type: 'string', description: 'Specific template ID for custom format rendering' },
         item_limit: { type: 'integer', minimum: 1, description: 'Max catalog items to render per preview' },
       },
+      allOf: [{
+        if: { properties: { request_type: { const: 'single' } } },
+        then: { oneOf: [{ required: ['creative_manifest'] }, { required: ['creative_id'] }] },
+      }],
       required: ['request_type'] as const,
     },
   },
@@ -3309,6 +3654,17 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     const formatIdsFilter = req.filters.format_ids;
     if (formatIdsFilter?.length) {
       products = applyFormatIdsFilterToProducts(products, formatIdsFilter);
+    }
+    const canonicalFormatFilters = req.filters as unknown as {
+      format_kinds?: string[];
+      format_option_refs?: Array<{ scope?: string; publisher_domain?: string; format_option_id?: string }>;
+    };
+    if (canonicalFormatFilters.format_kinds?.length || canonicalFormatFilters.format_option_refs?.length) {
+      products = applyCanonicalFormatFiltersToProducts(
+        products,
+        canonicalFormatFilters.format_kinds ?? [],
+        canonicalFormatFilters.format_option_refs ?? [],
+      );
     }
     const channelFilter = req.filters.channels;
     if (channelFilter?.length) {
@@ -3916,7 +4272,9 @@ interface TrainingTransformer {
   description?: string;
   metadata?: Record<string, unknown>;
   input_format_ids?: FormatID[];
+  input_formats?: Array<{ format_kind: string; params: Record<string, unknown> }>;
   output_format_ids: FormatID[];
+  output_capability_ids: string[];
   params: TransformerParam[];
   pricing_options?: Array<Record<string, unknown>>;
   multiplicity?: Record<string, unknown>;
@@ -3940,6 +4298,7 @@ function getTransformers(): TrainingTransformer[] {
       metadata: { provider: 'audiostack', modality: 'audio' },
       input_format_ids: [{ agent_url: agentUrl, id: 'script' }],
       output_format_ids: [{ agent_url: agentUrl, id: 'audio_vo' }],
+      output_capability_ids: ['audio_vo'],
       params: [
         { field: 'voice', type: 'string', value_source: 'enumerable', default: 'sara', description: 'Narration voice, incl. account-specific custom/cloned voices.' },
         { field: 'mastering_preset', type: 'string', value_source: 'inline', allowed_values: ['broadcast', 'podcast', 'music'], default: 'broadcast', description: 'Audio mastering profile applied to the final mix.' },
@@ -3966,6 +4325,8 @@ interface ListTransformersArgs {
   transformer_ids?: string[];
   input_format_ids?: FormatID[];
   output_format_ids?: FormatID[];
+  input_format_kinds?: string[];
+  output_capability_ids?: string[];
   name_search?: string;
   brief?: string;
   expand_params?: string[];
@@ -3997,9 +4358,17 @@ export async function handleListTransformers(args: ToolArgs, _ctx: TrainingConte
     const want = new Set(req.output_format_ids.map(f => f.id));
     transformers = transformers.filter(t => t.output_format_ids.some(f => want.has(f.id)));
   }
+  if (req.output_capability_ids?.length) {
+    const want = new Set(req.output_capability_ids);
+    transformers = transformers.filter(t => t.output_capability_ids.some(id => want.has(id)));
+  }
   if (req.input_format_ids?.length) {
     const want = new Set(req.input_format_ids.map(f => f.id));
     transformers = transformers.filter(t => (t.input_format_ids ?? []).some(f => want.has(f.id)));
+  }
+  if (req.input_format_kinds?.length) {
+    const want = new Set(req.input_format_kinds);
+    transformers = transformers.filter(t => (t.input_formats ?? []).some(format => want.has(format.format_kind)));
   }
   if (req.name_search) {
     const needle = req.name_search.toLowerCase();
@@ -4052,8 +4421,8 @@ export async function handleListTransformers(args: ToolArgs, _ctx: TrainingConte
       name: t.name,
       ...(t.description && { description: t.description }),
       ...(t.metadata && { metadata: t.metadata }),
-      ...(t.input_format_ids && { input_format_ids: t.input_format_ids }),
-      output_format_ids: t.output_format_ids,
+      ...(t.input_formats && { input_formats: t.input_formats }),
+      output_capability_ids: t.output_capability_ids,
       params,
       ...(t.multiplicity && { multiplicity: t.multiplicity }),
       ...(req.include_pricing && t.pricing_options && { pricing_options: t.pricing_options }),
@@ -4127,7 +4496,22 @@ function validateTransformerConfig(
   return null;
 }
 
-function transformerManifest(target: FormatID, label: string): AdcpCreativeManifest {
+function transformerManifest(target: FormatID, label: string, canonical: boolean): AdcpCreativeManifest {
+  if (canonical) {
+    const capability = supportedCanonicalBuildCapability(target.id);
+    if (capability) {
+      if (capability.formatKind === 'audio_hosted') {
+        return {
+          format_kind: capability.formatKind,
+          assets: buildCanonicalAudioAssets(),
+        } as AdcpCreativeManifest;
+      }
+      return {
+        format_kind: capability.formatKind,
+        assets: buildHtmlAssets(label),
+      } as AdcpCreativeManifest;
+    }
+  }
   return {
     format_id: { agent_url: target.agent_url ?? getAgentUrl(), id: target.id },
     assets: buildHtmlAssets(label),
@@ -4475,6 +4859,41 @@ function validateCanonicalTarget(
     : { target, result_kind: 'validated_pass' };
 }
 
+function validateCapabilityTarget(
+  target: ValidateInputTarget,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+): ValidateInputResult {
+  const capability = supportedCanonicalBuildCapability(target.id);
+  if (!capability) {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'capability_target_supported',
+        field: 'targets[].id',
+        expected: SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(item => item.capabilityId),
+        predicted: target.id,
+      }],
+    };
+  }
+  if (manifest.format_kind !== capability.formatKind) {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'format_kind',
+        field: 'manifest.format_kind',
+        expected: capability.formatKind,
+        predicted: manifest.format_kind,
+      }],
+    };
+  }
+  const violations = validateManifestSlots(manifest, capability.slots);
+  return violations.length > 0
+    ? { target, result_kind: 'validated_fail', violations }
+    : { target, result_kind: 'validated_pass' };
+}
+
 function validateProductTarget(
   target: ValidateInputTarget,
   manifest: NonNullable<ValidateInputArgs['manifest']>,
@@ -4589,6 +5008,25 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
     };
   }
 
+  const unknownCapabilityIndex = targets.findIndex(target =>
+    target.kind === 'capability' && !supportedCanonicalBuildCapability(target.id)
+  );
+  if (unknownCapabilityIndex >= 0) {
+    const target = targets[unknownCapabilityIndex];
+    return {
+      errors: [{
+        code: 'FORMAT_NOT_SUPPORTED',
+        message: `Validation capability "${target.id}" is not advertised by this creative agent.`,
+        field: `targets[${unknownCapabilityIndex}].id`,
+        recovery: 'correctable',
+        details: {
+          capability_id: target.id,
+          supported_capability_ids: SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(item => item.capabilityId),
+        },
+      }],
+    };
+  }
+
   const schemaViolations = [
     ...validateManifestSchema(req.manifest),
     ...validateAssetUrls(req.manifest),
@@ -4620,6 +5058,9 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
     }
     if (target.kind === 'product') {
       return validateProductTarget(target, req.manifest!, productsById.get(target.id));
+    }
+    if (target.kind === 'capability') {
+      return validateCapabilityTarget(target, req.manifest!);
     }
     return validateThirdPartyTarget(target, req.manifest!);
   }));
@@ -5141,6 +5582,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       errors.push(directFormatError);
       continue;
     }
+    const formatSnapshot = snapshotPackageFormats(pkg, product, i);
+    if (formatSnapshot.error) {
+      errors.push(formatSnapshot.error);
+      continue;
+    }
 
     // Reject unworkable measurement_terms (TERMS_REJECTED). Checked BEFORE
     // bid_price / other field validation so buyers see the terms-level
@@ -5275,6 +5721,9 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       formatOptionRefs: pkg.format_option_refs,
       formatKind: pkg.format_kind,
       params: pkg.params,
+      ...(!isThreeZeroStoryboardCompat(ctx) && formatSnapshot.formats?.length && {
+        formatsToProvide: formatSnapshot.formats,
+      }),
       creativeAssignments,
       targeting: targetingResult.targeting,
       ...(isRecord(pkg.context) && { context: pkg.context }),
@@ -5348,7 +5797,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
   session.mediaBuys.set(mediaBuyId, mediaBuy);
 
-  const status = deriveStatus(mediaBuy);
+  const status = deriveStatus(mediaBuy, session);
   const productAvailableActions = deriveAvailableActionsFromProductAllowedActions(productAllowedActions, status);
   if (productAvailableActions !== undefined) mediaBuy.availableActions = productAvailableActions;
   // Emit `media_buy_status` (canonical 3.1 field per #4895). Body-level
@@ -5383,6 +5832,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       ...(pkg.formatOptionRefs && { format_option_refs: pkg.formatOptionRefs }),
       ...(pkg.formatKind && { format_kind: pkg.formatKind }),
       ...(pkg.params && { params: pkg.params }),
+      ...packageReadinessFields(pkg, session),
       ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
       ...(pkg.context && { context: pkg.context }),
       creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
@@ -5415,9 +5865,9 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
   const statusFilter = req.status_filter;
   if (!filterIds?.length) {
     const effectiveFilter = statusFilter || ['active'];
-    buys = buys.filter(mb => effectiveFilter.includes(deriveStatus(mb)));
+    buys = buys.filter(mb => effectiveFilter.includes(deriveStatus(mb, session)));
   } else if (statusFilter?.length) {
-    buys = buys.filter(mb => statusFilter.includes(deriveStatus(mb)));
+    buys = buys.filter(mb => statusFilter.includes(deriveStatus(mb, session)));
   }
 
   const includeSnapshot = req.include_snapshot === true;
@@ -5459,7 +5909,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
 
   return {
     media_buys: pageBuys.map(mb => {
-      const status = deriveStatus(mb);
+      const status = deriveStatus(mb, session);
       const totalBudget = mb.totalBudget
         ?? mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
       const openImpairments = mb.impairments ?? [];
@@ -5515,6 +5965,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             ...(pkg.formatOptionRefs && { format_option_refs: pkg.formatOptionRefs }),
             ...(pkg.formatKind && { format_kind: pkg.formatKind }),
             ...(pkg.params && { params: pkg.params }),
+            ...packageReadinessFields(pkg, session),
             creative_approvals: pkg.creativeAssignments.map(cid => ({
               creative_id: cid,
               approval_status: 'approved' as const,
@@ -5821,7 +6272,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     currency: mb.currency,
     media_buy_deliveries: [{
       media_buy_id: mb.mediaBuyId,
-      status: deriveStatus(mb),
+      status: deriveStatus(mb, session),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal !== undefined ? { is_final: simDelivery.isFinal } : {}),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal === true && simDelivery.finalizedAt ? { finalized_at: simDelivery.finalizedAt } : {}),
       totals: {
@@ -5899,9 +6350,15 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       };
     }
     const creativeId = creative.creative_id;
-    const formatId = creative.format_id as FormatID | undefined;
-    const formatKind = typeof creative.format_kind === 'string' ? creative.format_kind : undefined;
-    const formatOptionRef = (creative as unknown as { format_option_ref?: Record<string, unknown> }).format_option_ref;
+    const creativeShape = creative as unknown as {
+      format_id?: FormatID;
+      format_kind?: string;
+      format_option_ref?: Record<string, unknown>;
+      assets?: Record<string, unknown>;
+    };
+    const formatId = creativeShape.format_id;
+    const formatKind = typeof creativeShape.format_kind === 'string' ? creativeShape.format_kind : undefined;
+    const formatOptionRef = creativeShape.format_option_ref;
 
     if (!formatId && !formatKind) {
       return {
@@ -5925,7 +6382,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
 
     // Reject clearly-malformed agent_urls before we persist them. Prevents
     // javascript:/data: or overlong URLs landing in JSONB via the pointer.
-    if (formatId?.agent_url !== undefined) {
+    if (creativeShape.format_id && formatId?.agent_url !== undefined) {
       if (typeof formatId.agent_url !== 'string' || formatId.agent_url.length === 0 || formatId.agent_url.length > MAX_URL_LEN) {
         return { errors: [{ code: 'INVALID_REQUEST', message: `format_id.agent_url: must be a non-empty string up to ${MAX_URL_LEN} chars` }] as TaskError[] };
       }
@@ -5941,11 +6398,11 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     // or case variant of the local URL still counts as local.
     const isLocalFormat = !formatId?.agent_url
       || canonicalizeAgentUrl(formatId.agent_url) === ownAgentUrlCanonical;
-    if (formatId?.id && isLocalFormat && !validFormatIds.has(formatId.id)) {
+    if (creativeShape.format_id && formatId?.id && isLocalFormat && !validFormatIds.has(formatId.id)) {
       return {
         errors: [{
           code: 'INVALID_REQUEST',
-          message: `Unknown format_id "${formatId.id}". Use list_creative_formats to see available formats.`,
+          message: `Unknown format_id "${formatId.id}" on the deprecated named-format path. Use canonical format_kind from the target product.`,
         }] as TaskError[],
       };
     }
@@ -5968,6 +6425,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
         formatId: internalFormatId,
         formatKind,
         formatOptionRef,
+        assets: creativeShape.assets as CreativeState['assets'],
         name: creative.name,
         status: existingCreative?.status ?? 'approved',
         syncedAt: new Date().toISOString(),
@@ -6139,6 +6597,11 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     const statuses = new Set(filters.statuses);
     creatives = creatives.filter(c => statuses.has(c.status));
   }
+  const formatKinds = (req.filters as unknown as { format_kinds?: string[] } | undefined)?.format_kinds;
+  if (formatKinds?.length) {
+    const wantedKinds = new Set(formatKinds);
+    creatives = creatives.filter(c => Boolean(c.formatKind && wantedKinds.has(c.formatKind)));
+  }
   if (filters.format_ids?.length) {
     creatives = creatives.filter(c => creativeMatchesAnyFormatId(c, filters.format_ids!));
   }
@@ -6190,12 +6653,6 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       ...(hasMore && { cursor: encodeCreativeCursor(pageEnd) }),
     },
     creatives: pageCreatives.map(c => {
-      // Schema requires creatives[].name and creatives[].format_id.agent_url.
-      // sync_creatives accepts payloads missing either (buyer may omit name,
-      // SDK request builders occasionally drop agent_url), so stamp defaults
-      // at emit time: creative_id stands in for name, own agent_url stands
-      // in for format_id.agent_url. Keeps list_creatives response-schema
-      // valid regardless of what was synced.
       const formatId = {
         ...c.formatId,
         agent_url: c.formatId.agent_url ?? agentUrl,
@@ -6289,7 +6746,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
   // Terminal state check. Double-cancel returns NOT_CANCELLABLE —
   // media_buy_seller/invalid_transitions pins this error code explicitly.
-  const currentStatus = deriveStatus(mb);
+  const currentStatus = deriveStatus(mb, session);
   if (['canceled', 'rejected', 'completed'].includes(currentStatus)) {
     const isRecancel = req.canceled === true && currentStatus === 'canceled';
     const code = isRecancel ? 'NOT_CANCELLABLE' : 'INVALID_STATE';
@@ -6412,7 +6869,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'canceled', summary: reason || 'Media buy canceled by buyer' });
     mb.updatedAt = now;
 
-    const status = deriveStatus(mb);
+    const status = deriveStatus(mb, session);
     // `media_buy_status` is the canonical 3.1 body field (#4895); legacy
     // body `status: MediaBuyStatus` removed in 3.2 (#4906).
     return {
@@ -6464,7 +6921,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       if (assignments === undefined) continue;
       const pkgId = update.package_id || '';
       if (assignments.length === 0) {
-        const currentStatus = deriveStatus(mb);
+        const currentStatus = deriveStatus(mb, session);
         if (['active', 'paused', 'pending_start'].includes(currentStatus)) {
           return {
             errors: [{ code: 'VALIDATION_ERROR', message: `creative_assignments cannot be cleared on a buy in "${currentStatus}" status`, field: `packages[${pkgId}].creative_assignments` }] as TaskError[],
@@ -6606,6 +7063,10 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       if (!product) {
         return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Product not found for new package: ${productId}` }] };
       }
+      const directFormatError = validateDirectCanonicalPackageSelector(npkg, product, i);
+      if (directFormatError) return { errors: [directFormatError] };
+      const formatSnapshot = snapshotPackageFormats(npkg, product, i);
+      if (formatSnapshot.error) return { errors: [formatSnapshot.error] };
 
       const pkgId = `pkg-${mb.packages.length + i}`;
       const newTargeting = npkg.targeting_overlay ?? npkg.targeting;
@@ -6624,6 +7085,12 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         startTime: npkg.start_time || mb.startTime,
         endTime: npkg.end_time || mb.endTime,
         formatIds: npkg.format_ids,
+        formatOptionRefs: npkg.format_option_refs,
+        formatKind: npkg.format_kind,
+        params: npkg.params,
+        ...(!isThreeZeroStoryboardCompat(ctx) && formatSnapshot.formats?.length && {
+          formatsToProvide: formatSnapshot.formats,
+        }),
         creativeAssignments: [],
         targeting: targetingResult.targeting,
       };
@@ -6665,7 +7132,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
   mb.updatedAt = now;
 
-  const status = deriveStatus(mb);
+  const status = deriveStatus(mb, session);
   const updatedPackages = mb.packages.map(pkg => ({
     package_id: pkg.packageId,
     product_id: pkg.productId,
@@ -6674,6 +7141,11 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     paused: pkg.paused,
     start_time: pkg.startTime,
     end_time: pkg.endTime,
+    ...(pkg.formatIds && { format_ids: pkg.formatIds }),
+    ...(pkg.formatOptionRefs && { format_option_refs: pkg.formatOptionRefs }),
+    ...(pkg.formatKind && { format_kind: pkg.formatKind }),
+    ...(pkg.params && { params: pkg.params }),
+    ...packageReadinessFields(pkg, session),
     ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
     ...(pkg.context && { context: pkg.context }),
     creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
@@ -6883,7 +7355,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       ...(includeThreeOneFields(ctx) ? {
         bills_through_adcp: creativeBillsThroughAdcp(ctx),
         supported_formats: supportedCanonicalFormatsCapability(),
-        canonical_catalog_version: '3.1',
+        canonical_catalog_version: '3.2',
         supports_transformers: true,
         supports_refinement: true,
         refinable_retention_seconds: 3600,
@@ -7421,7 +7893,12 @@ export async function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingCon
           device_class: devices[i % devices.length],
         },
         manifest: {
-          format_id: creative.formatId || { agent_url: agentUrl, id: 'display_300x250' },
+          ...(creative.formatKind
+            ? {
+                format_kind: creative.formatKind,
+                ...(creative.formatOptionRef && { format_option_ref: creative.formatOptionRef }),
+              }
+            : { format_id: creative.formatId || { agent_url: agentUrl, id: 'display_300x250' } }),
           assets: {
             headline: { asset_type: 'text', content: `Generated variant ${i + 1} for ${creative.name || cid}` },
             hero_image: { asset_type: 'image', url: `https://cdn.example.com/generated/${cid}_v${i}.jpg`, width: 300, height: 250 },
@@ -7437,7 +7914,12 @@ export async function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingCon
     creatives.push({
       creative_id: cid,
       media_buy_id: creativeToBuy.get(cid) || matchingBuys[0]?.mediaBuyId,
-      format_id: creative.formatId,
+      ...(creative.formatKind
+        ? {
+            format_kind: creative.formatKind,
+            ...(creative.formatOptionRef && { format_option_ref: creative.formatOptionRef }),
+          }
+        : { format_id: creative.formatId }),
       totals: {
         impressions: totalImpressions,
         spend: totalSpend,
@@ -7465,9 +7947,16 @@ export async function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingCon
 interface BuildCreativeArgs {
   account?: unknown;
   creative_id?: string;
-  creative_manifest?: { format_id?: FormatID; assets?: Record<string, unknown> | Array<Record<string, unknown>> };
+  creative_manifest?: {
+    format_id?: FormatID;
+    format_kind?: string;
+    format_option_ref?: Record<string, unknown>;
+    assets?: Record<string, unknown> | Array<Record<string, unknown>>;
+  };
   target_format_id?: FormatID;
   target_format_ids?: FormatID[];
+  target_capability_id?: string;
+  target_capability_ids?: string[];
   brand?: { domain?: string };
   media_buy_id?: string;
   package_id?: string;
@@ -7525,6 +8014,17 @@ function buildCanonicalImageAssets(formatId: string, dimensions: { w: number; h:
   };
 }
 
+function buildCanonicalAudioAssets(): AdcpCreativeManifest['assets'] {
+  return {
+    audio_main: {
+      asset_type: 'audio',
+      url: 'https://test-assets.adcontextprotocol.org/acme-outdoor/generated-voiceover.mp3',
+      duration_ms: 30000,
+      container_format: 'mp3',
+    },
+  } as AdcpCreativeManifest['assets'];
+}
+
 export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {
   const req = args as unknown as BuildCreativeArgs;
   const session = await getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
@@ -7555,6 +8055,18 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     ...Object.keys(BUILD_CREATIVE_FORMAT_ALIASES),
     ...(canonicalBuildsEnabled ? SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(item => item.capabilityId) : []),
   ]);
+  const usesCanonicalTargets = Boolean(req.target_capability_id || req.target_capability_ids?.length);
+  const usesLegacyTargets = Boolean(req.target_format_id || req.target_format_ids?.length);
+  if (usesCanonicalTargets && usesLegacyTargets) {
+    return buildCreativeCompleted({
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'Use canonical target_capability_id(s) or deprecated target_format_id(s), not both.',
+        field: 'target_capability_id',
+        recovery: 'correctable',
+      }],
+    });
+  }
 
   const unsupportedFormatError = (formatId: FormatID, field: string) => ({
     code: 'FORMAT_NOT_SUPPORTED',
@@ -7568,6 +8080,14 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
   });
 
   const resolveTarget = (formatId: FormatID, field: string): { target?: ResolvedBuildTarget; error?: ReturnType<typeof unsupportedFormatError> } => {
+    if (usesCanonicalTargets && canonicalBuildsEnabled) {
+      const capability = supportedCanonicalBuildCapability(formatId.id);
+      if (capability) {
+        return { target: { requested: formatId, formatKind: capability.formatKind as NonNullable<AdcpCreativeManifest['format_kind']> } };
+      }
+      return { error: unsupportedFormatError(formatId, field) };
+    }
+
     const aliasId = BUILD_CREATIVE_FORMAT_ALIASES[formatId.id] ?? formatId.id;
     const format = validFormatIds.get(aliasId);
     if (format) {
@@ -7592,6 +8112,12 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
         assets: buildCanonicalImageAssets(target.requested.id, { w, h }),
       } as AdcpCreativeManifest;
     }
+    if (target.formatKind === 'audio_hosted') {
+      return {
+        format_kind: target.formatKind,
+        assets: buildCanonicalAudioAssets(),
+      } as AdcpCreativeManifest;
+    }
     if (target.formatKind) {
       return {
         format_kind: target.formatKind,
@@ -7606,17 +8132,38 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
 
   // Determine target formats (cap at 50 to prevent response amplification)
   const MAX_TARGET_FORMATS = 50;
-  const targetIds: FormatID[] = req.target_format_ids?.length
-    ? req.target_format_ids.slice(0, MAX_TARGET_FORMATS)
+  if ((req.target_capability_ids?.length ?? 0) > MAX_TARGET_FORMATS || (req.target_format_ids?.length ?? 0) > MAX_TARGET_FORMATS) {
+    const field = (req.target_capability_ids?.length ?? 0) > MAX_TARGET_FORMATS
+      ? 'target_capability_ids'
+      : 'target_format_ids';
+    return buildCreativeCompleted({ errors: [{
+      code: 'INVALID_REQUEST',
+      message: `${field} supports at most ${MAX_TARGET_FORMATS} entries.`,
+      field,
+      recovery: 'correctable',
+    }] });
+  }
+  const targetCapabilityIds = req.target_capability_ids?.length
+    ? req.target_capability_ids
+    : req.target_capability_id
+      ? [req.target_capability_id]
+      : [];
+  const targetIds: FormatID[] = targetCapabilityIds.length
+    ? targetCapabilityIds.map(id => ({ agent_url: agentUrl, id }))
+    : req.target_format_ids?.length
+    ? req.target_format_ids
     : req.target_format_id
       ? [req.target_format_id]
       : [];
+  const targetField = (index?: number): string => usesCanonicalTargets
+    ? (req.target_capability_ids?.length ? `target_capability_ids[${index ?? 0}]` : 'target_capability_id')
+    : (req.target_format_ids?.length ? `target_format_ids[${index ?? 0}]` : 'target_format_id');
 
   // Transformer / multiplicity / refinement path. Engaged whenever the request
   // selects a transformer or asks for the variant shape (max_variants > 1,
   // variant_axis, or refine_from_build_variant_id). Bypasses the format-catalog
-  // gate: a transformer's target is one of ITS output_format_ids, echoed into
-  // the produced manifest rather than resolved against the static catalog.
+  // gate: a canonical target is one of the transformer's advertised output
+  // capability IDs. Legacy named targets remain accepted as a 3.x shim.
   const wantsVariantShape = (typeof req.max_variants === 'number' && req.max_variants > 1)
     || !!req.variant_axis
     || !!req.refine_from_build_variant_id;
@@ -7635,11 +8182,13 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
         return buildCreativeCompleted({ errors: [configError] });
       }
       // A build_creative target MUST be a subset of the transformer's outputs.
-      const transformerOutputIds = transformer.output_format_ids;
-      const invalidTargetIndex = targetIds.findIndex(targetId => !transformerOutputIds.some(f => f.id === targetId.id));
+      const transformerOutputIds = usesCanonicalTargets
+        ? transformer.output_capability_ids
+        : transformer.output_format_ids.map(format => format.id);
+      const invalidTargetIndex = targetIds.findIndex(targetId => !transformerOutputIds.includes(targetId.id));
       if (invalidTargetIndex >= 0) {
         const invalidTarget = targetIds[invalidTargetIndex];
-        const field = req.target_format_ids?.length ? `target_format_ids[${invalidTargetIndex}]` : 'target_format_id';
+        const field = targetField(invalidTargetIndex);
         return buildCreativeCompleted({ errors: [{ code: 'INVALID_REQUEST', message: `Target format "${invalidTarget.id}" is not an output format of transformer "${req.transformer_id}".`, field, recovery: 'correctable' }] });
       }
     }
@@ -7649,7 +8198,16 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
       return buildCreativeCompleted({ errors: [{ code: 'UNSUPPORTED_FEATURE', message: 'This agent does not retain prior builds for refinement. Drop refine_from_build_variant_id and resend, or use the transform path (creative_manifest + message).', field: 'refine_from_build_variant_id', recovery: 'correctable' }] });
     }
 
-    const target: FormatID = targetIds[0]
+    // For refinements, inherit the parent leaf's target from session state.
+    // The schema forbids a new selector on refinement — the only valid source
+    // of truth is what was stored when the parent variant was produced.
+    if (req.refine_from_build_variant_id && !session.buildVariantTargets.has(req.refine_from_build_variant_id)) {
+      return buildCreativeCompleted({ errors: [{ code: 'REFERENCE_NOT_FOUND', message: `Build variant "${req.refine_from_build_variant_id}" is not retained by this agent. Only variants produced in the current session are refinable.`, field: 'refine_from_build_variant_id', recovery: 'correctable' }] });
+    }
+
+    const target: FormatID = (req.refine_from_build_variant_id
+      ? session.buildVariantTargets.get(req.refine_from_build_variant_id)!
+      : targetIds[0])
       ?? req.target_format_id
       ?? transformer?.output_format_ids?.[0]
       ?? { agent_url: agentUrl, id: 'audio_vo' };
@@ -7657,9 +8215,11 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     // Single-format, non-variant transformer build → BuildCreativeSuccess,
     // carrying a build_variant_id so the result is itself refinable.
     if (!wantsVariantShape && req.transformer_id) {
+      const singleVariantId = `bv_${idemSeed}_0`;
+      session.buildVariantTargets.set(singleVariantId, target);
       return buildCreativeCompleted({
-        creative_manifest: transformerManifest(target, `<!-- AdCP Training Agent transformer ${escapeHtmlAttr(req.transformer_id)} -->`),
-        build_variant_id: `bv_${idemSeed}_0`,
+        creative_manifest: transformerManifest(target, `<!-- AdCP Training Agent transformer ${escapeHtmlAttr(req.transformer_id)} -->`, usesCanonicalTargets || !usesLegacyTargets),
+        build_variant_id: singleVariantId,
         ...(governanceContext && { governance_context: governanceContext }),
       });
     }
@@ -7678,9 +8238,11 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     const keepMode = req.keep_mode;
 
     const variants = Array.from({ length: variantCount }, (_unused, i) => {
+      const variantId = `bv_${idemSeed}_${i}`;
+      session.buildVariantTargets.set(variantId, target);
       const leaf: Record<string, unknown> = {
-        build_variant_id: `bv_${idemSeed}_${i}`,
-        creative_manifest: transformerManifest(target, `<!-- AdCP Training Agent variant ${i} -->`),
+        build_variant_id: variantId,
+        creative_manifest: transformerManifest(target, `<!-- AdCP Training Agent variant ${i} -->`, usesCanonicalTargets || !usesLegacyTargets),
       };
       if (Array.isArray(axisValues) && axisValues[i] !== undefined) {
         leaf.variant_axis_value = axisValues[i];
@@ -7730,15 +8292,23 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
       });
     }
 
-    const formatId = targetIds[0] || creative.formatId;
-    const resolved = resolveTarget(formatId, 'target_format_id');
-    if (resolved.error) {
-      return buildCreativeCompleted({ errors: [resolved.error] });
-    }
+    const requestedTarget = targetIds[0];
+    const resolved = requestedTarget
+      ? resolveTarget(requestedTarget, targetField())
+      : creative.formatKind
+        ? {
+            target: {
+              requested: { agent_url: agentUrl, id: creative.formatKind },
+              formatKind: creative.formatKind as NonNullable<AdcpCreativeManifest['format_kind']>,
+            },
+          }
+        : resolveTarget(creative.formatId, targetField());
+    if (resolved.error) return buildCreativeCompleted({ errors: [resolved.error] });
     const { w, h } = getDimensions(resolved.target!.format);
+    const targetLabel = requestedTarget?.id ?? creative.formatKind ?? creative.formatId.id;
 
     const base = {
-      creative_manifest: buildManifest(resolved.target!, `<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`),
+      creative_manifest: buildManifest(resolved.target!, `<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(targetLabel)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`),
     };
 
     // Return pricing when account is provided (paid creative agent mode)
@@ -7758,7 +8328,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     return buildCreativeCompleted({ ...base, ...(governanceContext && { governance_context: governanceContext }) });
   }
 
-  // Mode 2: Stateless transformation (creative_manifest + target_format_id)
+  // Mode 2: Stateless transformation (creative_manifest + canonical target)
   if (req.creative_manifest) {
     const rawAssets = req.creative_manifest.assets;
     const inputAssetCount = Array.isArray(rawAssets) ? rawAssets.length : Object.keys(rawAssets || {}).length;
@@ -7771,7 +8341,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
 
     // Generate output for each target format
     if (targetIds.length > 1) {
-      const resolvedTargets = targetIds.map((fmtId, index) => resolveTarget(fmtId, `target_format_ids[${index}]`));
+      const resolvedTargets = targetIds.map((fmtId, index) => resolveTarget(fmtId, targetField(index)));
       const errors = resolvedTargets.flatMap(result => result.error ? [result.error] : []);
       if (errors.length > 0) {
         return buildCreativeCompleted({ errors, ...(governanceContext && { governance_context: governanceContext }) });
@@ -7788,7 +8358,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
 
     // Single format response
     const fmtId = targetIds[0] || { agent_url: agentUrl, id: 'display_300x250' };
-    const resolved = resolveTarget(fmtId, 'target_format_id');
+    const resolved = resolveTarget(fmtId, targetField());
     if (resolved.error) {
       return buildCreativeCompleted({ errors: [resolved.error], ...(governanceContext && { governance_context: governanceContext }) });
     }
@@ -7800,10 +8370,10 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     });
   }
 
-  // Mode 3: Generative build (target_format_id + message, no manifest or library creative)
+  // Mode 3: Generative build (canonical target + message, no manifest or library creative)
   if (targetIds.length > 0) {
     if (targetIds.length > 1) {
-      const resolvedTargets = targetIds.map((fmtId, index) => resolveTarget(fmtId, `target_format_ids[${index}]`));
+      const resolvedTargets = targetIds.map((fmtId, index) => resolveTarget(fmtId, targetField(index)));
       const errors = resolvedTargets.flatMap(result => result.error ? [result.error] : []);
       if (errors.length > 0) {
         return buildCreativeCompleted({ errors, ...(governanceContext && { governance_context: governanceContext }) });
@@ -7817,7 +8387,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     }
 
     const fmtId = targetIds[0];
-    const resolved = resolveTarget(fmtId, 'target_format_id');
+    const resolved = resolveTarget(fmtId, targetField());
     if (resolved.error) {
       return buildCreativeCompleted({ errors: [resolved.error], ...(governanceContext && { governance_context: governanceContext }) });
     }
@@ -7830,7 +8400,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
   }
 
   return buildCreativeCompleted({
-    errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_id (library mode), creative_manifest (transformation mode), or target_format_id (generative mode).' }],
+    errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_id (library mode), creative_manifest (transformation mode), or target_capability_id (generative mode).' }],
   });
 }
 
@@ -7839,9 +8409,20 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
 interface PreviewCreativeArgs {
   account?: unknown;
   request_type: 'single' | 'batch' | 'variant';
-  creative_manifest?: { format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> };
+  creative_manifest?: { format_id?: FormatID; format_kind?: string; format_option_ref?: Record<string, unknown>; creative_id?: string; assets?: Record<string, unknown> };
+  target_capability_id?: string;
+  format_id?: FormatID;
   creative_id?: string;
-  requests?: Array<{ format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> }>;
+  requests?: Array<{
+    target_capability_id?: string;
+    format_id?: FormatID;
+    creative_manifest?: { format_id?: FormatID; format_kind?: string; format_option_ref?: Record<string, unknown>; creative_id?: string; assets?: Record<string, unknown> };
+    creative_id?: string;
+    output_format?: 'url' | 'html' | 'both';
+    quality?: 'draft' | 'production';
+    template_id?: string;
+    item_limit?: number;
+  }>;
   variant_id?: string;
   output_format?: 'url' | 'html' | 'both';
   quality?: 'draft' | 'production';
@@ -7855,43 +8436,86 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
   const agentUrl = getAgentUrl();
   const formats = getFormats();
   const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
-  const outputFormat = req.output_format || 'url';
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-  function buildPreview(manifest: { format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> }) {
+  function buildPreview(
+    manifest: { format_id?: FormatID; format_kind?: string; format_option_ref?: Record<string, unknown>; creative_id?: string; assets?: Record<string, unknown> },
+    targetCapabilityId?: string,
+    requestedOutputFormat: 'url' | 'html' | 'both' = 'url',
+    requestedQuality: 'draft' | 'production' = 'production',
+    legacyFormatId?: FormatID,
+  ) {
     // Resolve format
-    let formatId = manifest.format_id;
+    let formatId = legacyFormatId ?? manifest.format_id;
+    let formatKind = manifest.format_kind;
     let creativeName = 'Preview';
 
-    // If creative_id provided, look up from library
-    if (manifest.creative_id) {
+    // A top-level creative_id is normalized to a manifest containing only
+    // that ID. An inline manifest may also carry creative_id as identity; its
+    // supplied assets and format remain authoritative and must not trigger a
+    // library lookup.
+    const isLibraryReference = Boolean(
+      manifest.creative_id
+      && manifest.assets === undefined
+      && manifest.format_id === undefined
+      && manifest.format_kind === undefined,
+    );
+    if (isLibraryReference && manifest.creative_id) {
       const creative = session.creatives.get(manifest.creative_id);
-      if (creative) {
-        formatId = creative.formatId;
-        creativeName = creative.name || manifest.creative_id;
-      }
+      if (!creative) return null;
+      formatId = creative.formatId;
+      formatKind = creative.formatKind;
+      creativeName = creative.name || manifest.creative_id;
     }
 
-    const fmtId = formatId?.id || 'display_300x250';
+    // The frozen 3.0 surface stored named format IDs in the later
+    // `format_kind` slot when the SDK projected a synced creative. Treat that
+    // value as legacy routing only inside the storyboard compatibility shim.
+    if (
+      isThreeZeroStoryboardCompat(ctx)
+      && formatKind
+      && !VALID_CANONICAL_FORMAT_KINDS.has(formatKind)
+      && formatId?.id
+      && validFormatIds.has(formatId.id)
+    ) {
+      formatKind = undefined;
+    }
+
+    if (legacyFormatId) {
+      if (!legacyFormatId.id || !validFormatIds.has(legacyFormatId.id)) return null;
+    } else if (formatKind) {
+      const matches = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.filter(item => item.formatKind === formatKind);
+      if (targetCapabilityId) {
+        const selected = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.find(item => item.capabilityId === targetCapabilityId);
+        if (!selected || selected.formatKind !== formatKind) return null;
+      } else if (matches.length !== 1 && !isThreeZeroStoryboardCompat(ctx)) {
+        return null;
+      }
+    } else if (targetCapabilityId) {
+      return null;
+    }
+
+    const fmtId = legacyFormatId?.id || formatKind || formatId?.id || 'image';
     const format = validFormatIds.get(fmtId);
-    if (!format && formatId?.id && fmtId !== 'native_in_feed') {
+    if (!formatKind && !format && formatId?.id && fmtId !== 'native_in_feed') {
       return null; // Signal invalid format to caller
     }
+    if (formatKind && !VALID_CANONICAL_FORMAT_KINDS.has(formatKind)) return null;
     const { w, h } = getDimensions(format);
 
-    const previewHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview: ${escapeHtmlAttr(fmtId)}</title><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fafafa;font-family:sans-serif;}</style></head><body><div style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;color:#fff;"><div style="font-size:16px;font-weight:600;">${escapeHtmlAttr(creativeName)}</div><div style="font-size:12px;opacity:0.8;margin-top:4px;">${escapeHtmlAttr(fmtId)} (${w}x${h})</div><div style="font-size:10px;opacity:0.6;margin-top:8px;">AdCP Training Agent Preview</div></div></body></html>`;
+    const previewHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview: ${escapeHtmlAttr(fmtId)}</title><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fafafa;font-family:sans-serif;}</style></head><body><div data-quality="${requestedQuality}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;color:#fff;"><div style="font-size:16px;font-weight:600;">${escapeHtmlAttr(creativeName)}</div><div style="font-size:12px;opacity:0.8;margin-top:4px;">${escapeHtmlAttr(fmtId)} (${w}x${h})</div><div style="font-size:10px;opacity:0.6;margin-top:8px;">AdCP Training Agent Preview</div></div></body></html>`;
 
     const render: Record<string, unknown> = {
       render_id: `preview_${fmtId}`,
-      output_format: outputFormat,
+      output_format: requestedOutputFormat,
       role: 'primary',
       dimensions: { width: w, height: h },
     };
 
-    if (outputFormat === 'url' || outputFormat === 'both') {
+    if (requestedOutputFormat === 'url' || requestedOutputFormat === 'both') {
       render.preview_url = `data:text/html;base64,${Buffer.from(previewHtml).toString('base64')}`;
     }
-    if (outputFormat === 'html' || outputFormat === 'both') {
+    if (requestedOutputFormat === 'html' || requestedOutputFormat === 'both') {
       render.preview_html = previewHtml;
     }
 
@@ -7912,20 +8536,62 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
 
   // Batch mode
   if (req.request_type === 'batch' && req.requests?.length) {
+    const usesCanonicalRouting = Boolean(req.target_capability_id)
+      || req.requests.some(item => Boolean(item.target_capability_id));
+    const usesLegacyRouting = Boolean(req.format_id)
+      || req.requests.some(item => Boolean(item.format_id));
+    if (usesCanonicalRouting && usesLegacyRouting) {
+      return { errors: [{ code: 'INVALID_REQUEST', message: 'Use target_capability_id or deprecated format_id routing, not both.' }] };
+    }
+    const results = req.requests.map(item => {
+      if (item.creative_manifest && item.creative_id) {
+        return {
+          success: false,
+          creative_id: item.creative_id,
+          errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_manifest or creative_id, not both.' }],
+        };
+      }
+      const manifest = item.creative_manifest || (item.creative_id ? { creative_id: item.creative_id } : undefined);
+      if (item.creative_id && !session.creatives.has(item.creative_id)) {
+        return {
+          success: false,
+          creative_id: item.creative_id,
+          errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative "${item.creative_id}" was not found in this agent's creative library.` }],
+        };
+      }
+      const targetCapabilityId = item.target_capability_id ?? req.target_capability_id;
+      const legacyFormatId = targetCapabilityId ? undefined : item.format_id ?? req.format_id;
+      const effectiveOutputFormat = item.output_format ?? req.output_format ?? 'url';
+      const effectiveQuality = item.quality ?? req.quality ?? 'production';
+      const preview = manifest
+        ? buildPreview(manifest, targetCapabilityId, effectiveOutputFormat, effectiveQuality, legacyFormatId)
+        : null;
+      if (!preview) {
+        return {
+          success: false,
+          creative_id: item.creative_id || 'unknown',
+          errors: [{ code: 'FORMAT_NOT_SUPPORTED', message: 'No unique advertised preview capability matches this item.' }],
+        };
+      }
+      return {
+        success: true,
+        creative_id: item.creative_id || 'unknown',
+        response: { previews: [preview], expires_at: expiresAt },
+      };
+    });
     return {
       response_type: 'batch',
-      results: req.requests.map(c => ({
-        success: true,
-        creative_id: c.creative_id || 'unknown',
-        response: {
-          previews: [buildPreview(c)],
-          expires_at: expiresAt,
-        },
-      })),
-      };
+      results,
+    };
   }
 
   // Single mode
+  if (req.creative_manifest && req.creative_id) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_manifest or creative_id, not both.' }] };
+  }
+  if (req.target_capability_id && req.format_id) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'Use target_capability_id or deprecated format_id routing, not both.' }] };
+  }
   const manifest = req.creative_manifest || (req.creative_id ? { creative_id: req.creative_id } : null);
   if (!manifest) {
     return {
@@ -7933,11 +8599,23 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
     };
   }
 
-  const preview = buildPreview(manifest);
-  if (!preview) {
-    const fmtId = manifest.format_id?.id || 'unknown';
+  if (req.creative_id && !session.creatives.has(req.creative_id)) {
     return {
-      errors: [{ code: 'UNSUPPORTED_FEATURE', message: `Format "${fmtId}" is not supported. Use list_creative_formats to discover available formats.` }],
+      errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative "${req.creative_id}" was not found in this agent's creative library.` }],
+    };
+  }
+
+  const preview = buildPreview(
+    manifest,
+    req.target_capability_id,
+    req.output_format ?? 'url',
+    req.quality ?? 'production',
+    req.target_capability_id ? undefined : req.format_id,
+  );
+  if (!preview) {
+    const fmtId = manifest.format_kind || manifest.format_id?.id || 'unknown';
+    return {
+      errors: [{ code: 'FORMAT_NOT_SUPPORTED', message: `Format "${fmtId}" has no unique matching advertised preview capability. Inspect get_adcp_capabilities creative.supported_formats to select target_capability_id.` }],
     };
   }
 

@@ -764,7 +764,7 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
       const formatOptionRef = (fx.format_option_ref as Record<string, unknown> | undefined) ?? existing?.formatOptionRef;
       const formatId = (fx.format_id as CreativeState['formatId'])
         ?? existing?.formatId
-        ?? (formatKind ? { agent_url: getAgentUrl(), id: formatKind } : { id: 'display_300x250' });
+        ?? { agent_url: getAgentUrl(), id: formatKind ?? 'image' };
       session.creatives.set(creativeId, {
         creativeId,
         formatId,
