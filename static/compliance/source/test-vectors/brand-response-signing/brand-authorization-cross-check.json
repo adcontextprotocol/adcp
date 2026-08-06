@@ -60,6 +60,15 @@
           "agent_url": "https://BRAND.NOVABRANDS.EXAMPLE:443/mcp",
           "kid": "brand-response-key-1"
         },
+        "verified_jwk": {
+          "kid": "brand-response-key-1",
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "x": "gWUqzATUcUco5Q8fZZXn8aWwb7DQbYGBiqUzLiSDDJo",
+          "use": "sig",
+          "key_ops": ["verify"],
+          "adcp_use": "response-signing"
+        },
         "brand_json": {
           "agents": [
             {
@@ -74,6 +83,9 @@
             "keys": [
               {
                 "kid": "brand-response-key-1",
+                "kty": "OKP",
+                "crv": "Ed25519",
+                "x": "gWUqzATUcUco5Q8fZZXn8aWwb7DQbYGBiqUzLiSDDJo",
                 "use": "sig",
                 "key_ops": ["verify"],
                 "adcp_use": "response-signing"
@@ -205,6 +217,209 @@
       "expected": {
         "trust": "untrusted",
         "reason": "agent_not_authorized"
+      }
+    },
+    {
+      "name": "same-kid-different-key-material-is-untrusted",
+      "input": {
+        "envelope": {
+          "brand_domain": "novabrands.example",
+          "agent_url": "https://brand.novabrands.example/mcp",
+          "kid": "shared-response-key"
+        },
+        "verified_jwk": {
+          "kid": "shared-response-key",
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "x": "rkUcKP5oMd7YjV4yy5mVS5S8fA3LDXcf5jk1P1_52EA",
+          "use": "sig",
+          "key_ops": ["verify"],
+          "adcp_use": "response-signing"
+        },
+        "brand_json": {
+          "agents": [
+            {
+              "type": "brand",
+              "url": "https://brand.novabrands.example/mcp",
+              "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json"
+            }
+          ]
+        },
+        "jwks_by_uri": {
+          "https://brand.novabrands.example/.well-known/jwks.json": {
+            "keys": [
+              {
+                "kid": "shared-response-key",
+                "kty": "OKP",
+                "crv": "Ed25519",
+                "x": "gWUqzATUcUco5Q8fZZXn8aWwb7DQbYGBiqUzLiSDDJo",
+                "use": "sig",
+                "key_ops": ["verify"],
+                "adcp_use": "response-signing"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "trust": "untrusted",
+        "reason": "key_material_mismatch",
+        "kid": "shared-response-key",
+        "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json"
+      }
+    },
+    {
+      "name": "duplicate-kid-in-authorized-jwks-is-untrusted",
+      "input": {
+        "envelope": {
+          "brand_domain": "novabrands.example",
+          "agent_url": "https://brand.novabrands.example/mcp",
+          "kid": "duplicate-response-key"
+        },
+        "verified_jwk": {
+          "kid": "duplicate-response-key",
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "x": "gWUqzATUcUco5Q8fZZXn8aWwb7DQbYGBiqUzLiSDDJo",
+          "use": "sig",
+          "key_ops": ["verify"],
+          "adcp_use": "response-signing"
+        },
+        "brand_json": {
+          "agents": [
+            {
+              "type": "brand",
+              "url": "https://brand.novabrands.example/mcp",
+              "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json"
+            }
+          ]
+        },
+        "jwks_by_uri": {
+          "https://brand.novabrands.example/.well-known/jwks.json": {
+            "keys": [
+              {
+                "kid": "duplicate-response-key",
+                "kty": "OKP",
+                "crv": "Ed25519",
+                "x": "gWUqzATUcUco5Q8fZZXn8aWwb7DQbYGBiqUzLiSDDJo",
+                "use": "sig",
+                "key_ops": ["verify"],
+                "adcp_use": "response-signing"
+              },
+              {
+                "kid": "duplicate-response-key",
+                "kty": "OKP",
+                "crv": "Ed25519",
+                "x": "rkUcKP5oMd7YjV4yy5mVS5S8fA3LDXcf5jk1P1_52EA",
+                "use": "sig",
+                "key_ops": ["verify"],
+                "adcp_use": "response-signing"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "trust": "untrusted",
+        "reason": "kid_authorization_ambiguous",
+        "kid": "duplicate-response-key",
+        "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json"
+      }
+    },
+    {
+      "name": "same-origin-default-jwks-binds-verified-key",
+      "input": {
+        "envelope": {
+          "brand_domain": "novabrands.example",
+          "agent_url": "https://brand.novabrands.example/mcp",
+          "kid": "brand-response-key-1"
+        },
+        "verified_jwk": {
+          "kid": "brand-response-key-1",
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "x": "gWUqzATUcUco5Q8fZZXn8aWwb7DQbYGBiqUzLiSDDJo",
+          "use": "sig",
+          "key_ops": ["verify"],
+          "adcp_use": "response-signing"
+        },
+        "brand_json": {
+          "agents": [
+            {
+              "type": "brand",
+              "url": "https://brand.novabrands.example/mcp"
+            }
+          ]
+        },
+        "jwks_by_uri": {
+          "https://brand.novabrands.example/.well-known/jwks.json": {
+            "keys": [
+              {
+                "kid": "brand-response-key-1",
+                "kty": "OKP",
+                "crv": "Ed25519",
+                "x": "gWUqzATUcUco5Q8fZZXn8aWwb7DQbYGBiqUzLiSDDJo",
+                "use": "sig",
+                "key_ops": ["verify"],
+                "adcp_use": "response-signing"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "trust": "trusted",
+        "kid": "brand-response-key-1",
+        "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json"
+      }
+    },
+    {
+      "name": "wrong-key-purpose-is-untrusted",
+      "input": {
+        "envelope": {
+          "brand_domain": "novabrands.example",
+          "agent_url": "https://brand.novabrands.example/mcp",
+          "kid": "brand-response-key-1"
+        },
+        "verified_jwk": {
+          "kid": "brand-response-key-1",
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "x": "gWUqzATUcUco5Q8fZZXn8aWwb7DQbYGBiqUzLiSDDJo",
+          "use": "sig",
+          "key_ops": ["verify"],
+          "adcp_use": "response-signing"
+        },
+        "brand_json": {
+          "agents": [
+            {
+              "type": "brand",
+              "url": "https://brand.novabrands.example/mcp",
+              "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json"
+            }
+          ]
+        },
+        "jwks_by_uri": {
+          "https://brand.novabrands.example/.well-known/jwks.json": {
+            "keys": [
+              {
+                "kid": "brand-response-key-1",
+                "kty": "OKP",
+                "crv": "Ed25519",
+                "x": "gWUqzATUcUco5Q8fZZXn8aWwb7DQbYGBiqUzLiSDDJo",
+                "use": "sig",
+                "key_ops": ["verify"],
+                "adcp_use": "request-signing"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "trust": "untrusted",
+        "reason": "key_purpose_invalid",
+        "kid": "brand-response-key-1",
+        "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json"
       }
     }
   ]

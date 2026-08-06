@@ -18,6 +18,8 @@
         "agent_authorization_ambiguous",
         "jwks_unavailable",
         "kid_not_authorized",
+        "kid_authorization_ambiguous",
+        "key_material_mismatch",
         "key_purpose_invalid"
       ],
       "description": "Machine-readable reason for an untrusted result."

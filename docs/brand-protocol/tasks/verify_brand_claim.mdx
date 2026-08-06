@@ -350,9 +350,11 @@ The signature attests authorship of the response payload under the brand's publi
 
 A valid signature proves authorship, not brand authority. For 3.2, verifiers SHOULD run the additive [brand-authorization cross-check](/docs/building/by-layer/L1/security#designated-task-response-signing) and represent its result with [`brand-response-authorization-result.json`](https://adcontextprotocol.org/schemas/v3/core/brand-response-authorization-result.json). A failed or unavailable cross-check yields verifier-local `trust: "untrusted"`; it does not rewrite `verification_status` and MUST NOT extend or revoke relationship trust on its own. This applies to both assertion and rejection directions. Mandatory cryptographic brand authorization and hard rejection are reserved for 4.0.
 
-The trust model is **direction-asymmetric**:
+For a verifier that performs the 3.2 cross-check, the direction-asymmetric rules below apply only when the verifier-local result is `trust: "trusted"`. An `untrusted` response remains unauthenticated evidence regardless of direction and cannot extend or revoke relationship trust.
 
-- **Rejection direction** (agent says `disputed` / `not_ours`) is authoritative. A brand can refuse association unilaterally; no mutual reciprocation required.
+The trust model for a trusted response is **direction-asymmetric**:
+
+- **Rejection direction** (agent says `disputed` / `not_ours`) is authoritative only after the signer passes the brand-authorization cross-check. A trusted brand can refuse association unilaterally; no mutual reciprocation required.
 - **Assertion direction** (agent says `owned` / `pending_review` / `transferring` / `licensed_*`) is informative but NOT trust-extending on its own. The reciprocating side must still confirm before trust extends.
 
 When both the house-side and leaf-side agents speak (via `claim_type: "subsidiary"` and `claim_type: "parent"` respectively), **mutual assertion is established at the agent layer**. When only one side has an agent, fall back to crawl-based mutual-assertion inference per [`brand.json` § Mutual-assertion trust model](/docs/brand-protocol/brand-json#mutual-assertion-trust-model).
