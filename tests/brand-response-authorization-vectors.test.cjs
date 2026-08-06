@@ -33,6 +33,14 @@ describe('brand response authorization cross-check vectors', () => {
     }
   });
 
+  it('rejects a string key_ops lookalike', () => {
+    const trusted = vectors.cases.find((vector) => vector.name === 'canonical-equivalent-agent-url-is-trusted');
+    const input = JSON.parse(JSON.stringify(trusted.input));
+    const [jwks] = Object.values(input.jwks_by_uri);
+    jwks.keys[0].key_ops = 'verify';
+    assert.equal(assessBrandResponseAuthorization(input).reason, 'key_purpose_invalid');
+  });
+
   for (const vector of vectors.cases) {
     it(vector.name, () => {
       const actual = assessBrandResponseAuthorization(vector.input);

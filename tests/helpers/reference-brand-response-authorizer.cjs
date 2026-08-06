@@ -122,7 +122,12 @@ function assessBrandResponseAuthorization(input) {
   }
 
   const [key] = keys;
-  if (key.adcp_use !== 'response-signing' || key.use !== 'sig' || !key.key_ops?.includes('verify')) {
+  if (
+    key.adcp_use !== 'response-signing'
+    || key.use !== 'sig'
+    || !Array.isArray(key.key_ops)
+    || !key.key_ops.includes('verify')
+  ) {
     return { trust: 'untrusted', reason: 'key_purpose_invalid', kid, jwks_uri: jwksUri };
   }
 
