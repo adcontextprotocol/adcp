@@ -270,7 +270,12 @@ Publishers declare supported reporting frequencies in the product's `reporting_c
 
 - **`hourly`**: Receive notifications every hour during campaign flight (optional, consider cost/complexity)
 - **`daily`**: Receive notifications once per day (most common, recommended for Phase 1)
+- **`weekly`**: Receive notifications once per week — the native cadence for audience-currency channels reporting weekly increments (OOH, radio)
 - **`monthly`**: Receive notifications once per month (timezone specified by publisher)
+- **`quarterly`**: Receive notifications once per quarter — matches quarterly measurement-currency publication cycles
+- **`post_campaign`**: A single report after the flight ends — for channels where delivery is only knowable in arrears
+
+A product's declared frequencies are an optimization-eligibility signal: buyers should not mid-flight-optimize against a channel whose data arrives quarterly or post-campaign.
 
 **Cost Consideration:** Hourly webhooks generate 24x more traffic than daily. Large buyer-seller pairs may prefer offline reporting mechanisms (see below) for cost efficiency.
 
