@@ -1502,6 +1502,9 @@ async function runTests() {
         "supported_billing": ["operator"]
       },
       "measurement": {
+        "produces_performance_feedback": true,
+        "delivery_input_methods": ["pull", "webhook", "offline"],
+        "feedback_output_methods": ["task", "webhook", "offline"],
         "metrics": [
           {
             "metric_id": "attention_units",

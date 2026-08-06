@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Add a compact, backwards-compatible performance-feedback assertion and make measurement agents discoverable producers of optimizer-ready feedback through buyer-controlled orchestrator gateways. The request now names its baseline, reuses standard/vendor metric identity, attributes a producer and provider-scoped methodology, carries a small evidence summary or provider-hosted evidence reference, and supports immutable maturation through final/as-of/supersession fields. Paired provider/gateway capabilities negotiate pull, webhook, or offline delivery and task, webhook, or offline feedback. Orchestrators authenticate returned assertions and fan normalized feedback out to sellers under the buyer's identity; sellers can return a receipt and honest optimizer application disposition. Existing per-account allowed_tasks grants authorize task-based gateway reads and feedback writes, while negotiated webhook or offline paths use their existing credential models, so measurement providers never need seller credentials and no new RBAC primitive is required.

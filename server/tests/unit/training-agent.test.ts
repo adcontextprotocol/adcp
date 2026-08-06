@@ -1290,6 +1290,9 @@ describe('createTrainingAgentServer', () => {
     expect(mediaBuy.vendor_metric_optimization).toEqual({
       supported_targets: ['threshold_rate'],
     });
+    expect(mediaBuy.performance_feedback).toEqual({
+      reports_application_status: true,
+    });
 
     // account required for media_buy sellers
     expect(caps.account).toBeDefined();
@@ -1304,6 +1307,9 @@ describe('createTrainingAgentServer', () => {
     const platform = new TrainingSalesPlatform();
     expect((platform.capabilities as Record<string, unknown>).vendor_metric_optimization).toEqual({
       supported_targets: ['threshold_rate'],
+    });
+    expect((platform.capabilities as Record<string, unknown>).performance_feedback).toEqual({
+      reports_application_status: true,
     });
   });
 

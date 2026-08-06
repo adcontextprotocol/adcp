@@ -335,7 +335,7 @@
     },
     "supported_protocols": {
       "type": "array",
-      "description": "AdCP protocols this agent supports. Stable values both (a) declare which tools the agent implements and (b) commit the agent to pass the baseline compliance storyboard at /compliance/{version}/protocols/{protocol}/ (with snake_case → kebab-case path mapping, e.g. media_buy → /compliance/.../protocols/media-buy/). The `measurement` protocol is experimental in 3.1 and currently scoped to `get_adcp_capabilities` catalog discovery; agents implementing it MUST also list `measurement.core` in `experimental_features`. Additional measurement tasks (reporting, attribution, etc.) and a baseline storyboard land in subsequent minors. Compliance testing support is declared separately via the `compliance_testing` capability block (below), not as a protocol claim.",
+      "description": "AdCP protocols this agent supports. Stable values both (a) declare which tools the agent implements and (b) commit the agent to pass the baseline compliance storyboard at /compliance/{version}/protocols/{protocol}/ (with snake_case → kebab-case path mapping, e.g. media_buy → /compliance/.../protocols/media-buy/). The `measurement` protocol is experimental and currently covers provider catalog/output declaration (`measurement.core`) and buyer-orchestrator interchange gateways (`measurement.gateway`). Measurement agents exchange delivery and feedback with the gateway rather than receiving direct seller access. Additional provider tasks and a baseline storyboard land only when concrete workflows require them. Compliance testing support is declared separately via the `compliance_testing` capability block (below), not as a protocol claim.",
       "items": {
         "type": "string",
         "enum": [
@@ -506,6 +506,18 @@
           },
           "minItems": 1,
           "uniqueItems": true
+        },
+        "performance_feedback": {
+          "type": "object",
+          "description": "Structured seller performance-feedback support beyond the legacy scalar contract. Presence means the seller accepts compact baseline/metric/provenance fields from a buyer orchestrator and returns a feedback_id.",
+          "properties": {
+            "reports_application_status": {
+              "type": "boolean",
+              "description": "Whether provide_performance_feedback responses include an honest application_status of accepted, applied, or not_applied. accepted is explicitly not an application claim. Sellers that cannot determine optimizer disposition omit this claim or set it false.",
+              "default": false
+            }
+          },
+          "additionalProperties": true
         },
         "offline_delivery_protocols": {
           "type": "array",
@@ -1672,11 +1684,65 @@
       },
       "additionalProperties": true
     },
+    "measurement_gateway": {
+      "type": "object",
+      "x-status": "experimental",
+      "description": "Buyer-controlled interchange gateway between an orchestrator and measurement providers. Presence means the orchestrator can expose buyer-approved cross-seller delivery using reused media-buy reporting interfaces and receive compact performance feedback without granting providers seller credentials. Orchestrators implementing this block MUST include measurement in supported_protocols and measurement.gateway in experimental_features; this gateway role does not claim the media_buy seller protocol.",
+      "properties": {
+        "delivery_output_methods": {
+          "type": "array",
+          "description": "How the orchestrator can supply delivery data to measurement providers. pull means the provider calls the orchestrator's get_media_buy_delivery task; webhook means the orchestrator pushes reporting callbacks; offline means the orchestrator provisions cloud-bucket delivery.",
+          "items": {
+            "type": "string",
+            "enum": ["pull", "webhook", "offline"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "feedback_input_methods": {
+          "type": "array",
+          "description": "How the orchestrator can receive provider results. task means the provider calls provide_performance_feedback on the gateway; webhook means the provider pushes the same compact assertion to an orchestrator callback; offline means the provider writes compact assertion files through an account-provisioned cloud path.",
+          "items": {
+            "type": "string",
+            "enum": ["task", "webhook", "offline"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": ["delivery_output_methods", "feedback_input_methods"],
+      "additionalProperties": true
+    },
     "measurement": {
       "type": "object",
       "x-status": "experimental",
-      "description": "Experimental measurement capability block. Presence indicates this agent computes one or more quantitative metrics about ad delivery, exposure, or effect, and is willing to be discovered as a measurement vendor. Agents implementing this block MUST list `measurement.core` in experimental_features. Returns metric definitions (this surface), not pricing/coverage (negotiated via `measurement_terms` on `create_media_buy`) or live values (returned per buy via `vendor_metric_values`). AAO crawls each measurement agent's `metrics[]` on a TTL to populate the federated cross-vendor index. Same self-describing pattern as `governance.property_features[]`: agents own the catalog; the registry aggregates.",
+      "description": "Experimental measurement capability block. Presence indicates this agent computes one or more quantitative metrics about ad delivery, exposure, or effect, and is willing to be discovered as a measurement vendor. Agents implementing this block MUST list `measurement.core` in experimental_features. Returns metric definitions and whether the provider produces compact performance feedback, not pricing/coverage (negotiated via `measurement_terms` on `create_media_buy`) or raw/live datasets. Per-buy vendor values remain on delivery reports; optimizer-ready projections use provide_performance_feedback. AgenticAdvertising.org crawls each measurement agent's `metrics[]` on a TTL to populate the federated cross-vendor index.",
       "properties": {
+        "produces_performance_feedback": {
+          "type": "boolean",
+          "description": "Whether this measurement agent produces compact provide_performance_feedback assertions for a buyer-controlled orchestrator gateway. The gateway may supply delivery through get_media_buy_delivery, webhooks, cloud buckets, or existing integrations; the provider submits feedback to the gateway, which decides what to forward to each seller.",
+          "default": false
+        },
+        "delivery_input_methods": {
+          "type": "array",
+          "description": "Orchestrator delivery methods this provider can consume. The orchestrator selects an intersection with measurement_gateway.delivery_output_methods during account setup.",
+          "items": {
+            "type": "string",
+            "enum": ["pull", "webhook", "offline"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "feedback_output_methods": {
+          "type": "array",
+          "description": "Methods this provider can use to return compact assertions. The orchestrator selects an intersection with measurement_gateway.feedback_input_methods during account setup.",
+          "items": {
+            "type": "string",
+            "enum": ["task", "webhook", "offline"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
         "metrics": {
           "type": "array",
           "description": "Metrics this agent computes. Each entry is identified by `metric_id` within the vendor's vocabulary; the canonical reference everywhere a measurement value appears (`committed_metrics`, `vendor_metric_values`, `missing_metrics`) is the tuple `(vendor.domain, vendor.brand_id, metric_id)`.",
@@ -1768,7 +1834,22 @@
           "uniqueItems": true
         }
       },
-      "required": ["metrics"]
+      "required": ["metrics"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "produces_performance_feedback": {
+                "const": true
+              }
+            },
+            "required": ["produces_performance_feedback"]
+          },
+          "then": {
+            "required": ["delivery_input_methods", "feedback_output_methods"]
+          }
+        }
+      ]
     },
     "compliance_testing": {
       "type": "object",

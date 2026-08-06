@@ -7301,6 +7301,9 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     media_buy: {
       buying_modes: wholesaleProfile.productWholesale ? ['brief', 'wholesale', 'refine'] : ['brief', 'refine'],
       supports_proposals: true,
+      performance_feedback: {
+        reports_application_status: true,
+      },
       features: {
         inline_creative_management: true,
         catalog_management: true,

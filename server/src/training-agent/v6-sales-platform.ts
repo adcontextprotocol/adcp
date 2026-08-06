@@ -83,6 +83,9 @@ export const TRAINING_SALES_CAPABILITIES = {
   vendor_metric_optimization: {
     supported_targets: ['threshold_rate' as const],
   },
+  performance_feedback: {
+    reports_application_status: true,
+  },
   requireOperatorAuth: false,
   supportedBillings: ['agent', 'operator'] as const,
   // Auto-derives `compliance_testing.scenarios[]` from the adapters wired in
@@ -100,6 +103,9 @@ export function salesCapabilityProjection() {
     supported_optimization_metrics: [...TRAINING_SALES_CAPABILITIES.supported_optimization_metrics],
     vendor_metric_optimization: {
       supported_targets: [...TRAINING_SALES_CAPABILITIES.vendor_metric_optimization.supported_targets],
+    },
+    performance_feedback: {
+      ...TRAINING_SALES_CAPABILITIES.performance_feedback,
     },
   };
 }

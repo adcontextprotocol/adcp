@@ -72,8 +72,20 @@ interface PerformanceFeedbackInput extends ToolArgs {
   performance_index: number;
   package_id?: string;
   creative_id?: string;
+  baseline?: string;
+  metric?: Record<string, unknown>;
   metric_type?: string;
   feedback_source?: string;
+  producer?: { domain: string; brand_id?: string };
+  vendor?: { domain: string; brand_id?: string };
+  methodology?: string;
+  methodology_version?: string;
+  study_ref?: string;
+  evidence?: Record<string, unknown>;
+  evidence_ref?: string;
+  as_of?: string;
+  final?: boolean;
+  supersedes_feedback_id?: string;
   idempotency_key?: string;
 }
 
@@ -263,7 +275,7 @@ export const CATALOG_EVENT_TOOLS = [
   },
   {
     name: 'provide_performance_feedback',
-    description: 'Submit optimization signals to the seller. Performance index: 0.0 = no value, 1.0 = meeting expectations, >1.0 = exceeding. Scope to a specific package or creative, or provide overall buy-level feedback.',
+    description: 'Submit one compact optimizer-ready assertion to the seller. Buyer orchestrators can identify the baseline, metric, producer, methodology, and supporting evidence without transporting a complete measurement dataset.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
@@ -283,8 +295,23 @@ export const CATALOG_EVENT_TOOLS = [
         performance_index: { type: 'number', minimum: 0 },
         package_id: { type: 'string' },
         creative_id: { type: 'string' },
+        baseline: {
+          type: 'string',
+          enum: ['campaign_target', 'control_group', 'seller_history', 'buyer_portfolio', 'market_benchmark', 'other'],
+        },
+        metric: { type: 'object' },
         metric_type: { type: 'string', enum: ['overall_performance', 'conversion_rate', 'roas', 'cpa', 'engagement_rate'] },
-        feedback_source: { type: 'string', enum: ['buyer_attribution', 'third_party_measurement', 'blended'] },
+        feedback_source: { type: 'string', enum: ['buyer_attribution', 'third_party_measurement', 'platform_analytics', 'verification_partner'] },
+        producer: { type: 'object', properties: { domain: { type: 'string' }, brand_id: { type: 'string' } }, required: ['domain'] },
+        vendor: { type: 'object', properties: { domain: { type: 'string' }, brand_id: { type: 'string' } }, required: ['domain'] },
+        methodology: { type: 'string' },
+        methodology_version: { type: 'string' },
+        study_ref: { type: 'string' },
+        evidence: { type: 'object' },
+        evidence_ref: { type: 'string', format: 'uri' },
+        as_of: { type: 'string', format: 'date-time' },
+        final: { type: 'boolean' },
+        supersedes_feedback_id: { type: 'string' },
         idempotency_key: { type: 'string' },
       },
       required: ['media_buy_id', 'measurement_period', 'performance_index'],
@@ -613,12 +640,24 @@ export async function handleProvidePerformanceFeedback(args: ToolArgs, ctx: Trai
     }
   }
 
+  const appliedAt = new Date().toISOString();
+
   return {
     success: true,
+    feedback_id: `fb_${randomUUID().replace(/-/g, '')}`,
+    application_status: 'applied',
+    received_at: appliedAt,
+    applied_at: appliedAt,
     media_buy_id: req.media_buy_id,
     measurement_period: req.measurement_period,
     performance_index: req.performance_index,
     ...(req.package_id && { package_id: req.package_id }),
+    ...(req.creative_id && { creative_id: req.creative_id }),
+    ...(req.baseline && { baseline: req.baseline }),
+    ...(req.metric && { metric: req.metric }),
     ...(req.metric_type && { metric_type: req.metric_type }),
+    ...(req.producer && { producer: req.producer }),
+    ...(req.methodology && { methodology: req.methodology }),
+    ...(req.study_ref && { study_ref: req.study_ref }),
   };
 }
