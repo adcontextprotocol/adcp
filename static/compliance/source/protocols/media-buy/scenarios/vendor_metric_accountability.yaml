@@ -1,9 +1,14 @@
 id: media_buy_seller/vendor_metric_accountability
 version: "1.0.0"
-title: "End-to-end vendor-metric accountability: declaration → filter → emission"
+title: "End-to-end vendor-metric accountability: declaration → commitment → delivery audit"
 category: media_buy_seller
-summary: "Buyer discovers products that declare a vendor metric, creates a media buy, and verifies vendor-metric values appear in the delivery report."
+summary: "Buyer commits vendor metrics on two packages, then verifies one clean package, one overdue gap, and one not-yet-measurable omission."
 track: reporting
+
+requires_capability:
+  path: media_buy.features.committed_metrics_supported
+  equals: true
+
 required_tools:
   - get_products
   - create_media_buy
@@ -25,18 +30,17 @@ narrative: |
        match (filter-not-fail; do not return an error). At least one of `vendor`
        or `metric_id` must be pinned per entry.
 
-    3. `by_package[].vendor_metric_values` on `get_media_buy_delivery` — reported
-       values for each declared vendor metric. One row per `(vendor.domain,
-       vendor.brand_id, metric_id)` per reporting period. Sellers MUST
-       de-duplicate before emission.
+    3. `package.committed_metrics` and `by_package[].missing_metrics` — the
+       seller stamps the binding vendor-metric contract at confirmation, emits
+       values only for the matching package contract, and reports overdue
+       omissions as `{ scope: "vendor", vendor, metric_id }`. Metrics that are
+       not yet measurable in the current window MUST NOT be reported missing.
 
   This storyboard exercises that contract end to end. It uses
   comply_test_controller to seed a product with vendor metrics declared and to
-  inject delivery data with vendor_metric_values, then asserts the schema-level
-  contract on the delivery response.
-
-  Item 3 of the originating issue (#3501) — whether vendor-metric emission
-  failures need a dedicated hint kind — is deferred to a follow-up adcp-client PR.
+  inject delivery data with vendor_metric_values, then asserts all three audit
+  outcomes required by #3519: a populated commitment is clean, an overdue
+  commitment is missing, and a future commitment is omitted from the gap list.
 
 agent:
   interaction_model: media_buy_seller
@@ -62,17 +66,32 @@ fixtures:
     - product_id: "display_premium_vendor_metrics"
       delivery_type: "guaranteed"
       channels: ["display"]
-      format_ids:
-        - id: "display_300x250"
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
       reporting_capabilities:
         available_metrics:
           - impressions
           - clicks
           - spend
+        measurement_windows:
+          - window_id: "live"
+            duration_days: 0
+            expected_availability_days: 0
+          - window_id: "post_flight"
+            duration_days: 0
+            expected_availability_days: 14
+            is_guarantee_basis: true
         vendor_metrics:
           - vendor:
               domain: "attentionvendor.example"
             metric_id: "attention_units"
+          - vendor:
+              domain: "attentionvendor.example"
+            metric_id: "post_flight_brand_lift"
   pricing_options:
     - product_id: "display_premium_vendor_metrics"
       pricing_option_id: "cpm_standard_vendor"
@@ -167,10 +186,10 @@ phases:
   - id: create_media_buy
     title: "Commit the media buy on the matched product"
     narrative: |
-      The buyer commits a media buy on the vendor-metric-capable product. The
-      product's `vendor_metrics` declaration carries forward as the vendor
-      reporting contract for the resulting buy — no additional field is required
-      on `create_media_buy` itself.
+      The buyer creates two packages on the same vendor-metric-capable product.
+      Package 0 commits attention plus a post-flight metric; package 1 commits
+      the same attention metric. The seller stamps both package contracts with
+      `committed_at`, allowing the report to prove package-scoped isolation.
     steps:
       - id: create_media_buy
         title: "Create media buy"
@@ -181,9 +200,8 @@ phases:
         comply_scenario: create_media_buy
         stateful: true
         expected: |
-          The buy succeeds. The product's vendor_metrics declaration carries
-          forward as the vendor reporting contract — no additional field is
-          required on the buy itself.
+          The buy succeeds with two packages. Each response package echoes the
+          seller-stamped committed_metrics contract used for delivery audit.
         sample_request:
           brand:
             domain: "acmeoutdoor.example"
@@ -197,23 +215,61 @@ phases:
             - product_id: "$context.product_id"
               pricing_option_id: "$context.pricing_option_id"
               budget: 12000
+              committed_metrics:
+                - scope: "vendor"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_units"
+                - scope: "vendor"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "post_flight_brand_lift"
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              budget: 8000
+              committed_metrics:
+                - scope: "vendor"
+                  vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_units"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_accountability_create"
         context_outputs:
           - path: "media_buy_id"
             key: "media_buy_id"
+          - path: "confirmed_at"
+            key: "confirmed_at"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
           - check: field_present
             path: "media_buy_id"
             description: "Seller returns a media_buy_id"
+          - check: field_value
+            path: "packages[0].committed_metrics[0].metric_id"
+            value: "attention_units"
+            description: "Clean-package attention commitment is stamped into the binding contract"
+          - check: field_value
+            path: "packages[0].committed_metrics[1].metric_id"
+            value: "post_flight_brand_lift"
+            description: "Future metric is present in the contract even though it is not measurable yet"
+          - check: field_present
+            path: "packages[0].committed_metrics[0].committed_at"
+            description: "Seller stamps the commitment time used by delivery reconciliation"
+          - check: field_value
+            path: "packages[0].committed_metrics[0].committed_at"
+            value: "$context.confirmed_at"
+            description: "Day-1 commitment time equals the media buy confirmed_at timestamp"
+          - check: field_value
+            path: "packages[1].committed_metrics[0].metric_id"
+            value: "attention_units"
+            description: "Breach package commits the same metric, proving values are package-scoped"
 
   - id: simulate_and_validate_vendor_metrics
     title: "Simulate delivery with vendor-metric values and validate emission"
     narrative: |
       Inject simulated delivery via the test controller, including
-      vendor_metric_values, then call get_media_buy_delivery and check that
-      `by_package[].vendor_metric_values` carries the injected entries.
+      vendor_metric_values and the explicit current-window deferral, then call
+      get_media_buy_delivery and reconcile each package independently.
 
       The semantic uniqueness key for each vendor metric row is
       `(vendor.domain, vendor.brand_id, metric_id)`. Since brand_id is optional
@@ -239,13 +295,20 @@ phases:
             reported_spend:
               amount: 960.00
               currency: "USD"
-            vendor_metric_values:
-              - vendor:
-                  domain: "attentionvendor.example"
-                metric_id: "attention_units"
-                value: 4.2
-                unit: "score"
-                measurable_impressions: 72000
+            measurement_window: "live"
+            vendor_metric_values_by_package:
+              pkg-0:
+                - vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "attention_units"
+                  value: 4.2
+                  unit: "score"
+                  measurable_impressions: 72000
+            not_yet_measurable_vendor_metrics_by_package:
+              pkg-0:
+                - vendor:
+                    domain: "attentionvendor.example"
+                  metric_id: "post_flight_brand_lift"
         validations:
           - check: field_value
             path: "success"
@@ -253,7 +316,7 @@ phases:
             description: "Delivery simulation succeeds"
 
       - id: get_delivery_with_vendor_metrics
-        title: "Get delivery report and assert vendor_metric_values are present"
+        title: "Get delivery report and assert clean, missing, and deferred outcomes"
         task: get_media_buy_delivery
         schema_ref: "media-buy/get-media-buy-delivery-request.json"
         response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
@@ -261,11 +324,11 @@ phases:
         comply_scenario: reporting_flow
         stateful: true
         expected: |
-          Return delivery metrics with vendor_metric_values populated in
-          by_package[0]. The entry must carry vendor.domain, metric_id, and
-          value matching the injected data. measurable_impressions is the
-          coverage denominator — buyers compute coverage rate as
-          measurable_impressions / impressions.
+          Package 0 reports attention_units and has an empty missing_metrics:
+          the populated metric is not flagged, and post_flight_brand_lift is
+          omitted because it is not yet measurable. Package 1 reports
+          attention_units in missing_metrics because its package-scoped value is
+          overdue and absent from vendor_metric_values.
         sample_request:
           account:
             brand:
@@ -288,6 +351,32 @@ phases:
           - check: field_present
             path: "media_buy_deliveries[0].by_package[0].vendor_metric_values[0].value"
             description: "Each vendor_metric_value entry carries a value"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].vendor_metric_values[0].value"
+            value: 4.2
+            description: "Clean package reports the exact injected vendor value"
           - check: field_present
             path: "media_buy_deliveries[0].by_package[0].vendor_metric_values[0].measurable_impressions"
             description: "Coverage denominator is present — buyers can compute vendor measurement coverage rate"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].missing_metrics"
+            description: "Clean package returns an explicit audit result"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].missing_metrics"
+            value: []
+            description: "Populated attention is not missing and future brand lift is excluded until measurable"
+          - check: field_absent
+            path: "media_buy_deliveries[0].by_package[1].vendor_metric_values"
+            description: "Package-scoped simulated attention does not leak into the second package"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[1].missing_metrics[0].scope"
+            value: "vendor"
+            description: "Overdue vendor commitment uses the unified vendor-scope missing_metrics arm"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[1].missing_metrics[0].vendor.domain"
+            value: "attentionvendor.example"
+            description: "Missing row preserves the committed vendor identity"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[1].missing_metrics[0].metric_id"
+            value: "attention_units"
+            description: "Same-key package without a scoped value is reported missing"

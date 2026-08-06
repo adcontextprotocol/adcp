@@ -6,6 +6,7 @@
   "type": "string",
   "enum": [
     "dimensions",
-    "duration"
+    "duration",
+    "pixel_ratio"
   ]
 }

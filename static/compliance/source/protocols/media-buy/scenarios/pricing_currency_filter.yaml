@@ -47,8 +47,12 @@ fixtures:
     - product_id: "mixed_currency_display"
       delivery_type: "non_guaranteed"
       channels: ["display"]
-      format_ids:
-        - id: "display_300x250"
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
       signal_targeting_allowed: true
       signal_targeting_rules:
         resolution_model: "direct_targeting"
@@ -68,8 +72,12 @@ fixtures:
     - product_id: "mandatory_eur_signal_display"
       delivery_type: "non_guaranteed"
       channels: ["display"]
-      format_ids:
-        - id: "display_300x250"
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
       signal_targeting_allowed: true
       signal_targeting_rules:
         resolution_model: "direct_targeting"

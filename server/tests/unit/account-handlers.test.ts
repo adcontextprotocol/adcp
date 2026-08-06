@@ -10,7 +10,10 @@ import {
   clearTaskStore,
 } from '../../src/training-agent/task-handlers.js';
 import { clearSessions } from '../../src/training-agent/state.js';
-import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
+import {
+  clearAccountStore,
+  MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC,
+} from '../../src/training-agent/account-handlers.js';
 import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
@@ -664,7 +667,7 @@ describe('sync_accounts', () => {
         notification_configs: [{
           subscriber_id: 'buyer-primary',
           url: 'https://buyer.example.com/webhooks/creative',
-          event_types: ['creative.status_changed'],
+          event_types: ['creative.status_changed', 'creative.purged'],
           active: false,
         }],
       }],
@@ -676,7 +679,7 @@ describe('sync_accounts', () => {
     expect(acct.notification_configs).toEqual([{
       subscriber_id: 'buyer-primary',
       url: 'https://buyer.example.com/webhooks/creative',
-      event_types: ['creative.status_changed'],
+      event_types: ['creative.status_changed', 'creative.purged'],
       active: false,
     }]);
   });
@@ -775,7 +778,7 @@ describe('sync_accounts', () => {
     }]);
   });
 
-  it('rejects active notification configs until proof of control is implemented', async () => {
+  it('rejects active notification configs when endpoint proof of control fails', async () => {
     const { result } = await simulateCallTool(server, 'sync_accounts', {
       accounts: [{
         brand: { domain: 'acme.com' },
@@ -784,7 +787,7 @@ describe('sync_accounts', () => {
         sandbox: true,
         notification_configs: [{
           subscriber_id: 'buyer-primary',
-          url: 'https://buyer.example.com/webhooks/creative',
+          url: 'http://127.0.0.1:1/webhooks/creative',
           event_types: ['creative.status_changed'],
           active: true,
         }],
@@ -796,8 +799,36 @@ describe('sync_accounts', () => {
     expect(acct.status).toBe('rejected');
     expect(acct.errors).toEqual([expect.objectContaining({
       code: 'VALIDATION_ERROR',
-      field: 'notification_configs[0].active',
+      field: 'notification_configs[0].url',
+      message: 'webhook endpoint proof of control failed',
     })]);
+  });
+
+  it('rejects an amplified activation batch before sending any challenges', async () => {
+    const accounts = Array.from(
+      { length: MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC + 1 },
+      (_, index) => ({
+        brand: { domain: `proof-budget-${index}.example` },
+        operator: 'agency-one.example',
+        billing: 'operator',
+        sandbox: true,
+        notification_configs: [{
+          subscriber_id: `subscriber-${index}`,
+          url: `https://receiver-${index}.example/webhook`,
+          event_types: ['creative.status_changed'],
+          active: true,
+        }],
+      }),
+    );
+
+    const { result } = await simulateCallTool(server, 'sync_accounts', { accounts });
+    expect(result).toMatchObject({
+      code: 'LIMIT_EXCEEDED',
+      recovery: 'correctable',
+      message: expect.stringContaining(
+        `At most ${MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC}`,
+      ),
+    });
   });
 
   it('rejects loopback notification configs in an unknown runtime', async () => {

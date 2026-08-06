@@ -60,7 +60,7 @@ Governance agents support three internal operating modes so organizations can bu
 | Mode | What happens | Risk |
 |------|-------------|------|
 | **Audit** | Log everything, never block. Always returns `approved` with findings attached. | Zero. See what governance would flag without affecting live campaigns. |
-| **Advisory** | Return real statuses (`denied`, `conditions`) but the organization treats denials as non-blocking. | Minimal. Humans review findings post-hoc and act on them. |
+| **Advisory** | Return `approved` with prominent findings and recommended corrections. | Minimal. Humans review findings post-hoc and act on them. |
 | **Enforce** | Block on violations. Require resolution before proceeding. | Production governance with full protection. |
 
 Start in audit mode to evaluate false positive rates and calibrate policies. Move to advisory to test findings with real campaigns. Switch to enforce when confidence is established. The governance agent's audit logs record which mode was active for each check, so post-hoc analysis can distinguish audit-mode approvals from enforce-mode approvals.

@@ -99,7 +99,7 @@ How a hosted sales agent works: product discovery, catalog integration, capabili
 
 **~20 min** | Prerequisite: B1
 
-Deep dive on `list_creative_formats` and how buyer agents discover what your inventory accepts. Guide to structuring creative specs, handling incoming creatives, and brand compliance.
+Deep dive on canonical `Product.format_options[]` and publisher `adagents.json.formats[]`, including how buyers discover what your inventory accepts. Guide to structuring creative specs, handling incoming creatives, and brand compliance.
 
 ### Reading list
 
@@ -110,8 +110,8 @@ Deep dive on `list_creative_formats` and how buyer agents discover what your inv
   <Card title="Example briefs" icon="clipboard-list" href="/docs/media-buy/product-discovery/example-briefs">
     Real examples of product discovery queries from buyer agents.
   </Card>
-  <Card title="list_creative_formats task" icon="palette" href="/docs/creative/task-reference/list_creative_formats">
-    How creative format specifications work — dimensions, file types, render requirements.
+  <Card title="Canonical formats" icon="palette" href="/docs/creative/canonical-formats">
+    How publisher, product, and creative-agent declarations work.
   </Card>
   <Card title="Creative formats" icon="image" href="/docs/creative/formats">
     Format definitions, technical specs, and the renders structure.
@@ -126,7 +126,7 @@ Deep dive on `list_creative_formats` and how buyer agents discover what your inv
 
 ### Key concepts
 
-- **Format declarations** — `list_creative_formats` tells buyers what you accept
+- **Format declarations** — Product `format_options[]` tells buyers what each sellable product accepts
 - **Format vs manifest** — the format is what you accept, the manifest is what gets delivered
 - **Handling incoming creatives** — `sync_creatives` and `build_creative` validation and approval
 - **Brand compliance** — understanding incoming brand.json, disclosure positions
@@ -211,7 +211,7 @@ Create a working sales agent that responds to real buyer queries. Point your AI 
 - Product catalog with at least 3 products and `sync_catalogs` support, each product declaring `reporting_capabilities`
 - `get_adcp_capabilities` that declares `adcp.major_versions` and validates `adcp_major_version` on incoming requests — including a truthful `capabilities.idempotency.replay_ttl_seconds` declaration
 - Creative format support for at least 2 formats
-- Handles `get_products`, `create_media_buy`, `list_creative_formats`, `get_media_buy_delivery`
+- Handles `get_products`, `create_media_buy`, `sync_creatives`, `get_media_buy_delivery`
 - Account setup via `sync_accounts`
 - Well-known discovery files: `brand.json` for the sales-agent operator's identity, endpoint declarations, and signing-key discovery; `adagents.json` for publisher properties and agent authorization
 - Proper error responses for invalid requests — including `VERSION_UNSUPPORTED`, `GOVERNANCE_DENIED`, `TERMS_REJECTED`, `IDEMPOTENCY_CONFLICT`, and `IDEMPOTENCY_EXPIRED` where applicable

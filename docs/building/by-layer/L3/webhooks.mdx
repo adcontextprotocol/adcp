@@ -337,6 +337,8 @@ Content-Digest: sha-256=:<base64url-unpadded>:
 
 Covered components are fixed: `@method`, `@target-uri`, `@authority`, `content-type`, `content-digest`. `content-digest` is REQUIRED — the body is the event; a signature that doesn't cover it isn't protecting the attack surface that matters.
 
+Property-list change payloads retain a required body-level `signature: "rfc9421"` compatibility marker through 3.x because the previously published schema required a string at that location without defining interoperable signature semantics. Receivers MUST accept any string in that field from an older 3.x sender, ignore it for authentication, and verify only the HTTP signature headers above. Property-list registration exposes no legacy authentication selector, so this delivery surface is RFC 9421-only. The marker is removed in 4.0. Collection-list webhook schema and behavior remain unchanged; migrating that contract requires separately versioned work.
+
 **Verification** follows the 14-step [request verifier checklist](/docs/building/by-layer/L1/security#verifier-checklist-requests) with three webhook substitutions:
 
 - Error codes use the `webhook_signature_*` prefix (see [Webhook error taxonomy](/docs/building/by-layer/L1/security#webhook-error-taxonomy)).

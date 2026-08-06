@@ -94,7 +94,7 @@ phases:
       The media buy ID is captured and passed to subsequent phases.
 
     # The sync_creatives step sends display (image) assets keyed to the seller's
-    # own format_id. Sellers without a creative library cannot accept
+    # own canonical format option. Sellers without a creative library cannot accept
     # sync_creatives and would fail setup before reaching the state-machine
     # transitions this storyboard actually tests.
     requires_capability:
@@ -131,8 +131,10 @@ phases:
             path: "products[0].product_id"
           - name: pricing_option_id
             path: "products[0].pricing_options[0].pricing_option_id"
-          - name: product_format_id
-            path: "products[0].format_ids[0]"
+          - name: product_format_kind
+            path: "products[0].format_options[0].format_kind"
+          - name: product_format_option_id
+            path: "products[0].format_options[0].format_option_id"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -148,19 +150,19 @@ phases:
             value: "media_buy_state_machine--discover_products"
             description: "Context correlation_id returned unchanged"
           - check: field_present
-            path: "products[0].format_ids"
-            description: "Products include format_ids for creative requirements"
+            path: "products[0].format_options"
+            description: "Products include canonical format_options for creative requirements"
           - check: field_present
-            path: "products[0].format_ids[0].agent_url"
-            description: "Format IDs include agent_url — must match this agent's URL"
+            path: "products[0].format_options[0].format_kind"
+            description: "Canonical format option includes a format_kind discriminator"
           - check: field_present
-            path: "products[0].format_ids[0].id"
-            description: "Format IDs include id — must be accepted back in sync_creatives"
+            path: "products[0].format_options[0].format_option_id"
+            description: "Canonical format option includes a stable ID accepted by sync_creatives"
 
       - id: sync_creative
         title: "Sync a creative for the test buy"
         narrative: |
-          Upload a creative using the exact format_id returned by get_products. The
+          Upload a creative using the exact canonical format option returned by get_products. The
           subsequent create_media_buy request assigns this creative to the package so
           the created buy is pausable instead of legitimately remaining in
           pending_creatives.
@@ -182,7 +184,10 @@ phases:
           creatives:
             - creative_id: "state_machine_display_creative"
               name: "Acme Outdoor State Machine Creative"
-              format_id: "$context.product_format_id"
+              format_kind: "$context.product_format_kind"
+              format_option_ref:
+                scope: "product"
+                format_option_id: "$context.product_format_option_id"
               assets:
                 image:
                   asset_type: "image"

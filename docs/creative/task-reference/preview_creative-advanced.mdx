@@ -17,15 +17,15 @@ Build a browsable catalog of available formats:
 
 ```typescript
 // 1. List all formats from creative agent
-const formats = await creative_agent.list_creative_formats();
+const capabilities = await creative_agent.get_adcp_capabilities({ protocols: ["creative"] });
+const formats = capabilities.creative.supported_formats;
 
 // 2. Generate format card previews (batch + HTML)
 const formatPreviews = await creative_agent.preview_creative({
   request_type: "batch",
   output_format: "html",
-  requests: formats.formats.map(format => ({
-    format_id: format.format_id,
-    creative_manifest: format.format_card.manifest
+  requests: formats.map(capability => ({
+    creative_manifest: createExampleManifest(capability.format)
   }))
 });
 
@@ -59,10 +59,7 @@ const campaignCreatives = await getCreativesForCampaign(campaignId);
 const previews = await creative_agent.preview_creative({
   request_type: "batch",
   output_format: "html",
-  requests: campaignCreatives.map(c => ({
-    format_id: c.format_id,
-    creative_manifest: c.manifest
-  }))
+  requests: campaignCreatives.map(c => ({ creative_manifest: c.manifest }))
 });
 
 function CampaignReview({ previews }) {
@@ -119,7 +116,7 @@ For production applications with lazy loading:
 
 ## Caching Strategy
 
-Cache individual preview results by format_id + manifest hash:
+Cache individual preview results by canonical format identity (`format_kind` plus optional `format_option_ref`) + manifest hash:
 
 ```typescript
 function cachePreviewResults(results, formatIds, manifests) {
@@ -151,10 +148,7 @@ async function getPreviewsWithCache(formatIds, manifests) {
     const fetched = await client.preview_creative({
       request_type: "batch",
       output_format: "html",
-      requests: toFetch.map(f => ({
-        format_id: f.id,
-        creative_manifest: f.manifest
-      }))
+      requests: toFetch.map(f => ({ creative_manifest: f.manifest }))
     });
 
     fetched.results.forEach((result, i) => {
@@ -167,7 +161,7 @@ async function getPreviewsWithCache(formatIds, manifests) {
 ```
 
 **Key points:**
-- Cache by format_id + manifest hash (not entire batch)
+- Cache by canonical format identity + manifest hash (not the entire batch)
 - Request [A,B,C] → cache each separately
 - Later request [B,C,D] → only fetch D
 - Always check `expires_at` before using cached previews

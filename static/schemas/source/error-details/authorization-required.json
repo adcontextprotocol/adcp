@@ -30,6 +30,7 @@
     },
     "reference_authorization": {
       "type": "object",
+      "deprecated": true,
       "description": "Legacy or provider-specific authorization hint for the referenced object. Prefer `missing_connections[]` for new implementations.",
       "additionalProperties": true
     }

@@ -15,7 +15,7 @@ Campaign Governance uses the same `check_governance` task from two different pos
 |------|----------------|
 | Buyer-side orchestrator | Creates or updates plans, checks intended actions, sends approved requests to sellers, and reports outcomes back to the governance agent. |
 | Seller | Verifies the buyer supplied a valid governance context, checks planned delivery before execution, and refuses governed actions that are missing or denied by governance. |
-| Governance agent | Applies the plan and policy rules, returns `approved`, `conditions`, or `denied`, signs governance context, and records audit state. |
+| Governance agent | Applies the plan and policy rules, returns intent counterproposals or binding decisions, signs context only for `approved`, and records audit state. |
 
 ## Setup: bind the seller to the governance agent
 
@@ -33,11 +33,12 @@ The intent check sends:
 |-------|----------|---------|
 | `plan_id` | Yes | Identifies the campaign plan being enforced. |
 | `caller` | Yes | Identifies the buyer-side orchestrator making the governance check. |
+| `target_agent` | Yes | Exact downstream service URL; becomes the signed token audience and stays outside the business payload. |
 | `tool` | Yes | Names the action the orchestrator intends to perform, such as `create_media_buy`, `update_media_buy`, `activate_signal`, or `build_creative`. |
 | `payload` | Yes | Carries the exact request body the orchestrator intends to send. |
-| `governance_context` | Later calls | Maintains lifecycle continuity after the first approved check. |
+| `governance_context` | No | Not sent on initial intent negotiation. It is issued only after approval. |
 
-If the governance agent returns `approved` or `conditions`, it returns a `governance_context` token. The orchestrator attaches that token to the request it sends to the seller. If the response is `conditions`, the orchestrator must apply the conditions and re-check before proceeding.
+Only `approved` returns a `governance_context` token. The orchestrator attaches that token to the request it sends to the service. A `conditions` response instead carries `consultation_context`, a non-authorizing negotiation handle that the orchestrator returns only with the adjusted intent re-check. The governance agent binds the handle to the authenticated principal, caller, plan, tool, purchase type, and target audience and rejects a mismatch.
 
 ## Seller-side execution check
 
@@ -47,16 +48,15 @@ The seller-side check sends:
 
 | Field | Required | Purpose |
 |-------|----------|---------|
-| `plan_id` | Yes | Identifies the campaign plan being enforced. |
 | `caller` | Yes | Identifies the seller making the execution check. |
-| `governance_context` | Yes | The signed context token from the buyer-side intent check. |
+| `governance_context` | Yes | The signed, opaque context from the buyer-side approval. It is the authoritative plan binding. |
 | `planned_delivery` | Yes | The seller's actual planned execution: budget, dates, channels, geography, placements, pacing, and other delivery parameters. |
 | `phase` | Yes for lifecycle clarity | Indicates whether this is a purchase, modification, or delivery check. |
 | `delivery_metrics` | Delivery phase | Required when `phase` is `delivery`; carries actual delivery performance data for pacing, spend, geography, channel, and audience-drift checks. |
 
 The seller must not treat the buyer's intent check as sufficient by itself. The seller checks what it will actually deliver, which may differ from the buyer's request because of inventory availability, seller defaults, or implementation constraints.
 
-If the governance agent denies the execution check, the seller must not proceed. If the governance agent returns conditions, the seller must adjust planned delivery and re-check before confirming.
+The execution check is binary. If the governance agent denies it, the seller must not proceed; a `conditions` response is invalid on this path and does not authorize a commit.
 
 ## Outcome reporting
 
@@ -71,7 +71,7 @@ Outcome reporting is what prevents the governance agent from counting attempted 
 | Buyer skips `check_governance` because the seller will check later | Buyer must perform the intent check first so it can attach a valid governance context. |
 | Seller accepts a request with no governance context on a governed account | Seller rejects the request before execution. |
 | Seller checks the buyer's requested payload instead of `planned_delivery` | Seller checks the delivery it will actually run. |
-| Orchestrator treats `conditions` as approval | Orchestrator or seller applies the conditions and calls `check_governance` again. |
+| Orchestrator treats `conditions` as approval | The buyer applies the intent counterproposal and calls `check_governance` again; services never treat it as execution authorization. |
 | Orchestrator omits `report_plan_outcome` | Governance budget and audit state drift from what actually happened. |
 
 ## Minimal sequence
@@ -80,8 +80,8 @@ Outcome reporting is what prevents the governance agent from counting attempted 
 2. Buyer creates or updates a plan with `sync_plans`.
 3. Buyer calls `check_governance` with `tool` and `payload`.
 4. Buyer sends the seller request with `governance_context`.
-5. Seller verifies the context and calls `check_governance` with `plan_id`, `caller`, and `planned_delivery`.
-6. Seller confirms, rejects, or adjusts based on the governance verdict.
+5. Seller prepares a candidate and calls `check_governance` with `governance_context`, `caller`, and `planned_delivery`.
+6. Seller commits atomically on `approved` or rejects on `denied`.
 7. Buyer calls `report_plan_outcome` with the seller result.
 
 See the [`check_governance` task reference](/docs/governance/campaign/tasks/check_governance) for request and response fields, and the [Campaign Governance specification](/docs/governance/campaign/specification) for lifecycle and token validation details.

@@ -1,10 +1,11 @@
 /**
  * GCP KMS-backed RFC 9421 SigningProviders for Addie.
  *
- * Two providers, one per AdCP signing purpose (request vs webhook). AdCP
- * requires distinct key material per purpose; both providers wrap a
- * different `cryptoKeyVersion` under the same KMS keyring with the shared
- * service account.
+ * Two providers, one per AdCP signing surface (request vs webhook). Existing
+ * webhook key material remains on the deprecated `webhook-signing` purpose
+ * during the 3.x compatibility window. Both providers wrap a different
+ * `cryptoKeyVersion` under the same KMS keyring with the shared service
+ * account.
  *
  * Reads three Fly secrets:
  *   - GCP_SA_JSON: service-account credentials JSON (shared IAM identity)
@@ -16,7 +17,7 @@
  * loudly — tripwire against an out-of-band key swap in GCP that would
  * silently re-sign with an unexpected key.
  *
- * Singleton per purpose. Lazy init so dev (no env) boots; production
+ * Singleton per surface. Lazy init so dev (no env) boots; production
  * pays the `getPublicKey` round-trip on the first signed call.
  */
 
@@ -81,7 +82,7 @@ export function getRequestSigningProvider(): Promise<SigningProvider | null> {
 /**
  * Returns the GCP KMS-backed signing provider for webhook signing, or
  * null if env vars are unset. Distinct key material from the
- * request-signing provider per AdCP's key-separation requirement.
+ * request-signing provider for optional blast-radius isolation.
  */
 export function getWebhookSigningProvider(): Promise<SigningProvider | null> {
   return getProvider(WEBHOOK_SPEC, webhookState);

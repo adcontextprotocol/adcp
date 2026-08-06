@@ -1,0 +1,333 @@
+id: media_buy_seller/provenance_audit_observation
+version: "1.0.0"
+title: "Seller accepts a provenance carve-out claim surfaced as an audit observation"
+category: media_buy_seller
+summary: "Buyer submits AI-assisted creatives with human_oversight directed/edited and disclosure.required false. Seller invokes an on-list verifier, records OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED audit observations, and accepts the creatives rather than treating the observations as rejections."
+track: creative
+required_tools:
+  - get_products
+  - sync_creatives
+  - comply_test_controller
+
+narrative: |
+  This scenario exercises the non-rejection half of provenance verification.
+  The buyer claims editorial-responsibility carve-outs by submitting AI-
+  assisted creatives with human_oversight: directed/edited and
+  disclosure.required: false. Those combinations are audit-worthy, but they
+  are not contradictions and are not grounds for rejection by themselves.
+
+  The seller should call an on-list governance agent via get_creative_features.
+  The verifier returns audit_observations[] with
+  OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED. The seller accepts the creative
+  through the normal lifecycle rather than rejecting solely on that
+  observation. Shared conformance observes the accept result, outbound
+  verifier calls, and a sandbox-only controller query for the recorded
+  observation; public seller responses do not have to expose the seller's
+  internal audit log.
+
+agent:
+  interaction_model: stateful_push
+  capabilities:
+    - has_creative_library
+  examples:
+    - "Publishers and SSPs that run independent provenance review against buyer-declared disclosure claims"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    Seller publishes a product with creative_policy.accepted_verifiers
+    pointing at a governance agent that implements get_creative_features and
+    can emit audit_observations[] for oversight/disclosure carve-out claims.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "test-product-provenance-audit-observation"
+      name: "Provenance Audit Observation Test Product"
+      description: "Sandbox display inventory exercising audit-worthy but non-rejecting provenance carve-out claims"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      creative_policy:
+        co_branding: "optional"
+        landing_page: "any"
+        templates_available: false
+        provenance_required: true
+        accepted_verifiers:
+          - agent_url: "https://governance.encypher.seller.example"
+            feature_id: "ai_generated"
+            providers: ["Encypher"]
+      pricing_options:
+        - pricing_option_id: "test-pricing-cpm"
+          pricing_model: "cpm"
+          rate: 5.00
+          currency: "USD"
+
+phases:
+  - id: discover_verifier
+    title: "Discover the verifier allowlist"
+    narrative: |
+      The buyer reads creative_policy.accepted_verifiers from get_products
+      before submitting the creative, so it can reference an on-list verifier
+      in provenance metadata.
+
+    steps:
+      - id: get_products_with_accepted_verifiers
+        title: "Read accepted_verifiers from creative_policy"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return the seeded product with creative_policy.accepted_verifiers
+          populated. Buyer reads the agent_url for use on its verify_agent
+          reference in the next phase.
+        sample_request:
+          buying_mode: "brief"
+          # Brief intentionally surfaces "Provenance Audit Observation" so
+          # brief-mode keyword scoring places the seeded fixture product at
+          # products[0]. This mirrors the provenance_enforcement coupling; if
+          # the runner supports JSONPath predicates later, switch to wholesale
+          # mode plus product_id predicate matching.
+          brief: "Provenance audit-observation display inventory — verifier surfaces carve-out claims for audit"
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "provenance_audit_observation--get_products"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].creative_policy.accepted_verifiers[0].agent_url"
+            description: "Seller publishes at least one accepted verifier"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "provenance_audit_observation--get_products"
+            description: "Context correlation_id returned unchanged"
+
+  - id: accept_carveout_claim
+    title: "Sync creative with audit-worthy carve-out claim"
+    narrative: |
+      The buyer submits AI-assisted creative and declares disclosure.required:
+      false because a human directed or edited the creative process. The seller
+      invokes the on-list verifier. The verifier's audit observation should be
+      retained for review, but the seller should not reject the creative solely because
+      OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED is present.
+
+    steps:
+      - id: sync_creatives_carveout_claim
+        title: "Submit creative that carries an audit-worthy carve-out claim"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        stateful: true
+        expected: |
+          The seller invokes get_creative_features against an on-list verifier,
+          receives the verifier's OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED audit
+          observation, and accepts the creative. Per-creative result: action
+          created or updated; no PROVENANCE_CLAIM_CONTRADICTED error.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme_provenance_audit_directed_001"
+              name: "Acme provenance audit observation probe — directed"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                headline:
+                  asset_type: "text"
+                  content: "Outdoor gear designed with expert guidance"
+                image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/ai-generated-true.jpg"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/spring"
+              provenance:
+                digital_source_type: "composite_with_trained_algorithmic_media"
+                ai_tool:
+                  name: "Acme Creative Assist"
+                  provider: "Acme Outdoor"
+                human_oversight: "directed"
+                declared_by:
+                  role: "agency"
+                disclosure:
+                  required: false
+                embedded_provenance:
+                  - method: "provenance_markers"
+                    provider: "Encypher"
+                    verify_agent:
+                      agent_url: "https://governance.encypher.seller.example"
+                      feature_id: "ai_generated"
+            - creative_id: "acme_provenance_audit_edited_001"
+              name: "Acme provenance audit observation probe — edited"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                headline:
+                  asset_type: "text"
+                  content: "Outdoor gear refined with expert guidance"
+                image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/ai-generated-true.jpg"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/spring"
+              provenance:
+                digital_source_type: "composite_with_trained_algorithmic_media"
+                ai_tool:
+                  name: "Acme Creative Assist"
+                  provider: "Acme Outdoor"
+                human_oversight: "edited"
+                declared_by:
+                  role: "agency"
+                disclosure:
+                  required: false
+                embedded_provenance:
+                  - method: "provenance_markers"
+                    provider: "Encypher"
+                    verify_agent:
+                      agent_url: "https://governance.encypher.seller.example"
+                      feature_id: "ai_generated"
+          idempotency_key: "$generate:uuid_v4#provenance_audit_observation_accept_carveout_sync"
+          context:
+            correlation_id: "provenance_audit_observation--accept_carveout"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_value
+            path: "creatives[0].action"
+            allowed_values: ["created", "updated"]
+            description: "Directed per-creative action is created or updated because the audit observation is non-blocking"
+          - check: field_absent
+            path: "creatives[0].errors[0].code"
+            description: "Directed creative has no rejection code solely for the audit-worthy carve-out claim"
+          - check: field_value
+            path: "creatives[1].action"
+            allowed_values: ["created", "updated"]
+            description: "Edited per-creative action is created or updated because the audit observation is non-blocking"
+          - check: field_absent
+            path: "creatives[1].errors[0].code"
+            description: "Edited creative has no rejection code solely for the audit-worthy carve-out claim"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "provenance_audit_observation--accept_carveout"
+            description: "Context correlation_id returned unchanged"
+          - check: upstream_traffic
+            description: "Seller invoked an upstream verifier with the submitted directed carve-out claim"
+            min_count: 1
+            endpoint_pattern: "POST *"
+            payload_must_contain:
+              - path: "creative_manifest.provenance.human_oversight"
+                match: equals
+                value: "directed"
+              - path: "creative_manifest.provenance.disclosure.required"
+                match: equals
+                value: false
+          - check: upstream_traffic
+            description: "Seller invoked an upstream verifier with the submitted edited carve-out claim"
+            min_count: 1
+            endpoint_pattern: "POST *"
+            payload_must_contain:
+              - path: "creative_manifest.provenance.human_oversight"
+                match: equals
+                value: "edited"
+              - path: "creative_manifest.provenance.disclosure.required"
+                match: equals
+                value: false
+
+      - id: query_directed_audit_observation
+        title: "Assert directed carve-out audit observation"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        stateful: true
+        expected: |
+          The sandbox controller returns the audit observation recorded for the
+          accepted directed creative. Public seller responses are not required
+          to expose this internal audit log.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "query_provenance_audit_observations"
+          params:
+            creative_id: "acme_provenance_audit_directed_001"
+          context:
+            correlation_id: "provenance_audit_observation--query_directed"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json schema"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller returned the creative's audit observations"
+          - check: field_value
+            path: "audit_observations[0].code"
+            value: "OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED"
+            description: "Directed carve-out claim is surfaced as the standardized audit observation"
+          - check: field_value
+            path: "audit_observations[0].details.claimed_value.human_oversight"
+            value: "directed"
+            description: "Observation records the directed human_oversight claim"
+          - check: field_value
+            path: "audit_observations[0].details.claimed_value.disclosure_required"
+            value: false
+            description: "Observation records the disclosure.required false claim"
+
+      - id: query_edited_audit_observation
+        title: "Assert edited carve-out audit observation"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        stateful: true
+        expected: |
+          The sandbox controller returns the audit observation recorded for the
+          accepted edited creative, exercising the second documented
+          human_oversight value.
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "query_provenance_audit_observations"
+          params:
+            creative_id: "acme_provenance_audit_edited_001"
+          context:
+            correlation_id: "provenance_audit_observation--query_edited"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json schema"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller returned the creative's audit observations"
+          - check: field_value
+            path: "audit_observations[0].code"
+            value: "OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED"
+            description: "Edited carve-out claim is surfaced as the standardized audit observation"
+          - check: field_value
+            path: "audit_observations[0].details.claimed_value.human_oversight"
+            value: "edited"
+            description: "Observation records the edited human_oversight claim"
+          - check: field_value
+            path: "audit_observations[0].details.claimed_value.disclosure_required"
+            value: false
+            description: "Observation records the disclosure.required false claim"

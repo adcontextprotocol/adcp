@@ -78,7 +78,10 @@
           "description": "Endpoint for reporting usage against these rights"
         },
         "rights_constraint": {
-          "$ref": "/schemas/core/rights-constraint.json",
+          "allOf": [
+            { "$ref": "/schemas/core/rights-constraint.json" },
+            { "required": ["rights_holder", "grant_status", "content_digest", "attestation_refs"] }
+          ],
           "description": "Pre-built rights constraint for embedding in creative manifests. Populated from the agreed terms — the buyer does not need to construct it manually."
         },
         "context": {
@@ -97,6 +100,14 @@
         "rights_constraint"
       ],
       "additionalProperties": true,
+      "x-adcp-validation": {
+        "signed_grant_projection": [
+          "when restrictions is present, rights_constraint.restrictions == restrictions",
+          "when disclosure is present, rights_constraint.disclosure == disclosure",
+          "when approval_webhook is present, rights_constraint.creative_approval_required == true",
+          "approval_webhook authentication and usage_reporting_url are operational secrets/locators and MUST NOT be copied into rights_constraint"
+        ]
+      },
       "not": {
         "required": [
           "errors"
