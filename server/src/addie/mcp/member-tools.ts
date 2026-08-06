@@ -142,6 +142,10 @@ import {
   guardPersonalWorkspaceDomainSelection,
   type PersonalWorkspaceDomainSelectionResult,
 } from '../../services/org-selection-guard.js';
+import {
+  recordCertificationExperienceEvent,
+  upsertCertificationContribution,
+} from '../../services/certification-experience.js';
 
 const logger = createLogger('addie-member-tools');
 const complianceTarget = hostedComplianceTarget();
@@ -948,6 +952,11 @@ const GITHUB_BODY_MAX_CHARS = 4000;
 const GITHUB_COMMENT_MAX_CHARS = 1000;
 const GITHUB_MAX_COMMENTS = 10;
 const GITHUB_DIFF_MAX_CHARS = 12000;
+// Keep generated issue links below a conservative cross-client URL ceiling.
+// This reduces the risk of Slack splitting a query string or GitHub clearing
+// an oversized prefill. Longer drafts still get a complete copyable preview
+// and a short link that pre-fills the title only.
+const GITHUB_PREFILL_URL_MAX_CHARS = 2000;
 
 type ParsedRepo =
   | { ok: true; org: string; repo: string }
@@ -2360,7 +2369,8 @@ async function callApi(
  */
 export function createMemberToolHandlers(
   memberContext: MemberContext | null,
-  slackUserId?: string
+  slackUserId?: string,
+  certificationModuleContext?: { moduleId?: string },
 ): Map<string, (input: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
@@ -6480,6 +6490,43 @@ export function createMemberToolHandlers(
   // ============================================
   // GITHUB ISSUE DRAFTING
   // ============================================
+  const activeCertification = () => {
+    const userId = memberContext?.workos_user?.workos_user_id;
+    if (!userId || !certificationModuleContext?.moduleId) return null;
+    return { userId, moduleId: certificationModuleContext.moduleId };
+  };
+
+  const trackCertificationContribution = async (input: {
+    repository: string;
+    title: string;
+    status: 'drafted' | 'submitted';
+    draftUrl?: string;
+    issueNumber?: number;
+    issueUrl?: string;
+  }) => {
+    const active = activeCertification();
+    if (!active) return;
+    try {
+      await upsertCertificationContribution({
+        userId: active.userId,
+        moduleId: active.moduleId,
+        ...input,
+      });
+      await recordCertificationExperienceEvent({
+        userId: active.userId,
+        moduleId: active.moduleId,
+        eventType: input.status === 'submitted' ? 'contribution_submitted' : 'contribution_drafted',
+        metadata: {
+          repository: input.repository,
+          title: input.title,
+          issue_number: input.issueNumber ?? null,
+        },
+      });
+    } catch (error) {
+      logger.error({ error }, 'Failed to track certification contribution');
+    }
+  };
+
   handlers.set('draft_github_issue', async (input) => {
     const title = input.title as string;
     let body = input.body as string;
@@ -6512,29 +6559,40 @@ export function createMemberToolHandlers(
       params.set('labels', labels.join(','));
     }
 
-    const issueUrl = `https://github.com/${org}/${repo}/issues/new?${params.toString()}`;
+    const newIssueUrl = `https://github.com/${org}/${repo}/issues/new`;
+    const issueUrl = `${newIssueUrl}?${params.toString()}`;
 
-    // Check URL length - browsers/GitHub have practical limits (~8000 chars)
+    // Avoid body-prefilled links that are likely to be truncated or rejected
+    // across browsers, Slack clients, and Addie's streamed responses.
     const urlLength = issueUrl.length;
-    const URL_LENGTH_WARNING_THRESHOLD = 6000;
-    const URL_LENGTH_MAX = 8000;
 
     // Build response with the draft details and link
     let response = `## GitHub Issue Draft\n\n`;
+    let reliableDraftUrl = issueUrl;
 
-    if (urlLength > URL_LENGTH_MAX) {
-      // URL too long - provide manual instructions instead
-      response += `⚠️ **Issue body is too long for a pre-filled URL.**\n\n`;
-      response += `Please create the issue manually:\n`;
-      response += `1. Go to https://github.com/${org}/${repo}/issues/new\n`;
-      response += `2. Copy the title and body from the preview below\n\n`;
+    if (urlLength > GITHUB_PREFILL_URL_MAX_CHARS) {
+      response += `⚠️ **This draft is too long for a reliable pre-filled link.**\n\n`;
+      const shortParams = new URLSearchParams();
+      shortParams.set('title', title);
+      if (labels.length > 0) {
+        shortParams.set('labels', labels.join(','));
+      }
+      const titlePrefillUrl = `${newIssueUrl}?${shortParams.toString()}`;
+      reliableDraftUrl = titlePrefillUrl.length <= GITHUB_PREFILL_URL_MAX_CHARS
+        ? titlePrefillUrl
+        : newIssueUrl;
+
+      if (titlePrefillUrl.length <= GITHUB_PREFILL_URL_MAX_CHARS) {
+        response += `**👉 [Open GitHub with the title pre-filled](${titlePrefillUrl})**\n\n`;
+        response += `Copy the body from the preview below, then submit the issue.\n\n`;
+      } else {
+        response += `Please create the issue manually:\n`;
+        response += `1. Go to ${newIssueUrl}\n`;
+        response += `2. Copy the title and body from the preview below\n\n`;
+      }
     } else {
       response += `I've drafted a GitHub issue for you. Click the link below to create it:\n\n`;
       response += `**👉 [Create Issue on GitHub](${issueUrl})**\n\n`;
-
-      if (urlLength > URL_LENGTH_WARNING_THRESHOLD) {
-        response += `⚠️ _Note: The issue body is quite long. If the link doesn't work, you may need to shorten it or copy/paste manually._\n\n`;
-      }
     }
 
     response += `---\n\n`;
@@ -6547,6 +6605,13 @@ export function createMemberToolHandlers(
     response += `\n**Body:**\n\n${body}\n\n`;
     response += `---\n\n`;
     response += `_Note: You'll need to be signed in to GitHub to create the issue. Feel free to edit the title, body, or labels before submitting._`;
+
+    await trackCertificationContribution({
+      repository: `${org}/${repo}`,
+      title,
+      status: 'drafted',
+      draftUrl: reliableDraftUrl,
+    });
 
     return response;
   });
@@ -6635,6 +6700,13 @@ export function createMemberToolHandlers(
           });
           if (retryResponse.ok) {
             const issue = await retryResponse.json() as { html_url: string; number: number };
+            await trackCertificationContribution({
+              repository: `${org}/${repo}`,
+              title,
+              status: 'submitted',
+              issueNumber: issue.number,
+              issueUrl: issue.html_url,
+            });
             return `Issue created: [#${issue.number}](${issue.html_url})`;
           }
         }
@@ -6643,6 +6715,13 @@ export function createMemberToolHandlers(
 
       const issue = await response.json() as { html_url: string; number: number };
       logger.info({ issueUrl: issue.html_url, repo }, 'create_github_issue: Issue created');
+      await trackCertificationContribution({
+        repository: `${org}/${repo}`,
+        title,
+        status: 'submitted',
+        issueNumber: issue.number,
+        issueUrl: issue.html_url,
+      });
       return `Issue created: [#${issue.number}](${issue.html_url})`;
     } catch (error) {
       logger.error({ error, repo }, 'create_github_issue: Failed to create issue');

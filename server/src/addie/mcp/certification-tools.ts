@@ -38,6 +38,7 @@ import {
   NAME_REQUIRED_MARKER,
   ensureCertifierCredential,
 } from '../../services/certification-credential-issuance.js';
+import { linkCertificationModuleThread } from '../../services/certification-experience.js';
 
 export { NAME_REQUIRED_MARKER };
 
@@ -1847,7 +1848,11 @@ export function createCertificationToolHandlers(
         return `Module ${moduleId} is already ${existingMod.status.replace('_', ' ')}. You can proceed to the next module or use get_learner_progress to check your overall progress.`;
       }
 
-      await certDb.startModule(userId, moduleId);
+      if (options?.threadId) {
+        await certDb.startModule(userId, moduleId, options.threadId);
+      } else {
+        await certDb.startModule(userId, moduleId);
+      }
       if (options?.trainingModuleContext) {
         options.trainingModuleContext.moduleId = moduleId;
       }
@@ -2435,7 +2440,11 @@ export function createCertificationToolHandlers(
       }
 
       // Start the module and create an attempt
-      await certDb.startModule(userId, moduleId);
+      if (options?.threadId) {
+        await certDb.startModule(userId, moduleId, options.threadId);
+      } else {
+        await certDb.startModule(userId, moduleId);
+      }
       const attempt = await certDb.createAttempt(userId, mod.track_id, options?.threadId, moduleId);
       if (options?.trainingModuleContext) {
         options.trainingModuleContext.moduleId = moduleId;
@@ -2862,6 +2871,7 @@ export function createCertificationToolHandlers(
         demonstration_evidence: demonstrationEvidence,
         notes: enrichedNotes,
       });
+      await linkCertificationModuleThread(userId, moduleId, options?.threadId);
 
       const demoCount = demonstrationsVerified.length;
       return `Teaching checkpoint saved for ${moduleId}. Phase: ${currentPhase}. Covered ${conceptsCovered.length} concepts, ${conceptsRemaining.length} remaining. Demonstrations verified: ${demoCount}.`;
@@ -2911,7 +2921,7 @@ Run your buyer agent against the public test agent and share the output. Use the
 npx @adcp/sdk@latest test-mcp get_products '{"brief":"<your campaign brief>"}'
 \`\`\`
 
-Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products → create_media_buy → list_creative_formats → sync_creatives.
+Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products (select a canonical \`format_options[]\` entry) → create_media_buy → get_adcp_capabilities on the chosen creative endpoint → sync_creatives with \`format_kind\` and optional \`format_option_ref\`.
 
 Paste the output from each step. We'll verify your agent handles the complete buying workflow correctly.
 

@@ -7,10 +7,35 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "if": { "required": ["bidding"] },
+      "then": {
+        "properties": {
+          "optimization_goals": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "target": {
+                    "properties": {
+                      "kind": { "enum": ["cost_per", "per_ad_spend"] }
+                    },
+                    "required": ["kind"]
+                  }
+                },
+                "required": ["target"]
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "not": {
-    "required": ["capability_ids"]
+    "anyOf": [
+      { "required": ["capability_ids"] },
+      { "required": ["bidding", "bid_price"] }
+    ]
   },
   "properties": {
     "product_id": {
@@ -20,7 +45,8 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Legacy named-format selector. Array of format IDs that will be used for this package - must be supported by the product. If omitted (and no 3.1+ format-option selector or direct canonical selector is present), defaults to all formats supported by the product.\n\nSellers comparing this selector to a product's `format_options[]` MUST first normalize each legacy `format_id` through the canonical mapping path (`canonical`, `v1_format_ref`, or registry projection). Exact `(agent_url, id)` comparison after projection is insufficient: a legacy fixed-size display ID can satisfy a canonical `image` product declaration with matching `width`/`height`. Product gating remains directional: if the product declares fixed dimensions or duration, the selected format must declare and match those constraints; an under-specified canonical request is not a wildcard for a fixed-size or fixed-duration product. Range constraints use containment, not overlap: a range-based request satisfies the product only when every value it permits falls within the product's accepted range.",
+      "deprecated": true,
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format selector retained for older 3.x peers. New buyers select canonical product contracts with `format_option_refs` or `format_kind` plus `params`. Sellers MUST normalize this field through the canonical mapping path before product satisfaction checks. If omitted and no canonical selector is present, it defaults to all formats supported by the product.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       },
@@ -28,7 +54,7 @@
     },
     "format_option_refs": {
       "type": "array",
-      "description": "3.1+ format-option selector. Array of structured format option references, each matching one of the target product's `format_options[]` entries. Publisher-catalog-backed options match by `{ scope: \"publisher\", publisher_domain, format_option_id }`; product-local options match by `{ scope: \"product\", format_option_id }`. If omitted along with `format_ids` and direct `format_kind`, all product formats are active.\n\n**Resolution rules (normative).**\n- **Both `format_option_refs` and `format_ids` present.** `format_option_refs` wins; the seller routes by structured references and MUST NOT validate `format_ids` for consistency with the resolved declarations. The `format_ids` value is a legacy-compat hint for intermediaries on the wire path; the resolving seller ignores it.\n- **`format_option_refs` only.** Seller looks up each entry against the package's target product `format_options[]` and uses the matching declaration (and that declaration's `v1_format_ref[]` when projecting to legacy named-format surfaces). This is the 3.1+ format-option authoring path. `scope: \"product\"` is scoped only by this target product; it is not a seller-wide identifier.\n- **`format_ids` only.** Existing named-format behavior; unchanged.\n- **`format_kind` only.** Direct canonical selector behavior; seller compares `{ format_kind, params }` against the product's `format_options[]` declarations using directional product satisfaction.\n- **None of `format_option_refs`, `format_ids`, or `format_kind`.** Default — all formats supported by the product are active.\n\n**Failure modes (normative).** Sellers MUST reject with `UNSUPPORTED_FEATURE` (with `field` pointing at the failing package and entry, e.g. `packages[0].format_option_refs[1]`) when:\n- Any entry references a format option not present in the target product's `format_options[]`, OR\n- The target product carries `format_ids` but no `format_options[]` (legacy-format-only product — there is no closed set to resolve against), OR\n- The target product carries `format_options[]` but none of the entries publish selectable `format_option_id` values. Sellers SHOULD set `error.details.reason` to `format_option_refs_not_published` in this case so buyers can distinguish it from an outright mismatch and fall back to `format_ids[]`.\n\n**Seller obligation.** For buyers to use the 3.1+ format-option path against a product, the seller MUST publish a selectable `format_option_id` on each `format_options[]` entry it expects buyers to select; if the option is publisher-catalog backed, include `publisher_domain` on the product declaration and require buyers to use `scope: \"publisher\"` in `FormatOptionRef`.\n\n**No legacy capability selector.** `capability_ids` was removed before GA; schemas reject it instead of treating it as an extension.\n\n**Dual emission.** Format-option-aware buyer SDKs targeting a heterogeneous seller population SHOULD emit `format_ids` alongside `format_option_refs` so legacy-format-only sellers — which ignore unknown fields per `additionalProperties: true` — still receive an explicit format set rather than silently defaulting to all formats supported by the product.",
+      "description": "Canonical 3.2 format-option selector. Each reference matches one target product `format_options[]` entry. Publisher-backed options match `{ scope: \"publisher\", publisher_domain, format_option_id }`; product-local options match `{ scope: \"product\", format_option_id }`. If omitted with direct `format_kind`, all product options are active. Sellers reject unresolved options with `UNSUPPORTED_FEATURE` and a field path to the failing entry. New buyers do not dual-emit deprecated named-format selectors.",
       "items": {
         "$ref": "/schemas/core/format-option-ref.json"
       },
@@ -36,7 +62,7 @@
     },
     "format_kind": {
       "$ref": "/schemas/core/canonical-format-kind.json",
-      "description": "3.1+ direct canonical selector. Names the canonical format shape this package targets when the buyer is authoring by canonical kind rather than by a product-local `format_option_ref` or legacy `format_id`. Pair with `params` when the product declaration requires dimensions, duration, sizes, codecs, or other canonical parameters. If `format_option_refs` is present, it wins over this direct selector. If `format_ids` is present without `format_option_refs`, sellers MUST normalize and validate the legacy selector; buyers SHOULD NOT also send `format_kind` unless it is an informational echo of the same normalized shape.\n\nProduct satisfaction is directional: a broad selector such as `{ format_kind: \"image\" }` does not satisfy a product whose `format_options[]` fixes `params.width` and `params.height`. Sellers MUST reject under-specified direct selectors with `UNSUPPORTED_FEATURE` or an equivalent format-selector validation error."
+      "description": "Canonical 3.2 direct selector. Names the canonical format shape this package targets when the buyer is not selecting a published `format_option_ref`. Pair with `params` for dimensions, duration, codecs, or other constraints. Product satisfaction is directional: broad `{ format_kind: \"image\" }` does not satisfy a fixed-size product declaration."
     },
     "params": {
       "type": "object",
@@ -45,7 +71,12 @@
     },
     "budget": {
       "type": "number",
-      "description": "Budget allocation for this package in the media buy's currency",
+      "description": "Hard lifetime spend cap for this package in the media buy's currency. Required in fixed allocation mode. Optional in seller-optimized mode; when omitted, the package is bounded by the shared total_budget and any other package constraints. In seller-optimized mode this is a ceiling, not a reserved or current allocation.",
+      "minimum": 0
+    },
+    "min_spend_target": {
+      "type": "number",
+      "description": "Soft lifetime spend target for this package in the media buy's currency. Only valid with seller-optimized budget allocation. The seller SHOULD attempt to deliver at least this amount before allocating incremental spend elsewhere, but inventory, policy, optimization targets, or other delivery constraints may prevent it. This is not a billing guarantee. Must not exceed the package budget when both are present; sellers MUST reject with `INVALID_REQUEST` when this constraint is violated.",
       "minimum": 0
     },
     "pacing": {
@@ -58,8 +89,15 @@
     },
     "bid_price": {
       "type": "number",
-      "description": "Bid price for auction-based pricing options. This is the exact bid/price to honor unless selected pricing_option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
+      "deprecated": true,
+      "description": "DEPRECATED in 3.2 and removed in the next major. Use bidding.bid_amount or bidding.max_bid. Legacy normalization: selected pricing_option.max_bid=true maps to bidding.max_bid; otherwise maps to bidding.bid_amount. A package MUST NOT supply both representations.",
       "minimum": 0
+    },
+    "bidding": {
+      "allOf": [
+        { "$ref": "/schemas/core/bidding-policy.json" }
+      ],
+      "description": "Package-authored bidding policy. This complete block replaces, rather than field-merges with, any media-buy bidding policy for this package. `{automatic:true}` explicitly overrides a media-buy policy with provider automatic bidding; omission inherits the complete media-buy block. Monetary fields use the media-buy currency, while the selected pricing option supplies only the auction unit and MUST declare that same currency. Sellers MUST reject a new bidding block combined with legacy bid_price or legacy monetary optimization-goal targets on the same effective package with AMBIGUOUS_BIDDING_POLICY."
     },
     "impressions": {
       "type": "number",
@@ -101,6 +139,16 @@
     },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
+    },
+    "audience_evidence_requirements": {
+      "$ref": "/schemas/core/audience-evidence-requirements.json",
+      "description": "Buyer policy that the selected product and constructed package MUST satisfy using product audience evidence. This remains planning and suitability evidence, not a targeting instruction. Sellers MUST reject an unsatisfied required policy rather than silently drop it, and a confirmed package MUST include every evidence snapshot used to satisfy this policy in audience_evidence_selections with decision_use package_construction."
+    },
+    "audience_evidence_pins": {
+      "type": "array",
+      "description": "Exact immutable evidence snapshots selected by the buyer during discovery. The seller MUST match evidence_id, snapshot_id, version, and content_digest against one published snapshot and MUST reject catalog mutation, snapshot reuse, missing snapshots, or substitutions. Every accepted pin MUST be echoed in the confirmed package's audience_evidence_selections with decision_use package_construction.",
+      "items": { "$ref": "/schemas/core/audience-evidence-pin.json" },
+      "minItems": 1
     },
     "measurement_terms": {
       "$ref": "/schemas/core/measurement-terms.json",
@@ -193,9 +241,12 @@
     },
     "creatives": {
       "type": "array",
-      "description": "Upload creative assets inline and assign to this package. When the seller also advertises creative.has_creative_library: true, these creatives enter the seller's creative library and can be reused by creative_id while retained; inline-only sellers may store them as package-scoped assets. Use creative_assignments instead for existing library creatives.",
+      "description": "Upload creative assets inline and assign to this package. Native localization is not accepted on this path; use sync_creatives before assigning the library creative. When the seller also advertises creative.has_creative_library: true, these creatives enter the seller's creative library and can be reused by creative_id while retained; inline-only sellers may store them as package-scoped assets. Use creative_assignments instead for existing library creatives.",
       "items": {
-        "$ref": "/schemas/core/creative-asset.json"
+        "allOf": [
+          { "$ref": "/schemas/core/creative-asset.json" },
+          { "not": { "required": ["localization"] } }
+        ]
       },
       "minItems": 1,
       "maxItems": 100
@@ -215,7 +266,6 @@
   },
   "required": [
     "product_id",
-    "budget",
     "pricing_option_id"
   ],
   "dependencies": {

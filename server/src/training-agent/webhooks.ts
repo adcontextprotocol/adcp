@@ -42,7 +42,7 @@ export type WebhookTaskType =
   | 'list_property_lists' | 'delete_property_list' | 'sync_accounts'
   | 'get_account_financials' | 'get_creative_delivery' | 'sync_event_sources'
   | 'sync_audiences' | 'sync_catalogs' | 'log_event' | 'get_brand_identity'
-  | 'get_rights' | 'acquire_rights';
+  | 'get_rights' | 'acquire_rights' | 'update_rights';
 
 export const TOOL_TO_TASK_TYPE = {
   get_products: 'get_products',
@@ -67,12 +67,8 @@ export const TOOL_TO_TASK_TYPE = {
   get_brand_identity: 'get_brand_identity',
   get_rights: 'get_rights',
   acquire_rights: 'acquire_rights',
+  update_rights: 'update_rights',
 } as const satisfies Record<string, WebhookTaskType>;
-
-// update_rights accepts push_notification_config in the experimental request
-// schema, but task-type.json does not yet contain update_rights. The sandbox
-// rejects that combination in brand-handlers.ts rather than emitting an
-// unrouteable webhook task_type or silently dropping the requested callback.
 
 type WebhookEmittingTool = keyof typeof TOOL_TO_TASK_TYPE;
 
@@ -108,6 +104,7 @@ export const TOOL_TO_PROTOCOL: Readonly<Record<WebhookEmittingTool, WebhookProto
   get_brand_identity: 'brand',
   get_rights: 'brand',
   acquire_rights: 'brand',
+  update_rights: 'brand',
 };
 
 function extractWebhookUrl(args: Record<string, unknown>): string | undefined {
@@ -234,6 +231,47 @@ export async function emitAccountNotificationWebhook(opts: {
   });
 }
 
+export interface PropertyListChangedWebhookParams {
+  url: string;
+  listId: string;
+  listName: string;
+  operationId: string;
+  resolvedAt: string;
+  cacheValidUntil: string;
+  changeSummary: {
+    properties_added?: number;
+    properties_removed?: number;
+    total_properties: number;
+  };
+}
+
+/** Emit an RFC 9421-only property-list change notification.
+ *
+ * Property-list registration exposes only `webhook_url`, not an
+ * authentication-mode selector. The deprecated body `signature` remains a
+ * required literal marker through 3.x for schema compatibility; it has no
+ * authentication semantics. */
+export function emitPropertyListChangedWebhook(opts: PropertyListChangedWebhookParams): void {
+  const payload: Record<string, unknown> = {
+    event: 'property_list_changed',
+    list_id: opts.listId,
+    list_name: opts.listName,
+    change_summary: opts.changeSummary,
+    resolved_at: opts.resolvedAt,
+    cache_valid_until: opts.cacheValidUntil,
+    signature: 'rfc9421',
+  };
+
+  void getWebhookEmitter().emit({
+    url: opts.url,
+    payload,
+    operation_id: opts.operationId,
+  }).catch(err => logger.warn(
+    { err, listId: opts.listId, url: opts.url },
+    'Property-list change webhook emission failed',
+  ));
+}
+
 const ENV_KEY = 'WEBHOOK_SIGNING_KEY_JWK';
 const KMS_WEBHOOK_ENV = 'GCP_KMS_WEBHOOK_KEY_VERSION';
 
@@ -254,14 +292,14 @@ function generateEphemeralKey(): { signer: SignerKey; publicJwk: AdcpJsonWebKey 
     ...privateJwkRaw as AdcpJsonWebKey,
     kid,
     alg: 'EdDSA',
-    adcp_use: 'webhook-signing',
+    adcp_use: 'request-signing',
     key_ops: ['sign'],
   };
   const pubJwk: AdcpJsonWebKey = {
     ...publicJwkRaw as AdcpJsonWebKey,
     kid,
     alg: 'EdDSA',
-    adcp_use: 'webhook-signing',
+    adcp_use: 'request-signing',
     key_ops: ['verify'],
     use: 'sig',
   };
@@ -276,13 +314,20 @@ function loadConfiguredKey(raw: string): { signer: SignerKey; publicJwk: AdcpJso
   if (!jwk.kid || !jwk.kty || !jwk.d || !jwk.x) {
     throw new Error(`${ENV_KEY} must be a full private JWK with kid, kty, x, d fields`);
   }
+  if (jwk.adcp_use !== undefined && jwk.adcp_use !== 'request-signing' && jwk.adcp_use !== 'webhook-signing') {
+    throw new Error(`${ENV_KEY} adcp_use must be request-signing or webhook-signing`);
+  }
+  // Preserve the declared purpose for stable configured kids. Missing purpose
+  // means a pre-migration key; retain the historical webhook-only authority
+  // rather than silently expanding it to signed requests.
+  const keyPurpose = jwk.adcp_use ?? 'webhook-signing';
   const signer: SignerKey = {
     keyid: jwk.kid,
     alg: 'ed25519',
     privateKey: {
       ...jwk,
       alg: 'EdDSA',
-      adcp_use: 'webhook-signing',
+      adcp_use: keyPurpose,
       key_ops: ['sign'],
     },
   };
@@ -291,7 +336,7 @@ function loadConfiguredKey(raw: string): { signer: SignerKey; publicJwk: AdcpJso
   const pubJwk: AdcpJsonWebKey = {
     ...publicOnly,
     alg: 'EdDSA',
-    adcp_use: 'webhook-signing',
+    adcp_use: keyPurpose,
     key_ops: ['verify'],
     use: 'sig',
   };
@@ -382,10 +427,10 @@ export function getWebhookSigningMaterial():
 
 /** Return the only training-agent webhook emitter.
  *
- * Future collection/property list-change notifications must route through
- * this emitter (or use `createTrainingWebhookFetch` directly). Storage-time
- * URL validation is not sufficient: this fetch policy repeats validation at
- * delivery time and pins the public address at connect time. */
+ * Completion and property-list change notifications route through this
+ * emitter. Storage-time URL validation is not sufficient: this fetch policy
+ * repeats validation at delivery time and pins the public address at connect
+ * time. */
 export function getWebhookEmitter(): WebhookEmitter {
   if (emitter) return emitter;
   const m = ensureMaterial();

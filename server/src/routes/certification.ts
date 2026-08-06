@@ -18,6 +18,13 @@ import {
   CredentialRecoveryConflictError,
   ensureCertifierCredential,
 } from '../services/certification-credential-issuance.js';
+import {
+  confirmCertificationContribution,
+  getCertificationContributions,
+  getCertificationExperienceMetrics,
+  getCertificationModuleExperience,
+  recordCertificationExperienceEvent,
+} from '../services/certification-experience.js';
 
 const logger = createLogger('certification-routes');
 
@@ -335,10 +342,101 @@ export function createCertificationRouters() {
         certDb.getPublicUserCredentials(userId),
       ]);
 
-      res.json({ progress, trackProgress, certifications, credentials });
+      const experiences = await Promise.all(
+        progress
+          .filter(item => item.status === 'in_progress')
+          .map(item => getCertificationModuleExperience(userId, item.module_id)),
+      );
+      const experienceByModule = new Map(
+        experiences.filter(Boolean).map(experience => [experience!.module_id, experience]),
+      );
+      res.json({
+        progress: progress.map(item => ({
+          ...item,
+          experience: experienceByModule.get(item.module_id) ?? null,
+        })),
+        trackProgress,
+        certifications,
+        credentials,
+      });
     } catch (error) {
       logger.error({ error }, 'Failed to get certification progress');
       res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/me/certification/modules/:id/experience — authoritative learner-facing state
+  userRouter.get('/certification/modules/:id/experience', async (req, res) => {
+    try {
+      const experience = await getCertificationModuleExperience(req.user!.id, req.params.id.toUpperCase());
+      if (!experience) return res.status(404).json({ error: 'Module not found' });
+      res.json(experience);
+    } catch (error) {
+      logger.error({ error, moduleId: req.params.id }, 'Failed to get module experience');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/me/certification/modules/:id/resume — resolve a true resume target
+  userRouter.post('/certification/modules/:id/resume', async (req, res) => {
+    try {
+      const moduleId = req.params.id.toUpperCase();
+      const experience = await getCertificationModuleExperience(req.user!.id, moduleId);
+      if (!experience || (experience.status !== 'in_progress' && experience.status !== 'evidence_complete')) {
+        return res.status(409).json({ error: 'Module is not in progress' });
+      }
+      res.json(experience);
+    } catch (error) {
+      logger.error({ error, moduleId: req.params.id }, 'Failed to resume module');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Count a resume only after the chat UI successfully loaded the stored thread.
+  userRouter.post('/certification/modules/:id/resumed', async (req, res) => {
+    try {
+      const moduleId = req.params.id.toUpperCase();
+      const conversationId = typeof req.body?.conversation_id === 'string'
+        ? req.body.conversation_id
+        : null;
+      const experience = await getCertificationModuleExperience(req.user!.id, moduleId);
+      if (!conversationId || !experience || experience.resume_conversation_id !== conversationId) {
+        return res.status(409).json({ error: 'Resume target does not match current module progress' });
+      }
+      await recordCertificationExperienceEvent({
+        userId: req.user!.id,
+        moduleId,
+        threadId: conversationId,
+        eventType: 'module_resumed',
+        metadata: { checkpoint_saved_at: experience.checkpoint?.saved_at ?? null },
+      });
+      res.json({ success: true });
+    } catch (error) {
+      logger.error({ error, moduleId: req.params.id }, 'Failed to confirm module resume');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  userRouter.get('/certification/contributions', async (req, res) => {
+    try {
+      res.json({ contributions: await getCertificationContributions(req.user!.id) });
+    } catch (error) {
+      logger.error({ error }, 'Failed to get certification contributions');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  userRouter.post('/certification/contributions/:id/confirm', async (req, res) => {
+    try {
+      const issueUrl = typeof req.body?.issue_url === 'string' ? req.body.issue_url.trim() : '';
+      if (!issueUrl) return res.status(400).json({ error: 'GitHub issue URL is required' });
+      const contribution = await confirmCertificationContribution(req.user!.id, req.params.id, issueUrl);
+      if (!contribution) return res.status(404).json({ error: 'Contribution not found' });
+      res.json({ contribution });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to verify contribution';
+      logger.warn({ error, contributionId: req.params.id }, 'Failed to confirm certification contribution');
+      res.status(422).json({ error: message });
     }
   });
 
@@ -1079,8 +1177,11 @@ export function createCertificationRouters() {
   // GET /api/admin/certification/overview — aggregate metrics
   adminRouter.get('/overview', async (_req, res) => {
     try {
-      const metrics = await certDb.getAdminOverviewMetrics();
-      res.json(metrics);
+      const [metrics, experience] = await Promise.all([
+        certDb.getAdminOverviewMetrics(),
+        getCertificationExperienceMetrics(),
+      ]);
+      res.json({ ...metrics, experience });
     } catch (error) {
       logger.error({ error }, 'Failed to get admin overview metrics');
       res.status(500).json({ error: 'Internal server error' });

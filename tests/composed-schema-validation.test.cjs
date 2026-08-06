@@ -111,6 +111,397 @@ async function testSchemaRejection(schemaId, testData, description) {
   }
 }
 
+function duplicateValues(items, property) {
+  const seen = new Set();
+  const duplicates = new Set();
+  for (const item of items) {
+    const value = item[property];
+    if (seen.has(value)) duplicates.add(value);
+    seen.add(value);
+  }
+  return [...duplicates];
+}
+
+function validateLocalizationRequestSemantics(localization, sourceAssets) {
+  const errors = [];
+  const targets = localization.target_variants || [];
+  for (const property of ['locale_variant_id', 'locale']) {
+    if (duplicateValues(targets, property).length > 0) {
+      errors.push(`target ${property} values must be unique`);
+    }
+    if (targets.some((target) => target[property] === localization.source?.[property])) {
+      errors.push(`target ${property} must differ from source ${property}`);
+    }
+  }
+  const variants = [localization.source, ...targets].filter(Boolean);
+  const variantIds = new Set(variants.map((variant) => variant.locale_variant_id));
+  if (!variants.some((variant) => variant.locale_variant_id === localization.default_locale_variant_id)) {
+    errors.push('default_locale_variant_id must reference a source or target variant');
+  }
+  for (const variant of variants) {
+    if (!isCanonicalLocaleTag(variant.locale)) {
+      errors.push(`locale ${variant.locale} must be canonical BCP 47`);
+    }
+  }
+  const fallbacks = localization.locale_fallbacks || [];
+  if (duplicateValues(fallbacks, 'language_range').length > 0) {
+    errors.push('locale fallback language_range values must be unique');
+  }
+  for (const fallback of fallbacks) {
+    if (!isCanonicalLocaleTag(fallback.language_range)) {
+      errors.push(`fallback range ${fallback.language_range} must be canonical BCP 47`);
+    }
+    if (!variantIds.has(fallback.locale_variant_id)) {
+      errors.push('locale fallback must reference a source or target variant');
+    }
+  }
+  if (localization.source && sourceAssets) {
+    errors.push(...validateLocalizedAssetLanguages(localization.source, sourceAssets));
+  }
+  for (const target of targets) {
+    const resolvedAssets = sourceAssets
+      ? { ...sourceAssets, ...(target.assets || {}) }
+      : target.assets;
+    errors.push(...validateLocalizedAssetLanguages(target, resolvedAssets));
+  }
+  return errors;
+}
+
+function isCanonicalLocaleTag(locale) {
+  if (typeof locale !== 'string') return false;
+  if (/^x(?:-[a-z0-9]{1,8})+$/.test(locale)) return true;
+  try {
+    return Intl.getCanonicalLocales(locale)[0] === locale;
+  } catch {
+    return false;
+  }
+}
+
+function validateLocalizedAssetLanguages(variant, assets) {
+  const errors = [];
+  for (const [slot, value] of Object.entries(assets || {})) {
+    const items = Array.isArray(value) ? value : [value];
+    for (const [index, asset] of items.entries()) {
+      if (!['text', 'markdown'].includes(asset?.asset_type) || asset.language === undefined) {
+        continue;
+      }
+      const assetLabel = Array.isArray(value) ? `${slot}[${index}]` : slot;
+      if (!isCanonicalLocaleTag(asset.language)) {
+        errors.push(
+          `${variant.locale_variant_id} asset ${assetLabel} language must use the AdCP canonical wire profile`
+        );
+      } else if (asset.language !== variant.locale) {
+        errors.push(
+          `${variant.locale_variant_id} asset ${assetLabel} language must equal enclosing variant locale`
+        );
+      }
+    }
+  }
+  return errors;
+}
+
+function rfc4647Candidates(preference) {
+  const candidates = [];
+  let candidate = preference.toLowerCase();
+  while (candidate) {
+    candidates.push(candidate);
+    const parts = candidate.split('-');
+    parts.pop();
+    if (parts.at(-1)?.length === 1) parts.pop();
+    candidate = parts.join('-');
+  }
+  return candidates;
+}
+
+function rfc4647Lookup(preferences, variants) {
+  const byLocale = new Map(variants.map((variant) => [variant.locale.toLowerCase(), variant]));
+  for (const preference of preferences) {
+    for (const candidate of rfc4647Candidates(preference)) {
+      if (byLocale.has(candidate)) return byLocale.get(candidate);
+    }
+  }
+  return undefined;
+}
+
+function rfc4647BasicFilter(languageRange, locale) {
+  const range = languageRange.toLowerCase();
+  const tag = locale.toLowerCase();
+  return tag === range || tag.startsWith(`${range}-`);
+}
+
+function localePolicyEligibleVariants(localization, localePolicy) {
+  const variants = localization?.variants || [];
+  if (!localePolicy) return variants;
+  const ranges = localePolicy.accepted_language_ranges || [];
+  return variants.filter((variant) =>
+    ranges.some((range) => rfc4647BasicFilter(range, variant.locale))
+  );
+}
+
+function validateLocalePolicyAssignment(localization, localePolicy) {
+  const errors = [];
+  const eligible = localePolicyEligibleVariants(localization, localePolicy);
+  if (eligible.length === 0) {
+    errors.push('at least one materialized variant must match accepted language ranges');
+    return errors;
+  }
+  if (
+    localization.unmatched_locale_action === 'serve_default' &&
+    !eligible.some(
+      (variant) => variant.locale_variant_id === localization.default_locale_variant_id
+    )
+  ) {
+    errors.push('serve_default must reference a seller-eligible locale variant');
+  }
+  return errors;
+}
+
+function localePolicyNarrows(productPolicy, placementPolicy) {
+  if (!productPolicy) return true;
+  return placementPolicy.accepted_language_ranges.every((placementRange) =>
+    productPolicy.accepted_language_ranges.some((productRange) =>
+      rfc4647BasicFilter(productRange, placementRange)
+    )
+  );
+}
+
+function selectLocalizedVariant(localization, preferences, localePolicy) {
+  const variants = localePolicyEligibleVariants(localization, localePolicy);
+  const eligibleIds = new Set(variants.map((variant) => variant.locale_variant_id));
+  const fallbackByRange = new Map(
+    (localization.locale_fallbacks || [])
+      .filter((fallback) => eligibleIds.has(fallback.locale_variant_id))
+      .map((fallback) => [
+        fallback.language_range.toLowerCase(),
+        fallback.locale_variant_id
+      ])
+  );
+  for (const preference of preferences) {
+    const matched = rfc4647Lookup([preference], variants);
+    if (matched) return matched.locale_variant_id;
+    for (const candidate of rfc4647Candidates(preference)) {
+      if (fallbackByRange.has(candidate)) return fallbackByRange.get(candidate);
+    }
+  }
+  return localization.unmatched_locale_action === 'serve_default' &&
+    eligibleIds.has(localization.default_locale_variant_id)
+    ? localization.default_locale_variant_id
+    : undefined;
+}
+
+function validateLocalizationReadbackSemantics(localization, enclosingAssets) {
+  const errors = [];
+  const variants = localization.variants || [];
+  for (const property of ['locale_variant_id', 'locale']) {
+    if (duplicateValues(variants, property).length > 0) {
+      errors.push(`variant ${property} values must be unique`);
+    }
+  }
+  const sourceCount = variants.filter((variant) => variant.role === 'source').length;
+  if (sourceCount !== 1) errors.push('localization must contain exactly one source variant');
+  if (!variants.some((variant) => variant.locale_variant_id === localization.default_locale_variant_id)) {
+    errors.push('default_locale_variant_id must reference exactly one variant');
+  }
+  if (localization.locale_matching !== 'rfc4647_lookup') {
+    errors.push('locale_matching must be rfc4647_lookup');
+  }
+  const variantIds = new Set(variants.map((variant) => variant.locale_variant_id));
+  const fallbacks = localization.locale_fallbacks || [];
+  if (duplicateValues(fallbacks, 'language_range').length > 0) {
+    errors.push('locale fallback language_range values must be unique');
+  }
+  if (fallbacks.some((fallback) => !isCanonicalLocaleTag(fallback.language_range))) {
+    errors.push('locale fallback language_range must be canonical BCP 47');
+  }
+  if (fallbacks.some((fallback) => !variantIds.has(fallback.locale_variant_id))) {
+    errors.push('locale fallback must reference exactly one variant');
+  }
+  const source = variants.find((variant) => variant.role === 'source');
+  if (source && enclosingAssets && JSON.stringify(source.assets) !== JSON.stringify(enclosingAssets)) {
+    errors.push('source localization assets must equal enclosing creative assets');
+  }
+  for (const variant of variants) {
+    errors.push(...validateLocalizedAssetLanguages(variant, variant.assets));
+  }
+  return errors;
+}
+
+function validateLocalizationAgainstRequest(requestLocalization, readback, label) {
+  const errors = [];
+  if (!readback) return [`${label} localization readback is required`];
+  const source = readback.variants?.find((variant) => variant.role === 'source');
+  if (!source) return [`${label} source localization readback is required`];
+  for (const property of ['locale_variant_id', 'locale']) {
+    if (source[property] !== requestLocalization.source[property]) {
+      errors.push(`${label} source ${property} must equal request`);
+    }
+  }
+  const requestTargets = new Map(
+    requestLocalization.target_variants.map((variant) => [variant.locale_variant_id, variant])
+  );
+  const responseTargets = (readback.variants || []).filter((variant) => variant.role === 'target');
+  if (responseTargets.length !== requestTargets.size) {
+    errors.push(`${label} target locale_variant_id set must exactly equal request`);
+  }
+  for (const target of responseTargets) {
+    const requested = requestTargets.get(target.locale_variant_id);
+    if (!requested) {
+      errors.push(`${label} target locale_variant_id set must exactly equal request`);
+      continue;
+    }
+    for (const property of ['locale']) {
+      if (target[property] !== requested[property]) {
+        errors.push(`${label} target ${property} must equal request`);
+      }
+    }
+  }
+  for (const property of ['default_locale_variant_id', 'unmatched_locale_action']) {
+    if (readback[property] !== requestLocalization[property]) {
+      errors.push(`${label} ${property} must equal request`);
+    }
+  }
+  const requestedFallbacks = new Map(
+    (requestLocalization.locale_fallbacks || []).map((fallback) => [
+      fallback.language_range,
+      fallback.locale_variant_id
+    ])
+  );
+  const responseFallbacks = new Map(
+    (readback.locale_fallbacks || []).map((fallback) => [
+      fallback.language_range,
+      fallback.locale_variant_id
+    ])
+  );
+  if (
+    requestedFallbacks.size !== responseFallbacks.size ||
+    [...requestedFallbacks].some(([range, id]) => responseFallbacks.get(range) !== id)
+  ) {
+    errors.push(`${label} locale_fallbacks must exactly equal request`);
+  }
+  return errors;
+}
+
+function validateLocalizationRoundTrip(requestLocalization, syncItem, listItem) {
+  const errors = [];
+  if (['failed', 'deleted'].includes(syncItem.action)) {
+    if (syncItem.localization !== undefined) {
+      errors.push('failed or deleted sync result must omit localization');
+    }
+    return errors;
+  }
+  if (!requestLocalization) return errors;
+  for (const [label, item] of [
+    ['sync', syncItem],
+    ['list', listItem]
+  ]) {
+    if (!item?.status) errors.push(`${label} creative status is required`);
+    errors.push(...validateLocalizationAgainstRequest(requestLocalization, item?.localization, label));
+    if (item?.localization) {
+      errors.push(...validateLocalizationReadbackSemantics(item.localization, item.assets));
+    }
+  }
+  return errors;
+}
+
+function validateLocalizedSourceUpsert(previousLocalization, nextCreative) {
+  if (!previousLocalization || Object.hasOwn(nextCreative, 'localization')) return [];
+  const priorSource = previousLocalization.variants?.find((variant) => variant.role === 'source');
+  if (!priorSource || JSON.stringify(priorSource.assets) !== JSON.stringify(nextCreative.assets)) {
+    return [
+      'localization omission requires top-level assets to equal prior localized source assets'
+    ];
+  }
+  return [];
+}
+
+function testSemanticValidation(errors, expectedError, description) {
+  totalTests++;
+  const passed = expectedError
+    ? errors.some((error) => error.includes(expectedError))
+    : errors.length === 0;
+  if (passed) {
+    log(`  \u2713 ${description}`, 'success');
+    passedTests++;
+  } else {
+    log(`  \u2717 ${description}`, 'error');
+    log(`    Semantic errors: ${JSON.stringify(errors)}`, 'error');
+    failedTests++;
+  }
+}
+
+function testValidationConstraints(constraints, expectedConstraints, description) {
+  totalTests++;
+  const passed =
+    constraints &&
+    Object.entries(expectedConstraints).every(
+      ([key, value]) => JSON.stringify(constraints[key]) === JSON.stringify(value)
+    );
+  if (passed) {
+    log(`  \u2713 ${description}`, 'success');
+    passedTests++;
+  } else {
+    log(`  \u2717 ${description}`, 'error');
+    log(`    Constraints: ${JSON.stringify(constraints)}`, 'error');
+    failedTests++;
+  }
+}
+
+function testValidationAnnotation(schemaId, expectedConstraints, description) {
+  const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
+  const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  testValidationConstraints(
+    schema['x-adcp-validation']?.verifier_constraints,
+    expectedConstraints,
+    description
+  );
+}
+
+function testNestedValidationAnnotation(schemaId, propertyPath, expectedConstraints, description) {
+  const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
+  const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  const node = propertyPath.reduce((value, key) => value?.[key], schema);
+  testValidationConstraints(
+    node?.['x-adcp-validation']?.verifier_constraints,
+    expectedConstraints,
+    description
+  );
+}
+
+function testTypedDiscriminatedUnion(
+  schemaId,
+  propertyPath,
+  discriminator,
+  expectedVariants,
+  description
+) {
+  totalTests++;
+  const schemaPath = path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
+  const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  const node = propertyPath.reduce((value, key) => value?.[key], schema);
+  const variants = node?.oneOf || [];
+  const passed =
+    node?.discriminator?.propertyName === discriminator &&
+    variants.length === expectedVariants.length &&
+    expectedVariants.every((expected) =>
+      variants.some((variant) =>
+        Object.entries(expected).every(
+          ([property, value]) =>
+            variant.properties?.[property]?.type === 'string' &&
+            variant.properties?.[property]?.const === value &&
+            variant.required?.includes(property)
+        )
+      )
+    );
+  if (passed) {
+    log(`  \u2713 ${description}`, 'success');
+    passedTests++;
+  } else {
+    log(`  \u2717 ${description}`, 'error');
+    log(`    Union: ${JSON.stringify(node)}`, 'error');
+    failedTests++;
+  }
+}
+
 async function runTests() {
   log('Testing Composed Schema Validation (allOf patterns)', 'info');
   log('====================================================');
@@ -338,6 +729,141 @@ async function runTests() {
     'Product rejects hosted duration_ms_range with both endpoints null'
   );
 
+  const frenchOnlyImageFormat = {
+    format_kind: 'image',
+    format_option_id: 'quebec_display_image',
+    canonical_formats_only: true,
+    locale_policy: {
+      accepted_language_ranges: ['fr']
+    },
+    params: {
+      width: 300,
+      height: 250
+    }
+  };
+  await testSchemaValidation(
+    '/schemas/core/product-format-declaration.json',
+    frenchOnlyImageFormat,
+    'Product format accepts a canonical-only French creative locale policy'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product-format-declaration.json',
+    { ...frenchOnlyImageFormat, canonical_formats_only: false },
+    'Locale-constrained product format rejects legacy projection'
+  );
+  const localePolicyWithLegacyRef = structuredClone(frenchOnlyImageFormat);
+  localePolicyWithLegacyRef.v1_format_ref = [
+    {
+      agent_url: 'https://creative.adcontextprotocol.org',
+      id: 'display_300x250_image'
+    }
+  ];
+  await testSchemaRejection(
+    '/schemas/core/product-format-declaration.json',
+    localePolicyWithLegacyRef,
+    'Locale-constrained product format rejects v1_format_ref'
+  );
+  await testSchemaRejection(
+    '/schemas/core/creative-locale-policy.json',
+    { accepted_language_ranges: ['FR'] },
+    'Creative locale policy rejects a non-canonical language range'
+  );
+  await testSchemaValidation(
+    '/schemas/core/placement-definition.json',
+    {
+      placement_id: 'quebec_homepage',
+      name: 'Québec homepage',
+      property_ids: ['quebec_news'],
+      format_options: [
+        {
+          format_option_id: 'quebec_display_image',
+          locale_policy: { accepted_language_ranges: ['fr-CA'] }
+        }
+      ]
+    },
+    'Placement format reference accepts a narrower locale policy override'
+  );
+  testValidationAnnotation(
+    '/schemas/core/creative-locale-policy.json',
+    {
+      range_matching: 'rfc4647_basic_filtering',
+      wildcards: 'not_supported',
+      assignment_eligibility: 'at_least_one_materialized_variant_must_match',
+      selection_precedence:
+        'filter_seller_eligible_variants_before_buyer_lookup_fallback_or_default',
+      serve_default:
+        'when_unmatched_locale_action_is_serve_default_default_locale_variant_id_must_reference_an_eligible_variant',
+      placement_narrowing:
+        'product_policy_absent_allows_any_placement_policy_else_every_placement_range_must_be_contained_by_a_product_range',
+      legacy_projection:
+        'no_product_or_placement_format_id_may_project_to_a_locale_constrained_option',
+      capability_gate:
+        'seller_must_advertise_creative.localization_and_creative.has_creative_library',
+      assignment_policy_lifecycle:
+        'snapshot_effective_policy_at_acceptance_catalog_changes_apply_only_to_new_or_changed_assignments'
+    },
+    'Creative locale policy exposes machine-readable eligibility semantics'
+  );
+  testNestedValidationAnnotation(
+    '/schemas/core/product.json',
+    ['properties', 'format_options'],
+    {
+      locale_policy_legacy_projection:
+        'no_product_or_placement_format_id_may_project_to_a_locale_constrained_option',
+      placement_locale_policy:
+        'product_policy_absent_allows_any_narrowing_else_ranges_must_be_contained',
+      assignment_locale_eligibility:
+        'validate_every_effective_placement_format_option_in_delivery_scope',
+      locale_policy_capability_gate:
+        'creative.localization_and_creative.has_creative_library_must_be_advertised',
+      locale_policy_assignment_lifecycle: 'snapshot_effective_policy_at_acceptance'
+    },
+    'Product format options expose locale capability and legacy projection rules'
+  );
+  testNestedValidationAnnotation(
+    '/schemas/core/placement-definition.json',
+    ['properties', 'format_options'],
+    {
+      locale_policy_override_resolution:
+        'resolved_catalog_and_matching_product_declarations_must_be_canonical_only_without_v1_projection'
+    },
+    'Placement format options expose canonical-only locale override resolution'
+  );
+  testSemanticValidation(
+    rfc4647BasicFilter('fr', 'fr-CA') && !rfc4647BasicFilter('fr-CA', 'fr-FR')
+      ? []
+      : ['RFC 4647 Basic Filtering was not directional'],
+    undefined,
+    'Creative locale policy uses directional RFC 4647 Basic Filtering'
+  );
+  testSemanticValidation(
+    localePolicyNarrows(
+      { accepted_language_ranges: ['fr'] },
+      { accepted_language_ranges: ['fr-CA'] }
+    )
+      ? []
+      : ['fr-CA did not narrow product range fr'],
+    undefined,
+    'Placement locale policy may narrow product range fr to fr-CA'
+  );
+  testSemanticValidation(
+    localePolicyNarrows(undefined, { accepted_language_ranges: ['fr-CA'] })
+      ? []
+      : ['Placement could not narrow an unconstrained product locale policy'],
+    undefined,
+    'Placement may introduce a locale policy when the product has none'
+  );
+  testSemanticValidation(
+    !localePolicyNarrows(
+      { accepted_language_ranges: ['fr-CA'] },
+      { accepted_language_ranges: ['fr'] }
+    )
+      ? []
+      : ['placement range fr broadened product range fr-CA'],
+    undefined,
+    'Placement locale policy cannot broaden product range fr-CA to fr'
+  );
+
   log('');
 
   // Test 4: Create Media Buy Request with reporting_webhook (allOf with push-notification-config.json)
@@ -414,6 +940,593 @@ async function runTests() {
     'Create media buy with natural key account'
   );
 
+  await testSchemaValidation(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'shared-budget-create-0001',
+      account: { account_id: 'acc_test_001' },
+      total_budget: { amount: 100000, currency: 'USD' },
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [
+          { kind: 'metric', metric: 'clicks' }
+        ]
+      },
+      pacing: 'even',
+      bidding: {
+        cost_per: { amount: 25, strength: 'cap' },
+        max_bid: 8
+      },
+      packages: [
+        {
+          product_id: 'prospecting',
+          pricing_option_id: 'cpm_auction',
+          budget: 70000,
+          min_spend_target: 20000
+        },
+        {
+          product_id: 'retargeting',
+          pricing_option_id: 'cpm_auction',
+          pacing: 'front_loaded'
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Create media buy accepts seller-optimized shared budget with package constraints'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/bidding-policy.json',
+    {
+      cost_per: { amount: 25, strength: 'target' },
+      max_bid: 4.5
+    },
+    'Bidding policy accepts average-cost target with a provider-supported auction ceiling'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/bidding-policy.json',
+    { automatic: true },
+    'Bidding policy accepts an explicit automatic policy override'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/bidding-policy.json',
+    { automatic: true, max_bid: 4.5 },
+    'Bidding policy rejects automatic combined with a monetary mode'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/media-buy-features.json',
+    {
+      bidding_policy: {
+        package: {
+          fixed: {
+            modes: ['cost_per'],
+            cost_per_strengths: ['cap']
+          }
+        }
+      }
+    },
+    'Bidding capability can advertise only package cost caps'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/media-buy-features.json',
+    {
+      bidding_policy: {
+        media_buy: {
+          fixed: {
+            modes: ['max_bid', 'roas'],
+            roas_strengths: ['floor', 'target'],
+            supported_combinations: [
+              { kind: 'max_bid_with_roas', roas_strengths: ['floor'] }
+            ]
+          }
+        },
+        package: {
+          seller_optimized: {
+            modes: ['automatic', 'bid_amount']
+          }
+        }
+      }
+    },
+    'Bidding capability declares independent scopes, strengths, and combinations'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/media-buy-features.json',
+    { bidding_policy: true },
+    'Bidding capability rejects the former coarse boolean claim'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/bidding-policy-capability.json',
+    {
+      package: { fixed: { modes: ['cost_per'] } }
+    },
+    'Bidding capability requires strengths for cost_per support'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/bidding-policy-capability.json',
+    {
+      media_buy: {
+        fixed: {
+          supported_combinations: [
+            { kind: 'max_bid_with_cost_per', cost_per_strengths: ['cap'] }
+          ]
+        }
+      }
+    },
+    'Bidding capability advertises combination-only support without standalone component modes'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/bidding-policy-capability.json',
+    {
+      package: {
+        modes: ['automatic']
+      }
+    },
+    'Bidding capability requires an explicit allocation context'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/sync-event-sources-request.json',
+    {
+      idempotency_key: 'value-currency-source-0001',
+      account: { account_id: 'acc_test_001' },
+      event_sources: [
+        {
+          event_source_id: 'commerce_events',
+          event_types: ['purchase'],
+          value_currencies: ['USD', 'EUR']
+        }
+      ]
+    },
+    'Event source declares the currencies available to canonical ROAS buys'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/event-custom-data.json',
+    { value: 25 },
+    'Legacy monetary event data remains compatible without a source currency contract'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'automatic-package-override-001',
+      account: { account_id: 'acc_test_001' },
+      total_budget: { amount: 20000, currency: 'USD' },
+      bidding: { max_bid: 5 },
+      packages: [
+        {
+          product_id: 'display_default',
+          pricing_option_id: 'cpm_usd_auction',
+          budget: 10000
+        },
+        {
+          product_id: 'display_automatic',
+          pricing_option_id: 'cpm_usd_auction',
+          budget: 10000,
+          bidding: { automatic: true }
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Package automatic policy explicitly overrides a media-buy bidding default'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_automatic_001',
+      bidding: { automatic: true }
+    },
+    'Package update accepts an explicit automatic bidding override'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/package.json',
+    {
+      package_id: 'pkg_automatic_001',
+      bidding: { automatic: true }
+    },
+    'Package readback preserves an explicit automatic bidding override'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'search_clicks',
+      pricing_option_id: 'cpc_auction',
+      budget: 10000,
+      bidding: { bid_amount: 2.25 },
+      optimization_goals: [
+        { kind: 'metric', metric: 'clicks' }
+      ]
+    },
+    'Package accepts explicit manual bidding separately from its objective'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_search_001',
+      bidding: null
+    },
+    'Package update accepts clearing an authored bidding override to restore inheritance'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_shared_001',
+      budget: null,
+      min_spend_target: null
+    },
+    'Package update accepts clearing seller-optimized package spend constraints'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_search_001',
+      bidding: null,
+      bid_price: 2.25
+    },
+    'Package update accepts atomically clearing canonical bidding and setting legacy bid_price'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_conversion_001',
+      bidding: null,
+      optimization_goals: [
+        {
+          kind: 'event',
+          event_sources: [{ event_source_id: 'purchases', event_type: 'purchase' }],
+          target: { kind: 'cost_per', value: 25 }
+        }
+      ]
+    },
+    'Package update accepts clearing canonical bidding with a legacy monetary goal target'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_search_001',
+      bidding: { max_bid: 3 },
+      bid_price: 2.25
+    },
+    'Package update rejects non-null canonical bidding combined with legacy bid_price'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_conversion_001',
+      bidding: { cost_per: { amount: 25, strength: 'target' } },
+      optimization_goals: [
+        {
+          kind: 'event',
+          event_sources: [{ event_source_id: 'purchases', event_type: 'purchase' }],
+          target: { kind: 'cost_per', value: 25 }
+        }
+      ]
+    },
+    'Package update rejects non-null canonical bidding with a legacy monetary goal target'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/bidding-policy.json',
+    {
+      bid_amount: 2.25,
+      max_bid: 3
+    },
+    'Bidding policy rejects simultaneous manual bid and hard auction ceiling'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/bidding-policy.json',
+    {
+      cost_per: { amount: 25, strength: 'cap' },
+      roas: { value: 4, strength: 'floor' }
+    },
+    'Bidding policy rejects multiple primary policy modes'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'search_clicks',
+      pricing_option_id: 'cpc_auction',
+      budget: 10000,
+      bid_price: 2.25,
+      bidding: { max_bid: 3 }
+    },
+    'Package rejects canonical bidding combined with legacy bid_price'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'conversion_search',
+      pricing_option_id: 'cpc_auction',
+      budget: 10000,
+      bidding: { cost_per: { amount: 25, strength: 'target' } },
+      optimization_goals: [
+        {
+          kind: 'event',
+          event_sources: [{ event_source_id: 'purchases', event_type: 'purchase' }],
+          target: { kind: 'cost_per', value: 25 }
+        }
+      ]
+    },
+    'Package rejects canonical bidding combined with a legacy monetary goal target'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'ambiguous-media-bidding-001',
+      account: { account_id: 'acc_test_001' },
+      bidding: { max_bid: 5 },
+      packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_auction',
+          budget: 10000,
+          bid_price: 4
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Media-buy bidding rejects an inheriting package with legacy bid_price'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'ambiguous-new-package-bid-001',
+      account: { account_id: 'acc_test_001' },
+      media_buy_id: 'mb_bidding_001',
+      bidding: { max_bid: 5 },
+      new_packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_auction',
+          budget: 10000,
+          bid_price: 4
+        }
+      ]
+    },
+    'Media-buy bidding rejects an inheriting new package with legacy bid_price'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'ambiguous-new-package-goal-01',
+      account: { account_id: 'acc_test_001' },
+      media_buy_id: 'mb_bidding_002',
+      bidding: { max_bid: 5 },
+      new_packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_auction',
+          budget: 10000,
+          optimization_goals: [
+            {
+              kind: 'event',
+              event_sources: [{ event_source_id: 'purchases', event_type: 'purchase' }],
+              target: { kind: 'cost_per', value: 25 }
+            }
+          ]
+        }
+      ]
+    },
+    'Media-buy bidding rejects an inheriting new package with a legacy monetary goal target'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'fixed-missing-budget-001',
+      account: { account_id: 'acc_test_001' },
+      packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed'
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Create media buy keeps package budget required in fixed mode'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'fixed-add-missing-budget-001',
+      account: { account_id: 'acc_test_001' },
+      media_buy_id: 'mb_fixed_001',
+      new_packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed'
+        }
+      ]
+    },
+    'Update media buy keeps new-package budget required when allocation is fixed or omitted'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'explicit-fixed-add-missing-001',
+      account: { account_id: 'acc_test_001' },
+      media_buy_id: 'mb_fixed_002',
+      budget_allocation: { mode: 'fixed' },
+      new_packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed'
+        }
+      ]
+    },
+    'Update media buy requires new-package budget when fixed allocation is explicit'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'shared-add-uncapped-001',
+      account: { account_id: 'acc_test_001' },
+      media_buy_id: 'mb_shared_001',
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [
+          { kind: 'metric', metric: 'clicks' }
+        ]
+      },
+      new_packages: [
+        {
+          product_id: 'retargeting',
+          pricing_option_id: 'cpm_auction',
+          min_spend_target: 5000
+        }
+      ]
+    },
+    'Update media buy accepts an uncapped new package with explicit seller-optimized allocation context'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'shared-missing-total-001',
+      account: { account_id: 'acc_test_001' },
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [
+          { kind: 'metric', metric: 'clicks' }
+        ]
+      },
+      packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed'
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Create media buy rejects seller-optimized allocation without total_budget'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'lowercase-currency-0001',
+      account: { account_id: 'acc_test_001' },
+      total_budget: { amount: 10000, currency: 'usd' },
+      packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed',
+          budget: 10000
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Create media buy rejects a malformed media-buy currency'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'allocation-legacy-target-0001',
+      account: { account_id: 'acc_test_001' },
+      total_budget: { amount: 10000, currency: 'USD' },
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [
+          {
+            kind: 'metric',
+            metric: 'clicks',
+            target: { kind: 'cost_per', value: 3 }
+          }
+        ]
+      },
+      packages: [
+        {
+          product_id: 'display_standard',
+          pricing_option_id: 'cpm_fixed'
+        }
+      ],
+      brand: { domain: 'acmecorp.com' },
+      start_time: 'asap',
+      end_time: '2099-12-31T23:59:59Z'
+    },
+    'Seller-optimized allocation goals reject legacy monetary targets'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/proposal.json',
+    {
+      proposal_id: 'prop_shared_001',
+      name: 'Seller-optimized performance plan',
+      budget_allocation: {
+        mode: 'seller_optimized',
+        optimization_goals: [
+          { kind: 'metric', metric: 'clicks' }
+        ]
+      },
+      pacing: 'even',
+      allocations: [
+        {
+          product_id: 'prospecting',
+          min_spend_target_percentage: 20,
+          max_spend_percentage: 70,
+          pacing: 'even'
+        },
+        {
+          product_id: 'retargeting',
+          max_spend_percentage: 60,
+          pacing: 'front_loaded'
+        }
+      ]
+    },
+    'Proposal accepts seller-optimized percentage constraints without exact allocations'
+  );
+
+  await testSchemaRejection(
+    '/schemas/core/proposal.json',
+    {
+      proposal_id: 'prop_fixed_invalid_001',
+      name: 'Invalid fixed plan',
+      allocations: [
+        { product_id: 'display_standard' }
+      ]
+    },
+    'Proposal keeps allocation_percentage required in fixed mode'
+  );
+
   log('');
 
   log('Build Creative Request Schema (push_notification_config field):', 'info');
@@ -421,6 +1534,7 @@ async function runTests() {
     '/schemas/media-buy/build-creative-request.json',
     {
       idempotency_key: 'build-creative-webhook-001',
+      target_capability_id: 'outdoor_video_builder',
       message: 'Create a short video ad for a fictional outdoor brand',
       push_notification_config: {
         url: 'https://buyer.example.com/webhooks/adcp',
@@ -1880,6 +2994,9 @@ async function runTests() {
             agent_count: 2,
             property_count: 4,
             collection_count: 1,
+            format_count: 3,
+            placement_count: 6,
+            changed_fields: ['authorized_agents', 'formats', 'placements', 'properties'],
             source: 'catalog_crawl',
             discovery_method: 'direct',
             manager_domain: null
@@ -1898,6 +3015,27 @@ async function runTests() {
       }
     },
     'Registry feed response validates typed property, collection, authorization, and compliance events'
+  );
+  await testSchemaValidation(
+    '/schemas/core/registry-event.json',
+    {
+      event_id: '019539a0-1234-7000-8000-000000000014',
+      event_type: 'publisher.adagents_changed',
+      entity_type: 'publisher',
+      entity_id: 'streamer.example.com',
+      payload: {
+        publisher_domain: 'streamer.example.com',
+        agent_count: 2,
+        property_count: 4,
+        collection_count: 1,
+        format_count: 3,
+        placement_count: 6,
+        changed_fields: ['formats']
+      },
+      actor: 'pipeline:catalog_crawl',
+      created_at: '2026-03-31T10:04:00.000Z'
+    },
+    'Registry publisher change event accepts formats-only section observability'
   );
   await testSchemaRejection(
     '/schemas/core/registry-event.json',
@@ -2602,6 +3740,966 @@ async function runTests() {
     log('  (skipped - run npm run build:schemas first to generate bundled schemas)', 'warning');
     log('');
   }
+
+  log('Native Creative Localization Schemas:', 'info');
+  const localizedCreative = {
+    creative_id: 'summer_image_localized',
+    name: 'Summer image — localized',
+    format_kind: 'image',
+    assets: {
+      image: {
+        asset_type: 'image',
+        url: 'https://cdn.nova.example/summer-en.jpg',
+        width: 1080,
+        height: 1080
+      },
+      headline: {
+        asset_type: 'text',
+        content: 'Summer starts here',
+        language: 'en-US'
+      }
+    },
+    localization: {
+      source: { locale_variant_id: 'loc_en_us', locale: 'en-US' },
+      target_variants: [
+        {
+          locale_variant_id: 'loc_es_es',
+          locale: 'es-ES',
+          assets: {
+            headline: {
+              asset_type: 'text',
+              content: 'El verano empieza aquí',
+              language: 'es-ES'
+            }
+          }
+        }
+      ],
+      locale_fallbacks: [
+        { language_range: 'es', locale_variant_id: 'loc_es_es' }
+      ],
+      default_locale_variant_id: 'loc_en_us',
+      unmatched_locale_action: 'do_not_serve'
+    }
+  };
+  const localizedSyncRequest = (creative) => ({
+    idempotency_key: '550e8400-e29b-41d4-a716-446655440099',
+    account: { account_id: 'acct_nova_localization' },
+    creatives: [creative]
+  });
+
+  await testSchemaValidation(
+    '/schemas/creative/sync-creatives-request.json',
+    localizedSyncRequest(localizedCreative),
+    'sync_creatives accepts explicit buyer-supplied locale variants'
+  );
+
+  const frenchSourceOnlyCreative = {
+    ...structuredClone(localizedCreative),
+    creative_id: 'quebec_image_fr_ca',
+    name: 'Québec image — French',
+    assets: {
+      ...structuredClone(localizedCreative.assets),
+      headline: {
+        asset_type: 'text',
+        content: 'L’été commence ici',
+        language: 'fr-CA'
+      }
+    },
+    localization: {
+      source: { locale_variant_id: 'loc_fr_ca', locale: 'fr-CA' },
+      target_variants: [],
+      default_locale_variant_id: 'loc_fr_ca',
+      unmatched_locale_action: 'serve_default'
+    }
+  };
+  await testSchemaValidation(
+    '/schemas/creative/sync-creatives-request.json',
+    localizedSyncRequest(frenchSourceOnlyCreative),
+    'sync_creatives accepts source-only locale topology for a monolingual creative'
+  );
+  testSemanticValidation(
+    validateLocalizationRequestSemantics(
+      frenchSourceOnlyCreative.localization,
+      frenchSourceOnlyCreative.assets
+    ),
+    undefined,
+    'Source-only localization semantic verifier accepts an empty target set'
+  );
+
+  testValidationAnnotation(
+    '/schemas/core/locale-tag.json',
+    {
+      well_formed: 'rfc5646',
+      semantic_scope: 'language_identity_only',
+      canonical_wire_profile: 'adcp_bcp47_casing',
+      rfc5646_comparison: 'case_insensitive',
+      non_profile: 'reject'
+    },
+    'Locale tags expose the stricter AdCP canonical wire profile'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/locale-tag.json',
+    'x-private',
+    'Locale tag schema accepts canonical private-use tags'
+  );
+  for (const invalidLocale of ['EN-us', 'en-us', 'en-a']) {
+    await testSchemaRejection(
+      '/schemas/core/locale-tag.json',
+      invalidLocale,
+      `Locale tag schema rejects non-canonical or malformed ${invalidLocale}`
+    );
+  }
+
+  testValidationAnnotation(
+    '/schemas/core/localized-creative-asset.json',
+    {
+      language_asset_types: ['text', 'markdown'],
+      language_when_present: {
+        schema: '/schemas/core/locale-tag.json',
+        must_equal: 'enclosing_variant.locale'
+      },
+      language_omitted: 'no_asset_language_claim'
+    },
+    'Localized assets expose contextual text and markdown language rules'
+  );
+  await testSchemaValidation(
+    '/schemas/core/localized-creative-asset.json',
+    {
+      asset_type: 'markdown',
+      content: '**Bonjour**',
+      language: 'fr-CA'
+    },
+    'Localized markdown accepts an AdCP-profile language tag'
+  );
+  await testSchemaRejection(
+    '/schemas/core/localized-creative-asset.json',
+    {
+      asset_type: 'text',
+      content: 'Bonjour',
+      language: 'fr_CA'
+    },
+    'Localized text rejects a legacy underscore language key'
+  );
+
+  const nonCanonicalFallbackRange = structuredClone(localizedCreative);
+  nonCanonicalFallbackRange.localization.locale_fallbacks[0].language_range = 'ES';
+  await testSchemaRejection(
+    '/schemas/creative/sync-creatives-request.json',
+    localizedSyncRequest(nonCanonicalFallbackRange),
+    'Localization fallback rejects a non-canonical language range'
+  );
+
+  await testSchemaRejection(
+    '/schemas/creative/sync-creatives-request.json',
+    localizedSyncRequest({
+      ...localizedCreative,
+      localization: {
+        source: { locale_variant_id: 'loc_en_us', locale: 'en-US' },
+        target_variants: [
+          {
+            locale_variant_id: 'loc_fr_fr',
+            locale: 'fr-FR',
+            translation_mode: 'provider_generated',
+            assets: localizedCreative.localization.target_variants[0].assets
+          }
+        ],
+        default_locale_variant_id: 'loc_en_us',
+        unmatched_locale_action: 'serve_default'
+      }
+    }),
+    'sync_creatives rejects provider-generated translation requests'
+  );
+
+  testValidationAnnotation(
+    '/schemas/core/creative-localization.json',
+    {
+      unique_target_properties: ['locale_variant_id', 'locale'],
+      target_properties_disjoint_from_source: ['locale_variant_id', 'locale'],
+      default_locale_variant_id: 'must_reference_exactly_one_source_or_target_variant',
+      locale_matching: 'rfc4647_lookup',
+      locale_match_comparison: 'canonical_tag_equality_after_requested_range_truncation',
+      delivery_locale_preferences: 'ordered_external_input_not_defined_by_adcp',
+      unique_locale_fallback_properties: ['language_range'],
+      locale_fallback_variant_ids: 'must_reference_exactly_one_source_or_target_variant',
+      selection_order:
+        'for_each_preference_strict_lookup_then_most_specific_explicit_fallback_then_next_preference_then_unmatched_action',
+      localized_asset_language: {
+        asset_types: ['text', 'markdown'],
+        when_present: 'must_equal_enclosing_variant.locale',
+        omitted: 'no_asset_language_claim'
+      },
+      replacement_atomicity: 'all_or_prior_state_unchanged',
+      request_sync_list_round_trip: {
+        source_match: { role: 'source' },
+        source_equal_properties: ['locale_variant_id', 'locale'],
+        target_match_key: 'locale_variant_id',
+        target_set: 'exact',
+        target_equal_properties: ['locale'],
+        localization_equal_properties: [
+          'default_locale_variant_id',
+          'unmatched_locale_action',
+          'locale_fallbacks'
+        ]
+      }
+    },
+    'Localization request exposes machine-readable locale and identity uniqueness rules'
+  );
+
+  testNestedValidationAnnotation(
+    '/schemas/creative/sync-creatives-request.json',
+    ['properties', 'creatives', 'items'],
+    {
+      localization_capability_gate: {
+        required_capability: 'creative.localization',
+        target_count_ceiling: 'creative.localization.max_target_variants_or_50',
+        locale_format_account_support: 'validate_request_before_mutation',
+        on_violation: 'reject_before_mutation'
+      },
+      existing_localized_source_upsert: {
+        localization_omitted: 'top_level_assets_must_equal_prior_source_assets',
+        source_assets_changed: 'require_non_null_localization_or_null_removal',
+        on_violation: 'reject_before_mutation'
+      },
+      localization_replacement: {
+        scope: 'top_level_assets_and_complete_localization',
+        on_failure: 'prior_state_unchanged',
+        orphan_locale_variants: 'must_not_be_visible'
+      }
+    },
+    'sync_creatives exposes machine-readable fail-closed localized source upsert rules'
+  );
+  testNestedValidationAnnotation(
+    '/schemas/creative/sync-creatives-request.json',
+    ['properties', 'assignments', 'items'],
+    {
+      product_format_locale_policy: {
+        scope:
+          'every_effective_product_and_placement_format_option_where_assignment_may_serve',
+        range_matching: 'rfc4647_basic_filtering',
+        eligible_variant_set: 'filter_before_buyer_lookup_fallback_or_default',
+        minimum_eligible_variants_per_scope: 1,
+        serve_default: 'default_locale_variant_id_must_be_eligible',
+        policy_lifecycle: 'snapshot_effective_policy_at_assignment_acceptance',
+        on_violation: 'CREATIVE_LOCALE_NOT_ACCEPTED'
+      }
+    },
+    'sync_creatives assignments expose per-placement locale eligibility rules'
+  );
+
+  testSemanticValidation(
+    validateLocalizationRequestSemantics(localizedCreative.localization, localizedCreative.assets),
+    undefined,
+    'Localization request semantic verifier accepts unique source and target identities'
+  );
+
+  const mismatchedTargetAssetLanguage = structuredClone(localizedCreative);
+  mismatchedTargetAssetLanguage.localization.target_variants[0].assets.headline.language = 'es-MX';
+  await testSchemaValidation(
+    '/schemas/creative/sync-creatives-request.json',
+    localizedSyncRequest(mismatchedTargetAssetLanguage),
+    'Localized sync schema accepts a well-formed asset tag for semantic comparison'
+  );
+  testSemanticValidation(
+    validateLocalizationRequestSemantics(
+      mismatchedTargetAssetLanguage.localization,
+      mismatchedTargetAssetLanguage.assets
+    ),
+    'asset headline language must equal enclosing variant locale',
+    'Localization verifier rejects asset language that contradicts its variant locale'
+  );
+
+  const nonProfileSourceAssetLanguage = structuredClone(localizedCreative);
+  nonProfileSourceAssetLanguage.assets.headline.language = 'en_US';
+  await testSchemaValidation(
+    '/schemas/creative/sync-creatives-request.json',
+    localizedSyncRequest(nonProfileSourceAssetLanguage),
+    'Legacy top-level text schema remains backwards compatible'
+  );
+  testSemanticValidation(
+    validateLocalizationRequestSemantics(
+      nonProfileSourceAssetLanguage.localization,
+      nonProfileSourceAssetLanguage.assets
+    ),
+    'asset headline language must use the AdCP canonical wire profile',
+    'Localized source verifier rejects a legacy underscore asset language key'
+  );
+
+  for (const [property, duplicateValue] of [
+    ['locale', 'es-ES'],
+    ['locale_variant_id', 'loc_es_es']
+  ]) {
+    const duplicateTargets = structuredClone(localizedCreative.localization);
+    duplicateTargets.target_variants.push({
+      locale_variant_id: 'loc_fr_fr',
+      locale: 'fr-FR',
+      assets: localizedCreative.localization.target_variants[0].assets,
+      [property]: duplicateValue
+    });
+    testSemanticValidation(
+      validateLocalizationRequestSemantics(duplicateTargets),
+      `target ${property} values must be unique`,
+      `Localization request semantic verifier rejects duplicate target ${property}`
+    );
+  }
+
+  for (const property of ['locale', 'locale_variant_id']) {
+    const sourceCollision = structuredClone(localizedCreative.localization);
+    sourceCollision.target_variants[0][property] = sourceCollision.source[property];
+    testSemanticValidation(
+      validateLocalizationRequestSemantics(sourceCollision),
+      `target ${property} must differ from source ${property}`,
+      `Localization request semantic verifier rejects source/target ${property} reuse`
+    );
+  }
+
+  const duplicateFallbackRange = structuredClone(localizedCreative.localization);
+  duplicateFallbackRange.locale_fallbacks.push({
+    language_range: 'es',
+    locale_variant_id: 'loc_en_us'
+  });
+  testSemanticValidation(
+    validateLocalizationRequestSemantics(duplicateFallbackRange),
+    'locale fallback language_range values must be unique',
+    'Localization request verifier rejects duplicate fallback language ranges'
+  );
+
+  const danglingFallback = structuredClone(localizedCreative.localization);
+  danglingFallback.locale_fallbacks[0].locale_variant_id = 'loc_missing';
+  testSemanticValidation(
+    validateLocalizationRequestSemantics(danglingFallback),
+    'locale fallback must reference a source or target variant',
+    'Localization request verifier rejects a dangling fallback variant ID'
+  );
+
+  await testSchemaRejection(
+    '/schemas/creative/sync-creatives-request.json',
+    localizedSyncRequest({
+      ...localizedCreative,
+      localization: {
+        source: { locale_variant_id: 'loc_en_us', locale: 'en-US' },
+        target_variants: [
+          {
+            locale_variant_id: 'loc_es_es',
+            locale: 'es-ES'
+          }
+        ],
+        default_locale_variant_id: 'loc_en_us',
+        unmatched_locale_action: 'serve_default'
+      }
+    }),
+    'Materialized target without overrides is rejected'
+  );
+
+  await testSchemaRejection(
+    '/schemas/creative/sync-creatives-request.json',
+    localizedSyncRequest({
+      ...localizedCreative,
+      localization: {
+        source: { locale_variant_id: 'loc_en_us', locale: 'en-US' },
+        target_variants: [
+          {
+            locale_variant_id: 'loc_es_es',
+            locale: 'es-ES',
+            translation_mode: 'provider_generated',
+            assets: {
+              headline: {
+                asset_type: 'text',
+                content: 'Ambiguous supplied copy'
+              }
+            }
+          }
+        ],
+        default_locale_variant_id: 'loc_en_us',
+        unmatched_locale_action: 'serve_default'
+      }
+    }),
+    'Legacy provider-generated mode is rejected even when assets are present'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'social_reach',
+      budget: 1000,
+      pricing_option_id: 'cpm_standard',
+      creatives: [localizedCreative]
+    },
+    'create_media_buy inline creatives reject localization requests'
+  );
+
+  await testSchemaRejection(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_social_reach',
+      creatives: [localizedCreative]
+    },
+    'update_media_buy inline creatives reject localization requests'
+  );
+
+  const localizationReadback = {
+    default_locale_variant_id: 'loc_en_us',
+    unmatched_locale_action: 'do_not_serve',
+    locale_matching: 'rfc4647_lookup',
+    locale_fallbacks: [
+      { language_range: 'es', locale_variant_id: 'loc_es_es' }
+    ],
+    variants: [
+      {
+        locale_variant_id: 'loc_en_us',
+        locale: 'en-US',
+        role: 'source',
+        assets: localizedCreative.assets
+      },
+      {
+        locale_variant_id: 'loc_es_es',
+        locale: 'es-ES',
+        role: 'target',
+        assets: {
+          ...localizedCreative.assets,
+          headline: {
+            asset_type: 'text',
+            content: 'El verano empieza aquí',
+            language: 'es-ES'
+          }
+        }
+      }
+    ]
+  };
+
+  await testSchemaValidation(
+    '/schemas/core/creative-localization-readback.json',
+    localizationReadback,
+    'Exact source and target localization readback validates'
+  );
+
+  const frenchSourceOnlyReadback = {
+    default_locale_variant_id: 'loc_fr_ca',
+    unmatched_locale_action: 'serve_default',
+    locale_matching: 'rfc4647_lookup',
+    variants: [
+      {
+        locale_variant_id: 'loc_fr_ca',
+        locale: 'fr-CA',
+        role: 'source',
+        assets: frenchSourceOnlyCreative.assets
+      }
+    ]
+  };
+  await testSchemaValidation(
+    '/schemas/core/creative-localization-readback.json',
+    frenchSourceOnlyReadback,
+    'Localization readback accepts one source-only monolingual variant'
+  );
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(
+      frenchSourceOnlyReadback,
+      frenchSourceOnlyCreative.assets
+    ),
+    undefined,
+    'Source-only localization readback verifier accepts one source role'
+  );
+  const frenchLocalePolicy = { accepted_language_ranges: ['fr'] };
+  testSemanticValidation(
+    validateLocalePolicyAssignment(frenchSourceOnlyReadback, frenchLocalePolicy),
+    undefined,
+    'French-only format accepts a source-only fr-CA creative'
+  );
+  testSemanticValidation(
+    validateLocalePolicyAssignment(localizationReadback, frenchLocalePolicy),
+    'at least one materialized variant must match accepted language ranges',
+    'French-only format rejects a creative with no French variant'
+  );
+  const spanishLocalePolicy = { accepted_language_ranges: ['es'] };
+  testSemanticValidation(
+    validateLocalePolicyAssignment(localizationReadback, spanishLocalePolicy),
+    undefined,
+    'Spanish-only format accepts a mixed creative with an eligible Spanish variant'
+  );
+  const ineligibleDefaultReadback = {
+    ...structuredClone(localizationReadback),
+    unmatched_locale_action: 'serve_default'
+  };
+  testSemanticValidation(
+    validateLocalePolicyAssignment(ineligibleDefaultReadback, spanishLocalePolicy),
+    'serve_default must reference a seller-eligible locale variant',
+    'Locale-constrained format rejects serve_default outside its eligible variant set'
+  );
+  testSemanticValidation(
+    selectLocalizedVariant(
+      localizationReadback,
+      ['en-US', 'es-ES'],
+      spanishLocalePolicy
+    ) === 'loc_es_es'
+      ? []
+      : ['Seller locale policy did not mask the ineligible English variant'],
+    undefined,
+    'Seller locale policy filters variants before buyer locale selection'
+  );
+  const fallbackOutsideSellerPolicy = structuredClone(localizationReadback);
+  fallbackOutsideSellerPolicy.locale_fallbacks[0].locale_variant_id = 'loc_en_us';
+  testSemanticValidation(
+    selectLocalizedVariant(
+      fallbackOutsideSellerPolicy,
+      ['es-MX'],
+      spanishLocalePolicy
+    ) === undefined
+      ? []
+      : ['Buyer fallback escaped the seller-eligible variant set'],
+    undefined,
+    'Buyer locale fallback cannot select a seller-ineligible variant'
+  );
+
+  testValidationAnnotation(
+    '/schemas/core/creative-localization-readback.json',
+    {
+      unique_variant_properties: ['locale_variant_id', 'locale'],
+      exact_role_counts: { source: 1 },
+      default_locale_variant_id: 'must_reference_exactly_one_variant',
+      source_assets: 'must_equal_enclosing_creative.assets',
+      locale_matching: 'rfc4647_lookup',
+      locale_match_comparison: 'canonical_tag_equality_after_requested_range_truncation',
+      delivery_locale_preferences: 'ordered_external_input_not_defined_by_adcp',
+      unique_locale_fallback_properties: ['language_range'],
+      locale_fallback_variant_ids: 'must_reference_exactly_one_variant',
+      selection_order:
+        'for_each_preference_strict_lookup_then_most_specific_explicit_fallback_then_next_preference_then_unmatched_action',
+      localized_asset_language: {
+        asset_types: ['text', 'markdown'],
+        when_present: 'must_equal_enclosing_variant.locale',
+        omitted: 'no_asset_language_claim'
+      }
+    },
+    'Localization readback exposes machine-readable exactness rules'
+  );
+
+  testTypedDiscriminatedUnion(
+    '/schemas/core/creative-localization-readback.json',
+    ['properties', 'variants', 'items'],
+    'role',
+    [
+      { role: 'source' },
+      { role: 'target' }
+    ],
+    'Localization readback emits typed source/target union arms'
+  );
+
+  const syncRoundTripConstraints = {
+    lifecycle_source: 'enclosing_creative.status',
+    source_assets: 'must_equal_request_creative.assets'
+  };
+  testNestedValidationAnnotation(
+    '/schemas/creative/sync-creatives-response.json',
+    ['oneOf', 0, 'properties', 'creatives', 'items', 'properties', 'localization'],
+    syncRoundTripConstraints,
+    'Sync response exposes machine-readable creative-wide localization rules'
+  );
+  testNestedValidationAnnotation(
+    '/schemas/creative/list-creatives-response.json',
+    ['properties', 'creatives', 'items', 'properties', 'localization'],
+    {
+      lifecycle_source: 'enclosing_creative.status',
+      source_assets: 'must_equal_enclosing_creative.assets'
+    },
+    'List response exposes machine-readable creative-wide localization rules'
+  );
+
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(localizationReadback, localizedCreative.assets),
+    undefined,
+    'Localization readback verifier accepts exact roles, identities, default, and source assets'
+  );
+
+  const mismatchedReadbackAssetLanguage = structuredClone(localizationReadback);
+  mismatchedReadbackAssetLanguage.variants[1].assets.headline.language = 'es-MX';
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(
+      mismatchedReadbackAssetLanguage,
+      localizedCreative.assets
+    ),
+    'asset headline language must equal enclosing variant locale',
+    'Localization readback verifier rejects contradictory asset language metadata'
+  );
+
+  for (const role of ['target', 'source']) {
+    const invalidRoles = structuredClone(localizationReadback);
+    invalidRoles.variants = invalidRoles.variants.map((variant) => ({ ...variant, role }));
+    testSemanticValidation(
+      validateLocalizationReadbackSemantics(invalidRoles),
+      'exactly one source variant',
+      `Localization readback verifier rejects ${role === 'target' ? 'zero' : 'multiple'} source roles`
+    );
+  }
+
+  for (const property of ['locale_variant_id', 'locale']) {
+    const duplicateReadback = structuredClone(localizationReadback);
+    duplicateReadback.variants[1][property] = duplicateReadback.variants[0][property];
+    testSemanticValidation(
+      validateLocalizationReadbackSemantics(duplicateReadback),
+      `variant ${property} values must be unique`,
+      `Localization readback verifier rejects duplicate ${property}`
+    );
+  }
+
+  const missingDefault = structuredClone(localizationReadback);
+  missingDefault.default_locale_variant_id = 'loc_missing';
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(missingDefault, localizedCreative.assets),
+    'default_locale_variant_id must reference exactly one variant',
+    'Localization verifier rejects a dangling default locale variant'
+  );
+
+  const danglingReadbackFallback = structuredClone(localizationReadback);
+  danglingReadbackFallback.locale_fallbacks[0].locale_variant_id = 'loc_missing';
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(danglingReadbackFallback, localizedCreative.assets),
+    'locale fallback must reference exactly one variant',
+    'Localization readback verifier rejects a dangling fallback variant ID'
+  );
+
+  const driftedSourceAssets = structuredClone(localizationReadback);
+  driftedSourceAssets.variants[0].assets.headline.content = 'Drifted source';
+  testSemanticValidation(
+    validateLocalizationReadbackSemantics(driftedSourceAssets, localizedCreative.assets),
+    'source localization assets must equal enclosing creative assets',
+    'Localization verifier rejects source asset drift'
+  );
+
+  testSemanticValidation(
+    selectLocalizedVariant(localizationReadback, ['es-ES']) === 'loc_es_es'
+      ? []
+      : ['RFC 4647 Lookup did not select the equal es-ES tag'],
+    undefined,
+    'RFC 4647 Lookup selects an equal available target'
+  );
+  testSemanticValidation(
+    rfc4647Lookup(['es-MX'], localizationReadback.variants) === undefined
+      ? []
+      : ['RFC 4647 Lookup prefix-matched sibling es-ES'],
+    undefined,
+    'RFC 4647 Lookup does not prefix-match a sibling regional locale'
+  );
+  const mexicanSpanishFallback = structuredClone(localizationReadback);
+  mexicanSpanishFallback.variants[1].locale_variant_id = 'loc_es_mx';
+  mexicanSpanishFallback.variants[1].locale = 'es-MX';
+  mexicanSpanishFallback.locale_fallbacks[0].locale_variant_id = 'loc_es_mx';
+  testSemanticValidation(
+    selectLocalizedVariant(mexicanSpanishFallback, ['es-ES']) === 'loc_es_mx'
+      ? []
+      : ['Explicit es fallback did not select loc_es_mx'],
+    undefined,
+    'Explicit language-family fallback allows es-ES to use es-MX'
+  );
+  testSemanticValidation(
+    selectLocalizedVariant(localizationReadback, ['es-MX', 'en-US']) === 'loc_es_es'
+      ? []
+      : ['Lower-priority exact English match bypassed higher-priority Spanish fallback'],
+    undefined,
+    'Explicit fallback for a preferred locale wins before the next locale preference'
+  );
+
+  const noFamilyFallback = structuredClone(localizationReadback);
+  delete noFamilyFallback.locale_fallbacks;
+  testSemanticValidation(
+    selectLocalizedVariant(noFamilyFallback, ['es-MX']) === undefined
+      ? []
+      : ['Regional substitution occurred without an explicit fallback rule'],
+    undefined,
+    'Sibling regional locales are not substituted without an explicit fallback rule'
+  );
+
+  const fallbackReadback = { ...localizationReadback, unmatched_locale_action: 'serve_default' };
+  testSemanticValidation(
+    selectLocalizedVariant(fallbackReadback, ['fr-CA']) === 'loc_en_us'
+      ? []
+      : ['serve_default did not select default_locale_variant_id'],
+    undefined,
+    'Unmatched serve_default selects the explicit default rather than source implicitly'
+  );
+  testSemanticValidation(
+    selectLocalizedVariant(localizationReadback, ['fr-CA']) === undefined
+      ? []
+      : ['do_not_serve returned a locale variant'],
+    undefined,
+    'Unmatched do_not_serve returns no eligible locale variant'
+  );
+
+  const localizedSyncItem = {
+    creative_id: localizedCreative.creative_id,
+    action: 'created',
+    status: 'pending_review',
+    localization: localizationReadback
+  };
+  const localizedListItem = {
+    creative_id: localizedCreative.creative_id,
+    name: localizedCreative.name,
+    format_id: {
+      agent_url: 'https://creative.example.com',
+      id: 'localized_image'
+    },
+    status: 'pending_review',
+    created_date: '2026-07-19T10:00:00Z',
+    updated_date: '2026-07-19T10:00:00Z',
+    assets: localizedCreative.assets,
+    localization: localizationReadback
+  };
+
+  testSemanticValidation(
+    validateLocalizationRoundTrip(
+      localizedCreative.localization,
+      localizedSyncItem,
+      localizedListItem
+    ),
+    undefined,
+    'Localization verifier accepts exact request to sync to list round trip'
+  );
+
+  for (const [surface, mutate, expectedError] of [
+    [
+      'sync source identity',
+      (syncItem) => {
+        syncItem.localization.variants[0].locale_variant_id = 'loc_en_gb';
+      },
+      'sync source locale_variant_id must equal request'
+    ],
+    [
+      'list source locale',
+      (_syncItem, listItem) => {
+        listItem.localization.variants[0].locale = 'en-GB';
+      },
+      'list source locale must equal request'
+    ],
+    [
+      'sync target identity set',
+      (syncItem) => {
+        syncItem.localization.variants[1].locale_variant_id = 'loc_fr_fr';
+      },
+      'sync target locale_variant_id set must exactly equal request'
+    ],
+    [
+      'list target locale',
+      (_syncItem, listItem) => {
+        listItem.localization.variants[1].locale = 'es-MX';
+      },
+      'list target locale must equal request'
+    ],
+    [
+      'sync default locale',
+      (syncItem) => {
+        syncItem.localization.default_locale_variant_id = 'loc_es_es';
+      },
+      'sync default_locale_variant_id must equal request'
+    ],
+    [
+      'list fallback mapping',
+      (_syncItem, listItem) => {
+        listItem.localization.locale_fallbacks[0].locale_variant_id = 'loc_en_us';
+      },
+      'list locale_fallbacks must exactly equal request'
+    ]
+  ]) {
+    const syncItem = structuredClone(localizedSyncItem);
+    const listItem = structuredClone(localizedListItem);
+    mutate(syncItem, listItem);
+    testSemanticValidation(
+      validateLocalizationRoundTrip(localizedCreative.localization, syncItem, listItem),
+      expectedError,
+      `Localization verifier rejects ${surface} drift`
+    );
+  }
+
+  await testSchemaValidation(
+    '/schemas/creative/sync-creatives-response.json',
+    { status: 'completed', creatives: [localizedSyncItem] },
+    'Accepted localized sync result includes creative status and complete readback'
+  );
+
+  const localizedSyncWithoutStatus = structuredClone(localizedSyncItem);
+  delete localizedSyncWithoutStatus.status;
+  await testSchemaRejection(
+    '/schemas/creative/sync-creatives-response.json',
+    { status: 'completed', creatives: [localizedSyncWithoutStatus] },
+    'Accepted localized sync result without creative status is rejected'
+  );
+
+  for (const action of ['failed', 'deleted']) {
+    await testSchemaRejection(
+      '/schemas/creative/sync-creatives-response.json',
+      {
+        status: 'completed',
+        creatives: [
+          {
+            creative_id: localizedCreative.creative_id,
+            action,
+            localization: localizationReadback
+          }
+        ]
+      },
+      `${action} sync result cannot leak localization readback`
+    );
+  }
+
+  await testSchemaValidation(
+    '/schemas/creative/list-creatives-response.json',
+    {
+      status: 'completed',
+      query_summary: { total_matching: 1, returned: 1 },
+      pagination: { has_more: false },
+      creatives: [localizedListItem]
+    },
+    'list_creatives returns complete localized state using buyer-assigned identities'
+  );
+
+  const unavailableLocalizedListItem = structuredClone(localizedListItem);
+  delete unavailableLocalizedListItem.localization;
+  unavailableLocalizedListItem.localization_unavailable = {
+    errors: [{ code: 'LOCALIZATION_READBACK_UNAVAILABLE', message: 'Variant mapping is incomplete' }],
+    retryable: true
+  };
+  await testSchemaValidation(
+    '/schemas/creative/list-creatives-response.json',
+    {
+      status: 'completed',
+      query_summary: { total_matching: 1, returned: 1 },
+      pagination: { has_more: false },
+      creatives: [unavailableLocalizedListItem]
+    },
+    'list_creatives preserves a localized item with explicit fail-closed unavailable state'
+  );
+
+  const ambiguousLocalizedListItem = structuredClone(localizedListItem);
+  ambiguousLocalizedListItem.localization_unavailable = unavailableLocalizedListItem.localization_unavailable;
+  await testSchemaRejection(
+    '/schemas/creative/list-creatives-response.json',
+    {
+      status: 'completed',
+      query_summary: { total_matching: 1, returned: 1 },
+      pagination: { has_more: false },
+      creatives: [ambiguousLocalizedListItem]
+    },
+    'list_creatives rejects simultaneous localization and localization_unavailable'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/creative-variant.json',
+    { variant_id: 'served_4821', locale_variant_id: 'loc_es_es' },
+    'Delivery variants can attribute the localized assets that served'
+  );
+  testValidationAnnotation(
+    '/schemas/core/creative-variant.json',
+    {
+      localized_parent: {
+        required_field: 'locale_variant_id',
+        member_of: 'list_creatives.localization.variants[].locale_variant_id',
+        applies_to_default_fallback: true
+      }
+    },
+    'Delivery variants expose machine-readable localized attribution rules'
+  );
+
+  const localizedCanonicalListItem = structuredClone(localizedListItem);
+  delete localizedCanonicalListItem.format_id;
+  localizedCanonicalListItem.format_kind = 'image';
+  await testSchemaValidation(
+    '/schemas/creative/list-creatives-response.json',
+    {
+      status: 'completed',
+      query_summary: { total_matching: 1, returned: 1 },
+      pagination: { has_more: false },
+      creatives: [localizedCanonicalListItem]
+    },
+    'Localized list readback composes with canonical format identity'
+  );
+
+  testSemanticValidation(
+    validateLocalizedSourceUpsert(localizationReadback, {
+      ...localizedCreative,
+      localization: localizedCreative.localization
+    }),
+    undefined,
+    'Explicit full localization field may replace existing topology'
+  );
+
+  const unchangedLocalizedSource = structuredClone(localizedCreative);
+  delete unchangedLocalizedSource.localization;
+  testSemanticValidation(
+    validateLocalizedSourceUpsert(localizationReadback, unchangedLocalizedSource),
+    undefined,
+    'Localization omission preserves topology when source assets are exactly unchanged'
+  );
+
+  const changedLocalizedSource = structuredClone(unchangedLocalizedSource);
+  changedLocalizedSource.assets.headline.content = 'A changed source headline';
+  testSemanticValidation(
+    validateLocalizedSourceUpsert(localizationReadback, changedLocalizedSource),
+    'localization omission requires top-level assets to equal prior localized source assets',
+    'Localization omission rejects a source asset change'
+  );
+
+  testSemanticValidation(
+    validateLocalizedSourceUpsert(localizationReadback, {
+      ...changedLocalizedSource,
+      localization: localizedCreative.localization
+    }),
+    undefined,
+    'Changed source assets are accepted with an explicit full localization topology'
+  );
+
+  testSemanticValidation(
+    validateLocalizedSourceUpsert(localizationReadback, {
+      ...changedLocalizedSource,
+      localization: null
+    }),
+    undefined,
+    'Changed source assets are accepted with explicit localization removal'
+  );
+
+  const localizedCapabilitiesResponse = {
+    adcp_version: '3.1',
+    status: 'completed',
+    adcp: {
+      major_versions: [3],
+      idempotency: { supported: true, replay_ttl_seconds: 86400 }
+    },
+    supported_protocols: ['creative'],
+    creative: {
+      has_creative_library: true,
+      localization: {
+        max_target_variants: 10,
+        locale_matching: 'rfc4647_lookup'
+      }
+    }
+  };
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    localizedCapabilitiesResponse,
+    'Capabilities advertise coarse materialized localization support'
+  );
+  const sourceOnlyCapabilities = structuredClone(localizedCapabilitiesResponse);
+  sourceOnlyCapabilities.creative.localization.max_target_variants = 0;
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    sourceOnlyCapabilities,
+    'Localization capability can advertise source-only topology'
+  );
+
+  for (const [libraryValue, description] of [
+    [undefined, 'Localization capability requires an explicit creative library capability'],
+    [false, 'Localization capability rejects has_creative_library false']
+  ]) {
+    const invalidCapabilities = structuredClone(localizedCapabilitiesResponse);
+    if (libraryValue === undefined) {
+      delete invalidCapabilities.creative.has_creative_library;
+    } else {
+      invalidCapabilities.creative.has_creative_library = libraryValue;
+    }
+    await testSchemaRejection(
+      '/schemas/protocol/get-adcp-capabilities-response.json',
+      invalidCapabilities,
+      description
+    );
+  }
+  log('');
 
   // Print results
   log('====================================================');

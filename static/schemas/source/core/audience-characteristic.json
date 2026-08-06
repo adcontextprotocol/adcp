@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/audience-characteristic.json",
+  "title": "Audience Characteristic",
+  "description": "A machine-comparable audience dimension and value or numeric range used in population-level audience evidence. The built-in `age` dimension uses completed years: scalar and set values and range bounds MUST be non-negative integers, and a range's min MUST be less than or equal to its max. Provider-defined dimensions SHOULD use an HTTPS URI and SHOULD identify their taxonomy so two similarly named dimensions are not assumed equivalent.",
+  "type": "object",
+  "properties": {
+    "dimension": {
+      "type": "string",
+      "description": "Canonical dimension name or HTTPS URI. AdCP 3.2 defines `age`; other values remain provider- or taxonomy-scoped.",
+      "anyOf": [
+        { "const": "age" },
+        { "format": "uri", "pattern": "^https://" }
+      ]
+    },
+    "value": {
+      "description": "Scalar or set value for the dimension.",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" }
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      ]
+    },
+    "range": {
+      "type": "object",
+      "description": "Inclusive numeric interval. For dimension `age`, values are completed years and MUST be non-negative integers, and min MUST be less than or equal to max. JSON Schema enforces the age value and bound types; implementations enforce the relational min <= max constraint.",
+      "properties": {
+        "min": { "type": "number" },
+        "max": { "type": "number" }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "taxonomy": {
+      "type": "object",
+      "description": "External system that defines the dimension or value. Taxonomy metadata is descriptive and does not create exact demographic targeting semantics.",
+      "properties": {
+        "system": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "version": { "type": "string", "minLength": 1 },
+        "value_id": { "type": "string", "minLength": 1 }
+      },
+      "required": ["system"],
+      "additionalProperties": false
+    },
+    "label": {
+      "type": "string",
+      "description": "Human-readable display label; never the comparison key."
+    }
+  },
+  "required": ["dimension"],
+  "anyOf": [
+    { "required": ["value"], "not": { "required": ["range"] } },
+    { "required": ["range"], "not": { "required": ["value"] } }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "dimension": { "const": "age" } },
+        "required": ["dimension"]
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "oneOf": [
+              { "type": "integer", "minimum": 0 },
+              {
+                "type": "array",
+                "items": { "type": "integer", "minimum": 0 },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            ]
+          },
+          "range": {
+            "type": "object",
+            "properties": {
+              "min": { "type": "integer", "minimum": 0 },
+              "max": { "type": "integer", "minimum": 0 }
+            },
+            "minProperties": 1,
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

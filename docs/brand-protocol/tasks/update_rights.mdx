@@ -93,13 +93,36 @@ Seconds for most updates. Pricing changes may require rights holder approval and
   "rights_constraint": {
     "rights_id": "janssen_likeness_voice",
     "rights_agent": { "url": "https://agent.lotientertainment.com/mcp", "id": "loti_entertainment" },
+    "rights_holder": { "domain": "lotientertainment.com", "brand_id": "daan_janssen" },
     "valid_from": "2026-04-01T00:00:00Z",
     "valid_until": "2026-09-30T23:59:59Z",
     "uses": ["likeness", "voice"],
     "countries": ["NL"],
     "impression_cap": 200000,
     "approval_status": "approved",
-    "verification_url": "https://agent.lotientertainment.com/rights/rts_abc123/verify"
+    "grant_status": "active",
+    "restrictions": [
+      "All generated creatives must be submitted for approval before distribution",
+      "No modification of talent likeness beyond approved AI generation parameters"
+    ],
+    "disclosure": {
+      "required": true,
+      "text": "Features AI-generated likeness of Daan Janssen, used under license from Loti Entertainment"
+    },
+    "creative_approval_required": true,
+    "content_digest": "sha256:590b38bde70da8e40644a5b96e3a3b2a60f7cbc3d450742cef259a0f1261cada",
+    "attestation_refs": [{
+      "issuer": { "type": "brand", "brand": { "domain": "lotientertainment.com", "brand_id": "daan_janssen" } },
+      "claim_type": "https://adcontextprotocol.org/claims/rights/grant",
+      "subject": {
+        "type": "resource",
+        "resource_type": "https://adcontextprotocol.org/claims/subjects/rights-grant",
+        "namespace": "https://agent.lotientertainment.com/mcp",
+        "id": "janssen_likeness_voice",
+        "content_digest": "sha256:590b38bde70da8e40644a5b96e3a3b2a60f7cbc3d450742cef259a0f1261cada"
+      },
+      "locator": { "type": "issuer_credential_id", "credential_id": "cred_janssen_2026q3", "resolver_id": "primary" }
+    }]
   },
   "implementation_date": "2026-06-28T14:30:00Z"
 }
@@ -127,7 +150,7 @@ Seconds for most updates. Pricing changes may require rights holder approval and
 | `rights_id` | string | The updated rights grant identifier |
 | `terms` | object | Updated contractual terms (same shape as `acquire_rights` acquired response) |
 | `generation_credentials` | array | Re-issued credentials with updated expiration and caps |
-| `rights_constraint` | object | Updated constraint for re-embedding in creative manifests |
+| `rights_constraint` | object | Updated digest-pinned constraint and replacement attestation references for re-embedding in creatives |
 | `paused` | boolean | Whether the grant is currently paused (included when pause state changes) |
 | `implementation_date` | datetime\|null | When changes take effect (`null` if pending approval) |
 
@@ -135,7 +158,7 @@ Seconds for most updates. Pricing changes may require rights holder approval and
 
 When you extend dates or change pricing, the rights agent re-issues generation credentials with updated expiration. Both old and new credentials may work during an overlap period — old credentials remain valid until their original expiry. Replace credentials in your creative pipeline promptly, but there is no hard cutover moment that would break in-flight generation requests.
 
-The updated `rights_constraint` should replace the constraint in any active creative manifests so downstream systems see the current terms.
+The updated `rights_constraint` replaces the old constraint in every active creative. The rights agent revokes or supersedes the old credential and issues a new digest/reference pair; changing terms without replacing the credential cannot produce a verified result. Sellers re-evaluate the replacement before continued delivery according to their `media_buy.rights_attestations` policy.
 
 ## Next steps
 

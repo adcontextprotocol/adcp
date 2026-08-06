@@ -24,6 +24,7 @@ function extractStep(name) {
 
 const releaseRelevance = extractStep('Detect release-relevant push');
 const artifactDetection = extractStep('Detect committed release artifacts');
+const changesetsStep = extractStep('Create Release Pull Request or Tag Release');
 const uploadStep = extractStep('Upload protocol tarball to GitHub Release');
 
 assert(
@@ -39,6 +40,11 @@ assert(
 assert(
   artifactDetection.includes('grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "${changed_files}"'),
   'Release artifact detection must be based on artifact paths changed by the triggering commit.'
+);
+
+assert(
+  changesetsStep.includes("HUSKY: '0'"),
+  'Changesets automation must not rerun local pre-commit hooks while creating its release commit.'
 );
 
 assert(

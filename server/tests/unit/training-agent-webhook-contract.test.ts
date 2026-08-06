@@ -19,23 +19,22 @@ describe('training-agent completion webhook contract', () => {
     expect(TOOL_TO_TASK_TYPE).toMatchObject({
       get_products: 'get_products',
       build_creative: 'build_creative',
+      update_rights: 'update_rights',
     });
     expect(TOOL_TO_PROTOCOL).toMatchObject({
       get_products: 'media-buy',
       build_creative: 'creative',
+      update_rights: 'brand',
     });
-    expect(TOOL_TO_TASK_TYPE).not.toHaveProperty('update_rights');
   });
 
-  it('rejects update_rights callbacks while its task type is undefined', () => {
-    const result = handleUpdateRights({
-      rights_id: 'nova_likeness_voice',
+  it('accepts update_rights callbacks now that its task type is routable', async () => {
+    const result = await handleUpdateRights({
+      rights_id: 'janssen_likeness_voice',
       push_notification_config: { url: 'https://webhook.example.com/rights' },
-    }, { mode: 'open' }) as { errors?: Array<Record<string, unknown>> };
+    }, { mode: 'open' });
 
-    expect(result.errors).toEqual([expect.objectContaining({
-      code: 'VALIDATION_ERROR',
-      field: 'push_notification_config',
-    })]);
+    expect(result).toMatchObject({ rights_id: 'janssen_likeness_voice' });
+    expect(result).not.toHaveProperty('errors');
   });
 });

@@ -74,7 +74,17 @@ The two flows aren't a duplication — they encode the difference between *stand
 
 ### Required coherence between layers
 
-Three rules connect the layers and prevent orphaned goals:
+`optimization_goals` define the objective function: what the seller should optimize, its units, and priority. They do not define 3.2 bidding policy. Currency-bearing execution controls live in `bidding` at media-buy or package scope. All monetary amounts use the media-buy currency; a selected pricing option contributes the auction unit but MUST declare that same currency:
+
+- seller-optimized media-buy `cost_per`/`roas` bind to the primary `budget_allocation.optimization_goals` goal;
+- package-authored `cost_per`/`roas` bind to that package's primary goal;
+- fixed media-buy `cost_per` binds to every inheriting package and requires compatible primary-goal result units; fixed inherited `roas` requires value-bearing primary goals;
+- `bid_amount` and `max_bid` are expressed per the selected pricing option's auction unit; and
+- `{automatic: true}` explicitly overrides inherited policy with provider automatic bidding.
+
+The separation matters when the units differ—for example, a seller can optimize toward conversions using a target CPA while also enforcing a max-CPC auction ceiling, with both amounts denominated in the media-buy currency. Legacy goal targets `cost_per` and `per_ad_spend` remain accepted during 3.2 migration but cannot be combined with canonical `bidding` on the same effective package. Their conservative normalization remains `cost_per` → `strength: "target"` and `per_ad_spend` → `strength: "target"`.
+
+Four rules connect the layers and prevent orphaned goals:
 
 1. **Optimization requires capability.** A package's `optimization_goals[]` entry MUST match a product capability — `metric_optimization.supported_metrics` for `kind: "metric"`, or `vendor_metric_optimization.supported_metrics` for `kind: "vendor_metric"`. Sellers reject mismatches with `TERMS_REJECTED`.
 
@@ -85,7 +95,7 @@ Three rules connect the layers and prevent orphaned goals:
    - Standard only — "you owe me ≥ X," seller decides how to hit it
    - Both — optimization steers; standard backstops
 
-4. **Priority is ordinal, lowest-value-first.** When `optimization_goals[]` carry explicit `priority` values, the seller treats the goal with the **lowest** priority value as primary — even when no goal is `priority: 1` (priorities of `2` and `3` mean `2` is primary). When `priority` is omitted, sellers may use array position. Duplicate priority values are undefined.
+4. **Priority is ordinal, lowest-value-first.** When `optimization_goals[]` carry explicit `priority` values, the seller treats the goal with the **lowest** priority value as primary — even when no goal is `priority: 1` (priorities of `2` and `3` mean `2` is primary). When all priorities are omitted, the first array entry is primary. Duplicate priority values are undefined.
 
 ### Worked example: Adelaide attention end-to-end
 
@@ -260,7 +270,12 @@ Publishers declare supported reporting frequencies in the product's `reporting_c
 
 - **`hourly`**: Receive notifications every hour during campaign flight (optional, consider cost/complexity)
 - **`daily`**: Receive notifications once per day (most common, recommended for Phase 1)
+- **`weekly`**: Receive notifications once per week — the native cadence for audience-currency channels reporting weekly increments (OOH, radio)
 - **`monthly`**: Receive notifications once per month (timezone specified by publisher)
+- **`quarterly`**: Receive notifications once per quarter — matches quarterly measurement-currency publication cycles
+- **`post_campaign`**: A single report after the flight ends — for channels where delivery is only knowable in arrears
+
+A product's declared frequencies are an optimization-eligibility signal: buyers should not mid-flight-optimize against a channel whose data arrives quarterly or post-campaign.
 
 **Cost Consideration:** Hourly webhooks generate 24x more traffic than daily. Large buyer-seller pairs may prefer offline reporting mechanisms (see below) for cost efficiency.
 

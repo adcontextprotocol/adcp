@@ -6,6 +6,10 @@ description: "Move build-capability discovery and creative pricing off Format fi
 
 # Migrating to creative transformers (3.1)
 
+<Note>
+AdCP 3.2 uses `get_adcp_capabilities.creative.supported_formats[]` for canonical operation discovery and `list_transformers` for account-scoped transformer discovery. Transformer inputs use canonical `input_formats`; outputs use `output_capability_ids`; builds select `target_capability_id(s)`. The named-format examples below document the 3.1 compatibility path only.
+</Note>
+
 AdCP 3.1 introduces **transformers** — the creative analog of a media-buy product: an agent-offered, account-scoped, selectable unit of build capability (a voice, model, style, or director) with a typed configuration surface and per-account pricing, discovered via [`list_transformers`](/docs/creative/task-reference/list_transformers) and selected with `transformer_id` on [`build_creative`](/docs/creative/task-reference/build_creative).
 
 Because a transformer carries **its own input/output formats and its own pricing**, three things that 3.0 hung on the *format* are now redundant and are deprecated:
