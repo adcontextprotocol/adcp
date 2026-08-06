@@ -1279,6 +1279,10 @@
     "media-buy": {
       "description": "Media buy task request/response schemas",
       "supporting-schemas": {
+        "get-products-rejected": {
+          "$ref": "/schemas/media-buy/get-products-rejected.json",
+          "description": "Terminal business rejection arm for a well-formed get_products brief or refinement"
+        },
         "package-request": {
           "$ref": "/schemas/media-buy/package-request.json",
           "description": "Package configuration for media buy creation - used within create_media_buy request"

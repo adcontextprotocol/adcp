@@ -11,6 +11,18 @@ type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' 
 export const TALENT_ROLES = ['host', 'guest', 'creator', 'cast', 'narrator', 'producer', 'correspondent', 'commentator', 'analyst'] as const;
 export type TalentRole = typeof TALENT_ROLES[number];
 
+/** First wire release that carries the get_products business-rejection arm. */
+export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.0' as const;
+
+export function supportsGetProductsRejected(servedVersion: string | undefined): boolean {
+  if (!servedVersion) return false;
+  const match = servedVersion.match(/^(\d+)\.(\d+)(?:-|$)/);
+  if (!match) return false;
+  const major = Number.parseInt(match[1], 10);
+  const minor = Number.parseInt(match[2], 10);
+  return major > 3 || (major === 3 && minor >= 2);
+}
+
 /** AccountReference from SDK — identifies an account on create_media_buy */
 type AccountReference = CreateMediaBuyRequest['account'];
 
@@ -31,6 +43,8 @@ export interface TrainingContext {
    * mapping. Never populate this from request arguments or principal text.
    */
   authenticatedAgentUrl?: string;
+  /** Release selected by protocol negotiation for this request. */
+  servedAdcpVersion?: string;
   /** Route is the grader-targeted `/mcp-strict` endpoint. Advertises
    *  `required_for: ['create_media_buy']` in capabilities and enforces
    *  presence-gated signing at the auth layer. Default `/mcp` does not
@@ -288,6 +302,11 @@ export interface ComplyExtensions {
     taskId: string;
     message?: string;
   };
+  /** Single-shot rejected response for the principal's next brief/refine request. */
+  forcedGetProductsRejections: Map<string, {
+    reason: string;
+    suggestions?: string[];
+  }>;
   /** Single-shot stale-cache directive registered by
    * comply_test_controller.force_upstream_unavailable. Consumed by the next
    * matching read tool so follow-up healthy reads do not emit STALE_RESPONSE. */

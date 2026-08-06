@@ -227,6 +227,7 @@ export function buildSalesComplyConfig(): ComplyControllerConfig {
     force: {
       media_buy_status: cast(forceAdapter('force_media_buy_status')),
       create_media_buy_arm: cast(forceAdapter('force_create_media_buy_arm')),
+      get_products_arm: cast(forceAdapter('force_get_products_arm')),
       task_completion: cast(forceAdapter('force_task_completion')),
       // force_creative_status drives dependency_impairment storyboards —
       // toggles creative.status and propagates to dependent media buys'

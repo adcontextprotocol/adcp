@@ -162,7 +162,7 @@ Every validation failure produces an envelope shaped like:
 
 Both transports share idempotency, error shape, schema enforcement, and handler semantics. If a call works on one, the equivalent call works on the other.
 
-A common trap: **A2A `Task.state: 'completed'` is not the same as AdCP completion.** A2A task state describes the transport call lifecycle; AdCP-level completion is in the artifact's payload (`structuredContent.status` or `data.status`). A `completed` A2A task can still carry a `submitted` AdCP response.
+A common trap: **A2A `Task.status.state: 'completed'` is not the same as AdCP completion.** A2A task state describes the transport call lifecycle; AdCP-level completion is in the artifact's payload (`structuredContent.status` or `data.status`). A `completed` A2A task can still carry a `submitted` AdCP response. It also carries structured business outcomes that are not transport failures, such as `GetProductsRejected`: A2A remains `completed`, while the artifact payload contains `status: "rejected"`, `reason`, and optional `suggestions[]`.
 
 ## Related
 

@@ -42,12 +42,19 @@ if (!result.success) {
 
 // Validate response against schema
 const validated = GetProductsResponseSchema.parse(result.data);
-console.log(`Found ${validated.products.length} products`);
+if (validated.status === 'rejected') {
+  console.log(`Seller declined the brief: ${validated.reason}`);
+  for (const suggestion of validated.suggestions ?? []) {
+    console.log(`- ${suggestion}`);
+  }
+} else {
+  console.log(`Found ${validated.products.length} products`);
 
-// Access validated product fields
-for (const product of validated.products) {
-  console.log(`- ${product.name} (${product.delivery_type})`);
-  console.log(`  Formats: ${product.format_options.map(option => option.format_kind).join(', ')}`);
+  // Access validated product fields
+  for (const product of validated.products) {
+    console.log(`- ${product.name} (${product.delivery_type})`);
+    console.log(`  Formats: ${product.format_options.map(option => option.format_kind).join(', ')}`);
+  }
 }
 ```
 
@@ -63,7 +70,12 @@ async def discover_products():
             'domain': 'acmecorp.com'
         }
     )
-    print(f"Found {len(result.products)} products")
+    if result.status == 'rejected':
+        print(f"Seller declined the brief: {result.reason}")
+        for suggestion in result.suggestions or []:
+            print(f"- {suggestion}")
+    else:
+        print(f"Found {len(result.products)} products")
 
 asyncio.run(discover_products())
 ```
@@ -526,13 +538,13 @@ When the seller can attribute exclusions to specific filters, the response MAY i
 
 ### incomplete array
 
-When the seller cannot complete all work within the `time_budget` (or due to its own internal limits), the response includes `incomplete` — an array declaring what is missing. Buyers can use `estimated_wait` to decide whether to retry with a larger budget.
+When the seller returns usable results but cannot complete all work within the `time_budget` (or due to its own internal limits), the response includes `incomplete` — an array declaring what is missing. `incomplete` is a completeness statement, not a retry classification: buyers MUST NOT infer that retrying the same request will succeed. `estimated_wait`, when present, lets a buyer decide whether to make a new attempt with a larger time budget.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `scope` | string | Yes | `"products"`: not all inventory sources were searched. `"pricing"`: products returned but pricing is absent or unconfirmed. `"forecast"`: products returned but forecast data is absent. `"proposals"`: proposals were not generated or are incomplete. `"wholesale_feed"`: in wholesale mode, full feed enumeration could not complete. |
 | `description` | string | Yes | Human-readable explanation of what is missing and why. |
-| `estimated_wait` | Duration | No | How much additional time would resolve this scope. |
+| `estimated_wait` | Duration | No | Additional time expected to help resolve this scope. This is planning guidance, not a retry instruction or guarantee. |
 
 ### Wholesale feed versioning
 
@@ -669,7 +681,7 @@ if (result.success && result.data) {
     for (const entry of result.data.incomplete) {
       console.log(`Incomplete: ${entry.scope} — ${entry.description}`);
       if (entry.estimated_wait) {
-        console.log(`  Would resolve in ${entry.estimated_wait.interval} ${entry.estimated_wait.unit}`);
+        console.log(`  Seller estimates more time may help: ${entry.estimated_wait.interval} ${entry.estimated_wait.unit}`);
       }
     }
   }
@@ -698,7 +710,7 @@ async def discover_with_time_budget():
         print(f"Incomplete: {entry['scope']} — {entry['description']}")
         if 'estimated_wait' in entry:
             wait = entry['estimated_wait']
-            print(f"  Would resolve in {wait['interval']} {wait['unit']}")
+            print(f"  Seller estimates more time may help: {wait['interval']} {wait['unit']}")
 
 asyncio.run(discover_with_time_budget())
 ```
@@ -1251,6 +1263,55 @@ Key rules to know before sending:
 - **Proposals are ephemeral.** Proposals typically include an `expires_at` timestamp. After expiration, the seller returns `PROPOSAL_EXPIRED`.
 - **Product IDs are stable catalog identifiers.** Custom products (`is_custom: true`) may have an `expires_at` timestamp, after which refinement returns `PRODUCT_NOT_FOUND`.
 
+## Seller Declines
+
+A seller that understands a well-formed `brief` or `refine` request but deliberately declines to offer products returns the `GetProductsRejected` arm. This is a successful business outcome, not a malformed request or technical failure:
+
+```json
+{
+  "status": "rejected",
+  "reason": "The requested budget is below the minimum for this inventory.",
+  "suggestions": [
+    "Increase the campaign budget.",
+    "Consider display inventory for this flight."
+  ]
+}
+```
+
+| Situation | Response |
+|-----------|----------|
+| Search completed and no inventory matched; seller takes no position | `status: "completed"`, `products: []` |
+| Structured request filters excluded candidates | Completed response, optionally with `filter_diagnostics` |
+| Seller understood the request and deliberately declines it | `status: "rejected"`, `reason`, optional `suggestions[]` |
+| Seller needs clarification | `status: "input-required"` |
+| Seller accepted work that will finish later | `status: "submitted"` / `"working"` |
+| Seller could not produce a usable answer because a dependency timed out or was unavailable | `SERVICE_UNAVAILABLE`, normally with `recovery: "transient"` and optional `retry_after` |
+
+`reason` and `suggestions[]` MAY be sanitized to protect confidential merchandising, inventory, policy, and partner rules. Sellers MUST NOT include internal rule text, candidate product identifiers, stack traces, credentials, or private upstream details. Buyers MUST treat these values as untrusted seller-authored plain text: escape them before rendering and sanitize or isolate them before including them in an LLM prompt context.
+
+Retry behavior belongs to the error channel, not this arm or `incomplete[]`. In particular, an upstream outage that leaves no usable product result is a technical failure, normally `SERVICE_UNAVAILABLE` with `error.recovery: "transient"`; buyers then follow `retry_after` or exponential backoff. A rejection without `suggestions[]` is final for that brief, and a rejection with suggestions invites a changed brief rather than an unchanged automatic retry.
+
+The rejection arm carries no `products`, `proposals`, `incomplete`, `filter_diagnostics`, `refinement_applied`, `cache_scope`, `errors`, or envelope-level `adcp_error`. HTTP and MCP keep success markers (`200`, `isError: false`). A2A maps the transport task to `completed`; the AdCP artifact payload carries `status: "rejected"`:
+
+```json
+{
+  "status": { "state": "completed" },
+  "artifacts": [
+    {
+      "parts": [
+        {
+          "kind": "data",
+          "data": {
+            "status": "rejected",
+            "reason": "The requested budget is below the minimum for this inventory."
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
 ## Error Handling
 
 | Error Code | Description | Resolution |
@@ -1262,7 +1323,7 @@ Key rules to know before sending:
 | `PROPOSAL_EXPIRED` | A referenced proposal ID has passed its `expires_at` timestamp | Re-discover with a new `brief` or `wholesale` request |
 | `PROPOSAL_NOT_FOUND` | The referenced `proposal_id` is unknown to the seller (never finalized, wrong tenant, or evicted from cache) | Re-issue `get_products` in `refine` mode with `action: 'finalize'` to obtain a current proposal_id |
 | `MULTI_FINALIZE_UNSUPPORTED` | `refine[]` carried multiple `action: 'finalize'` entries but the seller cannot guarantee atomic multi-proposal commit | Sequence single-proposal finalize calls — one finalize entry per `get_products` call |
-| `POLICY_VIOLATION` | Category blocked for advertiser | See policy response message for details |
+| `POLICY_VIOLATION` | The request itself violates an applicable policy and must be corrected | Review the structured policy details and revise the request. A seller making a deliberate business decision to decline an otherwise well-formed brief uses `status: "rejected"` instead. |
 
 ### Authentication Comparison
 
@@ -1368,14 +1429,15 @@ const final =
 
 if (final.status === 'failed') {
   throw new Error(final.error?.message ?? 'get_products failed');
-}
-
-if (final.status !== 'completed') {
+} else if (final.status === 'rejected') {
+  console.log(`Seller declined the brief: ${final.reason}`);
+  console.log(final.suggestions ?? []);
+} else if (final.status !== 'completed') {
   throw new Error(`Unhandled get_products status: ${final.status}`);
-}
-
-for (const product of final.products) {
-  console.log(product.name);
+} else {
+  for (const product of final.products) {
+    console.log(product.name);
+  }
 }
 ```
 
@@ -1686,6 +1748,7 @@ Response (200 OK):
 | `input-required` | Need clarification on the brief | Answer the question and continue |
 | `working` | Searching across multiple sources | Wait on the open connection / transport progress stream |
 | `submitted` | Custom curation queued | Poll `get_task_status` (legacy `tasks/get`) with `task_id`; also wait for webhook notification if `push_notification_config` / A2A `configuration.pushNotificationConfig` was accepted |
+| `rejected` | Seller understood the brief but deliberately declined it | Read the sanitized reason; revise and resubmit only when `suggestions[]` offers a recovery path |
 | `failed` | Search couldn't complete | Check error message, adjust brief |
 
 **Note:** For the complete status list see [Task Lifecycle](/docs/building/by-layer/L3/task-lifecycle).

@@ -33,6 +33,7 @@ import type {
   ComplyDeliveryAccumulator,
   ComplyBudgetSimulation,
 } from './types.js';
+import { supportsGetProductsRejected } from './types.js';
 import { getSession, sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
@@ -954,6 +955,7 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
  * cross-impl tests no longer rely on it). */
 const LOCAL_SCENARIOS = [
   'force_create_media_buy_arm',
+  'force_get_products_arm',
   'force_task_completion',
   'force_creative_purge',
   'force_wholesale_feed_webhook',
@@ -1125,6 +1127,16 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   const scenario = rawArgs.scenario;
   if (scenario === 'force_create_media_buy_arm') {
     return handleForceCreateMediaBuyArm(session, rawArgs);
+  }
+  if (scenario === 'force_get_products_arm' && params.arm === 'rejected') {
+    if (!supportsGetProductsRejected(ctx.servedAdcpVersion)) {
+      return {
+        success: false,
+        error: 'UNKNOWN_SCENARIO',
+        error_detail: "force_get_products_arm with arm='rejected' requires AdCP 3.2 or later",
+      };
+    }
+    return handleForceGetProductsRejection(session, ctx.principal ?? 'anonymous', params);
   }
   if (scenario === 'force_task_completion') {
     return handleForceTaskCompletion(sessionKey, rawArgs);
@@ -1856,6 +1868,55 @@ function handleForceCreateMediaBuyArm(session: SessionState, rawArgs: Record<str
     success: true,
     forced: { arm, task_id: taskId },
     message: `Next create_media_buy call from this sandbox account will return the submitted arm with task_id ${taskId}`,
+  };
+}
+
+function handleForceGetProductsRejection(
+  session: SessionState,
+  principal: string,
+  params: Record<string, unknown>,
+): object {
+  const reason = params.reason;
+  if (typeof reason !== 'string' || reason.length === 0 || reason.length > 2000) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'reason must be a non-empty string up to 2000 characters',
+    };
+  }
+
+  const rawSuggestions = params.suggestions;
+  if (
+    rawSuggestions !== undefined
+    && (
+      !Array.isArray(rawSuggestions)
+      || rawSuggestions.length === 0
+      || rawSuggestions.length > 20
+      || rawSuggestions.some(item => typeof item !== 'string' || item.length === 0 || item.length > 1000)
+    )
+  ) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'suggestions must contain between 1 and 20 non-empty strings up to 1000 characters each',
+    };
+  }
+
+  const suggestions = rawSuggestions as string[] | undefined;
+  enforceMapCap(session.complyExtensions.forcedGetProductsRejections, principal, 'forced get_products rejections');
+  session.complyExtensions.forcedGetProductsRejections.set(principal, {
+    reason,
+    ...(suggestions && { suggestions: [...suggestions] }),
+  });
+
+  return {
+    success: true,
+    forced: {
+      arm: 'rejected',
+      reason,
+      ...(suggestions && { suggestions: [...suggestions] }),
+    },
+    message: 'Next brief/refine get_products call from this sandbox account will return the rejected arm',
   };
 }
 

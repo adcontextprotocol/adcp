@@ -30,6 +30,7 @@ import {
   handleListCreatives,
   handleListCreativeFormats,
   hasAdcpSuccessPayload,
+  resolveServedAdcpVersion,
 } from './task-handlers.js';
 import {
   handleProvidePerformanceFeedback,
@@ -248,7 +249,10 @@ export class TrainingSalesPlatform
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sales: SalesPlatform<TrainingSalesMeta> = {
     getProducts: async (req, ctx) => {
-      const result = await handleGetProducts(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
+      const versionResolution = resolveServedAdcpVersion(req as unknown as Record<string, unknown>);
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat);
+      if (versionResolution.ok) trainingCtx.servedAdcpVersion = versionResolution.servedVersion;
+      const result = await handleGetProducts(req as ToolArgs, trainingCtx);
       return translateV5Result(result, { allowAdvisories: true });
     },
 

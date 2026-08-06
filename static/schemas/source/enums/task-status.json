@@ -22,7 +22,7 @@
     "completed": "Task has been successfully completed",
     "canceled": "Task was canceled by the user",
     "failed": "Task failed due to an error during execution",
-    "rejected": "Task was rejected by the agent and was not started",
+    "rejected": "The agent declined the request as a structured AdCP task outcome, either before execution or after evaluating a well-formed request as defined by the task-specific schema. This is not a transport failure; A2A carries an AdCP business rejection in a completed task's DataPart.",
     "auth-required": "Task requires authentication to proceed",
     "unknown": "Task is in an unknown or indeterminate state"
   }

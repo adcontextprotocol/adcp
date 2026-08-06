@@ -92,7 +92,7 @@ Sellers that implement compliance test controller MUST:
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?, reason?, suggestions?} - task_id required when arm = submitted; reason required when arm = rejected. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
       }
     },
     "required": ["scenario"]
@@ -229,29 +229,38 @@ The submitted-arm wire shape is otherwise implementation-dependent: most sellers
 ### `force_get_products_arm` / `force_get_signals_arm`
 
 Shape the next curated discovery call from the caller's authenticated sandbox
-account (account + principal pair) into a submitted task envelope.
+account (account + principal pair) into a status-specific response arm.
 `force_get_products_arm` applies only to `get_products` with
 `buying_mode: "brief"` or `"refine"`.
+The `rejected` arm is introduced in AdCP 3.2. During the beta, callers using release-
+precision negotiation can pin `adcp_version: "3.2-beta.0"`, while callers using the
+legacy major-only envelope can send `adcp_major_version: 3` when the seller
+resolves that request to 3.2. The controller call and matching `get_products`
+call MUST negotiate the same served release.
 `force_get_signals_arm` applies only to `get_signals` with
 `discovery_mode: "brief"` (or omitted, where brief is the default). Wholesale
 feed reads are synchronous feed access and MUST NOT consume these directives or
 return the Submitted arm solely because a directive exists.
 
 The directive exists for the same reason as `force_create_media_buy_arm`:
-buyers cannot reliably trigger async discovery from request shape alone, but
-conformance needs a deterministic way to prove clients and sellers honor the
-task-result path. The submitted envelope carries only `status` and `task_id`
-(plus optional advisory fields such as `message`); terminal `products[]`,
-`proposals[]`, or `signals[]` land on task completion through `get_task_status`
-(legacy `tasks/get`) and any registered push notification.
+buyers cannot reliably trigger async discovery or a seller-controlled business
+decline from request shape alone, but conformance needs deterministic coverage.
+The submitted envelope carries only `status` and `task_id` (plus optional
+advisory fields such as `message`); terminal `products[]`, `proposals[]`, or
+`signals[]` land on task completion through `get_task_status` (legacy
+`tasks/get`) and any registered push notification. The rejected get_products
+arm carries `status: "rejected"`, `reason`, and optional `suggestions[]`, with no
+products, proposals, errors, or envelope-level adcp_error.
 
 **Params:**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `arm` | `submitted` | Yes | Target response arm for the next matching discovery call. |
+| `arm` | `submitted` \| `rejected` | Yes | Target response arm for the next matching discovery call. `rejected` is valid only for `force_get_products_arm`; signals discovery supports only `submitted`. |
 | `task_id` | string | When `arm` = `submitted` | Deterministic task handle (max 128 chars) the seller MUST emit verbatim on the submitted envelope and MUST accept on subsequent polling. |
 | `message` | string | No | Human-readable explanation surfaced verbatim on the submitted discovery response. Plain text, max 2000 characters. |
+| `reason` | string | When `arm` = `rejected` | Sanitized buyer-facing decline reason emitted verbatim on the next get_products response. Plain text, max 2000 characters. |
+| `suggestions` | string[] | No | Actionable alternatives emitted on the next get_products rejection. |
 
 **Examples:**
 
@@ -275,6 +284,26 @@ task-result path. The submitted envelope carries only `status` and `task_id`
 
 ```json
 {
+  "adcp_version": "3.2-beta.0",
+  "adcp_major_version": 3,
+  "scenario": "force_get_products_arm",
+  "account": {
+    "brand": {
+      "domain": "acmeoutdoor.example"
+    },
+    "operator": "pinnacle-agency.example",
+    "sandbox": true
+  },
+  "params": {
+    "arm": "rejected",
+    "reason": "The requested budget is below the minimum for this inventory.",
+    "suggestions": ["Increase the campaign budget."]
+  }
+}
+```
+
+```json
+{
   "scenario": "force_get_signals_arm",
   "account": {
     "brand": {
@@ -292,7 +321,9 @@ task-result path. The submitted envelope carries only `status` and `task_id`
 ```
 
 **Response.** Both scenarios return the same `ForcedDirectiveSuccess` shape as
-`force_create_media_buy_arm`, carrying `forced.arm` and `forced.task_id`.
+`force_create_media_buy_arm`. A `submitted` directive carries `forced.arm` and
+`forced.task_id`; a `rejected` get-products directive carries `forced.arm`,
+`forced.reason`, and optional `forced.suggestions`.
 
 **Consumption and idempotency.** The directive is keyed to the caller's
 authenticated sandbox account (account + principal pair) and consumed by the
@@ -300,10 +331,11 @@ next matching discovery call from that same account. The seller MUST NOT match a
 product directive against `get_signals`, a signal directive against
 `get_products`, a brief/refine directive against wholesale mode, or any
 directive against a different account or principal. A second directive for the
-same operation before consumption overwrites the prior directive. Request
-idempotency replay semantics are unchanged: if the discovery request that
-consumed the directive is replayed, the seller returns the cached submitted
-envelope and does not consume a fresh directive.
+same operation and principal before consumption overwrites the prior directive.
+The directive is consumed exactly once. Because discovery tools are read
+operations rather than idempotency-cached mutations, repeating the same request
+after consumption is a new read and is not guaranteed to replay the forced
+response.
 
 ### `force_task_completion`
 
@@ -349,7 +381,7 @@ The submitted → completed lifecycle is otherwise non-deterministic — real ta
 
 Source state MUST be `submitted`, `working`, or `input-required`; any other source returns `INVALID_TRANSITION`. Sellers MUST emit `NOT_FOUND` if `task_id` is unknown to the caller's account, and `INVALID_TRANSITION` if the task is already terminal (`completed` / `failed` / `canceled`). Forcing a task to `failed` is out of scope for this scenario; the input-required arm of `force_create_media_buy_arm` covers the buyer-input-needed failure path.
 
-**Replay semantics.** Replays with identical params before the task is terminal are idempotent no-ops. Replays with diverging params before the task is terminal MUST overwrite the registered result (last-write-wins) — same precedent as `force_create_media_buy_arm`'s "second call overwrites." After the task is terminal, every replay returns `INVALID_TRANSITION` regardless of params.
+**Replay semantics.** An identical replay after successful completion is an idempotent no-op and reports `previous_state: "completed"` and `current_state: "completed"`. A replay with a different result after the task is terminal returns `INVALID_TRANSITION`; terminal results cannot be overwritten.
 
 **Cross-protocol obligations.**
 - **Push notifications.** If the buyer registered `push_notification_config.url` on the original `create_media_buy`, forcing completion MUST fire the webhook with the registered `result` payload (the canonical 3.0 delivery path for completion data). Otherwise the storyboard can only test polling for terminal status, not push delivery of the result.
