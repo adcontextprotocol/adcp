@@ -26,7 +26,7 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "2.8.0"
+version: "2.9.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
@@ -1102,6 +1102,23 @@ notice:
                               # Lets consumers link the notice to the
                               # exact capability flag without parsing the
                               # message string.
+    - capability_pointer      # RFC 6901 JSON Pointer to the location in the
+                              # agent's `get_adcp_capabilities` response that
+                              # motivated the notice
+                              # (e.g., "/account/supported_billing",
+                              # "/specialisms/0"). Use this when the notice
+                              # originates from schema validation, whose
+                              # errors are already RFC 6901, or when the
+                              # location is an array element that has no
+                              # unambiguous dotted form. Same pointer
+                              # convention as `validation_result.json_pointer`
+                              # above.
+                              #
+                              # Distinct from `capability_path`, which names
+                              # the capability flag: an emitter MAY set both,
+                              # and when it does `capability_pointer` MUST
+                              # resolve to the node named by `capability_path`
+                              # or to a position within it.
     - reference_url           # optional spec or issue URL with more context
                               # (e.g., the upstream issue tracking the
                               # deprecation, or the relevant section in
@@ -1150,6 +1167,33 @@ notice:
         field was material to the scenario's intent. Agents should
         declare all spec-defined fields they support in their
         inputSchema.
+    capabilities_response_schema_invalid:
+      severity: info
+      spec_source: protocol/get-adcp-capabilities-response.json
+      message_template: |
+        The agent's `get_adcp_capabilities` response failed schema
+        validation at {capability_pointer}. Track results are computed
+        against a capabilities response the runner could not trust, so
+        failures in dependent steps may share this single root cause.
+        Fix this first, then re-read the track results.
+      notes: |
+        Emitted on `run_summary.notices` when the runner validates the
+        agent's capabilities response and validation fails. One notice per
+        failing validation error, each carrying its own
+        `capability_pointer`, so a response with three violations produces
+        three notices rather than one aggregate. Because these share a
+        `code`, consumers dedupe them by (`code`, `capability_pointer`)
+        per the run_summary.notices rule below.
+
+        The runner MUST still execute and report the storyboards it would
+        otherwise have run. This notice explains the results, it does not
+        replace them, and suppressing downstream failures would hide
+        genuine defects behind a preflight line.
+
+        This code covers schema-invalid capabilities responses only. A
+        capabilities response that is schema-valid but stale, cached, or
+        otherwise unrepresentative is a different condition and MUST NOT
+        reuse this code (see adcontextprotocol/adcp#6206).
 
 cascade_rules:
   description: |
@@ -1370,9 +1414,13 @@ run_summary:
                                   # emit the same code on step_result.notices
                                   # AND run_summary.notices when an advisory
                                   # is both step-specific and run-wide;
-                                  # consumers dedupe by `code`. See the
-                                  # notice block above for shape and
-                                  # canonical_codes.
+                                  # consumers dedupe by `code`, or by
+                                  # (`code`, `capability_pointer`) when
+                                  # `capability_pointer` is present, since a
+                                  # code that reports one location per
+                                  # occurrence emits several notices sharing
+                                  # that code. See the notice block above for
+                                  # shape and canonical_codes.
     - validations_advisory_failed # count of validation_result entries with
                                   # passed: false and severity: advisory.
                                   # These do NOT contribute to steps_failed
