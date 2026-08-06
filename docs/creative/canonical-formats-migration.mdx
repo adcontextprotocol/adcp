@@ -6,7 +6,7 @@ description: "Migration paths for sellers, creative agents, buyers, and tooling 
 
 # Migration to canonical formats
 
-AdCP 3.2 is canonical-first end to end. New implementations use portable format declarations rather than agent-owned named formats.
+AdCP 3.2 is canonical-first end to end. New implementations use portable format declarations rather than agent-owned named formats. Fields named exactly `format_ids` are deprecated in 3.2 and removed in AdCP 4.0; singular `format_id`, named-format definitions, and `list_creative_formats` follow separate compatibility schedules.
 
 | Concern | Deprecated 3.x surface | Canonical 3.2 source |
 |---|---|---|
@@ -17,7 +17,7 @@ AdCP 3.2 is canonical-first end to end. New implementations use portable format 
 | Build target | `target_format_id(s)` | `target_capability_id(s)` |
 | Transformer outputs | `output_format_ids` | `output_capability_ids` |
 
-The deprecated fields and task remain parseable during the 3.x compatibility window. They are not an alternative authoring model in 3.2: if exposed, they should be projections derived from canonical data.
+The deprecated fields and task remain parseable during the 3.x compatibility window. They are not an alternative authoring model in 3.2: if exposed, they should be projections derived from canonical data. Exact plural `format_ids` must not be emitted after upgrading to AdCP 4.0.
 
 ## Seller migration
 

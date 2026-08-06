@@ -7,7 +7,7 @@ testable: true
 
 `list_creative_formats` is deprecated in AdCP 3.2. It combined three different questions into one agent-global list and therefore could not accurately describe publisher acceptance, product deliverability, and creative production at the same time.
 
-Existing 3.x agents MAY continue serving the task for compatibility. New implementations MUST use the canonical surfaces below and SHOULD derive any legacy response mechanically from canonical declarations rather than maintaining a second catalog.
+Existing 3.x agents MAY continue serving the task for compatibility. New implementations MUST use the canonical surfaces below and SHOULD derive any legacy response mechanically from canonical declarations rather than maintaining a second catalog. The task follows its own compatibility schedule; removal of exact plural `format_ids` fields in AdCP 4.0 does not itself remove this task.
 
 ## Use the surface that owns the fact
 

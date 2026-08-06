@@ -38,6 +38,7 @@ import {
   NAME_REQUIRED_MARKER,
   ensureCertifierCredential,
 } from '../../services/certification-credential-issuance.js';
+import { linkCertificationModuleThread } from '../../services/certification-experience.js';
 
 export { NAME_REQUIRED_MARKER };
 
@@ -1849,7 +1850,11 @@ export function createCertificationToolHandlers(
         return `Module ${moduleId} is already ${existingMod.status.replace('_', ' ')}. You can proceed to the next module or use get_learner_progress to check your overall progress.`;
       }
 
-      await certDb.startModule(userId, moduleId);
+      if (options?.threadId) {
+        await certDb.startModule(userId, moduleId, options.threadId);
+      } else {
+        await certDb.startModule(userId, moduleId);
+      }
       if (options?.trainingModuleContext) {
         options.trainingModuleContext.moduleId = moduleId;
       }
@@ -2437,7 +2442,11 @@ export function createCertificationToolHandlers(
       }
 
       // Start the module and create an attempt
-      await certDb.startModule(userId, moduleId);
+      if (options?.threadId) {
+        await certDb.startModule(userId, moduleId, options.threadId);
+      } else {
+        await certDb.startModule(userId, moduleId);
+      }
       const attempt = await certDb.createAttempt(userId, mod.track_id, options?.threadId, moduleId);
       if (options?.trainingModuleContext) {
         options.trainingModuleContext.moduleId = moduleId;
@@ -2864,6 +2873,7 @@ export function createCertificationToolHandlers(
         demonstration_evidence: demonstrationEvidence,
         notes: enrichedNotes,
       });
+      await linkCertificationModuleThread(userId, moduleId, options?.threadId);
 
       const demoCount = demonstrationsVerified.length;
       return `Teaching checkpoint saved for ${moduleId}. Phase: ${currentPhase}. Covered ${conceptsCovered.length} concepts, ${conceptsRemaining.length} remaining. Demonstrations verified: ${demoCount}.`;
