@@ -11,7 +11,8 @@ required_tools:
 
 narrative: |
   A seller can understand a well-formed brief and deliberately decline to offer
-  products for commercial, availability, or seller-policy reasons. That is a
+  products for commercial or seller-policy reasons. A simple absence of
+  matching or available inventory remains a completed empty result. Rejection is a
   structured business outcome: status='rejected', a sanitized reason, and
   optional suggestions that tell the buyer how it may revise the brief.
 

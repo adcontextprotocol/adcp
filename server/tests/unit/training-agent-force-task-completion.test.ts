@@ -11,7 +11,6 @@ import {
   clearForcedTaskCompletions,
   getForcedTaskCompletions,
 } from '../../src/training-agent/comply-test-controller.js';
-import { registerSubmittedTask } from '../../src/training-agent/task-store.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
@@ -20,7 +19,13 @@ const BRAND_A = { domain: 'force-completion-a.example' };
 const ACCOUNT_B = { brand: { domain: 'force-completion-b.example' }, operator: 'tester-b', sandbox: true };
 const BRAND_B = { domain: 'force-completion-b.example' };
 
-const SAMPLE_RESULT = { status: 'completed', products: [] };
+const SAMPLE_RESULT = {
+  media_buy_id: 'mb_async_signed_io_q2',
+  status: 'active',
+  packages: [
+    { package_id: 'pkg-0', product_id: 'async_signed_io_q2', budget: 30000 },
+  ],
+};
 
 function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
   if (!MUTATING_TOOLS.has(toolName)) return args;
@@ -47,26 +52,6 @@ async function callTool(
   return (parsed.adcp_error as Record<string, unknown> | undefined) ?? parsed;
 }
 
-async function registerSubmittedProductTask(
-  server: ReturnType<typeof createTrainingAgentServer>,
-  taskId: string,
-): Promise<void> {
-  const directive = await callTool(server, 'comply_test_controller', {
-    scenario: 'force_get_products_arm',
-    params: { arm: 'submitted', task_id: taskId },
-    account: ACCOUNT_A,
-    brand: BRAND_A,
-  });
-  expect(directive.success).toBe(true);
-  const submitted = await callTool(server, 'get_products', {
-    buying_mode: 'brief',
-    brief: 'Curated video inventory',
-    account: ACCOUNT_A,
-    brand: BRAND_A,
-  });
-  expect(submitted).toEqual(expect.objectContaining({ status: 'submitted', task_id: taskId }));
-}
-
 describe('force_task_completion', () => {
   let server: ReturnType<typeof createTrainingAgentServer>;
 
@@ -81,7 +66,6 @@ describe('force_task_completion', () => {
 
   describe('directive registration', () => {
     it('registers a completion with task_id and result, returns StateTransitionSuccess', async () => {
-      await registerSubmittedProductTask(server, 'task_async_signed_io_q2');
       const result = await callTool(server, 'comply_test_controller', {
         scenario: 'force_task_completion',
         params: { task_id: 'task_async_signed_io_q2', result: SAMPLE_RESULT },
@@ -152,82 +136,10 @@ describe('force_task_completion', () => {
       expect(result.error).toBe('INVALID_PARAMS');
       expect(result.error_detail).toMatch(/256 KB/);
     });
-
-    it('returns NOT_FOUND for an unregistered task', async () => {
-      const result = await callTool(server, 'comply_test_controller', {
-        scenario: 'force_task_completion',
-        params: { task_id: 'task_unknown', result: SAMPLE_RESULT },
-        account: ACCOUNT_A,
-        brand: BRAND_A,
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('NOT_FOUND');
-    });
-
-    it('rejects a completion payload that does not match the original task method', async () => {
-      await registerSubmittedProductTask(server, 'task_invalid_result');
-      const result = await callTool(server, 'comply_test_controller', {
-        scenario: 'force_task_completion',
-        params: { task_id: 'task_invalid_result', result: { products: [] } },
-        account: ACCOUNT_A,
-        brand: BRAND_A,
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('INVALID_PARAMS');
-      expect(result.error_detail).toMatch(/get_products/);
-    });
   });
 
   describe('replay semantics', () => {
-    it('returns INVALID_REQUEST when task registration races after directive setup', async () => {
-      const taskId = 'task_registration_race';
-      const request = {
-        buying_mode: 'brief',
-        brief: 'Curated video inventory',
-        account: ACCOUNT_A,
-        brand: BRAND_A,
-      };
-      const directive = await callTool(server, 'comply_test_controller', {
-        scenario: 'force_get_products_arm',
-        params: { arm: 'submitted', task_id: taskId },
-        account: ACCOUNT_A,
-        brand: BRAND_A,
-      });
-      expect(directive.success).toBe(true);
-      expect((await registerSubmittedTask(taskId, request, 'anonymous', 'get_products')).registered).toBe(true);
-
-      const raced = await callTool(server, 'get_products', request);
-      expect(raced.code).toBe('INVALID_REQUEST');
-      expect(raced.field).toBe('task_id');
-      expect(raced.message).toMatch(/already registered/);
-    });
-
-    it('rejects re-registering a completed task_id while the task is retained', async () => {
-      const taskId = 'task_retained_completion';
-      await registerSubmittedProductTask(server, taskId);
-      const completion = await callTool(server, 'comply_test_controller', {
-        scenario: 'force_task_completion',
-        params: { task_id: taskId, result: SAMPLE_RESULT },
-        account: ACCOUNT_A,
-        brand: BRAND_A,
-      });
-      expect(completion.success).toBe(true);
-
-      const duplicate = await callTool(server, 'comply_test_controller', {
-        scenario: 'force_get_products_arm',
-        params: { arm: 'submitted', task_id: taskId },
-        account: ACCOUNT_A,
-        brand: BRAND_A,
-      });
-      expect(duplicate.success).toBe(false);
-      expect(duplicate.error).toBe('INVALID_PARAMS');
-      expect(duplicate.error_detail).toMatch(/already identifies a completed task/);
-    });
-
     it('replays with identical params are idempotent no-ops', async () => {
-      await registerSubmittedProductTask(server, 'task_replay');
       const args = {
         scenario: 'force_task_completion',
         params: { task_id: 'task_replay', result: SAMPLE_RESULT },
@@ -239,9 +151,6 @@ describe('force_task_completion', () => {
       expect(first.success).toBe(true);
       expect(first.previous_state).toBe('submitted');
 
-      // Simulate a process restart: durable task/session state remains while
-      // the process-local replay cache is empty.
-      clearForcedTaskCompletions();
       const replay = await callTool(server, 'comply_test_controller', args);
       expect(replay.success).toBe(true);
       // Same-params replay reports both states as 'completed' — idempotent no-op.
@@ -250,7 +159,6 @@ describe('force_task_completion', () => {
     });
 
     it('replays with diverging params return INVALID_TRANSITION', async () => {
-      await registerSubmittedProductTask(server, 'task_diverge');
       await callTool(server, 'comply_test_controller', {
         scenario: 'force_task_completion',
         params: { task_id: 'task_diverge', result: SAMPLE_RESULT },
@@ -260,7 +168,7 @@ describe('force_task_completion', () => {
 
       const replay = await callTool(server, 'comply_test_controller', {
         scenario: 'force_task_completion',
-        params: { task_id: 'task_diverge', result: { ...SAMPLE_RESULT, unexpected: 'different' } },
+        params: { task_id: 'task_diverge', result: { ...SAMPLE_RESULT, media_buy_id: 'mb_different' } },
         account: ACCOUNT_A,
         brand: BRAND_A,
       });
@@ -274,7 +182,6 @@ describe('force_task_completion', () => {
   describe('cross-account isolation', () => {
     it('returns NOT_FOUND when account B tries to re-complete account A\'s task with diverging result', async () => {
       // Account A registers the task.
-      await registerSubmittedProductTask(server, 'task_cross_tenant');
       await callTool(server, 'comply_test_controller', {
         scenario: 'force_task_completion',
         params: { task_id: 'task_cross_tenant', result: SAMPLE_RESULT },
@@ -285,7 +192,7 @@ describe('force_task_completion', () => {
       // Account B tries to overwrite.
       const result = await callTool(server, 'comply_test_controller', {
         scenario: 'force_task_completion',
-        params: { task_id: 'task_cross_tenant', result: { ...SAMPLE_RESULT, unexpected: 'hijack' } },
+        params: { task_id: 'task_cross_tenant', result: { ...SAMPLE_RESULT, media_buy_id: 'mb_hijack' } },
         account: ACCOUNT_B,
         brand: BRAND_B,
       });

@@ -37,14 +37,11 @@ import { supportsGetProductsRejected } from './types.js';
 import { getSession, sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
-import { isDeepStrictEqual } from 'node:util';
 import { getAccountNotificationSubscribers, seedAccountFixture } from './account-handlers.js';
 import { verifyGovernanceToken, mintRevokedDemoToken, mintWrongAudDemoToken } from './governance-verify.js';
-import { emitAccountNotificationWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
+import { emitAccountNotificationWebhook } from './webhooks.js';
 import { buildCatalog } from './product-factory.js';
 import { getAllSignals } from './signal-providers.js';
-import { completeRegisteredTask, getRegisteredTask, pendingTaskKey, taskOwnerKey } from './task-store.js';
-import { CreateMediaBuyResponseSchema, GetProductsResponseSchema } from '@adcp/sdk/schemas';
 import {
   findAudienceInSession,
   forceAudienceStatusInSession,
@@ -140,6 +137,54 @@ function getOrCreateDeliveryAccumulator(session: SessionState, mediaBuyId: strin
   return cumulative;
 }
 
+type VendorMetricIdentity = {
+  vendor: { domain: string; brand_id?: string };
+  metric_id: string;
+};
+
+function normalizeVendorMetricIdentity(value: unknown): VendorMetricIdentity | null {
+  if (!isRecord(value) || !isRecord(value.vendor)) return null;
+  if (typeof value.vendor.domain !== 'string' || value.vendor.domain.length === 0) return null;
+  if (typeof value.metric_id !== 'string' || value.metric_id.length === 0) return null;
+  return {
+    vendor: {
+      domain: value.vendor.domain,
+      ...(typeof value.vendor.brand_id === 'string' && { brand_id: value.vendor.brand_id }),
+    },
+    metric_id: value.metric_id,
+  };
+}
+
+function normalizeVendorMetricIdentities(value: unknown): VendorMetricIdentity[] | null {
+  if (!Array.isArray(value)) return null;
+  const normalized = value.map(normalizeVendorMetricIdentity);
+  return normalized.every((entry): entry is VendorMetricIdentity => entry !== null) ? normalized : null;
+}
+
+function validatePackageMetricMap(
+  value: unknown,
+  mb: MediaBuyState,
+  field: string,
+  requireValue: boolean,
+): string | null {
+  if (value === undefined) return null;
+  if (!isRecord(value)) return `${field} must be an object keyed by package_id`;
+  const packageIds = new Set(mb.packages.map(pkg => pkg.packageId));
+  for (const [packageId, entries] of Object.entries(value)) {
+    if (!packageIds.has(packageId)) return `${field}.${packageId} references an unknown package_id`;
+    if (normalizeVendorMetricIdentities(entries) === null) {
+      return `${field}.${packageId} must contain valid vendor/metric_id entries`;
+    }
+    if (
+      requireValue
+      && (entries as unknown[]).some(entry => !isRecord(entry) || typeof entry.value !== 'number' || !Number.isFinite(entry.value))
+    ) {
+      return `${field}.${packageId} entries require a finite numeric value`;
+    }
+  }
+  return null;
+}
+
 function applyExtendedDeliveryParams(cumulative: ComplyDeliveryAccumulator, params: Record<string, unknown>) {
   if (typeof params.is_final === 'boolean') cumulative.isFinal = params.is_final;
   if (typeof params.finalized_at === 'string') cumulative.finalizedAt = params.finalized_at;
@@ -152,6 +197,22 @@ function applyExtendedDeliveryParams(cumulative: ComplyDeliveryAccumulator, para
   if (params.viewability && typeof params.viewability === 'object' && !Array.isArray(params.viewability)) {
     cumulative.viewability = params.viewability as ComplyDeliveryAccumulator['viewability'];
   }
+  if (Array.isArray(params.not_yet_measurable_vendor_metrics)) {
+    cumulative.deferredVendorMetrics = normalizeVendorMetricIdentities(params.not_yet_measurable_vendor_metrics) ?? [];
+  }
+  if (isRecord(params.vendor_metric_values_by_package)) {
+    cumulative.vendorMetricValuesByPackage = Object.fromEntries(
+      Object.entries(params.vendor_metric_values_by_package).map(([packageId, values]) => [packageId, values as unknown[]]),
+    );
+  }
+  if (isRecord(params.not_yet_measurable_vendor_metrics_by_package)) {
+    cumulative.deferredVendorMetricsByPackage = Object.fromEntries(
+      Object.entries(params.not_yet_measurable_vendor_metrics_by_package).map(([packageId, values]) => [
+        packageId,
+        normalizeVendorMetricIdentities(values) ?? [],
+      ]),
+    );
+  }
 }
 
 function extendedDeliverySnapshot(cumulative: ComplyDeliveryAccumulator): Record<string, unknown> {
@@ -163,6 +224,9 @@ function extendedDeliverySnapshot(cumulative: ComplyDeliveryAccumulator): Record
     ...(cumulative.frequency !== undefined ? { frequency: cumulative.frequency } : {}),
     ...(cumulative.reachWindow ? { reach_window: cumulative.reachWindow } : {}),
     ...(cumulative.viewability ? { viewability: cumulative.viewability } : {}),
+    ...(cumulative.deferredVendorMetrics ? { not_yet_measurable_vendor_metrics: cumulative.deferredVendorMetrics } : {}),
+    ...(cumulative.vendorMetricValuesByPackage ? { vendor_metric_values_by_package: cumulative.vendorMetricValuesByPackage } : {}),
+    ...(cumulative.deferredVendorMetricsByPackage ? { not_yet_measurable_vendor_metrics_by_package: cumulative.deferredVendorMetricsByPackage } : {}),
   };
 }
 
@@ -192,6 +256,7 @@ function normalizeSeedPackage(pkg: Record<string, unknown>, mbStart: string, mbE
     context: isRecord(pkg.context) ? pkg.context : undefined,
     legacyOmitProductId: !hasProductId,
     optimizationGoals: Array.isArray(pkg.optimizationGoals) ? pkg.optimizationGoals as PackageState['optimizationGoals'] : Array.isArray(pkg.optimization_goals) ? pkg.optimization_goals as PackageState['optimizationGoals'] : undefined,
+    committedMetrics: Array.isArray(pkg.committedMetrics) ? pkg.committedMetrics as PackageState['committedMetrics'] : Array.isArray(pkg.committed_metrics) ? pkg.committed_metrics as PackageState['committedMetrics'] : undefined,
   };
 }
 
@@ -768,7 +833,7 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
       const formatOptionRef = (fx.format_option_ref as Record<string, unknown> | undefined) ?? existing?.formatOptionRef;
       const formatId = (fx.format_id as CreativeState['formatId'])
         ?? existing?.formatId
-        ?? (formatKind ? { agent_url: getAgentUrl(), id: formatKind } : { id: 'display_300x250' });
+        ?? { agent_url: getAgentUrl(), id: formatKind ?? 'image' };
       session.creatives.set(creativeId, {
         creativeId,
         formatId,
@@ -1060,22 +1125,21 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   // dispatcher would return UNKNOWN_SCENARIO for these, so handle them before
   // we delegate. New scenarios from spec PRs land here until adopted upstream.
   const scenario = rawArgs.scenario;
-  const getProductsRejectedSupported = supportsGetProductsRejected(ctx.servedAdcpVersion);
   if (scenario === 'force_create_media_buy_arm') {
-    return handleForceCreateMediaBuyArm(session, ctx.principal ?? 'anonymous', rawArgs);
+    return handleForceCreateMediaBuyArm(session, rawArgs);
   }
-  if (scenario === 'force_get_products_arm') {
-    if (params.arm === 'rejected' && !getProductsRejectedSupported) {
+  if (scenario === 'force_get_products_arm' && params.arm === 'rejected') {
+    if (!supportsGetProductsRejected(ctx.servedAdcpVersion)) {
       return {
         success: false,
         error: 'UNKNOWN_SCENARIO',
-        error_detail: "force_get_products_arm with arm='rejected' is available only when the negotiated AdCP version is 3.2-beta.0 or later",
+        error_detail: "force_get_products_arm with arm='rejected' requires AdCP 3.2 or later",
       };
     }
-    return handleForceGetProductsArm(session, ctx.principal ?? 'anonymous', rawArgs);
+    return handleForceGetProductsRejection(session, ctx.principal ?? 'anonymous', params);
   }
   if (scenario === 'force_task_completion') {
-    return handleForceTaskCompletion(session, ctx.principal ?? 'anonymous', rawArgs);
+    return handleForceTaskCompletion(sessionKey, rawArgs);
   }
   if (scenario === 'evaluate_distributed_brand_resolution') {
     const params = isRecord(rawArgs.params) ? rawArgs.params : {};
@@ -1183,20 +1247,33 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     return { success: true, message: `Creative format "${formatId}" seeded — list_creative_formats will use the seeded catalog process-wide` };
   }
 
-  // Pre-capture extended simulate_delivery fields before the SDK dispatcher strips
-  // unknown params. The SDK's TestControllerStore.simulateDelivery interface can lag
-  // this repo's controller schema, so rawArgs remains the compatibility path for
-  // new delivery metrics until the SDK accepts them natively.
+  // Validate local simulate_delivery extensions before dispatch. Persist them
+  // only after the SDK confirms success so a rejected simulation cannot leave
+  // values or deferrals behind in session state.
   if (scenario === 'simulate_delivery') {
     const params = (rawArgs.params ?? {}) as Record<string, unknown>;
     const mediaBuyId = params.media_buy_id as string | undefined;
-    const vendorMetricValues = params.vendor_metric_values;
     const mb = mediaBuyId ? findMediaBuy(session, mediaBuyId) : undefined;
     if (mb) {
-      const cumulative = getOrCreateDeliveryAccumulator(session, mediaBuyId!, mb.currency);
-      applyExtendedDeliveryParams(cumulative, params);
-      if (Array.isArray(vendorMetricValues) && vendorMetricValues.length > 0) {
-        cumulative.vendorMetricValues = vendorMetricValues;
+      if (
+        mb.packages.length > 1
+        && (params.vendor_metric_values !== undefined || params.not_yet_measurable_vendor_metrics !== undefined)
+      ) {
+        return {
+          success: false,
+          error: 'INVALID_PARAMS',
+          error_detail: 'Multi-package buys require package-scoped vendor metric values and deferrals',
+        };
+      }
+      if (
+        params.not_yet_measurable_vendor_metrics !== undefined
+        && normalizeVendorMetricIdentities(params.not_yet_measurable_vendor_metrics) === null
+      ) {
+        return { success: false, error: 'INVALID_PARAMS', error_detail: 'not_yet_measurable_vendor_metrics must contain valid vendor/metric_id entries' };
+      }
+      for (const field of ['vendor_metric_values_by_package', 'not_yet_measurable_vendor_metrics_by_package'] as const) {
+        const error = validatePackageMetricMap(params[field], mb, field, field === 'vendor_metric_values_by_package');
+        if (error) return { success: false, error: 'INVALID_PARAMS', error_detail: error };
       }
     }
   }
@@ -1213,6 +1290,12 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     const params = (rawArgs.params ?? {}) as Record<string, unknown>;
     const mediaBuyId = params.media_buy_id as string | undefined;
     const cumulative = mediaBuyId ? getDeliverySimulation(session, mediaBuyId) : undefined;
+    if (cumulative) {
+      applyExtendedDeliveryParams(cumulative, params);
+      if (Array.isArray(params.vendor_metric_values)) {
+        cumulative.vendorMetricValues = params.vendor_metric_values;
+      }
+    }
     const simulatedExtras: Record<string, unknown> = {};
     if (params.reach !== undefined) simulatedExtras.reach = params.reach;
     if (params.frequency !== undefined) simulatedExtras.frequency = params.frequency;
@@ -1221,6 +1304,15 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     if (params.is_final !== undefined) simulatedExtras.is_final = params.is_final;
     if (params.finalized_at !== undefined) simulatedExtras.finalized_at = params.finalized_at;
     if (params.measurement_window !== undefined) simulatedExtras.measurement_window = params.measurement_window;
+    if (params.not_yet_measurable_vendor_metrics !== undefined) {
+      simulatedExtras.not_yet_measurable_vendor_metrics = params.not_yet_measurable_vendor_metrics;
+    }
+    if (params.vendor_metric_values_by_package !== undefined) {
+      simulatedExtras.vendor_metric_values_by_package = params.vendor_metric_values_by_package;
+    }
+    if (params.not_yet_measurable_vendor_metrics_by_package !== undefined) {
+      simulatedExtras.not_yet_measurable_vendor_metrics_by_package = params.not_yet_measurable_vendor_metrics_by_package;
+    }
     if (Object.keys(simulatedExtras).length > 0 || cumulative) {
       const response = sdkResponse as unknown as Record<string, unknown>;
       return {
@@ -1713,11 +1805,7 @@ async function handleForceCreativePurge(session: SessionState, sessionKey: strin
  * idempotency cache wraps the handler, so a replayed create_media_buy returns the
  * cached submitted response without re-evaluating the empty directive slot.
  */
-async function handleForceCreateMediaBuyArm(
-  session: SessionState,
-  principal: string,
-  rawArgs: Record<string, unknown>,
-): Promise<object> {
+function handleForceCreateMediaBuyArm(session: SessionState, rawArgs: Record<string, unknown>): object {
   const params = rawArgs.params as Record<string, unknown> | undefined;
   if (!params || typeof params !== 'object') {
     return {
@@ -1770,23 +1858,11 @@ async function handleForceCreateMediaBuyArm(
     };
   }
 
-  const existingTask = await getRegisteredTask(taskId, rawArgs as ToolArgs, principal);
-  if (existingTask) {
-    return {
-      success: false,
-      error: 'INVALID_PARAMS',
-      error_detail: `task_id "${taskId}" already identifies a ${existingTask.status} task for this sandbox account; use a different task_id or wait for it to expire`,
-    };
-  }
-
-  const directiveOwner = taskOwnerKey(principal, rawArgs);
-  FORCED_TASK_COMPLETIONS.delete(`${directiveOwner}\0${taskId}`);
-  enforceMapCap(session.complyExtensions.forcedCreateMediaBuyArms, directiveOwner, 'forced create_media_buy arms');
-  session.complyExtensions.forcedCreateMediaBuyArms.set(directiveOwner, {
+  session.complyExtensions.forcedCreateMediaBuyArm = {
     arm,
     taskId,
     message: typeof message === 'string' ? message : undefined,
-  });
+  };
 
   return {
     success: true,
@@ -1795,68 +1871,21 @@ async function handleForceCreateMediaBuyArm(
   };
 }
 
-/** Compatibility implementation that extends the SDK's submitted discovery
- * directive with the 3.2 rejected arm. */
-async function handleForceGetProductsArm(session: SessionState, principal: string, rawArgs: Record<string, unknown>): Promise<object> {
-  const params = rawArgs.params as Record<string, unknown> | undefined;
-  const directiveOwner = taskOwnerKey(principal, rawArgs);
-  if (params?.arm === 'submitted') {
-    const taskId = params.task_id;
-    const message = params.message;
-    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 128) {
-      return {
-        success: false,
-        error: 'INVALID_PARAMS',
-        error_detail: "task_id is required and must be a non-empty string up to 128 characters when arm = 'submitted'",
-      };
-    }
-    if (message !== undefined && (typeof message !== 'string' || message.length > 2000)) {
-      return {
-        success: false,
-        error: 'INVALID_PARAMS',
-        error_detail: 'message must be a string up to 2000 characters',
-      };
-    }
-    const existingTask = await getRegisteredTask(taskId, rawArgs as ToolArgs, principal);
-    if (existingTask) {
-      return {
-        success: false,
-        error: 'INVALID_PARAMS',
-        error_detail: `task_id "${taskId}" already identifies a ${existingTask.status} task for this sandbox account; use a different task_id or wait for it to expire`,
-      };
-    }
-    FORCED_TASK_COMPLETIONS.delete(`${directiveOwner}\0${taskId}`);
-    enforceMapCap(session.complyExtensions.forcedGetProductsArms, directiveOwner, 'forced get_products arms');
-    session.complyExtensions.forcedGetProductsArms.set(directiveOwner, {
-      arm: 'submitted',
-      taskId,
-      ...(typeof message === 'string' && { message }),
-    });
-    return {
-      success: true,
-      forced: { arm: 'submitted', task_id: taskId },
-      message: `Next brief/refine get_products call from this sandbox account will return the submitted arm with task_id ${taskId}`,
-    };
-  }
-
-  if (params?.arm !== 'rejected') {
-    return {
-      success: false,
-      error: 'INVALID_PARAMS',
-      error_detail: "force_get_products_arm requires params.arm = 'submitted' or 'rejected'",
-    };
-  }
-
-  const reason = params?.reason;
+function handleForceGetProductsRejection(
+  session: SessionState,
+  principal: string,
+  params: Record<string, unknown>,
+): object {
+  const reason = params.reason;
   if (typeof reason !== 'string' || reason.length === 0 || reason.length > 2000) {
     return {
       success: false,
       error: 'INVALID_PARAMS',
-      error_detail: "reason is required and must be a non-empty string up to 2000 characters when arm = 'rejected'",
+      error_detail: 'reason must be a non-empty string up to 2000 characters',
     };
   }
 
-  const rawSuggestions = params?.suggestions;
+  const rawSuggestions = params.suggestions;
   if (
     rawSuggestions !== undefined
     && (
@@ -1874,9 +1903,8 @@ async function handleForceGetProductsArm(session: SessionState, principal: strin
   }
 
   const suggestions = rawSuggestions as string[] | undefined;
-  enforceMapCap(session.complyExtensions.forcedGetProductsArms, directiveOwner, 'forced get_products arms');
-  session.complyExtensions.forcedGetProductsArms.set(directiveOwner, {
-    arm: 'rejected',
+  enforceMapCap(session.complyExtensions.forcedGetProductsRejections, principal, 'forced get_products rejections');
+  session.complyExtensions.forcedGetProductsRejections.set(principal, {
     reason,
     ...(suggestions && { suggestions: [...suggestions] }),
   });
@@ -1903,17 +1931,17 @@ async function handleForceGetProductsArm(session: SessionState, principal: strin
  * result are idempotent no-ops; tasks at any other terminal state return
  * INVALID_TRANSITION.
  *
- * When the submitted operation registered the deterministic ID with the MCP
- * task store, completion is written there as well so tasks/get and tasks/result
- * observe the same transition.
+ * Buyer-side observability via tasks/get is intentionally **deferred** to a
+ * follow-up. The MCP SDK's TaskStore generates task_ids server-side and exposes
+ * no API for caller-supplied IDs, and the SDK's auto-registered tasks/get
+ * returns the MCP Task shape rather than the AdCP `tasks-get-response.json`
+ * shape — both gaps need fixing before a storyboard polling phase against the
+ * training-agent can pass. This commit ships the controller-side primitive
+ * (the directive write) so other reference sellers and the upstream SDK have a
+ * concrete behavior to mirror; the storyboard extension lands once the
+ * polling integration exists. See PR description for the deferred tracking.
  */
-type ForcedTaskCompletion = {
-  taskId: string;
-  result: Record<string, unknown>;
-  ownerKey: string;
-  completedAt: string;
-};
-const FORCED_TASK_COMPLETIONS = new Map<string, ForcedTaskCompletion>();
+const FORCED_TASK_COMPLETIONS = new Map<string, { result: Record<string, unknown>; ownerKey: string; completedAt: string }>();
 const MAX_FORCED_TASK_COMPLETIONS = 1000;
 
 /** Test-only: clear the forced-completion pool. */
@@ -1922,97 +1950,11 @@ export function clearForcedTaskCompletions(): void {
 }
 
 /** Test-only: read the forced-completion pool. */
-export function getForcedTaskCompletions(): ReadonlyMap<string, ForcedTaskCompletion> {
-  return new Map(Array.from(FORCED_TASK_COMPLETIONS.values(), completion => [completion.taskId, completion]));
+export function getForcedTaskCompletions(): ReadonlyMap<string, { result: Record<string, unknown>; ownerKey: string; completedAt: string }> {
+  return FORCED_TASK_COMPLETIONS;
 }
 
-function forcedCompletionValidationIssues(
-  toolName: 'get_products' | 'create_media_buy',
-  result: Record<string, unknown>,
-): Array<{ path: string; message: string }> {
-  if (toolName === 'get_products' && result.status === 'rejected') {
-    const issues: Array<{ path: string; message: string }> = [];
-    if (typeof result.reason !== 'string' || result.reason.length === 0 || result.reason.length > 2000) {
-      issues.push({ path: 'reason', message: 'must be a non-empty string up to 2000 characters' });
-    }
-    if (
-      result.suggestions !== undefined
-      && (
-        !Array.isArray(result.suggestions)
-        || result.suggestions.length === 0
-        || result.suggestions.length > 20
-        || result.suggestions.some(value => typeof value !== 'string' || value.length === 0 || value.length > 1000)
-      )
-    ) {
-      issues.push({ path: 'suggestions', message: 'must contain between 1 and 20 non-empty strings up to 1000 characters each' });
-    }
-    for (const field of [
-      'products', 'proposals', 'errors', 'adcp_error', 'incomplete', 'cache_scope',
-      'filter_diagnostics', 'refinement_applied', 'unchanged', 'wholesale_feed_version',
-      'pricing_version', 'pagination',
-    ]) {
-      if (field in result) issues.push({ path: field, message: 'is not allowed on a rejected result' });
-    }
-    return issues;
-  }
-
-  const schema = toolName === 'get_products' ? GetProductsResponseSchema : CreateMediaBuyResponseSchema;
-  const validation = schema.safeParse(result);
-  return validation.success
-    ? []
-    : validation.error.issues.map(issue => ({ path: issue.path.join('.'), message: issue.message }));
-}
-
-function materializeCompletedMediaBuy(
-  session: SessionState,
-  pendingTask: SessionState['complyExtensions']['pendingSubmittedTasks'] extends Map<string, infer T> ? T : never,
-  result: Record<string, unknown>,
-): void {
-  if (pendingTask.toolName !== 'create_media_buy' || typeof result.media_buy_id !== 'string') return;
-  const now = new Date().toISOString();
-  const startTime = typeof pendingTask.args.start_time === 'string' && pendingTask.args.start_time !== 'asap'
-    ? pendingTask.args.start_time
-    : now;
-  const endTime = typeof pendingTask.args.end_time === 'string'
-    ? pendingTask.args.end_time
-    : new Date(Date.now() + 30 * 86_400_000).toISOString();
-  const packages = Array.isArray(result.packages)
-    ? result.packages
-        .filter(pkg => isRecord(pkg))
-        .map(pkg => normalizeSeedPackage(pkg, startTime, endTime))
-    : [];
-
-  enforceMapCap(session.mediaBuys, result.media_buy_id, 'media buys');
-  session.mediaBuys.set(result.media_buy_id, {
-    mediaBuyId: result.media_buy_id,
-    accountRef: (pendingTask.args.account as AccountRef | undefined)
-      ?? { brand: { domain: 'training-sandbox.example' } },
-    brandRef: pendingTask.args.brand as BrandRef | undefined,
-    status: typeof result.media_buy_status === 'string' ? result.media_buy_status : 'active',
-    currency: typeof result.currency === 'string' ? result.currency : 'USD',
-    packages,
-    startTime,
-    endTime,
-    revision: typeof result.revision === 'number' ? result.revision : 1,
-    confirmedAt: typeof result.confirmed_at === 'string' ? result.confirmed_at : now,
-    context: isRecord(result.context) ? result.context : undefined,
-    createdAt: now,
-    updatedAt: now,
-    history: [{
-      revision: 1,
-      timestamp: now,
-      actor: 'seller',
-      action: 'created',
-      summary: 'Media buy materialized by comply_test_controller.force_task_completion',
-    }],
-  });
-}
-
-async function handleForceTaskCompletion(
-  session: SessionState,
-  principal: string,
-  rawArgs: Record<string, unknown>,
-): Promise<object> {
+function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, unknown>): object {
   const params = rawArgs.params as Record<string, unknown> | undefined;
   if (!params || typeof params !== 'object') {
     return {
@@ -2058,16 +2000,19 @@ async function handleForceTaskCompletion(
     };
   }
 
-  const ownerKey = taskOwnerKey(principal, rawArgs);
-  const completionKey = `${ownerKey}\0${taskId}`;
-  const pendingKey = pendingTaskKey(principal, rawArgs, taskId);
-  const pendingTask = session.complyExtensions.pendingSubmittedTasks.get(pendingKey);
-  const existing = FORCED_TASK_COMPLETIONS.get(completionKey);
+  const existing = FORCED_TASK_COMPLETIONS.get(taskId);
   if (existing) {
     // Cross-account check (spec MUST): NOT_FOUND for task_ids belonging to other
     // accounts, conventional "not yours" → "doesn't exist" treatment.
+    if (existing.ownerKey !== sessionKey) {
+      return {
+        success: false,
+        error: 'NOT_FOUND',
+        error_detail: `Task "${taskId}" was not registered for this sandbox account`,
+      };
+    }
     // Idempotent replay: same params → no-op success.
-    if (isDeepStrictEqual(existing.result, result)) {
+    if (JSON.stringify(existing.result) === JSON.stringify(result)) {
       return {
         success: true,
         previous_state: 'completed',
@@ -2084,37 +2029,6 @@ async function handleForceTaskCompletion(
     };
   }
 
-  const belongsToAnotherOwner = Array.from(FORCED_TASK_COMPLETIONS.values())
-    .some(completion => completion.taskId === taskId && completion.ownerKey !== ownerKey);
-  if (!pendingTask && belongsToAnotherOwner) {
-    return {
-      success: false,
-      error: 'NOT_FOUND',
-      error_detail: `Task "${taskId}" was not registered for this sandbox account`,
-    };
-  }
-
-  if (!pendingTask) {
-    return {
-      success: false,
-      error: 'NOT_FOUND',
-      error_detail: `Task "${taskId}" was not registered or has expired`,
-    };
-  }
-
-  const validationIssues = forcedCompletionValidationIssues(
-    pendingTask.toolName,
-    result as Record<string, unknown>,
-  );
-  if (validationIssues.length > 0) {
-    return {
-      success: false,
-      error: 'INVALID_PARAMS',
-      error_detail: `result does not match the ${pendingTask.toolName} response schema`,
-      issues: validationIssues,
-    };
-  }
-
   if (FORCED_TASK_COMPLETIONS.size >= MAX_FORCED_TASK_COMPLETIONS) {
     return {
       success: false,
@@ -2123,71 +2037,11 @@ async function handleForceTaskCompletion(
     };
   }
 
-  const belongsToAnotherPendingOwner = Array.from(session.complyExtensions.pendingSubmittedTasks.entries())
-    .some(([key, task]) => task.taskId === taskId && key !== pendingKey);
-  if (!pendingTask && belongsToAnotherPendingOwner) {
-    return {
-      success: false,
-      error: 'NOT_FOUND',
-      error_detail: `Task "${taskId}" was not registered for this sandbox account`,
-    };
-  }
-
-  const completion = await completeRegisteredTask(
-    taskId,
-    result as Record<string, unknown>,
-    principal,
-    pendingTask.args as ToolArgs,
-  );
-  if (!completion.found) {
-    session.complyExtensions.pendingSubmittedTasks.delete(pendingKey);
-    return {
-      success: false,
-      error: 'NOT_FOUND',
-      error_detail: `Task "${taskId}" was not registered or has expired`,
-    };
-  }
-  if (completion.previousStatus === 'completed') {
-    if (isDeepStrictEqual(completion.existingResult, result)) {
-      return {
-        success: true,
-        previous_state: 'completed',
-        current_state: 'completed',
-        message: `Task ${taskId} already completed with the same result`,
-      };
-    }
-    return {
-      success: false,
-      error: 'INVALID_TRANSITION',
-      error_detail: `Task "${taskId}" is already terminal (completed); cannot overwrite its result`,
-      current_state: 'completed',
-    };
-  }
-  if (completion.previousStatus === 'failed' || completion.previousStatus === 'cancelled') {
-    return {
-      success: false,
-      error: 'INVALID_TRANSITION',
-      error_detail: `Task "${taskId}" is already terminal (${completion.previousStatus})`,
-      current_state: completion.previousStatus === 'cancelled' ? 'canceled' : completion.previousStatus,
-    };
-  }
-  materializeCompletedMediaBuy(session, pendingTask, result as Record<string, unknown>);
-  FORCED_TASK_COMPLETIONS.set(completionKey, {
-    taskId,
+  FORCED_TASK_COMPLETIONS.set(taskId, {
     result: result as Record<string, unknown>,
-    ownerKey,
+    ownerKey: sessionKey,
     completedAt: new Date().toISOString(),
   });
-  if (pendingTask) {
-    maybeEmitCompletionWebhook({
-      toolName: pendingTask.toolName,
-      args: pendingTask.args,
-      response: result as Record<string, unknown>,
-      taskId,
-      requestIdempotencyKey: pendingTask.requestIdempotencyKey,
-      principal: pendingTask.webhookPrincipal ?? pendingTask.principal,
-    });
-  }
 
   return {
     success: true,

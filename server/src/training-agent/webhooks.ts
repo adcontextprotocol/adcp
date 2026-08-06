@@ -173,7 +173,6 @@ export function maybeEmitCompletionWebhook(opts: {
   toolName: string;
   args: Record<string, unknown>;
   response: Record<string, unknown>;
-  taskId?: string;
   requestIdempotencyKey?: string;
   /** Caller-uniqueness key for webhook idempotency. Pass the same value the
    *  request-side idempotency store uses for this caller (legacy dispatch
@@ -194,8 +193,7 @@ export function maybeEmitCompletionWebhook(opts: {
 
   const emitter = getWebhookEmitter();
   const idempotencyScope = deriveWebhookIdempotencyScope(opts.toolName, opts.response, opts.requestIdempotencyKey, opts.principal);
-  const webhookTaskId = opts.taskId
-    ?? (opts.response.task_id as string | undefined)
+  const webhookTaskId = (opts.response.task_id as string | undefined)
     ?? `tsk_${idempotencyScope.slice(0, 32).replace(/[^A-Za-z0-9_.:-]/g, '_')}`;
   // Wire `operation_id` MUST be the buyer-supplied value. When the buyer
   // registers without one (non-conformant per push-notification-config.json,

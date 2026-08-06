@@ -43,9 +43,7 @@ export interface TrainingContext {
    * mapping. Never populate this from request arguments or principal text.
    */
   authenticatedAgentUrl?: string;
-  /** Release-precision AdCP version selected by the protocol dispatcher after
-   * applying exact-release or major-only negotiation. Handlers gate additive
-   * behavior on this value rather than re-reading raw request fields. */
+  /** Release selected by protocol negotiation for this request. */
   servedAdcpVersion?: string;
   /** Route is the grader-targeted `/mcp-strict` endpoint. Advertises
    *  `required_for: ['create_media_buy']` in capabilities and enforces
@@ -237,6 +235,18 @@ export interface ComplyDeliveryAccumulator {
   };
   /** vendor_metric_values injected via comply_test_controller simulate_delivery. */
   vendorMetricValues?: unknown[];
+  /** Package-scoped vendor values, keyed by package_id. */
+  vendorMetricValuesByPackage?: Record<string, unknown[]>;
+  /** Committed vendor metrics whose value is not yet measurable in this window. */
+  deferredVendorMetrics?: Array<{
+    vendor: { domain: string; brand_id?: string };
+    metric_id: string;
+  }>;
+  /** Package-scoped measurement deferrals, keyed by package_id. */
+  deferredVendorMetricsByPackage?: Record<string, Array<{
+    vendor: { domain: string; brand_id?: string };
+    metric_id: string;
+  }>>;
 }
 
 export interface ComplyBudgetSimulation {
@@ -287,28 +297,15 @@ export interface ComplyExtensions {
    * is no INPUT_REQUIRED value in the canonical error-code enum (it's a task-status)
    * and the response schema has no fourth oneOf branch for an input-required envelope.
    * The controller rejects that arm with INVALID_PARAMS until the spec resolves it. */
-  forcedCreateMediaBuyArms: Map<string, {
+  forcedCreateMediaBuyArm?: {
     arm: 'submitted';
     taskId: string;
     message?: string;
-  }>;
-  /** Single-shot response directive registered by
-   * comply_test_controller.force_get_products_arm.
-   * Keyed by authenticated principal and consumed only by that principal's next
-   * brief/refine get_products call in this session; wholesale reads leave it untouched. */
-  forcedGetProductsArms: Map<string,
-    | { arm: 'submitted'; taskId: string; message?: string }
-    | { arm: 'rejected'; reason: string; suggestions?: string[] }
-  >;
-  /** Submitted compliance tasks awaiting force_task_completion, keyed by
-   * authenticated principal + caller-supplied task ID. */
-  pendingSubmittedTasks: Map<string, {
-    taskId: string;
-    toolName: 'get_products' | 'create_media_buy';
-    args: Record<string, unknown>;
-    principal: string;
-    webhookPrincipal: string;
-    requestIdempotencyKey?: string;
+  };
+  /** Single-shot rejected response for the principal's next brief/refine request. */
+  forcedGetProductsRejections: Map<string, {
+    reason: string;
+    suggestions?: string[];
   }>;
   /** Single-shot stale-cache directive registered by
    * comply_test_controller.force_upstream_unavailable. Consumed by the next
@@ -339,6 +336,11 @@ export interface SessionState {
     option: Product['pricing_options'][number];
   }>;
   usageRecords: UsageRecord[];
+  /** Maps build_variant_id → the FormatID target used to produce it.
+   * Populated when build_creative returns a build_variant_id so that a
+   * subsequent refine_from_build_variant_id request can inherit the parent
+   * leaf's format target rather than falling back to the audio_vo default. */
+  buildVariantTargets: Map<string, FormatID>;
   /** Data set by comply_test_controller. Persisted so scenarios survive the
    * serialize/deserialize round trip that every request does, even in the
    * single-request case with the InMemoryStateStore. */
@@ -452,9 +454,9 @@ export interface MediaBuyState {
   createdAt: string;
   updatedAt: string;
   history: MediaBuyHistoryEntry[];
-  /** Set by comply_test_controller after a forced status write. Consumed and
-   * cleared on the first deriveStatus read so subsequent real-workflow reads
-   * see the normal pending_creatives guard. Never set by production code paths. */
+  /** Set by comply_test_controller after a forced status write so repeated
+   * reads preserve the requested harness state even when creative readiness
+   * would normally derive pending_creatives. Never set by production paths. */
   complyControllerForced?: boolean;
   /** Open impairments — upstream dependency state changes affecting at least one
    * package on this buy. health derives from impairments.length: empty → 'ok',
@@ -494,6 +496,10 @@ export interface PackageState {
   formatOptionRefs?: unknown[];
   formatKind?: string;
   params?: Record<string, unknown>;
+  /** Canonical package-time creative requirements captured from the selected
+   * product declarations. This remains stable even when the live product
+   * catalog changes; formats_pending is derived from it at read time. */
+  formatsToProvide?: Array<Record<string, unknown>>;
   creativeAssignments: string[];
   targeting?: PackageTargeting;
   context?: Record<string, unknown>;
@@ -503,6 +509,14 @@ export interface PackageState {
    *  what the buyer actually requested (e.g., only surface reach + frequency
    *  when a reach goal was requested). */
   optimizationGoals?: Array<Record<string, unknown>>;
+  /** Seller-stamped reporting contract captured when the package is confirmed. */
+  committedMetrics?: Array<{
+    scope: 'standard' | 'vendor';
+    metric_id: string;
+    vendor?: { domain: string; brand_id?: string };
+    qualifier?: Record<string, unknown>;
+    committed_at: string;
+  }>;
 }
 
 export interface ListReference {
@@ -531,6 +545,7 @@ export interface ManifestAsset {
 
 /** Creative manifest with format and named asset slots. */
 export interface CreativeManifest {
+  /** @deprecated AdCP 3.x compatibility path. */
   format_id?: FormatID;
   format_kind?: string;
   format_option_ref?: Record<string, unknown>;
@@ -545,6 +560,7 @@ export interface CreativeState {
   formatId: FormatID;
   formatKind?: string;
   formatOptionRef?: Record<string, unknown>;
+  assets?: Record<string, ManifestAsset | ManifestAsset[]>;
   name?: string;
   status: string;
   syncedAt: string;

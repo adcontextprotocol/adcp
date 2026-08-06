@@ -11,7 +11,7 @@ This document defines the **canonical structure** for AdCP responses transmitted
 
 Examples below use **A2A 1.0** wire format: Parts carry no `kind` discriminator (content type is implied by which field is set — `text`, `data`, `url`, or `raw`), roles are `ROLE_USER` / `ROLE_AGENT`, and task states are `TASK_STATE_*` (ProtoJSON canonical). See the [A2A Guide](/docs/building/by-layer/L0/a2a-guide#a2a-protocol-versions) for a side-by-side with v0.3.
 
-AdCP's top-level unified `status` field (returned by `@adcp/sdk`) continues to use the lowercase shorthand (`"completed"`, `"failed"`, `"working"`, `"input-required"`, `"submitted"`). That is an AdCP abstraction over `status.state` — not an A2A wire value.
+There are two distinct status layers. A2A `task.status.state` describes transport execution; the AdCP DataPart's top-level `status` describes the task-specific protocol result. They usually align, but they are not aliases. For example, a structured `get_products` business rejection uses A2A `TASK_STATE_COMPLETED` and DataPart `status: "rejected"`: the invocation completed and produced a deliberate commercial-refusal result.
 
 For v0.3 servers, the same DataPart becomes `{ "kind": "data", "data": {...} }` and states become lowercase. Extraction clients accept both shapes during the compatibility period.
 
@@ -92,7 +92,7 @@ When delivered over SSE or as a push notification, this event is wrapped in the 
 - Interim status schemas (`*-async-response-working.json`, `*-async-response-input-required.json`, etc.) are work-in-progress and may evolve
 - Implementors may choose to handle interim data more loosely given schema evolution
 
-**When final status is reached** (`completed`, `failed`, `canceled`, or `rejected`), the full AdCP task response is delivered on a `Task` object with the DataPart in `.artifacts[0].parts[]`.
+**When a final A2A transport state is reached** (`completed`, `failed`, `canceled`, or native A2A `rejected`), the full AdCP task response is delivered on a `Task` object with the DataPart in `.artifacts[0].parts[]`.
 
 ### Framework Wrappers (NOT PERMITTED)
 
@@ -149,14 +149,14 @@ This section defines EXACTLY how clients MUST extract AdCP responses from A2A pr
 
 ### Rule 1: Status-Based Handling
 
-Clients MUST branch on the normalized status to determine the correct data extraction location. The `status` referenced here is AdCP's unified lowercase value (e.g. `"completed"`); the raw A2A wire value at `status.state` is `TASK_STATE_COMPLETED` in 1.0 or `completed` in v0.3. Normalize before comparing — see [A2A Response Extraction](/docs/building/by-layer/L0/a2a-response-extraction#extraction-algorithm).
+Clients MUST branch on the normalized A2A transport state to determine the correct data extraction location. The raw wire value at `status.state` is `TASK_STATE_COMPLETED` in 1.0 or `completed` in v0.3. Normalize before comparing, extract the DataPart, and then branch separately on the AdCP payload's own `status`; never replace that payload status with the transport state. See [A2A Response Extraction](/docs/building/by-layer/L0/a2a-response-extraction#extraction-algorithm).
 
 ```javascript
 const INTERIM = ['working', 'submitted', 'input-required', 'auth-required'];
 const FINAL = ['completed', 'failed', 'canceled', 'rejected'];
 
 function handleA2aResponse(response) {
-  const status = response.status; // AdCP unified status
+  const status = response.status; // normalized A2A transport state
 
   // INTERIM STATUSES - Extract from status.message.parts (TaskStatusUpdateEvent)
   if (INTERIM.includes(status)) {
@@ -532,7 +532,7 @@ Placement is chosen by what the server has and which state it's in:
 
 **Rule of thumb:** if the server has structured error data, put it in artifacts as a DataPart. `status.message` is the free-text fallback for cases where no task artifact was ever produced (JSON-RPC parse errors, auth handshake failures, malformed requests, or a user-initiated cancel with no further detail). A2A 1.0 §3.7 reinforces this: *"Messages SHOULD NOT be used to deliver task outputs. Results SHOULD be returned using Artifacts."*
 
-**`rejected` vs `failed`.** Use `rejected` when the server refuses to attempt the task (policy/tier/validation check, before any work is started). Use `failed` when work started and encountered a fatal error. Both carry `adcp_error` in the artifact — the state distinguishes *when* the failure occurred, which drives different retry and UX behavior on the caller side.
+**Native A2A `rejected` vs `failed`.** Use native A2A `rejected` when the server refuses to execute the invocation (for example, an authentication, tier, or transport-level policy check before task work starts). Use `failed` when execution started and encountered a fatal error. Both carry `adcp_error` in the artifact. A task-specific AdCP business rejection is different: A2A is `completed`, the DataPart carries `status: "rejected"`, and there is no `adcp_error`.
 
 **Cancel origin is client-reconciled, not seller-attributed.** `status.state: "canceled"` (or `TASK_STATE_CANCELED`) does not tell the caller whether the cancel was user-initiated or system-initiated — a seller could place `adcp_error` in artifacts for what was actually a user-initiated cancel to mislead the buyer's bookkeeping or retry logic. Clients MUST reconcile cancel origin locally: if the caller has an outstanding `tasks/cancel` request for this `taskId`, treat the cancel as user-initiated regardless of payload and ignore any `adcp_error` the seller attached. Clients MUST NOT retry a user-initiated cancel on the basis of a seller-sent `adcp_error.recovery` hint.
 
@@ -544,7 +544,7 @@ AdCP uses A2A's TaskState enum directly:
 |------------|--------------|---------------|------------|
 | `completed` | `Task` | `.artifacts` | Task finished successfully, data in DataPart, optional errors array |
 | `failed` | `Task` | `.artifacts` (or `status.message` for text-only) | Fatal error preventing completion, `adcp_error` when structured |
-| `rejected` (1.0) | `Task` | `.artifacts` | Policy/validation rejection, `adcp_error` with rejection reason |
+| `rejected` (1.0) | `Task` | `.artifacts` | Native A2A invocation rejection, `adcp_error` with rejection reason |
 | `canceled` | `Task` | `.artifacts` (typically none) | Task canceled by user or system |
 | `input-required` | `TaskStatusUpdateEvent` | `status.message.parts` | Need user input/approval, data + text explaining what's needed |
 | `auth-required` (1.0) | `TaskStatusUpdateEvent` | `status.message.parts` | Authentication challenge during task execution (scheme, URL, scopes) |

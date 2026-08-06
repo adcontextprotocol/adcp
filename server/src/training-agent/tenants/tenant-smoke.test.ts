@@ -21,7 +21,6 @@ const SALES_CURRENT_SCENARIOS = [
   'simulate_delivery',
   'simulate_budget_spend',
   'force_create_media_buy_arm',
-  'force_get_products_arm',
   'force_task_completion',
   'force_creative_purge',
   'seed_account',
@@ -320,7 +319,7 @@ describe('tenant routing smoke', () => {
       const mediaBuy = body.result?.structuredContent?.media_buy;
       expect(body.result?.structuredContent?.adcp_version).toBe('3.0');
       expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
-      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.0']);
+      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15']);
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
@@ -330,7 +329,7 @@ describe('tenant routing smoke', () => {
     } finally {
       await close();
     }
-  }, 45000);
+  }, 15000);
 
   it('discovers and dispatches seed_measurement_catalog on /sales/mcp', async () => {
     const { baseUrl, close } = await bootServer();
@@ -447,7 +446,7 @@ describe('tenant routing smoke', () => {
         field: 'adcp_version',
         details: {
           adcp_version: '4.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.0'],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'],
         },
       });
       expect(unsupportedBody.result?.structuredContent?.context?.correlation_id).toBe('tenant-local-version-unsupported');
@@ -455,173 +454,6 @@ describe('tenant routing smoke', () => {
       await close();
     }
   }, 15000);
-
-  it('forces a structured get_products rejection with major-only version negotiation on /sales/mcp', async () => {
-    const { baseUrl, close } = await bootServer();
-    try {
-      const url = `${baseUrl}/sales/mcp`;
-      await initializeTenant(url);
-      const account = {
-        brand: { domain: 'tenant-rejection.example' },
-        operator: 'pinnacle-agency.example',
-        sandbox: true,
-      };
-      const reason = 'The requested budget is below the minimum for this inventory.';
-
-      const listed = await callTenantTool(url, 2, 'comply_test_controller', {
-        adcp_major_version: 3,
-        account,
-        scenario: 'list_scenarios',
-      }) as {
-        result?: { structuredContent?: { scenarios?: string[] } };
-      };
-      expect(listed.result?.structuredContent?.scenarios).toContain('force_get_products_arm');
-
-      const forced = await callTenantTool(url, 3, 'comply_test_controller', {
-        adcp_major_version: 3,
-        account,
-        scenario: 'force_get_products_arm',
-        params: {
-          arm: 'rejected',
-          reason,
-          suggestions: ['Increase the campaign budget.'],
-        },
-      }) as {
-        result?: { structuredContent?: Record<string, unknown> };
-      };
-      expect(forced.result?.structuredContent).toMatchObject({
-        status: 'completed',
-        adcp_version: '3.2-beta.0',
-        success: true,
-        forced: {
-          arm: 'rejected',
-          reason,
-          suggestions: ['Increase the campaign budget.'],
-        },
-      });
-
-      const rejected = await callTenantTool(url, 4, 'get_products', {
-        adcp_major_version: 3,
-        account,
-        buying_mode: 'brief',
-        brief: 'Premium video inventory for a regional product launch.',
-        context: { correlation_id: 'tenant-get-products-rejected' },
-      }) as {
-        result?: { isError?: boolean; structuredContent?: Record<string, unknown> };
-      };
-      expect(rejected.result?.isError).not.toBe(true);
-      expect(rejected.result?.structuredContent).toMatchObject({
-        status: 'rejected',
-        adcp_version: '3.2-beta.0',
-        reason,
-        suggestions: ['Increase the campaign budget.'],
-        context: { correlation_id: 'tenant-get-products-rejected' },
-      });
-      expect(rejected.result?.structuredContent).not.toHaveProperty('products');
-      expect(rejected.result?.structuredContent).not.toHaveProperty('errors');
-      expect(rejected.result?.structuredContent).not.toHaveProperty('adcp_error');
-    } finally {
-      await close();
-    }
-  }, 45000);
-
-  it('isolates forced get_products rejections by authenticated principal', async () => {
-    const { handleComplyTestController } = await import('../comply-test-controller.js');
-    const { handleGetProducts } = await import('../task-handlers.js');
-    const { flushDirtySessions, runWithSessionContext } = await import('../state.js');
-    const runRequest = async <T>(fn: () => Promise<T>): Promise<T> => runWithSessionContext(async () => {
-      const result = await fn();
-      await flushDirtySessions();
-      return result;
-    });
-    const account = {
-      brand: { domain: 'principal-isolation.example' },
-      operator: 'pinnacle-agency.example',
-      sandbox: true,
-    };
-    const reason = 'This principal-specific brief was declined.';
-    const request = {
-      adcp_version: '3.2-beta.0',
-      adcp_major_version: 3,
-      account,
-      buying_mode: 'brief',
-      brief: 'Premium video inventory.',
-    };
-
-    const submittedArgs = {
-      adcp_version: '3.1',
-      adcp_major_version: 3,
-      account,
-      scenario: 'force_get_products_arm',
-      params: { arm: 'submitted', task_id: 'task_principal_products', message: 'Curation queued.' },
-    };
-    const submittedDirective = await runRequest(() => handleComplyTestController(
-      submittedArgs,
-      { mode: 'open', principal: 'principal-a', servedAdcpVersion: '3.1-rc.15' },
-    ));
-    expect(submittedDirective).toMatchObject({
-      success: true,
-      forced: { arm: 'submitted', task_id: 'task_principal_products' },
-    });
-    const submittedResponse = await runRequest(() => handleGetProducts(
-      request,
-      { mode: 'open', principal: 'principal-a', servedAdcpVersion: '3.1-rc.15' },
-    ));
-    expect(submittedResponse).toMatchObject({
-      status: 'submitted',
-      task_id: 'task_principal_products',
-      message: 'Curation queued.',
-      adcp_version: '3.1-rc.15',
-    });
-    const submittedConsumed = await runRequest(() => handleGetProducts(
-      request,
-      { mode: 'open', principal: 'principal-a', servedAdcpVersion: '3.1-rc.15' },
-    ));
-    expect(submittedConsumed).not.toMatchObject({ status: 'submitted' });
-
-    const oldVersionArgs = {
-      adcp_version: '3.1',
-      adcp_major_version: 3,
-      account,
-      scenario: 'force_get_products_arm',
-      params: { arm: 'rejected', reason },
-    };
-    const oldVersion = await runRequest(() => handleComplyTestController(
-      oldVersionArgs,
-      { mode: 'open', principal: 'principal-a', servedAdcpVersion: '3.0' },
-    ));
-    expect(oldVersion).toMatchObject({ success: false, error: 'UNKNOWN_SCENARIO' });
-
-    const registeredArgs = {
-      adcp_version: '3.2-beta.0',
-      adcp_major_version: 3,
-      account,
-      scenario: 'force_get_products_arm',
-      params: { arm: 'rejected', reason },
-    };
-    const registered = await runRequest(() => handleComplyTestController(
-      registeredArgs,
-      { mode: 'open', principal: 'principal-a', servedAdcpVersion: '3.2-beta.0' },
-    ));
-    expect(registered).toMatchObject({ success: true, forced: { arm: 'rejected', reason } });
-
-    const invalidMode = await runRequest(() => handleGetProducts(
-      { ...request, buying_mode: 'nonsense' } as unknown as Parameters<typeof handleGetProducts>[0],
-      { mode: 'open', principal: 'principal-a', servedAdcpVersion: '3.2-beta.0' },
-    ));
-    expect(invalidMode).toMatchObject({
-      errors: [{ code: 'INVALID_REQUEST', field: 'buying_mode', recovery: 'correctable' }],
-    });
-
-    const otherPrincipal = await runRequest(() => handleGetProducts(request, { mode: 'open', principal: 'principal-b', servedAdcpVersion: '3.2-beta.0' }));
-    expect(otherPrincipal).not.toMatchObject({ status: 'rejected' });
-
-    const owningPrincipal = await runRequest(() => handleGetProducts(request, { mode: 'open', principal: 'principal-a', servedAdcpVersion: '3.2-beta.0' }));
-    expect(owningPrincipal).toMatchObject({ status: 'rejected', reason });
-
-    const consumed = await runRequest(() => handleGetProducts(request, { mode: 'open', principal: 'principal-a', servedAdcpVersion: '3.2-beta.0' }));
-    expect(consumed).not.toMatchObject({ status: 'rejected' });
-  });
 
   it('does not advertise 3.1 measurement-catalog seeding in 3.0 storyboard compat mode', async () => {
     stageLatestThreeZeroSchemaBundle();
@@ -708,7 +540,7 @@ describe('tenant routing smoke', () => {
     } finally {
       await close();
     }
-  }, 45000);
+  }, 15000);
 
   it('projects post-3.0 creative format parameters out of 3.0 tenant responses', async () => {
     const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
