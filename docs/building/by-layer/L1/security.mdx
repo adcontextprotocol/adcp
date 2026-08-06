@@ -213,7 +213,7 @@ Evaluators MAY cache results, but cache keys MUST include canonical issuer ident
 
 ### Rights-grant attestation profile (3.2)
 
-Rights constraints compose the shared portable-attestation primitive; they do not define a rights-only JWS or trust store. The buyer carries `rights_constraint.attestation_refs[]`, the serving seller remains verifier-of-record, and only the seller produces [`RightsAttestationEvaluation`](https://adcontextprotocol.org/schemas/latest/core/rights-attestation-evaluation.json) readback. A buyer-authored evaluation or the mere presence of a reference has no authorization value. {/* unreleased 3.2 schema: switch latest to the release alias when published */}
+Rights constraints compose the shared portable-attestation primitive; they do not define a rights-only JWS or trust store. The buyer carries `rights_constraint.attestation_refs[]`, the serving seller remains verifier-of-record, and only the seller produces [`RightsAttestationEvaluation`](https://adcontextprotocol.org/schemas/v3/core/rights-attestation-evaluation.json) readback. A buyer-authored evaluation or the mere presence of a reference has no authorization value.
 
 The rights profile uses these identifiers:
 
