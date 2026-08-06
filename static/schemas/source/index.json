@@ -1007,7 +1007,7 @@
         },
         "notification-type": {
           "$ref": "/schemas/enums/notification-type.json",
-          "description": "Types of delivery notifications (scheduled, final, delayed, adjusted)"
+          "description": "Shared notification registry for delivery, impairment, lifecycle, wholesale-feed, and capability-change events"
         },
         "reporting-frequency": {
           "$ref": "/schemas/enums/reporting-frequency.json",

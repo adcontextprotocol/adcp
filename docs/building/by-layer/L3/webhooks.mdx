@@ -250,7 +250,7 @@ This inner result object is valid delivery-report content, but it is **not valid
 
 The top-level `status` is the async webhook status (`completed`, `failed`, `working`, and so on). The nested `media_buy_deliveries[].status` is the media buy lifecycle or reporting state (`active`, `paused`, `reporting_delayed`, and so on). Do not collapse the two fields.
 
-For delivery-report data events such as `scheduled`, `final`, `delayed`, and `adjusted`, `notification_id` is absent by design; dedupe the transport event with `idempotency_key`. The `aggregated_totals` field is API-only for `get_media_buy_delivery` responses and must not be emitted in reporting webhook result payloads.
+For delivery-report data events such as `scheduled`, `final`, `delayed`, `adjusted`, and `window_update`, `notification_id` is absent by design; dedupe the transport event with `idempotency_key`. The `aggregated_totals` field is API-only for `get_media_buy_delivery` responses and must not be emitted in reporting webhook result payloads.
 
 Signatures and content digests are computed over the exact raw JSON bytes sent as this full envelope. Re-serializing just the `result` object, adding whitespace, or changing field order before verification changes the bytes and breaks signature validation.
 

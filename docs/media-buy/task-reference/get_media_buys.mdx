@@ -160,15 +160,16 @@ When `include_webhook_activity: true`, each returned media buy MAY carry a `webh
 
 The record shape, request-field names, scoping, retention floor, three-state presence, and cardinality rules are uniform across AdCP resources that adopt this surface. See [Webhook activity log pattern](/docs/protocol/snapshot-and-log#webhook-activity-log-pattern) on the snapshot/log contract page for the cross-resource normative section — the rules below restate it for the media-buy call site and add the media-buy-specific capability gate.
 
-The surface covers both delivery-report notification types (`scheduled`, `final`, `delayed`, `adjusted`) and health notification types (`impairment`). All share the same webhook delivery contract and the same buyer-side debug need.
+The surface covers both delivery-report notification types (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`) and health notification types (`impairment`). All share the same webhook delivery contract and the same buyer-side debug need.
 
 | Field | Description |
 |-------|-------------|
 | `idempotency_key` | Equals the `idempotency_key` carried in the webhook payload itself ([§ Dedup by `idempotency_key`](/docs/building/by-layer/L3/webhooks#dedup-by-idempotency_key)). Stable across retries of the same logical fire — buyers correlate this surface with their own endpoint logs via this exact field. Reference it when filing support tickets. |
+| `notification_id` | Optional event-layer id copied from the webhook payload when the notification type defines one. Sellers SHOULD populate it on newly recorded attempts and MUST preserve the payload value when they do. It may be absent on retained records created before 3.2; point-in-time delivery-report fires do not define it. |
 | `subscriber_id` | Identifies which registered webhook subscriber received this fire. Absent in single-subscriber configurations; populated under multi-subscriber buys (4.0+, see [#3009](https://github.com/adcontextprotocol/adcp/issues/3009)). |
 | `fired_at` | ISO 8601 timestamp when the seller initiated this attempt. |
 | `completed_at` | ISO 8601 timestamp when the response was observed (or terminal failure). Null while `status` is `pending`. |
-| `notification_type` | Verbatim from the webhook payload: `scheduled`, `final`, `delayed`, `adjusted`, `impairment`. |
+| `notification_type` | Verbatim from the webhook payload: `scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`. |
 | `sequence_number` | Sequence number from the webhook payload — useful for spotting stale-sequence drops or gaps. Absent when the notification type does not carry one. |
 | `attempt` | 1-indexed retry counter for this logical fire. Initial fire is `attempt: 1`. |
 | `status` | `success`, `failed`, `timeout`, `connection_error`, or `pending`. See semantics below. |
