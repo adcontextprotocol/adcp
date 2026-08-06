@@ -221,6 +221,18 @@ export interface ComplyDeliveryAccumulator {
   };
   /** vendor_metric_values injected via comply_test_controller simulate_delivery. */
   vendorMetricValues?: unknown[];
+  /** Package-scoped vendor values, keyed by package_id. */
+  vendorMetricValuesByPackage?: Record<string, unknown[]>;
+  /** Committed vendor metrics whose value is not yet measurable in this window. */
+  deferredVendorMetrics?: Array<{
+    vendor: { domain: string; brand_id?: string };
+    metric_id: string;
+  }>;
+  /** Package-scoped measurement deferrals, keyed by package_id. */
+  deferredVendorMetricsByPackage?: Record<string, Array<{
+    vendor: { domain: string; brand_id?: string };
+    metric_id: string;
+  }>>;
 }
 
 export interface ComplyBudgetSimulation {
@@ -478,6 +490,14 @@ export interface PackageState {
    *  what the buyer actually requested (e.g., only surface reach + frequency
    *  when a reach goal was requested). */
   optimizationGoals?: Array<Record<string, unknown>>;
+  /** Seller-stamped reporting contract captured when the package is confirmed. */
+  committedMetrics?: Array<{
+    scope: 'standard' | 'vendor';
+    metric_id: string;
+    vendor?: { domain: string; brand_id?: string };
+    qualifier?: Record<string, unknown>;
+    committed_at: string;
+  }>;
 }
 
 export interface ListReference {

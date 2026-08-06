@@ -289,6 +289,12 @@ interface PackageInput {
   creative_assignments?: Array<{ creative_id?: string }>;
   creatives?: InlineCreativeInput[];
   context?: Record<string, unknown>;
+  committed_metrics?: Array<{
+    scope: 'standard' | 'vendor';
+    metric_id: string;
+    vendor?: { domain: string; brand_id?: string };
+    qualifier?: Record<string, unknown>;
+  }>;
 }
 
 interface CreativeAssignmentInput {
@@ -794,12 +800,21 @@ interface VendorMetricRefView {
   scope?: unknown;
 }
 
+interface CommittedMetricProposalView extends VendorMetricRefView {
+  scope?: 'standard' | 'vendor';
+  metric_id?: string;
+  vendor?: { domain?: string; brand_id?: string };
+  qualifier?: Record<string, unknown>;
+  committed_at?: string;
+}
+
 interface VendorMetricOptimizationView {
   supported_metrics?: VendorMetricRefView[];
 }
 
 interface ReportingCapabilitiesView {
   vendor_metrics?: VendorMetricRefView[];
+  available_metrics?: string[];
 }
 
 interface MeasurementCatalogView {
@@ -815,6 +830,120 @@ function vendorMetricKey(entry: VendorMetricRefView | undefined): string | null 
   }
   const brandId = typeof entry?.vendor?.brand_id === 'string' ? entry.vendor.brand_id : '';
   return `${domain.toLowerCase()}|${brandId}|${metricId}`;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+function committedMetricKey(entry: CommittedMetricProposalView): string | null {
+  if (entry.scope === 'vendor') {
+    const vendorKey = vendorMetricKey(entry);
+    return vendorKey ? `vendor|${vendorKey}` : null;
+  }
+  if (entry.scope !== 'standard' || typeof entry.metric_id !== 'string' || entry.metric_id.length === 0) return null;
+  return `standard|${entry.metric_id}|${canonicalJson(entry.qualifier ?? {})}`;
+}
+
+function validateCommittedMetricProposals(
+  metrics: CommittedMetricProposalView[] | undefined,
+  product: Product,
+  fieldPrefix: string,
+): TaskError | null {
+  if (!metrics?.length) return null;
+  const reporting = product.reporting_capabilities as ReportingCapabilitiesView | undefined;
+  const availableMetrics = new Set(reporting?.available_metrics ?? []);
+  const vendorMetrics = reporting?.vendor_metrics ?? [];
+  const seen = new Set<string>();
+
+  for (let i = 0; i < metrics.length; i++) {
+    const metric = metrics[i]!;
+    const key = committedMetricKey(metric);
+    if (!key) {
+      return {
+        code: 'VALIDATION_ERROR',
+        message: 'committed_metrics entries require a valid scope and metric identity',
+        field: `${fieldPrefix}[${i}]`,
+      };
+    }
+    if (seen.has(key)) {
+      return {
+        code: 'VALIDATION_ERROR',
+        message: 'committed_metrics entries must be unique by scope, metric identity, and qualifier',
+        field: `${fieldPrefix}[${i}]`,
+      };
+    }
+    seen.add(key);
+
+    if (metric.scope === 'standard' && !availableMetrics.has(metric.metric_id!)) {
+      return {
+        code: 'TERMS_REJECTED',
+        message: `committed standard metric "${metric.metric_id}" is not in the product's reporting_capabilities.available_metrics`,
+        field: `${fieldPrefix}[${i}].metric_id`,
+      };
+    }
+    if (
+      metric.scope === 'vendor'
+      && !vendorMetrics.some(candidate => vendorMetricKey(candidate) === vendorMetricKey(metric))
+    ) {
+      return {
+        code: 'TERMS_REJECTED',
+        message: `committed vendor metric "${metric.metric_id}" is not in the product's reporting_capabilities.vendor_metrics`,
+        field: `${fieldPrefix}[${i}].metric_id`,
+      };
+    }
+  }
+  return null;
+}
+
+function hasOwnMetric(metrics: Record<string, unknown>, metricId: string): boolean {
+  return Object.prototype.hasOwnProperty.call(metrics, metricId) && metrics[metricId] !== undefined;
+}
+
+function standardMetricIsDelivered(
+  metric: CommittedMetricProposalView,
+  delivery: Record<string, unknown>,
+): boolean {
+  const metricId = metric.metric_id!;
+  const qualifier = metric.qualifier;
+  if (qualifier && Object.keys(qualifier).length > 0) {
+    if (
+      metricId === 'viewability'
+      && typeof qualifier.viewability_standard === 'string'
+      && isRecord(delivery.viewability)
+    ) {
+      return delivery.viewability.standard === qualifier.viewability_standard;
+    }
+    // A qualified commitment is satisfied only by a delivery path that makes
+    // the same qualifier observable. The reference seller currently exposes
+    // only viewability.standard at package grain.
+    return false;
+  }
+  if (hasOwnMetric(delivery, metricId)) return true;
+  switch (metricId) {
+    case 'ctr':
+      return hasOwnMetric(delivery, 'clicks') && hasOwnMetric(delivery, 'impressions');
+    case 'cost_per_click':
+    case 'cpm':
+      return hasOwnMetric(delivery, 'spend') && hasOwnMetric(delivery, metricId === 'cpm' ? 'impressions' : 'clicks');
+    case 'cost_per_completed_view':
+      return hasOwnMetric(delivery, 'spend') && hasOwnMetric(delivery, 'completed_views');
+    case 'roas':
+      return hasOwnMetric(delivery, 'conversion_value') && hasOwnMetric(delivery, 'spend');
+    case 'cost_per_acquisition':
+      return hasOwnMetric(delivery, 'conversions') && hasOwnMetric(delivery, 'spend');
+    case 'engagement_rate':
+      return hasOwnMetric(delivery, 'engagements') && hasOwnMetric(delivery, 'impressions');
+    default:
+      return false;
+  }
 }
 
 function vendorCatalogKey(entry: VendorMetricRefView | undefined): string | null {
@@ -5542,6 +5671,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   }
 
   // Validate all packages and collect errors before returning
+  const confirmedAt = new Date().toISOString();
   const errors: TaskError[] = [];
   const createdPackages: PackageState[] = [];
   const inlineCreativesToPersist: InlineCreativeInput[] = [];
@@ -5558,6 +5688,16 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     const product = productMap.get(pkg.product_id);
     if (!product) {
       errors.push({ code: 'PRODUCT_NOT_FOUND', message: `${pkgLabel}: Product not found: ${pkg.product_id}` });
+      continue;
+    }
+
+    const committedMetricError = validateCommittedMetricProposals(
+      pkg.committed_metrics,
+      product,
+      `packages[${i}].committed_metrics`,
+    );
+    if (committedMetricError) {
+      errors.push(committedMetricError);
       continue;
     }
 
@@ -5685,6 +5825,12 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     const optimizationGoals = Array.isArray(rawGoals)
       ? (rawGoals as unknown[]).filter((g): g is Record<string, unknown> => typeof g === 'object' && g !== null)
       : undefined;
+    const committedMetrics = Array.isArray(pkg.committed_metrics)
+      ? pkg.committed_metrics.map(metric => ({
+        ...metric,
+        committed_at: confirmedAt,
+      }))
+      : undefined;
     const rawCreativeAssignments = Array.isArray(pkg.creative_assignments) ? pkg.creative_assignments : [];
     const creativeAssignments: string[] = [];
     for (let j = 0; j < rawCreativeAssignments.length; j++) {
@@ -5728,6 +5874,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       targeting: targetingResult.targeting,
       ...(isRecord(pkg.context) && { context: pkg.context }),
       ...(optimizationGoals && optimizationGoals.length > 0 && { optimizationGoals }),
+      ...(committedMetrics && committedMetrics.length > 0 && { committedMetrics }),
     });
   }
 
@@ -5743,7 +5890,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   const mediaBuyId = typeof requestedMediaBuyId === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(requestedMediaBuyId)
     ? requestedMediaBuyId
     : `mb_${randomUUID().slice(0, 8)}`;
-  const now = new Date().toISOString();
+  const now = confirmedAt;
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
   persistInlineCreatives(
     session,
@@ -5835,6 +5982,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       ...packageReadinessFields(pkg, session),
       ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
       ...(pkg.context && { context: pkg.context }),
+      ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
       creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     })),
     ...(isRecord(req.context) && { context: req.context }),
@@ -5972,6 +6120,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             })),
             ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
             ...(pkg.context && { context: pkg.context }),
+            ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
             ...(pkg.canceledAt && {
               cancellation: {
                 canceled_at: pkg.canceledAt,
@@ -6007,6 +6156,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
+  overlaySeededProducts(session, productMap);
   const mediaBuyId = req.media_buy_id || req.media_buy_ids?.[0] || '';
   const mb = session.mediaBuys.get(mediaBuyId) ?? getComplianceMediaBuy(mediaBuyId);
 
@@ -6019,9 +6169,16 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const now = new Date();
   const start = new Date(mb.startTime);
   const end = new Date(mb.endTime);
+  const reportingStart = req.start_date ? new Date(`${req.start_date}T00:00:00.000Z`) : start;
+  const reportingEnd = req.end_date ? new Date(`${req.end_date}T23:59:59.999Z`) : now;
+  if (req.start_date && req.end_date && reportingStart.getTime() > reportingEnd.getTime()) {
+    return {
+      errors: [{ code: 'INVALID_REQUEST', message: 'start_date must be on or before end_date', field: 'start_date' }],
+    };
+  }
   const durationMs = end.getTime() - start.getTime();
   const elapsed = durationMs > 0
-    ? Math.max(0, Math.min(1, (now.getTime() - start.getTime()) / durationMs))
+    ? Math.max(0, Math.min(1, (reportingEnd.getTime() - start.getTime()) / durationMs))
     : 0;
 
   // Read simulated delivery upfront so vendor_metric_values can be spread into
@@ -6129,6 +6286,91 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       }
       : {};
 
+    const reporting = product?.reporting_capabilities as ReportingCapabilitiesView | undefined;
+    const fallbackMetrics: CommittedMetricProposalView[] = [
+      ...(reporting?.available_metrics ?? []).map(metricId => ({ scope: 'standard' as const, metric_id: metricId })),
+      ...(reporting?.vendor_metrics ?? []).flatMap(metric => {
+        const domain = metric.vendor?.domain;
+        const metricId = metric.metric_id;
+        if (typeof domain !== 'string' || typeof metricId !== 'string') return [];
+        return [{
+          scope: 'vendor' as const,
+          vendor: {
+            domain,
+            ...(typeof metric.vendor?.brand_id === 'string' && { brand_id: metric.vendor.brand_id }),
+          },
+          metric_id: metricId,
+        }];
+      }),
+    ];
+    // An explicit package snapshot is authoritative even when it contains no
+    // vendor rows. Only packages without a snapshot fall back to the product's
+    // current reporting capabilities.
+    const auditMetrics: CommittedMetricProposalView[] = pkg.committedMetrics !== undefined
+      ? pkg.committedMetrics
+      : fallbackMetrics;
+    const eligibleAuditMetrics = auditMetrics.filter(metric => (
+      metric.committed_at === undefined
+      || new Date(metric.committed_at).getTime() < reportingEnd.getTime()
+    ));
+    const auditVendorKeys = new Set(
+      auditMetrics
+        .filter(metric => metric.scope === 'vendor')
+        .map(metric => vendorMetricKey(metric))
+        .filter((key): key is string => key !== null),
+    );
+    const rawDeferredVendorMetrics = simDelivery?.deferredVendorMetricsByPackage?.[pkg.packageId]
+      ?? (mb.packages.length === 1 ? simDelivery?.deferredVendorMetrics : undefined)
+      ?? [];
+    const deferredVendorKeys = new Set(
+      rawDeferredVendorMetrics
+        .map(metric => vendorMetricKey(metric))
+        .filter((key): key is string => key !== null),
+    );
+    const rawVendorMetricValues = simDelivery?.vendorMetricValuesByPackage?.[pkg.packageId]
+      ?? (mb.packages.length === 1 ? simDelivery?.vendorMetricValues : undefined)
+      ?? [];
+    const vendorMetricValues = rawVendorMetricValues
+      .filter((value): value is Record<string, unknown> => isRecord(value))
+      .filter(value => {
+        const key = vendorMetricKey(value as VendorMetricRefView);
+        return key !== null && auditVendorKeys.has(key);
+      });
+    const deliveredVendorKeys = new Set(
+      vendorMetricValues
+        .map(value => vendorMetricKey(value as VendorMetricRefView))
+        .filter((key): key is string => key !== null),
+    );
+    const packageDeliveryMetrics: Record<string, unknown> = {
+      spend,
+      impressions,
+      clicks,
+      ...audioMetrics,
+      ...byCreative,
+      ...(vendorMetricValues.length > 0 && { vendor_metric_values: vendorMetricValues }),
+    };
+    const missingMetrics = eligibleAuditMetrics.reduce<Array<Record<string, unknown>>>((missing, metric) => {
+      if (metric.scope === 'standard') {
+        if (!standardMetricIsDelivered(metric, packageDeliveryMetrics)) {
+          missing.push({
+            scope: 'standard' as const,
+            metric_id: metric.metric_id!,
+            ...(metric.qualifier && { qualifier: metric.qualifier }),
+          });
+        }
+        return missing;
+      }
+      const key = vendorMetricKey(metric);
+      if (key !== null && !deliveredVendorKeys.has(key) && !deferredVendorKeys.has(key)) {
+        missing.push({
+          scope: 'vendor' as const,
+          vendor: metric.vendor!,
+          metric_id: metric.metric_id!,
+        });
+      }
+      return missing;
+    }, []);
+
     if (isAudioVideo && impressions > 0) {
       totalCompletedViews += Math.round(impressions * completionRate);
       totalViews += Math.round(impressions * 0.9);
@@ -6139,11 +6381,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
 
     return {
       package_id: pkg.packageId,
-      spend,
-      impressions,
-      clicks,
-      ...audioMetrics,
-      ...byCreative,
+      ...packageDeliveryMetrics,
       pricing_model: pricingModel,
       model: pricingModel, // #1525: alias for @adcp/sdk < 4.11.0
       rate,
@@ -6153,13 +6391,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       ...(includeThreeOneFields(ctx) && simDelivery?.measurementWindow ? { measurement_window: simDelivery.measurementWindow } : {}),
       paused: false,
       delivery_status: elapsed >= 1 ? 'completed' as const : 'delivering' as const,
-      // vendor_metric_values are media-buy-scoped in simulate_delivery, so they
-      // propagate to all active packages. Multi-package buys will echo the same
-      // array across packages — known training-agent limitation, acceptable for
-      // single-package storyboard scenarios.
-      ...(simDelivery?.vendorMetricValues?.length
-        ? { vendor_metric_values: simDelivery.vendorMetricValues }
-        : {}),
+      ...(auditMetrics.length > 0 ? { missing_metrics: missingMetrics } : {}),
     };
   });
 
@@ -6266,8 +6498,8 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
 
   return {
     reporting_period: {
-      start: mb.startTime,
-      end: now.toISOString(),
+      start: reportingStart.toISOString(),
+      end: reportingEnd.toISOString(),
     },
     currency: mb.currency,
     media_buy_deliveries: [{
@@ -7148,6 +7380,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     ...packageReadinessFields(pkg, session),
     ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
     ...(pkg.context && { context: pkg.context }),
+    ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
     creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     ...(pkg.canceledAt && {
       cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },
