@@ -1,7 +1,9 @@
+import { resolveGitHubToken } from '../addie/jobs/github-app-token.js';
 import { query } from '../db/client.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('certification-experience');
+const GITHUB_VERIFICATION_TIMEOUT_MS = 10_000;
 
 export type CertificationExperienceEventType =
   | 'chat_turn_started'
@@ -323,16 +325,38 @@ export async function confirmCertificationContribution(
     throw new Error(`Enter an issue URL from ${contribution.repository}.`);
   }
 
-  const response = await fetch(
-    `https://api.github.com/repos/${contribution.repository}/issues/${issueNumber}`,
-    { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'adcp-certification' } },
-  );
-  if (!response.ok) throw new Error('That GitHub issue could not be verified.');
-  const issue = await response.json() as {
+  const token = await resolveGitHubToken();
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'adcp-certification',
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://api.github.com/repos/${contribution.repository}/issues/${issueNumber}`,
+      { headers, signal: AbortSignal.timeout(GITHUB_VERIFICATION_TIMEOUT_MS) },
+    );
+  } catch {
+    throw new Error('That GitHub issue could not be verified. Please try again.');
+  }
+  if (!response.ok && (response.status === 429
+      || response.headers.get('x-ratelimit-remaining') === '0'
+      || (response.status === 403 && response.headers.has('retry-after')))) {
+    throw new Error('GitHub verification is temporarily rate limited. Please try again in a few minutes.');
+  }
+  if (!response.ok) throw new Error('That GitHub issue could not be verified. Please try again.');
+  let issue: {
     title?: string;
     html_url?: string;
     pull_request?: unknown;
   };
+  try {
+    issue = await response.json() as typeof issue;
+  } catch {
+    throw new Error('That GitHub issue could not be verified. Please try again.');
+  }
   if (issue.pull_request || issue.title?.trim() !== contribution.title.trim()
       || issue.html_url !== parsed.href.replace(/\/$/, '')) {
     throw new Error('The issue repository and title must match the saved contribution draft.');
