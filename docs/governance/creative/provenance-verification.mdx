@@ -7,6 +7,10 @@ sidebarTitle: Provenance verification
 
 When a creative arrives with a provenance claim, the receiving party needs to decide whether to trust it. This page describes how AdCP handles that decision: provenance claims travel with the creative from buyer to seller, and each enforcement point — the publisher, the SSP, the verification vendor — runs its own independent check. No single party's attestation is taken at face value. This separation between declaration and verification is what makes the system work when the parties involved have competing incentives.
 
+<Note>
+  This creative-provenance model remains the operative AdCP mechanism for AI provenance. The structured `Provenance` fields and C2PA or media-level bindings describe and bind a creative's origin. Portable attestations complement that work by carrying independently issued, evaluator-checked claims; they do not replace C2PA or turn an unbound credential into media provenance. In the current protocol, portable attestations are wired only into audience evidence and signal-governance evaluation. There is no portable-attestation attachment on a creative or its `Provenance` object yet.
+</Note>
+
 ## Three-moment lifecycle
 
 AI provenance flows through three distinct moments, each handled by existing AdCP tasks.

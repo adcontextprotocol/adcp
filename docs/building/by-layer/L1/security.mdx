@@ -127,6 +127,92 @@ Feature-specific security sections extend these rules with their own lifecycle a
 - [Managed networks `authoritative_location`](/docs/governance/property/managed-networks#security-considerations) — validator fetch semantics, change detection, relationship termination.
 - [TMP provider registration](/docs/trusted-match/specification#provider-registration-security) — dynamic registration authentication, router-to-provider auth, `/health` info-leakage rules.
 
+## Portable attestations
+
+Portable attestations let one agent reference an independently issued claim without making the presenter or AdCP the trust authority. A seller or governance agent publishes what it will evaluate through `get_adcp_capabilities.adcp.attestations`; a presenter supplies an `AttestationReference`; the evaluator resolves and verifies the credential under its own policy.
+
+The evaluator is always the **verifier-of-record**. A presentation is a locator and claim hint. It is not proof, a routing instruction, or permission to fetch an arbitrary URL. RFC 9421 request signing authenticates the presenting agent and protects the request in transit, but it does not prove the presented claim.
+
+### Data model and separation
+
+Implementations MUST keep three layers distinct:
+
+1. **Presentation** — the portable reference supplied by a buyer or another agent.
+2. **Credential** — the issuer-signed claim found through the reference or supplied as an embedded proof.
+3. **Evaluation** — the receiving seller's or governance agent's result after applying its trust policy.
+
+<!-- Using latest because these schemas are not yet released in any version.
+     Update to the correct version alias after the next release. -->
+The shared schemas are [`attestation-reference.json`](https://adcontextprotocol.org/schemas/v3/core/attestation-reference.json), [`attestation-issuer.json`](https://adcontextprotocol.org/schemas/v3/core/attestation-issuer.json), [`attestation-subject.json`](https://adcontextprotocol.org/schemas/v3/core/attestation-subject.json), and [`attestation-evaluation.json`](https://adcontextprotocol.org/schemas/v3/core/attestation-evaluation.json).
+
+Every presentation identifies an issuer, an open URI-namespaced `claim_type`, a typed subject, and at least one delivery path:
+
+| Path | Presentation fields | Evaluator behavior |
+|---|---|---|
+| HTTPS credential | `locator.type: credential_uri` + `credential_uri` | Match the URI's canonical origin to the accepted issuer's `credential_origins` before DNS resolution or any request. |
+| Issuer credential ID | `locator.type: issuer_credential_id` + `credential_id` + `resolver_id` | Resolve `resolver_id` to a URL from the evaluator's own capability configuration, then send the fixed resolver request defined below. The presentation never carries the resolver URL. |
+| Embedded credential | `embedded_credential.format` + `embedded_credential.value` | Enforce the advertised byte limit before parsing, then verify the supported format locally or through an accepted verifier. |
+
+A presentation MAY carry both a locator and an embedded credential. In that case `content_digest` is REQUIRED, the evaluator MUST obtain both representations, and the exact bytes of each MUST independently match that digest before either is trusted. It MUST verify both credentials under the same proof-format and issuer rules. A missing, unverifiable, or mismatched representation is a hard failure; the evaluator MUST NOT select the representation that passes or fall back to an unpinned body. `credential_version` and `validity_hint` are planning hints only; the credential is authoritative for version, validity, scope, and revocation.
+
+For a resource subject, `subject.content_digest` optionally pins the content or immutable snapshot the credential is about. It is part of the complete typed subject comparison. It is distinct from the presentation-level `content_digest`, which pins credential bytes.
+
+Issuer and claim identifiers are open vocabularies. An evaluator listing them expresses only its own policy; it is not an AgenticAdvertising.org endorsement or a global trust registry.
+
+The presenter MAY nominate `verify_agent.agent_url`, but it MUST match `accepted_verifiers[]` after [URL canonicalization](/docs/reference/url-canonicalization). The evaluator MAY use that verifier, another accepted verifier, or local verification. It MUST NOT call an off-list presenter-supplied endpoint.
+
+### Normative evaluation procedure
+
+For every presentation, an evaluator MUST perform these steps in order:
+
+1. **Validate without network access.** Reject malformed issuer, subject, locator, proof format, and digest fields. JSON inputs MUST be strict-parsed with duplicate object keys rejected before JCS, digest computation, schema validation, or field extraction; a last-key-wins or first-key-wins parser is insufficient.
+2. **Apply the capability allowlist.** Match the canonical issuer, claim type, delivery method, proof format when known, and nominated verifier. Reject an untrusted issuer, resolver, credential origin, or verifier without an outbound request.
+3. **Select delivery.** For `credential_uri`, validate the canonical origin against the issuer capability. For `issuer_credential_id`, map `resolver_id` through that capability. For embedded delivery, enforce `max_embedded_credential_bytes` before parsing.
+4. **Resolve safely when needed.** Apply the fetch contract below to the evaluator-selected URL.
+5. **Verify the credential deterministically.** Confirm proof/signature integrity, issuer identity, claim type, complete typed subject, claim scope, validity period, and revocation state. Verify `content_digest` before using credential contents. Cryptographic verification, issuer-key authorization, canonicalization, equality checks, and outcome selection MUST run in deterministic code rather than an LLM. Credential bytes and resolver responses MUST NOT be placed in an LLM context before these checks; an LLM MAY assist a later policy workflow but cannot establish a `verified` outcome.
+6. **Apply local trust policy.** A cryptographically valid credential may still be unacceptable for this claim, subject, jurisdiction, action, or time.
+7. **Emit a stable outcome.** Never convert resolution or policy failure into success merely because the presenter asserted the claim.
+8. **Bind the result.** Carry the exact presentation digest and action binding in the domain result or readback that relied on it.
+
+### Attestation resolution fetch contract
+
+For `issuer_credential_id`, the resolver transport is fixed: `POST` to the evaluator-configured resolver URL with `Content-Type: application/json` and a strict JSON body whose only member is `{"credential_id":"<presentation credential_id>"}`. The credential ID MUST NOT be interpolated into the URL path or query. Credential-URI fetches carry no Authorization header or cookies. Resolver authentication, when configured as `evaluator_managed`, is loaded by the evaluator and sent only to the exact configured resolver endpoint; credentials from the incoming task, a credential response, or another origin MUST NOT be forwarded.
+
+Before every credential or resolver request, evaluators MUST:
+
+1. Require HTTPS and reject userinfo, fragments, and non-HTTPS schemes.
+2. Match the canonical credential origin or configured resolver ID to `accepted_issuers[]` before DNS resolution.
+3. Resolve the hostname and reject private, loopback, link-local, unique-local, CGNAT, multicast, special-use, and cloud-metadata destinations, including IPv4-mapped IPv6 forms.
+4. Pin the connection to the validated address, or validate the post-TLS peer address before sending request bytes, to prevent DNS rebinding.
+5. Disable redirects and treat every 3xx response as `resolution_failed`. The redirect limit is zero. Authentication headers and cookies MUST NOT be forwarded to any other endpoint.
+6. Apply a connect timeout of at most 10 seconds, a read timeout of at most 10 seconds, and a streamed response-body cap of 1 MiB.
+7. Keep resolver credentials outside AdCP task payloads and LLM-visible arguments. `authentication: evaluator_managed` means the evaluator loads them from its own secret store.
+8. Avoid returning connection-detail differences to the presenter. Map network details to stable outcomes without exposing internal topology.
+
+Before parsing a task that can carry portable attestations, implementations MUST enforce an overall task-body cap of 4 MiB, a maximum JSON nesting depth of 64, and at most 100,000 aggregate object members and array elements. These are whole-task caps, not per-attestation allowances, and apply in addition to the advertised per-credential `max_embedded_credential_bytes` (whose protocol ceiling is 1 MiB). Reject an over-limit body before schema evaluation, JCS, credential extraction, logging of body content, or any LLM-visible processing. An evaluator that advertises `embedded` delivery MUST advertise and enforce `max_embedded_credential_bytes`.
+
+These rules extend the general [SSRF profile](#webhook-url-validation-ssrf). A URL is never authorized solely because it appeared in a signed request.
+
+Resolver access can disclose which buyer, signal, campaign, or claim is being evaluated. Evaluators SHOULD prefer privacy-preserving resolution, send no unnecessary campaign identifiers, disclose resolver access to their operators and users, and bound logs and caches accordingly.
+
+### Issuer signing-key authority
+
+A mathematically valid signature does not by itself establish the `AttestationIssuer` named by the presentation or credential. For each accepted proof format, the evaluator MUST authorize the verification key for that canonical issuer through either (a) the proof format's authenticated issuer-key discovery and binding procedure or (b) an evaluator-managed local trust anchor configured for that issuer and proof format. Unauthenticated key URLs, presenter-supplied keys, and a credential's bare `kid` value are not trust anchors. A credential signed correctly by a key that is not authorized for its claimed issuer has outcome `invalid`, even if the key is trusted for another issuer.
+
+Key discovery is itself part of the proof-format verifier and MUST apply that format's transport, chain, algorithm, key-use, revocation, and freshness requirements. The evaluator MUST bind cached keys to canonical issuer identity and proof format; it MUST NOT reuse a same-named `kid` across issuers.
+
+### Outcomes, action binding, and caching
+
+Stable outcomes are `verified`, `not_found`, `expired`, `revoked`, `invalid`, `unsupported`, `unverifiable`, `untrusted_issuer`, `untrusted_resolver`, `subject_mismatch`, `digest_mismatch`, and `resolution_failed`. Only `verified` means all required credential and policy checks passed.
+
+Every `AttestationEvaluation` requires `reference_digest`, computed as SHA-256 over the RFC 8785 JSON Canonicalization Scheme representation of the complete `AttestationReference`, including an embedded credential. Duplicate JSON object keys MUST already have been rejected before canonicalization. Outcomes based on obtained credential bytes also carry `credential_digest` and `proof_format`, so the digest's byte interpretation is explicit. For dual delivery, `credential_digest` records the resolved bytes while `reference_digest` independently binds the embedded bytes; both representations have already matched the required presentation digest. A domain consumer that relies on the result MUST carry `action_binding` with a domain-defined action type and either an action identifier or canonical action digest.
+
+This produces two independent bindings: `reference_digest` identifies exactly what was evaluated; `action_binding` identifies the governance decision, evidence snapshot, rights decision, or other action that relied on it. Portable credentials SHOULD remain reusable across sellers unless the issuer's model requires a specific audience; the transaction binding belongs to the evaluation result rather than automatically inside every credential.
+
+Evaluators MAY cache results, but cache keys MUST include canonical issuer identity, locator, proof format, and credential or reference digest. Cache lifetime MUST be bounded by the earliest of credential expiry, issuer/verifier key refresh, revocation freshness policy, evaluator policy, and `valid_until`. Trust-policy or revocation changes invalidate prior success.
+
+Versioned fixtures under `/compliance/{version}/test-vectors/attestations/` cover resolved and embedded credentials, off-policy issuers and resolvers, expiry and revocation, subject and digest mismatch, and resolution failure. Implementations must produce the expected outcome and perform no network access for off-policy cases.
+
 ## Authentication Best Practices
 
 ### Credential Storage
@@ -616,6 +702,7 @@ This profile applies to `governance_context` (#2306) and to any future AdCP arti
 | `authorized_payload_hash` | Conditional | `base64url_no_pad(SHA-256(JCS(payload_without_governance_metadata)))`, REQUIRED with `authorized_task` and listed in `crit`. The excluded top-level fields are exactly `governance_context` and `context`; `target_agent` lives on the governance check rather than in the downstream payload. Every business field, including `idempotency_key`, remains bound. The service recomputes this value over the received task request before committing. |
 | `policy_decisions` | No | Compact array of `{ policy_id, outcome }` entries (may include `confidence`). Visible to the seller. Governance agents SHOULD omit this in privacy-sensitive deployments (see [Privacy considerations](#privacy-considerations)) and use `policy_decision_hash` instead. |
 | `policy_decision_hash` | No | SHA-256 hash of the canonicalized decision log, hex-encoded. When present, sellers treat it as an opaque integrity anchor; full log is retrievable by auditors via `audit_log_pointer`. Governance agents MUST include either `policy_decisions` or `policy_decision_hash` (both is permitted). |
+| `runtime_attestation_binding_digest` | Conditional | Required when the check evaluated `runtime_attestations[]`. MUST byte-equal the check response field of the same name: `sha256:` plus lowercase-hex SHA-256 of `JCS({ evaluations, findings })`, where `evaluations` is the ordered `runtime_attestation_evaluations[]` array and `findings` is the ordered response subset carrying `attestation_reference_digest`. This binds the exact credential/reference digests, normalized outcomes, confidence-bearing findings, and governance-check action binding without putting credential bodies in the token. Audit-layer claim; sellers persist it as opaque cargo and do not recompute it. |
 | `audit_log_pointer` | No | HTTPS URL consumable by `get_plan_audit_logs` for the full decision evidence. When present, auditors can fetch the full log using the pointer; access control is governed by the governance agent. |
 | `status` | No | Optional forward-compatibility hook. When present, MUST be a JSON object conforming to a future IETF JWT Status List mechanism (draft-ietf-oauth-status-list). Verifiers that do not understand `status` MUST NOT reject solely on its presence unless it appears in `crit`. |
 
@@ -624,6 +711,8 @@ Cross-language implementations SHOULD validate payload canonicalization and the 
 **Unknown-extension handling**: verifiers ignore unknown non-critical claims. When a claim changes authorization semantics, the issuer also emits the same-named protected-header marker and lists it in `crit`; verifiers that do not recognize that header extension MUST reject. Verifiers MUST also reject when the critical marker and its corresponding claim do not appear together.
 
 **Size**: a typical token with `policy_decision_hash` fits comfortably under the 4096-character envelope limit. Implementations MUST NOT put large evidence payloads in the token; use `audit_log_pointer` instead.
+
+When `runtime_attestation_binding_digest` is present, governance agents MUST retain the full ordered evaluations and attestation-bound findings in the corresponding `get_plan_audit_logs` check entry. The entry-level digest, response-level digest, and signed claim MUST be identical. Auditors recompute the digest from the retained arrays; any mismatch means the signed decision and audit readback disagree. This claim MUST NOT appear in `crit`: like `plan_hash`, it is audit-layer evidence that ordinary sellers cannot independently recompute from the spend-commit request.
 
 **`plan_hash` is audit-layer, not wire-layer**: the `plan_hash` claim is cryptographic cargo the token carries for off-wire verification by the governance agent, auditors, and buyer-side compliance. It is not part of this profile's seller verification contract and is never listed in `crit`. Canonicalization, excluded fields, retention rules, and test vectors are specified in [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit) (governance spec). Sellers persist and forward `governance_context` verbatim and perform the 15-step verification checklist below — authenticity, authorization scope, freshness — without inspecting `plan_hash`.
 

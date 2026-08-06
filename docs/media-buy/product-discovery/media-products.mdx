@@ -43,6 +43,8 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `signal_targeting_allowed` (bool, optional, default: false): Whether this product has a package-level signal targeting surface. Editability is controlled by `signal_targeting_rules`.
 - `signal_targeting_options` (list[ProductSignalTargetingOption], optional): Inline seller-offered signals that may be buyer-selected or seller-applied for this product. These may be product-local signal options or data-provider signals the seller is authorized to apply. See [Signal Targeting](#signal-targeting).
 - `signal_targeting_rules` (SignalTargetingRules, optional): Composition rules such as single/multi-select limits for the selectable signals.
+- `audience_evidence` (list[AudienceEvidence], optional): Immutable, digest-pinned population evidence explaining audience composition, affinity, or estimated reach. This is planning evidence, not exact targeting or legal-age verification. See [Audience evidence](#audience-evidence).
+- `audience_evidence_selections` (list[AudienceEvidenceSelection], optional): Exact evidence snapshots that satisfied a required evidence policy or affected ranking for this discovery result.
 - `catalog_types` (list[string], optional): Catalog types this product supports for catalog-driven campaigns. A sponsored product listing declares `["product"]`, a job board declares `["job", "offering"]`. Buyers match synced catalogs to products via this field. See [Catalogs](/docs/creative/catalogs).
 - `catalog_match` (object, optional): When the buyer provides a `catalog` on `get_products`, indicates which catalog items are eligible for this product. Contains `matched_gtins` (cross-retailer GTIN matches), `matched_ids` (generic item ID matches), `matched_count`, and `submitted_count`.
 - `metric_optimization` (object, optional): Metric optimization capabilities for this product. Presence indicates the product supports `optimization_goals` with `kind: "metric"`. See [Metric optimization](#metric-optimization).
@@ -91,6 +93,60 @@ Products that support `optimization_goals` with `kind: "event"` declare their ca
 | `platform_managed` | boolean | No | Whether the seller provides always-on measurement (e.g., retailer purchase attribution). When true, `sync_event_sources` returns seller-managed event sources. |
 
 See [Conversion Tracking & Optimization Goals](/docs/media-buy/conversion-tracking) for the full optimization goals reference.
+
+### Audience evidence
+
+`audience_evidence[]` gives a buyer structured reasons that inventory may suit an audience even when the seller cannot deterministically identify or target every user in that audience. Each item identifies an immutable `snapshot_id`, provider version, canonical `content_digest`, audience characteristic, relationship, baseline population, evidence type, population-level methodology, provider, measurement window, and freshness.
+
+```json
+{
+  "audience_evidence": [
+    {
+      "evidence_id": "evidence_northstar_age_affinity",
+      "snapshot_id": "evidence_snapshot_2026_q2",
+      "version": "2026-q2",
+      "content_digest": "sha256:2a9cba3b29a6804e53bdb15a348b5e9741cfc613c210a91f61b0276655c5f1df",
+      "audience": {
+        "dimension": "age",
+        "range": { "min": 25, "max": 34 }
+      },
+      "relationship": "index",
+      "value": 1.8,
+      "unit": "ratio",
+      "baseline": {
+        "system": "https://measurement.example/populations",
+        "population_id": "us_adults",
+        "version": "2026-q2"
+      },
+      "evidence_type": "measured",
+      "methodology": "projected",
+      "subject_type": "individual",
+      "provider": { "domain": "measurement.example" },
+      "measurement_window": { "start": "2026-04-01", "end": "2026-06-30" },
+      "sample_size": 12000,
+      "confidence": 0.92,
+      "last_updated": "2026-07-15T00:00:00Z",
+      "methodology_url": "https://measurement.example/methodology/audience-projection"
+    }
+  ]
+}
+```
+
+The three concepts remain separate:
+
+- `audience_evidence` says something about an inventory population.
+- `demographic_targeting` and package targeting overlays say what the seller can execute for individual delivery decisions.
+- age-restriction and identity-attestation surfaces handle legal compliance for a particular subject.
+
+`content_digest` is SHA-256 over the RFC 8785 canonical evidence core with both `content_digest` and `attestation_refs` omitted. References are excluded so a later independent credential can be attached without changing the immutable evidence snapshot or creating a recursive digest. The built-in `age` characteristic uses completed years: values and range bounds are non-negative integers and `range.min` cannot exceed `range.max`.
+
+`projected` is deliberately defined only for population evidence. It does not expand the user-level signal methodology vocabulary. Optional `attestation_refs[]` use the shared portable-attestation contract as an independent verification layer; they do not change `evidence_type`. Their subject identifies the exact evidence `snapshot_id` and carries the evidence `content_digest`. Evaluators still apply their own issuer and resolver allowlists.
+
+When a buyer supplies evidence requirements and evidence affects product inclusion or rank, the returned Product carries `audience_evidence_selections[]` with the exact matching snapshots and `decision_use` of `eligibility` or `recommendation`. This decision readback is mandatory even when the buyer's `fields` projection omitted `audience_evidence_selections`; projection may omit the optional full evidence payload, not the explanation of an applied policy.
+
+At buy time, a package can repeat `audience_evidence_requirements` and can carry `audience_evidence_pins[]` copied from discovery. Every pin includes `evidence_id`, `snapshot_id`, `version`, and `content_digest`; the seller rejects a missing or mutated snapshot instead of substituting current catalog content. The confirmed Package returns a matching `audience_evidence_selections[]` entry with `decision_use: "package_construction"` for every accepted pin and every snapshot used to satisfy package requirements, and preserves that readback on later package reads.
+
+When an attestation affected either decision, readback preserves the exact reference and its `AttestationEvaluation` as one pair. That pair is valid only when the reference is published on the selected snapshot, its claim and issuer satisfy both buyer and seller policy, `reference_digest` covers that same reference, the outcome is `verified`, and both the subject digest and action-binding digest equal the evidence `content_digest`. An evaluation for one reference cannot verify a different reference. Sellers retain the full immutable snapshot and evaluations for at least as long as the package remains readable. Buyers should cache the evidence returned during discovery; AdCP 3.2 does not introduce a buyer-controlled snapshot fetch URL. Sellers may embed the full snapshot in readback, but need not duplicate it on every product or package.
 
 ### Pricing Models
 

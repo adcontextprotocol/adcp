@@ -160,6 +160,33 @@
           }
         ]
       }
+    },
+    {
+      "if": {
+        "required": ["runtime_attestations"]
+      },
+      "then": {
+        "properties": {
+          "purchase_type": {
+            "type": "string",
+            "const": "signal_activation"
+          },
+          "tool": {
+            "type": "string",
+            "const": "activate_signal"
+          },
+          "payload": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "activate"
+              }
+            }
+          }
+        },
+        "required": ["purchase_type", "tool", "payload"]
+      }
     }
   ],
   "x-status": "experimental",
@@ -363,6 +390,38 @@
       "type": "string",
       "description": "Human-readable summary of what changed. SHOULD be present for 'modification' phase.",
       "maxLength": 1000
+    },
+    "runtime_attestations": {
+      "type": "array",
+      "description": "Optional independently issued runtime evidence for an activate_signal intent check whose payload action is activate (or omitted, which defaults to activate). It MUST NOT be supplied for deactivate. Each item is the shared portable AttestationReference from the core #4529 contract; it carries no authoritative buyer-supplied decision or confidence. The governance agent MUST evaluate every item under adcp.attestations plus governance.runtime_attestations capability policy, preserve input order in response runtime_attestation_evaluations[], and reject off-policy issuers, resolvers, credential origins, and verifier nominations without network access. This field is per-check evidence outside the synced plan and therefore outside the plan_hash preimage. Other tools and purchase types cannot carry this field.",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "/schemas/core/attestation-reference.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "subject": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "resource"
+                  },
+                  "resource_type": {
+                    "type": "string",
+                    "const": "https://adcontextprotocol.org/claims/subjects/signal"
+                  }
+                },
+                "required": ["type", "resource_type"]
+              }
+            }
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 10
     },
     "invoice_recipient": {
       "$ref": "/schemas/core/business-entity.json",

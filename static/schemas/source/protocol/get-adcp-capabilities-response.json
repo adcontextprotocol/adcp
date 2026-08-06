@@ -10,6 +10,50 @@
     },
     {
       "$ref": "/schemas/core/protocol-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "governance": {
+            "required": ["runtime_attestations"]
+          }
+        },
+        "required": ["governance"]
+      },
+      "then": {
+        "properties": {
+          "adcp": {
+            "required": ["attestations"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "audience_evidence": {
+                "properties": {
+                  "supports_attestation_evaluation": {
+                    "const": true
+                  }
+                },
+                "required": ["supports_attestation_evaluation"]
+              }
+            },
+            "required": ["audience_evidence"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "adcp": {
+            "required": ["attestations"]
+          }
+        }
+      }
     }
   ],
   "properties": {
@@ -329,6 +373,10 @@
           "required": ["tasks"],
           "x-status": "experimental",
           "additionalProperties": false
+        },
+        "attestations": {
+          "$ref": "/schemas/core/attestation-capabilities.json",
+          "description": "Portable-attestation trust and delivery capabilities for this evaluator. Present only when the agent accepts AttestationReference inputs on one or more domain task surfaces. This block is an allowlist: presenters cannot expand accepted issuers, resolver endpoints, verifier agents, claim types, or proof formats by supplying values in a request."
         }
       },
       "required": ["major_versions", "idempotency"]
@@ -740,6 +788,38 @@
             }
           }
         },
+        "audience_evidence": {
+          "type": "object",
+          "description": "Support for structured product audience evidence and buyer-authored evidence policy. Presence means the seller can publish Product.audience_evidence, preserve immutable snapshots through package readback, and evaluate the declared policy modes. It does not declare audience-targeting capability.",
+          "properties": {
+            "supported_requirement_modes": {
+              "type": "array",
+              "description": "Buyer policy modes the seller evaluates. A seller MUST NOT silently ignore a mode it does not list.",
+              "items": {
+                "type": "string",
+                "enum": ["required", "preferred"]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "supported_presence_modes": {
+              "type": "array",
+              "description": "Evidence-presence semantics the seller supports.",
+              "items": {
+                "type": "string",
+                "enum": ["required", "when_available"]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "supports_attestation_evaluation": {
+              "type": "boolean",
+              "description": "Whether the seller evaluates audience-evidence attestation_refs under its core adcp.attestations policy and returns the exact reference and AttestationEvaluation in package readback."
+            }
+          },
+          "required": ["supported_requirement_modes", "supported_presence_modes", "supports_attestation_evaluation"],
+          "additionalProperties": true
+        },
         "audience_targeting": {
           "type": "object",
           "description": "Audience targeting capabilities. Presence of this object indicates the seller supports audience targeting, including sync_audiences and audience_include/audience_exclude in targeting overlays.",
@@ -1051,6 +1131,36 @@
       "type": "object",
       "description": "Governance protocol capabilities. Only present if governance is in supported_protocols. Governance agents provide property and creative data like compliance scores, brand safety ratings, sustainability metrics, and creative quality assessments.",
       "properties": {
+        "runtime_attestations": {
+          "type": "object",
+          "description": "Signal-activation policy for the portable attestation support declared in adcp.attestations. Presence means check_governance accepts runtime_attestations[] for purchase_type signal_activation. The claim_types list MUST be a subset of adcp.attestations.accepted_claim_types; issuer, resolver, verifier, proof-format, and delivery allowlists remain authoritative in the shared adcp.attestations block rather than being duplicated here.",
+          "properties": {
+            "signal_activation": {
+              "type": "object",
+              "properties": {
+                "requirement": {
+                  "type": "string",
+                  "enum": ["optional", "required"],
+              "description": "Whether an activate_signal activation check may omit runtime_attestations. When required, missing evidence fails an activation check. Deactivation and privacy-removal checks never require signal-quality evidence and remain available without it."
+                },
+                "claim_types": {
+                  "type": "array",
+                  "description": "Signal-quality claim identifiers accepted for this governed action. Values are open absolute URIs and MUST be a subset of adcp.attestations.accepted_claim_types.",
+                  "items": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                }
+              },
+              "required": ["requirement", "claim_types"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["signal_activation"],
+          "additionalProperties": false
+        },
         "aggregation_window_days": {
           "type": "integer",
           "minimum": 1,
