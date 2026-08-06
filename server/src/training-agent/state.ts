@@ -183,6 +183,7 @@ function createSession(): SessionState {
     negotiatedPricingOptions: new Map(),
     creatives: new Map(),
     signalActivations: new Map(),
+    buildVariantTargets: new Map(),
     usageRecords: [],
     complyExtensions: {
       accountStatuses: new Map(),
@@ -397,6 +398,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
     contentStandards: asMap(hydrated.contentStandards, fresh.contentStandards),
     rightsGrants: asMap(hydrated.rightsGrants, fresh.rightsGrants),
     negotiatedPricingOptions: asMap(hydrated.negotiatedPricingOptions, fresh.negotiatedPricingOptions),
+    buildVariantTargets: asMap(hydrated.buildVariantTargets, fresh.buildVariantTargets),
     usageRecords: Array.isArray(hydrated.usageRecords) ? hydrated.usageRecords : [],
     complyExtensions: {
       accountStatuses: asMap(hydratedComply.accountStatuses, fresh.complyExtensions.accountStatuses),
@@ -628,7 +630,8 @@ export function findMediaBuyAcrossSessions(mediaBuyId: string): Promise<SessionS
 }
 
 export function findGovernancePlanAcrossSessions(planId: string): Promise<SessionState | null> {
-  return findSessionMatching(s => s.governancePlans.has(planId));
+  return findSessionMatching(s =>
+    [...s.governancePlans.values()].some(plan => plan.planId === planId));
 }
 
 /** Clear all sessions (tests only). */

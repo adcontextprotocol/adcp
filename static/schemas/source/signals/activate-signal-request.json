@@ -10,6 +10,12 @@
     }
   ],
   "x-mutates-state": true,
+  "x-governed-commitment": {
+    "scope": "conditional",
+    "triggers": ["activate"],
+    "exemptions": ["deactivate"],
+    "precedence": "trigger_overrides_exemption"
+  },
   "properties": {
     "action": {
       "type": "string",
@@ -40,7 +46,7 @@
     },
     "governance_context": {
       "type": "string",
-      "description": "Opaque governance context returned by check_governance for this signal activation. Required when the account has a registered governance agent; signal agents MUST reject governed activations that omit a valid context.",
+      "description": "Opaque authorization context returned by an approved check_governance decision for this signal activation. Required when the account has a registered governance agent; signal agents MUST reject governed activations that omit a valid context. Conditions and denied decisions never produce this value.",
       "minLength": 1,
       "maxLength": 4096,
       "pattern": "^[\\x20-\\x7E]+$"

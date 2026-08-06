@@ -64,7 +64,7 @@
         },
         "additionalProperties": false
       },
-      "description": "Accepted (width, height) pairs for the main_image slot. Common IAB native sizes: 1200×627 (1.91:1), 1080×1080 (1:1), 1080×1350 (4:5)."
+      "description": "Accepted logical (width, height) pairs for the main_image slot. Common IAB native sizes: 1200×627 (1.91:1), 1080×1080 (1:1), 1080×1350 (4:5). When the effective main_image slot declares `pixel_ratios`, intrinsic asset dimensions are the matched logical pair multiplied by the selected ratio; absence remains 1x."
     },
     "icon_size": {
       "type": "object",
@@ -74,7 +74,7 @@
         "height": { "type": "integer", "minimum": 1 }
       },
       "additionalProperties": false,
-      "description": "Required (width, height) for the icon slot when present (typical: 80×80 or 100×100)."
+      "description": "Required logical (width, height) for the icon slot when present (typical: 80×80 or 100×100). When the effective icon slot declares `pixel_ratios`, intrinsic dimensions are multiplied by the selected ratio; absence remains 1x."
     },
     "max_image_file_size_kb": {
       "type": "integer",

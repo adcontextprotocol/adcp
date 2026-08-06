@@ -11,7 +11,20 @@
   ],
   "x-status": "experimental",
   "x-mutates-state": true,
+  "x-governed-commitment": {
+    "scope": "conditional",
+    "triggers": ["increases_obligation", "extends_term", "resumes_execution", "changes_pricing"],
+    "exemptions": ["pause", "decrease_only"],
+    "precedence": "trigger_overrides_exemption"
+  },
   "properties": {
+    "governance_context": {
+      "type": "string",
+      "description": "Opaque intent authorization for a commitment-increasing rights update.",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
+    },
     "rights_id": {
       "type": "string",
       "description": "Rights grant identifier from acquire_rights response",

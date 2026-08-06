@@ -25,6 +25,11 @@
       "minimum": 1,
       "description": "Height in pixels"
     },
+    "pixel_ratio": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Intrinsic pixels per logical render pixel (for example `2` for a 600×500 image intended to render at 300×250). Optional because a validator can infer the ratio when the target format declares logical dimensions. When supplied, it MUST agree with both `width / logical_width` and `height / logical_height`; it is never a substitute for the intrinsic `width` and `height` fields."
+    },
     "format": {
       "type": "string",
       "description": "Image file format (jpg, png, gif, webp, etc.)"

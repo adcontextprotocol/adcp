@@ -2,16 +2,17 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/creative-manifest.json",
   "title": "Creative Manifest",
-  "description": "Complete specification of a creative: format identification + assets. A manifest carries EITHER a legacy `format_id` (structured `{agent_url, id}` reference to a named format) OR a 3.1+ `format_kind` (the canonical format name the manifest targets, paired with optional `format_option_ref` for routing when a product's `format_options` contains multiple declarations sharing the same `format_kind`). Mutually exclusive — see the `oneOf` at the schema root. Everything the creative needs — images, text, briefs, catalogs — lives in the assets map, declared by the matching format declaration. Each asset is typed according to its asset_type from the format specification.",
+  "description": "Complete specification of a creative: format identification + assets. In 3.2 a manifest uses `format_kind` (the canonical format name it targets), paired with optional `format_option_ref` when a product has multiple declarations sharing that kind. The deprecated `format_id` named-format branch remains only for 3.x wire compatibility. Everything the creative needs — images, text, briefs, catalogs — lives in the assets map declared by the matching format declaration.",
   "type": "object",
   "properties": {
     "format_id": {
       "$ref": "/schemas/core/format-id.json",
-      "description": "Legacy named-format path. Always a structured object {agent_url, id} — never a plain string. Format identifier this manifest is for. Can be a template format (id only) or a deterministic format (id + dimensions/duration). For dimension-specific creatives, include width/height in the format_id to create a unique identifier (e.g., {id: 'display_static', width: 300, height: 250}). Mutually exclusive with `format_kind`."
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.2.** Legacy named-format path retained for 3.x compatibility. New manifests use canonical `format_kind` and, when product routing requires it, `format_option_ref`. Mutually exclusive with format_kind."
     },
     "format_kind": {
       "$ref": "/schemas/core/canonical-format-kind.json",
-      "description": "3.1+ canonical-format path. The canonical format name this manifest targets (e.g., `image`, `video_hosted`, `audio_daast`, `sponsored_placement`). Selects which canonical the seller validates the manifest's assets against. Mutually exclusive with `format_id`."
+      "description": "Canonical 3.2 path. The canonical format name this manifest targets (e.g., `image`, `video_hosted`, `audio_daast`, `sponsored_placement`). Selects the contract against which the seller validates the manifest's assets. Mutually exclusive with deprecated `format_id`."
     },
     "format_option_ref": {
       "$ref": "/schemas/core/format-option-ref.json",
@@ -72,13 +73,14 @@
   },
   "oneOf": [
     {
-      "title": "Legacy manifest (named-format reference)",
-      "description": "Manifest references a named format via the structured `format_id` object. The legacy named-format path remains supported through 4.x.",
+      "title": "Named-format manifest",
+      "deprecated": true,
+      "description": "Deprecated 3.x compatibility branch. Manifest references a named format via the structured format_id object. New 3.2 manifests use format_kind.",
       "required": ["format_id"],
       "not": { "required": ["format_kind"] }
     },
     {
-      "title": "3.1+ manifest (canonical format kind)",
+      "title": "Canonical-format manifest",
       "description": "Manifest declares which canonical format it targets via `format_kind` (e.g., `image`). This 3.1+ canonical-format path was introduced by RFC #3305.",
       "required": ["format_kind"],
       "not": { "required": ["format_id"] }

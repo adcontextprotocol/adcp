@@ -15,7 +15,7 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 | [`get_products`](/docs/media-buy/task-reference/get_products) | Discover inventory and refine products | ~60s | Discovery |
 | [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) | Create campaigns from selected products | Minutes-Days | Media Buys |
 | [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) | Modify campaign settings and budgets | Minutes-Days | Media Buys |
-| [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) | View supported creative specifications | ~1s | Capability |
+| [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) | View endpoint capabilities, including creative operations | ~1s | Capability |
 | [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) | Sync catalog feeds (products, stores, inventory) | Minutes-Days | Catalogs |
 | [`sync_creatives`](/docs/creative/task-reference/sync_creatives) | Upload and manage creative assets | Minutes-Days | Creatives |
 | [`list_creatives`](/docs/creative/task-reference/list_creatives) | Query creative library with filtering | ~1s | Creatives |
@@ -32,7 +32,7 @@ AdCP tasks fall into four response time categories:
 
 ### 🟢 Instant (~1 second)
 **Simple lookups and event ingestion**
-- [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) - Format specifications
+- `get_products` `Product.format_options[]` - Product-specific canonical format specifications
 - [`list_creatives`](/docs/creative/task-reference/list_creatives) - Creative library queries
 - [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) - Media buy status and creative approvals
 - [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) - Performance signal submission
@@ -65,7 +65,7 @@ Start here to understand what's available and plan your campaign.
 
 - **[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)** - Discover agent capabilities, portfolio, and supported features (protocol-level task)
 - **[`get_products`](/docs/media-buy/task-reference/get_products)** - The core discovery task using natural language briefs
-- **[`list_creative_formats`](/docs/creative/task-reference/list_creative_formats)** - Understand creative requirements
+- **[Canonical formats](/docs/creative/canonical-formats)** - Understand creative requirements and authority
 
 ### Media Buy Management  
 Create and manage your advertising campaigns.
@@ -119,7 +119,7 @@ Schemas are accessible at runtime via the documentation server for validation an
 ### Task Naming Conventions
 Task names use snake_case and follow verb-first semantics consistently across Media Buy:
 - `get_*`: Retrieve current state or scoped datasets (for example `get_products`, `get_media_buys`, `get_media_buy_delivery`)
-- `list_*`: Enumerate collections with optional filtering (for example `list_creative_formats`, `list_creatives`)
+- `list_*`: Enumerate collections with optional filtering (for example `list_creatives`)
 - `create_*`: Create new resources (`create_media_buy`)
 - `update_*`: Apply partial updates to existing resources (`update_media_buy`)
 - `sync_*`: Reconcile external state into seller systems with upsert-like behavior (`sync_catalogs`, `sync_creatives`, `sync_event_sources`)
@@ -149,7 +149,7 @@ Long-running tasks provide:
 1. **Discover Capabilities**: Use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) to understand what the agent supports
 2. **Find Inventory**: Use [`get_products`](/docs/media-buy/task-reference/get_products) to find relevant inventory
 3. **Refine Products**: Re-call [`get_products`](/docs/media-buy/task-reference/get_products) with `buying_mode: "refine"` to iterate on budgets, pricing, and targeting
-4. **Understand Formats**: Check [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) for requirements
+4. **Understand Formats**: Check each selected product's canonical `format_options[]`
 5. **Sync Catalogs**: Use [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) to push product feeds to the account
 6. **Supply Creatives**: Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for library-backed sellers, or inline `packages[].creatives` for inline-only sellers
 7. **Create Campaign**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with selected products

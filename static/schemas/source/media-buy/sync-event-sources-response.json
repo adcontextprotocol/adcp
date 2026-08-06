@@ -44,6 +44,16 @@
                   "$ref": "/schemas/enums/event-type.json"
                 }
               },
+              "value_currencies": {
+                "type": "array",
+                "description": "ISO 4217 currencies accepted for monetary event values from this source. Canonical ROAS buys require their media-buy currency in this list.",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{3}$"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
               "action_source": {
                 "$ref": "/schemas/enums/action-source.json",
                 "description": "Type of event source (website pixel, app SDK, in-store, etc.)"

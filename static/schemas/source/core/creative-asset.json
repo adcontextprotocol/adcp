@@ -16,11 +16,12 @@
     },
     "format_id": {
       "$ref": "/schemas/core/format-id.json",
-      "description": "Legacy named-format path. Always a structured object {agent_url, id} — never a plain string. Format identifier specifying which format this creative conforms to. Can be: (1) concrete format_id referencing a format with fixed dimensions, (2) template format_id referencing a template format, or (3) parameterized format_id with dimensions/duration parameters for template formats. Mutually exclusive with `format_kind`."
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.2.** Legacy named-format path retained for older 3.x peers. New creative assets use `format_kind` and optional `format_option_ref`."
     },
     "format_kind": {
       "$ref": "/schemas/core/canonical-format-kind.json",
-      "description": "3.1+ canonical-format path. The canonical format name this creative targets (e.g., `image`, `video_hosted`). Mutually exclusive with `format_id`."
+      "description": "Canonical format name this creative targets (e.g., `image`, `video_hosted`). Mutually exclusive with deprecated `format_id`."
     },
     "format_option_ref": {
       "$ref": "/schemas/core/format-option-ref.json",
@@ -98,6 +99,7 @@
     },
     "placement_ids": {
       "type": "array",
+      "deprecated": true,
       "description": "Legacy shorthand array of placement IDs where this creative should run when uploading via create_media_buy or update_media_buy. New senders SHOULD use `placement_refs` because placement IDs are publisher-scoped and strings are ambiguous in multi-publisher products. If omitted, creative runs on all buyer-targetable placements. If `placement_refs` is also present, receivers MUST ignore this field. Only used during upload to media buy - not stored in creative library.",
       "items": {
         "type": "string"
@@ -130,14 +132,15 @@
   },
   "oneOf": [
     {
-      "title": "Legacy creative (named-format reference)",
-      "description": "Creative references a named format via the structured `format_id` object. The legacy named-format path remains supported through 4.x.",
+      "title": "v1 creative (named-format reference)",
+      "deprecated": true,
+      "description": "Deprecated 3.x compatibility branch using a structured named-format reference.",
       "required": ["format_id"],
       "not": { "required": ["format_kind"] }
     },
     {
-      "title": "3.1+ creative (canonical format kind)",
-      "description": "Creative declares which canonical format it targets via `format_kind` (e.g., `image`). This 3.1+ canonical-format path was introduced by RFC #3305.",
+      "title": "v2 creative (canonical format kind)",
+      "description": "Creative declares the portable canonical contract it targets via `format_kind` and optional `format_option_ref`.",
       "required": ["format_kind"],
       "not": { "required": ["format_id"] }
     }

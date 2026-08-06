@@ -35,12 +35,13 @@
       "additionalProperties": false
     },
     {
-      "title": "LegacyPostalArea",
+      "title": "PostalAreaWithFusedSystem",
       "deprecated": true,
       "type": "object",
       "properties": {
         "system": {
           "$ref": "/schemas/enums/legacy-postal-system.json",
+          "deprecated": true,
           "description": "Deprecated country-fused postal code system (e.g., 'us_zip', 'gb_outward'). Prefer country + postal-system."
         },
         "values": {
