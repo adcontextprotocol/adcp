@@ -115,6 +115,94 @@ function applicableBrandAgents(brandJson, brandDomain) {
   };
 }
 
+function applicableBrandRefAgents(brandJson, brandRef) {
+  if (!brandRef || typeof brandRef.domain !== 'string') {
+    return { agents: [], ambiguous: false };
+  }
+
+  if (typeof brandRef.brand_id !== 'string') {
+    return applicableBrandAgents(brandJson, brandRef.domain);
+  }
+
+  const inlineBrands = Array.isArray(brandJson.brands) ? brandJson.brands : [];
+  const matches = inlineBrands.filter((brand) => brand?.id === brandRef.brand_id);
+  if (matches.length !== 1) {
+    return { agents: [], ambiguous: matches.length > 1 };
+  }
+
+  const houseAgents = Array.isArray(brandJson.house?.agents) ? brandJson.house.agents : [];
+  return {
+    agents: Array.isArray(matches[0].agents) ? matches[0].agents : houseAgents,
+    ambiguous: false,
+  };
+}
+
+function assessBrandAgentAuthorization(input, policy) {
+  const { agent_url: agentUrl, agent_id: agentId, kid } = input.envelope || {};
+  if (!input.brand_json) {
+    return { trust: 'untrusted', reason: 'brand_json_unavailable' };
+  }
+
+  const canonicalAgentUrl = canonicalizeFixtureUrl(agentUrl);
+  const resolution = applicableBrandRefAgents(input.brand_json, input.brand_ref);
+  if (resolution.ambiguous) {
+    return { trust: 'untrusted', reason: 'agent_authorization_ambiguous' };
+  }
+  const matches = resolution.agents.filter((agent) => (
+    agent?.type === policy.agent_type
+    && canonicalAgentUrl !== null
+    && canonicalizeFixtureUrl(agent.url) === canonicalAgentUrl
+    && (typeof agentId !== 'string' || agent.id === agentId)
+  ));
+
+  if (matches.length === 0) {
+    return { trust: 'untrusted', reason: 'agent_not_authorized' };
+  }
+  if (matches.length > 1) {
+    return { trust: 'untrusted', reason: 'agent_authorization_ambiguous' };
+  }
+
+  const jwksUri = canonicalizeFixtureUrl(matches[0].jwks_uri || defaultJwksUri(matches[0].url));
+  if (jwksUri === null || !jwksUri.startsWith('https://')) {
+    return { trust: 'untrusted', reason: 'jwks_unavailable', kid };
+  }
+  const jwks = input.jwks_by_uri?.[jwksUri];
+  if (!jwks || !Array.isArray(jwks.keys)) {
+    return { trust: 'untrusted', reason: 'jwks_unavailable', kid, jwks_uri: jwksUri };
+  }
+
+  const keys = jwks.keys.filter((candidate) => candidate?.kid === kid);
+  if (keys.length === 0) {
+    return { trust: 'untrusted', reason: 'kid_not_authorized', kid, jwks_uri: jwksUri };
+  }
+  if (keys.length > 1) {
+    return { trust: 'untrusted', reason: 'kid_authorization_ambiguous', kid, jwks_uri: jwksUri };
+  }
+
+  const [key] = keys;
+  if (
+    key.adcp_use !== policy.key_purpose
+    || key.use !== 'sig'
+    || !Array.isArray(key.key_ops)
+    || !key.key_ops.includes('verify')
+  ) {
+    return { trust: 'untrusted', reason: 'key_purpose_invalid', kid, jwks_uri: jwksUri };
+  }
+
+  const verifiedThumbprint = jwkThumbprint(input.verified_jwk);
+  const authorizedThumbprint = jwkThumbprint(key);
+  if (
+    input.verified_jwk?.kid !== kid
+    || verifiedThumbprint === null
+    || authorizedThumbprint === null
+    || verifiedThumbprint !== authorizedThumbprint
+  ) {
+    return { trust: 'untrusted', reason: 'key_material_mismatch', kid, jwks_uri: jwksUri };
+  }
+
+  return { trust: 'trusted', kid, jwks_uri: jwksUri };
+}
+
 function assessBrandResponseAuthorization(input) {
   const { agent_url: agentUrl, brand_domain: brandDomain, kid } = input.envelope || {};
   if (!input.brand_json) {
@@ -182,6 +270,7 @@ function assessBrandResponseAuthorization(input) {
 }
 
 module.exports = {
+  assessBrandAgentAuthorization,
   assessBrandResponseAuthorization,
   canonicalizeFixtureUrl,
   jwkThumbprint,
