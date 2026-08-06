@@ -58,12 +58,12 @@ test('explicitly deprecated schema nodes carry deprecated: true', () => {
   assert.deepEqual(missing, [], `Missing deprecated: true annotations:\n${missing.join('\n')}`);
 });
 
-test('codegen-facing format-variant titles use stable structural names', () => {
+test('codegen-facing format-variant titles remain stable', () => {
   const expectations = [
     ['core/product.json', ['anyOf', 0, 'title'], 'Named-format product'],
     ['core/product.json', ['anyOf', 1, 'title'], 'Canonical-format product'],
-    ['core/creative-asset.json', ['oneOf', 0, 'title'], 'Named-format creative'],
-    ['core/creative-asset.json', ['oneOf', 1, 'title'], 'Canonical-format creative'],
+    ['core/creative-asset.json', ['oneOf', 0, 'title'], 'v1 creative (named-format reference)'],
+    ['core/creative-asset.json', ['oneOf', 1, 'title'], 'v2 creative (canonical format kind)'],
     ['core/creative-manifest.json', ['oneOf', 0, 'title'], 'Named-format manifest'],
     ['core/creative-manifest.json', ['oneOf', 1, 'title'], 'Canonical-format manifest'],
     ['creative/list-creatives-response.json', ['properties', 'creatives', 'items', 'oneOf', 0, 'title'], 'Listed creative (named-format reference)'],
