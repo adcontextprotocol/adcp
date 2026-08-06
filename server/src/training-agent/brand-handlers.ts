@@ -7,6 +7,8 @@
  */
 
 import type { TrainingContext, ToolArgs } from './types.js';
+import { createHash } from 'node:crypto';
+import { canonicalize } from '@adcp/sdk';
 import { getSandboxBrands } from '@adcp/sdk/testing';
 import { getSession, sessionKeyFromArgs } from './state.js';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
@@ -143,6 +145,92 @@ interface TalentEntry {
   rights_offerings: RightsOffering[];
   acquire_behavior: AcquireBehavior;
   exclusion_reasons?: Record<string, string | { reason: string; suggestions?: string[] }>;
+}
+
+interface RightsConstraint {
+  rights_id: string;
+  rights_agent: { url: string; id: string };
+  rights_holder: { domain: string; brand_id: string };
+  valid_from: string;
+  valid_until: string;
+  uses: string[];
+  countries: string[];
+  impression_cap?: number;
+  right_type: string;
+  approval_status: 'approved';
+  grant_status: 'active' | 'paused';
+  restrictions: string[];
+  disclosure: { required: boolean; text: string };
+  creative_approval_required: boolean;
+  content_digest: string;
+  attestation_refs: Array<{
+    issuer: { type: 'brand'; brand: { domain: string; brand_id: string } };
+    claim_type: 'https://adcontextprotocol.org/claims/rights/grant';
+    subject: {
+      type: 'resource';
+      resource_type: 'https://adcontextprotocol.org/claims/subjects/rights-grant';
+      namespace: string;
+      id: string;
+      content_digest: string;
+    };
+    locator: { type: 'issuer_credential_id'; credential_id: string; resolver_id: 'sandbox-primary' };
+  }>;
+}
+
+function buildRightsConstraint(input: {
+  rightsId: string;
+  talent: TalentEntry;
+  offering: RightsOffering;
+  validFrom: string;
+  validUntil: string;
+  uses: string[];
+  countries: string[];
+  impressionCap?: number;
+  grantStatus?: 'active' | 'paused';
+  restrictions: string[];
+  disclosure: { required: boolean; text: string };
+  creativeApprovalRequired: boolean;
+}): RightsConstraint {
+  const agentUrl = 'https://rights.lotientertainment.com/mcp';
+  const rightsHolder = { domain: input.talent.house.domain, brand_id: input.talent.brand_id };
+  const projection = {
+    rights_id: input.rightsId,
+    rights_agent: { url: agentUrl, id: 'loti_entertainment' },
+    rights_holder: rightsHolder,
+    valid_from: input.validFrom,
+    valid_until: input.validUntil,
+    uses: input.uses,
+    countries: input.countries,
+    ...(input.impressionCap ? { impression_cap: input.impressionCap } : {}),
+    right_type: input.offering.right_type,
+    approval_status: 'approved' as const,
+    grant_status: input.grantStatus ?? 'active',
+    restrictions: input.restrictions,
+    disclosure: input.disclosure,
+    creative_approval_required: input.creativeApprovalRequired,
+  };
+  const contentDigest = `sha256:${createHash('sha256').update(canonicalize(projection)).digest('hex')}`;
+
+  return {
+    ...projection,
+    content_digest: contentDigest,
+    attestation_refs: [{
+      issuer: { type: 'brand', brand: rightsHolder },
+      claim_type: 'https://adcontextprotocol.org/claims/rights/grant',
+      subject: {
+        type: 'resource',
+        resource_type: 'https://adcontextprotocol.org/claims/subjects/rights-grant',
+        namespace: agentUrl,
+        id: input.rightsId,
+        content_digest: contentDigest,
+      },
+      locator: {
+        type: 'issuer_credential_id',
+        credential_id: `cred_${input.rightsId}_${input.validUntil.slice(0, 10)}`,
+        resolver_id: 'sandbox-primary',
+      },
+    }],
+  };
 }
 
 /** Advertiser brand — brand identity without talent rights */
@@ -1031,7 +1119,7 @@ export async function handleAcquireRights(
     if (rejection) {
       return {
         rights_id: rightsId,
-        status: 'rejected',
+        status: 'completed',
         rights_status: 'rejected',
         brand_id: talent.brand_id,
         reason: rejection,
@@ -1040,7 +1128,7 @@ export async function handleAcquireRights(
   } else if (session.governancePlans.size > 0 || registeredGovernanceAgents.length > 0) {
     return {
       rights_id: rightsId,
-      status: 'rejected',
+      status: 'completed',
       rights_status: 'rejected',
       brand_id: talent.brand_id,
       reason: 'Rights acquisition requires governance approval. Call check_governance first.',
@@ -1070,7 +1158,7 @@ export async function handleAcquireRights(
         // discriminated-union arm for this case (status: rejected + reason).
         return {
           rights_id: rightsId,
-          status: 'rejected',
+          status: 'completed',
           rights_status: 'rejected',
           brand_id: talent.brand_id,
           reason: msg,
@@ -1087,7 +1175,7 @@ export async function handleAcquireRights(
       const isStructured = typeof rule === 'object';
       return {
         rights_id: rightsId,
-        status: 'rejected',
+        status: 'completed',
         rights_status: 'rejected',
         brand_id: talent.brand_id,
         reason: isStructured ? rule.reason : rule,
@@ -1102,7 +1190,7 @@ export async function handleAcquireRights(
       const talentName = getTalentName(talent);
       return {
         rights_id: rightsId,
-        status: 'pending_approval',
+        status: 'completed',
         rights_status: 'pending_approval',
         brand_id: talent.brand_id,
         detail: `${talentName}'s management requires review for ${keyword} category campaigns. Request submitted for talent approval.`,
@@ -1119,6 +1207,14 @@ export async function handleAcquireRights(
 
   const generationCredentials: GenerationCredential[] = [];
   const campaignUses = campaign.uses || pricingOption.uses;
+  const restrictions = [
+    'All generated creatives must be submitted for approval before distribution',
+    'No modification of talent likeness beyond approved AI generation parameters',
+  ];
+  const disclosure = {
+    required: true,
+    text: `Features AI-generated likeness of ${talentName}, used under license from Loti Entertainment`,
+  };
 
   if (campaignUses.includes('likeness')) {
     generationCredentials.push({
@@ -1140,7 +1236,7 @@ export async function handleAcquireRights(
 
   return {
     rights_id: rightsId,
-    status: 'acquired',
+    status: 'completed',
     rights_status: 'acquired',
     brand_id: talent.brand_id,
     terms: {
@@ -1159,25 +1255,21 @@ export async function handleAcquireRights(
       },
     },
     generation_credentials: generationCredentials,
-    restrictions: [
-      'All generated creatives must be submitted for approval before distribution',
-      'No modification of talent likeness beyond approved AI generation parameters',
-    ],
-    disclosure: {
-      required: true,
-      text: `Features AI-generated likeness of ${talentName}, used under license from Loti Entertainment`,
-    },
-    rights_constraint: {
-      rights_id: rightsId,
-      rights_agent: { url: 'https://rights.lotientertainment.com/mcp', id: 'loti_entertainment' },
-      valid_from: `${startDate}T00:00:00Z`,
-      valid_until: `${endDate}T23:59:59Z`,
+    restrictions,
+    disclosure,
+    rights_constraint: buildRightsConstraint({
+      rightsId,
+      talent,
+      offering,
+      validFrom: `${startDate}T00:00:00Z`,
+      validUntil: `${endDate}T23:59:59Z`,
       uses: campaignUses,
       countries: campaign.countries || offering.countries,
-      ...(pricingOption.impression_cap ? { impression_cap: pricingOption.impression_cap } : {}),
-      approval_status: 'approved',
-      verification_url: `https://sandbox.lotientertainment.com/rights/${rightsId}/verify`,
-    },
+      impressionCap: pricingOption.impression_cap,
+      restrictions,
+      disclosure,
+      creativeApprovalRequired: true,
+    }),
     approval_webhook: {
       url: `https://sandbox.lotientertainment.com/rights/${rightsId}/approve`,
       authentication: {
@@ -1277,10 +1369,18 @@ export async function handleUpdateRights(
 
   const talentName = getTalentName(talent);
   const campaignUses = pricingOption.uses;
+  const restrictions = [
+    'All generated creatives must be submitted for approval before distribution',
+    'No modification of talent likeness beyond approved AI generation parameters',
+  ];
+  const disclosure = {
+    required: true,
+    text: `Features AI-generated likeness of ${talentName}, used under license from Loti Entertainment`,
+  };
 
   const generationCredentials: GenerationCredential[] = [];
 
-  if (campaignUses.includes('likeness')) {
+  if (paused !== true && campaignUses.includes('likeness')) {
     generationCredentials.push({
       provider: 'midjourney',
       rights_key: `rk_mj_sandbox_${talent.brand_id}_${Date.now().toString(36)}`,
@@ -1289,7 +1389,7 @@ export async function handleUpdateRights(
     });
   }
 
-  if (campaignUses.includes('voice') && talent.voice_synthesis) {
+  if (paused !== true && campaignUses.includes('voice') && talent.voice_synthesis) {
     generationCredentials.push({
       provider: 'elevenlabs',
       rights_key: `rk_el_sandbox_${talent.brand_id}_${Date.now().toString(36)}`,
@@ -1316,17 +1416,20 @@ export async function handleUpdateRights(
       },
     },
     generation_credentials: generationCredentials,
-    rights_constraint: {
-      rights_id: rightsId,
-      rights_agent: { url: 'https://rights.lotientertainment.com/mcp', id: 'loti_entertainment' },
-      valid_from: `${currentStartDate}T00:00:00Z`,
-      valid_until: `${effectiveEndDate}T23:59:59Z`,
+    rights_constraint: buildRightsConstraint({
+      rightsId,
+      talent,
+      offering,
+      validFrom: `${currentStartDate}T00:00:00Z`,
+      validUntil: `${effectiveEndDate}T23:59:59Z`,
       uses: campaignUses,
       countries: offering.countries,
-      ...(effectiveImpressionCap ? { impression_cap: effectiveImpressionCap } : {}),
-      approval_status: 'approved',
-      verification_url: `https://sandbox.lotientertainment.com/rights/${rightsId}/verify`,
-    },
+      impressionCap: effectiveImpressionCap,
+      grantStatus: paused === true ? 'paused' : 'active',
+      restrictions,
+      disclosure,
+      creativeApprovalRequired: true,
+    }),
     implementation_date: new Date().toISOString(),
     ...(paused !== undefined && { paused }),
     sandbox: true,

@@ -245,6 +245,11 @@ Discover advertising inventory using natural language briefs or explicit wholesa
 - Sales agents MUST return products matching the brief criteria when a brief is provided
 - Sales agents MUST include `product_id` and `pricing_options` for each product
 - Sales agents SHOULD include relevance scoring when multiple products match
+- Sales agents that understand a well-formed `brief` or `refine` request but deliberately decline to offer products for commercial, availability, or seller-policy reasons MUST return the `GetProductsRejected` arm with `status: "rejected"` and a buyer-facing `reason`
+- Sales agents MUST NOT use `GetProductsRejected` for a completed search with no matching inventory, incomplete work, or a technical failure: use `status: "completed"` with `products: []`, a usable partial response with `incomplete[]` / an async task arm, or the error channel respectively
+- `incomplete[]` describes missing scopes in an otherwise usable response; it does not classify the condition as retryable. A timeout or unavailable upstream that prevents a usable response MUST use the error channel, normally `SERVICE_UNAVAILABLE` with `error.recovery: "transient"` and optional `retry_after`
+- Sales agents using `GetProductsRejected` MUST NOT also return `products`, `proposals`, `incomplete`, `filter_diagnostics`, `refinement_applied`, `cache_scope`, `errors`, or envelope-level `adcp_error`; the task completed successfully with a structured business outcome rather than a full or partial search result
+- Orchestrators receiving `GetProductsRejected` MUST treat the transport call as successful, dispatch on `status: "rejected"`, and use `suggestions[]` when present to decide whether to revise and resubmit the brief
 
 **Refinement requirements:**
 

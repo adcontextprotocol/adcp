@@ -25,7 +25,7 @@ For high-volume verification (portfolio refresh, creative-clearance batches, cra
 - For `subsidiary` claims, also call the leaf's brand-agent with `claim_type: "parent"` (or crawl the leaf's `brand.json` for its `house_domain`).
 - For `property` claims, cross-check against the brand's static `brand.json` `properties[]` and (for domains) DNS/TLS evidence.
 - For `trademark` claims, cross-check the public registry record. For `licensed_in` specifically, the licensor named in `details.licensor_domain` SHOULD reciprocate `licensed_out` for the same mark before the licensing relationship is trusted.
-- **Only rejections (`disputed` / `not_ours`) are authoritative on a single signed response** — a brand has standing to refuse association unilaterally.
+- **Only trusted rejections (`disputed` / `not_ours`) are authoritative on a single signed response** — after the [brand-authorization cross-check](#trust-model) returns verifier-local `trust: "trusted"`, the brand has standing to refuse association unilaterally. An untrusted rejection cannot revoke trust.
 
 Shortcuts kill the trust model. Without the reciprocation step, a malicious or mistaken house could claim subsidiaries, properties, or licensed marks it doesn't actually have. See [`brand.json` § Agent-augmented verification](/docs/brand-protocol/brand-json#agent-augmented-verification) for the full normative trust table and the malicious-house walkthrough.
 
@@ -104,7 +104,7 @@ House-side: a consumer detects `converse.com` claiming `house_domain: nikeinc.co
 }
 ```
 
-The brand can also reject — rejection direction is authoritative on a single signed response, no reciprocation required:
+The brand can also reject. Rejection direction is authoritative on a single signed response only after the [brand-authorization cross-check](#trust-model) returns verifier-local `trust: "trusted"`; no reciprocation is then required:
 
 ```json
 {
@@ -234,7 +234,7 @@ A property that spans multiple regions (e.g., a global e-commerce surface) retur
 }
 ```
 
-The brand can also reject — rejection direction is authoritative on a single signed response:
+The brand can also reject. Rejection direction is authoritative on a single signed response only after the [brand-authorization cross-check](#trust-model) returns verifier-local `trust: "trusted"`:
 
 ```json
 {
@@ -315,7 +315,7 @@ Applicable statuses: `owned`, `transferring`, `disputed`, `not_ours`, `archived`
 
 **`licensed_in` reciprocation.** Consumers SHOULD treat `licensed_in` as **unverified** until the named `licensor_domain`'s brand-agent reciprocates `licensed_out` for the same mark (same mutual-assertion shape as ownership, just across the licensing edge). Without reciprocation, the brand could unilaterally claim a licensed relationship that doesn't exist.
 
-The brand can also reject — rejection direction is authoritative on a single signed response:
+The brand can also reject. Rejection direction is authoritative on a single signed response only after the [brand-authorization cross-check](#trust-model) returns verifier-local `trust: "trusted"`:
 
 ```json
 {
@@ -348,9 +348,13 @@ The agent's response is signed under the brand's `adcp_use: "response-signing"` 
 
 The signature attests authorship of the response payload under the brand's published key during the envelope's `iat`/`exp` window; it is not a non-repudiation receipt and does not bind the brand to assertions beyond the direction-asymmetric semantics below. The required `signed_response` envelope binds the response to the designated task, resolved `brand_domain`, responding `agent_url`, caller identity, request payload, and freshness window. Verifiers that rely on the signature MUST validate the envelope against [`response-payload-jws-envelope.json`](https://adcontextprotocol.org/schemas/v3/core/response-payload-jws-envelope.json), reject expired envelopes for online decisions, and reject any mismatch between unsigned task-body fields and `signed_response.payload.response`.
 
-The trust model is **direction-asymmetric**:
+A valid signature proves authorship, not brand authority. For 3.2, verifiers SHOULD run the additive [brand-authorization cross-check](/docs/building/by-layer/L1/security#designated-task-response-signing) and represent its result with [`brand-response-authorization-result.json`](https://adcontextprotocol.org/schemas/v3/core/brand-response-authorization-result.json). A failed or unavailable cross-check yields verifier-local `trust: "untrusted"`; it does not rewrite `verification_status` and MUST NOT extend or revoke relationship trust on its own. This applies to both assertion and rejection directions. Mandatory cryptographic brand authorization and hard rejection are reserved for 4.0.
 
-- **Rejection direction** (agent says `disputed` / `not_ours`) is authoritative. A brand can refuse association unilaterally; no mutual reciprocation required.
+For a verifier that performs the 3.2 cross-check, the direction-asymmetric rules below apply only when the verifier-local result is `trust: "trusted"`. An `untrusted` response remains unauthenticated evidence regardless of direction and cannot extend or revoke relationship trust.
+
+The trust model for a trusted response is **direction-asymmetric**:
+
+- **Rejection direction** (agent says `disputed` / `not_ours`) is authoritative only after the signer passes the brand-authorization cross-check. A trusted brand can refuse association unilaterally; no mutual reciprocation required.
 - **Assertion direction** (agent says `owned` / `pending_review` / `transferring` / `licensed_*`) is informative but NOT trust-extending on its own. The reciprocating side must still confirm before trust extends.
 
 When both the house-side and leaf-side agents speak (via `claim_type: "subsidiary"` and `claim_type: "parent"` respectively), **mutual assertion is established at the agent layer**. When only one side has an agent, fall back to crawl-based mutual-assertion inference per [`brand.json` § Mutual-assertion trust model](/docs/brand-protocol/brand-json#mutual-assertion-trust-model).

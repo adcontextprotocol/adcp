@@ -202,7 +202,8 @@ The authoritative shape is [`attestation-capabilities.json`](https://adcontextpr
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 },
     "attestations": {
       "accepted_claim_types": [
-        "https://claims.example/audience/methodology-reviewed"
+        "https://claims.example/audience/methodology-reviewed",
+        "https://adcontextprotocol.org/claims/rights/grant"
       ],
       "accepted_proof_formats": [
         "https://www.w3.org/TR/vc-jose-cose/"
@@ -217,10 +218,26 @@ The authoritative shape is [`attestation-capabilities.json`](https://adcontextpr
             "type": "origin",
             "origin": "https://credentials.example"
           },
+          "claim_types": ["https://claims.example/audience/methodology-reviewed"],
           "resolvers": [
             {
               "resolver_id": "primary",
               "url": "https://resolver.credentials.example/v1/credentials",
+              "authentication": "evaluator_managed"
+            }
+          ]
+        },
+        {
+          "issuer": {
+            "type": "brand",
+            "brand": { "domain": "novabrands.example", "brand_id": "nova_talent" }
+          },
+          "claim_types": ["https://adcontextprotocol.org/claims/rights/grant"],
+          "proof_formats": ["https://www.w3.org/TR/vc-jose-cose/"],
+          "resolvers": [
+            {
+              "resolver_id": "rights-primary",
+              "url": "https://rights.novabrands.example/credentials",
               "authentication": "evaluator_managed"
             }
           ]
@@ -247,6 +264,8 @@ The authoritative shape is [`attestation-capabilities.json`](https://adcontextpr
 | `max_embedded_credential_bytes` | integer | Optional embedded-proof byte limit; evaluators enforce it before parsing. Protocol maximum: 1 MiB. |
 
 Changing an attestation allowlist can change whether future requests are accepted and whether cached evaluations remain reusable. It is therefore a material capability change and SHOULD update `adcp.capability_changes.capabilities_version` and fire `capabilities.changed` when notifications are enabled.
+
+The rights-grant claim URI is a domain profile, not a globally trusted issuer list. A seller that advertises `media_buy.rights_attestations` also lists `https://adcontextprotocol.org/claims/rights/grant` here and configures each acceptable rights-agent issuer, resolver, proof format, and credential origin. Buyer-supplied values cannot expand that policy.
 
 ### supported_protocols
 
@@ -519,6 +538,26 @@ Sellers that support a geographic targeting level SHOULD support both inclusion 
 ```
 
 Use `postal_code` for the normal postal code string in countries without a more specific registered local system. During the 3.x migration, sellers SHOULD emit equivalent deprecated aliases such as `us_zip` alongside native country keys where an alias exists. Buyers and SDKs SHOULD normalize both shapes before making capability decisions.
+
+#### rights_attestations
+
+Declares how this seller evaluates portable rights-grant credentials carried in creative `rights[]`. Presence requires `adcp.attestations`, and its `accepted_claim_types` MUST include `https://adcontextprotocol.org/claims/rights/grant`.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `requirement` | `optional \| required` | yes | `required` makes a current verified seller evaluation a serving-eligibility condition. `optional` permits an independent legacy contractual path, but unattested constraints remain machine-unverified. |
+
+```json
+{
+  "media_buy": {
+    "rights_attestations": {
+      "requirement": "required"
+    }
+  }
+}
+```
+
+The buyer carries `AttestationReference` values and never supplies a trusted outcome. The seller evaluates the exact reference, holder issuer, authorized rights-agent key, subject, grant digest, validity, and fresh revocation status and returns seller-produced `rights_attestation_evaluations` on creative readback. Sparse `list_creatives` reads request `rights_attestation_evaluations`; the seller automatically includes `creative_id` and `rights` so each result can be paired with the retained constraint. Neither capability mode permits fallback to `rights_constraint.verification_url`; that deprecated URL has no authorization meaning.
 
 #### audience_evidence
 

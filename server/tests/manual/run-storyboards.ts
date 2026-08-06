@@ -101,6 +101,11 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
   // on its own.
   app.use('/api/training-agent', createTrainingAgentRouter({
     ...(isThreeZeroCompatRun && { storyboardCompat: { version: '3.0' as const } }),
+    // The matrix intentionally drives every storyboard through one embedded
+    // server in a few seconds. Feature work can legitimately add MCP calls;
+    // production throttling is outside this exhaustive functional matrix and
+    // must not turn it into an order-dependent request-count test.
+    disableRateLimit: true,
   }));
   return await new Promise((resolve, reject) => {
     const srv = http.createServer(app);

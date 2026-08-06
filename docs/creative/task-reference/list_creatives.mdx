@@ -49,7 +49,7 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 | `include_webhook_activity` | boolean | No | Include recent webhook fires per creative (default: false). See [Webhook activity](#webhook-activity). |
 | `webhook_activity_limit` | integer | No | Maximum `webhook_activity[]` records per creative when `include_webhook_activity: true` (default: 50, range 1–200). |
 | `account` | [AccountRef](/docs/building/by-layer/L2/accounts-and-agents#account-references) | No | Account reference for pricing. When provided with `include_pricing`, the agent returns `pricing_options` from this account's rate card on each creative. |
-| `fields` | array | No | Specific fields to return (omit for all fields). Includes `"assets"` for local fallback filtering and `"pricing_options"` for sparse selection. |
+| `fields` | array | No | Specific fields to return (omit for all fields). Includes `"assets"` for local fallback filtering, `"pricing_options"` for sparse selection, and `"rights"` / `"rights_attestation_evaluations"` for rights readback. Selecting evaluations automatically includes `creative_id` and `rights`. |
 
 ## Filtering options
 
@@ -203,6 +203,8 @@ The response provides creative data with optional enrichment:
 | `localization` | object | Exact materialized locale assets, buyer-assigned variant identities, and default/unmatched policy for localized creatives. |
 | `localization_unavailable` | object | Fail-closed per-item errors and retryability when exact localization readback cannot be constructed. Mutually exclusive with `localization`. |
 | `tags` | string[] | Tags for categorization |
+| `rights` | array | Exact retained rights constraints and portable references. Presentation only; not proof of seller verification. |
+| `rights_attestation_evaluations` | array | Seller-produced, freshness-bounded grant evaluations. Each reference must exactly match one reference in the returned `rights` array. |
 | `concept_id` | string | Creative concept ID |
 | `concept_name` | string | Human-readable concept name |
 | `variables` | array | DCO variable definitions (when `include_variables=true`) |
@@ -211,6 +213,10 @@ The response provides creative data with optional enrichment:
 | `snapshot_unavailable_reason` | string | Why snapshot is missing — `SNAPSHOT_UNSUPPORTED`, `SNAPSHOT_TEMPORARILY_UNAVAILABLE`, or `SNAPSHOT_PERMISSION_DENIED` |
 | `items` | array | Items for multi-asset formats (when `include_items=true`) |
 | `pricing_options` | [VendorPricingOption](/docs/creative/specification#pricing)[] | Pricing options for this creative (when `include_pricing=true` and `account` provided). Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Same pattern as `get_signals` and `list_content_standards`. |
+
+### Rights attestation readback
+
+Selecting `fields: ["rights_attestation_evaluations"]` automatically includes `creative_id` and `rights`. Every evaluation's `{rights_id, content_digest, reference}` must select exactly one retained constraint and one byte-for-byte equal `attestation_refs` entry. The evaluation array is complete rather than independently truncated: because `rights` has no item ceiling, neither does its evaluation readback. A `verified` result is reusable only when the seller retrieves the byte-identical result from its own local evaluation store keyed by `(evaluated_by, reference_digest)`, for that exact unchanged grant, and only until `valid_until`. The `evaluated_by` string alone is not provenance; buyer-authored and foreign-seller readback fails closed. The result is not a serving authorization and does not replace use, country, time, package, or impression-cap checks. When the seller advertises `media_buy.rights_attestations.requirement: "required"`, every applicable constraint on a serving-eligible creative needs at least one current verified result.
 
 ### Localized creative readback
 

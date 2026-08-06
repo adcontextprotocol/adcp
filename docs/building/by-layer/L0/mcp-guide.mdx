@@ -292,7 +292,8 @@ AdCP uses a richer set of statuses than MCP Tasks. If an implementation mirrors 
 | `input-required` | `input_required` | Server moves task to `input_required`, sends elicitation via `tasks/result` |
 | `completed` | `completed` | Direct mapping |
 | `failed` | `failed` | Direct mapping |
-| `rejected` | `failed` | Use `statusMessage` for rejection reason |
+| `rejected` (transport lifecycle) | `failed` | MCP Tasks has no native rejected state; use `statusMessage` for the invocation-level rejection reason |
+| `rejected` (task-specific business outcome) | `completed` | Store the AdCP result unchanged with payload `status: "rejected"`; direct tool calls use `isError: false` |
 | `canceled` | `cancelled` | Spelling difference (AdCP uses American, MCP uses British) |
 | `auth-required` | `input_required` | Elicitation requests credentials |
 
