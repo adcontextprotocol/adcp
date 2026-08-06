@@ -868,7 +868,16 @@ release, so no released 3.1 wire shape is removed.
 During a compatibility window, sellers may translate legacy targeting filters
 into the corresponding discovery overlay. Requests that provide both a legacy
 field and its overlay replacement must either be semantically identical or be
-rejected as ambiguous.
+rejected with `INVALID_REQUEST` as ambiguous.
+
+Release negotiation is the coarse compatibility gate; this design does not add
+a redundant `targeting_aware_discovery` feature flag. Buyers use the 3.2 entry
+in `get_adcp_capabilities.adcp.supported_versions`, pin `adcp_version` on the
+request, and validate against the echoed served release. A buyer that sees only
+3.1-or-earlier release precision, or only ambiguous legacy major precision,
+must omit the 3.2 discovery fields and use the retained legacy fields or brief
+prose. A 3.2 seller serving a 3.1 pin emits a 3.1-shaped response; if it cannot
+serve 3.1, it returns `VERSION_UNSUPPORTED` rather than relabeling 3.2 output.
 
 ## Schema surface
 

@@ -111,6 +111,122 @@ test("device-platform exclusion is typed and independently discoverable", async 
   assert.match(targetingSchema, /MUST reject/);
 });
 
+test("seller targeting rollups are explicit true-valued routing hints", async () => {
+  const validate = await compile(
+    "/schemas/protocol/get-adcp-capabilities-response.json"
+  );
+  const targetingRollups = {
+    placement_selection: true,
+    property_list: true,
+    property_list_exclude: true,
+    collection_list: true,
+    collection_list_exclude: true,
+  };
+  const payload = {
+    adcp_version: "3.2-beta",
+    adcp_major_version: 3,
+    status: "completed",
+    adcp: {
+      major_versions: [3],
+      supported_versions: ["3.1", "3.2-beta"],
+      idempotency: { supported: false },
+    },
+    supported_protocols: ["media_buy"],
+    media_buy: {
+      execution: { targeting: targetingRollups },
+    },
+  };
+
+  assert.equal(validate(payload), true, errors(validate));
+
+  const schema = JSON.parse(
+    fs.readFileSync(
+      path.join(
+        SCHEMA_ROOT,
+        "protocol",
+        "get-adcp-capabilities-response.json"
+      ),
+      "utf8"
+    )
+  );
+  const properties =
+    schema.properties.media_buy.properties.execution.properties.targeting
+      .properties;
+  for (const field of Object.keys(targetingRollups)) {
+    assert.equal(properties[field].type, "boolean");
+    assert.match(properties[field].description, /When true/);
+    assert.match(properties[field].description, /Product\.overlay_support/);
+  }
+});
+
+test("3.2 targeting discovery is release-gated without a redundant feature flag", () => {
+  const released31Root = path.join(
+    __dirname,
+    "..",
+    "dist",
+    "schemas",
+    "3.1.10"
+  );
+  const releasedRequest = JSON.parse(
+    fs.readFileSync(
+      path.join(released31Root, "media-buy", "get-products-request.json"),
+      "utf8"
+    )
+  );
+  const releasedProduct = JSON.parse(
+    fs.readFileSync(path.join(released31Root, "core", "product.json"), "utf8")
+  );
+  const latestRequest = JSON.parse(
+    fs.readFileSync(
+      path.join(SCHEMA_ROOT, "media-buy", "get-products-request.json"),
+      "utf8"
+    )
+  );
+  const latestProduct = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "core", "product.json"), "utf8")
+  );
+
+  for (const field of ["targeting_overlay", "required_overlay_support"]) {
+    assert.equal(releasedRequest.properties[field], undefined);
+    assert.ok(latestRequest.properties[field]);
+  }
+  for (const field of ["overlay_support", "targeting_resolution"]) {
+    assert.equal(releasedProduct.properties[field], undefined);
+    assert.ok(latestProduct.properties[field]);
+  }
+
+  const capabilities = JSON.parse(
+    fs.readFileSync(
+      path.join(
+        SCHEMA_ROOT,
+        "protocol",
+        "get-adcp-capabilities-response.json"
+      ),
+      "utf8"
+    )
+  );
+  assert.equal(
+    capabilities.properties.media_buy.properties.targeting_aware_discovery,
+    undefined,
+    "release negotiation, not a duplicate coarse flag, gates the 3.2 contract"
+  );
+
+  const migration = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "docs",
+      "reference",
+      "migration",
+      "targeting-aware-discovery.mdx"
+    ),
+    "utf8"
+  );
+  assert.match(migration, /There is no separate\s+`targeting_aware_discovery`/);
+  assert.match(migration, /legacy implementation may accept and ignore/);
+  assert.match(migration, /3\.2 seller receiving a 3\.1 pin/);
+});
+
 test("product filters are valid in brief, wholesale, and refine modes", async () => {
   const validate = await compile(
     "/schemas/media-buy/get-products-request.json"
@@ -198,6 +314,44 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
       (validation) => validation.check === check && validation.path === path
     );
 
+  assert.equal(storyboard.introduced_in, "3.2");
+  assert.deepEqual(
+    storyboard.phases.find((phase) => phase.id === "release_downshift")
+      .requires_capability,
+    { path: "adcp.supported_versions", contains: "3.1" }
+  );
+  assert.equal(
+    hasCheck(
+      "get_products_at_3_1",
+      "field_absent",
+      "products[0].overlay_support"
+    ),
+    true,
+    "a 3.1-pinned response must omit the 3.2 product capability shape"
+  );
+  assert.equal(
+    hasCheck(
+      "accept_equivalent_legacy_and_overlay_targeting",
+      "field_present",
+      "products[0]"
+    ),
+    true,
+    "equivalent legacy and structured targeting remains accepted"
+  );
+  assert.equal(
+    hasCheck(
+      "reject_conflicting_legacy_and_overlay_targeting",
+      "error_code"
+    ),
+    true,
+    "conflicting legacy and structured targeting is rejected"
+  );
+  assert.equal(
+    step("reject_conflicting_legacy_and_overlay_targeting").validations[0]
+      .value,
+    "INVALID_REQUEST"
+  );
+
   assert.equal(filterStoryboard.fixtures.products.length, 3);
   assert.deepEqual(
     filterStoryboard.fixtures.products
@@ -274,6 +428,57 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
       `${dimension} must be graded on persisted readback`
     );
   }
+});
+
+test("3.2 compliance requires release-precision negotiation", () => {
+  const versionStoryboard = YAML.parse(
+    fs.readFileSync(
+      path.join(
+        __dirname,
+        "..",
+        "static",
+        "compliance",
+        "source",
+        "universal",
+        "version-negotiation.yaml"
+      ),
+      "utf8"
+    )
+  );
+  const capabilityStep = versionStoryboard.phases[0].steps[0];
+  for (const [check, path] of [
+    ["field_present", "adcp.supported_versions"],
+    ["envelope_field_present", "adcp_version"],
+    ["envelope_field_pattern", "adcp_version"],
+  ]) {
+    const validation = capabilityStep.validations.find(
+      (candidate) => candidate.check === check && candidate.path === path
+    );
+    assert.ok(validation, `${check} ${path} must be graded`);
+    assert.equal(validation.severity, undefined);
+    assert.equal(validation.permanent_advisory, undefined);
+  }
+
+  const errorStoryboard = YAML.parse(
+    fs.readFileSync(
+      path.join(
+        __dirname,
+        "..",
+        "static",
+        "compliance",
+        "source",
+        "universal",
+        "error-compliance.yaml"
+      ),
+      "utf8"
+    )
+  );
+  const unsupportedRelease = errorStoryboard.phases
+    .flatMap((phase) => phase.steps)
+    .find((step) => step.id === "unsupported_release_version");
+  assert.ok(unsupportedRelease);
+  assert.equal(unsupportedRelease.severity, undefined);
+  assert.equal(unsupportedRelease.expect_error, true);
 });
 
 test("buyer teaching surfaces explain structured-first targeting", () => {

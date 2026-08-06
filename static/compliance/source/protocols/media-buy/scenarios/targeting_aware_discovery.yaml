@@ -4,6 +4,7 @@ title: "Seller resolves targeting during discovery and persists inventory select
 category: media_buy_seller
 summary: "Verifies targeting-scoped discovery forecasts, future overlay support, sparse configured-product modifications, opaque product acceptance, and inventory targeting across create/update/readback."
 track: media_buy
+introduced_in: "3.2"
 
 required_tools:
   - get_products
@@ -105,6 +106,136 @@ fixtures:
       floor_price: 12.0
 
 phases:
+  - id: compatibility_window
+    title: "Preserve legacy targeting while rejecting ambiguous dual input"
+    steps:
+      - id: accept_equivalent_legacy_and_overlay_targeting
+        title: "Accept equivalent legacy and structured geography"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium outdoor video"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            channels: ["olv"]
+            countries: ["US"]
+          targeting_overlay:
+            geo_countries: ["US"]
+          context:
+            correlation_id: "targeting_aware_discovery--equivalent_legacy"
+        expected: |
+          Accept the request because the deprecated countries filter and the
+          structured overlay express the same delivery constraint. Return a
+          configured product whose forecast is scoped to US inventory.
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_present
+            path: "products[0]"
+            description: "Equivalent legacy and structured targeting remains buyable"
+          - check: field_absent
+            path: "products[0].targeting_resolution"
+            description: "Equivalent dual input does not manufacture a targeting modification"
+
+      - id: reject_conflicting_legacy_and_overlay_targeting
+        title: "Reject conflicting legacy and structured geography"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium outdoor video"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            channels: ["olv"]
+            countries: ["CA"]
+          targeting_overlay:
+            geo_countries: ["US"]
+          context:
+            correlation_id: "targeting_aware_discovery--conflicting_legacy"
+        expected: |
+          Reject with INVALID_REQUEST. The seller must not choose one of two
+          contradictory delivery constraints or silently treat the legacy field
+          as a product-coverage hint.
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Conflicting legacy and structured targeting is ambiguous"
+
+  - id: release_downshift
+    title: "Serve the legacy shape to a 3.1-pinned buyer"
+    optional: true
+    requires_capability:
+      path: "adcp.supported_versions"
+      contains: "3.1"
+    narrative: |
+      This phase applies only when the 3.2 seller also advertises 3.1. It proves
+      that release negotiation shapes the payload, rather than merely echoing a
+      different version label around the latest response.
+    steps:
+      - id: get_products_at_3_1
+        title: "Downshift targeting-aware discovery to the 3.1 contract"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          adcp_version: "3.1"
+          adcp_major_version: 3
+          buying_mode: "brief"
+          brief: "Premium outdoor video in the US"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            channels: ["olv"]
+            countries: ["US"]
+          context:
+            correlation_id: "targeting_aware_discovery--downshift_3_1"
+        expected: |
+          Serve the request as AdCP 3.1, echo adcp_version 3.1, and omit the
+          targeting-aware response fields introduced in 3.2. If the seller did
+          not advertise 3.1 this phase would be not applicable rather than
+          requiring an unsafe downshift.
+        validations:
+          - check: response_schema
+            description: "Response remains valid against the shared result envelope"
+          - check: envelope_field_pattern
+            path: "adcp_version"
+            pattern: "^3\\.1$"
+            description: "Seller echoes the release it actually served"
+          - check: field_present
+            path: "products[0]"
+            description: "Legacy targeting filters remain functional on the 3.1 path"
+          - check: field_absent
+            path: "targeting_resolution"
+            description: "3.1 response omits request-level brief targeting resolution"
+          - check: field_absent
+            path: "products[0].overlay_support"
+            description: "3.1 product omits the 3.2 product support contract"
+          - check: field_absent
+            path: "products[0].targeting_resolution"
+            description: "3.1 product omits sparse 3.2 targeting modifications"
+
   - id: brief_targeting_confirmation
     title: "Confirm hard targeting inferred from a brief"
     steps:

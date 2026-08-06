@@ -209,9 +209,34 @@ rejection leaves the prior package targeting and assignments unchanged.
 
 ## Compatibility window
 
+Release negotiation is the coarse feature gate. There is no separate
+`targeting_aware_discovery` capability flag: a seller advertising a 3.2 release
+is promising the 3.2 discovery contract, while each product's `overlay_support`
+remains authoritative for the dimensions that can be selected later.
+
+Before sending `targeting_overlay` or `required_overlay_support`, a buyer:
+
+1. Reads `get_adcp_capabilities.adcp.supported_versions`.
+2. Selects a compatible 3.2 release or prerelease and sends that exact
+   release-precision value in `adcp_version` (plus `adcp_major_version: 3`
+   through 3.x).
+3. Validates the response against the echoed `adcp_version`.
+
+Absence of `supported_versions`, or a list whose highest compatible release is
+3.1 or earlier, is not evidence of targeting-aware discovery. The buyer must
+omit the 3.2 fields and use legacy targeting filters or explicit brief prose.
+It must not optimistically send unknown fields to a major-only seller because a
+legacy implementation may accept and ignore them through an open schema.
+
+A 3.2 seller receiving a 3.1 pin either serves the 3.1 schema and omits 3.2-only
+request/response semantics, or returns `VERSION_UNSUPPORTED` when it does not
+support 3.1. It never labels a 3.2-shaped response as 3.1.
+
 Sellers may translate a legacy targeting filter into its overlay equivalent.
-When a request contains both forms, the seller accepts them only when they are
-semantically identical; conflicting forms are rejected as ambiguous.
+When a 3.2 request contains both forms, the seller accepts them only when they
+are semantically identical; conflicting forms are rejected with
+`INVALID_REQUEST` as ambiguous. Legacy-only requests remain supported through
+3.x.
 
 Schema surfaces are available through the v3 alias:
 

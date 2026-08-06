@@ -132,6 +132,8 @@ Do not send a totally new campaign in `refine`; start a new `brief` request inst
 
 ## Implementation checklist
 
+- Read `get_adcp_capabilities.adcp.supported_versions`, pin a compatible 3.2 release in `adcp_version`, and validate the echoed served release before using targeting-aware discovery.
+- If release precision is absent, major-only, or 3.1-or-earlier, omit the 3.2 fields and fall back to retained legacy targeting filters or explicit brief prose; unknown fields may otherwise be silently ignored.
 - Normalize the human request into intent, hard constraints, and follow-up changes before calling the seller.
 - Preserve the buyer's business language in `brief`; do not collapse it into only keywords.
 - Put product characteristics in `filters` and exact delivery constraints in `targeting_overlay`.

@@ -13,7 +13,12 @@ This skill enables you to execute the AdCP Media Buy Protocol with sales agents.
 
 > **3.2 preview:** Targeting-aware discovery fields are available only when the
 > seller serves AdCP 3.2+ and the installed SDK exposes the 3.2 schema. Check
-> `get_adcp_capabilities.supported_versions` before sending them. The public
+> `get_adcp_capabilities.adcp.supported_versions`, pin the selected release in
+> `adcp_version`, and validate the echoed served release before sending them.
+> A missing release-precision declaration, a 3.1-or-earlier result, or a
+> major-only declaration is not evidence of support: omit the 3.2 fields and use
+> legacy targeting filters or explicit brief prose. Do not probe by sending
+> unknown fields because a legacy open schema may accept and ignore them. The public
 > training agent will implement this flow after the 3.2 beta SDK release; until
 > then use its legacy brief exercise and do not treat ignored unknown fields as
 > acceptance.
