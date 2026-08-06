@@ -454,9 +454,123 @@ describe('Training Agent webhook emission', () => {
     expect(response.status).toBe(200);
   });
 
-  // Re-enable when the proof-of-control flow can activate a previously
-  // registered inactive subscriber through a trusted challenge response.
-  it.skip('delivers account-level creative lifecycle webhooks registered through sync_accounts', async () => {
+  it('activates an existing inactive subscriber and re-challenges after URL or credential changes', async () => {
+    const challenges: Array<Record<string, unknown>> = [];
+    const challengeUrls: string[] = [];
+    let srv: http.Server | undefined;
+    try {
+      srv = await startReceiver((delivery, res) => {
+        const body = JSON.parse(delivery.body) as Record<string, unknown>;
+        challenges.push(body);
+        challengeUrls.push(delivery.url);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ challenge: body.challenge }));
+      });
+      const addr = srv.address() as AddressInfo;
+      const baseUrl = `http://127.0.0.1:${addr.port}`;
+      const callSyncAccounts = async (id: number, accounts: Array<Record<string, unknown>>) => {
+        const response = await request(app)
+          .post('/api/training-agent/sales/mcp')
+          .set('Authorization', BILLABLE_AUTH)
+          .set('Content-Type', 'application/json')
+          .set('Accept', 'application/json, text/event-stream')
+          .send({
+            jsonrpc: '2.0',
+            id,
+            method: 'tools/call',
+            params: {
+              name: 'sync_accounts',
+              arguments: { idempotency_key: randomUUID(), accounts },
+            },
+          });
+        expect(response.status).toBe(200);
+        expect(response.text).not.toContain('"isError":true');
+        return structuredToolResult(response);
+      };
+
+      const initial = await callSyncAccounts(30, [{
+        brand: { domain: 'activation-proof.example' },
+        operator: 'pinnacle-agency.example',
+        billing: 'operator',
+        sandbox: true,
+        notification_configs: [{
+          subscriber_id: 'buyer-primary',
+          url: `${baseUrl}/hook/a`,
+          event_types: ['creative.status_changed'],
+          active: false,
+        }],
+      }]);
+      const accountId = (initial.accounts as Array<Record<string, unknown>>)[0].account_id as string;
+      expect(challenges).toHaveLength(0);
+
+      const config = {
+        subscriber_id: 'buyer-primary',
+        url: `${baseUrl}/hook/a`,
+        event_types: ['creative.status_changed'],
+        active: true,
+      };
+      await callSyncAccounts(31, [{ account: { account_id: accountId }, notification_configs: [config] }]);
+      expect(challenges).toHaveLength(1);
+
+      // The unchanged active tuple retains its existing proof.
+      await callSyncAccounts(32, [{ account: { account_id: accountId }, notification_configs: [config] }]);
+      expect(challenges).toHaveLength(1);
+
+      await callSyncAccounts(33, [{
+        account: { account_id: accountId },
+        notification_configs: [{ ...config, url: `${baseUrl}/hook/b` }],
+      }]);
+      expect(challenges).toHaveLength(2);
+
+      await callSyncAccounts(34, [{
+        account: { account_id: accountId },
+        notification_configs: [{
+          ...config,
+          url: `${baseUrl}/hook/b`,
+          authentication: {
+            schemes: ['HMAC-SHA256'],
+            credentials: 'new-shared-secret-0000000000000001',
+          },
+        }],
+      }]);
+      expect(challenges).toHaveLength(3);
+      expect(challengeUrls).toEqual([
+        `${baseUrl}/hook/a`,
+        `${baseUrl}/hook/b`,
+        `${baseUrl}/hook/b`,
+      ]);
+      expect(challenges[2].delivery_auth).toMatchObject({
+        mode: 'HMAC-SHA256',
+        credential_fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+      });
+
+      const previousFingerprint = (challenges[2].delivery_auth as Record<string, unknown>)
+        .credential_fingerprint;
+      await callSyncAccounts(35, [{
+        account: { account_id: accountId },
+        notification_configs: [{
+          ...config,
+          url: `${baseUrl}/hook/b`,
+          authentication: {
+            schemes: ['HMAC-SHA256'],
+            credentials: 'rotated-shared-secret-00000000000001',
+          },
+        }],
+      }]);
+      expect(challenges).toHaveLength(4);
+      const rotatedFingerprint = (challenges[3].delivery_auth as Record<string, unknown>)
+        .credential_fingerprint;
+      expect(rotatedFingerprint).toMatch(/^[a-f0-9]{64}$/);
+      expect(rotatedFingerprint).not.toBe(previousFingerprint);
+    } finally {
+      if (srv) {
+        srv.closeAllConnections?.();
+        await new Promise<void>(resolve => srv!.close(() => resolve()));
+      }
+    }
+  }, 15000);
+
+  it('delivers account-level creative lifecycle webhooks registered through sync_accounts', async () => {
     const deliveries: CapturedDelivery[] = [];
     let srv: http.Server | undefined;
     try {
@@ -465,6 +579,12 @@ describe('Training Agent webhook emission', () => {
         resolveDelivery = resolve;
       });
       srv = await startReceiver((d, res) => {
+        const body = JSON.parse(d.body) as Record<string, unknown>;
+        if (body.type === 'webhook.challenge') {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ challenge: body.challenge }));
+          return;
+        }
         deliveries.push(d);
         res.writeHead(200); res.end();
         resolveDelivery?.();
@@ -592,13 +712,17 @@ describe('Training Agent webhook emission', () => {
     }
   }, 15000);
 
-  // This ownership assertion also requires an activated subscriber; public
-  // sync_accounts registration is intentionally inactive-only for now.
-  it.skip('sends account-level creative lifecycle webhooks only to the owning account subscriber', async () => {
+  it('sends account-level creative lifecycle webhooks only to the owning account subscriber', async () => {
     const deliveries: CapturedDelivery[] = [];
     let srv: http.Server | undefined;
     try {
       srv = await startReceiver((d, res) => {
+        const body = JSON.parse(d.body) as Record<string, unknown>;
+        if (body.type === 'webhook.challenge') {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ challenge: body.challenge }));
+          return;
+        }
         deliveries.push(d);
         res.writeHead(200); res.end();
       });

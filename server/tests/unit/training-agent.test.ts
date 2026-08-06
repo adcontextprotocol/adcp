@@ -10243,7 +10243,7 @@ describe('get_adcp_capabilities handler', () => {
     expect(configs[0].active).toBe(false);
   });
 
-  it('rejects active wholesale feed subscribers until proof of control exists', async () => {
+  it('rejects active wholesale feed subscribers when proof of control fails', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'sync_accounts', {
       accounts: [{
@@ -10253,7 +10253,7 @@ describe('get_adcp_capabilities handler', () => {
         sandbox: true,
         notification_configs: [{
           subscriber_id: 'wholesale-feed-sync',
-          url: 'https://webhook.example.com/webhooks/adcp/wholesale-feed',
+          url: 'http://127.0.0.1:1/webhooks/adcp/wholesale-feed',
           event_types: ['product.priced', 'product.created'],
           active: true,
         }],
@@ -10264,7 +10264,8 @@ describe('get_adcp_capabilities handler', () => {
     expect(account.action).toBe('failed');
     expect(account.errors).toEqual([expect.objectContaining({
       code: 'VALIDATION_ERROR',
-      field: 'notification_configs[0].active',
+      field: 'notification_configs[0].url',
+      message: 'webhook endpoint proof of control failed',
     })]);
   });
 
