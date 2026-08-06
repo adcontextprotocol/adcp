@@ -265,7 +265,11 @@
     "allow_async": {
       "type": "boolean",
       "default": false,
-      "description": "Opt in to an asynchronous preview response. When true, the creative agent MAY return status 'submitted' with a task_id and the buyer polls get_task_status for completion. When false or absent, the agent MUST return a synchronous preview response or a terminal protocol error; it MUST NOT return the submitted shape. This field applies to preview_creative only; build_creative already defines its own async lifecycle."
+      "description": "Opt in to an asynchronous preview response. When true, the creative agent MAY return status 'submitted' with a task_id only when rendering has been handed to a queue or external renderer and will continue after the request connection is released. Active processing on an open connection uses working progress instead. The buyer polls get_task_status for completion. When false or absent, the agent MUST return a synchronous preview response or a terminal protocol error; it MUST NOT return the submitted shape. This field applies to preview_creative only; build_creative already defines its own async lifecycle."
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/core/push-notification-config.json",
+      "description": "Optional webhook configuration for terminal completion/failure notifications when allow_async is true and preview_creative returns a submitted task envelope. Submitted tasks remain pollable through get_task_status whether or not this field is present. If the agent accepts this configuration and returns submitted, it MUST deliver at least the terminal notification; if it cannot honor the webhook, it MUST return a structured error. Presence of this field alone MUST NOT cause asynchronous execution."
     },
     "context": {
       "$ref": "/schemas/core/context.json"
