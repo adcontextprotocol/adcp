@@ -342,13 +342,38 @@ Carlos's agent gets everything it needs to start creating: keys for Midjourney (
       "url": "https://rights.lotientertainment.com/mcp",
       "id": "loti_entertainment"
     },
+    "rights_holder": { "domain": "lotientertainment.com", "brand_id": "daan_janssen" },
     "valid_from": "2026-06-01T00:00:00Z",
     "valid_until": "2026-09-01T00:00:00Z",
     "uses": ["likeness", "voice"],
     "countries": ["NL"],
     "impression_cap": 300000,
     "right_type": "talent",
-    "verification_url": "https://rights.lotientertainment.com/verify/loti_dj_talent_2026"
+    "approval_status": "approved",
+    "grant_status": "active",
+    "restrictions": [
+      "No depiction in competitive sports contexts",
+      "Alcohol adjacency prohibited",
+      "Creative approval required for video formats"
+    ],
+    "disclosure": {
+      "required": true,
+      "text": "Features AI-generated likeness of Daan Janssen, used under license from Loti Entertainment."
+    },
+    "creative_approval_required": true,
+    "content_digest": "sha256:4feebc941c805632ab259451fd1cda47fc56985dc62e177844ebfd377556ab7a",
+    "attestation_refs": [{
+      "issuer": { "type": "brand", "brand": { "domain": "lotientertainment.com", "brand_id": "daan_janssen" } },
+      "claim_type": "https://adcontextprotocol.org/claims/rights/grant",
+      "subject": {
+        "type": "resource",
+        "resource_type": "https://adcontextprotocol.org/claims/subjects/rights-grant",
+        "namespace": "https://rights.lotientertainment.com/mcp",
+        "id": "loti_dj_talent_2026",
+        "content_digest": "sha256:4feebc941c805632ab259451fd1cda47fc56985dc62e177844ebfd377556ab7a"
+      },
+      "locator": { "type": "issuer_credential_id", "credential_id": "cred_loti_dj_2026", "resolver_id": "primary" }
+    }]
   }
 }
 ```
@@ -454,7 +479,7 @@ For video formats, the content restrictions require approval before distribution
 
 ### Rights constraint in the creative manifest
 
-Every creative that uses licensed talent carries the `rights_constraint` from the `acquire_rights` response in its manifest — the buyer does not construct it manually. A single ad can combine talent likeness from one rights holder and music from another, each with different validity periods and geographic restrictions. Downstream participants (SSPs, verification vendors) hit the `verification_url` to confirm the grant is still active before serving.
+Every creative that uses licensed talent carries the `rights_constraint` from the `acquire_rights` response unchanged — the buyer does not construct or re-sign it. A single ad can combine talent likeness from one rights holder and music from another, each with different validity periods and geographic restrictions. The serving seller evaluates each issuer-bound reference under its own allowlist and binds the result to the exact grant digest. A deprecated `verification_url`, if present on legacy data, is ignored for authorization and is never fetched as a revocation oracle.
 
 ### Usage reporting
 

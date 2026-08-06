@@ -117,6 +117,12 @@
     "provenance": {
       "$ref": "/schemas/core/provenance.json",
       "description": "Provenance metadata for this creative. Serves as the default provenance for all manifests and assets within this creative. A manifest or asset with its own provenance replaces this object entirely (no field-level merging)."
+    },
+    "rights": {
+      "type": "array",
+      "description": "Rights constraints that MUST survive sync, package assignment, and list readback. Buyer-carried constraints and references do not authorize serving; the seller evaluates them under media_buy.rights_attestations and its adcp.attestations policy.",
+      "items": { "$ref": "/schemas/core/rights-constraint.json" },
+      "minItems": 1
     }
   },
   "required": [

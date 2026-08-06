@@ -155,6 +155,8 @@ describe('comply_test_controller', () => {
       const { tools } = await simulateListTools(server);
       const toolNames = tools.map((t: any) => t.name);
       expect(toolNames).toContain('comply_test_controller');
+      const controller = tools.find((tool: any) => tool.name === 'comply_test_controller') as any;
+      expect(controller.inputSchema.properties.scenario.enum).toContain('force_get_products_arm');
     });
   });
 
@@ -187,6 +189,7 @@ describe('comply_test_controller', () => {
         // Local scenarios — see LOCAL_SCENARIOS in
         // server/src/training-agent/comply-test-controller.ts.
         'force_create_media_buy_arm',
+        'force_get_products_arm',
         'force_task_completion',
         'force_creative_purge',
         'force_wholesale_feed_webhook',
@@ -199,9 +202,21 @@ describe('comply_test_controller', () => {
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(22);
+      expect(scenarios.length).toBe(23);
       // Dedup invariant — see SCENARIO_ENUM dedup in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
+    });
+
+    it('advertises force_get_products_arm for the 3.2 beta release', async () => {
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        adcp_version: '3.2-beta.0',
+        adcp_major_version: 3,
+        scenario: 'list_scenarios',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(result.success).toBe(true);
+      expect(result.scenarios).toContain('force_get_products_arm');
     });
   });
 

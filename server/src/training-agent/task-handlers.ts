@@ -22,7 +22,7 @@ import { mergeSeedProduct } from '@adcp/sdk/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetchAxiosLike } from '../utils/url-security.js';
-import type { TrainingContext, CatalogProduct, MediaBuyState, MediaBuyAvailableActionState, MediaBuyProductAllowedActionState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting, AccountRef, SessionState } from './types.js';
+import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type SessionState } from './types.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
   Product,
@@ -91,6 +91,13 @@ type PackageUpdateExt = PackageUpdate & {
 };
 type Destination = NonNullable<ActivateSignalRequest['destinations']>[number];
 type SignalFilters = NonNullable<GetSignalsRequest['filters']>;
+type GetProductsRejectedResponse = {
+  status: 'rejected';
+  adcp_version: string;
+  reason: string;
+  suggestions?: string[];
+  context?: Record<string, unknown>;
+};
 type PricingOption = Product['pricing_options'][number];
 type AuctionPricingOption = Exclude<PricingOption, { pricing_model: 'cpa' }>;
 type WholesaleFeedRequest = {
@@ -1388,7 +1395,7 @@ import { maybeEmitCompletionWebhook } from './webhooks.js';
 import { selectSigningCapability } from './request-signing.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
-const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'] as const;
+const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', GET_PRODUCTS_REJECTED_ADCP_VERSION] as const;
 const DEFAULT_ADCP_VERSION = '3.0';
 const CURRENT_ADCP_VERSION = '3.1-rc.15';
 const MAX_PACKAGES_PER_BUY = 50;
@@ -3695,7 +3702,7 @@ function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: 
 
 // ── Task handler implementations ──────────────────────────────────
 
-export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | { errors: TaskError[] }> {
+export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
   const brief = (req as Record<string, unknown>).brief;
@@ -3746,6 +3753,21 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     ? productWholesaleFeedMeta(req as WholesaleFeedRequest, session)
     : undefined;
   const contextEcho = req.context ? { context: req.context } : {};
+
+  const directivePrincipal = ctx.principal ?? 'anonymous';
+  const rejection = buyingMode === 'brief' || buyingMode === 'refine'
+    ? session.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
+    : undefined;
+  if (rejection && supportsGetProductsRejected(ctx.servedAdcpVersion)) {
+    session.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
+    return {
+      status: 'rejected',
+      adcp_version: ctx.servedAdcpVersion!,
+      reason: rejection.reason,
+      ...(rejection.suggestions && { suggestions: [...rejection.suggestions] }),
+      ...contextEcho,
+    };
+  }
 
   if (wholesaleMeta && wholesaleFeedUnchanged(req as WholesaleFeedRequest, wholesaleMeta)) {
     return {
@@ -9325,7 +9347,7 @@ export async function executeTrainingAgentTool(
     return { success: false, error: `Unknown tool: ${toolName}` };
   }
   try {
-    const result = await Promise.resolve(handler(args, ctx));
+    const result = await Promise.resolve(handler(args, { ...ctx, servedAdcpVersion: versionResolution.servedVersion }));
     return { success: true, data: addServedAdcpVersion(result, versionResolution.servedVersion) as object };
   } catch (error) {
     logger.error({ error, tool: toolName }, 'Training agent in-process tool error');
@@ -9540,7 +9562,10 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     if (skipHandler) {
       // toolResult already set from idempotency replay path above
     } else try {
-      const result = await Promise.resolve(handler((handlerArgs as ToolArgs) || {}, ctx));
+      const result = await Promise.resolve(handler(
+        (handlerArgs as ToolArgs) || {},
+        { ...ctx, servedAdcpVersion },
+      ));
       const resultObj = result as Record<string, unknown> & {
         errors?: Array<{ code: string; message: string; field?: string; details?: unknown; recovery?: string }>;
       };

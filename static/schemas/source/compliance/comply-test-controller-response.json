@@ -231,7 +231,8 @@
               "type": "string",
               "enum": [
                 "submitted",
-                "input-required"
+                "input-required",
+                "rejected"
               ],
               "description": "Arm the seller will emit on the next forced operation response."
             },
@@ -240,12 +241,75 @@
               "maxLength": 128,
               "description": "Echo of the registered task_id. Present only when arm is 'submitted' (the arm that emits a task envelope).",
               "x-entity": "task"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "description": "Echo of the deterministic buyer-facing rejection reason. Required when arm is 'rejected'."
+            },
+            "suggestions": {
+              "type": "array",
+              "description": "Echo of the optional deterministic alternatives registered for a rejected get_products response.",
+              "minItems": 1,
+              "maxItems": 20,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              }
             }
           },
           "required": [
             "arm"
           ],
-          "additionalProperties": false
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "arm": {
+                    "const": "rejected"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "reason"
+                ],
+                "not": {
+                  "required": [
+                    "task_id"
+                  ]
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "arm": {
+                    "const": "submitted"
+                  }
+                }
+              },
+              "then": {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "reason"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "suggestions"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
         },
         "message": {
           "type": "string",

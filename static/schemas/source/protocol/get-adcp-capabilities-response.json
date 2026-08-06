@@ -54,6 +54,34 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "required": ["rights_attestations"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "adcp": {
+            "properties": {
+              "attestations": {
+                "properties": {
+                  "accepted_claim_types": {
+                    "contains": {
+                      "const": "https://adcontextprotocol.org/claims/rights/grant"
+                    }
+                  }
+                }
+              }
+            },
+            "required": ["attestations"]
+          }
+        }
+      }
     }
   ],
   "properties": {
@@ -833,6 +861,19 @@
           },
           "required": ["supported_requirement_modes", "supported_presence_modes", "supports_attestation_evaluation"],
           "additionalProperties": true
+        },
+        "rights_attestations": {
+          "type": "object",
+          "description": "Seller evaluation policy for portable rights-grant attestations carried on creative rights constraints. Presence requires adcp.attestations and the rights-grant claim URI in accepted_claim_types. The seller remains verifier-of-record and never treats verification_url or a buyer-authored evaluation as authorization.",
+          "properties": {
+            "requirement": {
+              "type": "string",
+              "enum": ["optional", "required"],
+              "description": "required means every applicable rights constraint needs at least one current verified attestation evaluation before the creative is eligible to serve. optional permits independent legacy contractual policy, but unattested constraints remain machine-unverified and verification_url is never a downgrade path."
+            }
+          },
+          "required": ["requirement"],
+          "additionalProperties": false
         },
         "audience_targeting": {
           "type": "object",

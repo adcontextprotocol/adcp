@@ -234,9 +234,13 @@
           "$ref": "/schemas/core/attestation-evaluation.json",
           "description": "Evaluator-of-record result bound to an exact attestation presentation"
         },
+        "rights-attestation-evaluation": {
+          "$ref": "/schemas/core/rights-attestation-evaluation.json",
+          "description": "Seller-produced rights-grant presentation and evaluation readback"
+        },
         "rights-constraint": {
           "$ref": "/schemas/core/rights-constraint.json",
-          "description": "Rights metadata attached to creative manifests for tracking validity and constraints"
+          "description": "Digest-pinned rights metadata and portable issuer-attestation references attached to creatives"
         },
         "pagination-request": {
           "$ref": "/schemas/core/pagination-request.json",
@@ -1279,6 +1283,10 @@
     "media-buy": {
       "description": "Media buy task request/response schemas",
       "supporting-schemas": {
+        "get-products-rejected": {
+          "$ref": "/schemas/media-buy/get-products-rejected.json",
+          "description": "Terminal business rejection arm for a well-formed get_products brief or refinement"
+        },
         "package-request": {
           "$ref": "/schemas/media-buy/package-request.json",
           "description": "Package configuration for media buy creation - used within create_media_buy request"

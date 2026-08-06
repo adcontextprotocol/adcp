@@ -629,7 +629,10 @@ async function evaluateAcquisition(request, talent) {
   const confidentialResult = await evaluateConfidentialRules(request, talent);
   if (confidentialResult.blocked) {
     return {
-      status: "rejected",
+      status: "completed",
+      rights_status: "rejected",
+      rights_id: request.rights_id,
+      brand_id: talent.brand_id,
       reason: confidentialResult.sanitized_reason,
       // No suggestions — this is final, nothing the buyer can change
     };
@@ -639,7 +642,10 @@ async function evaluateAcquisition(request, talent) {
   const exclusivityConflict = await checkExclusivity(request, talent);
   if (exclusivityConflict) {
     return {
-      status: "rejected",
+      status: "completed",
+      rights_status: "rejected",
+      rights_id: request.rights_id,
+      brand_id: talent.brand_id,
       reason: `Exclusive conflict in ${exclusivityConflict.country} through ${exclusivityConflict.end_date}`,
       suggestions: [
         `Available in ${exclusivityConflict.alternative_countries.join(", ")}`,
@@ -649,7 +655,13 @@ async function evaluateAcquisition(request, talent) {
   }
 
   // Approved — proceed with terms
-  return { status: "acquired", /* ... */ };
+  return {
+    status: "completed",
+    rights_status: "acquired",
+    rights_id: request.rights_id,
+    brand_id: talent.brand_id,
+    /* ... terms, credentials, and rights_constraint ... */
+  };
 }
 ```
 
@@ -734,7 +746,8 @@ When implementing `acquire_rights`, return both pieces in the response:
 ```typescript
 // In your acquire_rights handler, after approval:
 const response = {
-  status: "acquired",
+  status: "completed",
+  rights_status: "acquired",
   rights_id: "rgt_dj_001",
   terms: { /* ... pricing, dates, restrictions */ },
   generation_credentials: [
@@ -748,35 +761,68 @@ const response = {
   rights_constraint: {
     rights_id: "rgt_dj_001",
     rights_agent: { url: "https://rights.lotientertainment.com/mcp", id: "loti_entertainment" },
+    rights_holder: { domain: "lotientertainment.com", brand_id: "daan_janssen" },
     valid_from: "2026-03-15T00:00:00Z",
     valid_until: "2026-06-15T23:59:59Z",
     uses: ["likeness"],
     countries: ["NL"],
     impression_cap: 100000,
     approval_status: "approved",
+    grant_status: "active",
+    restrictions: ["All generated creatives must be submitted for approval before distribution"],
+    disclosure: {
+      required: true,
+      text: "Features AI-generated likeness of Daan Janssen, used under license from Loti Entertainment",
+    },
+    creative_approval_required: true,
+    content_digest: "sha256:61c68dea6be064a424741051182ba583e8b587b4c9af10c65bd57ae20fb10e79",
+    attestation_refs: [{
+      issuer: { type: "brand", brand: { domain: "lotientertainment.com", brand_id: "daan_janssen" } },
+      claim_type: "https://adcontextprotocol.org/claims/rights/grant",
+      subject: {
+        type: "resource",
+        resource_type: "https://adcontextprotocol.org/claims/subjects/rights-grant",
+        namespace: "https://rights.lotientertainment.com/mcp",
+        id: "rgt_dj_001",
+        content_digest: "sha256:61c68dea6be064a424741051182ba583e8b587b4c9af10c65bd57ae20fb10e79",
+      },
+      locator: { type: "issuer_credential_id", credential_id: "cred_dj_001", resolver_id: "primary" },
+    }],
   },
 };
 ```
 
 ### How buyers use these
 
-The buyer's orchestrator passes `generation_credentials` to their creative agent, which uses them with the AI provider. The `rights_constraint` is embedded in the creative manifest's `rights` array — it travels with the creative through the supply chain so every system in the chain knows the usage terms.
+`generation_credentials` are secrets, and AdCP 3.2 does not define them as `build_creative` arguments. The buyer either uses them directly with the named generation provider or provisions them into the creative agent's authenticated, account-scoped provider integration through that implementation's secret-management channel. Do not place them in `build_creative`, `context`, or `ext`.
+
+The typed AdCP handoff carries the non-secret `rights_constraint` unchanged inside `creative_manifest.rights`, so the digest and issuer reference survive production, sync, package assignment, and seller readback:
 
 ```typescript
-// Buyer-side: passing rights to a creative agent
+// Buyer-side: the provider credential has already been provisioned securely.
 const creative = await creativeAgent.callTool({
   name: "build_creative",
   arguments: {
     brand: { domain: "bistro-oranje.nl" },
+    idempotency_key: "7f4024d8-b429-4ad8-92dd-128cd89f15fc",
     target_capability_id: "vertical_video_builder",
     message: "15-second vertical video featuring Daan Janssen endorsing Bistro Oranje",
-    generation_credentials: acquireResponse.generation_credentials,
-    rights: [acquireResponse.rights_constraint],
+    creative_manifest: {
+      format_kind: "video_hosted",
+      assets: {
+        creative_brief: {
+          asset_type: "brief",
+          name: "Bistro Oranje Daan Janssen endorsement",
+          objective: "awareness",
+        },
+      },
+      rights: [acquireResponse.rights_constraint],
+    },
   },
 });
 ```
 
-The creative agent uses the `generation_credentials` to authenticate with the AI provider (Midjourney, ElevenLabs, etc.) and produces the asset. The `rights` array becomes part of the creative manifest metadata — downstream systems (ad servers, verification vendors) can inspect it to confirm the creative is properly licensed.
+The creative agent's provider adapter uses its securely provisioned credential and produces the asset while preserving `creative_manifest.rights`. If the buyer generated the provider asset directly instead, it attaches that asset and the unchanged rights constraint to a canonical manifest before `sync_creatives`. A downstream seller does not trust the buyer's array by inspection: it resolves and verifies an allowed credential, checks the exact digest, issuer/rights-agent authority, validity, and revocation state, and emits its own evaluation. Legacy `verification_url` values are not an authorization path.
 
 For the full creative manifest specification, see [creative manifests](/docs/creative/creative-manifests).
 
