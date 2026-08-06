@@ -147,7 +147,8 @@
         },
         "format": {
           "$ref": "/schemas/core/format.json",
-          "description": "Deprecated 3.x named-format compatibility definition; use ProductFormatDeclaration canonical contracts for new integrations."
+          "description": "Deprecated 3.x named-format compatibility definition; use ProductFormatDeclaration canonical contracts for new integrations.",
+          "deprecated": true
         },
         "overlay": {
           "$ref": "/schemas/core/overlay.json",
@@ -539,6 +540,7 @@
         },
         "signal-pricing-option": {
           "$ref": "/schemas/core/signal-pricing-option.json",
+          "deprecated": true,
           "description": "Deprecated — alias for vendor-pricing-option.json. Retained for backward compatibility. Prefer vendor-pricing-option.json for new implementations."
         },
         "vendor-pricing-option": {
@@ -1061,6 +1063,7 @@
         },
         "legacy-postal-system": {
           "$ref": "/schemas/enums/legacy-postal-system.json",
+          "deprecated": true,
           "description": "Deprecated country-fused postal code systems for compatibility (us_zip, gb_outward, ca_fsa, etc.)"
         },
         "age-verification-method": {
@@ -1299,10 +1302,12 @@
         "list-creative-formats": {
           "request": {
             "$ref": "/schemas/media-buy/list-creative-formats-request.json",
+            "deprecated": true,
             "description": "Deprecated 3.x compatibility request. Sales agents publish canonical sellable formats through get_products Product.format_options[]."
           },
           "response": {
             "$ref": "/schemas/media-buy/list-creative-formats-response.json",
+            "deprecated": true,
             "description": "Deprecated 3.x compatibility response for legacy named formats. Not a sales-agent deliverability contract."
           }
         },
@@ -1424,10 +1429,12 @@
         "list-creative-formats": {
           "request": {
             "$ref": "/schemas/creative/list-creative-formats-request.json",
+            "deprecated": true,
             "description": "Deprecated 3.x compatibility request; use get_adcp_capabilities creative.supported_formats[]."
           },
           "response": {
             "$ref": "/schemas/creative/list-creative-formats-response.json",
+            "deprecated": true,
             "description": "Deprecated 3.x compatibility response for legacy named formats."
           }
         },

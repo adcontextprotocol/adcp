@@ -40,7 +40,7 @@
     "format_ids": {
       "type": "array",
       "deprecated": true,
-      "description": "**DEPRECATED in 3.2.** Legacy named-format compatibility path. New products MUST author canonical `format_options[]`; sellers MAY additionally project those declarations to format_ids for 3.x legacy buyers. When both fields are present they MUST describe the same underlying formats, and buyers MUST prefer format_options. Do not author a new product from format_ids alone.",
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format compatibility path. Products MUST carry `format_ids`, `format_options`, or both during the 3.x migration window. New products MUST author canonical `format_options[]`; sellers MAY additionally project those declarations to `format_ids` for legacy buyers. When both fields are present they MUST describe the same underlying formats, and buyers MUST prefer `format_options`. Do not author a new product from `format_ids` alone.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }
@@ -128,6 +128,7 @@
     },
     "outcome_measurement": {
       "$ref": "/schemas/core/outcome-measurement.json",
+      "deprecated": true,
       "description": "**Deprecated as of this minor.** Outcome capabilities (incremental sales lift, brand lift, foot traffic, etc.) are now declared via `reporting_capabilities.available_metrics` (the same path used for impressions, conversions, ROAS) with `qualifier.attribution_methodology` and `qualifier.attribution_window` carrying the methodology and window on commit. New implementations SHOULD use the unified pattern; this field is retained for one-minor backwards compatibility and removed at the next major. See `outcome-measurement.json` description for migration guidance."
     },
     "delivery_measurement": {
@@ -144,6 +145,7 @@
         },
         "provider": {
           "type": "string",
+          "deprecated": true,
           "description": "**Deprecated as of this minor.** Free-form measurement provider description (e.g., 'Google Ad Manager with IAS viewability', 'Nielsen DAR', 'Geopath for DOOH impressions'). New implementations SHOULD use the structured `vendors` field instead. Retained for one-minor backwards compatibility; removed at the next major. When both `vendors` and `provider` are present, consumers MUST use `vendors` for vendor identity and treat `provider` as informational text."
         },
         "notes": {
@@ -628,12 +630,13 @@
   ],
   "anyOf": [
     {
-      "title": "Legacy Product (named-format reference)",
+      "title": "Named-format product",
+      "deprecated": true,
       "description": "Deprecated 3.x compatibility branch. Product references one or more named formats by structured format_id ({ agent_url, id }). New 3.2 products use format_options.",
       "required": ["format_ids"]
     },
     {
-      "title": "3.1+ Product (format-option declarations)",
+      "title": "Canonical-format product",
       "description": "Product carries one or more inline ProductFormatDeclarations, each narrowing a canonical format. This is the 3.1+ format-option path introduced by RFC #3305. A single-element `format_options` array is the 90% case; multi-element arrays declare that the product accepts any of the listed format options.",
       "required": ["format_options"]
     }

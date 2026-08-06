@@ -363,6 +363,7 @@
                 },
                 "delivery": {
                   "type": "object",
+                  "deprecated": true,
                   "description": "Deprecated buyer delivery snapshot retained as audit evidence on a delivery outcome.",
                   "additionalProperties": true
                 },

@@ -16,6 +16,7 @@
   "properties": {
     "formats": {
       "type": "array",
+      "deprecated": true,
       "description": "Deprecated named-format definitions projected for older 3.x callers. This list is neither the publisher acceptance catalog nor the seller's canonical product deliverability contract.",
       "items": {
         "$ref": "/schemas/core/format.json"
@@ -23,6 +24,7 @@
     },
     "source": {
       "type": "string",
+      "deprecated": true,
       "enum": [
         "publisher",
         "aao_mirror",

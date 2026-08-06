@@ -99,6 +99,7 @@
     },
     "placement_ids": {
       "type": "array",
+      "deprecated": true,
       "description": "Legacy shorthand array of placement IDs where this creative should run when uploading via create_media_buy or update_media_buy. New senders SHOULD use `placement_refs` because placement IDs are publisher-scoped and strings are ambiguous in multi-publisher products. If omitted, creative runs on all buyer-targetable placements. If `placement_refs` is also present, receivers MUST ignore this field. Only used during upload to media buy - not stored in creative library.",
       "items": {
         "type": "string"
@@ -131,13 +132,14 @@
   },
   "oneOf": [
     {
-      "title": "Legacy creative (named-format reference)",
+      "title": "v1 creative (named-format reference)",
+      "deprecated": true,
       "description": "Deprecated 3.x compatibility branch using a structured named-format reference.",
       "required": ["format_id"],
       "not": { "required": ["format_kind"] }
     },
     {
-      "title": "Canonical creative",
+      "title": "v2 creative (canonical format kind)",
       "description": "Creative declares the portable canonical contract it targets via `format_kind` and optional `format_option_ref`.",
       "required": ["format_kind"],
       "not": { "required": ["format_id"] }

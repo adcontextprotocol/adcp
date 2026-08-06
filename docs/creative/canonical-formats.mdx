@@ -11,6 +11,7 @@ testable: true
 > - **9 of 12 canonical formats ship non-experimental at 3.1 GA** (`image`, `html5`, `display_tag`, `image_carousel`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `native_in_feed`). 3 canonicals stay experimental past GA (`sponsored_placement`, `responsive_creative`, `agent_placement`), and the `custom` escape-hatch `format_kind` is inherently experimental until a shape is promoted.
 > - **AdCP 3.2 is canonical-first end to end.** New publisher catalogs, products, manifests, creative-agent capabilities, and build requests use canonical declarations. Named `format_id` values and `list_creative_formats` are deprecated compatibility surfaces.
 > - **Legacy support is read/project only.** Implementations MAY derive named-format responses for older 3.x peers, but MUST NOT make a legacy catalog the source of truth for newly-authored 3.2 data.
+> - **Exact plural `format_ids` fields end at 4.0.** This deadline does not itself remove singular `format_id`, named-format definitions, or `list_creative_formats`; those compatibility surfaces have separate schedules.
 > - **SDK codegen is the gating dependency for ergonomic adopter consumption.** Schemas are shippable today; the typed-tagged-union ergonomics this design earns land fully only with codegen. The runtime Ajv validator is the load-bearing gate — generated TS/Pydantic types lose `if/then` narrowing on `format_kind: "custom"` and `result_kind`.
 
 > **Status:** Canonical formats were introduced in AdCP 3.1 and are the required authoring and discovery model in AdCP 3.2. Three canonicals plus `custom` remain marked `experimental` until adopter evidence supports promotion. Historical design context lives in [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) and [#3307](https://github.com/adcontextprotocol/adcp/pull/3307).
@@ -1310,7 +1311,7 @@ Buyer's SDK caches by URI@digest. Subsequent `get_products` responses can refere
 
 ## Deprecated named-format compatibility projection (normative)
 
-AdCP 3.2 products are authored with canonical `format_options`. A producer MAY derive deprecated `format_ids` from those declarations only for a negotiated older-3.x compatibility response. When both shapes ship to such a peer, they MUST refer to the same underlying format declaration — divergent shapes are a contract violation. New products and examples MUST NOT be authored from `format_ids`.
+AdCP 3.2 products are authored with canonical `format_options`. A producer MAY derive deprecated `format_ids` from those declarations only for a negotiated older-3.x compatibility response. When both shapes ship to such a peer, they MUST refer to the same underlying format declaration — divergent shapes are a contract violation. New products and examples MUST NOT be authored from `format_ids`, and AdCP 4.0 removes every field named exactly `format_ids`.
 
 ### Producer rules
 
@@ -1511,7 +1512,7 @@ This is a doc concern, not a schema concern. The schema is more strict than the 
 | Creative agents (AudioStack-shaped) | Low, high motivation | 3.1-3.2 |
 | Publisher direct (GAM/prebid path) | Medium | Blocked on native canonical pre-audit |
 
-**Legacy named formats are deprecated in 3.2.** Implementations MAY provide a server-side compatibility projection derived from canonical declarations for older 3.x peers. They MUST NOT author new products, manifests, capabilities, or examples from the legacy shape, and `list_creative_formats` MUST NOT be treated as a source of truth.
+**Legacy named formats are deprecated in 3.2.** Implementations MAY provide a server-side compatibility projection derived from canonical declarations for older 3.x peers. They MUST NOT author new products, manifests, capabilities, or examples from the legacy shape, and `list_creative_formats` MUST NOT be treated as a source of truth. Exact plural `format_ids` fields are removed in 4.0; other named-format compatibility surfaces follow their own schedules.
 
 ### Realistic 3.1 coverage
 

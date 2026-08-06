@@ -34,12 +34,12 @@ The experimental campaign-governance surface gains task-scoped service enforceme
 | Sales agents | `get_products.format_options[]` | Product-level accepted formats |
 | Creative agents | `get_adcp_capabilities.creative.supported_formats` | Producible-format catalog |
 
-The v1 task remains **functional through 4.x**. Removal is aligned with the v1 named-format / `format_ids` deprecation calendar in the [canonical formats migration guide](/docs/creative/canonical-formats-migration) (2027-Q4 floor / 2029-Q1 ceiling; adoption-driven 5.0 cut sequence) — not an immediate hard cut in 3.2.
+The v1 task remains **functional through 4.x** on its own compatibility schedule. Its lifecycle is not coupled to exact plural `format_ids`, which is deprecated in 3.2 and removed in 4.0.
 
 **Not deprecated by this change:**
 
 - [`list_creatives`](/docs/creative/task-reference/list_creatives) remains the creative-library query task.
-- Legacy named-format creatives and v1 `format_id` / `format_ids[]` remain supported through 4.x.
+- Singular `format_id` and named-format definitions retain their separate compatibility schedules; exact plural `format_ids` fields are removed in 4.0.
 
 **Consumer conformance:** buyers and other consumers MUST NOT assume `list_creative_formats` is present on 3.2+ agents when equivalent canonical-format discovery is declared.
 
