@@ -13,6 +13,12 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 **Status:** In development — minor release targeting the 3.2.0 milestone. Stable wire shapes remain backward compatible; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
 
+### Inline asset-access credentials deprecated (#5698)
+
+`service_account.credentials` in secured content-artifact access is deprecated. New producers must omit it. For one-off delivery, use an asset-scoped, short-lived signed URL; established integrations may use the fetching component's pre-authorized workload identity, and origins that require an Authorization header may use a short-lived, asset-scoped bearer token.
+
+The legacy field remains schema-valid for 3.x wire compatibility. Consumers must not activate received credentials automatically: they may process the legacy form only for an explicitly allowlisted peer and otherwise must reject or quarantine it. The field is eligible for removal in 4.0 or later only after both deprecation-policy gates are satisfied: at least six months from publication of this notice and at least one full release cycle. See [Migrating secured asset access](/docs/reference/migration/asset-access) and [#5699](https://github.com/adcontextprotocol/adcp/issues/5699) for removal tracking.
+
 ### Cross-role governance enforcement
 
 **Breaking-change notice for the experimental governance-task surface. The implementation may merge during 3.2 development; the beta-to-GA period provides the six-week notice window before production availability. This notice does not relax authentication, transport, or core security requirements: authenticated caller binding follows the stable version-level contract.**
