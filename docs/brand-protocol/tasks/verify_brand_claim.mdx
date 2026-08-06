@@ -25,7 +25,7 @@ For high-volume verification (portfolio refresh, creative-clearance batches, cra
 - For `subsidiary` claims, also call the leaf's brand-agent with `claim_type: "parent"` (or crawl the leaf's `brand.json` for its `house_domain`).
 - For `property` claims, cross-check against the brand's static `brand.json` `properties[]` and (for domains) DNS/TLS evidence.
 - For `trademark` claims, cross-check the public registry record. For `licensed_in` specifically, the licensor named in `details.licensor_domain` SHOULD reciprocate `licensed_out` for the same mark before the licensing relationship is trusted.
-- **Only rejections (`disputed` / `not_ours`) are authoritative on a single signed response** — a brand has standing to refuse association unilaterally.
+- **Only trusted rejections (`disputed` / `not_ours`) are authoritative on a single signed response** — after the [brand-authorization cross-check](#trust-model) returns verifier-local `trust: "trusted"`, the brand has standing to refuse association unilaterally. An untrusted rejection cannot revoke trust.
 
 Shortcuts kill the trust model. Without the reciprocation step, a malicious or mistaken house could claim subsidiaries, properties, or licensed marks it doesn't actually have. See [`brand.json` § Agent-augmented verification](/docs/brand-protocol/brand-json#agent-augmented-verification) for the full normative trust table and the malicious-house walkthrough.
 
@@ -104,7 +104,7 @@ House-side: a consumer detects `converse.com` claiming `house_domain: nikeinc.co
 }
 ```
 
-The brand can also reject — rejection direction is authoritative on a single signed response, no reciprocation required:
+The brand can also reject. Rejection direction is authoritative on a single signed response only after the [brand-authorization cross-check](#trust-model) returns verifier-local `trust: "trusted"`; no reciprocation is then required:
 
 ```json
 {
@@ -234,7 +234,7 @@ A property that spans multiple regions (e.g., a global e-commerce surface) retur
 }
 ```
 
-The brand can also reject — rejection direction is authoritative on a single signed response:
+The brand can also reject. Rejection direction is authoritative on a single signed response only after the [brand-authorization cross-check](#trust-model) returns verifier-local `trust: "trusted"`:
 
 ```json
 {
@@ -315,7 +315,7 @@ Applicable statuses: `owned`, `transferring`, `disputed`, `not_ours`, `archived`
 
 **`licensed_in` reciprocation.** Consumers SHOULD treat `licensed_in` as **unverified** until the named `licensor_domain`'s brand-agent reciprocates `licensed_out` for the same mark (same mutual-assertion shape as ownership, just across the licensing edge). Without reciprocation, the brand could unilaterally claim a licensed relationship that doesn't exist.
 
-The brand can also reject — rejection direction is authoritative on a single signed response:
+The brand can also reject. Rejection direction is authoritative on a single signed response only after the [brand-authorization cross-check](#trust-model) returns verifier-local `trust: "trusted"`:
 
 ```json
 {

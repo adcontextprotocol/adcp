@@ -104,7 +104,10 @@ function assessBrandResponseAuthorization(input) {
     return { trust: 'untrusted', reason: 'agent_authorization_ambiguous' };
   }
 
-  const jwksUri = matches[0].jwks_uri || defaultJwksUri(matches[0].url);
+  const jwksUri = canonicalizeFixtureUrl(matches[0].jwks_uri || defaultJwksUri(matches[0].url));
+  if (jwksUri === null || !jwksUri.startsWith('https://')) {
+    return { trust: 'untrusted', reason: 'jwks_unavailable', kid };
+  }
   const jwks = input.jwks_by_uri?.[jwksUri];
   if (!jwks || !Array.isArray(jwks.keys)) {
     return { trust: 'untrusted', reason: 'jwks_unavailable', kid, jwks_uri: jwksUri };
