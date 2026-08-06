@@ -105,11 +105,13 @@
                   "docs/reference/migration/audiences",
                   "docs/reference/migration/attribution",
                   "docs/reference/migration/media-buy-status",
+                  "docs/reference/migration/asset-access",
                   "docs/reference/migration/cross-role-governance-enforcement"
                 ]
               },
               "docs/protocol/architecture",
               "docs/protocol/design-principles",
+              "docs/protocol/language-and-localization",
               "docs/protocol/capabilities-explorer",
               "docs/spec-guidelines",
               "docs/protocol/required-tasks",

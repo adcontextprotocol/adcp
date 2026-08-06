@@ -30,11 +30,28 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Filter by specific format IDs",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.2.** Filter by legacy named-format references. Use `format_kinds` or `format_option_refs`.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       },
       "minItems": 1
+    },
+    "format_kinds": {
+      "type": "array",
+      "description": "Filter to products accepting any of these canonical format kinds.",
+      "items": { "$ref": "/schemas/core/canonical-format-kind.json" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-canonicalization": "set"
+    },
+    "format_option_refs": {
+      "type": "array",
+      "description": "Filter to products accepting any of these exact publisher- or product-scoped canonical format options.",
+      "items": { "$ref": "/schemas/core/format-option-ref.json" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-canonicalization": "set"
     },
     "standard_formats_only": {
       "type": "boolean",

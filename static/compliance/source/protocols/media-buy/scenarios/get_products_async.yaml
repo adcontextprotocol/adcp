@@ -301,9 +301,12 @@ phases:
                       selection_type: "all"
                   channels: ["display"]
                   delivery_type: "guaranteed"
-                  format_ids:
-                    - agent_url: "https://creative.adcontextprotocol.org/"
-                      id: "display_300x250"
+                  format_options:
+                    - format_option_id: "display_300x250"
+                      format_kind: "image"
+                      params:
+                        width: 300
+                        height: 250
                   pricing_options:
                     - pricing_option_id: "async_curated_trail_cpm"
                       pricing_model: "cpm"

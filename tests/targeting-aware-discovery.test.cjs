@@ -131,6 +131,36 @@ test("product filters are valid in brief, wholesale, and refine modes", async ()
   }
 });
 
+test("wholesale cache scope includes targeting-aware discovery inputs everywhere", () => {
+  const requestSchema = fs.readFileSync(
+    path.join(SCHEMA_ROOT, "media-buy", "get-products-request.json"),
+    "utf8"
+  );
+  const responseSchema = fs.readFileSync(
+    path.join(SCHEMA_ROOT, "media-buy", "get-products-response.json"),
+    "utf8"
+  );
+  const taskReference = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "docs",
+      "media-buy",
+      "task-reference",
+      "get_products.mdx"
+    ),
+    "utf8"
+  );
+
+  for (const surface of [requestSchema, responseSchema, taskReference]) {
+    assert.match(
+      surface,
+      /buying_mode, filters, targeting_overlay, required_overlay_support, deprecated property_list, catalog/,
+      "wholesale version cache keys must distinguish concrete and future targeting"
+    );
+  }
+});
+
 test("targeting-aware storyboard grades filters and configured targeting end to end", () => {
   const scenario = (filename) =>
     YAML.parse(
@@ -267,12 +297,30 @@ test("buyer teaching surfaces explain structured-first targeting", () => {
     ),
     "utf8"
   );
+  const buyerSupplement = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "docs",
+      "learning",
+      "supplements",
+      "buyer-briefs-and-get-products.mdx"
+    ),
+    "utf8"
+  );
 
-  for (const teaching of [skill, addieKnowledge]) {
+  for (const teaching of [skill, addieKnowledge, buyerSupplement]) {
     assert.match(teaching, /targeting_overlay/);
     assert.match(teaching, /required_overlay_support/);
     assert.match(teaching, /targeting_resolution\.brief_targeting/);
     assert.match(teaching, /hard[^\n]*brief|hard[^\n]*prose/i);
+  }
+  for (const teaching of [skill, addieKnowledge, buyerSupplement]) {
+    assert.match(
+      teaching,
+      /brief[^\n]*wholesale[^\n]*refine/,
+      "buyer teaching must not imply that filters are wholesale-only"
+    );
   }
   assert.match(skill, /fewer tokens/);
   assert.match(addieKnowledge, /No targeting-resolution echo confirms only/);

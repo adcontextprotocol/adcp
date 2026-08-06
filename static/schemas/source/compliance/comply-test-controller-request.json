@@ -799,6 +799,60 @@
           },
           "additionalProperties": true
         },
+        "vendor_metric_values": {
+          "type": "array",
+          "description": "Vendor-defined metric values to inject into the next delivery report. Used by simulate_delivery. The reference seller reconciles these rows against each package's seller-stamped committed_metrics contract.",
+          "items": {
+            "$ref": "/schemas/core/vendor-metric-value.json"
+          }
+        },
+        "vendor_metric_values_by_package": {
+          "type": "object",
+          "description": "Package-scoped vendor-defined values to inject, keyed by package_id. Used by simulate_delivery for multi-package buys. Sellers MUST use this form whenever more than one package could carry the same vendor/metric_id key; the legacy media-buy-scoped vendor_metric_values form is unambiguous only for a single-package buy.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "/schemas/core/vendor-metric-value.json"
+            }
+          }
+        },
+        "not_yet_measurable_vendor_metrics": {
+          "type": "array",
+          "description": "Committed vendor metrics that are not yet measurable for the simulated measurement window. Used by simulate_delivery to prove that a future metric is omitted from missing_metrics until its measurement window matures.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "vendor": {
+                "$ref": "/schemas/core/brand-ref.json"
+              },
+              "metric_id": {
+                "$ref": "/schemas/core/vendor-metric-id.json"
+              }
+            },
+            "required": ["vendor", "metric_id"],
+            "additionalProperties": false
+          }
+        },
+        "not_yet_measurable_vendor_metrics_by_package": {
+          "type": "object",
+          "description": "Package-scoped committed vendor metrics that are not yet measurable for the simulated window, keyed by package_id. Used by simulate_delivery for multi-package buys so a deferral on one package never suppresses another package's overdue gap.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "vendor": {
+                  "$ref": "/schemas/core/brand-ref.json"
+                },
+                "metric_id": {
+                  "$ref": "/schemas/core/vendor-metric-id.json"
+                }
+              },
+              "required": ["vendor", "metric_id"],
+              "additionalProperties": false
+            }
+          }
+        },
         "spend_percentage": {
           "type": "number",
           "minimum": 0,
@@ -826,7 +880,8 @@
         },
         "format_id": {
           "type": "string",
-          "description": "Creative format ID to seed. Used by seed_creative_format. The seller MUST expose this format ID in list_creative_formats responses for the duration of the compliance session."
+          "deprecated": true,
+          "description": "**DEPRECATED 3.x compatibility fixture.** Legacy named-format ID to seed for seed_creative_format scenarios. The seller MUST expose it through the deprecated list_creative_formats projection for the duration of the compliance session. Canonical 3.2 scenarios seed creative.supported_formats capabilities instead."
         },
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",

@@ -102,7 +102,8 @@ Returns an array of media buys with current status, creative approval state, and
 | `creative_deadline` | Per-package creative deadline (ISO 8601). When absent, the media buy's `creative_deadline` applies. |
 | `context` | Opaque package-level correlation data echoed unchanged from the `create_media_buy` package request. Sellers MUST include persisted context when the package was created through AdCP with context, and MAY omit it for packages created outside AdCP or without context. Buyers targeting mixed seller populations can use the per-package correlation value they included on create, commonly `context.buyer_ref`, to map `package_id` back to their line items when a legacy create response did not echo `product_id`. |
 | `creative_approvals` | Array of creative approval states (see below) |
-| `format_ids_pending` | Format IDs from `format_ids_to_provide` not yet uploaded |
+| `formats_pending` | Canonical package-time format declarations from `formats_to_provide` that do not yet have creative coverage. Full declarations let buyers select a compatible creative agent even when no option ID exists. |
+| `format_ids_pending` | **Deprecated in 3.2.** Legacy named-format projection of `formats_pending` for older 3.x peers. |
 | `snapshot_unavailable_reason` | Reason code when `include_snapshot: true` but no snapshot is returned for this package |
 | `snapshot` | Near-real-time delivery snapshot (when `include_snapshot: true`) |
 
@@ -372,8 +373,9 @@ if (validated.errors?.length > 0) {
 for (const mediaBuy of validated.media_buys) {
   for (const pkg of mediaBuy.packages) {
     // Check for missing creatives
-    if (pkg.format_ids_pending?.length > 0) {
-      console.log(`Package ${pkg.package_id}: missing formats ${pkg.format_ids_pending.map(f => f.id).join(', ')}`);
+    if (pkg.formats_pending?.length > 0) {
+      const labels = pkg.formats_pending.map(f => f.format_option_id ?? f.format_kind);
+      console.log(`Package ${pkg.package_id}: missing formats ${labels.join(', ')}`);
     }
 
     // Check approval states
@@ -404,9 +406,9 @@ async def main():
     for media_buy in result.media_buys:
         for pkg in media_buy.packages:
             # Check for missing creatives
-            if pkg.format_ids_pending:
-                ids = [f.id for f in pkg.format_ids_pending]
-                print(f"Package {pkg.package_id}: missing formats {', '.join(ids)}")
+            if pkg.formats_pending:
+                labels = [f.format_option_id or f.format_kind for f in pkg.formats_pending]
+                print(f"Package {pkg.package_id}: missing formats {', '.join(labels)}")
 
             # Check approval states
             for approval in pkg.creative_approvals or []:
@@ -510,8 +512,8 @@ const [mediaBuy] = validated.media_buys;
 const issues = [];
 
 for (const pkg of mediaBuy.packages) {
-  if (pkg.format_ids_pending?.length > 0) {
-    issues.push(`Package ${pkg.package_id}: ${pkg.format_ids_pending.length} format(s) not yet uploaded`);
+  if (pkg.formats_pending?.length > 0) {
+    issues.push(`Package ${pkg.package_id}: ${pkg.formats_pending.length} format(s) not yet uploaded`);
   }
 
   const rejected = (pkg.creative_approvals ?? []).filter(a => a.approval_status === 'rejected');
@@ -542,8 +544,8 @@ async def main():
     issues = []
 
     for pkg in media_buy.packages:
-        if pkg.format_ids_pending:
-            issues.append(f"Package {pkg.package_id}: {len(pkg.format_ids_pending)} format(s) not yet uploaded")
+        if pkg.formats_pending:
+            issues.append(f"Package {pkg.package_id}: {len(pkg.formats_pending)} format(s) not yet uploaded")
 
         rejected = [a for a in (pkg.creative_approvals or []) if a.approval_status == 'rejected']
         if rejected:

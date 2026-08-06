@@ -2917,7 +2917,7 @@ Validate in two parts.
 npx @adcp/sdk@latest test-mcp get_products '{"brief":"<your campaign brief>"}'
 \`\`\`
 
-Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products → create_media_buy → list_creative_formats → sync_creatives.
+Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products (select a canonical \`format_options[]\` entry) → create_media_buy → get_adcp_capabilities on the chosen creative endpoint → sync_creatives with \`format_kind\` and optional \`format_option_ref\`.
 
 2. Validate the 3.2 targeting-aware objectives with schema fixtures: request decomposition, required future targeting support, disclosed modification acceptance/rejection, and effective package readback. The public agent does not validate those fields until https://github.com/adcontextprotocol/adcp/issues/6199 lands. After that issue is complete, rerun the targeting-aware fixtures live.
 

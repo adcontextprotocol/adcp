@@ -15,7 +15,7 @@ narrative: |
   agent-side misconfiguration that looks identical to "my client is broken".
 
   AdCP uses a tiered model: discovery operations (`get_adcp_capabilities`,
-  `list_creative_formats`, `get_products` without pricing) are public; operations
+  `get_products` without pricing) are public; operations
   that return tenant-scoped data or modify state (`list_creatives`, `create_media_buy`,
   `get_media_buy_delivery`, `sync_creatives`, etc.) require credentials. See
   [/docs/building/by-layer/L2/authentication](/docs/building/by-layer/L2/authentication).

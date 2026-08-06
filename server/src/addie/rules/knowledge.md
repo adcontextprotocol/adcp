@@ -31,7 +31,8 @@ Answer: Standardize facts that already have protocol fields; do not standardize 
 **Structured-first targeting rule:**
 - Use `filters` for hard offer constraints—metadata, dates, budget,
   availability, commercial fit, and reporting capabilities—that decide which
-  products may be returned.
+  products may be returned. Their exclusion semantics are identical in
+  `brief`, `wholesale`, and `refine` modes.
 - Use `targeting_overlay` for exact delivery constraints known now.
 - Use `required_overlay_support` for dimensions whose values will be chosen on packages later.
 - Use the brief for goals, context, semantic intent, preferences, and requirements without a structured representation.

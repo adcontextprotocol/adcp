@@ -6,13 +6,11 @@ sidebarTitle: Specification
 ---
 
 <Info>
-**AdCP 3.0 Proposal** - This specification is under development for AdCP 3.0. Feedback welcome via [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions).
+**AdCP 3.2:** canonical declarations are the current Creative Protocol model. Named format IDs and `list_creative_formats` are deprecated compatibility surfaces.
 </Info>
 
-> **Canonical formats in 3.1**: this page describes the v1 specification model. For the canonical-formats model (inline `format_options` on products, `validate_input` primitive), see [canonical-formats](/docs/creative/canonical-formats) and the [migration guide](/docs/creative/canonical-formats-migration).
-
-**Status**: Request for Comments
-**Last Updated**: March 2026
+**Status**: Current specification
+**Last Updated**: July 2026
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
 
@@ -56,7 +54,17 @@ Creative agents MUST declare Creative Protocol support via `get_adcp_capabilitie
     "has_creative_library": true,
     "supports_generation": false,
     "supports_transformation": true,
-    "supports_compliance": false
+    "supports_compliance": false,
+    "supported_formats": [
+      {
+        "capability_id": "display_image_transform",
+        "operations": ["build", "validate", "preview"],
+        "format": {
+          "format_kind": "image",
+          "params": { "width": 300, "height": 250 }
+        }
+      }
+    ]
   }
 }
 ```
@@ -90,30 +98,19 @@ These models compose — an agent can support multiple. A creative ad server wit
 
 **Buyer workflow by model:**
 
-- **Transformation**: discover via `get_adcp_capabilities.creative.supported_formats` (preferred in 3.2+) or v1 `list_creative_formats` through 4.x → `build_creative` (with `creative_manifest` + `target_format_id`)
-- **Generation**: discover via `get_adcp_capabilities.creative.supported_formats` (preferred in 3.2+) or v1 `list_creative_formats` through 4.x → `build_creative` (with `message` + `target_format_id`)
-- **Library retrieval**: `list_creatives` → `build_creative` (with `creative_id` + `target_format_id`)
+- **Transformation**: `get_adcp_capabilities` → choose `creative.supported_formats[].capability_id` → `build_creative` with `creative_manifest` + `target_capability_id`
+- **Generation**: `get_adcp_capabilities` → choose a build capability → `build_creative` with `message` + `target_capability_id`
+- **Library retrieval**: `list_creatives` → `build_creative` with `creative_id` + `target_capability_id`
 
 Agents that host a creative library should also implement the [accounts protocol](/docs/accounts/overview) so buyers can establish access before querying. Sales agents that already implement accounts for media buys do not need to do anything additional.
 
-A transformation or generation agent that charges for its services implements the Accounts Protocol, exposes pre-build `pricing_options` on `list_creative_formats` through 4.x, and returns pricing in `build_creative` responses. `get_adcp_capabilities.creative.supported_formats` is the preferred format-discovery surface but does not carry standardized account-scoped pricing. Agents that persist `creative_id` on build output can also expose pricing on `list_creatives`. Free transformation agents remain stateless and unchanged.
+A transformation or generation agent that charges for its services implements the Accounts Protocol, exposes account-scoped pricing through `list_transformers`, and returns applied pricing in `build_creative` responses. Agents that persist `creative_id` on build output can also expose pricing on `list_creatives`. Free transformation agents remain stateless and unchanged.
 
-### Format authority
+### Format authority and creative capability
 
-Each format has exactly one authoritative creative agent, identified by the `agent_url` in the format ID:
+Canonical format authority is contextual. Publishers own the acceptance declarations in `adagents.json.formats[]`; sales agents own each product's deliverable `format_options[]`; creative agents own claims about what they can build, validate, or preview in `creative.supported_formats[]`.
 
-```json
-{
-  "format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250_image"
-  }
-}
-```
-
-Creative agents MUST only return authoritative format definitions for formats they own.
-
-Creative agents MAY reference other creative agents that provide additional formats.
+A creative agent claiming exact support for a publisher format repeats its `{publisher_domain, format_option_id}` identity inside the capability's canonical `format` declaration. A generic capability omits publisher identity and matches only when its parameter envelope can satisfy every target constraint.
 
 ### Formats
 
@@ -138,13 +135,162 @@ Assets are the building blocks of creatives. Asset types include:
 
 ### Manifests
 
-Manifests pair format specifications with actual asset content. A manifest provides:
+Manifests pair canonical format specifications with actual asset content. A manifest provides:
 
-- Format reference (agent_url + id)
-- Asset values keyed by asset_id from the format
+- Canonical `format_kind` and optional product/publisher `format_option_ref`
+- Asset values keyed by canonical slot name
 - Tracking URLs and macros
 
 Creative agents MUST validate manifests against format requirements before accepting them.
+
+### Native creative localization
+
+Native localization is a library/trafficking capability, distinct from
+`build_creative` fan-out and from served delivery variants. An agent supports
+it only when `get_adcp_capabilities.creative.localization` is present. This is
+a coarse structural capability: it advertises materialized locale variants,
+RFC 4647 Lookup, and an optional target-variant ceiling, not universal support
+for every locale, format, or account. Because exact `list_creatives` readback
+is part of the contract, advertising localization also requires
+`creative.has_creative_library: true`.
+
+This section implements the executable-creative pattern from the
+[cross-protocol language and localization architecture](/docs/protocol/language-and-localization).
+Other language-bearing surfaces reuse the tag and matching primitives without
+inheriting creative variant topology.
+
+`sync_creatives.creatives[].localization` carries only materialized assets. It
+never asks the receiving seller to translate or generate creative. A buyer may
+produce those assets itself, through `build_creative`, or through a separate
+translation/transformation agent before sync; their production provenance does
+not change this trafficking contract. This is the only localization write
+surface. Inline creatives on
+`create_media_buy` and `update_media_buy` reject `localization`; buyers first
+sync the localized library creative and then assign it to a package.
+
+- The creative's top-level `assets` are the source variant.
+- `localization.source` binds those assets to a canonical BCP 47 tag and a
+  buyer-assigned `locale_variant_id`.
+- `target_variants[]` may be empty for a monolingual source-only creative.
+  Every target entry has a unique locale and stable
+  `locale_variant_id` plus locale-specific materialized asset overrides;
+  missing slots inherit source assets.
+- `default_locale_variant_id` explicitly identifies the serving fallback. It
+  may reference the source or a target; source does not imply default.
+- `locale_fallbacks[]` optionally maps a canonical requested language range to
+  a source or target variant. These are explicit buyer-approved substitutions,
+  not inferred equivalence between regional variants.
+- `unmatched_locale_action` is `serve_default` or `do_not_serve`.
+
+In this contract, `locale` is a BCP 47 language tag used only for language
+identity. Script and region may refine that identity; other valid subtags remain
+part of tag matching but do not make this a general locale-settings object. It
+does not determine currency, time zone, number/date formatting, market, or legal
+jurisdiction; those require their own fields and policies.
+
+AdCP defines a canonical wire profile for those tags: lower-case language and
+variants, title-case script, and upper-case region (for example `en-US` and
+`zh-Hant-TW`). This is intentionally stricter than
+[RFC 5646](https://www.rfc-editor.org/rfc/rfc5646), where tags compare
+case-insensitively and case regularization is optional. A receiver MUST reject
+malformed, duplicate, non-profile, unsupported, or lossily mapped tags rather
+than silently normalizing them or mutating seller systems or the creative
+library.
+
+Within a localized creative, `language` on `text` and `markdown` assets is
+optional. When present, it is an explicit content-language claim: it MUST use
+the shared tag schema and exactly equal the enclosing variant's `locale` after
+source inheritance. Omit it for an asset that makes no independent language
+claim. This contextual rule avoids tightening legacy non-localized asset
+payloads while preventing contradictory metadata such as an `es-ES` variant
+containing a text asset labeled `en-US`.
+
+`brand.json` localized name/tagline keys are a deliberate legacy boundary:
+values such as `en_US` use underscore notation and are not valid values of the
+shared tag schema. A bridge into creative localization replaces `_` with `-`,
+applies the AdCP canonical wire profile, and validates the result; it MUST NOT
+copy the legacy key unchanged. The current brand schema retains that syntax for
+compatibility pending a separately versioned migration.
+
+After source inheritance, each fully resolved variant MUST satisfy the selected
+creative format.
+
+A selected product `format_options[]` declaration may additionally carry
+`locale_policy.accepted_language_ranges`. Seller ranges use RFC 4647 Basic
+Filtering, so `fr` accepts `fr-CA` and `fr-FR`; this is intentionally different
+from the buyer's strict delivery Lookup. The seller first filters the creative
+to variants eligible for each effective product-and-placement format option
+where the assignment may serve,
+then applies the buyer's matching rules only within that set. Assignment fails
+with `CREATIVE_LOCALE_NOT_ACCEPTED` when no variant is eligible, or when
+`serve_default` references an ineligible default. Nonmatching variants remain
+part of the reusable creative but cannot serve on that assignment.
+
+At delivery, sellers apply RFC 4647 Lookup to the opportunity's ordered locale
+preferences and the creative's seller-eligible locale tags. Lookup progressively
+truncates the requested range until it finds an available canonical tag equal
+to that range. Matching is equality, not prefix/subordination: `es-MX` does not
+match an available `es-ES` after truncation to `es`.
+
+That ordered preference list is an external input from the seller's serving
+environment; it is not carried by this contract. AdCP does not standardize how
+browser or app preferences, page/content language, geography, user settings,
+or platform settings produce the list or their precedence. Once the seller has
+an ordered list, AdCP standardizes only the deterministic filtering, Lookup,
+explicit fallback, and unmatched behavior described here.
+
+For each preference in order, if strict Lookup finds no equality match, the
+seller repeats the same most-specific-to-least-specific truncation against
+`locale_fallbacks[].language_range` and serves the referenced variant from the
+first matching rule. For example, `language_range: es` may explicitly map both
+`es-ES` and `es` preferences to an available `es-MX` variant. The seller tries
+the next preference only when neither strict Lookup nor an explicit rule
+matches the current preference. After every preference misses, the seller MUST
+apply `unmatched_locale_action`; it MUST NOT infer regional interchangeability
+or silently substitute the source.
+Every delivered execution of a localized creative includes the selected
+`locale_variant_id` in `get_creative_delivery`, including explicit and default
+fallback.
+
+`locale_variant_id` is scoped to the parent creative. It is not a
+`build_variant_id` (a `build_creative` output leaf) and not the `variant_id`
+used for a seller's served execution in `get_creative_delivery`. A successful
+localized sync and every later `list_creatives` read MUST preserve the exact
+source ID/locale, target ID/locale set, default ID, and unmatched action from
+the request, plus the exact optional fallback-rule set. Readback returns fully
+resolved assets under those same buyer-assigned `locale_variant_id` values; it
+does not add a separate seller- or platform-assigned variant identity.
+
+Localized readback is atomic. The seller returns complete resolved assets,
+buyer-assigned variant identities, default policy, and matching mode for the
+source and every target. Review remains creative-wide: the enclosing creative's
+single `status` applies to the complete locale set and normal
+`creative.status_changed` webhooks report its changes. If exact localization
+evidence is unavailable, `list_creatives` returns `localization_unavailable`
+for that creative instead of omitting a locale or returning a partial object.
+The item remains in the page and pagination counts; buyers MUST NOT infer locale
+eligibility from the base creative fields.
+
+On upsert, a non-null `localization` object replaces the creative's complete
+locale set and top-level source assets transactionally; failure leaves the
+prior source assets and complete localization state unchanged, and orphaned
+locale variants MUST NOT become visible. `localization: null` removes the
+locale topology. Omission preserves existing localization only when top-level
+source assets exactly equal the prior source assets. `delete_missing` still
+operates only at creative scope.
+
+Capabilities govern new writes, not stored-data readability or already accepted
+assignment terms. The seller snapshots the effective product-and-placement
+locale policy when it accepts an assignment. Later catalog policy changes apply
+only to new or changed assignments; the seller MUST NOT silently rewrite or
+remove an existing buyer-managed assignment. If a seller later withdraws
+localization support, it MUST keep existing localized creatives readable and
+honor each accepted assignment policy until that assignment changes or its
+media buy terminates. A creative-wide dependency loss that makes the approved
+creative unsafe everywhere moves the whole creative to `suspended` and uses
+the normal lifecycle webhook. Sellers may reject new or replacement
+localization, but MUST still allow explicit `localization: null` cleanup when it
+does not violate an active assignment.
 
 ### Universal macros
 
@@ -222,20 +368,19 @@ Creative agents that charge for their services expose pricing through the same d
 
 ### Pricing discovery surfaces
 
-Pricing is discovered via surfaces depending on the agent's interaction model:
+Pricing is discovered via two surfaces depending on the agent's interaction model:
 
-- **`list_creatives`** — ad servers and library-based agents expose `pricing_options[]` on each creative. The buyer discovers pricing for specific creatives they want to use. `list_creatives` is **not** deprecated by the 3.2 format-discovery posture.
-- **`list_creative_formats`** *(v1 compatibility through 4.x)* — transformation and generation agents that still expose this task MAY attach `pricing_options[]` on each format so buyers can discover pricing before any creative exists.
-- **Canonical discovery** — preferred in 3.2+ for format discovery itself: creative agents declare producible formats via `get_adcp_capabilities.creative.supported_formats`; sales agents declare product formats via `get_products.format_options[]`. The creative capability entries do not carry standardized account-scoped `pricing_options`; charged transformation and generation agents that need discover-before-build pricing continue to expose `list_creative_formats` through 4.x. Pricing is also returned on `build_creative`.
+- **`list_creatives`** — ad servers and library-based agents expose `pricing_options[]` on each creative. The buyer discovers pricing for specific creatives they want to use.
+- **`list_transformers`** — transformation and generation agents expose account-scoped `pricing_options[]` and canonical `output_capability_ids` on selectable transformers.
 
-Surfaces that return `pricing_options[]` use the same array of [`vendor-pricing-option`](https://adcontextprotocol.org/schemas/v3/core/vendor-pricing-option.json) objects and require `account` and `include_pricing: true` on the request when that surface supports the flag.
+Both surfaces use the same `pricing_options[]` array of [`vendor-pricing-option`](https://adcontextprotocol.org/schemas/v3/core/vendor-pricing-option.json) objects. Both require `account` and `include_pricing: true` on the request.
 
-An agent MAY expose pricing on more than one surface (e.g., a creative management platform that has both a library and transformation capabilities).
+An agent MAY expose pricing on both surfaces (e.g., a creative management platform that has both a library and transformation capabilities).
 
 ### Pricing flow
 
 1. **Account setup** — rate card agreed. Determines pricing for all subsequent operations.
-2. **Discovery** — `list_creatives` and/or v1 `list_creative_formats` (through 4.x) with `account` and `include_pricing: true` returns `pricing_options[]`. Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Consumers MUST NOT assume `list_creative_formats` is present merely for format discovery on 3.2+ agents that declare an equivalent canonical catalog; buyers that require pre-build pricing must feature-detect the v1 pricing surface or obtain authoritative pricing from the build response.
+2. **Discovery** — `list_creatives` or `list_transformers` with `account` and `include_pricing: true` returns `pricing_options[]`. Vendors may offer multiple options.
 3. **Build** — `build_creative` with `account`. The agent computes the cost and returns `pricing_option_id`, `vendor_cost`, `currency`, and `consumption` in the response.
 4. **Report** — `report_usage` with `creative_id` and `pricing_option_id` for reconciliation.
 
@@ -270,18 +415,19 @@ When a publisher uses a creative agent internally (bundled), the buyer never see
 
 The Creative Protocol defines the following tasks. See task reference pages for complete request/response schemas and examples.
 
-### list_creative_formats
+### get_adcp_capabilities
 
-**Reference**: [`list_creative_formats` task](/docs/creative/task-reference/list_creative_formats)
+**Reference**: [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)
 
-Discover creative formats and their specifications. **Deprecated for new discovery in 3.2** — prefer `get_adcp_capabilities.creative.supported_formats` (creative agents) or `get_products.format_options[]` (sales agents). The task remains a supported v1 compatibility path through 4.x; removal is aligned with the [v1 named-format deprecation calendar](/docs/creative/canonical-formats-migration).
+Discover canonical creative operations and their format contracts through `creative.supported_formats[]`.
 
-**Requirements** (when the agent implements this v1 compatibility task):
-- Creative agents MUST return full format specifications for formats they own
-- Creative agents MUST include `agent_url` identifying the authoritative agent for each format
-- Creative agents MUST include technical constraints (dimensions, duration, file types) in format definitions
-- Creative agents MAY include references to other creative agents providing additional formats
-- When filtering by `format_ids`, creative agents MUST return only the requested formats
+**Requirements:**
+- Every entry MUST carry a canonical `format` declaration; new 3.2 producers MUST also carry a stable `capability_id`
+- Exact publisher-format claims MUST carry `{publisher_domain, format_option_id}`
+- Generic capabilities MUST declare an honest parameter envelope
+- New 3.2 producers MUST carry explicit `operations` to distinguish build, validation, and preview support. Consumers interpret omission on legacy 3.x entries as `build`.
+
+`list_creative_formats` is deprecated in 3.2 and retained only for legacy named-format compatibility.
 
 ### list_transformers
 
@@ -347,7 +493,7 @@ Browse and filter creative assets in a creative library. Implemented by any agen
 - Agents MUST return creatives accessible to the authenticated account
 - Agents MUST include approval status for each creative
 - Agents SHOULD support filtering by format, status, tags, and date range
-- Agents SHOULD support filtering by `concept_ids` and `format_ids` when the platform organizes creatives into concepts
+- Agents SHOULD support filtering by `concept_ids` and canonical `format_kinds` when the platform organizes creatives into concepts
 - Agents MAY include dynamic content variable definitions when `include_variables=true`
 - Agents MAY include a lightweight delivery snapshot when `include_snapshot=true`. The snapshot provides lifetime impressions and last-served date for operational use — detailed analytics belong in `get_creative_delivery`.
 - When `account` and `include_pricing=true` are provided, agents that charge MUST include `pricing_options` on each creative — an array of [`vendor-pricing-option`](https://adcontextprotocol.org/schemas/v3/core/vendor-pricing-option.json) objects. Vendors may offer multiple options per creative (volume tiers, context-specific rates, different pricing models).
@@ -374,6 +520,7 @@ Upload and synchronize creative assets in a library. Implemented by any agent th
 - Agents MAY require approval before creatives are available for use
 - Agents SHOULD support `dry_run` for validation without applying changes
 - Agents MUST reject requests that combine `delete_missing: true` with `creative_ids` — `delete_missing` applies to the entire library, not a filtered subset
+- Agents that advertise `creative.localization` MUST reject unsupported localization before mutation and return exact localization readback on every accepted localized creative
 - Agents that also manage media buys SHOULD support the `assignments` field for bulk creative-to-package mapping
 - Standalone creative agents that do not manage media buys SHOULD ignore the `assignments` field
 
@@ -394,7 +541,7 @@ Creative agents MUST return errors using the [standard AdCP error schema](/docs/
 
 Common error codes:
 
-- `REFERENCE_NOT_FOUND`: Requested format does not exist or is not accessible (`error.field` identifies the `format_id`)
+- `FORMAT_NOT_SUPPORTED`: Requested creative capability does not exist or is not accessible (`error.field` identifies `target_capability_id` or the indexed plural field)
 - `VALIDATION_ERROR`: Manifest failed format validation: a required asset is missing from the manifest, or an asset does not meet the format's constraints (`error.field` identifies the offending asset path)
 
 Generation-pipeline failures (model or rendering errors during `build_creative`) surface as task-level failure (`status: "failed"`) with the most specific applicable code in `errors[]`. The error-code vocabulary is open: sellers MAY return platform-specific codes for failure modes the canonical enum does not cover, and agents MUST handle unknown codes by falling back to the recovery classification.
@@ -425,10 +572,8 @@ All Creative Protocol communications MUST use HTTPS with TLS 1.2 or higher.
 A conformant Creative Protocol agent MUST:
 
 1. Support at least one specified transport (MCP or A2A)
-2. Provide format discovery by either:
-   - declaring equivalent canonical-format discovery — creative agents via `get_adcp_capabilities.creative.supported_formats`, sales agents via `get_products.format_options[]` — or
-   - implementing `list_creative_formats` (v1 compatibility path, functional through 4.x)
-3. Return authoritative format definitions only for formats it owns (when returning v1 named-format definitions)
+2. Implement `get_adcp_capabilities` and publish canonical `creative.supported_formats[]`
+3. Give every supported-format entry a stable `capability_id` and accurate operations
 4. Validate manifests against format specifications
 5. Use specified error codes
 
@@ -437,24 +582,20 @@ A conformant Creative Protocol agent SHOULD:
 1. Implement `build_creative` for creative generation
 2. Implement `preview_creative` for preview rendering
 3. Support universal macros in tracking URLs
-4. Implement `list_creatives` when the agent hosts a creative library (`list_creatives` is **not** deprecated by the 3.2 format-discovery posture)
+4. Implement `list_creatives` when the agent hosts a creative library
 5. Implement `sync_creatives` when the agent accepts creative uploads
 6. Support `creative_id` in `build_creative` when the agent hosts a creative library
 7. Implement the accounts protocol (`sync_accounts` / `list_accounts`) when hosting a creative library
 8. Declare `supports_generation`, `supports_transformation`, and `has_creative_library` in `get_adcp_capabilities` so buyers can determine the correct interaction model
-9. Keep offering `list_creative_formats` through 4.x when serving v1-era buyers, even after declaring canonical discovery
-
-Legacy named-format creatives and v1 `format_id` / `format_ids[]` remain supported through 4.x. This 3.2 posture deprecates the discovery *tool* for new integrations; it is not a hard removal of named-format wire shapes.
 
 ### Consumer conformance
 
 A conformant Creative Protocol consumer MUST:
 
-1. Use the `agent_url` from format IDs to identify the authoritative creative agent
+1. Discover creative operations through `creative.supported_formats[]` and route builds with `target_capability_id(s)`
 2. Validate manifests against format specifications before submission
 3. Handle validation errors appropriately
-4. Track visited URLs when recursively discovering formats to avoid infinite loops
-5. Not assume `list_creative_formats` is present on 3.2+ agents when equivalent canonical-format discovery is declared (`creative.supported_formats` and/or product `format_options[]`). Prefer those surfaces for new discovery; treat `list_creative_formats` as an optional v1 compatibility fallback through 4.x.
+4. Confirm the selected registry candidate directly with `get_adcp_capabilities`
 
 ## Implementation notes
 
@@ -464,52 +605,38 @@ Creative agents SHOULD target the following response times:
 
 | Operation Type | Target Latency |
 |----------------|----------------|
-| Format listing (list_creative_formats) | < 1 second |
+| Capability discovery (`get_adcp_capabilities`) | < 1 second |
 | Library query (list_creatives) | < 1 second |
 | Creative sync (sync_creatives) | < 5 seconds |
 | Preview generation (preview_creative) | < 5 seconds |
 | Batch preview (10 creatives) | < 10 seconds |
 | Creative generation (build_creative) | < 60 seconds |
 
-### Recursive format discovery
+### Creative-agent discovery
 
-Creative agents MAY reference other creative agents in their `list_creative_formats` response:
-
-```json
-{
-  "creative_agents": [{
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "agent_name": "AdCP Reference Creative Agent",
-    "capabilities": ["validation", "assembly", "preview"]
-  }]
-}
-```
-
-Consumers MAY recursively query referenced agents to discover additional formats.
-
-Consumers MUST track visited URLs to prevent infinite loops during recursive discovery.
+Use the AgenticAdvertising.org registry to reverse-match `creative.supported_formats[]` by canonical kind or exact `{publisher_domain, format_option_id}`. Creative agents do not recursively nominate other creative agents.
 
 ### Format-aware validation
 
 Manifest validation MUST be performed in the context of the format specification:
 
-1. Look up the format definition from the authoritative creative agent
-2. For each asset in the manifest, find the corresponding entry in the format's `assets` array
-3. Validate the asset value against the type and constraints defined in the format
+1. Resolve the selected canonical product/publisher declaration
+2. For each manifest asset, find the corresponding declared slot
+3. Validate its explicit `asset_type` discriminator and constraints against that slot
 
-The format definition determines what type each asset_id should be. Asset type information is NOT included in the manifest itself.
+Every canonical asset includes its own `asset_type`; slot lookup supplies the permitted role and narrowing constraints.
 
 ### Standard vs custom formats
 
-- **Standard formats**: Based on IAB specifications, hosted by the reference creative agent (`https://creative.adcontextprotocol.org`)
-- **Custom formats**: Defined by individual publishers or creative platforms for specialized inventory
+- **Canonical formats**: Registered AdCP `format_kind` contracts shared across publishers, sellers, and creative agents
+- **Custom formats**: `format_kind: "custom"` plus a recognized `format_shape` and digest-pinned `format_schema`
 
-Both work identically—the `agent_url` field identifies which agent is authoritative for each format.
+Both use the same canonical declaration and constraint-matching rules. Publisher identity and creative-agent endpoint identity remain separate.
 
 ## Schema reference
 
 <Note>
-Some creative protocol schemas (`build_creative`, `list_creative_formats`, `preview_creative`) have paths under `media-buy/` because they were originally released as part of the media-buy protocol. The schema paths are stable identifiers and do not affect which protocol the task belongs to.
+Some creative protocol schemas (`build_creative`, deprecated `list_creative_formats`, `preview_creative`) have paths under `media-buy/` because they were originally released as part of the media-buy protocol. The schema paths remain stable compatibility identifiers.
 </Note>
 
 | Schema | Description |
@@ -517,8 +644,8 @@ Some creative protocol schemas (`build_creative`, `list_creative_formats`, `prev
 | [`core/format.json`](https://adcontextprotocol.org/schemas/v3/core/format.json) | Format definition |
 | [`core/creative-manifest.json`](https://adcontextprotocol.org/schemas/v3/core/creative-manifest.json) | Creative manifest |
 | [`core/creative-asset.json`](https://adcontextprotocol.org/schemas/v3/core/creative-asset.json) | Asset definition |
-| [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-request.json) | list_creative_formats request |
-| [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-response.json) | list_creative_formats response |
+| [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-request.json) | Deprecated named-format compatibility request |
+| [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-response.json) | Deprecated named-format compatibility response |
 | [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creatives-request.json) | list_creatives request |
 | [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creatives-response.json) | list_creatives response |
 | [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json) | sync_creatives request |
