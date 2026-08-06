@@ -123,7 +123,7 @@ phases:
 
           - check: envelope_field_pattern
             path: "adcp_version"
-            pattern: "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$"
+            pattern: "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
             severity: advisory
             permanent_advisory:
               reason: "Per docs/reference/versioning.mdx > Version format, adcp_version is release-precision (MAJOR.MINOR, optionally with a prerelease suffix during RC windows). 3.1 reports shape mismatches as advisory while runners adopt envelope-field pattern validation; the 3.2 storyboard cut can promote this validation with the presence check."

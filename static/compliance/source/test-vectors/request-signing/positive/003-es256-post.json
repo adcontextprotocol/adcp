@@ -1,6 +1,7 @@
 {
   "name": "POST with ES256 algorithm (edge-runtime profile)",
   "spec_reference": "#adcp-rfc-9421-profile (alg allowlist)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

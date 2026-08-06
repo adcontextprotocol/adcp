@@ -1,6 +1,7 @@
 {
   "name": "Signature alg is rsa-pss-sha512, not in AdCP allowlist",
   "spec_reference": "#verifier-checklist-requests step 4",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

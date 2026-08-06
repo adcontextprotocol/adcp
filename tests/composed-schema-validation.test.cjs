@@ -2186,6 +2186,166 @@ async function runTests() {
     'Accepts protocol_methods_* with JSON-RPC method strings (`tasks/cancel`, `tasks/get`)'
   );
 
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        supported_versions: ['3.1', '3.2'],
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+      },
+      request_signing: {
+        supported: true,
+        covers_content_digest: 'required',
+        required_for: [],
+        supported_for: ['create_media_buy'],
+      },
+    },
+    'Accepts the required body-integrity posture for a 3.2 signing profile'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        supported_versions: ['3.1', '3.2'],
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+      },
+      request_signing: {
+        supported: true,
+        covers_content_digest: 'either',
+        required_for: [],
+        supported_for: ['create_media_buy'],
+      },
+    },
+    'Rejects the legacy either posture when the agent advertises 3.2 signing'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        supported_versions: ['3.2-beta.1'],
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+      },
+      request_signing: {
+        supported: true,
+        required_for: [],
+        supported_for: ['create_media_buy'],
+      },
+    },
+    'Requires an explicit body-integrity posture when the agent advertises a 3.2 prerelease'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp_version: '3.2',
+      adcp: {
+        ...capabilitiesBase.adcp,
+        supported_versions: ['3.0', '3.1'],
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+      },
+      request_signing: {
+        supported: true,
+        covers_content_digest: 'either',
+        required_for: [],
+        supported_for: ['create_media_buy'],
+      },
+    },
+    'Uses the served 3.2 response version even when supported_versions only lists legacy releases'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp_version: '3.2',
+      adcp: {
+        ...capabilitiesBase.adcp,
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+      },
+      request_signing: {
+        supported: true,
+        covers_content_digest: 'either',
+        required_for: [],
+        supported_for: ['create_media_buy'],
+      },
+    },
+    'Uses the served 3.2 response version when supported_versions is omitted'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp_version: '03.2',
+      adcp: {
+        ...capabilitiesBase.adcp,
+        supported_versions: ['3.0', '3.1'],
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+      },
+    },
+    'Rejects non-canonical release versions with a leading zero'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        supported_versions: ['3.02'],
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+      },
+    },
+    'Rejects non-canonical supported_versions entries with a leading zero'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        supported_versions: ['3.0', '3.1'],
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+      },
+      request_signing: {
+        supported: true,
+        covers_content_digest: 'either',
+        required_for: [],
+        supported_for: ['create_media_buy'],
+      },
+    },
+    'Preserves the legacy either posture for agents capped at AdCP 3.1'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp_version: '3.1',
+      adcp: {
+        ...capabilitiesBase.adcp,
+        supported_versions: ['3.0', '3.1'],
+        idempotency: { supported: true, replay_ttl_seconds: 86400 },
+      },
+      request_signing: {
+        supported: true,
+        required_for: [],
+        supported_for: ['create_media_buy'],
+      },
+    },
+    'Preserves legacy 3.1 omission of covers_content_digest without a 3.2 default'
+  );
+
   await testSchemaRejection(
     '/schemas/protocol/get-adcp-capabilities-response.json',
     {
