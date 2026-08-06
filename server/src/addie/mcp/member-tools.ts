@@ -142,6 +142,10 @@ import {
   guardPersonalWorkspaceDomainSelection,
   type PersonalWorkspaceDomainSelectionResult,
 } from '../../services/org-selection-guard.js';
+import {
+  recordCertificationExperienceEvent,
+  upsertCertificationContribution,
+} from '../../services/certification-experience.js';
 
 const logger = createLogger('addie-member-tools');
 const complianceTarget = hostedComplianceTarget();
@@ -2365,7 +2369,8 @@ async function callApi(
  */
 export function createMemberToolHandlers(
   memberContext: MemberContext | null,
-  slackUserId?: string
+  slackUserId?: string,
+  certificationModuleContext?: { moduleId?: string },
 ): Map<string, (input: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
@@ -6485,6 +6490,43 @@ export function createMemberToolHandlers(
   // ============================================
   // GITHUB ISSUE DRAFTING
   // ============================================
+  const activeCertification = () => {
+    const userId = memberContext?.workos_user?.workos_user_id;
+    if (!userId || !certificationModuleContext?.moduleId) return null;
+    return { userId, moduleId: certificationModuleContext.moduleId };
+  };
+
+  const trackCertificationContribution = async (input: {
+    repository: string;
+    title: string;
+    status: 'drafted' | 'submitted';
+    draftUrl?: string;
+    issueNumber?: number;
+    issueUrl?: string;
+  }) => {
+    const active = activeCertification();
+    if (!active) return;
+    try {
+      await upsertCertificationContribution({
+        userId: active.userId,
+        moduleId: active.moduleId,
+        ...input,
+      });
+      await recordCertificationExperienceEvent({
+        userId: active.userId,
+        moduleId: active.moduleId,
+        eventType: input.status === 'submitted' ? 'contribution_submitted' : 'contribution_drafted',
+        metadata: {
+          repository: input.repository,
+          title: input.title,
+          issue_number: input.issueNumber ?? null,
+        },
+      });
+    } catch (error) {
+      logger.error({ error }, 'Failed to track certification contribution');
+    }
+  };
+
   handlers.set('draft_github_issue', async (input) => {
     const title = input.title as string;
     let body = input.body as string;
@@ -6526,6 +6568,7 @@ export function createMemberToolHandlers(
 
     // Build response with the draft details and link
     let response = `## GitHub Issue Draft\n\n`;
+    let reliableDraftUrl = issueUrl;
 
     if (urlLength > GITHUB_PREFILL_URL_MAX_CHARS) {
       response += `⚠️ **This draft is too long for a reliable pre-filled link.**\n\n`;
@@ -6535,6 +6578,9 @@ export function createMemberToolHandlers(
         shortParams.set('labels', labels.join(','));
       }
       const titlePrefillUrl = `${newIssueUrl}?${shortParams.toString()}`;
+      reliableDraftUrl = titlePrefillUrl.length <= GITHUB_PREFILL_URL_MAX_CHARS
+        ? titlePrefillUrl
+        : newIssueUrl;
 
       if (titlePrefillUrl.length <= GITHUB_PREFILL_URL_MAX_CHARS) {
         response += `**👉 [Open GitHub with the title pre-filled](${titlePrefillUrl})**\n\n`;
@@ -6559,6 +6605,13 @@ export function createMemberToolHandlers(
     response += `\n**Body:**\n\n${body}\n\n`;
     response += `---\n\n`;
     response += `_Note: You'll need to be signed in to GitHub to create the issue. Feel free to edit the title, body, or labels before submitting._`;
+
+    await trackCertificationContribution({
+      repository: `${org}/${repo}`,
+      title,
+      status: 'drafted',
+      draftUrl: reliableDraftUrl,
+    });
 
     return response;
   });
@@ -6647,6 +6700,13 @@ export function createMemberToolHandlers(
           });
           if (retryResponse.ok) {
             const issue = await retryResponse.json() as { html_url: string; number: number };
+            await trackCertificationContribution({
+              repository: `${org}/${repo}`,
+              title,
+              status: 'submitted',
+              issueNumber: issue.number,
+              issueUrl: issue.html_url,
+            });
             return `Issue created: [#${issue.number}](${issue.html_url})`;
           }
         }
@@ -6655,6 +6715,13 @@ export function createMemberToolHandlers(
 
       const issue = await response.json() as { html_url: string; number: number };
       logger.info({ issueUrl: issue.html_url, repo }, 'create_github_issue: Issue created');
+      await trackCertificationContribution({
+        repository: `${org}/${repo}`,
+        title,
+        status: 'submitted',
+        issueNumber: issue.number,
+        issueUrl: issue.html_url,
+      });
       return `Issue created: [#${issue.number}](${issue.html_url})`;
     } catch (error) {
       logger.error({ error, repo }, 'create_github_issue: Failed to create issue');

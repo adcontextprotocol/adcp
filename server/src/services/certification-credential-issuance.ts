@@ -148,7 +148,11 @@ async function persistProviderState(
   const result = await client.query(
     `UPDATE user_credentials
         SET certifier_public_id = COALESCE($4, certifier_public_id),
-            certifier_badge_url = COALESCE($5, certifier_badge_url)
+            certifier_badge_url = COALESCE($5, certifier_badge_url),
+            certifier_issued_at = CASE
+              WHEN $4::text IS NOT NULL THEN COALESCE(certifier_issued_at, NOW())
+              ELSE certifier_issued_at
+            END
       WHERE workos_user_id = $1
         AND credential_id = $2
         AND certifier_credential_id = $3

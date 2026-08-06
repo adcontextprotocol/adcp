@@ -346,6 +346,21 @@
       <!-- Overview metrics -->
       <div class="metrics-grid" id="metrics-grid"></div>
 
+      <div class="section" id="model-outcomes-section" style="display:none;">
+        <h2>Certification outcomes by model</h2>
+        <table id="model-outcomes-table">
+          <thead><tr>
+            <th>Model</th><th>Module</th>
+            <th class="text-right">Completed turns</th>
+            <th class="text-right">Interrupted</th>
+            <th class="text-right">Evidence</th>
+            <th class="text-right">Modules</th>
+            <th class="text-right">Credentials</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
       <!-- Credentials by tier -->
       <div class="section">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
@@ -494,6 +509,12 @@
 
         // Metrics cards
         const grid = document.getElementById('metrics-grid');
+        const experience = data.experience || {};
+        const credentialLatency = experience.avg_credential_latency_seconds == null
+          ? '—'
+          : experience.avg_credential_latency_seconds < 60
+            ? `${experience.avg_credential_latency_seconds}s`
+            : `${Math.round(experience.avg_credential_latency_seconds / 60)}m`;
         grid.innerHTML = `
           <div class="metric-card">
             <div class="metric-label">Total learners</div>
@@ -519,7 +540,62 @@
             <div class="metric-value">${data.totals.stuck_attempts}</div>
             <div class="metric-sub">Blocking learners</div>
           </div>` : ''}
+          <div class="metric-card">
+            <div class="metric-label">Turn completion</div>
+            <div class="metric-value">${experience.completion_rate || 0}%</div>
+            <div class="metric-sub">Last ${experience.window_days || 30} days</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Interrupted turns</div>
+            <div class="metric-value">${experience.interruption_rate || 0}%</div>
+            <div class="metric-sub">${experience.recovery_rate || 0}% recovered after retry</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Resume sessions</div>
+            <div class="metric-value">${experience.resume_sessions || 0}</div>
+            <div class="metric-sub">${experience.resume_completion_rate || 0}% reached module completion</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Capacity protection</div>
+            <div class="metric-value">${experience.reserve_turns || 0}</div>
+            <div class="metric-sub">${experience.capacity_blocks || 0} blocked turns</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Contributions submitted</div>
+            <div class="metric-value">${experience.contributions_submitted || 0}</div>
+            <div class="metric-sub">${experience.contribution_submit_rate || 0}% of drafts</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Credential issue time</div>
+            <div class="metric-value">${credentialLatency}</div>
+            <div class="metric-sub">${experience.credential_action_resolution_rate || 0}% of action blocks resolved</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Evidence → completion</div>
+            <div class="metric-value">${experience.evidence_completion_rate || 0}%</div>
+            <div class="metric-sub">Validated module completions only</div>
+          </div>
         `;
+
+        const modelOutcomes = experience.model_outcomes || [];
+        const modelSection = document.getElementById('model-outcomes-section');
+        const modelBody = document.querySelector('#model-outcomes-table tbody');
+        if (modelOutcomes.length > 0) {
+          modelSection.style.display = '';
+          modelBody.innerHTML = modelOutcomes.map(outcome => `
+            <tr>
+              <td>${escapeHtml(outcome.model)}</td>
+              <td>${escapeHtml(outcome.module_id || '—')}</td>
+              <td class="text-right">${Number(outcome.turns_completed) || 0}</td>
+              <td class="text-right">${Number(outcome.turns_interrupted) || 0}</td>
+              <td class="text-right">${Number(outcome.evidence_complete) || 0}</td>
+              <td class="text-right">${Number(outcome.modules_completed) || 0}</td>
+              <td class="text-right">${Number(outcome.credentials_issued) || 0}</td>
+            </tr>`).join('');
+        } else {
+          modelSection.style.display = 'none';
+          modelBody.innerHTML = '';
+        }
 
         // Credentials by tier
         const credBody = document.querySelector('#credentials-table tbody');

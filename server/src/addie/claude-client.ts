@@ -20,7 +20,14 @@ import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } 
 import { formatTokenCount, getConversationTokenLimit, buildDroppedMessagesSummary, type MessageTurn } from '../utils/token-limiter.js';
 import { notifySystemError, notifyToolError } from './error-notifier.js';
 import { ToolError } from './tool-error.js';
-import { checkCostCap, recordCost, formatCapExceededMessage, type UserTier } from './claude-cost-tracker.js';
+import {
+  checkCostCap,
+  recordCost,
+  releaseCertificationReserve,
+  renewCertificationReserve,
+  formatCapExceededMessage,
+  type UserTier,
+} from './claude-cost-tracker.js';
 import { EMPTY_RESPONSE_FALLBACK, applyResponsePipeline, stripBannedRituals, hasPersonaCollapse } from './response-postprocess.js';
 import type { AddieInputAttachment } from './chat-attachments.js';
 
@@ -434,6 +441,8 @@ export interface ProcessMessageOptions {
   costScope?: {
     userId: string;
     tier: UserTier;
+    /** Bounded extra daily budget available only while a certification module is active. */
+    certificationReserveUsd?: number;
   };
   /**
    * Explicit opt-out for system / router callers that shouldn't
@@ -501,6 +510,9 @@ export interface AddieResponse {
     cache_creation_input_tokens?: number;
     cache_read_input_tokens?: number;
   };
+  capacity?: {
+    certification_reserve_used: boolean;
+  };
 }
 
 /**
@@ -520,6 +532,8 @@ export type StreamEvent =
       type: 'stream_error';
       reason: string;
       deltasBeforeError: number;
+      tool_executions: ToolExecution[];
+      certification_reserve_used: boolean;
     }
   | { type: 'done'; response: AddieResponse }
   | { type: 'error'; error: string };
@@ -738,7 +752,8 @@ export class AddieClaudeClient {
         options.costScope.tier,
       );
       if (!capResult.ok) {
-        const message = formatCapExceededMessage(capResult);
+        const message = formatCapExceededMessage(capResult)
+          + (options.costScope.certificationReserveUsd ? ' Your certification progress is saved.' : '');
         logger.warn(
           {
             userId: options.costScope.userId,
@@ -1364,13 +1379,20 @@ export class AddieClaudeClient {
     // contract as `processMessage` — yield a `done` event with the
     // friendly cap-exceeded text and return early instead of firing
     // another billable Claude call.
+    let certificationReserveUsed = false;
+    let certificationLeaseId: string | undefined;
+    let certificationLeaseHeartbeat: ReturnType<typeof setInterval> | undefined;
     if (options?.costScope) {
       const capResult = await checkCostCap(
         options.costScope.userId,
         options.costScope.tier,
+        { certificationReserveUsd: options.costScope.certificationReserveUsd },
       );
+      certificationReserveUsed = capResult.usedCertificationReserve === true;
+      certificationLeaseId = capResult.certificationLeaseId;
       if (!capResult.ok) {
-        const message = formatCapExceededMessage(capResult);
+        const message = formatCapExceededMessage(capResult)
+          + (options.costScope.certificationReserveUsd ? ' Your certification progress is saved.' : '');
         logger.warn(
           {
             userId: options.costScope.userId,
@@ -1392,12 +1414,20 @@ export class AddieClaudeClient {
         };
         return;
       }
+      if (certificationLeaseId) {
+        certificationLeaseHeartbeat = setInterval(() => {
+          void renewCertificationReserve(options.costScope?.userId, certificationLeaseId);
+        }, 30_000);
+      }
     }
 
     const toolsUsed: string[] = [];
     const toolExecutions: ToolExecution[] = [];
     let executionSequence = 0;
     let fullText = '';
+    let streamErrorEmitted = false;
+
+    try {
 
     // Timing metrics
     const timingStart = Date.now();
@@ -1495,7 +1525,6 @@ export class AddieClaudeClient {
     let iteration = 0;
     let retriedEmptyPostToolResponse = false;
 
-    try {
       while (iteration < maxIterations) {
         iteration++;
 
@@ -1576,10 +1605,13 @@ export class AddieClaudeClient {
                               errorMsg.includes('rate') ? 'Rate limited' :
                               errorMsg.includes('timeout') ? 'Request timed out' :
                               'Connection broke mid-reply';
+                streamErrorEmitted = true;
                 yield {
                   type: 'stream_error',
                   reason,
                   deltasBeforeError: textChunks.length,
+                  tool_executions: [...toolExecutions],
+                  certification_reserve_used: certificationReserveUsed,
                 };
               }
               // Not retryable or already yielded content - rethrow original error
@@ -1748,6 +1780,7 @@ export class AddieClaudeClient {
                 iterations: iteration,
               },
               usage: streamUsage,
+              capacity: { certification_reserve_used: certificationReserveUsed },
             },
           };
           return;
@@ -1785,6 +1818,7 @@ export class AddieClaudeClient {
                   iterations: iteration,
                 },
                 usage: streamUsage,
+                capacity: { certification_reserve_used: certificationReserveUsed },
               },
             };
             return;
@@ -1968,11 +2002,23 @@ export class AddieClaudeClient {
             iterations: maxIterations,
           },
           usage: maxIterUsage,
+          capacity: { certification_reserve_used: certificationReserveUsed },
         },
       };
     } catch (error) {
       logger.error({ error }, 'Addie Stream: Error during streaming');
-      yield { type: 'error', error: error instanceof Error ? error.message : 'Unknown error' };
+      if (!streamErrorEmitted) {
+        yield {
+          type: 'stream_error',
+          reason: error instanceof Error ? error.message : 'Unknown error',
+          deltasBeforeError: fullText.length > 0 ? 1 : 0,
+          tool_executions: [...toolExecutions],
+          certification_reserve_used: certificationReserveUsed,
+        };
+      }
+    } finally {
+      if (certificationLeaseHeartbeat) clearInterval(certificationLeaseHeartbeat);
+      await releaseCertificationReserve(options?.costScope?.userId, certificationLeaseId);
     }
   }
 
