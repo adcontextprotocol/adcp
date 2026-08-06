@@ -10,9 +10,12 @@
 
 import { createHash, randomBytes } from 'node:crypto';
 import { canonicalTargetUri, signWebhook, signWebhookAsync } from '@adcp/sdk/signing';
+import { createLogger } from '../logger.js';
 import { getAgentUrl } from './config.js';
 import { createTrainingWebhookFetch } from './webhook-fetch.js';
 import { getWebhookSigningMaterial } from './webhooks.js';
+
+const logger = createLogger('training-agent-webhook-challenge');
 
 export const ACCOUNT_WEBHOOK_CHALLENGE_TTL_MS = 60_000;
 const MAX_CHALLENGE_RESPONSE_BYTES = 16 * 1024;
@@ -155,12 +158,22 @@ export async function proveAccountWebhookControl(
     windowSeconds: ACCOUNT_WEBHOOK_CHALLENGE_TTL_MS / 1000,
   };
 
-  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let signedHeaders: Record<string, string>;
   try {
     const material = getWebhookSigningMaterial();
     const signed = 'signerProvider' in material
       ? await signWebhookAsync(unsignedRequest, material.signerProvider, signingOptions)
       : signWebhook(unsignedRequest, material.signerKey, signingOptions);
+    signedHeaders = signed.headers;
+  } catch (error) {
+    // Keep key-provider details out of the protocol response while retaining
+    // an operator-visible signal for KMS/key configuration failures.
+    logger.error({ err: error }, 'Account webhook challenge signing failed');
+    return { ok: false };
+  }
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
     const controller = new AbortController();
     const timeoutMs = Math.min(
       CHALLENGE_TIMEOUT_MS,
@@ -170,7 +183,7 @@ export async function proveAccountWebhookControl(
     timeout.unref?.();
     const response = await (options.fetch ?? createTrainingWebhookFetch())(normalizedUrl, {
       method: 'POST',
-      headers: signed.headers,
+      headers: signedHeaders,
       body,
       redirect: 'manual',
       signal: controller.signal,
@@ -183,8 +196,8 @@ export async function proveAccountWebhookControl(
     if (echoed !== challenge || now() >= expiresAtMs) return { ok: false };
     return { ok: true, normalizedUrl };
   } catch {
-    // Do not expose DNS, transport, signature-provider, or receiver parsing
-    // details to the caller. They are useful network-probing side channels.
+    // Do not expose DNS, transport, or receiver parsing details to the caller.
+    // They are useful network-probing side channels.
     return { ok: false };
   } finally {
     if (timeout) clearTimeout(timeout);
