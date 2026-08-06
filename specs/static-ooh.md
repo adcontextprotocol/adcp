@@ -54,14 +54,17 @@ Posting periods should be nameable against published industry calendars (US 13 �
 
 ### 4. Delivery reporting for modeled audiences
 
-- Add `weekly` to `reporting-frequency.json` — Geopath and its international peers report weekly increments; hourly/daily static numbers would be fabricated precision.
-- Delivery rows carry modeled impressions attributed to the vendor in `billing_measurement`, with `is_final`/`measurement_window` semantics unchanged from broadcast.
-- Replace prose-only methodology (`calculation_notes`) with a structured reference: {provider, methodology version, panel reference}. This also resolves an existing latent issue — two schema descriptions reference an "impression multiplier" that has no field anywhere. For DOOH the multiplier can stay implicit behind observable plays; for static the modeled number is the entire delivery and must be attributable.
-- A per-unit breakdown (by panel) in delivery responses. `venue_breakdown` exists today but is nested inside `dooh_metrics` and unreachable for a channel that has no plays.
+This section aligns with #6140, where review converged on its option (c): a minimal `ooh_metrics` sibling to `dooh_metrics` carrying the structural facts a seller natively knows, with audience estimates declaring their provenance. Vocabulary below follows the enums proposed there.
+
+- Extend `reporting-frequency.json` with `weekly` (Geopath/RAJAR increments), `quarterly` (Geopath DEC cycle), and `post_campaign` — per the convergence on #6138. Hourly/daily static numbers would be fabricated precision, and cadence gates optimization eligibility: nothing should mid-flight-optimize a channel whose data arrives quarterly.
+- An `ooh_metrics` block on delivery: `panels[]` (with `id` + `id_type`: `geopath` | `route_frame` | `plant_face` | `other`), posting period, contracted share of voice, illuminated hours, and modeled impressions with an `estimation_basis` (`geopath_dec` | `route_frame_data` | `seller_modeled`). `seller_modeled` is the honest fallback for the many markets with no measurement currency.
+- Billing stays on the broadcast pattern: the vendor in `billing_measurement`, with `is_final`/`measurement_window` semantics unchanged.
+- This resolves an existing latent issue — two schema descriptions reference an "impression multiplier" that has no field anywhere (#5537 proposes the DOOH-side `audience_multiplier`; the placement decision should be made once for both channels). For DOOH the multiplier can stay implicit behind observable plays; for static the modeled number is the entire delivery and must be attributable.
+- Per-panel breakdown in delivery responses. `venue_breakdown` exists today but is nested inside `dooh_metrics` and unreachable for a channel that has no plays; #5880's `by_property` dimension pattern is the shape to follow.
 
 ### 5. Proof of performance
 
-A seller-attested evidence artifact on delivery, codifying the OAAA contract clauses:
+A seller-attested evidence artifact on delivery, codifying the OAAA contract clauses. This is the same artifact class as print's tearsheet/proof-of-insertion (#5684, which explicitly notes it generalizes to OOH and cinema) — the record should be designed once, channel-neutral: a seller-returned evidence record proving a scheduled physical placement ran.
 
 - **Bulletins**: one photo per unit within 5 days of posting, and again after each rotary rotation.
 - **Posters (showings)**: one representative close-up per creative variation.
@@ -108,6 +111,26 @@ The OAAA poster contract structure (4-week GRP levels across a rotating pack of 
 4. **Makegoods** — lost units, illumination failures, damage. Which remedies need protocol states (substitute-unit approval is buyer-facing) versus staying in `update_media_buy` negotiation?
 5. **Materials responsibility** — OAAA contracts assume the buyer ships printed materials; marketplaces often broker production. Does production brokerage change what deadlines the protocol carries?
 6. **pDOOH overlap** — AdQuick also exposes 3M+ programmatic screens. Nothing here should complicate their DOOH integration; confirm the boundary (dooh channel for screens, ooh channel for printed units) matches how they model inventory.
+
+## Related Issues and PR Plan
+
+This draft is the design narrative for an issue set that already exists; it does not compete with it.
+
+**Same problem, converging answer:**
+- #6138 — [Scoping] Radio & static OOH parity. The parent scoping issue; its reporting-cadence finding (extend `reporting-frequency`, cadence as optimization-eligibility gate) is adopted in §4.
+- #6140 — Static OOH measurement + proof-of-posting. Review converged on option (c); §4–§5 here are that option with the OAAA contract grounding (posting leeway, average-posting-date term, evidence SLAs) and the measurement-transition rationale. The deciding question posed there (seller-relayed vs. measurement bodies as wire agents) is answered by how Geopath operates today and the announced Ipsos transition: seller-relayed, so (c).
+
+**Adjacent decisions to make once, not twice:**
+- #5684 — Print proof-of-insertion. Same evidence-artifact class as §5; design channel-neutral.
+- #5537 — DOOH selling-unit fields, including `audience_multiplier`. The multiplier placement decision covers both channels.
+- #5538 — Structured geo on properties. Location is the primary OOH buying signal; the `ooh` property type (§6) depends on it.
+- #5880 — `by_property` delivery breakdown. The dimension pattern per-panel reporting should follow.
+- #6139 — Radio measurement-basis placement. Whatever lane wins there should be the same lane as `estimation_basis` here.
+
+**PR sequence:**
+1. Housekeeping (mergeable now): `reporting-frequency` enum additions; surface `print.mdx` in navigation; fix the `dooh.mdx` "Static Billboard" heading that collides with printed-unit terminology.
+2. Channel draft (WG review): `ooh.mdx` channel guide + `ooh_metrics` schema + posting-evidence record — the acceptance shape #6140 states for option (c).
+3. After AdQuick input: posting-period installment fields, formats registry entries, `ooh` property type + identifiers.
 
 ## References
 
