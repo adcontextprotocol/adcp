@@ -10,12 +10,14 @@
  *
  * Claims (per the 13-row claim table plus the audit-layer `plan_hash`):
  *   - iss, sub, aud, iat, exp, jti, phase, caller, check_id
- *   - media_buy_id  — conditional: present on purchase/modification/delivery; absent on intent
+ *   - media_buy_id  — conditional: required on modification/delivery, optional on purchase, absent on intent
  *   - policy_decisions  — emitted when the GA evaluated specific policy IDs
  *   - plan_hash  — required audit-layer claim; never listed in `crit`
  *
- * No `crit` is emitted by default. The training agent does not introduce
- * profile extensions, so the `crit` array would be empty and is omitted.
+ * `authorized_commitment`, `authorized_task`, and `authorized_payload_hash`
+ * change service authorization semantics. Tokens carrying them therefore
+ * mark matching protected-header extensions as critical; older verifiers
+ * that do not recognize them reject.
  */
 
 import { SignJWT, type JWTPayload } from 'jose';
@@ -44,16 +46,22 @@ export interface SignGovernanceContextInput {
   issuer: string;
   /** Target seller — exact URL from `adagents.json`. */
   audience: string;
-  /** Plan identifier the token authorizes. */
-  planId: string;
+  /** Opaque governed-action binding. Stable across one action lifecycle. */
+  bindingId?: string;
   /** Lifecycle phase this token covers. */
   phase: GovernancePhase;
   /** Caller URL — orchestrator on intent, seller on execution phases. */
   caller: string;
   /** Check identifier — correlates to report_plan_outcome / audit logs. */
   checkId: string;
-  /** Required on purchase/modification/delivery; MUST be absent on intent. */
+  /** Required on modification/delivery, optional on purchase, absent on intent. */
   mediaBuyId?: string;
+  /** Service-verifiable ceiling for the commitment authorized by this check. */
+  authorizedCommitment?: { amount: number; currency: string };
+  /** Exact AdCP task this context authorizes. */
+  authorizedTask?: string;
+  /** JCS/SHA-256 hash of the authorized task payload. */
+  authorizedPayloadHash?: string;
   /** Plan revision being attested to. Used to compute the `plan_hash` claim. */
   plan: Record<string, unknown>;
   /** Optional policy decision detail. Omit when sensitive — auditors fetch via audit_log_pointer. */
@@ -74,6 +82,9 @@ export interface GovernanceContextClaims extends JWTPayload {
   check_id: string;
   plan_hash: string;
   media_buy_id?: string;
+  authorized_commitment?: { amount: number; currency: string };
+  authorized_task?: string;
+  authorized_payload_hash?: string;
   policy_decisions?: PolicyDecision[];
   audit_log_pointer?: string;
 }
@@ -90,16 +101,10 @@ export async function signGovernanceContext(input: SignGovernanceContextInput): 
   if (input.phase === 'intent' && input.mediaBuyId !== undefined) {
     throw new Error('media_buy_id MUST be absent on intent-phase tokens');
   }
-  if (input.phase !== 'intent' && !input.mediaBuyId) {
-    // Spec requires media_buy_id on non-intent tokens. The training sandbox
-    // emits a structurally-valid JWS without it so existing storyboards that
-    // omit the field continue to round-trip; a seller running the full
-    // 15-step verification would reject (step 12). Cert content surfaces
-    // this gap rather than silently fabricating an id the seller will never
-    // recognize.
+  if ((input.phase === 'modification' || input.phase === 'delivery') && !input.mediaBuyId) {
     logger.warn(
-      { phase: input.phase, planId: input.planId },
-      'Emitting non-intent governance_context without media_buy_id — spec requires this field. Caller MUST supply target_seller and media_buy_id for production conformance.',
+      { phase: input.phase },
+      'Emitting lifecycle governance_context without media_buy_id — modification and delivery require this field.',
     );
   }
 
@@ -110,7 +115,7 @@ export async function signGovernanceContext(input: SignGovernanceContextInput): 
 
   const claims: GovernanceContextClaims = {
     iss: input.issuer,
-    sub: input.planId,
+    sub: input.bindingId ?? `gb_${uuidv7()}`,
     aud: input.audience,
     iat,
     exp,
@@ -120,11 +125,31 @@ export async function signGovernanceContext(input: SignGovernanceContextInput): 
     check_id: input.checkId,
     plan_hash: planHash,
     ...(input.mediaBuyId !== undefined ? { media_buy_id: input.mediaBuyId } : {}),
+    ...(input.authorizedCommitment !== undefined
+      ? { authorized_commitment: input.authorizedCommitment }
+      : {}),
+    ...(input.authorizedTask !== undefined ? { authorized_task: input.authorizedTask } : {}),
+    ...(input.authorizedPayloadHash !== undefined
+      ? { authorized_payload_hash: input.authorizedPayloadHash }
+      : {}),
     ...(input.policyDecisions !== undefined ? { policy_decisions: input.policyDecisions } : {}),
     ...(input.auditLogPointer !== undefined ? { audit_log_pointer: input.auditLogPointer } : {}),
   };
 
+  const criticalExtensions = {
+    ...(input.authorizedCommitment !== undefined ? { authorized_commitment: true } : {}),
+    ...(input.authorizedTask !== undefined ? { authorized_task: true } : {}),
+    ...(input.authorizedPayloadHash !== undefined ? { authorized_payload_hash: true } : {}),
+  };
+  const criticalNames = Object.keys(criticalExtensions);
   return new SignJWT(claims)
-    .setProtectedHeader({ alg: 'EdDSA', typ: GOVERNANCE_JWS_TYP, kid })
-    .sign(privateKey);
+    .setProtectedHeader({
+      alg: 'EdDSA',
+      typ: GOVERNANCE_JWS_TYP,
+      kid,
+      ...(criticalNames.length > 0 ? { crit: criticalNames, ...criticalExtensions } : {}),
+    })
+    .sign(privateKey, criticalNames.length > 0
+      ? { crit: criticalExtensions }
+      : undefined);
 }

@@ -44,7 +44,15 @@
     }
   ],
   "x-mutates-state": true,
+  "x-governed-commitment": { "scope": "always" },
   "properties": {
+    "governance_context": {
+      "type": "string",
+      "description": "Opaque intent authorization for this media-buy commitment. Required when governance applies to the resolved account.",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
+    },
     "idempotency_key": {
       "type": "string",
       "description": "Client-generated unique key for this request. If a request with the same idempotency_key and account has already been processed, the seller returns the existing media buy rather than creating a duplicate. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
@@ -54,7 +62,8 @@
     },
     "plan_id": {
       "type": "string",
-      "description": "Campaign governance plan identifier. Required when the account has governance_agents. The seller includes this in the committed check_governance request so the governance agent can validate against the correct plan.",
+      "description": "DEPRECATED on seller-facing requests. New buyers send the approved governance_context on the protocol envelope; the seller forwards that opaque context and does not need the plan identifier. If both are present, the governance agent MUST reject a mismatch. Removed in 4.0.",
+      "deprecated": true,
       "x-entity": "governance_plan"
     },
     "account": {

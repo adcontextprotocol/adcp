@@ -111,6 +111,13 @@
       },
       "minItems": 1
     },
+    "format_kinds": {
+      "type": "array",
+      "description": "Filter by canonical format kinds. Returns creatives matching any supplied kind.",
+      "items": { "$ref": "/schemas/core/canonical-format-kind.json" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "asset_types": {
       "type": "array",
       "description": "Filter by asset types present on direct object values in the creative's top-level `assets` map. A creative matches when any directly assigned object has an `asset_type` in this array (OR within this field); this filter is conjunctive with every other active filter (AND across fields). Do not inspect array-valued slots or recurse into nested asset fields such as `cards[].media`; broader traversal is deferred. Agents that do not implement this filter MUST ignore it and apply the remaining filters rather than reject the request. Exact asset-type values use the shared AssetContentType vocabulary; `published_post` selects existing-published-post reference creatives without relying on publisher-specific format IDs.",

@@ -51,7 +51,7 @@ const response = await mcp.call('get_products', {
 ```javascript
 // Pass opaque application-level context; agents must carry it back
 const response = await mcp.call('build_creative', {
-  target_format_id: { agent_url: 'https://creative.agent', id: 'premium_bespoke_display' },
+  target_capability_id: 'premium_bespoke_display',
   creative_manifest: { /* ... */ },
   context: { ui: 'buyer_dashboard', session: '123' }
 });
@@ -101,7 +101,7 @@ await mcp.call('get_adcp_capabilities', {...});  // Discover agent capabilities 
 ### Media Buy Tools
 ```javascript
 await mcp.call('get_products', {...});           // Discover inventory
-await mcp.call('list_creative_formats', {...});  // Get format specs
+// Read each returned product's canonical format_options[] for format specs
 await mcp.call('create_media_buy', {...});       // Create campaigns
 await mcp.call('update_media_buy', {...});       // Modify campaigns
 await mcp.call('sync_creatives', {...});         // Manage creative assets
@@ -223,7 +223,6 @@ Each tool declares whether it supports task-augmented execution via `execution.t
 | `update_rights` | `optional` | External updates |
 | `get_rights` | `optional` | External lookups |
 | `get_adcp_capabilities` | `forbidden` | Instant, static |
-| `list_creative_formats` | `forbidden` | Instant catalog lookup |
 | `preview_creative` | `forbidden` | Renders existing manifest |
 | `list_creatives` | `forbidden` | Session state lookup |
 | `get_media_buys` | `forbidden` | Session state lookup |
@@ -795,7 +794,7 @@ MCP servers can declare AdCP support via a server card at `/.well-known/mcp.json
   "tools": [
     { "name": "get_products" },
     { "name": "create_media_buy" },
-    { "name": "list_creative_formats" }
+    { "name": "get_adcp_capabilities" }
   ],
   "_meta": {
     "adcontextprotocol.org": {

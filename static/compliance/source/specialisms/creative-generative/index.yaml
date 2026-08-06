@@ -100,6 +100,9 @@ phases:
             path: "specialisms[*]"
             value: "creative-generative"
             description: "Agent declares creative-generative specialism"
+          - check: field_present
+            path: "creative.supported_formats"
+            description: "Agent declares canonical generative build capabilities"
 
           - check: field_present
             path: "context"
@@ -107,58 +110,6 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "creative_generative--get_capabilities"
-            description: "Context correlation_id returned unchanged"
-  - id: format_discovery
-    title: "Discover generative formats"
-    narrative: |
-      The buyer needs to know what your agent can generate. Unlike a template platform
-      where formats are fixed dimensions, generative formats describe what the agent
-      produces — the output type, constraints, and what inputs it accepts. A generative
-      format might be "display_300x250_generative" that accepts a brief and produces
-      a finished banner, or "social_post_generative" that creates platform-native content.
-
-    steps:
-      - id: discover_formats
-        title: "Discover available generative formats"
-        narrative: |
-          The buyer asks: "What can you generate?" Your platform returns the formats
-          you support. Each format describes the output type, dimensions, and what
-          inputs it needs (brief text, brand reference, seed images, etc.).
-        task: list_creative_formats
-        requires_tool: list_creative_formats
-        schema_ref: "creative/list-creative-formats-request.json"
-        response_schema_ref: "creative/list-creative-formats-response.json"
-        doc_ref: "/creative/task-reference/list_creative_formats"
-        comply_scenario: creative_sync
-        stateful: false
-        expected: |
-          Return your generative formats. Each format should include:
-          - format_id with your agent_url and a unique id
-          - Human-readable name and description
-          - Asset slots describing what inputs are accepted (brief text, images, etc.)
-          - Render dimensions for the output
-          - Variables for any dynamic fields the buyer can control
-
-        sample_request:
-          context:
-            correlation_id: "creative_generative--discover_formats"
-
-        validations:
-          - check: response_schema
-            description: "Response matches list-creative-formats-response.json schema"
-          - check: field_present
-            path: "formats"
-            description: "Response contains a formats array"
-          - check: field_present
-            path: "formats[0].format_id.agent_url"
-            description: "Each format has a format_id with agent_url"
-
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "creative_generative--discover_formats"
             description: "Context correlation_id returned unchanged"
   - id: generate_from_brief
     title: "Generate from brief"
@@ -189,7 +140,7 @@ phases:
         expected: |
           Return a generated creative manifest:
           - creative_manifest with the generated assets (images, copy, serving code)
-          - format_id matching the target format
+          - canonical format_kind matching the selected capability
           - If include_preview is true, include a preview render
 
           The output should be a coherent creative that reflects the brief and brand
@@ -197,9 +148,7 @@ phases:
 
         sample_request:
           message: "Create a display banner for a summer outdoor gear sale. Bold, adventurous tone. Headline should emphasize 40% off. Target audience: active adults 25-54."
-          target_format_id:
-            agent_url: "https://your-agent.example.com"
-            id: "display_300x250_generative"
+          target_capability_id: "display_300x250_generative"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -217,8 +166,8 @@ phases:
             path: "creative_manifest.assets"
             description: "Output manifest includes generated assets"
           - check: field_present
-            path: "creative_manifest.format_id"
-            description: "Output manifest includes format_id"
+            path: "creative_manifest.format_kind"
+            description: "Output manifest includes a canonical format_kind"
 
           - check: field_present
             path: "context"
@@ -257,9 +206,7 @@ phases:
         sample_request:
           message: "Make the headline larger. Replace the mountain imagery with a trail running scene. Add a CTA button that says 'Shop Now'."
           creative_manifest:
-            format_id:
-              agent_url: "https://your-agent.example.com"
-              id: "display_300x250_generative"
+            format_kind: "image"
             assets:
               generated_image:
                 asset_type: "image"
@@ -269,9 +216,7 @@ phases:
               headline:
                 asset_type: "text"
                 content: "Summer Sale — 40% Off All Gear"
-          target_format_id:
-            agent_url: "https://your-agent.example.com"
-            id: "display_300x250_generative"
+          target_capability_id: "display_300x250_generative"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -300,7 +245,7 @@ phases:
     title: "Multi-format generation"
     narrative: |
       The buyer needs the creative in multiple sizes. Instead of generating each
-      format separately, they pass target_format_ids (plural) and your agent produces
+      format separately, they pass target_capability_ids (plural) and your agent produces
       all formats in a single call. This is where generative agents shine — adapting
       a concept across formats while maintaining visual coherence.
 
@@ -320,7 +265,7 @@ phases:
         expected: |
           Return creative manifests for each requested format in creative_manifests
           (plural). Each manifest should:
-          - Have a format_id matching one of the target formats
+          - Have a canonical format_kind matching one of the target capabilities
           - Contain complete, format-appropriate assets
           - Maintain visual coherence across formats
 
@@ -330,9 +275,7 @@ phases:
         sample_request:
           message: "Generate production-ready versions for all three sizes."
           creative_manifest:
-            format_id:
-              agent_url: "https://your-agent.example.com"
-              id: "display_300x250_generative"
+            format_kind: "image"
             assets:
               generated_image:
                 asset_type: "image"
@@ -345,13 +288,10 @@ phases:
               cta:
                 asset_type: "text"
                 content: "Shop Now"
-          target_format_ids:
-            - agent_url: "https://your-agent.example.com"
-              id: "display_300x250_generative"
-            - agent_url: "https://your-agent.example.com"
-              id: "display_728x90_generative"
-            - agent_url: "https://your-agent.example.com"
-              id: "display_320x50_generative"
+          target_capability_ids:
+            - "display_300x250_generative"
+            - "display_728x90_generative"
+            - "display_320x50_generative"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -404,9 +344,7 @@ phases:
         sample_request:
           message: "Final production build. No changes needed."
           creative_manifest:
-            format_id:
-              agent_url: "https://your-agent.example.com"
-              id: "display_300x250_generative"
+            format_kind: "image"
             assets:
               generated_image:
                 asset_type: "image"
@@ -419,9 +357,7 @@ phases:
               cta:
                 asset_type: "text"
                 content: "Shop Now"
-          target_format_id:
-            agent_url: "https://your-agent.example.com"
-            id: "display_300x250_generative"
+          target_capability_id: "display_300x250_generative"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -439,8 +375,8 @@ phases:
             path: "creative_manifest.assets"
             description: "Production manifest includes assets"
           - check: field_present
-            path: "creative_manifest.format_id"
-            description: "Production manifest includes format_id"
+            path: "creative_manifest.format_kind"
+            description: "Production manifest includes a canonical format_kind"
 
           - check: field_present
             path: "context"
@@ -542,9 +478,7 @@ phases:
 
         sample_request:
           message: "Generate a 300x250 display ad for the Peak Jacket X, using our catalog feed for product fields and tracker URLs."
-          target_format_id:
-            agent_url: "https://your-agent.example.com"
-            id: "display_300x250_generative"
+          target_capability_id: "display_300x250_generative"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -559,8 +493,8 @@ phases:
           - check: response_schema
             description: "Response matches build-creative-response.json schema"
           - check: field_present
-            path: "creative_manifest.format_id"
-            description: "Generated manifest includes format_id"
+            path: "creative_manifest.format_kind"
+            description: "Generated manifest includes a canonical format_kind"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
@@ -711,9 +645,7 @@ phases:
 
         sample_request:
           message: "Generate a 300x250 display ad for the creative_generative_substitution_probe_v1 catalog. Include the `{SKU}` macro as a literal token in the impression tracker URL — the platform resolves it per-impression against catalog items."
-          target_format_id:
-            agent_url: "https://your-agent.example.com"
-            id: "display_300x250_generative"
+          target_capability_id: "display_300x250_generative"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -728,8 +660,8 @@ phases:
           - check: response_schema
             description: "Response matches build-creative-response.json schema"
           - check: field_present
-            path: "creative_manifest.format_id"
-            description: "Creative manifest returned"
+            path: "creative_manifest.format_kind"
+            description: "Creative manifest returned with a canonical format kind"
 
       - id: expect_substitution_safe
         title: "Assert substituted tracker URLs percent-encode attacker shapes"

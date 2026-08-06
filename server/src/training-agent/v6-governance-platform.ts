@@ -69,6 +69,17 @@ function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undef
   };
 }
 
+function buildGovernanceTrainingCtx(ctx: {
+  account?: { authInfo?: { principal?: string } };
+  agent?: { agent_url: string };
+} | undefined): TrainingContext {
+  return {
+    ...buildTrainingCtx(ctx?.account),
+    // Resolved by BuyerAgentRegistry from the authenticated credential.
+    ...(ctx?.agent?.agent_url && { authenticatedAgentUrl: ctx.agent.agent_url }),
+  };
+}
+
 function translateV5Result<T extends object>(result: unknown): T {
   const errs = (result as {
     errors?: Array<{
@@ -160,19 +171,19 @@ export class TrainingGovernancePlatform
 
   campaignGovernance: CampaignGovernancePlatform<TrainingGovernanceMeta> = {
     syncPlans: async (req, ctx) => {
-      const result = await handleSyncPlans(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleSyncPlans(req as ToolArgs, buildGovernanceTrainingCtx(ctx));
       return translateV5Result(result);
     },
     checkGovernance: async (req, ctx) => {
-      const result = await handleCheckGovernance(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleCheckGovernance(req as ToolArgs, buildGovernanceTrainingCtx(ctx));
       return translateV5Result(result);
     },
     reportPlanOutcome: async (req, ctx) => {
-      const result = await handleReportPlanOutcome(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleReportPlanOutcome(req as ToolArgs, buildGovernanceTrainingCtx(ctx));
       return translateV5Result(result);
     },
     getPlanAuditLogs: async (req, ctx) => {
-      const result = await handleGetPlanAuditLogs(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const result = await handleGetPlanAuditLogs(req as ToolArgs, buildGovernanceTrainingCtx(ctx));
       return translateV5Result(result);
     },
   };

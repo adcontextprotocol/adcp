@@ -26,6 +26,12 @@
         "$ref": "/schemas/core/format-id.json"
       }
     },
+    "format_options": {
+      "type": "array",
+      "description": "Canonical creative contracts eligible for this package. These are the seller-resolved package options, not a global agent format list.",
+      "items": { "$ref": "/schemas/core/product-format-declaration.json" },
+      "minItems": 1
+    },
     "catalogs": {
       "type": "array",
       "description": "The buyer's catalogs attached to this package, with selectors (ids, gtins, tags, category, query) scoping which items are in play. References synced catalogs by catalog_id. The provider resolves items from its cached copy.",

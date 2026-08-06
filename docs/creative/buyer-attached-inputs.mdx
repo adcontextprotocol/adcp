@@ -21,7 +21,7 @@ The boundary is deliberate and matches the rest of the protocol: capabilities ar
 
 ### Enforced capability input — `transformer_id` + `config`
 
-A `transformer_id` selects an account-scoped transformer (discovered via [`list_transformers`](/docs/creative/task-reference/list_transformers)) to perform the build. One transformer per call; `target_format_id` / `target_format_ids` MUST be a subset of the transformer's `output_format_ids`. Render configuration goes in `config`.
+A `transformer_id` selects an account-scoped transformer (discovered via [`list_transformers`](/docs/creative/task-reference/list_transformers)) to perform the build. One transformer per call; `target_capability_id` / `target_capability_ids` MUST be a subset of the transformer's `output_capability_ids`. Render configuration goes in `config`.
 
 `config` is a typed bag keyed by each param's `field` from the transformer's `params[]`. It gates, and it gates correctly: per [`build_creative`](/docs/creative/task-reference/build_creative), the creative agent **MUST reject unknown keys and out-of-range values with field-attributed errors** rather than silently ignoring them — `config` drives a paid render. Vendor-specific knobs that are not declared params go in `ext`, not here. The schema leaves the object open because legal keys are dynamic per transformer, so strict validation is a normative agent obligation.
 

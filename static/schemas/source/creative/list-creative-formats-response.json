@@ -2,7 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/list-creative-formats-response.json",
   "title": "List Creative Formats Response (Creative Agent)",
-  "description": "Response payload for list_creative_formats task from creative agent - returns full format definitions",
+  "deprecated": true,
+  "description": "**DEPRECATED in 3.2.** Compatibility response for legacy named formats. Use get_adcp_capabilities `creative.supported_formats[]` for canonical creative-agent discovery.",
   "type": "object",
   "allOf": [
     {
@@ -23,7 +24,8 @@
     },
     "creative_agents": {
       "type": "array",
-      "description": "Optional: Creative agents that provide additional formats. Buyers can recursively query these agents to discover more formats. No authentication required for list_creative_formats.",
+      "deprecated": true,
+      "description": "Deprecated recursive discovery projection retained only for historical 3.x responses. New buyers use registry reverse lookup and direct get_adcp_capabilities confirmation.",
       "items": {
         "type": "object",
         "properties": {

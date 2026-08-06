@@ -162,17 +162,55 @@ describe('training agent idempotency middleware', () => {
     });
 
     it('treats governance_context as excluded from the hash (retry with new delegation)', async () => {
-      const { productId, pricingOptionId } = await getValidProductAndPricing(server);
+      const buyerUrl = 'https://buyer.example';
+      const governedServer = createTrainingAgentServer({
+        ...CTX,
+        tenantId: 'sales',
+        authenticatedAgentUrl: buyerUrl,
+      });
+      const { productId, pricingOptionId } = await getValidProductAndPricing(governedServer);
       const key = `idem-${randomUUID()}`;
       const payload = {
         ...basePayload(),
         packages: [{ product_id: productId, budget: 5000, pricing_option_id: pricingOptionId }],
         idempotency_key: key,
-        governance_context: 'gov-token-a',
       };
+      const planId = `plan-${randomUUID()}`;
+      await call(governedServer, 'sync_plans', {
+        idempotency_key: `sync-${randomUUID()}`,
+        brand: BRAND,
+        plans: [{
+          plan_id: planId,
+          brand: BRAND,
+          objectives: 'Exercise governance-context idempotency exclusion.',
+          budget: { total: 20_000, currency: 'USD', reallocation_threshold: 20_000 },
+          flight: { start: '2026-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+        }],
+      });
+      const approve = async () => (await call(governedServer, 'check_governance', {
+        idempotency_key: `check-${randomUUID()}`,
+        brand: BRAND,
+        plan_id: planId,
+        caller: buyerUrl,
+        target_agent: 'http://localhost/sales',
+        tool: 'create_media_buy',
+        payload,
+      })).parsed.governance_context;
+      const firstContext = await approve();
+      const secondContext = await approve();
+      expect(firstContext).toEqual(expect.any(String));
+      expect(secondContext).toEqual(expect.any(String));
+      expect(secondContext).not.toBe(firstContext);
 
-      await call(server, 'create_media_buy', payload);
-      const replay = await call(server, 'create_media_buy', { ...payload, governance_context: 'gov-token-b' });
+      const first = await call(governedServer, 'create_media_buy', {
+        ...payload,
+        governance_context: firstContext,
+      });
+      expect(first.isError).toBeFalsy();
+      const replay = await call(governedServer, 'create_media_buy', {
+        ...payload,
+        governance_context: secondContext,
+      });
       expect((replay.parsed as any).replayed).toBe(true);
     });
   });

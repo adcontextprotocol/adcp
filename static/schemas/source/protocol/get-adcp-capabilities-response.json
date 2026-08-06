@@ -227,6 +227,109 @@
             }
           ],
           "additionalProperties": true
+        },
+        "governance_enforcement": {
+          "type": "object",
+          "description": "Cross-role declaration that this agent enforces buyer-provided governance authorization when performing consequential tasks. This is distinct from the top-level `governance` capability block, which describes an agent that provides governance services. An agent can enforce governance without implementing the governance protocol itself. Absence means the agent makes no governance-enforcement conformance claim.",
+          "properties": {
+            "tasks": {
+              "type": "array",
+              "description": "Task-scoped enforcement claims. The task field is a semantic uniqueness key: an agent MUST emit at most one entry per task and combine all supported modes in that entry. JSON Schema uniqueItems only rejects structurally identical objects, so producers and capability validators MUST enforce task-key uniqueness separately. Values correspond to request schemas annotated with x-governed-commitment. Online execution checks are currently defined only for media-buy tasks, whose prepared result has the PlannedDelivery contract; other roles can enforce signed intent authorization without inventing media-buy fields.",
+              "items": {
+                "oneOf": [
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "create_media_buy" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "contains": { "const": "signed_context" },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "update_media_buy" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "contains": { "const": "signed_context" },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "build_creative" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "const": "signed_context" },
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "activate_signal" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "const": "signed_context" },
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "acquire_rights" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "const": "signed_context" },
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "update_rights" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "const": "signed_context" },
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "required": ["tasks"],
+          "x-status": "experimental",
+          "additionalProperties": false
         }
       },
       "required": ["major_versions", "idempotency"]
@@ -421,7 +524,7 @@
         },
         "governance_aware": {
           "type": "boolean",
-          "description": "Conformance declaration that this seller consults a registered governance agent (via sync_governance plus an outbound check_governance call) before committing a media buy, and surfaces GOVERNANCE_DENIED when the governance agent denies. A declaration of true opts the seller into governance-denial grading (media_buy_seller/governance_denied, media_buy_seller/governance_denied_recovery). When false or absent, conformance runners skip those storyboards - a seller that does not implement outbound governance consultation is not expected to produce GOVERNANCE_DENIED. This is independent of baseline sync_governance registration, which remains gradeable on its own.",
+          "description": "Compatibility claim used by existing media-buy conformance runners. A value of true corresponds only to online governance consultation for create_media_buy, the historically graded surface. Agents use adcp.governance_enforcement for explicit task-scoped claims, including update_media_buy and cross-role signed-context enforcement.",
           "default": false
         },
         "propagation_surfaces": {
@@ -1171,7 +1274,7 @@
         },
         "supports_transformation": {
           "type": "boolean",
-          "description": "When true, this agent can transform or resize existing manifests via build_creative. The buyer provides a creative_manifest and a target_format_id, and the agent adapts the creative to the new format.",
+          "description": "When true, this agent can transform or resize existing canonical manifests via build_creative. The buyer supplies a creative_manifest and an advertised target_capability_id.",
           "default": false
         },
         "supports_transformers": {
@@ -1265,22 +1368,60 @@
         },
         "supported_formats": {
           "type": "array",
-          "description": "Canonical-formats path: format declarations describing which canonical formats this creative agent can produce via `build_creative`. Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]` — `format_kind` discriminator + `params` (canonical's parameter schema including `slots`, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions). Replaces the v1 `list_creative_formats` discovery surface for creative agents.",
+          "description": "Canonical-format capability catalog for this creative agent. This is the 3.2 source of truth for discovering which format contracts the agent can build, validate, or preview; it replaces the deprecated `list_creative_formats` task. Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]`. New 3.2 producers MUST publish a stable agent-local `capability_id` and explicit `operations` for task routing. Every emitted `capability_id` MUST be unique within this catalog so a route selects exactly one entry. During the 3.x compatibility window, consumers MUST also accept legacy entries that omit either field; absent `operations` means `[\"build\"]`, while an absent `capability_id` means the entry is discoverable by canonical contract but cannot be selected through a capability-ID route.\n\n**Publisher-specific support.** To claim exact support for a publisher declaration, `format` carries the declaration's `{publisher_domain, format_option_id}` pair plus its canonical `format_kind` and narrowed `params`. Generic creative agents MAY instead advertise a canonical parameter envelope without publisher identity. A generic capability matches a target declaration only when the capability can satisfy every target constraint; matching canonical names alone is insufficient. Registries MAY reverse-index these entries by `format.format_kind`, `format.publisher_domain`, and `format.format_option_id`.\n\nThis catalog describes creative operations, not sales-agent inventory deliverability. Sales agents publish the purchasable closed set on each `Product.format_options[]`; publisher acceptance lives in `adagents.json.formats[]`.",
           "items": {
             "type": "object",
             "properties": {
               "capability_id": {
                 "type": "string",
-                "description": "Stable identifier for this format declaration within the agent (e.g., 'audiostack_audio_30s'). Optional but recommended for declarations that may be referenced over time."
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "description": "Stable identifier for this format capability within the creative agent (e.g., 'audio_narration_30s'). The value MUST be unique across this agent's supported_formats catalog. Route the advertised operation with this ID: build_creative.target_capability_id(s) for build, preview_creative.target_capability_id for preview, or validate_input targets[] kind capability for validate. Capability IDs are agent-local routes and do not appear on portable manifests or products."
               },
               "format": {
                 "$ref": "/schemas/core/product-format-declaration.json",
-                "description": "Format declaration this agent can produce. Same shape as a product's inline `format_options[i]`: `format_kind` + `params` + `slots`."
+                "description": "Format declaration on which this agent can perform the listed operations. Same shape as a product's inline format_options entry: format_kind plus params and slots."
+              },
+              "operations": {
+                "type": "array",
+                "description": "Creative operations this capability supports. `build` means the agent can produce a conforming manifest via build_creative; `validate` means it can evaluate inputs against the declaration; `preview` means it can render a preview. New 3.2 producers MUST emit this field so buyers and registries can distinguish producers, validators, and renderers without probing tasks. Consumers interpret omission from a legacy 3.x entry as `[\"build\"]`.",
+                "items": {
+                  "type": "string",
+                  "enum": ["build", "validate", "preview"]
+                },
+                "minItems": 1,
+                "uniqueItems": true,
+                "default": ["build"]
               }
             },
             "required": ["format"],
             "additionalProperties": true
           }
+        },
+        "localization": {
+          "type": "object",
+          "description": "Materialized creative-localization support for sync_creatives/list_creatives, including source-only monolingual topology. Presence opts the agent into exact locale-variant round-trip, strict RFC 4647 Lookup, optional buyer-declared language-family fallback rules, explicit final default/unmatched behavior, creative-wide review, transactional replacement, seller product-format locale-policy enforcement, and delivery attribution. This is a coarse structural capability, not a promise that every locale/format/account combination is accepted; sellers publish accepted ranges on product format declarations and validate each write before mutation. Omit this object when localization is unsupported.",
+          "properties": {
+            "max_target_variants": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50,
+              "description": "Maximum target locale variants accepted on one creative. Zero advertises source-only monolingual locale topology. Omit to inherit the protocol ceiling of 50."
+            },
+            "locale_matching": {
+              "type": "string",
+              "const": "rfc4647_lookup",
+              "description": "The required deterministic locale-matching algorithm."
+            }
+          },
+          "required": ["locale_matching"],
+          "not": {
+            "anyOf": [
+              { "required": ["supported_locales"] },
+              { "required": ["translation_modes"] },
+              { "required": ["review_scope"] }
+            ]
+          },
+          "additionalProperties": true
         },
         "bills_through_adcp": {
           "type": "boolean",
@@ -1293,7 +1434,20 @@
           "description": "Optional. The AdCP canonical-formats catalog version this agent's runtime is built against (e.g., `3.1`, `3.2.0`). Lets buyer SDKs detect canonical-catalog skew between their generated types and the seller's actual support. SDKs MAY declare the version they were generated against (typically the AdCP version they ship for); when seller and SDK versions disagree, SDKs SHOULD soft-warn rather than fail (the open-enum semantics on `canonical-format-kind.json` make unknown canonicals safe to retain, so skew is not a hard error — it just means the older side might not understand newer canonical values). Omitted by sellers who haven't yet generated against a versioned catalog; absence is interpreted as the AdCP version advertised by the broader capabilities response."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "required": ["localization"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library"]
+          }
+        }
+      ]
     },
     "request_signing": {
       "type": "object",

@@ -129,9 +129,33 @@
         "$ref": "/schemas/core/creative-assignment.json"
       }
     },
+    "formats_to_provide": {
+      "type": "array",
+      "description": "Canonical creative contracts that the buyer must satisfy for this package. Each entry is a package-time snapshot of a selected Product.format_options declaration (or the equivalent declaration normalized from a direct format_kind + params selector) and MUST equal or narrow that product contract. Full declarations keep the requirement stable if the live product or publisher catalog later changes and remain usable when format_option_id is absent. Sellers SHOULD emit this field whenever additional creative coverage is required.",
+      "items": {
+        "$ref": "/schemas/core/product-format-declaration.json"
+      },
+      "minItems": 1
+    },
+    "formats_pending": {
+      "type": "array",
+      "description": "The declarations from formats_to_provide that do not yet have creative coverage through sync_creatives or inline creative assignment. An empty emitted array means every required format is covered. Absence means readiness was not reported, so buyers MUST NOT infer full coverage from omission. Sellers SHOULD emit this field with formats_to_provide when returning current package readiness.",
+      "items": {
+        "$ref": "/schemas/core/product-format-declaration.json"
+      }
+    },
     "format_ids_to_provide": {
       "type": "array",
-      "description": "Format IDs that creative assets will be provided for this package",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.2.** Legacy named-format projection of formats_to_provide retained for older 3.x peers. New sellers emit canonical formats_to_provide declarations.",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      }
+    },
+    "format_ids_pending": {
+      "type": "array",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.2.** Legacy named-format projection of formats_pending retained for older 3.x peers. New sellers emit canonical formats_pending declarations. An empty emitted array means every projected requirement is covered. Absence means legacy readiness was not reported and MUST NOT be interpreted as full coverage.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }

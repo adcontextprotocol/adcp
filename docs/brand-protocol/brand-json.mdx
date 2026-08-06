@@ -437,6 +437,16 @@ Names are localized with language codes:
 
 Multiple entries per language are allowed (for aliases).
 
+<Note>
+  The examples above use bare language keys, while existing `brand.json`
+  documents may also use legacy underscore-separated keys such as `en_US`.
+  Those keys are not values of `/schemas/core/locale-tag.json`. When bridging
+  brand content into a newer language-tag field, replace `_` with `-`, apply
+  the AdCP canonical wire profile, and validate the result; do not copy the
+  legacy key unchanged. The underscore form remains accepted here for
+  backwards compatibility pending a separately versioned migration.
+</Note>
+
 ### Keller Types
 
 Brand architecture classifications from marketing theory:

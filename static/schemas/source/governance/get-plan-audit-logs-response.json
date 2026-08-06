@@ -331,7 +331,22 @@
                 },
                 "committed_budget": {
                   "type": "number",
-                  "description": "Budget committed (present for completed outcome entries)."
+                  "description": "Governance-authorized budget reserved (present for completed outcome entries)."
+                },
+                "reported_committed_budget": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Caller-reported seller amount retained for reconciliation. Never ledger authority."
+                },
+                "seller_reference": {
+                  "type": "string",
+                  "description": "Seller resource identifier retained on an outcome entry."
+                },
+                "delivery": {
+                  "type": "object",
+                  "deprecated": true,
+                  "description": "Deprecated buyer delivery snapshot retained as audit evidence on a delivery outcome.",
+                  "additionalProperties": true
                 },
                 "governance_context": {
                   "type": "string",
