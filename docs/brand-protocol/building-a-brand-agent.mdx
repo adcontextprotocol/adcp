@@ -631,6 +631,8 @@ async function evaluateAcquisition(request, talent) {
     return {
       status: "completed",
       rights_status: "rejected",
+      rights_id: request.rights_id,
+      brand_id: talent.brand_id,
       reason: confidentialResult.sanitized_reason,
       // No suggestions — this is final, nothing the buyer can change
     };
@@ -640,7 +642,10 @@ async function evaluateAcquisition(request, talent) {
   const exclusivityConflict = await checkExclusivity(request, talent);
   if (exclusivityConflict) {
     return {
-      status: "rejected",
+      status: "completed",
+      rights_status: "rejected",
+      rights_id: request.rights_id,
+      brand_id: talent.brand_id,
       reason: `Exclusive conflict in ${exclusivityConflict.country} through ${exclusivityConflict.end_date}`,
       suggestions: [
         `Available in ${exclusivityConflict.alternative_countries.join(", ")}`,
@@ -650,7 +655,13 @@ async function evaluateAcquisition(request, talent) {
   }
 
   // Approved — proceed with terms
-  return { status: "completed", rights_status: "acquired", /* ... */ };
+  return {
+    status: "completed",
+    rights_status: "acquired",
+    rights_id: request.rights_id,
+    brand_id: talent.brand_id,
+    /* ... terms, credentials, and rights_constraint ... */
+  };
 }
 ```
 
