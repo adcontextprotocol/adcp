@@ -92,8 +92,11 @@ fixtures:
     - product_id: "reach_ctv_q2"
       delivery_type: "non_guaranteed"
       channels: ["video"]
-      format_ids:
-        - id: "video_30s"
+      format_options:
+        - format_option_id: "video_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
       metric_optimization:
         supported_metrics: ["reach"]
         supported_reach_units: ["households", "individuals"]

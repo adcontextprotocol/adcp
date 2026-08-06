@@ -456,9 +456,7 @@ step_task:
 #       stateful: true
 #       sample_request:
 #         message: <<MESSAGE_BRIEF>>
-#         target_format_id:
-#           agent_url: <<TARGET_FORMAT_ID.agent_url>>
-#           id: <<TARGET_FORMAT_ID.id>>
+#         target_capability_id: <<TARGET_CAPABILITY_ID>>
 #         account:
 #           brand: { domain: "<<BRAND_DOMAIN>>" }
 #           operator: "<<OPERATOR_DOMAIN>>"

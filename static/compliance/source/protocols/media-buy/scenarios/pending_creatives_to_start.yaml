@@ -63,7 +63,7 @@ phases:
         comply_scenario: full_sales_flow
         stateful: false
         expected: |
-          Return at least one product with format_ids and pricing options.
+          Return at least one product with canonical format_options and pricing options.
         sample_request:
           buying_mode: "brief"
           brief: "Display inventory on outdoor lifestyle content. Q3 flight."
@@ -78,14 +78,14 @@ phases:
             key: "product_id"
           - path: "products[0].pricing_options[0].pricing_option_id"
             key: "pricing_option_id"
-          - path: "products[0].format_ids[0]"
-            key: "format_id"
+          - path: "products[0].format_options[0].format_kind"
+            key: "format_kind"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
           - check: field_present
-            path: "products[0].format_ids[0].id"
-            description: "Product declares a format_id for creative sync"
+            path: "products[0].format_options[0].format_kind"
+            description: "Product declares a canonical format for creative sync"
           - check: field_present
             path: "products[0].pricing_options[0].fixed_price"
             description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
@@ -193,7 +193,7 @@ phases:
           creatives:
             - creative_id: "acme-outdoor-display-q3"
               name: "Acme Outdoor Q3 display"
-              format_id: "$context.format_id"
+              format_kind: "$context.format_kind"
               assets:
                 image:
                   asset_type: "image"

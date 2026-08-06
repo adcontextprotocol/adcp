@@ -57,13 +57,20 @@ fixtures:
     - product_id: "sports_ctv_q2"
       delivery_type: "guaranteed"
       channels: ["ctv"]
-      format_ids:
-        - id: "video_30s"
+      format_options:
+        - format_option_id: "video_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
     - product_id: "lifestyle_display_q2"
       delivery_type: "guaranteed"
       channels: ["display"]
-      format_ids:
-        - id: "display_300x250"
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
   pricing_options:
     - product_id: "sports_ctv_q2"
       pricing_option_id: "cpm_guaranteed"

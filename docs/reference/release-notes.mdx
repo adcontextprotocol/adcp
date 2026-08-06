@@ -13,9 +13,15 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 **Status:** In development — minor release targeting the 3.2.0 milestone. Stable wire shapes remain backward compatible; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
 
+### Inline asset-access credentials deprecated (#5698)
+
+`service_account.credentials` in secured content-artifact access is deprecated. New producers must omit it. For one-off delivery, use an asset-scoped, short-lived signed URL; established integrations may use the fetching component's pre-authorized workload identity, and origins that require an Authorization header may use a short-lived, asset-scoped bearer token.
+
+The legacy field remains schema-valid for 3.x wire compatibility. Consumers must not activate received credentials automatically: they may process the legacy form only for an explicitly allowlisted peer and otherwise must reject or quarantine it. The field is eligible for removal in 4.0 or later only after both deprecation-policy gates are satisfied: at least six months from publication of this notice and at least one full release cycle. See [Migrating secured asset access](/docs/reference/migration/asset-access) and [#5699](https://github.com/adcontextprotocol/adcp/issues/5699) for removal tracking.
+
 ### Cross-role governance enforcement
 
-**Breaking-change notice for an experimental surface. The implementation may merge during 3.2 development; the beta-to-GA period provides the six-week notice window before production availability.**
+**Breaking-change notice for the experimental governance-task surface. The implementation may merge during 3.2 development; the beta-to-GA period provides the six-week notice window before production availability. This notice does not relax authentication, transport, or core security requirements: authenticated caller binding follows the stable version-level contract.**
 
 The experimental campaign-governance surface gains task-scoped service enforcement, opaque plan binding, intent-only conditions negotiation, authenticated caller binding, phase-correct media-buy identifiers, and governance-authoritative outcome accounting. Modern responses carry `check_type`; a legacy response arm remains valid for 3.x migration. See the [cross-role governance migration guide](/docs/reference/migration/cross-role-governance-enforcement) and [#5944](https://github.com/adcontextprotocol/adcp/issues/5944).
 
@@ -37,7 +43,7 @@ The v1 task remains **functional through 4.x**. Removal is aligned with the v1 n
 
 **Consumer conformance:** buyers and other consumers MUST NOT assume `list_creative_formats` is present on 3.2+ agents when equivalent canonical-format discovery is declared.
 
-**Compliance:** storyboard steps that call `list_creative_formats` are gated with `requires_tool`, producing an explicit non-failing `missing_tool` skip when an agent has migrated to canonical discovery. The creative lifecycle requires either a non-empty `creative.supported_formats` catalog or a passing v1 discovery call. Agents that still implement the v1 tool continue to conform.
+**Compliance:** current 3.2 sales and creative lifecycle storyboards use canonical product declarations and `creative.supported_formats`. Compatibility-only storyboards that exercise `list_creative_formats` are gated with `requires_tool`, producing an explicit non-failing `missing_tool` skip when an agent does not expose the deprecated task.
 
 See [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats), [Creative Protocol specification § Conformance](/docs/creative/specification#conformance), and [Implementing creative agents](/docs/creative/implementing-creative-agents).
 
@@ -152,7 +158,7 @@ Product signal targeting also clarifies the broad-feed workflow. Products may se
 
 ### Canonical formats, badges, and discovery precision
 
-**Creative-agent canonical build capabilities.** Creative agents declare what they can produce via `creative.supported_formats[]` on `get_adcp_capabilities`. Entries that buyers can target over time SHOULD carry an agent-local stable `capability_id`; buyers use that ID as `target_format_id.id` in `build_creative` when present. This is intentionally separate from media-buy `format_option_id`, which selects a product-local or publisher-catalog format option. The training agent and storyboards verify advertised capability IDs, canonical `format_kind` manifests, unsupported target rejection, and 3.0 compatibility gating. See [Canonical formats](/docs/creative/canonical-formats) and [`build_creative`](/docs/creative/task-reference/build_creative).
+**Creative-agent canonical build capabilities.** Creative agents declare what they can produce via `creative.supported_formats[]` on `get_adcp_capabilities`. Every targetable entry carries an agent-local stable `capability_id`; buyers pass that ID as `target_capability_id` in `build_creative`. This is intentionally separate from media-buy `format_option_id`, which selects a product-local or publisher-catalog format option. The training agent and storyboards verify advertised capability IDs, canonical `format_kind` manifests, unsupported target rejection, and 3.0 compatibility gating. See [Canonical formats](/docs/creative/canonical-formats) and [`build_creative`](/docs/creative/task-reference/build_creative).
 
 **Canonical format satisfaction at create time.** Media-buy create/update/read surfaces now preserve package-level canonical selectors, including direct `format_kind`/`params` requests. The conformance suite tests that under-specified selectors fail closed instead of matching products by loose overlap. See [Product discovery](/docs/media-buy/product-discovery/media-products).
 

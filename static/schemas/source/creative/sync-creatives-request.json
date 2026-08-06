@@ -124,10 +124,7 @@
           {
             "creative_id": "hero_video_30s",
             "name": "Brand Hero Video 30s",
-            "format_id": {
-              "agent_url": "https://creative.adcontextprotocol.org",
-              "id": "video_standard_30s"
-            },
+            "format_kind": "video_hosted",
             "assets": {
               "video": {
                 "asset_type": "video",
@@ -166,10 +163,7 @@
           {
             "creative_id": "holiday_hero",
             "name": "Holiday Campaign Hero",
-            "format_id": {
-              "agent_url": "https://creative.example.com",
-              "id": "premium_bespoke_display"
-            },
+            "format_kind": "image",
             "assets": {
               "product_catalog": {
                 "asset_type": "catalog",
@@ -204,10 +198,7 @@
           {
             "creative_id": "hero_video_30s",
             "name": "Brand Hero Video 30s - Updated",
-            "format_id": {
-              "agent_url": "https://creative.adcontextprotocol.org",
-              "id": "video_standard_30s"
-            },
+            "format_kind": "video_hosted",
             "assets": {
               "video": {
                 "asset_type": "video",
@@ -221,10 +212,7 @@
           {
             "creative_id": "banner_300x250",
             "name": "Display Banner 300x250 - Updated",
-            "format_id": {
-              "agent_url": "https://creative.adcontextprotocol.org",
-              "id": "display_300x250"
-            },
+            "format_kind": "image",
             "assets": {
               "image": {
                 "asset_type": "image",

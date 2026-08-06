@@ -98,7 +98,7 @@
     },
     "fields": {
       "type": "array",
-      "description": "Specific fields to include in response (omit for all fields). The 'concept' value returns both concept_id and concept_name.",
+      "description": "Specific fields to include in response (omit for all fields). The 'concept' value returns both concept_id and concept_name. `format_id` is a deprecated 3.x compatibility projection; new integrations request `format_kind` and `format_option_ref`.",
       "minItems": 1,
       "items": {
         "type": "string",
@@ -106,6 +106,8 @@
           "creative_id",
           "name",
           "format_id",
+          "format_kind",
+          "format_option_ref",
           "assets",
           "status",
           "created_date",
@@ -146,14 +148,7 @@
           "concept_ids": [
             "concept_holiday_2026"
           ],
-          "format_ids": [
-            {
-              "agent_url": "https://creative.example.com",
-              "id": "display_static",
-              "width": 300,
-              "height": 250
-            }
-          ]
+          "format_kinds": ["image"]
         },
         "include_variables": true
       }

@@ -6,6 +6,12 @@
   "version": "1.0.0",
   "lastUpdated": "2026-04-30",
   "vocabulary": {
+    "multi_state_display": {
+      "description": "One sold display unit with multiple coordinated visual states or surfaces (for example masthead plus rails plus a collapsed scroll state) whose buyer payload supplies distinct artwork per state. Use custom + format_schema until a stable cross-publisher canonical contract is promoted.",
+      "typical_use": "Premium web canvases, scroll-state units, coordinated multi-panel display executions",
+      "tracking_model_hint": "Per-state viewability and engagement plus unit-level impression/click reporting",
+      "promotion_status": "tracking — see adcp#5972 and adcp#3666"
+    },
     "multi_placement_takeover": {
       "description": "Coordinated buy targeting several placements at once on a single page or content unit, sold as a unit (homepage skin + banner + preroll + sponsorship lockup, all firing for the same advertiser concurrently). Used by NYTimes, WSJ, Hulu, premium publishers. Multi-canonical composition — the format_schema enumerates each component placement and its own format constraints.",
       "typical_use": "Premium publisher homepage takeovers, day-part broadcast takeovers, content-section sponsorships",

@@ -53,7 +53,7 @@ if (validated.status === 'rejected') {
   // Access validated product fields
   for (const product of validated.products) {
     console.log(`- ${product.name} (${product.delivery_type})`);
-    console.log(`  Formats: ${product.format_ids.map(f => f.id).join(', ')}`);
+    console.log(`  Formats: ${product.format_options.map(option => option.format_kind).join(', ')}`);
   }
 }
 ```
@@ -178,7 +178,9 @@ The seller must declare `features.property_list_filtering: true` in [`get_adcp_c
 | `delivery_type` | string | Filter by `"guaranteed"` or `"non_guaranteed"` |
 | `is_fixed_price` | boolean | Filter for fixed-price vs auction products. Products with both pricing types can match either value, but the returned `pricing_options` array must include only options matching the requested pricing type so buyers can select deterministically from discovery. |
 | `pricing_currencies` | string[] | Filter by ISO 4217 currencies the buyer can use for the media product transaction (e.g., `["USD"]`). Products match when they offer at least one product-level `pricing_options` entry in one of the requested currencies and any seller-applied or otherwise mandatory product-scoped signal charges are satisfiable in one of those currencies or have no incremental price. Sellers MUST return only matching product `pricing_options` so buyers can select deterministically from discovery. Optional signal or vendor add-on pricing is not pruned by this filter. |
-| `format_ids` | FormatID[] | Filter by specific format IDs |
+| `format_kinds` | string[] | Filter by canonical format kinds |
+| `format_option_refs` | FormatOptionRef[] | Filter by exact publisher- or product-scoped canonical format options |
+| `format_ids` | FormatID[] | Deprecated 3.x named-format compatibility filter |
 | `standard_formats_only` | boolean | Only return products accepting IAB standard formats |
 | `min_exposures` | integer | Minimum exposures needed for measurement validity |
 | `start_date` | string | Campaign start date in ISO 8601 format (YYYY-MM-DD) for availability checks |
@@ -215,7 +217,7 @@ Each returned placement may carry:
 | `audio_distribution_types` | Declared audio distribution types for radio, streaming-audio, podcast, gaming, and other audio inventory, using the IAB Tech Lab/OpenRTB 2.6 `audio.feed` definitions with AdCP-native names. Concrete placements usually declare one value; aggregate placements may declare multiple. |
 | `sponsored_placement_types` | Declared sponsored-placement types for catalog-driven retail-media inventory. Concrete placements usually declare one value; aggregate placements may declare multiple. |
 | `social_placement_surfaces` | Declared social-placement surfaces for social inventory. Concrete placements usually declare one value; aggregate placements may declare multiple. |
-| `format_ids` / `format_options` | Placement-specific creative support. Product-level formats are the upper bound; placement-level formats narrow the effective accepted set for that placement and must not add formats the product does not accept. |
+| `format_options` | Placement-specific canonical creative support. Product-level formats are the upper bound; placement-level formats narrow the effective accepted set for that placement and must not add formats the product does not accept. Deprecated `format_ids` may appear only on the 3.x compatibility path. |
 
 Publishers can authorize sales agents for specific publisher placements using `authorized_agents[].placement_ids` or `authorized_agents[].placement_tags` in `adagents.json`. Sellers should only return publisher-referenced placements they are authorized to sell.
 
@@ -357,7 +359,8 @@ Returns an array of `products` and optionally `proposals`.
 | `name` | string | Human-readable product name |
 | `description` | string | Detailed product description |
 | `publisher_properties` | PublisherProperty[] | Array of publisher entries, each with `publisher_domain` and either `property_ids` or `property_tags` |
-| `format_ids` | FormatID[] | Supported creative format IDs |
+| `format_options` | ProductFormatDeclaration[] | Closed canonical creative contracts this product can deliver |
+| `format_ids` | FormatID[] | Deprecated 3.x compatibility projection, when emitted |
 | `delivery_type` | string | `"guaranteed"` or `"non_guaranteed"` |
 | `delivery_measurement` | DeliveryMeasurement | (Optional) How delivery is measured (impressions, views, etc.) |
 | `pricing_options` | PricingOption[] | Available pricing models (CPM, CPCV, etc.). Auction options may include `floor_price` and optional `price_guidance`. Bid-based auction models (CPM, vCPM, CPC, CPCV, CPV) may also include optional `max_bid` (boolean). |
@@ -555,7 +558,7 @@ Response (wholesale product feed changed — full payload returned, abbreviated)
       "name": "Premium CTV — US",
       "description": "Run-of-network CTV inventory across premium publishers.",
       "publisher_properties": [{ "publisher_domain": "streamhaus.example.com", "property_ids": ["primetime_ctv"] }],
-      "format_ids": [{ "id": "video_ctv_1080p_30s" }],
+      "format_options": [{ "format_option_id": "video_ctv_1080p_30s", "format_kind": "video_hosted", "params": { "width": 1920, "height": 1080, "duration_ms_exact": 30000 } }],
       "delivery_type": "guaranteed",
       "pricing_options": [
         { "pricing_option_id": "po_cpm_v2", "pricing_model": "cpm", "currency": "USD", "fixed_price": 18.50 }
@@ -572,7 +575,7 @@ Response (wholesale product feed changed — full payload returned, abbreviated)
 - A returned `wholesale_feed_version` is scoped to the request parameters that produced it. Buyers MUST cache the version alongside the `(account, filters, buying_mode, property_list, catalog)` tuple used.
 - `pricing_version` is an optional finer-grained token: when present, it changes when prices move but `wholesale_feed_version` changes only when structure/metadata moves. Common for rate-card sweeps that don't change product metadata.
 - **`if_pricing_version` requires `if_wholesale_feed_version`.** Pricing has no structural baseline of its own. Sending `if_pricing_version` without `if_wholesale_feed_version` is a schema-level error. The seller's evaluation is two-stage: wholesale feed mismatch returns the full payload (pricing is implicitly stale); wholesale feed match with pricing mismatch also returns the full payload (so the buyer sees updated `pricing_options`); both match → `unchanged: true`.
-- **`filters` canonicalization.** Sellers MUST treat the `filters` object as canonicalized before hashing into the `wholesale_feed_version` keyspace: keys MUST be sorted lexicographically, omitted-and-default values MUST be treated identically (a missing `delivery_type` key is the same scope as `delivery_type: null`), array values MUST be sorted where the filter has set semantics (e.g., `channels`, `format_ids`, `required_metrics`) and preserved-order where the filter has sequence semantics (e.g., `preferred_delivery_types`). Buyers that pass equivalent-but-differently-shaped filter objects MUST receive the same `wholesale_feed_version` from the seller. This rule prevents silent stale-mirror bugs from key-order or default-elision differences between buyer SDKs. **Forward-compat default:** new filter fields added in 3.x minor versions MUST declare set-vs-sequence semantics in their schema (via `x-canonicalization: set | sequence` or equivalent prose); absent an explicit declaration, the rule defaults to **set-semantics** (sort before hashing). Sellers and SDKs that drift on this default produce cache misses that consumers can't explain.
+- **`filters` canonicalization.** Sellers MUST treat the `filters` object as canonicalized before hashing into the `wholesale_feed_version` keyspace: keys MUST be sorted lexicographically, omitted-and-default values MUST be treated identically (a missing `delivery_type` key is the same scope as `delivery_type: null`), array values MUST be sorted where the filter has set semantics (e.g., `channels`, `format_kinds`, `format_option_refs`, `required_metrics`) and preserved-order where the filter has sequence semantics (e.g., `preferred_delivery_types`). Buyers that pass equivalent-but-differently-shaped filter objects MUST receive the same `wholesale_feed_version` from the seller. This rule prevents silent stale-mirror bugs from key-order or default-elision differences between buyer SDKs. **Forward-compat default:** new filter fields added in 3.x minor versions MUST declare set-vs-sequence semantics in their schema (via `x-canonicalization: set | sequence` or equivalent prose); absent an explicit declaration, the rule defaults to **set-semantics** (sort before hashing). Sellers and SDKs that drift on this default produce cache misses that consumers can't explain.
 - **Pagination interaction.** `wholesale_feed_version` describes the wholesale product feed as a whole, not individual pages. Sellers MUST return `wholesale_feed_version` on every paginated page (not only the first) when they declare `wholesale_feed_versioning.supported: true`; sellers that do not declare versioning SHOULD do the same. When the wholesale feed mutates between pages, the new version surfaces on the next page and the buyer MUST restart pagination from `cursor: null` — the partial pages they've already received describe a stale version. Sellers MAY alternatively snapshot the feed at the start of pagination and serve all pages from that snapshot under the original version; either implementation is conformant as long as `wholesale_feed_version` on a given page is the version that page belongs to.
 - **`unchanged: true` and in-progress pagination.** A buyer that is mid-pagination on `cursor: X` MAY send `if_wholesale_feed_version` matching the version their pages so far were drawn from. If the seller confirms `unchanged: true`, the response omits `products[]` and pagination envelope entirely; the buyer abandons their in-progress walk under that version with confidence that no further pages would have produced new data. Sellers MAY NOT use the conditional-fetch short-circuit to skip individual pages within an active pagination — `unchanged` is feed-versus-cached-version, not per-page.
 - Pre-v3.1 sellers that ignore `if_wholesale_feed_version` simply return the full payload — semantically correct, just inefficient (same as the unchanged-server path in HTTP).
@@ -1722,7 +1725,7 @@ After discovering products:
 
 1. **Review Options**: Compare products, pricing, and targeting capabilities
 2. **Create Media Buy**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) to execute campaign
-3. **Prepare Creatives**: Use [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) to see format requirements
+3. **Prepare Creatives**: Use each returned product's canonical `format_options[]` to see format requirements
 4. **Supply Assets**: Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for library-backed sellers, or inline `packages[].creatives` for inline-only sellers
 
 ## Learn More

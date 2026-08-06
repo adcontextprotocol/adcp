@@ -147,10 +147,14 @@
                 "buyer_ref": "line-001"
               },
               "creative_assignments": [],
-              "format_ids_to_provide": [
+              "formats_to_provide": [
                 {
-                  "agent_url": "https://creative.adcontextprotocol.org",
-                  "id": "video_standard_30s"
+                  "format_kind": "video_hosted",
+                  "format_option_id": "video_standard_30s",
+                  "params": {
+                    "duration_ms_exact": 30000,
+                    "containers": ["mp4"]
+                  }
                 }
               ]
             }

@@ -52,8 +52,11 @@ fixtures:
     - product_id: "billing_finality_video_q3"
       delivery_type: "guaranteed"
       channels: ["video"]
-      format_ids:
-        - id: "video_15s"
+      format_options:
+        - format_option_id: "video_15s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 15000
       reporting_capabilities:
         available_metrics:
           - impressions
