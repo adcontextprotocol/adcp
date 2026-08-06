@@ -83,23 +83,50 @@ function defaultJwksUri(agentUrl) {
   return `${url.origin}/.well-known/jwks.json`;
 }
 
-function applicableBrandAgents(brandJson) {
-  const collections = [brandJson.agents, brandJson.house?.agents];
-  if (Array.isArray(brandJson.brands)) {
-    collections.push(...brandJson.brands.map((brand) => brand?.agents));
+function domainFromBrandUrl(url) {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function applicableBrandAgents(brandJson, brandDomain) {
+  if (Array.isArray(brandJson.agents)) {
+    return { agents: brandJson.agents, ambiguous: false };
   }
 
-  return collections.flatMap((agents) => (Array.isArray(agents) ? agents : []));
+  const assertedDomain = typeof brandDomain === 'string' ? brandDomain.toLowerCase() : null;
+  const houseDomain = brandJson.house?.domain?.toLowerCase();
+  const houseAgents = Array.isArray(brandJson.house?.agents) ? brandJson.house.agents : [];
+  if (assertedDomain !== null && assertedDomain === houseDomain) {
+    return { agents: houseAgents, ambiguous: false };
+  }
+
+  const inlineBrands = Array.isArray(brandJson.brands) ? brandJson.brands : [];
+  const matches = inlineBrands.filter((brand) => domainFromBrandUrl(brand?.url) === assertedDomain);
+  if (matches.length !== 1) {
+    return { agents: [], ambiguous: matches.length > 1 };
+  }
+
+  return {
+    agents: Array.isArray(matches[0].agents) ? matches[0].agents : houseAgents,
+    ambiguous: false,
+  };
 }
 
 function assessBrandResponseAuthorization(input) {
-  const { agent_url: agentUrl, kid } = input.envelope || {};
+  const { agent_url: agentUrl, brand_domain: brandDomain, kid } = input.envelope || {};
   if (!input.brand_json) {
     return { trust: 'untrusted', reason: 'brand_json_unavailable' };
   }
 
   const canonicalAgentUrl = canonicalizeFixtureUrl(agentUrl);
-  const agents = applicableBrandAgents(input.brand_json);
+  const resolution = applicableBrandAgents(input.brand_json, brandDomain);
+  if (resolution.ambiguous) {
+    return { trust: 'untrusted', reason: 'agent_authorization_ambiguous' };
+  }
+  const { agents } = resolution;
   const matches = agents.filter((agent) =>
     agent?.type === 'brand'
       && canonicalAgentUrl !== null

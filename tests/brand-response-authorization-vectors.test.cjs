@@ -71,6 +71,30 @@ describe('brand response authorization cross-check vectors', () => {
     assert.equal(assessBrandResponseAuthorization(input).reason, 'key_purpose_invalid');
   });
 
+  it('uses house agents only when the matched inline brand has no override', () => {
+    const trusted = vectors.cases.find((vector) => vector.name === 'inline-brand-agent-is-trusted');
+    const input = JSON.parse(JSON.stringify(trusted.input));
+    input.brand_json.house.agents = input.brand_json.brands[0].agents;
+    delete input.brand_json.brands[0].agents;
+    assert.equal(validateBrandJson(input.brand_json), true, JSON.stringify(validateBrandJson.errors));
+    assert.deepEqual(assessBrandResponseAuthorization(input), trusted.expected);
+  });
+
+  it('rejects ambiguous inline brand-domain matches', () => {
+    const trusted = vectors.cases.find((vector) => vector.name === 'inline-brand-agent-is-trusted');
+    const input = JSON.parse(JSON.stringify(trusted.input));
+    input.brand_json.brands.push({
+      id: 'nova_duplicate',
+      url: 'https://nova.example',
+      names: [{ en: 'Nova Duplicate' }],
+    });
+    assert.equal(validateBrandJson(input.brand_json), true, JSON.stringify(validateBrandJson.errors));
+    assert.equal(
+      assessBrandResponseAuthorization(input).reason,
+      'agent_authorization_ambiguous',
+    );
+  });
+
   for (const vector of vectors.cases) {
     it(vector.name, () => {
       if (vector.input.brand_json !== null) {

@@ -166,7 +166,7 @@
       "name": "inline-brand-agent-is-trusted",
       "input": {
         "envelope": {
-          "brand_domain": "novabrands.example",
+          "brand_domain": "nova.example",
           "agent_url": "https://nova-agent.novabrands.example/mcp",
           "kid": "nova-response-key"
         },
@@ -187,6 +187,7 @@
           "brands": [
             {
               "id": "nova",
+              "url": "https://nova.example",
               "names": [{"en": "Nova"}],
               "agents": [
                 {
@@ -219,6 +220,81 @@
         "trust": "trusted",
         "kid": "nova-response-key",
         "jwks_uri": "https://nova-agent.novabrands.example/.well-known/jwks.json"
+      }
+    },
+    {
+      "name": "sibling-brand-agent-cannot-answer-for-asserted-brand",
+      "input": {
+        "envelope": {
+          "brand_domain": "alpha.example",
+          "agent_url": "https://beta-agent.novabrands.example/mcp",
+          "kid": "beta-response-key",
+          "response": {
+            "verification_status": "not_ours"
+          }
+        },
+        "verified_jwk": {
+          "kid": "beta-response-key",
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "x": "rkUcKP5oMd7YjV4yy5mVS5S8fA3LDXcf5jk1P1_52EA",
+          "use": "sig",
+          "key_ops": ["verify"],
+          "adcp_use": "response-signing"
+        },
+        "brand_json": {
+          "house": {
+            "domain": "novabrands.example",
+            "name": "Nova Brands"
+          },
+          "brands": [
+            {
+              "id": "alpha",
+              "url": "https://alpha.example",
+              "names": [{"en": "Alpha"}],
+              "agents": [
+                {
+                  "type": "brand",
+                  "id": "alpha_brand",
+                  "url": "https://alpha-agent.novabrands.example/mcp",
+                  "jwks_uri": "https://alpha-agent.novabrands.example/.well-known/jwks.json"
+                }
+              ]
+            },
+            {
+              "id": "beta",
+              "url": "https://beta.example",
+              "names": [{"en": "Beta"}],
+              "agents": [
+                {
+                  "type": "brand",
+                  "id": "beta_brand",
+                  "url": "https://beta-agent.novabrands.example/mcp",
+                  "jwks_uri": "https://beta-agent.novabrands.example/.well-known/jwks.json"
+                }
+              ]
+            }
+          ]
+        },
+        "jwks_by_uri": {
+          "https://beta-agent.novabrands.example/.well-known/jwks.json": {
+            "keys": [
+              {
+                "kid": "beta-response-key",
+                "kty": "OKP",
+                "crv": "Ed25519",
+                "x": "rkUcKP5oMd7YjV4yy5mVS5S8fA3LDXcf5jk1P1_52EA",
+                "use": "sig",
+                "key_ops": ["verify"],
+                "adcp_use": "response-signing"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "trust": "untrusted",
+        "reason": "agent_not_authorized"
       }
     },
     {
