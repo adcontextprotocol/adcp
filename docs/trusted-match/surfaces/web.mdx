@@ -173,7 +173,21 @@ For each active package, the publisher creates a GAM line item targeting `adcp_p
 
 ## Prebid Integration
 
-The TMP Prebid module is a Real-Time Data (RTD) module that replaces vendor-specific RTD modules. It is defined by the [TMP Prebid proposal](/specs/prebid-tmp-proposal) and follows the standard Prebid RTD module interface. It handles the full flow:
+The first TMP integration can be delivered as a Real-Time Data (RTD) submodule
+that follows Prebid's established RTD interface. This is the **present-day
+compatibility profile**: it provides a practical route to a pilot and can
+replace vendor-specific RTD modules without waiting for a new Prebid.js module
+boundary.
+
+The [TMP Prebid proposal](/specs/prebid-tmp-proposal) defines the **target
+architecture**: a dedicated optional TMP module that is a peer to RTD, rather
+than an RTD submodule. Moving from the bridge to that peer changes Prebid.js
+registration and configuration ownership, but not the TMP wire protocol,
+split-request privacy model, router, or local join described below. Publishers
+should follow the configuration for the implementation included in their
+Prebid.js build.
+
+Both profiles handle the full flow:
 
 1. **On auction init**: Send Context Match request to the TMP router for each placement on the page.
 2. **On context match response**: Store offers and targeting signals.

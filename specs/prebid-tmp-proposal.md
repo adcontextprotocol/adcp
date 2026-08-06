@@ -63,7 +63,7 @@ Human Security), client-side device detection (51Degrees, WURFL), auction
 timeout control, and proprietary client-side engines that require their own
 JavaScript runtime.
 
-## Proposal
+## Proposal: target architecture
 
 Add TMP (Trusted Match Protocol) as an optional Prebid.js module **alongside**
 the existing RTD module, and as a module in Prebid Server. In Prebid.js, TMP
@@ -83,6 +83,15 @@ This peer architecture preserves a clean boundary:
 - **Publishers can run both.** A publisher can compare or migrate an existing
   RTD integration without changing auction-wide RTD behavior.
 
+This is the **target architecture**, not a claim that the dedicated peer module
+already exists in Prebid.js. The pragmatic first integration may ship as a TMP
+RTD submodule so it can use Prebid's established RTD interface while the peer
+module is proposed, reviewed, and implemented. That compatibility profile is a
+bridge: it registers through RTD and uses `realTimeData.dataProviders`; it MUST
+preserve TMP's separate Context Match and Identity Match requests and local
+join. Once the peer module is available, publishers move the same protocol flow
+to top-level `tmp` configuration. The wire protocol and router do not change.
+
 TMP is an open protocol (part of AdCP) that standardizes what RTD modules do
 today. It defines two operations:
 
@@ -100,6 +109,37 @@ publisher's normal custom-build module list) before the `tmp` configuration is
 used. TMP may use the same auction lifecycle hook points as RTD, but it does
 not call RTD's submodule registration API or appear in
 `realTimeData.dataProviders`.
+
+### Present-day compatibility profile
+
+Before that peer module lands, an implementation MAY expose TMP as an RTD
+submodule. This is the near-term integration described in the current web
+surface guide. It is intentionally a concession to the existing Prebid.js
+extension surface, not the final ownership boundary. Implementers must not
+infer from the RTD registration that TMP collapses its context and identity
+paths into a conventional single vendor-enrichment request.
+
+The compatibility form is:
+
+```javascript
+pbjs.setConfig({
+  realTimeData: {
+    dataProviders: [{
+      name: 'tmp',
+      params: {
+        router: 'https://tmp.publisher.example.com',
+        propertyRid: '01916f3a-9c4e-7000-8000-000000000010',
+        propertyType: 'website',
+        timeout: 50
+      }
+    }]
+  }
+});
+```
+
+The next configuration block describes the target peer module. Documentation
+for either implementation must identify its profile so publishers know which
+module their build contains.
 
 ### Configuration
 
@@ -164,9 +204,11 @@ var adUnits = [{
 
 See [Impression ID Substitution](/docs/trusted-match/surfaces/web#impression-id-substitution) for the full rationale, the `enableTIDs` reuse optimization, and the GAM creative URL pattern.
 
-The `@adcp/client/tmp` package handles steps 1, 3, and 4 as pure functions. The
-Prebid.js TMP module handles the HTTP calls, timing, and ad unit targeting. The
-RTD module is neither a dependency nor an intermediary.
+The `@adcp/client/tmp` package handles steps 1, 3, and 4 as pure functions. In
+the target architecture, the Prebid.js TMP module handles the HTTP calls,
+timing, and ad unit targeting, and RTD is neither a dependency nor an
+intermediary. In the bridge profile, the TMP RTD submodule temporarily owns
+those responsibilities while preserving the same protocol behavior.
 
 ### Dependency: `@adcp/client/tmp`
 
@@ -368,7 +410,7 @@ pbjs.setConfig({
 });
 ```
 
-After (TMP module, configured alongside rather than through RTD):
+Target state (TMP peer module, configured alongside rather than through RTD):
 ```javascript
 pbjs.setConfig({
   tmp: {
@@ -383,7 +425,9 @@ pbjs.setConfig({
 The publisher's router configuration includes Scope3 as a provider. The
 publisher's Prebid.js build includes the single TMP module; no per-vendor RTD
 submodule is needed. During migration, the `realTimeData` and `tmp` top-level
-configuration blocks may coexist for an A/B comparison.
+configuration blocks may coexist for an A/B comparison. Before the peer module
+lands, the TMP RTD bridge can provide the same wire behavior, but its temporary
+configuration remains inside `realTimeData.dataProviders`.
 
 ### Step 3: Deprecate Scope3 RTD module
 
@@ -464,8 +508,8 @@ function resolveImpressionId(adUnit) {
   return ulid();
 }
 
-// Initialize from the dedicated TMP module. This is not an RTD submodule:
-// it does not register through realTimeData or dataProviders.
+// Target architecture: initialize from the dedicated TMP peer module.
+// A present-day RTD bridge wraps this lifecycle through the RTD interface.
 function init(config, userConsent) {
   const { router, propertyRid, propertyType, identity, temporalDelay, timeout } = config.tmp;
 
@@ -647,11 +691,14 @@ func (m *Module) HandleAuctionHook(ctx context.Context, payload modules.AuctionP
    the TMP schemas shipping in AdCP 3.0.
 2. **Reference adapters** — Working Prebid.js and Prebid Server adapters that
    the Prebid team can review and adapt.
-3. **Prebid proposal submission** — Submit to Prebid.org with working code,
-   performance benchmarks (payload size, latency), and Scope3 migration plan.
-4. **Scope3 TMP endpoint** — Scope3 ships TMP-compatible endpoint.
-5. **Publisher pilot** — One publisher runs TMP via Prebid alongside existing
+3. **RTD bridge** — If needed for an initial pilot, ship a compatibility RTD
+   submodule that preserves TMP's split-request and local-join invariants.
+4. **Prebid proposal submission** — Submit the peer-module architecture to
+   Prebid.org with working code, performance benchmarks (payload size,
+   latency), and Scope3 migration plan.
+5. **Scope3 TMP endpoint** — Scope3 ships TMP-compatible endpoint.
+6. **Publisher pilot** — One publisher runs TMP via Prebid alongside existing
    Scope3 RTD module, A/B comparison.
-6. **Prebid module merge** — Prebid team adapts the reference adapters to their
+7. **Prebid module merge** — Prebid team adapts the reference adapters to their
    codebase standards and merges TMP as an optional peer to RTD, not as an RTD
    provider or an always-on core subsystem.
