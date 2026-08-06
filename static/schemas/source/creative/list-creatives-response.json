@@ -123,6 +123,45 @@
             },
             "additionalProperties": true
           },
+          "localization": {
+            "$ref": "/schemas/core/creative-localization-readback.json",
+            "description": "Authoritative exact materialized locale-variant state. Present for localized creatives when complete. The enclosing creative status is the single review lifecycle for all variants.",
+            "x-adcp-validation": {
+              "verifier_constraints": {
+                "lifecycle_source": "enclosing_creative.status",
+                "source_assets": "must_equal_enclosing_creative.assets",
+                "sync_list_round_trip": {
+                  "source_equal_properties": ["locale_variant_id", "locale"],
+                  "target_match_key": "locale_variant_id",
+                  "target_set": "exact",
+                  "target_equal_properties": ["locale"],
+                  "localization_equal_properties": [
+                    "default_locale_variant_id",
+                    "unmatched_locale_action",
+                    "locale_fallbacks"
+                  ]
+                }
+              },
+              "spec": "docs/creative/task-reference/list_creatives.mdx#localized-creative-readback"
+            }
+          },
+          "localization_unavailable": {
+            "type": "object",
+            "description": "Per-creative fail-closed state returned instead of localization when the seller knows the creative is localized but cannot construct complete exact readback. The creative remains in this page and counts toward query_summary.returned and pagination; buyers may continue using the base creative fields but MUST NOT infer locale eligibility.",
+            "properties": {
+              "errors": {
+                "type": "array",
+                "items": { "$ref": "/schemas/core/error.json" },
+                "minItems": 1
+              },
+              "retryable": {
+                "type": "boolean",
+                "description": "Whether a later list_creatives call may recover without buyer mutation."
+              }
+            },
+            "required": ["errors", "retryable"],
+            "additionalProperties": true
+          },
           "tags": {
             "type": "array",
             "description": "User-defined tags for organization and searchability",
@@ -303,7 +342,27 @@
             }
           }
         ],
-        "additionalProperties": true
+        "additionalProperties": true,
+        "allOf": [
+          {
+            "if": {
+              "required": ["localization"]
+            },
+            "then": {
+              "required": ["status", "assets"],
+              "not": { "required": ["localization_unavailable"] }
+            }
+          },
+          {
+            "if": {
+              "required": ["localization_unavailable"]
+            },
+            "then": {
+              "required": ["status"],
+              "not": { "required": ["localization"] }
+            }
+          }
+        ]
       }
     },
     "format_summary": {
