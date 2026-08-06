@@ -98,6 +98,14 @@
           }
         ]
       }
+    },
+    {
+      "if": {
+        "required": ["runtime_attestation_evaluations"]
+      },
+      "then": {
+        "required": ["runtime_attestation_binding_digest"]
+      }
     }
   ],
   "x-status": "experimental",
@@ -166,6 +174,11 @@
           "uncertainty_reason": {
             "type": "string",
             "description": "Explanation of why confidence is below 1.0 (e.g., 'Targeting includes regions that partially overlap jurisdiction boundaries'). Present when confidence is below a governance-agent-defined threshold."
+          },
+          "attestation_reference_digest": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "description": "When this finding relies on or reports a runtime attestation evaluation, the reference_digest of the exact AttestationReference in runtime_attestation_evaluations[]. Findings MUST NOT copy credential bodies or treat a presenter assertion as verified evidence."
           }
         },
         "required": [
@@ -235,6 +248,40 @@
     "mode": {
       "$ref": "/schemas/enums/governance-mode.json",
       "description": "Governance enforcement mode active when this check was evaluated. Allows counterparties, regulators, and auditors to distinguish whether a finding blocked execution (enforce) or was logged silently (audit)."
+    },
+    "runtime_attestation_evaluations": {
+      "type": "array",
+      "description": "Evaluator-of-record results for request runtime_attestations[], in the same order and with exactly one result per presentation. Each result is the shared AttestationEvaluation and MUST bind to this response's check_id through action_binding.action_type = https://adcontextprotocol.org/actions/governance-check and action_binding.action_id = check_id. The signed governance_context MUST bind the same reference_digest/outcome pairs; large evidence stays in the audit log rather than the token.",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "/schemas/core/attestation-evaluation.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action_binding": {
+                "type": "object",
+                "properties": {
+                  "action_type": {
+                    "type": "string",
+                    "const": "https://adcontextprotocol.org/actions/governance-check"
+                  }
+                },
+                "required": ["action_type", "action_id"]
+              }
+            },
+            "required": ["action_binding"]
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 10
+    },
+    "runtime_attestation_binding_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 of RFC 8785 JCS({ evaluations: runtime_attestation_evaluations, findings: attestation_bound_findings }), where attestation_bound_findings is the response findings[] subset carrying attestation_reference_digest, preserved in response order. Required whenever runtime_attestation_evaluations is present. The governance_context JWS carries this exact value as runtime_attestation_binding_digest; get_plan_audit_logs retains ordered {reference, evaluation} pairs so auditors can first recompute every reference_digest and then prove which evaluations and findings the signed decision relied on."
     },
     "governance_context": {
       "type": "string",
