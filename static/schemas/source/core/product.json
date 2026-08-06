@@ -237,6 +237,22 @@
       "$ref": "/schemas/core/product-targeting-resolution.json",
       "description": "Discovery-time targeting resolution bound to this configured product. modifications sparsely disclose product-specific differences from get_products.targeting_overlay. Request-level brief interpretation is returned once on GetProductsResponse.targeting_resolution. Exact structured overlay values are not repeated. Selecting product_id accepts the disclosed modifications; product forecast and pricing MUST reflect them."
     },
+    "audience_evidence": {
+      "type": "array",
+      "description": "Immutable population-level evidence explaining why this inventory may suit an audience. This supports discovery, comparison, and planning only. It does not imply exact demographic targeting, user-level signal membership, or legal-age verification. Sellers MUST publish each distinct snapshot with a new snapshot_id and content_digest.",
+      "items": {
+        "$ref": "/schemas/core/audience-evidence.json"
+      },
+      "minItems": 1
+    },
+    "audience_evidence_selections": {
+      "type": "array",
+      "description": "Exact evidence snapshots that satisfied required eligibility or affected seller ranking for this get_products result. When audience_evidence_requirements was supplied and evidence influenced inclusion or rank, sellers MUST return the relevant selections; an absent-evidence match under evidence_presence when_available has no selection. Product selections use decision_use recommendation or eligibility.",
+      "items": {
+        "$ref": "/schemas/core/audience-evidence-selection.json"
+      },
+      "minItems": 1
+    },
     "catalog_types": {
       "type": "array",
       "description": "Catalog types this product supports for catalog-driven campaigns. A sponsored product listing declares [\"product\"], a job board declares [\"job\", \"offering\"]. Buyers match synced catalogs to products via this field.",

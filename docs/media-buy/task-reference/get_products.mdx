@@ -152,7 +152,7 @@ asyncio.run(discover_with_filters())
 | `filters` | Filters | No | Offer filters such as channel, format, delivery type, dates, budget, currency, and reporting support. They decide which products may be returned but do not become package delivery targeting. Valid in `brief`, `wholesale`, and `refine`; non-matching products are excluded in every mode. Legacy targeting-like fields remain accepted during migration but are deprecated. |
 | `targeting_overlay` | TargetingOverlay | No | Concrete delivery constraints the buyer expects to carry into `create_media_buy`. Prefer this over equivalent brief prose: it is compact, deterministic, and avoids lossy extraction. Returned products, pricing, and forecasts MUST account for the effective targeting. A product that cannot honor the request exactly is omitted or returned with sparse Product `targeting_resolution.modifications`; absence of Product resolution confirms exact acceptance of the structured overlay for that product. |
 | `required_overlay_support` | TargetingOverlayRequirements | No | Buyer minimums for targeting dimensions whose values will be supplied on packages later. This requests selectable capability, not current values and not one product per value. The request cannot contain seller limit fields. Every returned product MUST declare `overlay_support` covering all requested fields and system-array subsets; missing or unknown requirements exclude the product. |
-| `fields` | string[] | No | Specific product fields to include for lightweight discovery. `product_id` and `name` are always included. Projection never suppresses safety-critical request-specific fields: modified products include `targeting_resolution` and `expires_at`, and a request with `required_overlay_support` receives `overlay_support`. |
+| `fields` | string[] | No | Specific product fields to include for lightweight discovery. `product_id` and `name` are always included. Request `audience_evidence` for the full evidence payload. Projection never suppresses required decision readback: modified products include `targeting_resolution` and `expires_at`; a request with `required_overlay_support` receives `overlay_support`; and when an audience-evidence policy affects inclusion or ranking, the seller returns `audience_evidence_selections`. When requesting signal metadata, buyers SHOULD request `included_signals` for bundled/planned signals and the `signal_targeting_*` fields for package-level selection. |
 | `property_list` | PropertyListRef | No | Deprecated discovery-only property filter. Use `targeting_overlay.property_list` for a concrete delivery constraint or `required_overlay_support.property_list` when the list will be selected later. |
 | `pagination` | PaginationRequest | No | Cursor-based pagination to cap returned `products[]` in curated/refined responses or walk wholesale product feeds (see below) |
 | `if_wholesale_feed_version` | string | No | Opaque `wholesale_feed_version` token from a prior wholesale-mode `get_products` response from this agent. Only valid with `buying_mode: "wholesale"`. Version scope excludes `pagination.cursor`: `public` is keyed by (agent, `buying_mode`, `filters`, `targeting_overlay`, `required_overlay_support`, deprecated `property_list`, `catalog`); `account` adds account identity. See [Wholesale feed versioning](#wholesale-feed-versioning). |
@@ -305,6 +305,42 @@ targeting filter and the legacy top-level `property_list`.
 | `required_performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | Filter to products that can meet the buyer's performance standard requirements. Each entry specifies a metric, threshold, and vendor (e.g., "DoubleVerify for viewability at 70% MRC"). Products that cannot meet these thresholds or do not support the specified vendors are excluded. |
 | `required_metrics` | string[] ([metric vocabulary](/docs/media-buy/media-buys/optimization-reporting)) | Filter to products whose `reporting_capabilities.available_metrics` is a superset of these metrics — i.e., products that commit to reporting all listed metrics in delivery. Use for capability discovery (e.g., `["completed_views"]` for a CTV CPCV buy). Sellers MUST silently exclude products that cannot meet the list — filter-not-fail; do not return an error. The product's declared `available_metrics` becomes the binding reporting contract carried into the resulting media buy. |
 | `required_vendor_metrics` | object[] | Filter to products whose `reporting_capabilities.vendor_metrics` covers vendor-defined metrics (proprietary attention, emissions, panel demographics, brand-lift surveys, etc.). Each entry pins `vendor` (BrandRef) and/or `metric_id` — at least one. Cross-vendor discovery (e.g., "any attention measurement") is the buyer agent's responsibility: resolve which vendors offer a category via the vendors' `brand.json` records, then enumerate them as filter entries. Same filter-not-fail semantics as `required_metrics`. |
+| `audience_evidence_requirements` | AudienceEvidenceRequirements | Apply buyer-authored admissibility or ranking policy to `Product.audience_evidence`. `requirement_mode` distinguishes hard filtering from preference; `evidence_presence` distinguishes evidence-must-exist from apply-when-published. |
+
+### Audience evidence requirements
+
+The reusable `audience_evidence_requirements` object attaches under `filters`, so the same contract applies to natural-language brief curation, wholesale feeds, and refine requests.
+
+```json
+{
+  "filters": {
+    "audience_evidence_requirements": {
+      "requirement_mode": "required",
+      "evidence_presence": "required",
+      "accepted_methodologies": ["observed", "declared", "derived", "projected"],
+      "excluded_methodologies": ["inferred", "modeled"],
+      "accepted_evidence_types": ["measured"],
+      "accepted_subject_types": ["individual", "household"],
+      "minimum_confidence": 0.8,
+      "maximum_age": { "interval": 90, "unit": "days" },
+      "methodology_documentation_required": true,
+      "independent_attestation_required": true
+    }
+  }
+}
+```
+
+Seller behavior is normative:
+
+- `requirement_mode: "required"` excludes a product when it publishes evidence but no item satisfies every constraint. With `evidence_presence: "required"`, a product that publishes no evidence is also excluded. With `when_available`, a product with no evidence remains eligible.
+- `requirement_mode: "preferred"` never turns a mismatch into a hard exclusion. Sellers rank products with matching evidence higher and explain the selected evidence when returning or constructing a package.
+- When evidence affects product inclusion or rank, the returned product MUST carry the exact matching snapshots in `audience_evidence_selections[]`, with `decision_use` set to `eligibility` or `recommendation`, even if the request's `fields` projection omitted that field. A product admitted because `when_available` found no published evidence has no selection to report.
+- Sellers evaluate freshness from `last_updated` at request evaluation time. They do not synthesize missing provider, confidence, methodology, documentation, or attestation data.
+- Accepted lists and excluded lists are evaluated together; `excluded_methodologies` and `excluded_providers` always win when the same value appears in both lists.
+- `independent_attestation_required` requires `accepted_attestation_issuers` and is satisfied only by one exact reference/evaluation pair. The reference must be published on the evidence, its issuer and claim type must match the buyer allowlists and seller's shared `adcp.attestations` policy, its subject digest must equal the evidence digest, the evaluation must cover that same reference with outcome `verified`, and its action-binding digest must equal the evidence digest. Buyer issuer and claim-type constraints narrow seller policy; they never broaden it.
+- Buyers inspect `media_buy.audience_evidence` capabilities first. Sellers MUST NOT silently ignore unsupported hard requirement or presence modes; they return a structured unsupported/invalid-request error. A preferred mode the seller does not support may be omitted by the buyer or explicitly rejected by the seller, but is never misrepresented as applied.
+
+Audience evidence does not populate `targeting_overlay`, `demographic_targeting`, or an age-verification field. If the buyer also needs exact execution, it requests that independently through the corresponding product and package targeting surfaces.
 
 ### Placement fields
 

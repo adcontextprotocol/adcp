@@ -557,6 +557,10 @@
       },
       "minItems": 1
     },
+    "audience_evidence_requirements": {
+      "$ref": "/schemas/core/audience-evidence-requirements.json",
+      "description": "Buyer policy for evaluating Product.audience_evidence. In required mode, sellers MUST apply the evidence_presence and admissibility semantics and exclude non-matching products; they MUST NOT ignore an unsupported hard requirement. In preferred mode, sellers use matches for ranking and explain the evidence selected. Buyers SHOULD inspect media_buy.audience_evidence capabilities before sending this object."
+    },
     "ext": {
       "$ref": "/schemas/core/ext.json",
       "description": "Vendor-namespaced extension parameters for seller-specific filter criteria not covered by standard fields. Keys MUST be namespaced under a vendor or platform key (e.g., ext.gam, ext.platform_x). Sellers MUST treat all values as untrusted buyer input; do not interpolate into LLM prompts, SQL queries, or system commands without sanitization. Persistent use of an extension key across multiple buyers is a signal to propose standardization."

@@ -86,6 +86,7 @@ Core AdCP protocol information:
 | `major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[3]`) |
 | `idempotency` | object | **Required.** Idempotency semantics. See [idempotency](#idempotency). |
 | `capability_changes` | object | Optional. Freshness metadata and opt-in `capabilities.changed` invalidation webhooks for cached capability documents. See [capability_changes](#capability_changes). |
+| `attestations` | object | Optional. Allowlisted portable-attestation claim types, issuers, resolvers, verifiers, proof formats, and delivery methods this agent evaluates. See [attestations](#attestations). |
 
 #### idempotency
 
@@ -187,6 +188,65 @@ Advertising a task also commits the service to deterministic applicability. It r
 Current conformance runners continue to grade the legacy `media_buy.governance_aware` create path. Task-scoped grading for this new block will land with role-specific observable workflows; until then, registries MUST NOT present the experimental declaration as a certified claim.
 
 The legacy `media_buy.governance_aware` boolean remains the compatibility claim for the historically graded `create_media_buy` consultation path. Agents use the core block for explicit task-scoped claims.
+
+### adcp.attestations
+
+Declares the portable attestations this agent is prepared to evaluate. The block is shared across protocol roles and therefore lives under `adcp`: a seller may evaluate an attestation directly, while a governance agent may evaluate the same presentation for a governance action.
+
+The authoritative shape is [`attestation-capabilities.json`](https://adcontextprotocol.org/schemas/v3/core/attestation-capabilities.json). See [Portable attestations](/docs/building/by-layer/L1/security#portable-attestations) for the normative resolution and verification procedure.
+
+```json
+{
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 },
+    "attestations": {
+      "accepted_claim_types": [
+        "https://claims.example/audience/methodology-reviewed"
+      ],
+      "accepted_proof_formats": [
+        "https://www.w3.org/TR/vc-jose-cose/"
+      ],
+      "supported_delivery_methods": [
+        "issuer_credential_id",
+        "embedded"
+      ],
+      "accepted_issuers": [
+        {
+          "issuer": {
+            "type": "origin",
+            "origin": "https://credentials.example"
+          },
+          "resolvers": [
+            {
+              "resolver_id": "primary",
+              "url": "https://resolver.credentials.example/v1/credentials",
+              "authentication": "evaluator_managed"
+            }
+          ]
+        }
+      ],
+      "accepted_verifiers": [
+        {
+          "agent_url": "https://verification.example/adcp"
+        }
+      ],
+      "max_embedded_credential_bytes": 262144
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `accepted_claim_types` | URI[] | **Required.** Open claim identifiers the evaluator accepts. This is evaluator policy, not an AdCP issuer or claim registry. |
+| `accepted_proof_formats` | URI[] | **Required.** Open credential/proof formats the evaluator can verify. |
+| `supported_delivery_methods` | string[] | **Required.** Any of `credential_uri`, `issuer_credential_id`, and `embedded`. |
+| `accepted_issuers` | object[] | **Required.** Canonical issuers plus their permitted credential origins and evaluator-configured resolver endpoints. |
+| `accepted_verifiers` | object[] | Optional verifier-agent allowlist. Presenter nominations must match this list but never control evaluator routing. |
+| `max_embedded_credential_bytes` | integer | Optional embedded-proof byte limit; evaluators enforce it before parsing. Protocol maximum: 1 MiB. |
+
+Changing an attestation allowlist can change whether future requests are accepted and whether cached evaluations remain reusable. It is therefore a material capability change and SHOULD update `adcp.capability_changes.capabilities_version` and fire `capabilities.changed` when notifications are enabled.
 
 ### supported_protocols
 
@@ -460,6 +520,30 @@ Sellers that support a geographic targeting level SHOULD support both inclusion 
 
 Use `postal_code` for the normal postal code string in countries without a more specific registered local system. During the 3.x migration, sellers SHOULD emit equivalent deprecated aliases such as `us_zip` alongside native country keys where an alias exists. Buyers and SDKs SHOULD normalize both shapes before making capability decisions.
 
+#### audience_evidence
+
+Structured product audience-evidence support. Presence means the seller publishes immutable `Product.audience_evidence` snapshots, evaluates the declared buyer policy modes in `get_products.filters.audience_evidence_requirements`, and retains digest-pinned package readback. This is discovery and planning support, not audience targeting.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `supported_requirement_modes` | string[] | **Required** | Supported policy modes: `required`, `preferred`, or both. Unsupported hard modes must be rejected, never silently ignored. |
+| `supported_presence_modes` | string[] | **Required** | Supported presence semantics: `required`, `when_available`, or both. |
+| `supports_attestation_evaluation` | boolean | **Required** | Whether the seller evaluates evidence `attestation_refs[]` under `adcp.attestations` and preserves the exact reference and evaluation in package readback. |
+
+```json
+{
+  "media_buy": {
+    "audience_evidence": {
+      "supported_requirement_modes": ["required", "preferred"],
+      "supported_presence_modes": ["required", "when_available"],
+      "supports_attestation_evaluation": true
+    }
+  }
+}
+```
+
+See [Audience evidence](/docs/media-buy/product-discovery/media-products#audience-evidence) and [`get_products` evidence requirements](/docs/media-buy/task-reference/get_products#audience-evidence-requirements).
+
 #### audience_targeting
 
 Audience targeting capabilities. Presence of this object indicates the seller supports audience targeting, including `sync_audiences` and `audience_include`/`audience_exclude` in targeting overlays. Describes what identifier types the seller accepts for audience matching, size constraints, and expected matching latency.
@@ -530,6 +614,17 @@ Creative protocol capabilities. Only present if `creative` is in `supported_prot
 ### governance
 
 Governance protocol capabilities. Only present if `governance` is in `supported_protocols`. Governance agents declare capabilities across four domains: property evaluation, creative evaluation, content standards verification, and policy registry integration.
+
+#### runtime_attestations
+
+Signal-activation policy layered on the shared `adcp.attestations` allowlist. Presence means this governance agent accepts `check_governance.runtime_attestations[]` when `purchase_type` is `signal_activation`.
+
+| Field | Type | Description |
+|---|---|---|
+| `signal_activation.requirement` | string | `optional` permits a signal-activation check with no runtime evidence; `required` means omission cannot approve the check. Optional means evidence may be absent, not that supplied invalid evidence becomes trusted. |
+| `signal_activation.claim_types` | URI[] | Signal-quality claims accepted for this action. MUST be a subset of `adcp.attestations.accepted_claim_types`; issuer, resolver, verifier, proof, and delivery policy remains in the shared block. |
+
+See [`check_governance` runtime signal attestations](/docs/governance/campaign/tasks/check_governance#runtime-signal-attestations) for request, evaluation, signed-context, and audit binding.
 
 #### property_features
 
