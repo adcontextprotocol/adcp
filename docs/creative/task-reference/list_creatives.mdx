@@ -200,6 +200,8 @@ The response provides creative data with optional enrichment:
 | `created_date` | string | Creation timestamp |
 | `updated_date` | string | Last modified timestamp |
 | `assets` | object | Creative assets (images, text, URLs, etc.) |
+| `localization` | object | Exact materialized locale assets, buyer-assigned variant identities, and default/unmatched policy for localized creatives. |
+| `localization_unavailable` | object | Fail-closed per-item errors and retryability when exact localization readback cannot be constructed. Mutually exclusive with `localization`. |
 | `tags` | string[] | Tags for categorization |
 | `concept_id` | string | Creative concept ID |
 | `concept_name` | string | Human-readable concept name |
@@ -209,6 +211,48 @@ The response provides creative data with optional enrichment:
 | `snapshot_unavailable_reason` | string | Why snapshot is missing — `SNAPSHOT_UNSUPPORTED`, `SNAPSHOT_TEMPORARILY_UNAVAILABLE`, or `SNAPSHOT_PERMISSION_DENIED` |
 | `items` | array | Items for multi-asset formats (when `include_items=true`) |
 | `pricing_options` | [VendorPricingOption](/docs/creative/specification#pricing)[] | Pricing options for this creative (when `include_pricing=true` and `account` provided). Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Same pattern as `get_signals` and `list_content_standards`. |
+
+### Localized creative readback
+
+For a localized creative, top-level `creative_id` identifies the creative and
+`localization` is the authoritative locale-topology round trip. The localization
+object lists exactly one source plus every materialized target variant;
+source-only monolingual topology therefore contains one variant. It preserves
+the originating request's exact source ID/locale, target ID/locale set, default
+ID, unmatched action, and any explicit locale fallback rules. Each entry
+returns complete resolved assets under its buyer-assigned `locale_variant_id`; no seller- or
+platform-assigned variant ID is required. The top-level creative `status` is the
+single review lifecycle for the complete locale set.
+
+Verifiers enforce unique locale and buyer locale-variant ID values, exactly one
+source role, a default ID that references one variant, unique fallback language
+ranges whose IDs reference stored variants, and
+equality between source readback assets and top-level creative assets.
+These rules are machine-readable in `x-adcp-validation` because draft-07
+`uniqueItems` compares whole objects and cannot express uniqueness or reference
+integrity by property.
+
+This object is atomic. If the seller omits a requested locale, normalizes it
+to a different locale, or loses an asset or identity, the seller returns
+`localization_unavailable` instead of a partial `localization` object. The item
+remains in the current page and counts toward `query_summary.returned` and
+pagination. Buyers may use its base metadata but MUST NOT infer locale
+eligibility. Selecting `fields: ["localization"]` automatically includes the
+creative ID, status, assets, format identity, and unavailable state
+needed to interpret this result.
+
+At delivery, sellers apply strict RFC 4647 Lookup: progressively truncate the
+requested range and match only an equal seller-eligible canonical tag. A
+selected product or placement `locale_policy` first filters this readback with
+RFC 4647 Basic Filtering; it never mutates or removes the globally stored
+variants. When no variant matches for a preference, sellers apply the most-specific explicit
+`locale_fallbacks` rule for that preference before moving to the next one. When
+all preferences miss both paths, they follow `unmatched_locale_action`: serve
+`default_locale_variant_id` or do not serve.
+The ordered preference list itself comes from the seller's serving environment;
+AdCP neither carries it here nor defines how browser, content, geography, user,
+app, or platform signals produce it or their precedence.
+The chosen `locale_variant_id` is reported by `get_creative_delivery`.
 
 ### Pricing
 

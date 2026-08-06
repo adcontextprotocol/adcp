@@ -19,6 +19,7 @@
     "PROPOSAL_EXPIRED",
     "BUDGET_TOO_LOW",
     "CREATIVE_REJECTED",
+    "CREATIVE_LOCALE_NOT_ACCEPTED",
     "CREATIVE_VALUE_NOT_ALLOWED",
     "UNSUPPORTED_FEATURE",
     "UNPRICEABLE_OUTPUT",
@@ -118,6 +119,7 @@
     "PROPOSAL_EXPIRED": "A referenced proposal ID has passed its expires_at timestamp. Recovery: correctable (re-discover with get_products to get a fresh proposal).",
     "BUDGET_TOO_LOW": "Budget is below the seller's minimum. Recovery: correctable (increase budget or check capabilities.media_buy.limits).",
     "CREATIVE_REJECTED": "Creative failed content policy review. For deadline violations, see CREATIVE_DEADLINE_EXCEEDED. Recovery: correctable (revise the creative per the seller's advertising_policies).",
+    "CREATIVE_LOCALE_NOT_ACCEPTED": "A creative bound to a locale-constrained product format has no materialized variant matching locale_policy.accepted_language_ranges, lacks protocol-declared locale topology, or uses serve_default with a seller-ineligible default variant. Seller ranges use RFC 4647 Basic Filtering and are applied independently for every placement where the assignment may serve, before buyer Lookup, locale_fallbacks, or default selection. Distinct from CREATIVE_REJECTED because this is a mechanically discoverable assignment-eligibility mismatch, not subjective content review. error.field SHOULD point to the offending creative or assignment; error.details SHOULD include format_option_id when present, accepted_language_ranges, available_variant_locales, and placement identity when applicable. Recovery: correctable (supply or assign a matching materialized locale variant, narrow placement scope, choose a compatible format option, or change an ineligible serve_default).",
     "CREATIVE_VALUE_NOT_ALLOWED": "A submitted text-asset value is not in the format's declared `allowed_values` list. Distinct from `CREATIVE_REJECTED` (generic content-policy failure) by being a closed-set constraint violation that the buyer can resolve mechanically without policy interpretation — the seller has published the complete list of acceptable values on the format, and any value outside that list is rejected by definition. The seller MUST set `error.field` to the offending asset's path within the manifest (e.g., `creatives[0].creative_manifest.assets[0].value` or the field name declared by the format) and SHOULD include the format's `allowed_values` array in `error.details.allowed_values` so the buyer agent can re-prompt its LLM with constrained sampling. Recovery: correctable (select a value from `allowed_values` and resubmit).",
     "UNSUPPORTED_FEATURE": "A requested feature or field is not supported by this seller. Recovery: correctable (check get_adcp_capabilities and remove unsupported fields).",
     "UNPRICEABLE_OUTPUT": "A creative transformer build targets an output capability that no pricing option covers — no transformer.pricing_options entry has a matching applies_to_output_capability_ids and none is unscoped. The build is rejected rather than billed at a guessed rate. Recovery: correctable.",
@@ -259,6 +261,10 @@
     "CREATIVE_REJECTED": {
       "recovery": "correctable",
       "suggestion": "revise the creative per the seller's advertising_policies"
+    },
+    "CREATIVE_LOCALE_NOT_ACCEPTED": {
+      "recovery": "correctable",
+      "suggestion": "supply or assign a creative variant matching every in-scope format option's accepted_language_ranges, narrow placement scope, choose a compatible format option, or change an ineligible serve_default"
     },
     "CREATIVE_VALUE_NOT_ALLOWED": {
       "recovery": "correctable",

@@ -15,6 +15,14 @@
       "description": "ID of the product this package is based on. For packages created from an explicit create_media_buy package request, sellers MUST echo the request package's product_id on every response package object that represents that requested package.",
       "x-entity": "product"
     },
+    "audience_evidence_selections": {
+      "type": "array",
+      "description": "Exact immutable audience-evidence snapshots that affected recommendation, eligibility, or package construction. A confirmed package MUST include a package_construction selection matching every buyer audience_evidence_pin and every snapshot used to satisfy package audience_evidence_requirements; this readback remains mandatory on subsequent package read surfaces. This is decision provenance only; applied targeting remains exclusively in targeting_overlay and demographic_targeting_resolution.",
+      "items": {
+        "$ref": "/schemas/core/audience-evidence-selection.json"
+      },
+      "minItems": 1
+    },
     "budget": {
       "type": "number",
       "description": "Hard lifetime spend cap for this package in the media-buy currency. Every selected pricing option in an AdCP-authored media buy MUST declare that same currency. In seller-optimized allocation mode this is a ceiling, not a current allocation. May be omitted when the package is bounded only by the shared media-buy total.",
@@ -64,7 +72,7 @@
     "format_ids": {
       "type": "array",
       "deprecated": true,
-      "description": "**DEPRECATED in 3.2.** Legacy named-format IDs supplied by an older 3.x buyer and echoed for compatibility.",
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format IDs supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it, including dual-emission cases where `format_option_refs` was the winning selector, so read surfaces preserve the original wire contract. Omitted means the request did not carry legacy format_ids unless the seller cannot reconstruct legacy requests created before this field was persisted.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }

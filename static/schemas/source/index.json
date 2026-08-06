@@ -61,6 +61,22 @@
           "$ref": "/schemas/core/creative-asset.json",
           "description": "Creative asset for upload to library - supports static assets, generative formats, and third-party ad serving (VAST, DAAST, HTML, JavaScript)"
         },
+        "locale-tag": {
+          "$ref": "/schemas/core/locale-tag.json",
+          "description": "BCP 47 language-identity tag using the AdCP canonical wire profile — required shared primitive for new language-bearing fields"
+        },
+        "creative-localization": {
+          "$ref": "/schemas/core/creative-localization.json",
+          "description": "Explicit source and target locale variants requested on a creative"
+        },
+        "localized-creative-asset": {
+          "$ref": "/schemas/core/localized-creative-asset.json",
+          "description": "Creative variant asset with contextual language-tag conformance"
+        },
+        "creative-localization-readback": {
+          "$ref": "/schemas/core/creative-localization-readback.json",
+          "description": "Exact materialized locale assets, buyer-assigned identities, and matching policy"
+        },
         "account": {
           "$ref": "/schemas/core/account.json",
           "description": "Billing account representing who pays for advertising. Accounts have rate cards, payment terms, and platform mappings."
@@ -89,6 +105,26 @@
           "$ref": "/schemas/core/demographic-targeting-resolution.json",
           "description": "Requested, applied, execution, and exact-equivalence demographic readback"
         },
+        "audience-characteristic": {
+          "$ref": "/schemas/core/audience-characteristic.json",
+          "description": "Machine-comparable audience dimension and value or range"
+        },
+        "audience-evidence": {
+          "$ref": "/schemas/core/audience-evidence.json",
+          "description": "Immutable population-level audience composition, affinity, or reach evidence"
+        },
+        "audience-evidence-requirements": {
+          "$ref": "/schemas/core/audience-evidence-requirements.json",
+          "description": "Buyer-authored audience-evidence admissibility and ranking policy"
+        },
+        "audience-evidence-pin": {
+          "$ref": "/schemas/core/audience-evidence-pin.json",
+          "description": "Buyer commitment pin for an exact immutable audience-evidence snapshot"
+        },
+        "audience-evidence-selection": {
+          "$ref": "/schemas/core/audience-evidence-selection.json",
+          "description": "Digest-pinned package readback for evidence used in a decision"
+        },
         "duration": {
           "$ref": "/schemas/core/duration.json",
           "description": "A time duration with value and unit (hours or days)"
@@ -111,7 +147,8 @@
         },
         "format": {
           "$ref": "/schemas/core/format.json",
-          "description": "Deprecated 3.x named-format compatibility definition; use ProductFormatDeclaration canonical contracts for new integrations."
+          "description": "Deprecated 3.x named-format compatibility definition; use ProductFormatDeclaration canonical contracts for new integrations.",
+          "deprecated": true
         },
         "overlay": {
           "$ref": "/schemas/core/overlay.json",
@@ -176,6 +213,26 @@
         "generation-credential": {
           "$ref": "/schemas/core/generation-credential.json",
           "description": "Scoped credential for generating rights-cleared content via LLM providers"
+        },
+        "attestation-issuer": {
+          "$ref": "/schemas/core/attestation-issuer.json",
+          "description": "Typed canonical identity of an attestation credential issuer"
+        },
+        "attestation-subject": {
+          "$ref": "/schemas/core/attestation-subject.json",
+          "description": "Typed identity of the entity or object an attestation concerns"
+        },
+        "attestation-reference": {
+          "$ref": "/schemas/core/attestation-reference.json",
+          "description": "Reference-first presentation of an independently issued claim"
+        },
+        "attestation-capabilities": {
+          "$ref": "/schemas/core/attestation-capabilities.json",
+          "description": "Evaluator allowlist and supported attestation delivery and proof formats"
+        },
+        "attestation-evaluation": {
+          "$ref": "/schemas/core/attestation-evaluation.json",
+          "description": "Evaluator-of-record result bound to an exact attestation presentation"
         },
         "rights-constraint": {
           "$ref": "/schemas/core/rights-constraint.json",
@@ -483,6 +540,7 @@
         },
         "signal-pricing-option": {
           "$ref": "/schemas/core/signal-pricing-option.json",
+          "deprecated": true,
           "description": "Deprecated — alias for vendor-pricing-option.json. Retained for backward compatibility. Prefer vendor-pricing-option.json for new implementations."
         },
         "vendor-pricing-option": {
@@ -1005,6 +1063,7 @@
         },
         "legacy-postal-system": {
           "$ref": "/schemas/enums/legacy-postal-system.json",
+          "deprecated": true,
           "description": "Deprecated country-fused postal code systems for compatibility (us_zip, gb_outward, ca_fsa, etc.)"
         },
         "age-verification-method": {
@@ -1243,10 +1302,12 @@
         "list-creative-formats": {
           "request": {
             "$ref": "/schemas/media-buy/list-creative-formats-request.json",
+            "deprecated": true,
             "description": "Deprecated 3.x compatibility request. Sales agents publish canonical sellable formats through get_products Product.format_options[]."
           },
           "response": {
             "$ref": "/schemas/media-buy/list-creative-formats-response.json",
+            "deprecated": true,
             "description": "Deprecated 3.x compatibility response for legacy named formats. Not a sales-agent deliverability contract."
           }
         },
@@ -1368,10 +1429,12 @@
         "list-creative-formats": {
           "request": {
             "$ref": "/schemas/creative/list-creative-formats-request.json",
+            "deprecated": true,
             "description": "Deprecated 3.x compatibility request; use get_adcp_capabilities creative.supported_formats[]."
           },
           "response": {
             "$ref": "/schemas/creative/list-creative-formats-response.json",
+            "deprecated": true,
             "description": "Deprecated 3.x compatibility response for legacy named formats."
           }
         },

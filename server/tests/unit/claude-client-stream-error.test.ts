@@ -122,16 +122,13 @@ describe('processMessageStream — mid-stream upstream failure (#4797)', () => {
     const evt = streamErrorEvents[0] as Extract<StreamEvent, { type: 'stream_error' }>;
     expect(evt.reason).toBe('API is busy');
     expect(evt.deltasBeforeError).toBe(1);
+    expect(evt.tool_executions).toEqual([]);
+    expect(evt.certification_reserve_used).toBe(false);
 
-    // The underlying error is wrapped into a final `error` event by
-    // processMessageStream's outer catch (claude-client.ts:1730). The
-    // consumer-side throw happens in bolt-app's event-loop branch that
-    // re-raises on `error`; addie-chat/tavus return/break on the
-    // `stream_error` event instead. Either path lands persistence in
-    // the discard branch.
+    // The recoverable terminal event is emitted exactly once. It carries the
+    // completed tool receipts, so consumers do not need a second error event.
     const errorEvents = events.filter(e => e.type === 'error');
-    expect(errorEvents).toHaveLength(1);
-    expect((errorEvents[0] as { type: 'error'; error: string }).error).toMatch(/overloaded/);
+    expect(errorEvents).toHaveLength(0);
   });
 
   it('orders stream_error after text deltas (consumer can render in-place recovery)', async () => {

@@ -1583,6 +1583,71 @@ describe('comply_test_controller', () => {
       expect((result as any).cumulative.impressions).toBe(8000);
     });
 
+    it('rejects malformed package-scoped vendor inputs without creating delivery state', async () => {
+      const mediaBuyId = await createMediaBuy(server);
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: {
+          media_buy_id: mediaBuyId,
+          vendor_metric_values_by_package: {
+            unknown_package: [{ vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_units', value: 4.2 }],
+          },
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INVALID_PARAMS');
+
+      const { result: missingValue } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: {
+          media_buy_id: mediaBuyId,
+          vendor_metric_values_by_package: {
+            'pkg-0': [{ vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_units' }],
+          },
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(missingValue.success).toBe(false);
+      expect(missingValue.error).toBe('INVALID_PARAMS');
+
+      const sessionKey = sessionKeyFromArgs({ account: ACCOUNT }, DEFAULT_CTX.mode, DEFAULT_CTX.userId, DEFAULT_CTX.moduleId);
+      const session = await getSession(sessionKey);
+      expect(session.complyExtensions.deliverySimulations.has(mediaBuyId)).toBe(false);
+    });
+
+    it('does not persist deferred metrics from a rejected simulation', async () => {
+      const mediaBuyId = await createMediaBuyWithCreatives(server);
+      const firstMetric = { vendor: { domain: 'attentionvendor.example' }, metric_id: 'attention_units' };
+      const rejectedMetric = { vendor: { domain: 'attentionvendor.example' }, metric_id: 'post_flight_brand_lift' };
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: { media_buy_id: mediaBuyId, not_yet_measurable_vendor_metrics: [firstMetric] },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'force_media_buy_status',
+        params: { media_buy_id: mediaBuyId, status: 'completed' },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      const { result: rejected } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: { media_buy_id: mediaBuyId, not_yet_measurable_vendor_metrics: [rejectedMetric] },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(rejected.success).toBe(false);
+      expect(rejected.error).toBe('INVALID_STATE');
+
+      const sessionKey = sessionKeyFromArgs({ account: ACCOUNT }, DEFAULT_CTX.mode, DEFAULT_CTX.userId, DEFAULT_CTX.moduleId);
+      const session = await getSession(sessionKey);
+      expect(session.complyExtensions.deliverySimulations.get(mediaBuyId)?.deferredVendorMetrics).toEqual([firstMetric]);
+    });
+
     it('injects reach_window and viewability metrics into delivery reporting', async () => {
       const mediaBuyId = await createMediaBuy(server);
 

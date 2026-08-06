@@ -54,12 +54,14 @@
           "required": ["target_capability_ids"]
         },
         {
-          "title": "Deprecated single-output named-format target",
+          "title": "Single-output named-format target",
+          "deprecated": true,
           "not": { "required": ["refine_from_build_variant_id"] },
           "required": ["target_format_id"]
         },
         {
-          "title": "Deprecated multi-output named-format target",
+          "title": "Multi-output named-format target",
+          "deprecated": true,
           "not": { "required": ["refine_from_build_variant_id"] },
           "required": ["target_format_ids"]
         }

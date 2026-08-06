@@ -180,7 +180,7 @@
     },
     "fields": {
       "type": "array",
-      "description": "Specific product fields to include in the response. When omitted, all fields are returned. Use for lightweight discovery calls where only a subset of product data is needed (e.g., just IDs and pricing for comparison). Required fields (product_id, name) are always included regardless of selection. `format_ids` is a deprecated 3.x compatibility projection; new integrations request canonical `format_options`.",
+      "description": "Specific product fields to include in the response. When omitted, all fields are returned. Use for lightweight discovery calls where only a subset of product data is needed (e.g., just IDs and pricing for comparison). Required fields (product_id, name) are always included regardless of selection. `format_ids` is a deprecated 3.x compatibility projection; new integrations request canonical `format_options`. When filters.audience_evidence_requirements affects eligibility or ranking, audience_evidence_selections is also mandatory decision readback even if omitted here; fields controls the optional audience_evidence payload, not the evidence decision receipt.",
       "minItems": 1,
       "items": {
         "type": "string",
@@ -214,6 +214,8 @@
           "signal_targeting_options",
           "signal_targeting_rules",
           "demographic_targeting",
+          "audience_evidence",
+          "audience_evidence_selections",
           "max_optimization_goals",
           "catalog_match",
           "collections",

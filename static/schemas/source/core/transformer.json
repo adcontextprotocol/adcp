@@ -126,7 +126,8 @@
       "required": ["output_capability_ids"]
     },
     {
-      "title": "Legacy named-format transformer outputs",
+      "title": "Named-format transformer outputs",
+      "deprecated": true,
       "required": ["output_format_ids"]
     }
   ],

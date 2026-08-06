@@ -43,7 +43,7 @@
     "metric_type": {
       "$ref": "/schemas/enums/metric-type.json",
       "deprecated": true,
-      "description": "Deprecated legacy metric enum. New implementations use metric. When both are present, consumers use metric. Removed at the next major."
+      "description": "**Deprecated as of this minor.** The legacy free-form metric enum that mixes metrics, verification, and attribution into one list. New implementations SHOULD use `metric` (the discriminated `(scope, metric_id, qualifier)` row shape) and populate `metric_type` with a best-effort string for one-minor backwards compatibility. When both `metric` and `metric_type` are present, consumers MUST use `metric` for dispatch. Removed at the next major. See [docs/measurement/taxonomy](https://docs.adcontextprotocol.org/docs/measurement/taxonomy) for why the layered shape replaces the flat enum."
     },
     "producer": {
       "$ref": "/schemas/core/brand-ref.json",

@@ -16,6 +16,7 @@
   "properties": {
     "formats": {
       "type": "array",
+      "deprecated": true,
       "description": "Deprecated named-format definitions projected for older 3.x callers. Canonical creative capabilities are declared by get_adcp_capabilities creative.supported_formats[].",
       "items": {
         "$ref": "/schemas/core/format.json"

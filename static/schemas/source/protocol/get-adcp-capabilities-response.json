@@ -10,6 +10,50 @@
     },
     {
       "$ref": "/schemas/core/protocol-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "governance": {
+            "required": ["runtime_attestations"]
+          }
+        },
+        "required": ["governance"]
+      },
+      "then": {
+        "properties": {
+          "adcp": {
+            "required": ["attestations"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "audience_evidence": {
+                "properties": {
+                  "supports_attestation_evaluation": {
+                    "const": true
+                  }
+                },
+                "required": ["supports_attestation_evaluation"]
+              }
+            },
+            "required": ["audience_evidence"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "adcp": {
+            "required": ["attestations"]
+          }
+        }
+      }
     }
   ],
   "properties": {
@@ -19,6 +63,7 @@
       "properties": {
         "major_versions": {
           "type": "array",
+          "deprecated": true,
           "description": "DEPRECATED in favor of `supported_versions` (release-precision strings). Servers MUST continue to emit this field through 3.x for backwards compatibility. Removed in 4.0. Original semantics: AdCP major versions supported by this seller. Major versions indicate breaking changes.",
           "items": {
             "type": "integer",
@@ -329,6 +374,10 @@
           "required": ["tasks"],
           "x-status": "experimental",
           "additionalProperties": false
+        },
+        "attestations": {
+          "$ref": "/schemas/core/attestation-capabilities.json",
+          "description": "Portable-attestation trust and delivery capabilities for this evaluator. Present only when the agent accepts AttestationReference inputs on one or more domain task surfaces. This block is an allowlist: presenters cannot expand accepted issuers, resolver endpoints, verifier agents, claim types, or proof formats by supplying values in a request."
         }
       },
       "required": ["major_versions", "idempotency"]
@@ -588,6 +637,7 @@
             },
             "axe_integrations": {
               "type": "array",
+              "deprecated": true,
               "description": "Deprecated. Legacy AXE integrations. Use trusted_match for new integrations.",
               "items": {
                 "type": "string",
@@ -751,6 +801,38 @@
               }
             }
           }
+        },
+        "audience_evidence": {
+          "type": "object",
+          "description": "Support for structured product audience evidence and buyer-authored evidence policy. Presence means the seller can publish Product.audience_evidence, preserve immutable snapshots through package readback, and evaluate the declared policy modes. It does not declare audience-targeting capability.",
+          "properties": {
+            "supported_requirement_modes": {
+              "type": "array",
+              "description": "Buyer policy modes the seller evaluates. A seller MUST NOT silently ignore a mode it does not list.",
+              "items": {
+                "type": "string",
+                "enum": ["required", "preferred"]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "supported_presence_modes": {
+              "type": "array",
+              "description": "Evidence-presence semantics the seller supports.",
+              "items": {
+                "type": "string",
+                "enum": ["required", "when_available"]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "supports_attestation_evaluation": {
+              "type": "boolean",
+              "description": "Whether the seller evaluates audience-evidence attestation_refs under its core adcp.attestations policy and returns the exact reference and AttestationEvaluation in package readback."
+            }
+          },
+          "required": ["supported_requirement_modes", "supported_presence_modes", "supports_attestation_evaluation"],
+          "additionalProperties": true
         },
         "audience_targeting": {
           "type": "object",
@@ -1063,6 +1145,36 @@
       "type": "object",
       "description": "Governance protocol capabilities. Only present if governance is in supported_protocols. Governance agents provide property and creative data like compliance scores, brand safety ratings, sustainability metrics, and creative quality assessments.",
       "properties": {
+        "runtime_attestations": {
+          "type": "object",
+          "description": "Signal-activation policy for the portable attestation support declared in adcp.attestations. Presence means check_governance accepts runtime_attestations[] for purchase_type signal_activation. The claim_types list MUST be a subset of adcp.attestations.accepted_claim_types; issuer, resolver, verifier, proof-format, and delivery allowlists remain authoritative in the shared adcp.attestations block rather than being duplicated here.",
+          "properties": {
+            "signal_activation": {
+              "type": "object",
+              "properties": {
+                "requirement": {
+                  "type": "string",
+                  "enum": ["optional", "required"],
+              "description": "Whether an activate_signal activation check may omit runtime_attestations. When required, missing evidence fails an activation check. Deactivation and privacy-removal checks never require signal-quality evidence and remain available without it."
+                },
+                "claim_types": {
+                  "type": "array",
+                  "description": "Signal-quality claim identifiers accepted for this governed action. Values are open absolute URIs and MUST be a subset of adcp.attestations.accepted_claim_types.",
+                  "items": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                }
+              },
+              "required": ["requirement", "claim_types"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["signal_activation"],
+          "additionalProperties": false
+        },
         "aggregation_window_days": {
           "type": "integer",
           "minimum": 1,
@@ -1407,6 +1519,32 @@
             "additionalProperties": true
           }
         },
+        "localization": {
+          "type": "object",
+          "description": "Materialized creative-localization support for sync_creatives/list_creatives, including source-only monolingual topology. Presence opts the agent into exact locale-variant round-trip, strict RFC 4647 Lookup, optional buyer-declared language-family fallback rules, explicit final default/unmatched behavior, creative-wide review, transactional replacement, seller product-format locale-policy enforcement, and delivery attribution. This is a coarse structural capability, not a promise that every locale/format/account combination is accepted; sellers publish accepted ranges on product format declarations and validate each write before mutation. Omit this object when localization is unsupported.",
+          "properties": {
+            "max_target_variants": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50,
+              "description": "Maximum target locale variants accepted on one creative. Zero advertises source-only monolingual locale topology. Omit to inherit the protocol ceiling of 50."
+            },
+            "locale_matching": {
+              "type": "string",
+              "const": "rfc4647_lookup",
+              "description": "The required deterministic locale-matching algorithm."
+            }
+          },
+          "required": ["locale_matching"],
+          "not": {
+            "anyOf": [
+              { "required": ["supported_locales"] },
+              { "required": ["translation_modes"] },
+              { "required": ["review_scope"] }
+            ]
+          },
+          "additionalProperties": true
+        },
         "bills_through_adcp": {
           "type": "boolean",
           "description": "When true, this creative agent bills through the AdCP rate-card surface: list_creatives returns pricing_options when include_pricing=true with an authenticated account, build_creative populates pricing_option_id and vendor_cost on the response, and report_usage accepts records against the rate card. When false or absent, the agent bills out of band (flat license, SaaS contract, bundled enterprise agreement) and buyers should skip pricing fields and tolerate report_usage returning accepted: 0 with errors carrying BILLING_OUT_OF_BAND. A pre-call discriminator so buyer agents can route across many creative agents without first establishing an account to probe pricing.",
@@ -1418,7 +1556,20 @@
           "description": "Optional. The AdCP canonical-formats catalog version this agent's runtime is built against (e.g., `3.1`, `3.2.0`). Lets buyer SDKs detect canonical-catalog skew between their generated types and the seller's actual support. SDKs MAY declare the version they were generated against (typically the AdCP version they ship for); when seller and SDK versions disagree, SDKs SHOULD soft-warn rather than fail (the open-enum semantics on `canonical-format-kind.json` make unknown canonicals safe to retain, so skew is not a hard error — it just means the older side might not understand newer canonical values). Omitted by sellers who haven't yet generated against a versioned catalog; absence is interpreted as the AdCP version advertised by the broader capabilities response."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "required": ["localization"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library"]
+          }
+        }
+      ]
     },
     "request_signing": {
       "type": "object",
@@ -1563,6 +1714,7 @@
         },
         "legacy_hmac_fallback": {
           "type": "boolean",
+          "deprecated": true,
           "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, or sync_agent_notification_configs.notification_configs[].authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
           "default": false
         }

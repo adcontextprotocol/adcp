@@ -46,7 +46,7 @@
     "format_ids": {
       "type": "array",
       "deprecated": true,
-      "description": "**DEPRECATED in 3.2.** Legacy named-format selector retained for older 3.x peers. New buyers select canonical product contracts with `format_option_refs` or `format_kind` plus `params`. Sellers normalize this field to canonical declarations before product satisfaction checks.",
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format selector retained for older 3.x peers. New buyers select canonical product contracts with `format_option_refs` or `format_kind` plus `params`. Sellers MUST normalize this field through the canonical mapping path before product satisfaction checks. If omitted and no canonical selector is present, it defaults to all formats supported by the product.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       },
@@ -140,6 +140,16 @@
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json"
     },
+    "audience_evidence_requirements": {
+      "$ref": "/schemas/core/audience-evidence-requirements.json",
+      "description": "Buyer policy that the selected product and constructed package MUST satisfy using product audience evidence. This remains planning and suitability evidence, not a targeting instruction. Sellers MUST reject an unsatisfied required policy rather than silently drop it, and a confirmed package MUST include every evidence snapshot used to satisfy this policy in audience_evidence_selections with decision_use package_construction."
+    },
+    "audience_evidence_pins": {
+      "type": "array",
+      "description": "Exact immutable evidence snapshots selected by the buyer during discovery. The seller MUST match evidence_id, snapshot_id, version, and content_digest against one published snapshot and MUST reject catalog mutation, snapshot reuse, missing snapshots, or substitutions. Every accepted pin MUST be echoed in the confirmed package's audience_evidence_selections with decision_use package_construction.",
+      "items": { "$ref": "/schemas/core/audience-evidence-pin.json" },
+      "minItems": 1
+    },
     "measurement_terms": {
       "$ref": "/schemas/core/measurement-terms.json",
       "description": "Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with TERMS_REJECTED, or adjusts. When absent, product's measurement_terms apply."
@@ -231,9 +241,12 @@
     },
     "creatives": {
       "type": "array",
-      "description": "Upload creative assets inline and assign to this package. When the seller also advertises creative.has_creative_library: true, these creatives enter the seller's creative library and can be reused by creative_id while retained; inline-only sellers may store them as package-scoped assets. Use creative_assignments instead for existing library creatives.",
+      "description": "Upload creative assets inline and assign to this package. Native localization is not accepted on this path; use sync_creatives before assigning the library creative. When the seller also advertises creative.has_creative_library: true, these creatives enter the seller's creative library and can be reused by creative_id while retained; inline-only sellers may store them as package-scoped assets. Use creative_assignments instead for existing library creatives.",
       "items": {
-        "$ref": "/schemas/core/creative-asset.json"
+        "allOf": [
+          { "$ref": "/schemas/core/creative-asset.json" },
+          { "not": { "required": ["localization"] } }
+        ]
       },
       "minItems": 1,
       "maxItems": 100
