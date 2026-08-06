@@ -41,7 +41,7 @@
     },
     "rights": {
       "type": "array",
-      "description": "Rights constraints attached to this creative. Each entry represents constraints from a single rights holder. A creative may combine multiple rights constraints (e.g., talent likeness + music license). For v1, rights constraints are informational metadata — the buyer/orchestrator manages creative lifecycle against these terms.",
+      "description": "Rights constraints attached to this creative. Buyer-carried fields are informational until a serving party evaluates an issuer-bound attestation reference under its own policy. Only a verified, unexpired, unrevoked, digest-matched evaluation can support serving authorization; verification_url is never authority.",
       "items": {
         "$ref": "/schemas/core/rights-constraint.json"
       }

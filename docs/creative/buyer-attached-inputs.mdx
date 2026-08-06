@@ -31,7 +31,7 @@ This is the only buyer-attached input that hard-blocks a build at the AdCP layer
 
 Advisory pointers carry buyer context the production SHOULD honor — an audience signal, an evaluator's preference, a rights or provenance reference. They inform or steer; they MUST NOT hard-block production at the AdCP layer. Where enforcement exists for the thing a pointer names, it lives in the layer that owns it, not in `build_creative`:
 
-- **Rights / provenance** — enforced by the credential layer (`generation_credentials` at synthesis, `rights_constraint.verification_url` for live revocation), not by the buyer's pointer.
+- **Rights / provenance** — enforced by the credential layer (`generation_credentials` at synthesis and seller-evaluated issuer-bound `rights_constraint.attestation_refs[]` at serving), not by the buyer's pointer.
 - **Signals** ([#5240](https://github.com/adcontextprotocol/adcp/issues/5240)) — where enforcement exists, it lives in trafficking-compatibility checks.
 - **Evaluators** ([#5241](https://github.com/adcontextprotocol/adcp/issues/5241)) — explore-and-rank guidance, surfaced as `recommended` / `rank` on leaves; not a gate.
 
@@ -53,16 +53,17 @@ A rights or [provenance](/docs/creative/provenance) reference attached to a buil
 
 > This is provenance metadata only, not a build_creative rights token.
 
-Enforcement for rights already ships, and it lives in the credential layer — not at the buyer's pointer:
+In AdCP 3.2, rights enforcement lives in the credential layer — not at the buyer's pointer:
 
 - **`generation_credentials`** are provider-enforced at synthesis. The rights agent coordinates with the provider to issue a scoped credential; the provider validates `rights_key` at generation time and is the gatekeeper. The credential is required on the acquired branch of `acquire_rights`.
-- **`rights_constraint.verification_url`** is the live-revocation channel: downstream participants (SSPs, verification vendors) hit it to confirm a grant is active before serving — HTTP 200 if active, 404 if revoked. (`approval_status` is a manifest-time snapshot, not a live value.)
-- **`creative-manifest` `rights[]`** travels with the creative as informational metadata: "For v1, rights constraints are informational metadata — the buyer/orchestrator manages creative lifecycle against these terms."
+- **`rights_constraint.attestation_refs[]`** carries issuer-bound rights credentials through the creative lifecycle. The serving seller evaluates them under its own `adcp.attestations` allowlist, binds the exact constraint digest and rights action, and is the only party that produces a trusted evaluation. (`approval_status` remains a manifest-time snapshot.)
+- **`rights_constraint.verification_url`** is deprecated, untrusted informational text. A receiver MUST NOT fetch it for rights evaluation; HTTP 200/404 has no AdCP authorization or revocation meaning and cannot be converted into a credential locator.
+- **`creative-manifest` / `creative-asset` `rights[]`** travels with the creative as a presentation. Missing or non-verified references remain informational and cannot authorize serving.
 
 Buyer-attached provenance follows the same [seller-publishes / buyer-represents / seller-confirms split](/docs/governance/creative/provenance-verification) — the buyer declares, the seller verifies. A buyer's `verify_agent.agent_url` MUST be a [canonicalized match](/docs/reference/url-canonicalization) of one of the seller's published `creative_policy.accepted_verifiers[]`; off-list URLs are rejected with `PROVENANCE_VERIFIER_NOT_ACCEPTED`. That rejection is the seller enforcing its own allowlist before any outbound call — not the buyer's pointer gating the build. The buyer's attached results are supplementary; a seller that requires verification runs its own detection rather than trusting them.
 
 <Note>
-**Settled position vs. [#5261](https://github.com/adcontextprotocol/adcp/issues/5261).** A proposal to treat buyer-attached `rights_tokens[]` as a hard creative-agent gate is resolved against this page. Hard-gating at the buyer pointer re-invents the `generation_credentials` enforcement that already ships at the synthesis layer plus `verification_url` live revocation at the serve layer. The pointer stays advisory; enforcement stays in the credential layer. The one real gap is structural, not a missing gate: `voice_synthesis` carries `provider` / `voice_id` / `settings` but no `rights_id` back-reference today. Adding that back-reference is a forward item — it would extend the advisory/audit trail, not introduce a build-time gate.
+**Settled position vs. [#5261](https://github.com/adcontextprotocol/adcp/issues/5261).** A buyer-attached pointer is still not a creative-agent build authorization token. `generation_credentials` gate synthesis, while a serving seller independently evaluates the issuer-bound rights references that travel on the creative. The pointer stays advisory at build time; enforcement belongs to the credential evaluator at the consuming boundary. `voice_synthesis` still needs a future `rights_id` back-reference to improve lineage, but that back-reference would not itself authorize either build or serving.
 </Note>
 
 ## Experimental advisory pointers

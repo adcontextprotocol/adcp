@@ -169,6 +169,18 @@
               "type": "string"
             }
           },
+          "rights": {
+            "type": "array",
+            "description": "Exact rights constraints retained from the buyer's creative submission. Presence is presentation readback, not proof that the seller accepted or verified the rights.",
+            "items": { "$ref": "/schemas/core/rights-constraint.json" },
+            "minItems": 1
+          },
+          "rights_attestation_evaluations": {
+            "type": "array",
+            "description": "Complete seller-produced verifier-of-record results for retained rights references. Buyers MUST ignore any evaluation they originally supplied and rely only on this seller readback for this seller's eligibility decision. This array has no independent item ceiling because rights is not capped; under a required policy every applicable retained constraint needs a corresponding current verified result.",
+            "items": { "$ref": "/schemas/core/rights-attestation-evaluation.json" },
+            "minItems": 1
+          },
           "concept_id": {
             "type": "string",
             "description": "Creative concept this creative belongs to. Concepts group related creatives across sizes and formats."
@@ -361,8 +373,25 @@
               "required": ["status"],
               "not": { "required": ["localization"] }
             }
+          },
+          {
+            "if": {
+              "required": ["rights_attestation_evaluations"]
+            },
+            "then": {
+              "required": ["rights"]
+            }
           }
-        ]
+        ],
+        "x-adcp-validation": {
+          "rights_readback": {
+            "automatic_companion_fields": {
+              "rights_attestation_evaluations": ["creative_id", "rights"]
+            },
+            "pairing": "Every evaluation.reference MUST exactly equal one attestation_refs entry on the returned constraint with matching rights_id and content_digest.",
+            "required_policy": "When media_buy.rights_attestations.requirement is required, every applicable constraint on a serving-eligible creative MUST have at least one current verified evaluation. Missing, stale, or non-verified evaluation makes the creative ineligible; status alone is never authorization."
+          }
+        }
       }
     },
     "format_summary": {

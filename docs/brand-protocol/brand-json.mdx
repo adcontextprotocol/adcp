@@ -1336,10 +1336,14 @@ A talent agency managing athlete brands with licensable rights:
           "variant": "primary"
         }
       ],
-      "brand_agent": {
-        "url": "https://rights.lotientertainment.com/mcp",
-        "id": "loti_entertainment"
-      },
+      "agents": [
+        {
+          "type": "rights",
+          "url": "https://rights.lotientertainment.com/mcp",
+          "id": "loti_entertainment",
+          "jwks_uri": "https://rights.lotientertainment.com/.well-known/jwks.json"
+        }
+      ],
       "rights_agent": {
         "url": "https://rights.lotientertainment.com/mcp",
         "id": "loti_entertainment",
@@ -1352,7 +1356,7 @@ A talent agency managing athlete brands with licensable rights:
 }
 ```
 
-The `rights_agent` field tells crawlers what's licensable without any MCP calls — available uses, rights type, and countries. Buyer agents can search the registry for "Dutch athletes available for voice licensing" and find matches from the indexed brand.json data.
+The deprecated `rights_agent` discovery field tells crawlers what's licensable without an MCP call. The canonical `agents[]` entry authorizes the exact rights endpoint and its JWKS for credential verification. Buyer agents can search the registry for "Dutch athletes available for voice licensing" and find matches from the indexed brand.json data.
 
 ### Regional Domain Redirect
 
