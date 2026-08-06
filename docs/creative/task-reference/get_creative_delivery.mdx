@@ -80,6 +80,7 @@ Fields available on both `creative.totals` and each `variant` entry. Commonly-us
 | `by_event_type` | Conversions by event type — array of `{ event_type, count, value?, event_source_id? }` |
 | `by_action_source` | Conversions by action source (website, app, in_store) — array of `{ action_source, count, value?, event_source_id? }` |
 | `dooh_metrics` | DOOH-specific data — object with `loop_plays`, `screens_used`, `screen_time_seconds`, `sov_achieved`, `venue_breakdown` |
+| `ooh_metrics` | Classic (static) OOH data — object with `panels`, `posting_period_start`/`posting_period_end`, `estimated_impressions`, `estimation_basis`, `postings` (posting records with photo evidence) |
 | `viewability` | Viewability data — object with `vendor`, `measurable_impressions`, `viewable_impressions`, `viewable_rate`, `viewed_seconds` (average in-view duration per measurable impression — pairs with the `viewed_seconds` optimization goal), and `standard`. `standard` SHOULD be present whenever measured viewability values are reported |
 | `engagements` | Total ad engagements beyond viewing (platform-specific) |
 | `follows` | New followers or subscriptions attributed to delivery |
@@ -90,7 +91,7 @@ Fields available on both `creative.totals` and each `variant` entry. Commonly-us
 
 > **Spend-derived metrics.** Sellers should not populate `roas` and `cost_per_acquisition` on individual `variant` objects — spend cannot be attributed per-variant since it applies to the creative as a whole. These fields are meaningful only on `creative.totals`. `by_event_type` entries carry `count` and `value` per event type, but not spend-derived rates.
 
-> **Platform-conditional fields.** `dooh_metrics` is present only for DOOH campaigns. Engagement fields (`engagements`, `follows`, `saves`, `profile_visits`, `engagement_rate`) are platform-specific; not all sellers emit them on standardized fields — some use `variant.ext` for engagement data instead.
+> **Platform-conditional fields.** `dooh_metrics` is present only for DOOH campaigns; `ooh_metrics` only for static OOH campaigns. Engagement fields (`engagements`, `follows`, `saves`, `profile_visits`, `engagement_rate`) are platform-specific; not all sellers emit them on standardized fields — some use `variant.ext` for engagement data instead.
 
 ### Variant Object
 
