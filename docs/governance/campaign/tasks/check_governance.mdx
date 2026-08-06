@@ -542,7 +542,7 @@ The seller MUST pause delivery immediately and correct the geo targeting before 
 | `delivery_metrics.audience_distribution.indices` | object | Yes | Index values for the current reporting period. Key format: `dimension:value` (e.g., `age:25-34`, `gender:female`). Value of 1.0 means parity with baseline; above 1.0 means over-indexed; below 1.0 means under-indexed. |
 | `delivery_metrics.audience_distribution.cumulative_indices` | object | No | Index values across all reporting periods. Same format as `indices`. Helps governance agents detect trends vs. one-period noise. |
 | `modification_summary` | string | No | Human-readable summary of what changed. SHOULD be present for `modification` phase. |
-| `runtime_attestations` | AttestationReference[] | No | Signal-quality evidence for `purchase_type: signal_activation`; maximum 10. When `tool` is present it must be `activate_signal`. Items use the shared portable-attestation schema and cannot carry an authoritative buyer decision or confidence. |
+| `runtime_attestations` | AttestationReference[] | No | Signal-quality evidence for `purchase_type: signal_activation`; maximum 10. When supplied, `tool` is required and must be `activate_signal`. Items use the shared portable-attestation schema and cannot carry an authoritative buyer decision or confidence. |
 
 ### Delivery metrics
 
