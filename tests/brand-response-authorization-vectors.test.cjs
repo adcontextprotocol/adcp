@@ -1,7 +1,9 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { describe, it } = require('node:test');
+const { describe, it, before } = require('node:test');
+const Ajv = require('ajv');
+const addFormats = require('ajv-formats');
 const {
   assessBrandResponseAuthorization,
   canonicalizeFixtureUrl,
@@ -17,7 +19,35 @@ const canonicalizationVectors = JSON.parse(fs.readFileSync(
   'utf8',
 ));
 
+const SCHEMA_ROOT = path.join(__dirname, '..', 'static', 'schemas', 'source');
+
+function readSchema(uri) {
+  assert.match(uri, /^\/schemas\//);
+  return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice('/schemas/'.length)), 'utf8'));
+}
+
+async function compile(uri) {
+  const ajv = new Ajv({
+    allErrors: true,
+    strict: false,
+    discriminator: true,
+    loadSchema: async (ref) => readSchema(ref),
+  });
+  addFormats(ajv);
+  return ajv.compileAsync(readSchema(uri));
+}
+
 describe('brand response authorization cross-check vectors', () => {
+  let validateBrandJson;
+  let validateResult;
+
+  before(async () => {
+    [validateBrandJson, validateResult] = await Promise.all([
+      compile('/schemas/brand.json'),
+      compile('/schemas/core/brand-response-authorization-result.json'),
+    ]);
+  });
+
   it('targets the additive 3.2 trust result', () => {
     assert.equal(vectors.version, '3.2');
     assert.ok(vectors.cases.length >= 10);
@@ -43,8 +73,16 @@ describe('brand response authorization cross-check vectors', () => {
 
   for (const vector of vectors.cases) {
     it(vector.name, () => {
+      if (vector.input.brand_json !== null) {
+        assert.equal(
+          validateBrandJson(vector.input.brand_json),
+          true,
+          JSON.stringify(validateBrandJson.errors),
+        );
+      }
       const actual = assessBrandResponseAuthorization(vector.input);
       assert.deepEqual(actual, vector.expected);
+      assert.equal(validateResult(actual), true, JSON.stringify(validateResult.errors));
     });
   }
 });

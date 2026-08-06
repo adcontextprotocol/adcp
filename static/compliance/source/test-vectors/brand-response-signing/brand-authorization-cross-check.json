@@ -16,6 +16,7 @@
           "agents": [
             {
               "type": "brand",
+              "id": "novabrands_brand",
               "url": "https://brand.novabrands.example/mcp",
               "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json"
             }
@@ -40,6 +41,7 @@
           "agents": [
             {
               "type": "rights",
+              "id": "novabrands_rights",
               "url": "https://rights.novabrands.example/mcp",
               "jwks_uri": "https://rights.novabrands.example/.well-known/jwks.json"
             }
@@ -73,6 +75,7 @@
           "agents": [
             {
               "type": "brand",
+              "id": "novabrands_brand",
               "url": "https://brand.novabrands.example/mcp",
               "jwks_uri": "https://BRAND.NOVABRANDS.EXAMPLE:443/.well-known/jwks.json"
             }
@@ -101,6 +104,124 @@
       }
     },
     {
+      "name": "house-level-brand-agent-is-trusted",
+      "input": {
+        "envelope": {
+          "brand_domain": "novabrands.example",
+          "agent_url": "https://house-agent.novabrands.example/mcp",
+          "kid": "house-response-key"
+        },
+        "verified_jwk": {
+          "kid": "house-response-key",
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "x": "gWUqzATUcUco5Q8fZZXn8aWwb7DQbYGBiqUzLiSDDJo",
+          "use": "sig",
+          "key_ops": ["verify"],
+          "adcp_use": "response-signing"
+        },
+        "brand_json": {
+          "house": {
+            "domain": "novabrands.example",
+            "name": "Nova Brands",
+            "agents": [
+              {
+                "type": "brand",
+                "id": "novabrands_house_brand",
+                "url": "https://house-agent.novabrands.example/mcp",
+                "jwks_uri": "https://house-agent.novabrands.example/.well-known/jwks.json"
+              }
+            ]
+          },
+          "brands": [
+            {
+              "id": "nova",
+              "names": [{"en": "Nova"}]
+            }
+          ]
+        },
+        "jwks_by_uri": {
+          "https://house-agent.novabrands.example/.well-known/jwks.json": {
+            "keys": [
+              {
+                "kid": "house-response-key",
+                "kty": "OKP",
+                "crv": "Ed25519",
+                "x": "gWUqzATUcUco5Q8fZZXn8aWwb7DQbYGBiqUzLiSDDJo",
+                "use": "sig",
+                "key_ops": ["verify"],
+                "adcp_use": "response-signing"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "trust": "trusted",
+        "kid": "house-response-key",
+        "jwks_uri": "https://house-agent.novabrands.example/.well-known/jwks.json"
+      }
+    },
+    {
+      "name": "inline-brand-agent-is-trusted",
+      "input": {
+        "envelope": {
+          "brand_domain": "novabrands.example",
+          "agent_url": "https://nova-agent.novabrands.example/mcp",
+          "kid": "nova-response-key"
+        },
+        "verified_jwk": {
+          "kid": "nova-response-key",
+          "kty": "OKP",
+          "crv": "Ed25519",
+          "x": "rkUcKP5oMd7YjV4yy5mVS5S8fA3LDXcf5jk1P1_52EA",
+          "use": "sig",
+          "key_ops": ["verify"],
+          "adcp_use": "response-signing"
+        },
+        "brand_json": {
+          "house": {
+            "domain": "novabrands.example",
+            "name": "Nova Brands"
+          },
+          "brands": [
+            {
+              "id": "nova",
+              "names": [{"en": "Nova"}],
+              "agents": [
+                {
+                  "type": "brand",
+                  "id": "nova_brand",
+                  "url": "https://nova-agent.novabrands.example/mcp",
+                  "jwks_uri": "https://nova-agent.novabrands.example/.well-known/jwks.json"
+                }
+              ]
+            }
+          ]
+        },
+        "jwks_by_uri": {
+          "https://nova-agent.novabrands.example/.well-known/jwks.json": {
+            "keys": [
+              {
+                "kid": "nova-response-key",
+                "kty": "OKP",
+                "crv": "Ed25519",
+                "x": "rkUcKP5oMd7YjV4yy5mVS5S8fA3LDXcf5jk1P1_52EA",
+                "use": "sig",
+                "key_ops": ["verify"],
+                "adcp_use": "response-signing"
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "trust": "trusted",
+        "kid": "nova-response-key",
+        "jwks_uri": "https://nova-agent.novabrands.example/.well-known/jwks.json"
+      }
+    },
+    {
       "name": "ambiguous-brand-agent-is-untrusted",
       "input": {
         "envelope": {
@@ -112,11 +233,13 @@
           "agents": [
             {
               "type": "brand",
+              "id": "novabrands_brand_primary",
               "url": "https://brand.novabrands.example/mcp",
               "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json"
             },
             {
               "type": "brand",
+              "id": "novabrands_brand_alternate",
               "url": "https://BRAND.NOVABRANDS.EXAMPLE:443/mcp",
               "jwks_uri": "https://alternate.novabrands.example/.well-known/jwks.json"
             }
@@ -141,6 +264,7 @@
           "agents": [
             {
               "type": "brand",
+              "id": "novabrands_brand",
               "url": "https://brand.novabrands.example/mcp",
               "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json"
             }
@@ -207,6 +331,7 @@
           "agents": [
             {
               "type": "brand",
+              "id": "novabrands_brand",
               "url": "https://brand.novabrands.example/mcp",
               "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json"
             }
@@ -240,6 +365,7 @@
           "agents": [
             {
               "type": "brand",
+              "id": "novabrands_brand",
               "url": "https://brand.novabrands.example/mcp",
               "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json"
             }
@@ -289,6 +415,7 @@
           "agents": [
             {
               "type": "brand",
+              "id": "novabrands_brand",
               "url": "https://brand.novabrands.example/mcp",
               "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json"
             }
@@ -347,6 +474,7 @@
           "agents": [
             {
               "type": "brand",
+              "id": "novabrands_brand",
               "url": "https://brand.novabrands.example/mcp"
             }
           ]
@@ -394,6 +522,7 @@
           "agents": [
             {
               "type": "brand",
+              "id": "novabrands_brand",
               "url": "https://brand.novabrands.example/mcp",
               "jwks_uri": "https://brand.novabrands.example/.well-known/jwks.json"
             }

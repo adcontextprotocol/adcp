@@ -83,6 +83,15 @@ function defaultJwksUri(agentUrl) {
   return `${url.origin}/.well-known/jwks.json`;
 }
 
+function applicableBrandAgents(brandJson) {
+  const collections = [brandJson.agents, brandJson.house?.agents];
+  if (Array.isArray(brandJson.brands)) {
+    collections.push(...brandJson.brands.map((brand) => brand?.agents));
+  }
+
+  return collections.flatMap((agents) => (Array.isArray(agents) ? agents : []));
+}
+
 function assessBrandResponseAuthorization(input) {
   const { agent_url: agentUrl, kid } = input.envelope || {};
   if (!input.brand_json) {
@@ -90,7 +99,7 @@ function assessBrandResponseAuthorization(input) {
   }
 
   const canonicalAgentUrl = canonicalizeFixtureUrl(agentUrl);
-  const agents = Array.isArray(input.brand_json.agents) ? input.brand_json.agents : [];
+  const agents = applicableBrandAgents(input.brand_json);
   const matches = agents.filter((agent) =>
     agent?.type === 'brand'
       && canonicalAgentUrl !== null

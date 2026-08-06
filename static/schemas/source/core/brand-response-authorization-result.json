@@ -39,12 +39,12 @@
   "required": ["trust"],
   "oneOf": [
     {
-      "properties": { "trust": { "const": "trusted" } },
+      "properties": { "trust": { "type": "string", "const": "trusted" } },
       "required": ["trust", "kid", "jwks_uri"],
       "not": { "required": ["reason"] }
     },
     {
-      "properties": { "trust": { "const": "untrusted" } },
+      "properties": { "trust": { "type": "string", "const": "untrusted" } },
       "required": ["trust", "reason"]
     }
   ],
