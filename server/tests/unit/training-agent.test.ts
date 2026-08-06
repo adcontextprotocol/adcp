@@ -9761,7 +9761,8 @@ describe('activate_signal handler', () => {
       buyer: { domain: 'signal-test.example' },
       campaign: { description: 'Athletic campaign', uses: ['likeness'] },
     });
-    expect(acquired.result.status).toBe('rejected');
+    expect(acquired.result.status).toBe('completed');
+    expect(acquired.result.rights_status).toBe('rejected');
     expect(acquired.result.reason).toContain('governance approval');
 
     const updated = await simulateCallTool(server, 'update_rights', {
