@@ -94,8 +94,7 @@ Push campaign plans to the governance agent. A plan defines the authorized param
         { "category_id": "bias_fairness", "status": "active" },
         { "category_id": "regulatory_compliance", "status": "active" },
         { "category_id": "seller_verification", "status": "active" },
-        { "category_id": "brand_policy", "status": "active" },
-        { "category_id": "accessibility_compliance", "status": "active" }
+        { "category_id": "brand_policy", "status": "active" }
       ],
       "resolved_policies": [
         { "policy_id": "us_coppa", "source": "explicit", "enforcement": "must", "reason": "Referenced in plan policy_ids" },
@@ -176,8 +175,8 @@ Each plan item a buyer supplies here is the preimage the governance agent hashes
 | `plans[].plan_id` | string | Plan identifier. |
 | `plans[].status` | enum | `active` (sync succeeded) or `error` (sync failed). This is the sync result status, not the plan lifecycle status. |
 | `plans[].version` | number | Plan version (increments on each sync). |
-| `plans[].categories` | array | Validation categories active for this plan. Depends on the governance agent's declared capabilities. |
-| `plans[].categories[].category_id` | string | Validation category identifier. Canonical categories include `budget_authority`, `strategic_alignment`, `bias_fairness`, `regulatory_compliance`, `seller_verification`, `brand_policy`, and `accessibility_compliance`. |
+| `plans[].categories` | array | Validation categories the governance agent reports as active for this plan. Category labels come from the agent's internal policy model, not `get_adcp_capabilities`. |
+| `plans[].categories[].category_id` | string | Opaque agent-internal validation label for display and audit. Common vocabulary includes `budget_authority`, `strategic_alignment`, `bias_fairness`, `regulatory_compliance`, `seller_verification`, and `brand_policy`. An agent that actually evaluated accessibility may use the documented label `accessibility_compliance`, but clients MUST NOT treat it as a protocol enum, policy activation, or typed format guarantee. |
 | `plans[].categories[].status` | enum | `active` or `inactive`. |
 | `plans[].resolved_policies` | array | Policies the governance agent will enforce for this plan. Includes explicitly referenced and auto-applied policies. |
 | `plans[].resolved_policies[].policy_id` | string | Registry policy ID. |
