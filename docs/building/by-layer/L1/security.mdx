@@ -57,7 +57,6 @@ These operations are publicly accessible:
 |-----------|------|
 | `get_adcp_capabilities` | Agent capability discovery |
 | `get_products` | Public inventory discovery |
-| `list_creative_formats` | Public format catalog |
 
 ## Webhook Security
 
@@ -82,7 +81,7 @@ Normative rules for the legacy scheme when a seller elects to support it:
 - **Timing-safe comparison**: MUST use constant-time comparison (e.g., `timingSafeEqual`)
 - **Replay window**: Reject requests where `|current_time - timestamp| > 300` seconds
 - **Minimum secret length**: 32 bytes
-- **Header format**: `X-ADCP-Signature: sha256=<hex digest>` and `X-ADCP-Timestamp: <unix seconds>`. Any body-level `signature` field is a convenience copy and MUST NOT be trusted over the headers.
+- **Header format**: `X-ADCP-Signature: sha256=<hex digest>` and `X-ADCP-Timestamp: <unix seconds>`. Receivers MUST ignore any deprecated body-level `signature` field when authenticating the delivery; the headers are authoritative.
 
 **Verification order** (legacy scheme):
 1. Reject if `X-ADCP-Signature` or `X-ADCP-Timestamp` header is missing
@@ -99,7 +98,7 @@ Normative rules for the legacy scheme when a seller elects to support it:
 
 Any URL that a buyer, seller, or governance agent provides for another party to fetch is an SSRF vector. This includes `push_notification_config.url`, `accounts[].notification_configs[].url`, `sync_agent_notification_configs.notification_configs[].url`, `accounts[].governance_agents[].url` (the seller fetches this when it calls `check_governance`), collection-list `webhook_url`, TMP provider `endpoint`, `adagents.json` `authoritative_location`, and `reporting_bucket.setup_instructions`.
 
-Account-level webhook subscribers registered through `sync_accounts.accounts[].notification_configs[]` and agent-level subscribers registered through `sync_agent_notification_configs.notification_configs[]` also require endpoint ownership proof before activation. SSRF validation proves the seller is not calling an internal network address; it does not prove the buyer controls the public HTTPS endpoint. Sellers MUST complete an RFC 9421-signed activation challenge or equivalent proof-of-control before treating a new or changed active subscriber as active, and the receiver MUST verify the seller identity, delivery auth metadata, and event type set before echoing the challenge. Paused subscribers (`active: false`) may skip only the outbound proof challenge while inactive; sellers MUST still enforce URL parsing, HTTPS, hostname normalization, and reserved-range rejection at write time, and paused subscribers MUST NOT receive fires until reactivated. Account-level challenges use [`webhook-challenge.json`](https://adcontextprotocol.org/schemas/v3/core/webhook-challenge.json) and bind `account_id`; agent-level challenges use [`agent-webhook-challenge.json`](https://adcontextprotocol.org/schemas/v3/core/agent-webhook-challenge.json) and bind `scope: "agent"` instead of an account.
+Account-level webhook subscribers registered through `sync_accounts.accounts[].notification_configs[]` and agent-level subscribers registered through `sync_agent_notification_configs.notification_configs[]` also require endpoint ownership proof before activation. SSRF validation proves the seller is not calling an internal network address; it does not prove the buyer controls the public HTTPS endpoint. Sellers MUST complete an RFC 9421-signed activation challenge or equivalent proof-of-control before treating a new or changed active subscriber as active. Account-level challenge signatures bind the account, subscriber ID, exact normalized webhook URL through the covered `@target-uri`, expiry through the signature's `expires` parameter, delivery auth metadata, and normalized event type set; the receiver MUST verify every binding before echoing the single-use nonce. Paused subscribers (`active: false`) may skip only the outbound proof challenge while inactive; sellers MUST still enforce URL parsing, HTTPS, hostname normalization, and reserved-range rejection at write time, and paused subscribers MUST NOT receive fires until reactivated. Account-level challenges use [`webhook-challenge.json`](https://adcontextprotocol.org/schemas/v3/core/webhook-challenge.json) and bind `account_id`; agent-level challenges use [`agent-webhook-challenge.json`](https://adcontextprotocol.org/schemas/v3/core/agent-webhook-challenge.json) and bind `scope: "agent"` instead of an account.
 
 Before any outbound fetch to a counterparty-controlled URL, fetchers MUST:
 
@@ -127,6 +126,114 @@ Feature-specific security sections extend these rules with their own lifecycle a
 - [Collection lists](/docs/governance/collection/tasks/collection_lists#security-considerations) — `auth_token` scope and revocation, distribution-ID validation, webhook signature normative rules.
 - [Managed networks `authoritative_location`](/docs/governance/property/managed-networks#security-considerations) — validator fetch semantics, change detection, relationship termination.
 - [TMP provider registration](/docs/trusted-match/specification#provider-registration-security) — dynamic registration authentication, router-to-provider auth, `/health` info-leakage rules.
+
+## Portable attestations
+
+Portable attestations let one agent reference an independently issued claim without making the presenter or AdCP the trust authority. A seller or governance agent publishes what it will evaluate through `get_adcp_capabilities.adcp.attestations`; a presenter supplies an `AttestationReference`; the evaluator resolves and verifies the credential under its own policy.
+
+The evaluator is always the **verifier-of-record**. A presentation is a locator and claim hint. It is not proof, a routing instruction, or permission to fetch an arbitrary URL. RFC 9421 request signing authenticates the presenting agent and protects the request in transit, but it does not prove the presented claim.
+
+### Data model and separation
+
+Implementations MUST keep three layers distinct:
+
+1. **Presentation** — the portable reference supplied by a buyer or another agent.
+2. **Credential** — the issuer-signed claim found through the reference or supplied as an embedded proof.
+3. **Evaluation** — the receiving seller's or governance agent's result after applying its trust policy.
+
+<!-- Using latest because these schemas are not yet released in any version.
+     Update to the correct version alias after the next release. -->
+The shared schemas are [`attestation-reference.json`](https://adcontextprotocol.org/schemas/v3/core/attestation-reference.json), [`attestation-issuer.json`](https://adcontextprotocol.org/schemas/v3/core/attestation-issuer.json), [`attestation-subject.json`](https://adcontextprotocol.org/schemas/v3/core/attestation-subject.json), and [`attestation-evaluation.json`](https://adcontextprotocol.org/schemas/v3/core/attestation-evaluation.json).
+
+Every presentation identifies an issuer, an open URI-namespaced `claim_type`, a typed subject, and at least one delivery path:
+
+| Path | Presentation fields | Evaluator behavior |
+|---|---|---|
+| HTTPS credential | `locator.type: credential_uri` + `credential_uri` | Match the URI's canonical origin to the accepted issuer's `credential_origins` before DNS resolution or any request. |
+| Issuer credential ID | `locator.type: issuer_credential_id` + `credential_id` + `resolver_id` | Resolve `resolver_id` to a URL from the evaluator's own capability configuration, then send the fixed resolver request defined below. The presentation never carries the resolver URL. |
+| Embedded credential | `embedded_credential.format` + `embedded_credential.value` | Enforce the advertised byte limit before parsing, then verify the supported format locally or through an accepted verifier. |
+
+A presentation MAY carry both a locator and an embedded credential. In that case `content_digest` is REQUIRED, the evaluator MUST obtain both representations, and the exact bytes of each MUST independently match that digest before either is trusted. It MUST verify both credentials under the same proof-format and issuer rules. A missing, unverifiable, or mismatched representation is a hard failure; the evaluator MUST NOT select the representation that passes or fall back to an unpinned body. `credential_version` and `validity_hint` are planning hints only; the credential is authoritative for version, validity, scope, and revocation.
+
+For a resource subject, `subject.content_digest` optionally pins the content or immutable snapshot the credential is about. It is part of the complete typed subject comparison. It is distinct from the presentation-level `content_digest`, which pins credential bytes.
+
+Issuer and claim identifiers are open vocabularies. An evaluator listing them expresses only its own policy; it is not an AgenticAdvertising.org endorsement or a global trust registry.
+
+The presenter MAY nominate `verify_agent.agent_url`, but it MUST match `accepted_verifiers[]` after [URL canonicalization](/docs/reference/url-canonicalization). The evaluator MAY use that verifier, another accepted verifier, or local verification. It MUST NOT call an off-list presenter-supplied endpoint.
+
+### Normative evaluation procedure
+
+For every presentation, an evaluator MUST perform these steps in order:
+
+1. **Validate without network access.** Reject malformed issuer, subject, locator, proof format, and digest fields. JSON inputs MUST be strict-parsed with duplicate object keys rejected before JCS, digest computation, schema validation, or field extraction; a last-key-wins or first-key-wins parser is insufficient.
+2. **Apply the capability allowlist.** Match the canonical issuer, claim type, delivery method, proof format when known, and nominated verifier. Reject an untrusted issuer, resolver, credential origin, or verifier without an outbound request.
+3. **Select delivery.** For `credential_uri`, validate the canonical origin against the issuer capability. For `issuer_credential_id`, map `resolver_id` through that capability. For embedded delivery, enforce `max_embedded_credential_bytes` before parsing.
+4. **Resolve safely when needed.** Apply the fetch contract below to the evaluator-selected URL.
+5. **Verify the credential deterministically.** Confirm proof/signature integrity, issuer identity, claim type, complete typed subject, claim scope, validity period, and revocation state. Verify `content_digest` before using credential contents. Cryptographic verification, issuer-key authorization, canonicalization, equality checks, and outcome selection MUST run in deterministic code rather than an LLM. Credential bytes and resolver responses MUST NOT be placed in an LLM context before these checks; an LLM MAY assist a later policy workflow but cannot establish a `verified` outcome.
+6. **Apply local trust policy.** A cryptographically valid credential may still be unacceptable for this claim, subject, jurisdiction, action, or time.
+7. **Emit a stable outcome.** Never convert resolution or policy failure into success merely because the presenter asserted the claim.
+8. **Bind the result.** Carry the exact presentation digest and action binding in the domain result or readback that relied on it.
+
+### Attestation resolution fetch contract
+
+For `issuer_credential_id`, the resolver transport is fixed: `POST` to the evaluator-configured resolver URL with `Content-Type: application/json` and a strict JSON body whose only member is `{"credential_id":"<presentation credential_id>"}`. The credential ID MUST NOT be interpolated into the URL path or query. Credential-URI fetches carry no Authorization header or cookies. Resolver authentication, when configured as `evaluator_managed`, is loaded by the evaluator and sent only to the exact configured resolver endpoint; credentials from the incoming task, a credential response, or another origin MUST NOT be forwarded.
+
+Before every credential or resolver request, evaluators MUST:
+
+1. Require HTTPS and reject userinfo, fragments, and non-HTTPS schemes.
+2. Match the canonical credential origin or configured resolver ID to `accepted_issuers[]` before DNS resolution.
+3. Resolve the hostname and reject private, loopback, link-local, unique-local, CGNAT, multicast, special-use, and cloud-metadata destinations, including IPv4-mapped IPv6 forms.
+4. Pin the connection to the validated address, or validate the post-TLS peer address before sending request bytes, to prevent DNS rebinding.
+5. Disable redirects and treat every 3xx response as `resolution_failed`. The redirect limit is zero. Authentication headers and cookies MUST NOT be forwarded to any other endpoint.
+6. Apply a connect timeout of at most 10 seconds, a read timeout of at most 10 seconds, and a streamed response-body cap of 1 MiB.
+7. Keep resolver credentials outside AdCP task payloads and LLM-visible arguments. `authentication: evaluator_managed` means the evaluator loads them from its own secret store.
+8. Avoid returning connection-detail differences to the presenter. Map network details to stable outcomes without exposing internal topology.
+
+Before parsing a task that can carry portable attestations, implementations MUST enforce an overall task-body cap of 4 MiB, a maximum JSON nesting depth of 64, and at most 100,000 aggregate object members and array elements. These are whole-task caps, not per-attestation allowances, and apply in addition to the advertised per-credential `max_embedded_credential_bytes` (whose protocol ceiling is 1 MiB). Reject an over-limit body before schema evaluation, JCS, credential extraction, logging of body content, or any LLM-visible processing. An evaluator that advertises `embedded` delivery MUST advertise and enforce `max_embedded_credential_bytes`.
+
+These rules extend the general [SSRF profile](#webhook-url-validation-ssrf). A URL is never authorized solely because it appeared in a signed request.
+
+Resolver access can disclose which buyer, signal, campaign, or claim is being evaluated. Evaluators SHOULD prefer privacy-preserving resolution, send no unnecessary campaign identifiers, disclose resolver access to their operators and users, and bound logs and caches accordingly.
+
+### Issuer signing-key authority
+
+A mathematically valid signature does not by itself establish the `AttestationIssuer` named by the presentation or credential. For each accepted proof format, the evaluator MUST authorize the verification key for that canonical issuer through either (a) the proof format's authenticated issuer-key discovery and binding procedure or (b) an evaluator-managed local trust anchor configured for that issuer and proof format. Unauthenticated key URLs, presenter-supplied keys, and a credential's bare `kid` value are not trust anchors. A credential signed correctly by a key that is not authorized for its claimed issuer has outcome `invalid`, even if the key is trusted for another issuer.
+
+Key discovery is itself part of the proof-format verifier and MUST apply that format's transport, chain, algorithm, key-use, revocation, and freshness requirements. The evaluator MUST bind cached keys to canonical issuer identity and proof format; it MUST NOT reuse a same-named `kid` across issuers.
+
+### Outcomes, action binding, and caching
+
+Stable outcomes are `verified`, `not_found`, `expired`, `revoked`, `invalid`, `unsupported`, `unverifiable`, `untrusted_issuer`, `untrusted_resolver`, `subject_mismatch`, `digest_mismatch`, and `resolution_failed`. Only `verified` means all required credential and policy checks passed.
+
+Every `AttestationEvaluation` requires `reference_digest`, computed as SHA-256 over the RFC 8785 JSON Canonicalization Scheme representation of the complete `AttestationReference`, including an embedded credential. Duplicate JSON object keys MUST already have been rejected before canonicalization. Outcomes based on obtained credential bytes also carry `credential_digest` and `proof_format`, so the digest's byte interpretation is explicit. For dual delivery, `credential_digest` records the resolved bytes while `reference_digest` independently binds the embedded bytes; both representations have already matched the required presentation digest. A domain consumer that relies on the result MUST carry `action_binding` with a domain-defined action type and either an action identifier or canonical action digest.
+
+This produces two independent bindings: `reference_digest` identifies exactly what was evaluated; `action_binding` identifies the governance decision, evidence snapshot, rights decision, or other action that relied on it. Portable credentials SHOULD remain reusable across sellers unless the issuer's model requires a specific audience; the transaction binding belongs to the evaluation result rather than automatically inside every credential.
+
+Evaluators MAY cache results, but cache keys MUST include canonical issuer identity, locator, proof format, and credential or reference digest. Cache lifetime MUST be bounded by the earliest of credential expiry, issuer/verifier key refresh, revocation freshness policy, evaluator policy, and `valid_until`. Trust-policy or revocation changes invalidate prior success.
+
+### Rights-grant attestation profile (3.2)
+
+Rights constraints compose the shared portable-attestation primitive; they do not define a rights-only JWS or trust store. The buyer carries `rights_constraint.attestation_refs[]`, the serving seller remains verifier-of-record, and only the seller produces [`RightsAttestationEvaluation`](https://adcontextprotocol.org/schemas/v3/core/rights-attestation-evaluation.json) readback. A buyer-authored evaluation or the mere presence of a reference has no authorization value.
+
+The rights profile uses these identifiers:
+
+- claim type: `https://adcontextprotocol.org/claims/rights/grant`
+- resource subject type: `https://adcontextprotocol.org/claims/subjects/rights-grant`
+- action type: `https://adcontextprotocol.org/actions/rights-grant-evaluation`
+
+Each reference MUST use a `brand` issuer exactly equal to `rights_holder`. After URL canonicalization, `subject.namespace` MUST equal `rights_constraint.rights_agent.url`; `subject.id` MUST equal `rights_id`; and `subject.content_digest` MUST equal the constraint's `content_digest`. The digest is `sha256:` plus lowercase-hex SHA-256 of `UTF8(JCS(rights_constraint minus { content_digest, attestation_refs, verification_url }))`. Omitting an optional member is distinct from supplying an empty value. The projection deliberately excludes `verification_url`, which is a deprecated legacy display hint with no fetch or authorization semantics, and includes `ext` plus future grant fields so new serving restrictions cannot be added outside the signed projection.
+
+For AdCP 3.2, every acquired `acquire_rights` response and every reissued `update_rights` constraint MUST carry `content_digest` plus at least one `attestation_refs` entry. The schema keeps them optional only so a 3.2 parser can ingest 3.1 constraints; absence means machine-unverified/informational, never authorized. Multiple references are alternative delivery or proof paths—one current `verified` result is sufficient unless evaluator policy requires more.
+
+The resolved or embedded credential MUST cryptographically protect the exact issuer, claim type, complete typed subject, grant version, validity, and credential identifier. A `verified` result additionally requires authenticated issuer-bound status evidence for that exact credential and grant, an approved constraint, current credential and grant validity, exact digest agreement, and evaluator policy accepting the issuer, proof format, delivery method, jurisdiction, and consuming action. The evaluator MUST bind the actual status-proof verification key through the same exact holder rights-agent JWKS and `attestation-signing` purpose as the credential key; signature validity without that authority check is insufficient. Verified evaluations MUST carry `revocation_checked_at` and `valid_until`; the latter is the earliest credential/grant expiry, revocation-freshness bound, key-refresh bound, and local-policy bound. Missing, stale, swapped, superseded, or unverifiable status cannot produce `verified`. A seller still checks the actual use, country, time, and impression-cap ledger; a grant evaluation cannot prove remaining cap. Partial revocation revokes the old credential and issues a new narrowed constraint/reference rather than leaving the old broad credential valid.
+
+For 3.2 evaluation, `rights_holder` is mandatory and issuer-key authorization chains to that exact BrandRef. Before DNS or any fetch, the evaluator MUST exact-match the holder against its accepted issuer policy; an off-policy holder fails with zero network access. Resolve `rights_holder.domain` using the standard SSRF-safe brand.json contract: HTTPS only, reserved/private/link-local IP rejection before and after DNS, DNS pinning, bounded redirects and response size (256 KiB), deadlines, and negative caching. When `brand_id` is present, select exactly one `brands[]` entry whose `id` equals it; use that entry's `agents[]` when present, otherwise the house `agents[]` fallback. When `brand_id` is absent, the document must unambiguously represent the single brand or house. Select exactly one applicable entry with `type: "rights"`, canonical `url == rights_agent.url`, and exact `id == rights_agent.id`. Never aggregate sibling-brand agents or discover a key from a credential-supplied URL. Resolve JWKS only from the selected entry and bind the actual credential verification key by JWK thumbprint, not `kid` alone. AdCP-agent credential keys use the shared portable-credential purpose `adcp_use: "attestation-signing"`; this is not a rights-only purpose. `response-signing` remains reserved for designated brand-response payloads.
+
+Every seller-produced rights evaluation MUST bind both `action_id == rights_id` and `action_digest == content_digest` under the rights action type and MUST satisfy `reference_digest == sha256(JCS(reference))`. It MUST have `outcome: verified`, and the seller MUST retrieve the byte-identical result from its own local evaluation store keyed by `(evaluated_by, reference_digest)` before relying on it. The `evaluated_by` string is descriptive, not provenance: buyer-authored, foreign-seller, absent-store, and locally mismatched readback all fail closed. This is a reusable evaluation of one exact rights grant, not a serving authorization. The same evaluator may reuse its locally persisted result for another creative carrying the identical unchanged grant until `evaluation.valid_until`; another seller never trusts that readback as its own evaluation. Creative identity, media buy, use, country, delivery scope, and cap state are separate eligibility inputs and MUST be checked at the consuming boundary. The seller persists the exact reference/evaluation pair in creative readback and re-evaluates no later than `evaluation.valid_until`.
+
+Sellers advertise this behavior with `media_buy.rights_attestations.requirement`. Presence requires `adcp.attestations` and the exact rights claim URI in `accepted_claim_types`. `required` makes a current verified result a serving-eligibility condition. `optional` permits a separately established legacy contractual path, but the constraint remains machine-unverified and implementations MUST NOT downgrade to `verification_url`.
+
+Versioned fixtures under `/compliance/{version}/test-vectors/attestations/` cover resolved and embedded credentials, off-policy issuers and resolvers, expiry and revocation, subject and digest mismatch, and resolution failure. Implementations must produce the expected outcome and perform no network access for off-policy cases.
 
 ## Authentication Best Practices
 
@@ -573,14 +680,14 @@ The one exception in the spec is `si_terminate_session`: `session_id` plus the "
 **Roles:**
 - **Governance agents** sign the token. They are the only party that signs.
 - **Buyers** attach the token they received from their governance agent to the protocol envelope and forward to the seller. Buyers MUST NOT construct, modify, or re-sign the token. Buyers SHOULD retain the `jti` and `check_id` for their own audit record.
-- **Sellers** persist the token as received and include it verbatim on all subsequent governance calls. Sellers that implement verification MUST verify per the checklist below before acting on the token. Sellers that have not yet implemented verification MUST still persist and forward the token unchanged so that verification-capable parties downstream (auditors, regulators) can act on it later.
+- **Services** persist the token as received and include it verbatim on all subsequent governance calls. A service advertising `adcp.governance_enforcement` for a task MUST verify per the checklist below before acting. Legacy forward-only services may retain and forward tokens for audit continuity, but MUST NOT advertise enforcement for that task.
 - **Auditors and regulators** verify independently using the governance agent's published keys — this is the accountability property the signed format exists to deliver.
 
-The same string is also the primary correlation key for the governance lifecycle. The governance agent decodes its own token to look up internal state (buyer correlation IDs, policy decision log, etc.) — sellers and buyers never need to parse the payload.
+The same string is also the primary correlation key for the governance lifecycle. The governance agent decodes its own token to look up internal state. Services parse only the standard claims required by the verification checklist, including task, payload-hash, and commitment bindings; they never interpret `sub`, `plan_hash`, or other embedded governance state as business data.
 
 #### Scope and dependencies
 
-- **In scope (3.0)**: buy-side governance. The `governance_context` token authorizes spend commitments made via AdCP tasks (`create_media_buy`, `acquire_rights`, `activate_signal`, `creative_services`). Sellers that run their own compliance policies (e.g., CTV political-ad rules, publisher brand-safety gates) express those via `conditions` responses on their own governance workflows; they do not issue signed tokens under this profile.
+- **In scope (3.0)**: buy-side governance. The `governance_context` token authorizes governed commitments made via AdCP tasks whose request schemas carry an `x-governed-commitment` annotation. A service's own compliance or commercial rejection remains separate from the buyer-governance decision.
 - **Out of scope (3.0)**: seller-side governance authorities. A future RFC may extend this profile to cover seller-side signed decisions declared via `adagents.json`.
 - **Out of scope (ever)**: OpenRTB bid streams. Governance attestation terminates at the AdCP media buy boundary. Threading a signed attestation through per-impression bid requests is operationally infeasible (one token, many recipients, broadcast-fan-out) and unnecessary (spend authorization happens at media buy time, not per-impression).
 
@@ -594,32 +701,40 @@ This profile applies to `governance_context` (#2306) and to any future AdCP arti
 - `alg`: `EdDSA` (Ed25519) RECOMMENDED on server-side runtimes. `ES256` (ECDSA P-256) RECOMMENDED on edge runtimes (Cloudflare Workers, Vercel Edge, Deno Deploy) where Ed25519 may require explicit runtime configuration. Verifiers MUST reject `none`, `HS*`, and any `RS*` variant below 2048-bit. Verifiers MUST enforce the allowlist on the token header; they MUST NOT rely solely on library defaults.
 - `kid`: REQUIRED. Identifies the signing key in the issuer's JWKS.
 - `typ`: REQUIRED. MUST be exactly `adcp-gov+jws` (byte-for-byte match; verifiers MUST NOT normalize or strip the `+jws` structured suffix per RFC 6838 §4.2.8). The typed header prevents a governance signing key from being tricked into validating a generic JWT for another purpose.
-- `crit`: REQUIRED if any `crit`-listed claim is present. Per RFC 7515 §4.1.11, `crit` is an array of header/claim names that MUST be understood by the verifier. Verifiers MUST reject the token if any name in `crit` is not recognized. Governance agents MUST list in `crit` any claim whose omission or misinterpretation would change authorization semantics (e.g., a future `budget_cap` claim). This prevents silent downgrade attacks when the profile adds claims in later versions.
+- `crit`: REQUIRED for authorization-changing profile extensions. Per RFC 7515 §4.1.11, `crit` lists protected-header parameter names that MUST be understood by the verifier. Claims `authorized_commitment`, `authorized_task`, and `authorized_payload_hash` each require a same-named boolean protected-header marker and `crit` entry. Verifiers MUST recognize and process every listed extension or reject the token. This prevents older verifiers from silently ignoring a ceiling or action constraint.
 
 **Claims**
 
 | Claim | Required | Description |
 |-------|----------|-------------|
 | `iss` | Yes | Governance agent identifier. MUST be an HTTPS URL that byte-for-byte matches the `url` of a governance-typed entry in the buyer's brand.json, including any path component. Path-level matching is required so multi-tenant SaaS governance agents (e.g., `https://gov.vendor.com/tenant/acme`) cannot be spoofed by sibling tenants sharing the same origin. |
-| `sub` | Yes | `plan_id` the token authorizes. Note: `sub` is used here as a resource identifier rather than a user or authenticated agent. Implementations that log `sub` as a user ID should be aware of this. |
+| `sub` | Yes | Issuer-generated opaque governance binding for this governed action. It MUST be stable across that action's lifecycle, unique per action and target audience, and MUST NOT contain or be derived reversibly from `plan_id`. The governance agent maps it to the internal plan; services compare it only for lifecycle continuity and never interpret it as a plan or user identifier. |
 | `plan_hash` | Yes | Audit-layer binding of the attestation to the evaluated plan state. Not part of the seller verification checklist — sellers treat it as opaque cargo. Semantics, canonicalization, and verification paths are defined in [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit). |
 | `aud` | Yes | Target seller identifier. MUST be the exact URL string from the seller's `adagents.json` entry that authorized this seller for the property being purchased, byte-for-byte including scheme, host, port, and path. Case-sensitive; no path-prefix match. For intent tokens where the buyer is evaluating multiple sellers, the buyer MUST request one token per target seller (see [Intent-phase disclosure](#intent-phase-disclosure) for the privacy trade-off). |
 | `iat` | Yes | Issued-at timestamp (seconds since epoch). |
 | `nbf` | No | Not-before timestamp. When present, verifiers MUST reject if now < nbf (with ±60 s skew). |
 | `exp` | Yes | Expiration timestamp. Intent tokens SHOULD expire within 15 minutes. Execution-phase tokens (`purchase`, `modification`, `delivery`) MUST expire within 30 days; governance agents refresh longer lifecycles by issuing a new token on each lifecycle check. |
 | `jti` | Yes | Unique token identifier. Used by sellers for replay detection and by auditors for correlation. RECOMMENDED format: UUID v7 or ULID for time-orderability. |
-| `phase` | Yes | `intent` (pre-seller), `purchase`, `modification`, or `delivery`. Matches the governance check phase this token authorizes. The operation the seller is performing determines the required phase: `create_media_buy` → `purchase`; `update_media_buy` → `modification`; delivery-reporting callbacks → `delivery`. |
+| `phase` | Yes | `intent`, `purchase`, `modification`, or `delivery`. It identifies the authorization stage, not merely the task name. A buyer-supplied token entering any governed service request is `intent`. When the service advertises `online_execution_check`, the service then obtains `purchase` before committing a create, `modification` before committing an update, or `delivery` for a delivery check. |
 | `caller` | Yes | URL of the party that requested the governance check that produced this token. In intent phase, this is the orchestrator/buyer; in execution phases, this is typically the seller itself (as callbacks arrive with the seller as caller). |
 | `check_id` | Yes | Governance agent's `check_id` for this decision; correlates to `report_plan_outcome` and `get_plan_audit_logs`. |
-| `media_buy_id` | Conditional | Seller-assigned media buy ID. MUST be present on `purchase`, `modification`, and `delivery` phase tokens. MUST be null or absent on `intent` phase tokens. |
+| `media_buy_id` | Conditional | Seller-assigned media buy ID. MUST be present on `modification` and `delivery` tokens, MAY be present on `purchase` when the service provisionally assigns an ID during prepare, and MUST be absent on `intent`. The opaque `sub` binds a purchase action before a durable media-buy ID exists. |
+| `authorized_commitment` | Conditional | Signed `{ amount, currency }` ceiling approved by governance. REQUIRED whenever the check authorizes a numeric monetary commitment, including an explicit `{amount: 0, currency}` ceiling for a verified zero-cost action; omitted only for non-monetary actions. Its matching protected-header marker is critical as defined above. The receiving service compares the price it will commit with this claim, so an indirectly priced payload cannot be authorized with an understated buyer declaration. This reveals only the price already relevant to that service, not plan budget or allocation. |
+| `authorized_task` | Conditional | Exact AdCP task name authorized by an intent check. REQUIRED with `authorized_payload_hash` on action-authorizing tokens and listed in `crit`. A service rejects a token minted for another task even when audience and monetary ceiling match. |
+| `authorized_payload_hash` | Conditional | `base64url_no_pad(SHA-256(JCS(payload_without_governance_metadata)))`, REQUIRED with `authorized_task` and listed in `crit`. The excluded top-level fields are exactly `governance_context` and `context`; `target_agent` lives on the governance check rather than in the downstream payload. Every business field, including `idempotency_key`, remains bound. The service recomputes this value over the received task request before committing. |
 | `policy_decisions` | No | Compact array of `{ policy_id, outcome }` entries (may include `confidence`). Visible to the seller. Governance agents SHOULD omit this in privacy-sensitive deployments (see [Privacy considerations](#privacy-considerations)) and use `policy_decision_hash` instead. |
 | `policy_decision_hash` | No | SHA-256 hash of the canonicalized decision log, hex-encoded. When present, sellers treat it as an opaque integrity anchor; full log is retrievable by auditors via `audit_log_pointer`. Governance agents MUST include either `policy_decisions` or `policy_decision_hash` (both is permitted). |
+| `runtime_attestation_binding_digest` | Conditional | Required when the check evaluated `runtime_attestations[]`. MUST byte-equal the check response field of the same name: `sha256:` plus lowercase-hex SHA-256 of `JCS({ evaluations, findings })`, where `evaluations` is the ordered `runtime_attestation_evaluations[]` array and `findings` is the ordered response subset carrying `attestation_reference_digest`. This binds the exact credential/reference digests, normalized outcomes, confidence-bearing findings, and governance-check action binding without putting credential bodies in the token. Audit-layer claim; sellers persist it as opaque cargo and do not recompute it. |
 | `audit_log_pointer` | No | HTTPS URL consumable by `get_plan_audit_logs` for the full decision evidence. When present, auditors can fetch the full log using the pointer; access control is governed by the governance agent. |
 | `status` | No | Optional forward-compatibility hook. When present, MUST be a JSON object conforming to a future IETF JWT Status List mechanism (draft-ietf-oauth-status-list). Verifiers that do not understand `status` MUST NOT reject solely on its presence unless it appears in `crit`. |
 
-**Unknown-claim handling**: verifiers MUST ignore claims whose names they do not recognize *unless* those claim names appear in the token's `crit` header, in which case the token MUST be rejected. This asymmetric rule — ignore unknown, but reject unknown-and-critical — is how future versions of the profile add semantically meaningful claims without breaking backward compatibility for verifiers that haven't updated yet.
+Cross-language implementations SHOULD validate payload canonicalization and the task, payload, amount, currency, and critical-marker acceptance rules against the published [`governance-authorization.json` vectors](https://github.com/adcontextprotocol/adcp/blob/main/static/compliance/source/test-vectors/governance-authorization.json). The vectors pin `idempotency_key` into the business hash while excluding only top-level `governance_context` and `context`. The same file publishes 27 byte-exact Ed25519 compact-JWS cases covering positive verification, critical-extension failures, binding mismatches, malformed or widened commitments, time bounds, replay identifiers, signature tampering, and explicit zero-cost authorization. Its private key component is deliberately public test material and MUST NOT be installed as a production trust anchor.
+
+**Unknown-extension handling**: verifiers ignore unknown non-critical claims. When a claim changes authorization semantics, the issuer also emits the same-named protected-header marker and lists it in `crit`; verifiers that do not recognize that header extension MUST reject. Verifiers MUST also reject when the critical marker and its corresponding claim do not appear together.
 
 **Size**: a typical token with `policy_decision_hash` fits comfortably under the 4096-character envelope limit. Implementations MUST NOT put large evidence payloads in the token; use `audit_log_pointer` instead.
+
+When `runtime_attestation_binding_digest` is present, governance agents MUST retain the full ordered evaluations and attestation-bound findings in the corresponding `get_plan_audit_logs` check entry. The entry-level digest, response-level digest, and signed claim MUST be identical. Auditors recompute the digest from the retained arrays; any mismatch means the signed decision and audit readback disagree. This claim MUST NOT appear in `crit`: like `plan_hash`, it is audit-layer evidence that ordinary sellers cannot independently recompute from the spend-commit request.
 
 **`plan_hash` is audit-layer, not wire-layer**: the `plan_hash` claim is cryptographic cargo the token carries for off-wire verification by the governance agent, auditors, and buyer-side compliance. It is not part of this profile's seller verification contract and is never listed in `crit`. Canonicalization, excluded fields, retention rules, and test vectors are specified in [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit) (governance spec). Sellers persist and forward `governance_context` verbatim and perform the 15-step verification checklist below — authenticity, authorization scope, freshness — without inspecting `plan_hash`.
 
@@ -651,25 +766,25 @@ Sellers and auditors resolve the governance agent's public keys via JWKS (RFC 75
 
 #### Seller verification checklist
 
-Before treating a request as governance-approved, sellers MUST perform these checks in order, short-circuiting on the first failure:
+Services apply this checklist to two distinct authorization gates. On an inbound governed request they verify the buyer-supplied `intent` token. When the advertised task mode includes `online_execution_check`, that token permits preparation and the execution check but not the side effect; the service applies the checklist again to the execution token returned by its governance call before commit. Checks run in order and short-circuit on the first failure:
 
 1. Parse the compact JWS. Reject if malformed.
 2. Reject if header `alg` is `none` or not in the allowed list (EdDSA, ES256). Library defaults MUST NOT be relied upon.
 3. Reject if header `typ` is not exactly `adcp-gov+jws` (no normalization).
-4. Reject if the header contains a `crit` array and any listed name is not recognized by the verifier.
+4. Reject if the header contains a `crit` array and any listed protected-header extension is not recognized by the verifier. For `authorized_commitment`, `authorized_task`, and `authorized_payload_hash`, require each boolean protected-header marker, its `crit` entry, and its payload claim to appear together. Require `authorized_task` and `authorized_payload_hash` as a pair.
 5. Resolve `iss` to a JWKS via the discovery rules above. Reject if the JWKS cannot be fetched (after SSRF validation) or the `kid` is not present after one refetch.
 6. Verify the JWKS entry's `use` is `"sig"` and `key_ops` includes `"verify"`. Reject keys marked for other uses.
 7. Cryptographically verify the signature.
 8. Reject if `aud` does not byte-for-byte equal the seller's own canonical URL as declared in the relevant `adagents.json` entry.
 9. Reject if `exp` is in the past or `iat` is more than 60 seconds in the future (±60 s clock-skew tolerance, symmetric on both bounds). If `nbf` is present, reject if `now < nbf − 60 s`.
-10. Reject if `sub` does not equal the `plan_id` in the governance call this token is attached to (prevents plan swap).
-11. Reject if `phase` does not match the operation: `purchase` for `create_media_buy`; `modification` for `update_media_buy`; `delivery` for delivery-reporting callbacks; `intent` only for pre-seller buyer-side evaluation.
-12. For non-intent tokens, reject if `media_buy_id` does not equal the media buy ID in the request.
+10. Reject if `sub` is absent or empty. On a continuation for an already-bound action, reject if it differs from the opaque `sub` retained from the prior accepted token. The seller never compares it to `plan_id`; the issuing governance agent prevents plan swap by validating and resolving its own signed context.
+11. Reject if `phase` does not match the authorization gate. The buyer-supplied token on an inbound governed request MUST be `intent`. For a task advertising `online_execution_check`, the token returned to the service by its own pre-commit governance call MUST be `purchase` for a create, `modification` for an update, or `delivery` for a delivery check. A service MUST NOT substitute the inbound intent token for that required execution token.
+12. Validate action binding. For an inbound intent token, reject unless `authorized_task` equals the invoked task and `authorized_payload_hash` equals the JCS/SHA-256 hash recomputed over the received request after removing exactly `governance_context` and `context`. For `modification` and `delivery`, reject if `media_buy_id` is absent or does not equal the request's media buy ID. For `purchase`, compare it when present; absence is valid because prepare may precede durable ID assignment. For `intent`, reject if it is present. When the action has a monetary commitment, reject if `authorized_commitment` is absent, its currency differs, or the service's computed commitment exceeds its amount. A service that cannot bind the task and payload or compute the price before commit MUST NOT advertise governance enforcement for that task.
 13. Cross-check: the token's `iss` MUST appear as a governance-typed agent in the buyer's current brand.json (established via [Buyer identity resolution](#buyer-identity-resolution)). Sellers SHOULD cache brand.json with reasonable TTLs (recommend 1 hour) and refresh on verification failure.
 14. Check the revocation list (see [Revocation](#revocation)). Reject if `jti` ∈ `revoked_jtis` or if the token header's `kid` ∈ `revoked_kids`. This check runs on every verification, not only on cache miss.
 15. Reject if `jti` has been seen before for this `(iss, aud)` tuple. See [Replay dedup](#replay-dedup) for storage guidance.
 
-Only after all 15 checks pass does the seller treat the request as governance-approved. Note that sellers do not verify `plan_hash` — that claim is bound at the governance-agent / auditor layer (see [Plan-state binding](#plan-state-binding)).
+Only after all 15 checks pass may the service proceed through the gate represented by that token. For `signed_context`, a valid inbound intent token is the task authorization. For `online_execution_check`, it authorizes prepare/check only; commit additionally requires the valid execution token. Services do not verify `plan_hash` — that claim is bound at the governance-agent / auditor layer (see [Plan-state binding](#plan-state-binding)).
 
 #### Replay dedup
 
@@ -738,11 +853,11 @@ Sellers and client libraries SHOULD surface verification failures with these cod
 | JWKS fetch fails SSRF validation | No | `governance_jwks_untrusted` | Permanent. Indicates misconfigured `jwks_uri` or an attack. |
 | `kid` not in JWKS after refetch | No | `governance_key_unknown` | Reject. Possibly indicates rotation lag or key revocation. |
 | Signature invalid, `typ` mismatch, `alg` not allowed, `crit` unknown | No | `governance_token_invalid` | Reject. Indicates tampering or implementation bug. |
-| `exp` in past, `jti` replayed, `nbf` in future | No | `governance_token_expired` / `_replayed` / `_not_yet_valid` | Reject. Tokens cannot be healed by retry. |
+| `exp` in past, `jti` replayed, or `iat` / `nbf` in future beyond allowed skew | No | `governance_token_expired` / `_replayed` / `_not_yet_valid` | Reject. Tokens cannot be healed by retry. |
 | `jti` ∈ `revoked_jtis` or `kid` ∈ `revoked_kids` | No | `governance_token_revoked` | Reject. |
 | `iss` not in buyer brand.json | No | `governance_issuer_not_authorized` | Reject. Possibly indicates a spoofing attempt. |
 | Revocation list not refreshed within grace | No (block new) | `governance_revocation_stale` | Reject new tokens until revocation list refreshes. Existing fully-verified tokens may continue to be trusted within their existing grace. |
-| `aud` mismatch, `sub` mismatch, `phase` mismatch, `media_buy_id` mismatch | No | `governance_token_not_applicable` | Reject. Token valid but not for this operation. |
+| `aud`, authenticated `caller`, opaque action-binding (`sub`), `phase`, `media_buy_id`, `authorized_task`, `authorized_payload_hash`, or `authorized_commitment` currency/ceiling mismatch | No | `governance_token_not_applicable` | Reject. Token valid but not for this operation. Missing or malformed required claims use `governance_token_invalid`; a well-formed token whose bindings do not match the attempted operation uses this code. |
 
 Servers MUST NOT echo internal verification details (e.g., which specific claim mismatched) to the counterparty. Return the stable code above; log the detail server-side.
 
@@ -763,15 +878,19 @@ Header:
 {
   "alg": "EdDSA",
   "kid": "gov-2026-04",
-  "typ": "adcp-gov+jws"
+  "typ": "adcp-gov+jws",
+  "crit": ["authorized_commitment", "authorized_task", "authorized_payload_hash"],
+  "authorized_commitment": true,
+  "authorized_task": true,
+  "authorized_payload_hash": true
 }
 ```
 
 Payload:
 ```json
 {
-  "iss": "https://gov.scope3.com",
-  "sub": "plan_q1_2026_launch",
+  "iss": "https://governance.example.com",
+  "sub": "gb_01HWZXABCDEFG1234567890",
   "plan_hash": "EiCW8FkxgZ2wKqGv3Z9XuT4n2LwcJm1fK7vRaTpQ0sU",
   "aud": "https://seller.example.com/adcp",
   "iat": 1744934400,
@@ -780,8 +899,11 @@ Payload:
   "phase": "intent",
   "caller": "https://orchestrator.example.com",
   "check_id": "chk_001",
+  "authorized_commitment": { "amount": 25000, "currency": "USD" },
+  "authorized_task": "create_media_buy",
+  "authorized_payload_hash": "grD8ZKqJa7KJuLX_EJ4iZ5tCVGfOnJrL-o9Q_qXl7xU",
   "policy_decision_hash": "9b2a...f41c",
-  "audit_log_pointer": "https://gov.scope3.com/plans/plan_q1_2026_launch/logs/01HWZXABCDEFG1234567890"
+  "audit_log_pointer": "https://governance.example.com/audit/01HWZXABCDEFG1234567890"
 }
 ```
 
@@ -806,7 +928,8 @@ function jwksFor(jwksUri: string) {
 }
 
 export async function verifyGovernanceContext(token: string, ctx: {
-  sellerId: string; planId: string; mediaBuyId?: string; phase: "intent" | "purchase" | "modification" | "delivery";
+  sellerId: string; priorBindingId?: string; mediaBuyId?: string; phase: "intent" | "purchase" | "modification" | "delivery";
+  task: string; governedPayloadHash: string; commitment?: { amount: number; currency: string };
   resolveBrandJsonGovernanceAgent: (iss: string) => Promise<{ jwks_uri: string } | null>;
   seenJti: (iss: string, aud: string, jti: string) => Promise<boolean>;
   isRevoked: (iss: string, jti: string, kid: string) => Promise<boolean>;
@@ -822,10 +945,21 @@ export async function verifyGovernanceContext(token: string, ctx: {
   const { payload } = await jwtVerify(token, jwksFor(agent.jwks_uri), {
     issuer: iss as string, audience: ctx.sellerId, typ: "adcp-gov+jws",
     algorithms: ["EdDSA", "ES256"], clockTolerance: 60,
+    crit: { authorized_commitment: true, authorized_task: true, authorized_payload_hash: true },
   }).catch(() => { throw new GovTokenError("governance_token_invalid"); });
 
-  if (payload.sub !== ctx.planId) throw new GovTokenError("governance_token_not_applicable");
+  if (typeof payload.sub !== "string" || payload.sub.length === 0)
+    throw new GovTokenError("governance_token_not_applicable");
+  if (ctx.priorBindingId && payload.sub !== ctx.priorBindingId)
+    throw new GovTokenError("governance_token_not_applicable");
   if (payload.phase !== ctx.phase) throw new GovTokenError("governance_token_not_applicable");
+  if (payload.authorized_task !== ctx.task || payload.authorized_payload_hash !== ctx.governedPayloadHash)
+    throw new GovTokenError("governance_token_not_applicable");
+  if (ctx.commitment) {
+    const ceiling = payload.authorized_commitment as { amount?: number; currency?: string } | undefined;
+    if (!ceiling || ceiling.currency !== ctx.commitment.currency || typeof ceiling.amount !== "number" || ctx.commitment.amount > ceiling.amount)
+      throw new GovTokenError("governance_token_not_applicable");
+  }
   if (ctx.phase !== "intent" && payload.media_buy_id !== ctx.mediaBuyId)
     throw new GovTokenError("governance_token_not_applicable");
   if (!(await ctx.revocationFresh(iss as string))) throw new GovTokenError("governance_revocation_stale");
@@ -899,6 +1033,17 @@ This profile uses ordinary JWS signing, not RFC 7797 unencoded payloads. The JWS
 `request_hash` is `sha256:` plus unpadded base64url SHA-256 of the JCS canonical request-binding object `{ task, brand_domain, agent_url, caller_identity, request }`. `caller_identity` MUST be a typed canonical string derived from the authenticated transport or credential mapping, such as `signed-agent-url:<agents[].url>`, `api-client-id:<seller-issued client id>`, or `mtls-san:<lowercased SAN>`. If no authenticated caller identity exists, `caller_identity` is `null` and the verifier MUST treat the response as weaker evidence that is not bound to a caller.
 
 `brand_domain` is a tenant-binding field, not an echo. A multi-brand agent MUST populate it from its server-side tenant resolution and the brand.json entry whose policy store produced the answer; it MUST NOT copy it from the request body. `agent_url` is the canonical URL of the responding `agents[]` entry whose `response-signing` JWK verifies the envelope. Online verifiers MUST reject envelopes at or after `exp` after applying only small clock-skew tolerance; audit verifiers MAY verify after `exp`, but only as historical evidence that the brand-agent signed that payload during the stated `iat`/`exp` window.
+
+**Brand-authorization cross-check (3.2 advisory).** A valid signature proves only that *some* agent holding a `response-signing` key signed the payload — not that the key is authorized to answer for `brand_domain`. `brand_domain` and `agent_url` are fields *inside* the payload the same key signs, so resolving the envelope's `kid` from an attacker-selected agent origin confirms authorship, not brand authority. Before treating a cryptographically valid `verify_brand_claim` / `verify_brand_claims` envelope as evidence about the asserted `brand_domain`, an online 3.2 verifier SHOULD:
+
+1. Resolve `https://{brand_domain}/.well-known/brand.json` following the SSRF-safe [brand.json resolution](#buyer-identity-resolution) rules (one redirect, no chains). Apply the trust-root fetch budgets: strict JSON parsing with duplicate keys rejected, a 256 KiB body cap, 5 s connect and 10 s total deadlines, successful-cache lifetime no longer than the JWKS revocation polling interval, and negative caching of at most 60 s.
+2. Resolve the agent collection for the asserted domain, then locate exactly one entry whose `type` is `brand` and whose `url` matches the envelope's `agent_url` after applying the shared [URL canonicalization](/docs/reference/url-canonicalization) algorithm. For a Brand Agent or Brand Canonical Document, use the top-level `agents[]`. For a House Portfolio whose `house.domain` equals `brand_domain`, use `house.agents[]`. Otherwise, locate exactly one inline `brands[]` entry whose `url` hostname equals `brand_domain`; use that brand's `agents[]` when present, or `house.agents[]` only when the brand does not override `agents[]`. Never aggregate sibling brands' agents, and do not search `brand_refs[]`, because those entries require resolving the child's canonical document. No domain or agent match is `agent_not_authorized`; multiple inline-domain or canonical agent matches are `agent_authorization_ambiguous`.
+3. Resolve the JWKS source **only** from that matched entry's `jwks_uri`, defaulting when absent to `/.well-known/jwks.json` at the origin of the matched entry's `url`. Never accept a JWKS URI supplied by the envelope or discovered independently from the envelope's `agent_url` host. Deduplicate fetches by canonical resolved JWKS URI.
+4. Require exactly one JWK whose `kid` matches the protected header, enforce `use: "sig"`, `key_ops` containing `"verify"`, and exact `adcp_use: "response-signing"`, then bind it to the key that verified the envelope. Either re-verify the JWS with this authorized JWK or compare RFC 7638 thumbprints of the authorized and already-verified public keys. Equal `kid` strings are insufficient; zero matches, duplicate matches, or different key material are `untrusted`.
+
+The cross-check produces a verifier-local [`BrandResponseAuthorizationResult`](https://adcontextprotocol.org/schemas/v3/core/brand-response-authorization-result.json); it is never a field asserted by the responding agent. A successful lookup and key-material binding returns `trust: "trusted"`. Any fetch failure, missing or ambiguous agent entry, missing or duplicate `kid`, key-material mismatch, or key-purpose failure returns `trust: "untrusted"` with the corresponding reason. If a verifier skips the cross-check, it MUST treat the envelope as `untrusted` for relationship decisions. “Advisory” means a failed or skipped cross-check does not transport-reject an otherwise cryptographically valid response; it does not make authorization verification optional when extending or revoking relationship trust. A 3.2 verifier MUST NOT let an untrusted result extend or revoke relationship trust on its own, but MAY retain the cryptographically valid envelope as unauthenticated historical evidence or combine it with independent mutual-assertion evidence. It MUST NOT hard-reject solely because this additive advisory check failed. Mandatory cryptographic authorization binding and incompatible hard-fail behavior are deferred to 4.0.
+
+For `verify_brand_claims`, implementations SHOULD deduplicate brand.json fetches by `brand_domain` and JWKS fetches by canonical resolved `jwks_uri` within the batch verification operation to avoid request amplification against brand origins. The advisory applies symmetrically to assertions (`owned`, `licensed_*`, and similar) and rejections (`disputed`, `not_ours`). Conformance vectors and the paired executable reference evaluator live at [`brand-response-signing/brand-authorization-cross-check`](https://adcontextprotocol.org/compliance/latest/test-vectors/brand-response-signing/brand-authorization-cross-check.json).
 
 Response-signing keys are scoped by brand tenant as well as by purpose. A shared multi-brand fleet MUST publish distinct response-signing key material and distinct `kid` values for each `brand_domain` it serves, even when the same software and `agent_url` serve multiple brands. Cross-brand reuse of a response-signing JWK is a profile violation because it defeats tenant-bound replay analysis; this rule is stricter than ordinary cross-purpose separation and applies only to `adcp_use: "response-signing"` keys.
 
@@ -1582,12 +1727,13 @@ Codes parallel the [request-signing error taxonomy](#transport-error-taxonomy), 
 
 #### TMP cross-reference
 
-**TMP keys MUST declare a distinct `adcp_use` value** (or omit it entirely) so verifiers reject them for request signing via step 8. Publishing TMP keys at the same `jwks_uri` as request-signing and webhook-signing keys is permitted and encouraged — one publication pattern, five signing systems, each `kid`-scoped:
+**TMP keys MUST declare a distinct `adcp_use` value** (or omit it entirely) so verifiers reject them for request signing via step 8. Publishing TMP keys at the same `jwks_uri` as request-signing and webhook-signing keys is permitted and encouraged — one publication pattern, six signing systems in 3.2, each `kid`-scoped:
 
 - governance JWS — `adcp_use: "governance-signing"`
 - request signing (RFC 9421) — `adcp_use: "request-signing"` (also signs webhooks; see [Webhook callbacks](#webhook-callbacks))
 - webhook signing (RFC 9421) — uses the `request-signing` key; the legacy `adcp_use: "webhook-signing"` value is **deprecated** (still accepted, pending removal — see follow-up issue in the deprecation note)
 - designated-task response-payload JWS — `adcp_use: "response-signing"` (see [Designated-task payload-envelope response signing](#designated-task-response-signing) above)
+- portable credentials issued by an AdCP agent — `adcp_use: "attestation-signing"` (the credential proof format still defines the signature input and algorithm)
 - TMP envelope — TMP's own future `adcp_use` value
 
 Cross-purpose reuse is prevented automatically because every verifier enforces an exact `adcp_use` match on its own profile.
@@ -1808,7 +1954,7 @@ Outbound-fetch code paths (governance JWKS, brand.json, revocation list, webhook
 - TLS 1.2 **secure renegotiation** (RFC 5746) MUST be enabled if renegotiation is supported at all. Insecure-renegotiation-tolerant stacks are a MUST-disable.
 - **TLS compression** (CRIME) MUST be off.
 - **Heartbeat extension** MUST be off on TLS 1.2 endpoints (Heartbleed lineage).
-- **0-RTT / early-data** on TLS 1.3 MUST NOT be enabled for any endpoint that accepts mutating AdCP operations. 0-RTT is replayable by design; idempotency and signature-nonce dedup are not free rescues once the request has hit application logic. Read-only discovery endpoints (`get_adcp_capabilities`, `list_creative_formats`) MAY use 0-RTT; everything else MUST NOT.
+- **0-RTT / early-data** on TLS 1.3 MUST NOT be enabled for any endpoint that accepts mutating AdCP operations. 0-RTT is replayable by design; idempotency and signature-nonce dedup are not free rescues once the request has hit application logic. Read-only `get_adcp_capabilities` MAY use 0-RTT; everything else MUST NOT.
 
 ### mTLS transport
 

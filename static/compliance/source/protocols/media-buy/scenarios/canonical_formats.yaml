@@ -1,8 +1,8 @@
 id: media_buy_seller/canonical_formats
 version: "1.0.0"
-title: "Canonical formats producer scenarios"
+title: "Canonical formats and deprecated named-format compatibility"
 category: media_buy_seller
-summary: "Validates that get_products can expose seeded canonical-format products through dual, v1-only, v2-only, custom, experimental, and divergent declaration shapes."
+summary: "Validates canonical product formats and the optional, explicitly deprecated named-format compatibility projection."
 track: products
 introduced_in: "3.1"
 required_tools:
@@ -11,22 +11,24 @@ required_tools:
   - comply_test_controller
 
 narrative: |
-  AdCP 3.1 introduces canonical product-bound format declarations on
-  `products[].format_options[]` while preserving the v1 `format_ids[]`
-  fallback during the migration window. Producers that dual-emit both shapes
-  MUST describe the same underlying creative requirement in each path.
+  AdCP 3.2 requires canonical product-bound format declarations on
+  `products[].format_options[]`. Legacy `format_ids[]` is deprecated and is
+  exercised here only as an optional compatibility projection. Producers that
+  voluntarily dual-emit both shapes MUST describe the same underlying creative
+  requirement in each path.
 
-  This scenario is an opt-in canonical-format track, not a universal 3.x
-  requirement: 3.x products may still carry `format_ids`, `format_options`, or
-  both. It exercises the dual-emission contract only after the runner seeds a
-  product that deliberately carries both shapes.
+  This is an opt-in compatibility track, not the primary 3.2 authoring path.
+  Normal 3.2 products carry `format_options`; the runner deliberately seeds
+  deprecated named-format-only and dual-emitted fixtures to verify agents that
+  advertise compatibility with those older shapes.
 
   The scenario seeds deterministic display products that declare unique vendor
   metrics so the buyer can isolate each product with a structured filter. The
   buyer requests the wholesale product feed and verifies that the seeded
   products cover the migration shapes from the canonical-formats conformance
-  track: agreeing dual emission, v1-only emission, v2-only emission, custom
-  v2-only emission, experimental declarations, and divergent dual-emission
+  track: agreeing compatibility projection, deprecated named-format-only
+  emission, canonical-only emission, custom canonical-only emission,
+  experimental declarations, and divergent compatibility projection
   advisories.
 
   After discovery, the buyer creates media buys against the seeded fixed-size
@@ -41,7 +43,7 @@ agent:
     - sells_media
     - exposes_canonical_formats
   examples:
-    - "Any media-buy seller adopting canonical product format declarations"
+    - "Any media-buy seller that voluntarily supports deprecated named-format compatibility alongside canonical declarations"
 
 caller:
   role: buyer_agent

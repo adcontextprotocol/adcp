@@ -19,7 +19,7 @@ import { buildSignedRevocationList } from '../governance-revocations.js';
 import { salesCapabilityProjection } from '../v6-sales-platform.js';
 import { handleComplyTestController } from '../comply-test-controller.js';
 import { adcpError, resolveServedAdcpVersion, supportedCanonicalFormatsCapability } from '../task-handlers.js';
-import type { TrainingContext } from '../types.js';
+import { GET_PRODUCTS_REJECTED_ADCP_VERSION, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 
 const logger = createLogger('training-agent-tenant-router');
@@ -47,6 +47,7 @@ const SALES_THREE_ZERO_COMPLY_SCENARIOS = [
 const SALES_CURRENT_SCENARIOS = [
   ...SALES_LEGACY_CAPABILITY_SCENARIOS,
   'force_create_media_buy_arm',
+  'force_get_products_arm',
   'force_task_completion',
   'force_creative_purge',
   'force_upstream_unavailable',
@@ -61,7 +62,7 @@ const SALES_CURRENT_SCENARIOS = [
   'evaluate_distributed_brand_resolution',
 ] as const;
 
-const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'] as const;
+const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', GET_PRODUCTS_REJECTED_ADCP_VERSION] as const;
 const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
 
 function bearerToken(req: Request): string | undefined {
@@ -93,13 +94,13 @@ function apiKeyCredential(req: Request, principal: string): { kind: 'api_key'; k
   };
 }
 
-function salesComplyScenarios(storyboardCompat?: TrainingContext['storyboardCompat']): string[] {
+function salesComplyScenarios(storyboardCompat: TrainingContext['storyboardCompat'] | undefined): string[] {
   return storyboardCompat?.version === '3.0'
     ? [...SALES_THREE_ZERO_COMPLY_SCENARIOS]
     : [...SALES_CURRENT_SCENARIOS];
 }
 
-function salesCapabilityScenarios(storyboardCompat?: TrainingContext['storyboardCompat']): string[] {
+function salesCapabilityScenarios(storyboardCompat: TrainingContext['storyboardCompat'] | undefined): string[] {
   return storyboardCompat?.version === '3.0'
     ? [...SALES_LEGACY_CAPABILITY_SCENARIOS]
     : [...SALES_CURRENT_SCENARIOS];
@@ -345,12 +346,15 @@ async function tryHandleLocalComplyScenario(
 
   const rawArgs = (req.body.params.arguments ?? {}) as Record<string, unknown>;
   const isThreeZeroCompat = storyboardCompat?.version === '3.0';
+  const isRejectedGetProductsDirective = rawArgs.scenario === 'force_get_products_arm'
+    && (rawArgs.params as Record<string, unknown> | undefined)?.arm === 'rejected';
   if (
     rawArgs.scenario !== 'seed_measurement_catalog'
     && rawArgs.scenario !== 'force_creative_purge'
     && rawArgs.scenario !== 'query_provenance_audit_observations'
     && rawArgs.scenario !== 'evaluate_distributed_brand_resolution'
     && rawArgs.scenario !== 'list_scenarios'
+    && !isRejectedGetProductsDirective
   ) return false;
   if (
     isThreeZeroCompat
@@ -359,6 +363,7 @@ async function tryHandleLocalComplyScenario(
       || rawArgs.scenario === 'force_creative_purge'
       || rawArgs.scenario === 'query_provenance_audit_observations'
       || rawArgs.scenario === 'evaluate_distributed_brand_resolution'
+      || isRejectedGetProductsDirective
     )
   ) return false;
 
@@ -386,6 +391,7 @@ async function tryHandleLocalComplyScenario(
       : await handleComplyTestController(handlerArgs, {
           mode: 'open',
           principal: principal ?? 'anonymous',
+          servedAdcpVersion: versionResolution.servedVersion,
         });
     await flushDirtySessions();
     return body as Record<string, unknown>;

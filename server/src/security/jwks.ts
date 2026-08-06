@@ -1,10 +1,10 @@
 /**
  * Public JWKS for Addie's signing keys.
  *
- * Two entries — one per AdCP signing purpose. AdCP receivers enforce key
- * purpose at the JWK's `adcp_use` field (`docs/guides/SIGNING-GUIDE.md` §
- * Key separation), so request-signing and webhook-signing keys must
- * appear as distinct JWK entries with their respective `adcp_use` values.
+ * Two entries — one per AdCP signing purpose. Existing webhook key material
+ * remains published as `webhook-signing` for the 3.x compatibility window;
+ * reclassifying a deployed kid in place would break legacy receivers and
+ * expand that key's authority to signed AdCP requests.
  *
  * Both derived from the committed PEM constants so the published JWKS
  * and each signer's tripwire reference the same source of truth —

@@ -29,12 +29,14 @@ describe('hosted SDK safe-fetch call sites', () => {
     expect(registryApiSource).not.toContain(unsafeCreativeConstructor);
     expect(httpSource).not.toContain(unsafeCreativeConstructor);
     expect(registryApiSource).toContain(
-      'new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }))',
+      '}], withSdkSafeTransport({})).agent("creative-capability-discovery")',
     );
     expect(httpSource).toContain(
       'new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }))',
     );
-    expect(registryApiSource.split('}, withSdkSafeTransport({}));')).toHaveLength(3);
+    expect(registryApiSource.split(
+      '}], withSdkSafeTransport({})).agent("creative-capability-discovery")',
+    )).toHaveLength(3);
     expect(httpSource.split('}, withSdkSafeTransport({}));')).toHaveLength(2);
   });
 });

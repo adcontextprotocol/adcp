@@ -15,11 +15,17 @@ import type {
   GovernanceOutcomeState,
   GovernanceFinding,
   GovernanceCondition,
+  SessionState,
 } from './types.js';
 import type { BrandReference } from '@adcp/sdk';
-import { getSession, sessionKeyFromArgs, findGovernancePlanAcrossSessions } from './state.js';
+import {
+  getSession,
+  sessionKeyFromArgs,
+  findSessionMatching,
+} from './state.js';
 import { signGovernanceContext, type GovernancePhase, type PolicyDecision } from './governance-context.js';
-import { getCanonicalBase } from './tenants/registry.js';
+import { getCanonicalBase } from './canonical-base.js';
+import { computeGovernanceOutcomeHash, computeGovernedPayloadHash } from './governance-payload-hash.js';
 
 const EXECUTION_GOVERNANCE_PHASES = new Set<GovernancePhase>(['purchase', 'modification', 'delivery']);
 
@@ -49,6 +55,47 @@ function buildPolicyDecisions(
 }
 
 const VALID_PURCHASE_TYPES = new Set(['media_buy', 'rights_license', 'signal_activation', 'creative_services']);
+const EXPLICIT_COMMITMENT_TOOLS = new Set([
+  'update_media_buy',
+  'acquire_rights',
+  'update_rights',
+  'activate_signal',
+  'build_creative',
+]);
+const VALID_OUTCOME_TYPES = new Set(['completed', 'failed', 'delivery']);
+const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9_.:-]{16,255}$/;
+
+/**
+ * `plan_id` is buyer-generated and only unique within that buyer's namespace.
+ * Keep the storage key owner-qualified so two authenticated buyers can reuse the
+ * same opaque identifier without seeing or overwriting each other's plan state.
+ */
+function governancePlanStorageKey(ownerAgentUrl: string, planId: string): string {
+  return JSON.stringify([ownerAgentUrl, planId]);
+}
+
+function findGovernancePlanEntry(
+  session: SessionState,
+  planId: string,
+  ownerAgentUrl?: string,
+): [string, GovernancePlanState] | undefined {
+  return [...session.governancePlans.entries()].find(([, plan]) =>
+    plan.planId === planId
+    && (ownerAgentUrl === undefined || plan.ownerAgentUrl === ownerAgentUrl));
+}
+
+function findAccessibleGovernancePlan(
+  session: SessionState,
+  planId: string,
+  authenticatedAgentUrl: string,
+): GovernancePlanState | undefined {
+  return [...session.governancePlans.values()].find(plan =>
+    plan.planId === planId
+    && (plan.ownerAgentUrl === authenticatedAgentUrl
+      || Boolean(plan.delegations?.some(delegation =>
+        delegation.agentUrl === authenticatedAgentUrl
+        && (!delegation.expiresAt || new Date(delegation.expiresAt) >= new Date())))));
+}
 
 // Categories that require human oversight per GDPR Art 22 / EU AI Act Annex III.
 // See static/registry/policy-categories/*.json (requires_human_review: true).
@@ -187,12 +234,16 @@ interface SyncPlanInput {
 }
 
 interface CheckGovernanceInput extends ToolArgs {
-  plan_id: string;
+  plan_id?: string;
   caller: string;
+  target_agent?: string;
   purchase_type?: string;
+  proposed_commitment?: { amount: number; currency: string };
+  execution_commitment?: { amount: number; currency: string };
   tool?: string;
   payload?: CheckPayload;
   governance_context?: string;
+  consultation_context?: string;
   phase?: string;
   governance_phase?: string;
   human_approval?: object;
@@ -202,7 +253,13 @@ interface CheckGovernanceInput extends ToolArgs {
 }
 
 interface CheckPayload {
-  packages?: Array<{ budget?: number; channels?: string[] }>;
+  packages?: Array<{
+    package_id?: string;
+    budget?: number;
+    channels?: string[];
+    canceled?: boolean;
+  }>;
+  new_packages?: Array<{ budget?: number }>;
   budget?: number | { total?: number };
   total_budget?: number | { amount?: number };
   geo?: { countries?: string[] };
@@ -218,19 +275,17 @@ interface CheckPayload {
   // An update proposal may name an existing buy. Intent tokens still omit it;
   // execution checks bind their ID from the seller's planned_delivery instead.
   media_buy_id?: string;
-  // Target seller URL for `aud` binding. Buyers MUST supply this so the GA
-  // can bind the JWS to a specific seller — without it, intent-phase tokens
-  // can't be issued (no defensible audience). Until the request schema
-  // formalizes the field upstream, accept it via the open-shape payload.
-  target_seller?: string;
+  revision?: number;
+  ext?: { governance_policy_acknowledgements?: string[] };
 }
 
 interface PlannedDeliveryInput {
-  // Seller-assigned ID bound into purchase/modification/delivery JWS claims.
+  // Seller-assigned ID: optional during purchase prepare, required later.
   media_buy_id?: string;
   geo?: { countries?: string[] };
   channels?: string[];
   total_budget?: number;
+  currency?: string;
 }
 
 interface DeliveryMetricsInput {
@@ -247,8 +302,9 @@ interface ReportPlanOutcomeInput extends ToolArgs {
   purchase_type?: string;
   outcome: 'completed' | 'failed' | 'delivery';
   seller_response?: SellerResponseInput;
-  delivery?: { spend?: number };
+  delivery?: Record<string, unknown>;
   error?: object;
+  idempotency_key?: string;
 }
 
 interface SellerResponseInput {
@@ -385,7 +441,7 @@ export const GOVERNANCE_TOOLS = [
   },
   {
     name: 'check_governance',
-    description: 'Check whether a campaign action is authorized under the governance plan. Called by the orchestrator before sending a purchase request (proposed) or by the seller before executing (committed). Returns approved, denied, or conditions. Human review is signalled via a critical human_review finding on a denied decision; the buyer resolves review off-protocol and re-calls this tool with human_approval. Do not call for read-only operations (get_products, get_signals, get_rights) — only for actions that create or modify financial commitments.',
+    description: 'Check whether a campaign action is authorized under the governance plan. Called by the orchestrator before a governed commitment or by a media-buy seller performing an online execution check. Intent checks return approved, denied, or conditions; execution checks are binary. The training sandbox models human review as a synchronous denied finding followed by a re-call with human_approval; production governance agents use the normative async task lifecycle. Do not call for read-only or risk-reducing operations.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
@@ -394,11 +450,39 @@ export const GOVERNANCE_TOOLS = [
         account: { type: 'object', description: 'Account reference identifying the tenant.' },
         brand: { type: 'object', description: 'Top-level brand reference identifying the tenant.' },
         plan_id: { type: 'string' },
-        caller: { type: 'string', format: 'uri' },
+        caller: {
+          type: 'string',
+          format: 'uri',
+          description: 'Claimed agent URL. Authenticated transports must resolve and exactly match it before authorization.',
+        },
+        target_agent: {
+          type: 'string',
+          format: 'uri',
+          description: 'Exact downstream service URL. Required on intent checks and signed as the governance token audience.',
+        },
         purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services'], description: 'Type of financial commitment. Defaults to media_buy.' },
+        proposed_commitment: {
+          type: 'object',
+          description: 'Task-neutral amount authorized by this intent. For update_media_buy, this is the buyer-computed positive incremental commitment, not the post-update total.',
+          properties: {
+            amount: { type: 'number', minimum: 0 },
+            currency: { type: 'string', pattern: '^[A-Z]{3}$' },
+          },
+          required: ['amount', 'currency'],
+        },
+        execution_commitment: {
+          type: 'object',
+          description: 'Seller-computed positive incremental commitment for an update_media_buy execution check. The seller derives this atomically from its authoritative current state and proposed update.',
+          properties: {
+            amount: { type: 'number', minimum: 0 },
+            currency: { type: 'string', pattern: '^[A-Z]{3}$' },
+          },
+          required: ['amount', 'currency'],
+        },
         tool: { type: 'string', description: 'The AdCP tool being checked. Present on intent checks (orchestrator).' },
         payload: { type: 'object', description: 'The full tool arguments. Present on intent checks.' },
         governance_context: { type: 'string', description: 'Opaque governance context from a prior check_governance response. Pass on subsequent checks for lifecycle continuity.' },
+        consultation_context: { type: 'string', description: 'Non-authorizing handle from an intent conditions response. Pass only on the adjusted intent re-check.' },
 
         phase: { type: 'string', enum: ['purchase', 'modification', 'delivery'] },
         governance_phase: { type: 'string', enum: ['purchase', 'modification', 'delivery'], description: 'Alias for phase' },
@@ -407,13 +491,17 @@ export const GOVERNANCE_TOOLS = [
         delivery_metrics: { type: 'object' },
         modification_summary: { type: 'string' },
       },
-      required: ['plan_id', 'caller'],
+      required: ['caller'],
+      anyOf: [
+        { required: ['plan_id'] },
+        { required: ['governance_context'] },
+      ],
     },
   },
   {
     name: 'report_plan_outcome',
     description: 'Report the outcome of an action to the governance agent. Called by the orchestrator after a seller responds. Links outcomes to the governance check that authorized them.',
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
@@ -422,14 +510,50 @@ export const GOVERNANCE_TOOLS = [
         brand: { type: 'object', description: 'Top-level brand reference identifying the tenant.' },
         plan_id: { type: 'string' },
         check_id: { type: 'string' },
-        governance_context: { type: 'string', description: 'Opaque governance context from the check_governance response that authorized this action.' },
+        governance_context: { type: 'string', description: 'Opaque governance context from check_governance. Required with check_id for completed and failed outcomes; deprecated delivery snapshots must provide both fields or neither.' },
         purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services'], description: 'Type of financial commitment. Defaults to media_buy.' },
+        idempotency_key: { type: 'string', minLength: 16, maxLength: 255, pattern: '^[A-Za-z0-9_.:-]+$' },
         outcome: { type: 'string', enum: ['completed', 'failed', 'delivery'] },
-        seller_response: { type: 'object' },
-        delivery: { type: 'object' },
+        seller_response: {
+          type: 'object',
+          properties: {
+            committed_budget: { type: 'number', minimum: 0 },
+            packages: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: { budget: { type: 'number', minimum: 0 } },
+              },
+            },
+          },
+        },
+        delivery: {
+          type: 'object',
+          properties: { spend: { type: 'number', minimum: 0 } },
+        },
         error: { type: 'object' },
       },
-      required: ['plan_id', 'outcome', 'governance_context'],
+      required: ['plan_id', 'outcome', 'idempotency_key'],
+      allOf: [
+        {
+          if: { properties: { outcome: { const: 'completed' } }, required: ['outcome'] },
+          then: { required: ['check_id', 'governance_context', 'seller_response'] },
+        },
+        {
+          if: { properties: { outcome: { const: 'failed' } }, required: ['outcome'] },
+          then: { required: ['check_id', 'governance_context', 'error'] },
+        },
+        {
+          if: { properties: { outcome: { const: 'delivery' } }, required: ['outcome'] },
+          then: {
+            required: ['delivery'],
+            dependencies: {
+              check_id: ['governance_context'],
+              governance_context: ['check_id'],
+            },
+          },
+        },
+      ],
     },
   },
   {
@@ -469,6 +593,9 @@ const GOVERNANCE_CATEGORIES = [
 // ── Handler implementations ─────────────────────────────────────
 
 export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
+  if (!ctx.authenticatedAgentUrl) {
+    return { errors: [{ code: 'PERMISSION_DENIED', message: 'sync_plans requires an authenticated buyer agent.' }] };
+  }
   const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
   const input = args as SyncPlansInput;
 
@@ -523,6 +650,20 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
       }
     }
 
+    const existingSession = await findSessionMatching(candidate =>
+      findGovernancePlanEntry(candidate, plan.plan_id, ctx.authenticatedAgentUrl) !== undefined);
+    const existingPlan = existingSession
+      ? findGovernancePlanEntry(existingSession, plan.plan_id, ctx.authenticatedAgentUrl)?.[1]
+      : undefined;
+    if (existingPlan && existingSession !== session) {
+      return {
+        errors: [{
+          code: 'CONFLICT',
+          message: `Plan ${plan.plan_id} is already bound to another immutable account or brand scope. Re-sync it using its original scope.`,
+        }],
+      };
+    }
+
     // Auto-flip human_review_required from triggering policy_categories, policy_ids,
     // custom_policies, brand industries. This is the MUST rule from the obligations doc.
     const resolvedTriggers = resolveHumanReviewTriggers(plan);
@@ -536,7 +677,7 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
 
     // Revision safety: prior plan with humanReviewRequired=true cannot be downgraded
     // to false on re-sync unless the caller provides a verified human_override artifact.
-    const existing = session.governancePlans.get(plan.plan_id);
+    const existing = findGovernancePlanEntry(session, plan.plan_id, ctx.authenticatedAgentUrl)?.[1];
     if (existing?.humanReviewRequired && !effectiveHumanReview) {
       if (!plan.human_override) {
         return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} previously had human_review_required=true; downgrading requires a human_override artifact` }] };
@@ -565,7 +706,7 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
   }
 
   for (const plan of input.plans) {
-    const existing = session.governancePlans.get(plan.plan_id);
+    const existing = findGovernancePlanEntry(session, plan.plan_id, ctx.authenticatedAgentUrl)?.[1];
     const version = existing ? existing.version + 1 : 1;
 
     const resolvedTriggers = resolveHumanReviewTriggers(plan);
@@ -579,6 +720,7 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
 
     const planState: GovernancePlanState = {
       planId: plan.plan_id,
+      ownerAgentUrl: existing?.ownerAgentUrl ?? ctx.authenticatedAgentUrl,
       version,
       status: 'active',
       brand: plan.brand,
@@ -643,7 +785,10 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
       planAsSupplied: structuredClone(plan as unknown) as Record<string, unknown>,
     };
 
-    session.governancePlans.set(plan.plan_id, planState);
+    session.governancePlans.set(
+      governancePlanStorageKey(ctx.authenticatedAgentUrl, plan.plan_id),
+      planState,
+    );
 
     results.push({
       plan_id: plan.plan_id,
@@ -662,19 +807,75 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
 export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext) {
   const req = args as CheckGovernanceInput;
   let session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
-  const planId = req.plan_id;
+  const governanceContext = req.governance_context;
+  const consultationContext = req.consultation_context;
+  let priorCheck = governanceContext
+    ? [...session.governanceChecks.values()].find(check => check.governanceContext === governanceContext)
+    : undefined;
+
+  if (governanceContext && !priorCheck) {
+    const contextSession = await findSessionMatching(candidate =>
+      [...candidate.governanceChecks.values()].some(check => check.governanceContext === governanceContext));
+    if (contextSession) {
+      session = contextSession;
+      priorCheck = [...session.governanceChecks.values()].find(check => check.governanceContext === governanceContext);
+    }
+  }
+
+  let priorConsultationCheck = consultationContext
+    ? [...session.governanceChecks.values()].find(check => check.consultationContext === consultationContext)
+    : undefined;
+  if (consultationContext && !priorConsultationCheck) {
+    const consultationSession = await findSessionMatching(candidate =>
+      [...candidate.governanceChecks.values()].some(check => check.consultationContext === consultationContext));
+    if (consultationSession) {
+      session = consultationSession;
+      priorConsultationCheck = [...session.governanceChecks.values()]
+        .find(check => check.consultationContext === consultationContext);
+    }
+  }
+
+  const planId = req.plan_id ?? priorCheck?.planId ?? priorConsultationCheck?.planId;
+  if (!planId) {
+    return { errors: [{ code: 'PLAN_NOT_FOUND', message: 'No plan could be resolved from plan_id or governance_context.' }] };
+  }
+  if (req.plan_id && priorCheck && req.plan_id !== priorCheck.planId) {
+    return { errors: [{ code: 'VALIDATION_ERROR', message: 'plan_id does not match the governance_context binding.' }] };
+  }
+  if (req.plan_id && priorConsultationCheck && req.plan_id !== priorConsultationCheck.planId) {
+    return { errors: [{ code: 'VALIDATION_ERROR', message: 'plan_id does not match the consultation_context.' }] };
+  }
   // Framework strips `account`, dropping the session to open:default.
   // When the primary lookup misses, scan every session for the plan so
   // sync_plans (which does carry account) remains reachable.
-  if (planId && !session.governancePlans.has(planId)) {
-    const fallback = await findGovernancePlanAcrossSessions(planId);
-    if (fallback) session = fallback;
+  const contextPlanOwner = priorCheck?.planOwnerAgentUrl ?? priorConsultationCheck?.planOwnerAgentUrl;
+  let plan = contextPlanOwner
+    ? findGovernancePlanEntry(session, planId, contextPlanOwner)?.[1]
+    : ctx.authenticatedAgentUrl
+      ? findAccessibleGovernancePlan(session, planId, ctx.authenticatedAgentUrl)
+      : undefined;
+  if (planId && !plan && ctx.authenticatedAgentUrl) {
+    const fallback = await findSessionMatching(candidate => {
+      return contextPlanOwner
+        ? findGovernancePlanEntry(candidate, planId, contextPlanOwner) !== undefined
+        : findAccessibleGovernancePlan(candidate, planId, ctx.authenticatedAgentUrl!) !== undefined;
+    });
+    if (fallback) {
+      session = fallback;
+      plan = contextPlanOwner
+        ? findGovernancePlanEntry(fallback, planId, contextPlanOwner)?.[1]
+        : findAccessibleGovernancePlan(fallback, planId, ctx.authenticatedAgentUrl);
+    }
   }
-  const caller = req.caller;
+  const claimedCaller = req.caller;
+  const authenticatedCaller = ctx.authenticatedAgentUrl;
+  // Authorization, audit, and signed state consume the server-resolved URL.
+  // The request field is only an assertion to cross-check.
+  const caller = authenticatedCaller ?? claimedCaller;
   const purchaseType = req.purchase_type || 'media_buy';
   const tool = req.tool;
   const payload = req.payload;
-  const governanceContext = req.governance_context;
+  const authenticatedPrincipal = ctx.principal ?? 'anonymous';
   const ext = (req as unknown as { ext?: unknown }).ext;
   const extHumanApproval = ext && typeof ext === 'object' && !Array.isArray(ext)
     ? (ext as { human_approval?: unknown }).human_approval
@@ -688,10 +889,64 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid purchase_type: ${req.purchase_type}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
   }
 
+  if (
+    plannedDelivery?.total_budget !== undefined
+    && (
+      typeof plannedDelivery.total_budget !== 'number'
+      || !Number.isFinite(plannedDelivery.total_budget)
+      || plannedDelivery.total_budget < 0
+    )
+  ) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'planned_delivery.total_budget must be a finite, non-negative number.',
+      }],
+    };
+  }
+
+  if (authenticatedCaller !== undefined && claimedCaller !== authenticatedCaller) {
+    return {
+      errors: [{
+        code: 'PERMISSION_DENIED',
+        message: 'Authenticated agent identity is required and must match caller for this governance check.',
+      }],
+    };
+  }
+
   // Request shape is authoritative. A caller-supplied phase cannot turn an
   // orchestrator proposal into a seller execution check.
   const hasIntentShape = tool !== undefined && payload !== undefined;
-  const hasExecutionShape = plannedDelivery !== undefined;
+  const hasExecutionShape = plannedDelivery !== undefined || deliveryMetrics !== undefined;
+  if ((tool === undefined) !== (payload === undefined)) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'Intent governance checks require tool and payload together.',
+      }],
+    };
+  }
+  if (hasIntentShape && !req.target_agent) {
+    return {
+      errors: [{ code: 'VALIDATION_ERROR', message: 'target_agent is required for intent governance checks.' }],
+    };
+  }
+  if (req.proposed_commitment !== undefined && !hasIntentShape) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'proposed_commitment is valid only on an intent check with tool and payload.',
+      }],
+    };
+  }
+  if (req.execution_commitment !== undefined && !hasExecutionShape) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'execution_commitment is valid only on an execution check.',
+      }],
+    };
+  }
   const binding: 'proposed' | 'committed' = hasIntentShape
     ? 'proposed'
     : hasExecutionShape
@@ -703,17 +958,104 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       ? (req.governance_phase as GovernancePhase)
       : 'purchase';
   const phase: GovernancePhase = binding === 'proposed' ? 'intent' : requestedExecutionPhase;
+  const targetAudience = binding === 'committed'
+    ? priorCheck?.targetAudience ?? ''
+    : req.target_agent ?? '';
 
-  if (binding === 'committed' && !plannedDelivery?.media_buy_id) {
+  if (consultationContext && !priorConsultationCheck) {
+    return {
+      errors: [{ code: 'VALIDATION_ERROR', message: 'consultation_context is unknown or expired.' }],
+    };
+  }
+
+  if (priorConsultationCheck && (
+    priorConsultationCheck.consultationPrincipal !== authenticatedPrincipal
+    || priorConsultationCheck.caller !== caller
+    || priorConsultationCheck.tool !== tool
+    || priorConsultationCheck.purchaseType !== purchaseType
+    || priorConsultationCheck.consultationAudience !== targetAudience
+  )) {
     return {
       errors: [{
         code: 'VALIDATION_ERROR',
-        message: 'planned_delivery.media_buy_id is required for execution governance checks',
+        message: 'consultation_context does not match the authenticated principal, caller, tool, purchase type, or target audience.',
       }],
     };
   }
 
-  const plan = session.governancePlans.get(planId);
+  if (binding === 'proposed' && governanceContext) {
+    return {
+      errors: [{ code: 'VALIDATION_ERROR', message: 'Intent checks use plan_id and must not include governance_context' }],
+    };
+  }
+
+  if (binding === 'committed' && consultationContext) {
+    return {
+      errors: [{ code: 'VALIDATION_ERROR', message: 'consultation_context is not valid for execution governance checks' }],
+    };
+  }
+
+  if (binding === 'committed' && !governanceContext) {
+    return {
+      errors: [{ code: 'VALIDATION_ERROR', message: 'governance_context is required for execution governance checks' }],
+    };
+  }
+
+  if (binding === 'committed' && !priorCheck) {
+    return {
+      errors: [{ code: 'VALIDATION_ERROR', message: 'governance_context is unknown or expired.' }],
+    };
+  }
+
+  if (
+    binding === 'committed'
+    && (
+      !priorCheck?.expiresAt
+      || !Number.isFinite(Date.parse(priorCheck.expiresAt))
+      || Date.parse(priorCheck.expiresAt) <= Date.now()
+    )
+  ) {
+    return {
+      errors: [{ code: 'PERMISSION_DENIED', message: 'governance_context is expired; obtain a fresh intent approval.' }],
+    };
+  }
+
+  if (
+    binding === 'committed'
+    && (
+      !priorCheck?.targetAudience
+      || authenticatedCaller === undefined
+      || authenticatedCaller !== priorCheck.targetAudience
+      || claimedCaller !== priorCheck.targetAudience
+    )
+  ) {
+    return {
+      errors: [{
+        code: 'PERMISSION_DENIED',
+        message: 'Execution governance caller must authenticate as the service audience bound by the prior approved context.',
+      }],
+    };
+  }
+
+  if (
+    binding === 'committed'
+    && (phase === 'modification' || phase === 'delivery')
+    && !plannedDelivery?.media_buy_id
+  ) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: `planned_delivery.media_buy_id is required for ${phase} governance checks`,
+      }],
+    };
+  }
+
+  if (binding === 'proposed' && authenticatedCaller === undefined) {
+    return {
+      errors: [{ code: 'PERMISSION_DENIED', message: 'Intent governance checks require an authenticated buyer agent.' }],
+    };
+  }
+
   if (!plan) {
     const checkId = `chk_${randomUUID().slice(0, 8)}`;
     const check: GovernanceCheckState = {
@@ -735,6 +1077,113 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     };
     session.governanceChecks.set(checkId, check);
     return buildCheckResponse(check);
+  }
+
+  const ownerOrDelegated = authenticatedCaller === plan.ownerAgentUrl
+    || Boolean(plan.delegations?.some(delegation =>
+      delegation.agentUrl === authenticatedCaller
+      && (!delegation.expiresAt || new Date(delegation.expiresAt) >= new Date())));
+  if (binding === 'proposed' && !ownerOrDelegated) {
+    return {
+      errors: [{ code: 'PERMISSION_DENIED', message: 'The authenticated buyer does not own this plan and has no active delegation.' }],
+    };
+  }
+
+  const originalIntentCheck = priorCheck?.binding === 'proposed'
+    ? priorCheck
+    : priorCheck?.governanceBindingId
+      ? [...session.governanceChecks.values()].reverse().find(check =>
+        check.status === 'approved'
+        && check.binding === 'proposed'
+        && check.governanceBindingId === priorCheck?.governanceBindingId)
+      : undefined;
+
+  if (req.proposed_commitment && (
+    !Number.isFinite(req.proposed_commitment.amount)
+    || req.proposed_commitment.amount < 0
+    || req.proposed_commitment.currency !== plan.budget.currency
+  )) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: `proposed_commitment must be finite, non-negative, and denominated in ${plan.budget.currency}.`,
+      }],
+    };
+  }
+
+  const payloadCommitment = payload ? extractBudget(payload)?.amount : undefined;
+  if (
+    payloadCommitment !== undefined
+    && (!Number.isFinite(payloadCommitment) || payloadCommitment < 0)
+  ) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'The numeric commitment carried by payload must be finite and non-negative.',
+      }],
+    };
+  }
+  if (
+    binding === 'proposed'
+    && tool !== undefined
+    && EXPLICIT_COMMITMENT_TOOLS.has(tool)
+    && req.proposed_commitment === undefined
+  ) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: `proposed_commitment is required for ${tool}. For updates, send the positive incremental commitment; use amount 0 for a verified no-cost or non-increasing action.`,
+      }],
+    };
+  }
+  if (
+    req.proposed_commitment
+    && payloadCommitment !== undefined
+    && tool !== 'update_media_buy'
+    && req.proposed_commitment.amount !== payloadCommitment
+  ) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'proposed_commitment.amount must equal the numeric commitment carried by payload.',
+      }],
+    };
+  }
+  if (req.execution_commitment && (
+    !Number.isFinite(req.execution_commitment.amount)
+    || req.execution_commitment.amount < 0
+    || req.execution_commitment.currency !== plan.budget.currency
+  )) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: `execution_commitment must be finite, non-negative, and denominated in ${plan.budget.currency}.`,
+      }],
+    };
+  }
+  if (
+    binding === 'committed'
+    && originalIntentCheck?.tool === 'update_media_buy'
+    && req.execution_commitment === undefined
+  ) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'execution_commitment is required when executing an update_media_buy intent.',
+      }],
+    };
+  }
+  if (
+    binding === 'committed'
+    && originalIntentCheck?.tool !== 'update_media_buy'
+    && req.execution_commitment !== undefined
+  ) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'execution_commitment is valid only when executing an update_media_buy intent.',
+      }],
+    };
   }
 
   const findings: GovernanceFinding[] = [];
@@ -783,19 +1232,23 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   // Delegation authority check
   categoriesEvaluated.push('delegation_authority');
   let callerDelegation: GovernanceDelegation | undefined;
-  if (plan.delegations?.length) {
-    callerDelegation = plan.delegations.find(d => d.agentUrl === caller);
+  const authorityCaller = binding === 'committed' ? originalIntentCheck?.caller : authenticatedCaller;
+  if (authorityCaller !== plan.ownerAgentUrl) {
+    // Delegations authorize the buyer-side principal that proposed the action.
+    // A seller proving it is the token audience must not also need to appear in
+    // the buyer's delegation list.
+    callerDelegation = plan.delegations?.find(d => d.agentUrl === authorityCaller);
     if (!callerDelegation) {
       findings.push({
         categoryId: 'delegation_authority',
         severity: 'critical',
-        explanation: `Caller ${caller} is not in the plan's delegations list.`,
+        explanation: `Buyer-side caller ${authorityCaller ?? '(unresolved)'} is not in the plan's delegations list.`,
       });
     } else if (callerDelegation.expiresAt && new Date(callerDelegation.expiresAt) < new Date()) {
       findings.push({
         categoryId: 'delegation_authority',
         severity: 'critical',
-        explanation: `Delegation for ${caller} expired at ${callerDelegation.expiresAt}.`,
+        explanation: `Delegation for ${authorityCaller} expired at ${callerDelegation.expiresAt}.`,
       });
     }
   }
@@ -803,11 +1256,12 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   // Approved sellers check
   if (plan.approvedSellers !== undefined && plan.approvedSellers !== null) {
     categoriesEvaluated.push('seller_compliance');
-    if (!plan.approvedSellers.includes(caller)) {
+    const sellerIdentity = binding === 'committed' ? authenticatedCaller! : targetAudience;
+    if (!plan.approvedSellers.includes(sellerIdentity)) {
       findings.push({
         categoryId: 'seller_compliance',
         severity: 'critical',
-        explanation: `Caller ${caller} is not in the plan's approved sellers list.`,
+        explanation: `Target seller ${sellerIdentity} is not in the plan's approved sellers list.`,
       });
     }
   }
@@ -817,8 +1271,14 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   // contains the budget and countries. For committed binding, planned_delivery
   // validation handles these constraints instead.
   if (binding === 'proposed' && payload) {
-    const { budget: payloadBudget, budgetFieldPath, countries: payloadCountries, channels: payloadChannels, flight: payloadFlight } =
-      extractFromPayload(payload);
+    const extracted = extractFromPayload(payload);
+    const payloadBudget = req.proposed_commitment?.amount ?? payloadCommitment;
+    const budgetFieldPath = req.proposed_commitment
+      ? 'proposed_commitment.amount'
+      : tool === 'update_media_buy'
+        ? 'payload.incremental_commit_delta'
+        : `payload.${extracted.budgetFieldPath}`;
+    const { countries: payloadCountries, channels: payloadChannels, flight: payloadFlight } = extracted;
 
     // Delegation budget_limit enforcement
     if (callerDelegation?.budgetLimit && payloadBudget !== undefined) {
@@ -985,29 +1445,44 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     }
   }
 
-  // Custom policies declared on the plan with `must` enforcement become binding
-  // conditions on every proposed action. Buyers honor them by passing the
-  // governance_context to the seller and complying off-protocol; the governance
-  // agent re-evaluates compliance during delivery-phase checks.
+  // Custom policies declared on the plan with `must` enforcement become intent
+  // counterproposals. The buyer adjusts and re-checks; conditions never produce
+  // a governance_context or authorize downstream execution.
   if (binding === 'proposed' && plan.customPolicies?.length) {
     categoriesEvaluated.push('custom_policy');
     for (const cp of plan.customPolicies) {
       if (cp.enforcement === 'may') continue;
       const isBinding = cp.enforcement === 'must' || cp.enforcement === undefined;
-      if (isBinding) {
+      const acknowledgements = payload?.ext?.governance_policy_acknowledgements ?? [];
+      const acknowledged = cp.policy_id ? acknowledgements.includes(cp.policy_id) : false;
+      if (isBinding && !acknowledged) {
         conditions.push({
-          field: 'campaign',
+          field: 'payload.ext.governance_policy_acknowledgements',
+          ...(cp.policy_id ? { requiredValue: [...new Set([...acknowledgements, cp.policy_id])] } : {}),
           reason: cp.policy,
         });
       }
       findings.push({
         categoryId: 'custom_policy',
-        severity: isBinding ? 'warning' : 'info',
+        severity: isBinding && !acknowledged ? 'warning' : 'info',
         explanation: cp.policy,
         ...(cp.policy_id && { policyId: cp.policy_id }),
       });
     }
   }
+
+  const consultationAttempts = conditions.length > 0
+    ? (priorConsultationCheck?.consultationAttempts ?? 0) + 1
+    : 0;
+  if (binding === 'proposed' && conditions.length > 0 && consultationAttempts >= 3) {
+    findings.push({
+      categoryId: 'consultation_retry_limit',
+      severity: 'critical',
+      explanation: 'Intent conditions remained unresolved after 3 consultation attempts.',
+    });
+  }
+
+  let executionCommitment: number | undefined;
 
   // Committed binding: validate planned_delivery
   if (binding === 'committed' && plannedDelivery) {
@@ -1040,14 +1515,43 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     }
 
     const pdBudget = plannedDelivery.total_budget;
-    if (pdBudget !== undefined) {
+    executionCommitment = originalIntentCheck?.tool === 'update_media_buy'
+      ? req.execution_commitment?.amount
+      : pdBudget;
+    if (executionCommitment !== undefined) {
       categoriesEvaluated.push('budget_authority');
-      const remaining = plan.budget.total - plan.committedBudget;
-      if (pdBudget > remaining) {
+      const intentCurrency = originalIntentCheck?.authorizedCurrency;
+      if (
+        intentCurrency === undefined
+        || plannedDelivery.currency !== intentCurrency
+        || plannedDelivery.currency !== plan.budget.currency
+      ) {
         findings.push({
           categoryId: 'budget_authority',
           severity: 'critical',
-          explanation: `Planned delivery budget $${pdBudget} exceeds remaining $${remaining}.`,
+          explanation: intentCurrency === undefined
+            ? 'The prior intent did not authorize a commitment currency; a fresh intent approval is required.'
+            : `Planned delivery currency ${plannedDelivery.currency ?? '(missing)'} must match both intent currency ${intentCurrency} and current plan currency ${plan.budget.currency}.`,
+        });
+      }
+      if (
+        originalIntentCheck?.authorizedBudget === undefined
+        || executionCommitment > originalIntentCheck.authorizedBudget
+      ) {
+        findings.push({
+          categoryId: 'budget_authority',
+          severity: 'critical',
+          explanation: originalIntentCheck?.authorizedBudget === undefined
+            ? 'The prior intent did not authorize a numeric commitment; a fresh intent approval is required.'
+            : `Seller-computed execution commitment $${executionCommitment} exceeds intent-authorized commitment $${originalIntentCheck.authorizedBudget}; a fresh intent approval is required.`,
+        });
+      }
+      const remaining = plan.budget.total - plan.committedBudget;
+      if (executionCommitment > remaining) {
+        findings.push({
+          categoryId: 'budget_authority',
+          severity: 'critical',
+          explanation: `Planned delivery commitment $${executionCommitment} exceeds remaining $${remaining}.`,
         });
       }
     }
@@ -1143,6 +1647,11 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     status = 'approved';
   }
 
+  // Conditions are an intent counterproposal, never an execution verdict.
+  if (binding === 'committed' && status === 'conditions') {
+    status = 'denied';
+  }
+
   // Apply governance mode — but mode CANNOT neuter human_review_required.
   // Annex III / Art 22 obligations override advisory/audit downgrades.
   const mode = plan.mode;
@@ -1163,70 +1672,110 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   }
 
   const now = new Date();
-  const expiresAt = status === 'approved' || status === 'conditions'
-    ? new Date(now.getTime() + 60 * 60 * 1000).toISOString()
+  const expiresAt = status === 'approved'
+    ? new Date(now.getTime() + (binding === 'proposed'
+      ? 15 * 60 * 1000
+      : 30 * 24 * 60 * 60 * 1000)).toISOString()
     : undefined;
 
   const explanation = buildExplanation(status, findings, conditions, humanReviewRequired);
 
   const checkId = `chk_${randomUUID().slice(0, 8)}`;
+  let authorizedPayloadHash = originalIntentCheck?.authorizedPayloadHash;
+  if (binding === 'proposed' && tool && payload) {
+    try {
+      authorizedPayloadHash = computeGovernedPayloadHash(payload as Record<string, unknown>);
+    } catch {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: 'The governed task payload must be finite canonical JSON.',
+        }],
+      };
+    }
+  }
+  const authorizedTask = tool ?? originalIntentCheck?.tool;
+  const evaluatedBudget = binding === 'committed'
+    ? executionCommitment
+    : req.proposed_commitment?.amount
+      ?? payloadCommitment;
+  const authorizedBudget = typeof evaluatedBudget === 'number'
+    && Number.isFinite(evaluatedBudget)
+    && evaluatedBudget >= 0
+    ? evaluatedBudget
+    : undefined;
+  const authorizedCurrency = authorizedBudget === undefined
+    ? undefined
+    : binding === 'committed'
+      ? originalIntentCheck?.authorizedCurrency
+      : plan.budget.currency;
 
-  // Emit a compact JWS `governance_context` per the AdCP JWS profile on
-  // approved/conditions outcomes; the spec requires a fresh signature on
+  // Emit a compact JWS `governance_context` only on approved outcomes; the
+  // spec requires a fresh signature on
   // every check (new jti, iat, exp, plan_hash) — never re-emit a cached
   // string across plan revisions. Denied checks carry no token; downstream
   // sellers reject a request that has no signed authorization.
   //
-  // `aud` resolution: spec requires the seller URL from `adagents.json`,
-  // byte-exact. We accept `payload.target_seller` for buyers that name
-  // their seller explicitly. The sandbox default is the training agent's
-  // own sales tenant — every storyboard's downstream `create_media_buy`
-  // call targets that URL, so the binding is honest for the test loop.
-  // Production governance agents MUST require buyer-supplied target_seller
-  // and refuse to issue without one; copying this fallback is the bug the
-  // training reference exists to surface.
+  // `aud` resolution is explicit and role-neutral. target_agent is routing
+  // metadata on check_governance, while payload remains byte-for-byte equal
+  // to the downstream task arguments whose canonical hash is signed.
   //
   // Token phase follows the already-inferred request binding. Intent checks
   // never carry a media_buy_id, even if the proposed payload happens to name
   // an existing buy. Execution checks preserve the seller's lifecycle phase
   // and bind the seller-assigned media_buy_id when supplied.
   let effectiveContext: string | undefined;
-  // Human-review denials also need a context so the buyer can bind the
-  // off-protocol approval to the re-check that carries human_approval.
-  if (status === 'approved' || status === 'conditions' || humanReviewRequired) {
+  const governanceBindingId = priorCheck?.governanceBindingId ?? `gb_${randomUUID()}`;
+  if (status === 'approved') {
     const requestMediaBuyId = binding === 'committed'
       ? plannedDelivery?.media_buy_id
       : undefined;
 
-    const targetSeller = req.payload?.target_seller ?? `${getCanonicalBase()}/sales`;
     effectiveContext = await signGovernanceContext({
       issuer: `${getCanonicalBase()}/governance`,
-      audience: targetSeller,
-      planId,
+      audience: targetAudience,
+      bindingId: governanceBindingId,
       phase,
       caller,
       checkId,
       ...(phase !== 'intent' && requestMediaBuyId ? { mediaBuyId: requestMediaBuyId } : {}),
+      ...(authorizedBudget !== undefined && authorizedCurrency !== undefined ? {
+        authorizedCommitment: { amount: authorizedBudget, currency: authorizedCurrency },
+      } : {}),
+      ...(authorizedTask ? { authorizedTask } : {}),
+      ...(authorizedPayloadHash ? { authorizedPayloadHash } : {}),
       plan: plan.planAsSupplied,
       ...(plan.policyIds?.length
-        ? { policyDecisions: buildPolicyDecisions(plan.policyIds, status, conditions) }
+        ? { policyDecisions: buildPolicyDecisions(plan.policyIds, status, []) }
         : {}),
     });
-  } else {
-    effectiveContext = governanceContext;
   }
   const check: GovernanceCheckState = {
     checkId,
     planId,
+    planOwnerAgentUrl: plan.ownerAgentUrl,
+    ...(status === 'approved' ? { governanceBindingId } : {}),
+    ...(status === 'conditions' ? {
+      consultationContext: priorConsultationCheck?.consultationContext ?? `consult_${randomUUID()}`,
+      consultationAttempts,
+      consultationPrincipal: authenticatedPrincipal,
+      consultationAudience: targetAudience,
+    } : {}),
     governanceContext: effectiveContext,
     binding,
     status,
     caller,
-    tool,
+    tool: authorizedTask,
+    ...(authorizedPayloadHash ? { authorizedPayloadHash } : {}),
     purchaseType,
+    ...(status === 'approved' && authorizedBudget !== undefined ? { authorizedBudget } : {}),
+    ...(status === 'approved' && authorizedCurrency !== undefined
+      ? { authorizedCurrency }
+      : {}),
     phase,
+    targetAudience,
     findings,
-    conditions: conditions.length > 0 ? conditions : undefined,
+    conditions: status === 'conditions' && conditions.length > 0 ? conditions : undefined,
     explanation,
     mode,
     categoriesEvaluated: [...new Set(categoriesEvaluated)],
@@ -1249,45 +1798,321 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
   const outcome = req.outcome;
   const sellerResponse = req.seller_response;
   const delivery = req.delivery;
+  const deliverySpend = delivery?.spend;
 
+  if (!VALID_OUTCOME_TYPES.has(outcome)) {
+    return { errors: [{ code: 'VALIDATION_ERROR', message: 'outcome must be completed, failed, or delivery.' }] };
+  }
   if (req.purchase_type && !VALID_PURCHASE_TYPES.has(req.purchase_type)) {
     return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid purchase_type: ${req.purchase_type}. Must be one of: ${[...VALID_PURCHASE_TYPES].join(', ')}` }] };
   }
+  if (typeof req.idempotency_key !== 'string' || !IDEMPOTENCY_KEY_RE.test(req.idempotency_key)) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'idempotency_key is required and must match ^[A-Za-z0-9_.:-]{16,255}$.',
+      }],
+    };
+  }
+  if (outcome === 'completed' && !sellerResponse) {
+    return { errors: [{ code: 'VALIDATION_ERROR', message: 'seller_response is required for a completed outcome.' }] };
+  }
+  if (outcome === 'failed' && !req.error) {
+    return { errors: [{ code: 'VALIDATION_ERROR', message: 'error is required for a failed outcome.' }] };
+  }
+  if (outcome === 'delivery' && !delivery) {
+    return { errors: [{ code: 'VALIDATION_ERROR', message: 'delivery is required for a delivery outcome.' }] };
+  }
+  if (outcome === 'delivery' && ((checkId === undefined) !== (governanceContext === undefined))) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'A delivery outcome must include check_id and governance_context together, or omit both for the deprecated plan-owner snapshot path.',
+      }],
+    };
+  }
 
-  let plan = session.governancePlans.get(planId);
+  if (deliverySpend !== undefined && (
+    typeof deliverySpend !== 'number'
+    || !Number.isFinite(deliverySpend)
+    || deliverySpend < 0
+  )) {
+    return {
+      errors: [{ code: 'VALIDATION_ERROR', message: 'delivery.spend must be a finite, non-negative number' }],
+    };
+  }
+
+  let requestPayloadHash: string;
+  try {
+    requestPayloadHash = computeGovernanceOutcomeHash(req as unknown as Record<string, unknown>);
+  } catch {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'report_plan_outcome must contain only finite JSON numeric values.',
+      }],
+    };
+  }
+
+  // A successful idempotent response is immutable. Resolve it before looking
+  // up mutable plan/check state so plan retirement or revision cannot turn a
+  // previously accepted retry into a failure. Scope keys to the authenticated
+  // buyer-side reporter so one caller cannot probe another caller's cache.
+  if (ctx.authenticatedAgentUrl !== undefined) {
+    let replay = [...session.governanceOutcomes.values()].find(existing =>
+      existing.idempotencyKey === req.idempotency_key
+      && existing.reporterCaller === ctx.authenticatedAgentUrl);
+    if (!replay) {
+      const replaySession = await findSessionMatching(candidate =>
+        [...candidate.governanceOutcomes.values()].some(existing =>
+          existing.idempotencyKey === req.idempotency_key
+          && existing.reporterCaller === ctx.authenticatedAgentUrl));
+      replay = replaySession
+        ? [...replaySession.governanceOutcomes.values()].find(existing =>
+          existing.idempotencyKey === req.idempotency_key
+          && existing.reporterCaller === ctx.authenticatedAgentUrl)
+        : undefined;
+    }
+    if (replay) {
+      if (replay.requestPayloadHash !== requestPayloadHash) {
+        return {
+          errors: [{
+            code: 'IDEMPOTENCY_CONFLICT',
+            message: 'idempotency_key was already used with a different report_plan_outcome payload.',
+          }],
+        };
+      }
+      return { ...(replay.response ?? { outcome_id: replay.outcomeId }), replayed: true };
+    }
+  }
+
+  const checkPlanOwner = checkId
+    ? session.governanceChecks.get(checkId)?.planOwnerAgentUrl
+    : undefined;
+  let plan = checkPlanOwner
+    ? findGovernancePlanEntry(session, planId, checkPlanOwner)?.[1]
+    : ctx.authenticatedAgentUrl
+      ? findGovernancePlanEntry(session, planId, ctx.authenticatedAgentUrl)?.[1]
+      : undefined;
   if (!plan) {
     // Framework-dispatch request schemas omit `account`, so the session
     // key falls to open:default while sync_plans wrote under
     // open:<brand.domain>. Fall back to a cross-session scan.
-    const fallback = await findGovernancePlanAcrossSessions(planId);
+    const fallback = ctx.authenticatedAgentUrl
+      ? await findSessionMatching(candidate => {
+        if (!checkId) {
+          return outcome === 'delivery'
+            && findGovernancePlanEntry(candidate, planId, ctx.authenticatedAgentUrl)?.[1] !== undefined;
+        }
+        const check = candidate.governanceChecks.get(checkId);
+        if (!check || check.planId !== planId) return false;
+        const intent = check.binding === 'proposed'
+          ? check
+          : check.governanceBindingId
+            ? [...candidate.governanceChecks.values()].find(item =>
+              item.binding === 'proposed'
+              && item.governanceBindingId === check.governanceBindingId)
+            : undefined;
+        return intent?.caller === ctx.authenticatedAgentUrl;
+      })
+      : null;
     if (fallback) {
       session = fallback;
-      plan = fallback.governancePlans.get(planId);
+      const owner = checkId
+        ? fallback.governanceChecks.get(checkId)?.planOwnerAgentUrl
+        : ctx.authenticatedAgentUrl;
+      plan = owner ? findGovernancePlanEntry(fallback, planId, owner)?.[1] : undefined;
     }
   }
   if (!plan) {
     return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `Plan not found: ${planId}` }] };
   }
 
+  let authorizationCheck: GovernanceCheckState | undefined;
+  if (outcome === 'completed' || outcome === 'failed' || (outcome === 'delivery' && checkId)) {
+    authorizationCheck = checkId ? session.governanceChecks.get(checkId) : undefined;
+    if (
+      !authorizationCheck
+      || authorizationCheck.status !== 'approved'
+      || authorizationCheck.planId !== planId
+      || authorizationCheck.governanceContext !== governanceContext
+    ) {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: 'check_id, plan_id, and governance_context must identify the same approved governance decision.',
+        }],
+      };
+    }
+  }
+
+  if (outcome === 'delivery' && !checkId && ctx.authenticatedAgentUrl !== plan.ownerAgentUrl) {
+    return {
+      errors: [{ code: 'PERMISSION_DENIED', message: 'A legacy delivery snapshot may be reported only by the authenticated plan owner.' }],
+    };
+  }
+
+  const intentAuthorization = authorizationCheck?.binding === 'proposed'
+    ? authorizationCheck
+    : authorizationCheck?.governanceBindingId
+      ? [...session.governanceChecks.values()].reverse().find(check =>
+        check.status === 'approved'
+        && check.binding === 'proposed'
+        && check.governanceBindingId === authorizationCheck?.governanceBindingId)
+      : undefined;
+  if (authorizationCheck) {
+    if ((authorizationCheck.purchaseType ?? 'media_buy') !== purchaseType) {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: 'purchase_type must match the approved governance decision being settled.',
+        }],
+      };
+    }
+    if (!intentAuthorization || (intentAuthorization.purchaseType ?? 'media_buy') !== purchaseType) {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: 'The settlement does not match an approved intent for this purchase_type.',
+        }],
+      };
+    }
+    if (
+      ctx.authenticatedAgentUrl === undefined
+      || ctx.authenticatedAgentUrl !== intentAuthorization.caller
+    ) {
+      return {
+        errors: [{
+          code: 'PERMISSION_DENIED',
+          message: 'The authenticated outcome reporter must match the buyer-side caller authorized by the original intent.',
+        }],
+      };
+    }
+  }
+
+  if ((outcome === 'completed' || outcome === 'failed') && checkId) {
+    const settlementBindingId = authorizationCheck?.governanceBindingId;
+    const priorSettlement = [...session.governanceOutcomes.values()].find(existing =>
+      (settlementBindingId
+        ? existing.governanceBindingId === settlementBindingId
+        : existing.checkId === checkId)
+      && (existing.outcomeType === 'completed' || existing.outcomeType === 'failed'));
+    if (priorSettlement) {
+      return {
+        errors: [{
+          code: 'CONFLICT',
+          message: `Governed action for check ${checkId} was already settled by outcome ${priorSettlement.outcomeId}.`,
+        }],
+      };
+    }
+  }
+
+  const validationError = (message: string) => ({
+    errors: [{ code: 'VALIDATION_ERROR', message }],
+  });
+
+  const applyLedgerAddition = (amount: number): boolean => {
+    const currentByType = plan.committedByType?.[purchaseType] ?? 0;
+    const nextTotal = plan.committedBudget + amount;
+    const nextByType = currentByType + amount;
+    if (!Number.isFinite(nextTotal) || !Number.isFinite(nextByType)) return false;
+    plan.committedBudget = nextTotal;
+    plan.committedByType = plan.committedByType || {};
+    plan.committedByType[purchaseType] = nextByType;
+    return true;
+  };
+
   let committedBudget = 0;
+  let reportedCommittedBudget: number | undefined;
   const findings: GovernanceFinding[] = [];
 
   if (outcome === 'completed' && sellerResponse) {
-    // Prefer committed_budget when present (canonical); fall back to summing packages
-    if (sellerResponse.committed_budget !== undefined) {
-      committedBudget = sellerResponse.committed_budget;
-    } else if (sellerResponse.packages?.length) {
-      committedBudget = sellerResponse.packages.reduce((sum, pkg) => {
-        const b = pkg.budget;
-        if (typeof b === 'number') return sum + b;
-        if (b && typeof b === 'object') return sum + (b.total || 0);
-        return sum;
-      }, 0);
+    let packageBudgetTotal = 0;
+    if (sellerResponse.packages !== undefined) {
+      if (!Array.isArray(sellerResponse.packages)) {
+        return validationError('seller_response.packages must be an array');
+      }
+      for (const [index, pkg] of sellerResponse.packages.entries()) {
+        if (!pkg || typeof pkg !== 'object' || Array.isArray(pkg)) {
+          return validationError(`seller_response.packages[${index}] must be an object`);
+        }
+        const rawBudget = pkg.budget;
+        let packageBudget = 0;
+        if (typeof rawBudget === 'number') {
+          packageBudget = rawBudget;
+        } else if (
+          rawBudget
+          && typeof rawBudget === 'object'
+          && !Array.isArray(rawBudget)
+          && rawBudget.total !== undefined
+        ) {
+          packageBudget = rawBudget.total;
+        } else if (rawBudget !== undefined) {
+          return validationError(`seller_response.packages[${index}].budget must be a finite, non-negative number`);
+        }
+        if (!Number.isFinite(packageBudget) || packageBudget < 0) {
+          return validationError(`seller_response.packages[${index}].budget must be a finite, non-negative number`);
+        }
+        const nextPackageTotal = packageBudgetTotal + packageBudget;
+        if (!Number.isFinite(nextPackageTotal)) {
+          return validationError('seller_response package budgets exceed numeric ledger limits');
+        }
+        packageBudgetTotal = nextPackageTotal;
+      }
     }
 
-    plan.committedBudget += committedBudget;
-    plan.committedByType = plan.committedByType || {};
-    plan.committedByType[purchaseType] = (plan.committedByType[purchaseType] || 0) + committedBudget;
+    if (sellerResponse.committed_budget !== undefined) {
+      if (
+        typeof sellerResponse.committed_budget !== 'number'
+        || !Number.isFinite(sellerResponse.committed_budget)
+        || sellerResponse.committed_budget < 0
+      ) {
+        return validationError('seller_response.committed_budget must be a finite, non-negative number');
+      }
+      reportedCommittedBudget = sellerResponse.committed_budget;
+    } else {
+      reportedCommittedBudget = packageBudgetTotal;
+    }
+
+    const executionAuthorization = authorizationCheck?.governanceBindingId
+      ? [...session.governanceChecks.values()].reverse().find(check =>
+        check.status === 'approved'
+        && check.binding === 'committed'
+        && check.governanceBindingId === authorizationCheck?.governanceBindingId
+        && (check.purchaseType ?? 'media_buy') === purchaseType
+        && check.phase === 'purchase'
+        && check.authorizedBudget !== undefined)
+      : undefined;
+    const authoritativeBudget = executionAuthorization?.authorizedBudget
+      ?? authorizationCheck?.authorizedBudget;
+
+    if (authoritativeBudget === undefined) {
+      if ((reportedCommittedBudget ?? 0) > 0) {
+        return validationError('The approved governance check has no authoritative budget to reconcile this outcome.');
+      }
+      committedBudget = 0;
+    } else {
+      if ((reportedCommittedBudget ?? 0) > authoritativeBudget) {
+        return validationError(
+          `Reported committed budget ${reportedCommittedBudget} exceeds the governance-authorized budget ${authoritativeBudget}.`,
+        );
+      }
+      // The governance agent's own approved amount is ledger-authoritative.
+      // A lower caller report is retained for audit but cannot restore headroom.
+      committedBudget = authoritativeBudget;
+      if (reportedCommittedBudget !== authoritativeBudget) {
+        findings.push({
+          categoryId: 'outcome_budget_reconciliation',
+          severity: 'warning',
+          explanation: `Caller reported ${reportedCommittedBudget ?? 0}; ledger reserved governance-authorized amount ${authoritativeBudget}.`,
+          details: { expected: authoritativeBudget, actual: reportedCommittedBudget ?? 0 },
+        });
+      }
+    }
+
+    if (!applyLedgerAddition(committedBudget)) {
+      return validationError('Governance-authorized budget exceeds numeric ledger limits');
+    }
 
     // Check if committed now exceeds authorized
     if (plan.committedBudget > plan.budget.total) {
@@ -1299,35 +2124,18 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
     }
   }
 
-  if (outcome === 'delivery' && delivery) {
-    const spend = delivery.spend;
-    if (spend) {
-      committedBudget = spend;
-      plan.committedBudget += spend;
-      plan.committedByType = plan.committedByType || {};
-      plan.committedByType[purchaseType] = (plan.committedByType[purchaseType] || 0) + spend;
-    }
-  }
+  // A delivery report is evidence about fulfillment of an existing obligation,
+  // not a second commitment. Keep committedBudget at zero and never add spend
+  // already covered by the completed outcome.
 
   const outcomeId = `out_${randomUUID().slice(0, 8)}`;
-  const outcomeState: GovernanceOutcomeState = {
-    outcomeId,
-    planId,
-    checkId,
-    governanceContext,
-    purchaseType,
-    sellerReference: sellerResponse?.seller_reference?.slice(0, 255),
-    outcomeType: outcome,
-    committedBudget,
-    findings,
-    timestamp: new Date().toISOString(),
-  };
-
-  session.governanceOutcomes.set(outcomeId, outcomeState);
-
-  return {
+  const outcomeStateValue = findings.length > 0 ? 'findings' : 'accepted';
+  const response: Record<string, unknown> = {
     outcome_id: outcomeId,
-    status: findings.length > 0 ? 'findings' : 'accepted',
+    outcome_state: outcomeStateValue,
+    // Legacy training callers consumed `status`; retain it during 3.x while
+    // the modern schema uses outcome_state to avoid envelope collisions.
+    status: outcomeStateValue,
     ...(committedBudget > 0 && { committed_budget: committedBudget }),
     ...(findings.length > 0 && {
       findings: findings.map(f => ({
@@ -1343,6 +2151,32 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
       },
     }),
   };
+  const outcomeState: GovernanceOutcomeState = {
+    outcomeId,
+    planId,
+    planOwnerAgentUrl: plan.ownerAgentUrl,
+    checkId,
+    ...(authorizationCheck?.governanceBindingId
+      ? { governanceBindingId: authorizationCheck.governanceBindingId }
+      : {}),
+    governanceContext,
+    purchaseType,
+    sellerReference: sellerResponse?.seller_reference?.slice(0, 255),
+    outcomeType: outcome,
+    committedBudget,
+    ...(reportedCommittedBudget !== undefined ? { reportedCommittedBudget } : {}),
+    ...(req.idempotency_key ? { idempotencyKey: req.idempotency_key } : {}),
+    ...(ctx.authenticatedAgentUrl ? { reporterCaller: ctx.authenticatedAgentUrl } : {}),
+    requestPayloadHash,
+    response,
+    ...(outcome === 'delivery' && delivery ? { delivery: structuredClone(delivery) } : {}),
+    findings,
+    timestamp: new Date().toISOString(),
+  };
+
+  session.governanceOutcomes.set(outcomeId, outcomeState);
+
+  return response;
 }
 
 export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContext) {
@@ -1356,6 +2190,9 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
 
   if (!planIds.length && !portfolioPlanIds.length && !governanceContextsFilter?.length) {
     return { errors: [{ code: 'VALIDATION_ERROR', message: 'plan_ids, portfolio_plan_ids, or governance_contexts is required' }] };
+  }
+  if (!ctx.authenticatedAgentUrl) {
+    return { errors: [{ code: 'PERMISSION_DENIED', message: 'get_plan_audit_logs requires an authenticated buyer agent.' }] };
   }
 
   if (purchaseTypesFilter?.length) {
@@ -1387,18 +2224,33 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
   }> = [];
 
   for (const planId of planIds) {
-    const plan = session.governancePlans.get(planId);
-    if (!plan) continue;
+    let planSession = session;
+    let plan: GovernancePlanState | undefined = findGovernancePlanEntry(
+      planSession,
+      planId,
+      ctx.authenticatedAgentUrl,
+    )?.[1];
+    if (!plan) {
+      const ownedSession = await findSessionMatching(candidate =>
+        findGovernancePlanEntry(candidate, planId, ctx.authenticatedAgentUrl) !== undefined);
+      if (ownedSession) {
+        planSession = ownedSession;
+        plan = findGovernancePlanEntry(ownedSession, planId, ctx.authenticatedAgentUrl)?.[1];
+      }
+    }
+    if (!plan || plan.ownerAgentUrl !== ctx.authenticatedAgentUrl) continue;
 
     // Gather checks and outcomes for this plan, optionally filtered by governance context and/or purchase type
     const ctxFilter = governanceContextsFilter?.length ? new Set(governanceContextsFilter) : undefined;
     const ptFilter = purchaseTypesFilter?.length ? new Set(purchaseTypesFilter) : undefined;
-    const checks = Array.from(session.governanceChecks.values())
+    const checks = Array.from(planSession.governanceChecks.values())
       .filter(c => c.planId === planId
+        && c.planOwnerAgentUrl === plan.ownerAgentUrl
         && (!ctxFilter || (c.governanceContext && ctxFilter.has(c.governanceContext)))
         && (!ptFilter || ptFilter.has(c.purchaseType || 'media_buy')));
-    const outcomes = Array.from(session.governanceOutcomes.values())
+    const outcomes = Array.from(planSession.governanceOutcomes.values())
       .filter(o => o.planId === planId
+        && o.planOwnerAgentUrl === plan.ownerAgentUrl
         && (!ctxFilter || (o.governanceContext && ctxFilter.has(o.governanceContext)))
         && (!ptFilter || ptFilter.has(o.purchaseType || 'media_buy')));
 
@@ -1536,9 +2388,13 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
           timestamp: outcome.timestamp,
           outcome: outcome.outcomeType,
           committed_budget: outcome.committedBudget,
+          ...(outcome.reportedCommittedBudget !== undefined && {
+            reported_committed_budget: outcome.reportedCommittedBudget,
+          }),
           ...(outcome.purchaseType && { purchase_type: outcome.purchaseType }),
           ...(outcome.governanceContext && { governance_context: outcome.governanceContext }),
           ...(outcome.sellerReference && { seller_reference: outcome.sellerReference }),
+          ...(outcome.delivery && { delivery: outcome.delivery }),
         });
       }
 
@@ -1643,7 +2499,7 @@ function buildExplanation(
     return `Approved with ${findings.length} advisory finding(s).`;
   }
   if (status === 'conditions') {
-    return `Conditional approval — ${conditions.length} adjustment(s) required: ${conditions.map(c => c.reason).join('; ')}`;
+    return `Counterproposal — ${conditions.length} adjustment(s) required before re-check: ${conditions.map(c => c.reason).join('; ')}`;
   }
   if (status === 'denied') {
     const reasons = findings.filter(f => f.severity === 'critical').map(f => f.explanation);
@@ -1656,9 +2512,10 @@ function buildExplanation(
 function buildCheckResponse(check: GovernanceCheckState) {
   return {
     check_id: check.checkId,
+    check_type: check.binding === 'proposed' ? 'intent' : 'execution',
     status: check.status,
     verdict: check.status,
-    plan_id: check.planId,
+    ...(check.binding === 'proposed' && { plan_id: check.planId }),
     explanation: check.explanation,
     mode: check.mode,
     categories_evaluated: check.categoriesEvaluated,
@@ -1680,6 +2537,7 @@ function buildCheckResponse(check: GovernanceCheckState) {
         reason: c.reason,
       })),
     }),
+    ...(check.consultationContext && { consultation_context: check.consultationContext }),
     ...(check.expiresAt && { expires_at: check.expiresAt }),
     ...(check.phase === 'delivery' && check.status === 'approved' && {
       next_check: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),

@@ -4,7 +4,7 @@ description: "Non-normative consumer-side guidance for rendering verify_brand_cl
 "og:title": "AdCP — UI guidance for rejected claims"
 ---
 
-When [`verify_brand_claim`](/docs/brand-protocol/tasks/verify_brand_claim) returns `disputed` or `not_ours`, the rejection is authoritative — a brand has standing to refuse association unilaterally. But the *signed answer* travels alone; the consumer surface that renders it owes the humans on both sides a sane presentation.
+When [`verify_brand_claim`](/docs/brand-protocol/tasks/verify_brand_claim) returns `disputed` or `not_ours` and the [brand-authorization cross-check](/docs/building/by-layer/L1/security#designated-task-response-signing) returns verifier-local `trust: "trusted"`, the rejection is authoritative — a trusted brand has standing to refuse association unilaterally. A skipped or failed cross-check is untrusted and MUST NOT trigger relationship revocation. For a trusted rejection, the signed answer travels alone; the consumer surface that renders it owes the humans on both sides a sane presentation.
 
 This page is non-normative. It collects conventions for the consumer side — DSPs, portfolio explorers, creative-clearance UIs, brand-safety pipelines — and for the leaf publisher whose claim was rejected.
 

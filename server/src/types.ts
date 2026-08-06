@@ -93,10 +93,22 @@ export interface AgentCapabilities {
     can_list_properties: boolean;
   };
   creative_capabilities?: {
-    formats_supported: string[];
+    supported_formats: Array<{
+      capability_id?: string;
+      format: {
+        format_kind: string;
+        publisher_domain?: string;
+        format_option_id?: string;
+        params?: Record<string, unknown>;
+        [key: string]: unknown;
+      };
+      operations: Array<'build' | 'validate' | 'preview'>;
+      [key: string]: unknown;
+    }>;
     can_generate: boolean;
     can_validate: boolean;
     can_preview: boolean;
+    [key: string]: unknown;
   };
   signals_capabilities?: {
     audience_types: string[];

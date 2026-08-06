@@ -10,6 +10,27 @@
     },
     {
       "$ref": "/schemas/core/protocol-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "task_type": { "const": "get_products" },
+          "result": {
+            "properties": {
+              "status": { "const": "rejected" }
+            },
+            "required": ["status"]
+          }
+        },
+        "required": ["task_type", "result"]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "/schemas/media-buy/get-products-rejected.json"
+          }
+        }
+      }
     }
   ],
   "properties": {

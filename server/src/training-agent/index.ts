@@ -337,7 +337,11 @@ const TENANT_BRAND_AGENT_DESCRIPTION: Record<typeof TENANT_IDS[number], string> 
   brand: 'Training-agent brand tenant — brand rights and discovery',
 };
 
-export function createTrainingAgentRouter(options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): Router {
+export function createTrainingAgentRouter(options: {
+  storyboardCompat?: TrainingContext['storyboardCompat'];
+  /** Test harnesses may disable the production request ceiling for exhaustive local evaluation. */
+  disableRateLimit?: boolean;
+} = {}): Router {
   const router = Router();
 
   startSessionCleanup();
@@ -364,7 +368,7 @@ export function createTrainingAgentRouter(options: { storyboardCompat?: Training
   // auth + rate limiting. The tenant registry handles dispatch via
   // resolveByRequest(host, pathname).
   mountTenantRoutes(router, TENANT_IDS, {
-    rateLimit: mcpRateLimiter,
+    ...(!options.disableRateLimit && { rateLimit: mcpRateLimiter }),
     requireAuth: requireTokenDefault,
     storyboardCompat: options.storyboardCompat,
   });
@@ -577,8 +581,9 @@ export function createTrainingAgentRouter(options: { storyboardCompat?: Training
   // JWKS for webhook-signature verification by buyers (RFC 7517).
   // Public keys only — the emitter holds the private half.
   // JWKS aggregates every signing purpose the training agent publishes:
-  //   - shared webhook-delivery key (adcp_use: 'webhook-signing')
-  //   - per-tenant webhook-signing keys (adcp_use: 'webhook-signing')
+  //   - shared webhook-delivery key (adcp_use: 'webhook-signing', deprecated
+  //     but retained for the existing key's 3.x compatibility window)
+  //   - per-tenant signing keys (request-signing plus specialism purposes)
   //   - governance signing key (adcp_use: 'governance-signing')
   // Buyer verifiers filter by adcp_use + kid to find the right one.
   router.get('/.well-known/jwks.json', (_req: Request, res: Response) => {

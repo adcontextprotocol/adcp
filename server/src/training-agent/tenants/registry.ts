@@ -47,6 +47,9 @@ import { buildCreativeBuilderTenantConfig } from './creative-builder.js';
 import { buildBrandTenantConfig } from './brand.js';
 import { createLogger } from '../../logger.js';
 import type { TrainingContext } from '../types.js';
+import { getCanonicalBase } from '../canonical-base.js';
+
+export { getCanonicalBase } from '../canonical-base.js';
 
 const logger = createLogger('training-agent-tenants');
 
@@ -90,20 +93,7 @@ const noopJwksValidator = {
  * mount (`/api/training-agent/sales/mcp` — Express strips the prefix
  * before the router runs).
  */
-const CANONICAL_BASE: string = (() => {
-  const candidates = [process.env.BASE_URL, process.env.TRAINING_AGENT_URL];
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    const trimmed = candidate.trim().replace(/\/$/, '');
-    try {
-      const url = new URL(trimmed);
-      if (url.host) return trimmed;
-    } catch {
-      // not a valid absolute URL, fall through
-    }
-  }
-  return 'http://localhost';
-})();
+const CANONICAL_BASE = getCanonicalBase();
 
 const CANONICAL_HOST = new URL(CANONICAL_BASE).host;
 
@@ -117,10 +107,6 @@ function buildHostBaseUrl(): string {
  * `/governance` tenant root — the same URL value a buyer's brand.json points
  * at for this agent.
  */
-export function getCanonicalBase(): string {
-  return CANONICAL_BASE;
-}
-
 /**
  * Host the registry should match against. Always the canonical host
  * (matching what tenants register with) regardless of the actual Host
@@ -205,6 +191,10 @@ function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboar
     taskRegistry: pickTaskRegistry(),
     stateStore: pickStateStore(),
     mergeSeam: 'log-once',
+    // The repository's experimental 3.2 governance schemas intentionally lead
+    // the pinned SDK codegen. Keep MCP registration passthrough and validate in
+    // the source-aligned handlers until a compatible SDK bundle is published.
+    exposeToolSchemas: false,
     validation: { requests: 'off', responses: 'off' },
     // F11 — accept loopback push_notification_config.url only in explicit
     // test/development environments.

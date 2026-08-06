@@ -44,7 +44,7 @@ Campaign Governance formalizes patterns that exist in ad tech today as manual pr
 
 ## How it works
 
-The orchestrator pushes campaign plans via [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), then calls [`check_governance`](/docs/governance/campaign/tasks/check_governance) with `tool` + `payload` before every action it sends to a seller. The seller independently calls `check_governance` with `governance_context` + `planned_delivery` before executing. After receiving the seller's response, the orchestrator calls [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) to close the loop. The governance agent tracks budget from confirmed outcomes -- not just attempted actions.
+The orchestrator pushes campaign plans via [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), then calls [`check_governance`](/docs/governance/campaign/tasks/check_governance) before commitment-bearing operations. Every enforcing service verifies the approved `governance_context`; media-buy services that claim online execution checking additionally validate `planned_delivery` before commit. After the response, the orchestrator calls [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) to close the loop.
 
 ```mermaid
 flowchart LR
@@ -61,7 +61,7 @@ flowchart LR
         gov -->|"status / findings"| orchestrator
     end
 
-    orchestrator -->|"3. create_media_buy<br/>(plan_id)"| seller["Seller Agent"]
+    orchestrator -->|"3. create_media_buy<br/>(governance_context)"| seller["Seller Agent"]
     seller -->|"4. check_governance<br/>(governance_context + planned_delivery)"| gov
     seller -->|"confirmed + planned_delivery"| orchestrator
 ```
@@ -102,11 +102,11 @@ The **[policy registry](/docs/governance/policy-registry)** is a community-maint
 Every seller interaction follows a before/after pattern:
 
 1. **Before**: The orchestrator calls `check_governance` with `tool` and `payload` — the action it intends to send. The governance agent returns a status.
-2. **Execute**: If approved, the orchestrator sends the action to the seller, including `plan_id` and `governance_context`.
-3. **Check**: If the account has `governance_agents`, the seller calls `check_governance` with `governance_context` and `planned_delivery` — what it will actually deliver. The governance agent approves or denies.
+2. **Execute**: If approved, the orchestrator sends the action to the service with `governance_context` on the protocol envelope. The service does not need the plan ID.
+3. **Check**: A governance-enforcing service prepares what it will deliver without committing, calls `check_governance` with `governance_context` and `planned_delivery`, and commits only if the governance agent approves.
 4. **After**: The orchestrator calls `report_plan_outcome` with the seller's response. The governance agent updates its state and flags any discrepancies.
 
-This pattern applies to discovery (`get_products`), purchase (`create_media_buy`, `update_media_buy`), and periodic delivery reporting.
+This pattern applies to request schemas carrying an `x-governed-commitment` annotation, including media purchases, rights, paid signal activation, and creative services. Discovery and read-only tasks do not create commitments and are outside the gate.
 
 ## Planned delivery
 
@@ -121,7 +121,7 @@ When a seller confirms a media buy, it returns a `planned_delivery` object descr
 
 Buyer-side governance has a trust limitation: the orchestrator attests to its own compliance. An LLM agent could hallucinate governance approval, skip validation, or misrepresent what was validated. You can't trust the agent that's spending money to also be the one that checks whether spending that money is OK.
 
-Seller-side governance checks solve this. The buyer syncs governance agents (URLs with credentials) via [`sync_governance`](/docs/accounts/tasks/sync_governance). When the seller receives a `create_media_buy`, it calls the governance agent with what it plans to deliver. The governance agent checks against the plan and returns `approved`, `denied`, or `conditions`.
+Service-side governance checks solve this. The buyer syncs governance agents (URLs with credentials) via [`sync_governance`](/docs/accounts/tasks/sync_governance). When a service receives a governed commitment, it prepares what it plans to deliver and calls the governance agent before committing. The execution decision is binary: `approved` or `denied`.
 
 This also catches misinterpretation. If the brief says "Mexico" and the seller interprets it as "New Mexico," the governance agent sees the geo mismatch against the plan and denies the buy -- before it goes live.
 
@@ -133,18 +133,18 @@ The webhook covers the full media buy lifecycle:
 
 The governance agent maintains all state. The seller just posts what's happening -- no chaining, no conversation history, no state to track across servers.
 
-Governance checks are optional at every phase. Sellers can start with purchase-only (one POST per buy) and add modification and delivery checks incrementally. See the [specification](/docs/governance/campaign/specification#governance-checks) for the full protocol.
+Seller-side lifecycle checks are optional unless the task advertises `online_execution_check`; that mode makes the purchase/modification pre-commit check mandatory for the claimed task. Delivery monitoring remains separately opt-in. Sellers can otherwise start with signed-context verification and add online phases incrementally. See the [specification](/docs/governance/campaign/specification#governance-checks) for the full protocol.
 
 Sellers that implement governance checks gain a competitive advantage: they can prove to buyers that purchases were independently verified before execution. This reduces dispute risk, automates compliance verification, and signals trust to buyers with strict oversight requirements.
 
 ## Adoption path
 
-Governance agents support incremental adoption through their internal mode configuration. The protocol surface is the same regardless of mode — callers always receive `approved`, `denied`, or `conditions` and act on the status. How the governance agent arrives at that decision is its own concern.
+Governance agents support incremental adoption through their internal mode configuration. The protocol surface is the same regardless of mode. Intent checks may return `approved`, `denied`, or `conditions`; execution checks return `approved` or `denied`. How the governance agent arrives at that decision is its own concern.
 
 In practice, organizations configure their governance agent to progress through three stages:
 
 1. **Audit** — Log everything, approve everything. The governance agent evaluates fully but always returns `approved` with findings attached. The organization reviews findings to assess false positive rates and calibrate policies.
-2. **Advisory** — Return real statuses (`denied`, `conditions`) but the organization treats denials as non-blocking. Humans review findings post-hoc.
+2. **Advisory** — Approve with prominent findings and recommended corrections. The decision is still unambiguously `approved`; humans review findings post-hoc.
 3. **Enforce** — Block on violations. The default for production governance.
 
 This works the same way for a single brand buying direct and for a holding company with 35 brands and multiple agency partners.

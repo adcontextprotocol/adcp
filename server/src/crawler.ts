@@ -6,7 +6,7 @@ import type { DiscoveredAgent } from "./db/federated-index-db.js";
 import { AdAgentsManager, type AdAgentsValidationResult } from "./adagents-manager.js";
 import { BrandManager } from "./brand-manager.js";
 import { BrandDatabase } from "./db/brand-db.js";
-import { PublisherDatabase, canonicalizeAgentUrl, type AdagentsManifest, type AdagentsAuthorizedAgent } from "./db/publisher-db.js";
+import { PublisherDatabase, adagentsChangedFields, canonicalizeAgentUrl, type AdagentsManifest, type AdagentsAuthorizedAgent } from "./db/publisher-db.js";
 import { canonicalizePublisherDomain } from "./services/publisher-domain.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { CapabilityDiscovery } from "./capabilities.js";
@@ -40,33 +40,29 @@ function unknownClassificationProbeDue(
 
 /**
  * Compare a freshly-fetched adagents.json against the previously-cached
- * body for the same domain. Returns true when the contributory fields
- * differ — `authorized_agents`, `properties`, and `collections` — so manager fan-out
- * is gated on actual change rather than firing on every routine
- * 60-minute crawl. Top-level keys outside that subset (`$schema`,
- * `last_updated`, comments) are intentionally ignored. Arrays compare
- * positionally; nested object keys are sorted so two semantically
- * identical manifests with different key insertion order match.
+ * body for the same domain. Every semantic top-level section participates,
+ * including formats and placements. Transport/version metadata (`$schema`
+ * and `last_updated`) is ignored. Arrays compare positionally; nested object
+ * keys are sorted so two semantically identical manifests with different key
+ * insertion order match.
  */
 export function manifestContentChanged(
   previous: AdagentsManifest | null,
   next: AdagentsManifest,
 ): boolean {
-  if (!previous) return true;
-  const subset = (m: AdagentsManifest) => ({
-    authorized_agents: Array.isArray(m.authorized_agents) ? m.authorized_agents : [],
-    properties: Array.isArray(m.properties) ? m.properties : [],
-    collections: Array.isArray(m.collections) ? m.collections : [],
-  });
-  return stableStringify(subset(previous)) !== stableStringify(subset(next));
+  return manifestChangedFields(previous, next).length > 0;
 }
 
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
-  if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']';
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
-  return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStringify(obj[k])).join(',') + '}';
+/**
+ * Return the semantic top-level adagents.json fields that changed. Missing
+ * catalog arrays and empty arrays are equivalent, matching schema defaults.
+ * On first discovery, every present semantic section is returned.
+ */
+export function manifestChangedFields(
+  previous: AdagentsManifest | null,
+  next: AdagentsManifest,
+): string[] {
+  return adagentsChangedFields(previous, next);
 }
 
 type ManifestProperty = {
@@ -1189,17 +1185,21 @@ export class CrawlerService {
   private async cacheAdagentsManifest(
     domain: string,
     manifest: AdagentsManifest,
-    meta?: { statusCode?: number; responseBytes?: number; resolvedUrl?: string; discoveryMethod?: string; managerDomain?: string },
+    meta?: {
+      statusCode?: number;
+      responseBytes?: number;
+      resolvedUrl?: string;
+      discoveryMethod?: string;
+      managerDomain?: string;
+      eventActor?: string;
+      eventSource?: string;
+    },
   ): Promise<void> {
     try {
-      // Read the existing cached body before the upsert so we can
-      // compute whether content actually changed. Used to gate
-      // manager → publishers fan-out: re-validation only fans out when
-      // the manager's authorized_agents or properties shape moved, not
-      // on every routine 60-minute crawl.
-      const previous = await this.publisherDb.getCachedAdagentsJson(domain);
-
-      await this.publisherDb.upsertAdagentsCache({
+      // The database writer locks this publisher and atomically compares,
+      // caches, and emits the revision event. The returned fields gate the
+      // separately durable manager fan-out queue.
+      const result = await this.publisherDb.upsertAdagentsCache({
         domain,
         manifest,
         statusCode: meta?.statusCode,
@@ -1211,32 +1211,17 @@ export class CrawlerService {
         collectionEventActor: meta?.discoveryMethod === 'ads_txt_managerdomain'
           ? 'pipeline:manager_revalidation'
           : 'pipeline:catalog_crawl',
+        publisherEventActor: meta?.eventActor,
+        publisherEventSource: meta?.eventSource,
       });
 
-      // Manager fan-out: when the just-written manifest belongs to a
-      // domain that other publishers delegate to via ads.txt
-      // MANAGERDOMAIN, queue those publishers for re-validation. The
-      // worker (processManagerRevalidationQueue) drains the queue at a
-      // bounded rate so a Raptive-scale rotation doesn't saturate
-      // crawler concurrency. Intentionally outside upsertAdagentsCache's
-      // transaction: if the enqueue fails the cache write has already
-      // committed, but the next routine 60-min crawl re-detects drift
-      // and re-enqueues, so silent fan-out loss self-heals.
-      if (manifestContentChanged(previous, manifest)) {
-        try {
-          const enqueued = await this.publisherDb.enqueueManagerRevalidation(domain);
-          if (enqueued > 0) {
-            log.info(
-              { managerDomain: domain, enqueued },
-              'Manager adagents.json changed; enqueued delegating publishers for re-validation',
-            );
-          }
-        } catch (err) {
-          log.warn(
-            { domain, err: err instanceof Error ? err.message : err },
-            'Failed to enqueue manager revalidation fan-out',
-          );
-        }
+      // The writer atomically enqueues MANAGERDOMAIN dependants with the
+      // cache revision and change event; this log is observability only.
+      if (result.managerRevalidationsEnqueued > 0) {
+        log.info(
+          { managerDomain: domain, enqueued: result.managerRevalidationsEnqueued },
+          'Manager adagents.json changed; enqueued delegating publishers for re-validation',
+        );
       }
     } catch (err) {
       log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Publisher cache write failed');
@@ -1391,6 +1376,8 @@ export class CrawlerService {
         resolvedUrl: validation.resolved_url,
         discoveryMethod: validation.discovery_method,
         managerDomain: validation.manager_domain,
+        eventActor: actor,
+        eventSource: 'publisher_revalidation',
       },
     );
     await this.federatedIndex.markPublisherHasValidAdagents(domain);
@@ -1418,23 +1405,6 @@ export class CrawlerService {
       }
     }
     await this.reconcileLegacyAdagentsAgents(domain, manifest);
-
-    if (this.eventsDb) {
-      await this.eventsDb.writeEvent({
-        event_type: 'publisher.adagents_changed',
-        entity_type: 'publisher',
-        entity_id: domain,
-        payload: {
-          publisher_domain: domain,
-          agent_count: manifest.authorized_agents?.length ?? 0,
-          property_count: manifest.properties?.length ?? 0,
-          collection_count: manifest.collections?.length ?? 0,
-          discovery_method: validation.discovery_method,
-          manager_domain: validation.manager_domain,
-        },
-        actor,
-      });
-    }
 
     return { valid: true, affectedAgentUrls };
   }
@@ -1961,6 +1931,8 @@ export class CrawlerService {
           resolvedUrl: validation.resolved_url,
           discoveryMethod: validation.discovery_method,
           managerDomain: validation.manager_domain,
+          eventActor: 'api:crawl-request',
+          eventSource: 'crawl_request',
         },
       );
 
@@ -1997,24 +1969,6 @@ export class CrawlerService {
         }
       }
       await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
-
-      // Produce per-domain events
-      if (this.eventsDb) {
-        await this.eventsDb.writeEvent({
-          event_type: 'publisher.adagents_changed',
-          entity_type: 'publisher',
-          entity_id: domain,
-          payload: {
-            publisher_domain: domain,
-            agent_count: validation.raw_data.authorized_agents.length,
-            property_count: validation.raw_data.properties?.length ?? 0,
-            collection_count: validation.raw_data.collections?.length ?? 0,
-            discovery_method: validation.discovery_method,
-            manager_domain: validation.manager_domain,
-          },
-          actor: 'api:crawl-request',
-        });
-      }
 
       // Scan brand.json for this domain
       try {
@@ -2321,6 +2275,8 @@ export class CrawlerService {
         resolvedUrl: validation.resolved_url,
         discoveryMethod: validation.discovery_method,
         managerDomain: validation.manager_domain,
+        eventActor: 'pipeline:catalog_crawl',
+        eventSource: 'catalog_crawl',
       },
     );
 
@@ -2349,23 +2305,6 @@ export class CrawlerService {
     }
     await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
 
-    if (this.eventsDb) {
-      await this.eventsDb.writeEvent({
-        event_type: 'publisher.adagents_discovered',
-        entity_type: 'publisher',
-        entity_id: domain,
-        payload: {
-          publisher_domain: domain,
-          agent_count: validation.raw_data.authorized_agents.length,
-          property_count: validation.raw_data.properties?.length ?? 0,
-          collection_count: validation.raw_data.collections?.length ?? 0,
-          source: 'catalog_crawl',
-          discovery_method: validation.discovery_method,
-          manager_domain: validation.manager_domain,
-        },
-        actor: 'pipeline:catalog_crawl',
-      });
-    }
   }
 
   private async processWithConcurrency<T, R>(

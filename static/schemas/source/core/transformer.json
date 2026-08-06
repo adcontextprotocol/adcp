@@ -63,14 +63,32 @@
     },
     "input_format_ids": {
       "type": "array",
-      "description": "Formats this transformer accepts as input. Empty or omitted means it builds from a brief / raw assets (pure generation) rather than transforming an existing creative.",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.2.** Legacy named formats this transformer accepts as input. Use input_formats with canonical declarations.",
       "items": { "$ref": "/schemas/core/format-id.json" }
     },
     "output_format_ids": {
       "type": "array",
-      "description": "Formats this transformer can produce. A build_creative request's target format(s) MUST be a subset of these.",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.2.** Legacy named formats this transformer can produce. Use output_capability_ids.",
       "items": { "$ref": "/schemas/core/format-id.json" },
       "minItems": 1
+    },
+    "input_formats": {
+      "type": "array",
+      "description": "Canonical format declarations this transformer accepts as input. Omitted means it builds from a brief or raw assets rather than transforming an existing creative. Compatibility uses canonical constraint satisfaction, not identifier equality.",
+      "items": { "$ref": "/schemas/core/product-format-declaration.json" },
+      "minItems": 1
+    },
+    "output_capability_ids": {
+      "type": "array",
+      "description": "Canonical output capabilities this transformer can produce. Every value MUST match this agent's get_adcp_capabilities `creative.supported_formats[].capability_id`. A build_creative request's target_capability_id(s) MUST be a subset of this array.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-zA-Z0-9_-]+$"
+      },
+      "minItems": 1,
+      "uniqueItems": true
     },
     "params": {
       "type": "array",
@@ -101,7 +119,18 @@
       "additionalProperties": true
     }
   },
-  "required": ["transformer_id", "name", "output_format_ids"],
+  "required": ["transformer_id", "name"],
+  "anyOf": [
+    {
+      "title": "Canonical transformer outputs",
+      "required": ["output_capability_ids"]
+    },
+    {
+      "title": "Named-format transformer outputs",
+      "deprecated": true,
+      "required": ["output_format_ids"]
+    }
+  ],
   "additionalProperties": true,
   "examples": [
     {
@@ -116,8 +145,7 @@
           "rights_id": "rgt_sara_voice_2026"
         }
       ],
-      "input_format_ids": [{ "agent_url": "https://creative.audiostack.example", "id": "script" }],
-      "output_format_ids": [{ "agent_url": "https://creative.audiostack.example", "id": "audio_vo" }],
+      "output_capability_ids": ["audio_vo"],
       "params": [
         { "field": "voice", "type": "string", "value_source": "enumerable", "default": "sara", "description": "Narration voice, incl. custom voices." },
         { "field": "mastering_preset", "type": "string", "value_source": "inline", "allowed_values": ["broadcast", "podcast", "music"], "default": "broadcast" },

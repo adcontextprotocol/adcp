@@ -219,6 +219,25 @@ describe('Validation and safety', () => {
     assert.deepStrictEqual(result, { products: [{ product_id: 'final' }] });
   });
 
+  it('should preserve an AdCP business rejection inside a completed A2A task', () => {
+    const result = extractAdcpResponseFromA2A({
+      status: { state: 'completed' },
+      artifacts: [{
+        parts: [{
+          kind: 'data',
+          data: {
+            status: 'rejected',
+            reason: 'The requested budget is below the minimum for this inventory.'
+          }
+        }]
+      }]
+    });
+    assert.deepStrictEqual(result, {
+      status: 'rejected',
+      reason: 'The requested budget is below the minimum for this inventory.'
+    });
+  });
+
   it('should use first DataPart for interim states', () => {
     const result = extractAdcpResponseFromA2A({
       status: {

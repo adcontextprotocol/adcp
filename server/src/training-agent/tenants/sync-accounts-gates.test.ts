@@ -117,10 +117,10 @@ describe('v6 /sales/mcp sync_accounts billing gates', () => {
     vi.stubEnv('PUBLIC_TEST_AGENT_TOKEN', 'test-token');
     server = await bootServer();
     baseUrl = server.baseUrl;
-  });
+  }, 30_000);
 
   afterAll(async () => {
-    await server.close();
+    await server?.close();
     vi.unstubAllEnvs();
   });
 
@@ -225,7 +225,7 @@ describe('v6 /sales/mcp sync_accounts billing gates', () => {
     expect(acct?.billing).toBe('agent');
   });
 
-  it('rejects active notification registration on /sales/mcp without proof of control', async () => {
+  it('rejects active notification registration on /sales/mcp when proof of control fails', async () => {
     const env = await callSyncAccounts(baseUrl, 'sales', 'demo-billing-agent-billable-v1', {
       accounts: [{
         brand: { domain: 'webhook-proof.example' },
@@ -234,7 +234,7 @@ describe('v6 /sales/mcp sync_accounts billing gates', () => {
         sandbox: true,
         notification_configs: [{
           subscriber_id: 'buyer-primary',
-          url: 'https://webhook.example.com/adcp',
+          url: 'http://127.0.0.1:1/adcp',
           event_types: ['creative.status_changed'],
           active: true,
         }],
@@ -247,7 +247,8 @@ describe('v6 /sales/mcp sync_accounts billing gates', () => {
     expect(acct?.status).toBe('rejected');
     expect(acct?.errors?.[0]).toMatchObject({
       code: 'VALIDATION_ERROR',
-      field: 'notification_configs[0].active',
+      field: 'notification_configs[0].url',
+      message: 'webhook endpoint proof of control failed',
     });
   });
 

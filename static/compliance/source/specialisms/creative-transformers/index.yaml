@@ -124,7 +124,7 @@ phases:
         narrative: |
           The buyer sends a brief ("warm female Spanish-language voiceover") and
           their account. The agent returns matching transformers — each with a
-          transformer_id to select in build_creative, output_format_ids, and the
+          transformer_id to select in build_creative, output_capability_ids, and the
           config params it exposes.
         task: list_transformers
         schema_ref: "creative/list-transformers-request.json"
@@ -134,7 +134,7 @@ phases:
         stateful: false
         expected: |
           Return transformers[] — each with transformer_id, name,
-          output_format_ids, and params[] descriptors (field, type,
+          output_capability_ids, and params[] descriptors (field, type,
           value_source). Curate to the brief rather than dumping the full set.
         sample_request:
           brief: "warm female Spanish-language voiceover"
@@ -157,7 +157,7 @@ phases:
             path: "transformers[0].transformer_id"
             description: "Each transformer carries a stable transformer_id"
           - check: field_present
-            path: "transformers[0].output_format_ids"
+            path: "transformers[0].output_capability_ids"
             description: "Each transformer declares the formats it produces"
           - check: field_present
             path: "context"
@@ -227,7 +227,7 @@ phases:
         narrative: |
           The buyer passes transformer_id, a config (voice / mastering_preset /
           speaking_rate), and a target format that is a subset of the
-          transformer's output_format_ids. The agent returns a single creative
+          transformer's output_capability_ids. The agent returns a single creative
           manifest.
         task: build_creative
         schema_ref: "media-buy/build-creative-request.json"
@@ -236,8 +236,8 @@ phases:
         comply_scenario: creative_flow
         stateful: false
         expected: |
-          Return a BuildCreativeSuccess: creative_manifest with a format_id
-          matching the requested target, plus an optional build_variant_id so
+          Return a BuildCreativeSuccess: creative_manifest with a format_kind
+          matching the requested capability, plus an optional build_variant_id so
           the build is itself refinable.
         sample_request:
           message: "Read this script in a warm tone."
@@ -246,9 +246,7 @@ phases:
             voice: "isaac"
             mastering_preset: "podcast"
             speaking_rate: 1.1
-          target_format_id:
-            agent_url: "https://your-agent.example.com"
-            id: "audio_vo"
+          target_capability_id: "audio_vo"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -260,8 +258,8 @@ phases:
           - check: response_schema
             description: "Response matches build-creative-response.json schema"
           - check: field_present
-            path: "creative_manifest.format_id"
-            description: "Single-format success — manifest carries the target format_id"
+            path: "creative_manifest.format_kind"
+            description: "Single-format success — manifest carries the canonical format_kind"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
@@ -305,9 +303,7 @@ phases:
               - "isaac"
               - "sara"
           keep_mode: "keep_one"
-          target_format_id:
-            agent_url: "https://your-agent.example.com"
-            id: "audio_vo"
+          target_capability_id: "audio_vo"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -423,9 +419,7 @@ phases:
           transformer_id: "audiostack_voiceover"
           config:
             speaking_rate: 9.9
-          target_format_id:
-            agent_url: "https://your-agent.example.com"
-            id: "audio_vo"
+          target_capability_id: "audio_vo"
           account:
             brand:
               domain: "acmeoutdoor.example"

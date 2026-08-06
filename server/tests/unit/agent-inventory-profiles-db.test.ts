@@ -57,6 +57,22 @@ describe('AgentInventoryProfilesDatabase', () => {
       expect(params[8]).toBe(0);     // property_count
       expect(params[9]).toBe(0);     // publisher_count
       expect(params[10]).toBe(false); // has_tmp
+      expect(params[12]).toBeNull(); // format_kinds derived from capability snapshot
+      const sql = mockedQuery.mock.calls[0][0] as string;
+      expect(sql).toContain("creative_capabilities_json->'supported_formats'");
+      expect(sql).toContain("capability->'format'->>'format_kind'");
+    });
+
+    it('stores explicitly supplied canonical format kinds', async () => {
+      mockedQuery.mockResolvedValueOnce(EMPTY_RESULT);
+
+      await db.upsertProfile({
+        agent_url: 'https://creative.example.com',
+        format_kinds: ['image', 'audio_hosted'],
+      });
+
+      const params = mockedQuery.mock.calls[0][1] as unknown[];
+      expect(params[12]).toEqual(['image', 'audio_hosted']);
     });
   });
 
@@ -73,6 +89,7 @@ describe('AgentInventoryProfilesDatabase', () => {
         tags: [],
         delivery_types: ['direct'],
         format_ids: [],
+        format_kinds: ['image'],
         property_count: 5,
         publisher_count: 2,
         has_tmp: true,
@@ -178,6 +195,7 @@ describe('AgentInventoryProfilesDatabase', () => {
         tags: [],
         delivery_types: [],
         format_ids: [],
+        format_kinds: ['image'],
         property_count: 10 - i,
         publisher_count: 1,
         has_tmp: true,
