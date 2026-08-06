@@ -1,0 +1,48 @@
+---
+title: Out-of-Home (Static)
+description: "Canonical contracts for printed OOH — bulletins, posters, transit, and street furniture."
+"og:title": "AdCP — Static Out-of-Home"
+---
+
+Static OOH artwork uses `custom`, like [print](/docs/creative/channels/print): production-ready files with bleed, substrate, color-space, and effective-DPI constraints that exceed the web-image canonical. Dimensions are the unit's physical live-copy area expressed in pixels at the printer's effective resolution (18–25 ppi for roadside, 80–100 ppi for transit and street furniture, per OAAA print production specifications).
+
+```json
+{
+  "format_option_id": "bulletin_14x48",
+  "format_kind": "custom",
+  "format_shape": "ooh_bulletin",
+  "format_schema": {
+    "uri": "https://creative.adcontextprotocol.org/formats/ooh-bulletin.schema.json",
+    "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  },
+  "canonical_formats_only": true,
+  "params": {
+    "width": 11520,
+    "height": 3360,
+    "file_formats": ["pdf", "tiff"],
+    "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true }]
+  }
+}
+```
+
+```json
+{
+  "format_kind": "custom",
+  "format_option_ref": { "scope": "product", "format_option_id": "bulletin_14x48" },
+  "assets": {
+    "image_main": {
+      "asset_type": "image",
+      "url": "https://cdn.acmeoutdoor.example/trail-pro-bulletin.pdf",
+      "width": 11520,
+      "height": 3360,
+      "alt_text": "Acme Outdoor Trail Pro boot on mountain ridge"
+    }
+  }
+}
+```
+
+The product or publisher declaration should document what pixels cannot express: physical dimensions (a standard bulletin is 14'×48'), bleed, substrate, CMYK profile, production overage counts, and material deadlines (printed materials are customarily due five business days before the scheduled posting date; painted bulletins thirty days). Panel location, posting period, and audience measurement remain media-buy facts.
+
+Static units have no play event and cannot fire trackers. Flights run in posting periods against published industry calendars, with posting customarily completed within five business days of the scheduled date and display terms running from the average posting date. Delivery is a modeled audience estimate from the measurement currency declared on the product/package (`measurement_terms.billing_measurement` — Geopath, Route, MOVE, COMMB); reconciliation uses `ooh_metrics` in delivery reporting, whose posting records (per-unit posting dates and photo evidence, per OAAA proof-of-performance conventions) are the channel's settlement artifact.
+
+See [Print](/docs/creative/channels/print), [Canonical formats](/docs/creative/canonical-formats), [Creative manifests](/docs/creative/creative-manifests), and [Media products](/docs/media-buy/product-discovery/media-products).

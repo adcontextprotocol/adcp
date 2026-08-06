@@ -281,6 +281,109 @@
       },
       "additionalProperties": true
     },
+    "ooh_metrics": {
+      "type": "object",
+      "description": "Classic (static) OOH metrics — printed bulletins, posters, transit, and street furniture (only included for ooh campaigns). Static units have no play event: the delivery number is a period-level modeled audience estimate whose provenance is declared in estimation_basis, and the settlement artifact is the posting record — it proves the posting period, not an airing.",
+      "properties": {
+        "panels": {
+          "type": "array",
+          "description": "Panels (faces) covered by this row",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Panel/face identifier within the id_type namespace"
+              },
+              "id_type": {
+                "type": "string",
+                "enum": ["geopath", "route_frame", "plant_face", "other"],
+                "description": "Identifier scheme: geopath (US Geopath Spot ID), route_frame (UK Route frame ID), plant_face (the operator's own panel number — the identifier both sides of a direct contract know), other (markets without a listed scheme). New schemes ship as enum additions in minors."
+              },
+              "name": {
+                "type": "string",
+                "description": "Human-readable location description (e.g., 'I-95 N of Exit 12, right-hand read')"
+              }
+            },
+            "required": ["id", "id_type"],
+            "additionalProperties": true
+          }
+        },
+        "posting_period_start": {
+          "type": "string",
+          "format": "date",
+          "description": "First in-charge date of the posting period this row covers"
+        },
+        "posting_period_end": {
+          "type": "string",
+          "format": "date",
+          "description": "Last date of the posting period this row covers"
+        },
+        "share_of_voice_contracted": {
+          "type": "number",
+          "description": "Contracted share of voice where the buy is rotation-based (e.g., rotary bulletin programs) rather than an exclusive face (0.0 to 1.0)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "illuminated_hours": {
+          "type": "number",
+          "description": "Contracted daily illumination hours for the panels in this row. Determines the measured day-part basis (12/18/24-hour impressions) and the illumination-credit remedy when unmet.",
+          "minimum": 0,
+          "maximum": 24
+        },
+        "estimated_impressions": {
+          "type": "integer",
+          "description": "Modeled audience impressions for the panels and period in this row. This is the channel's delivery number — there is no event-counted alternative. Provenance MUST be declared in estimation_basis; the billing vendor is declared in measurement_terms.billing_measurement.",
+          "minimum": 0
+        },
+        "estimation_basis": {
+          "type": "string",
+          "enum": ["geopath_dec", "route_frame_data", "seller_modeled"],
+          "description": "Provenance of estimated_impressions: geopath_dec (Geopath-measured — circulation with visibility adjustment), route_frame_data (UK Route frame estimates), seller_modeled (the seller's own model — the honest fallback for markets without a measurement currency). New measurement bodies ship as enum additions in minors."
+        },
+        "postings": {
+          "type": "array",
+          "description": "Posting records — the seller-attested settlement artifact proving each panel was posted for the period. Industry convention (OAAA model contracts): photo evidence per unit within five days of posting for bulletins and after each rotary rotation; one representative photo per creative variation for poster showings.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "panel_id": {
+                "type": "string",
+                "description": "Panel reference matching panels[].id"
+              },
+              "posted_at": {
+                "type": "string",
+                "format": "date",
+                "description": "Date the creative was physically posted. Display terms customarily run from the average posting date across units."
+              },
+              "verified_at": {
+                "type": "string",
+                "format": "date",
+                "description": "Date posting evidence (photograph) was captured"
+              },
+              "evidence_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Completion photograph or evidence package for this posting event"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": ["posted", "rotated", "repaired", "removed"],
+                "default": "posted",
+                "description": "What the record attests: initial posting, rotary rotation to a new face, repair/reposting after damage, or removal at flight end"
+              }
+            },
+            "required": ["panel_id", "posted_at"],
+            "additionalProperties": true
+          }
+        },
+        "calculation_notes": {
+          "type": "string",
+          "description": "Row-specific methodology context that doesn't fit the structured fields (e.g., a partial-period proration or a market-specific estimate adjustment). Same role as dooh_metrics.calculation_notes — canonical methodology declarations belong on the measurement vendor's discoverable surfaces, not here."
+        }
+      },
+      "additionalProperties": true
+    },
     "viewability": {
       "type": "object",
       "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability. Includes `viewed_seconds` — average in-view duration — since duration is governed by the same viewability threshold (`standard`) and shares the same `measurable_impressions` denominator. Sellers SHOULD include `standard` whenever measured viewability values are reported because MRC and GroupM rows are not interchangeable.",
