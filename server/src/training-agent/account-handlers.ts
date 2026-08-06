@@ -408,7 +408,10 @@ async function normalizeNotificationConfigs(
     const normalizedConfig: NotificationConfigState = {
       subscriberId: config.subscriber_id,
       url: normalizeAccountWebhookUrl(config.url),
-      eventTypes: [...config.event_types].sort(),
+      // Preserve caller order in the persisted/echoed representation. Proof
+      // tuple construction canonicalizes independently, so ordering does not
+      // weaken substitution resistance.
+      eventTypes: [...config.event_types],
       authentication: config.authentication?.schemes?.length
         ? {
             schemes: [...config.authentication.schemes],

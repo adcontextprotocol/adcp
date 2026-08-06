@@ -667,7 +667,7 @@ describe('sync_accounts', () => {
         notification_configs: [{
           subscriber_id: 'buyer-primary',
           url: 'https://buyer.example.com/webhooks/creative',
-          event_types: ['creative.status_changed'],
+          event_types: ['creative.status_changed', 'creative.purged'],
           active: false,
         }],
       }],
@@ -679,7 +679,7 @@ describe('sync_accounts', () => {
     expect(acct.notification_configs).toEqual([{
       subscriber_id: 'buyer-primary',
       url: 'https://buyer.example.com/webhooks/creative',
-      event_types: ['creative.status_changed'],
+      event_types: ['creative.status_changed', 'creative.purged'],
       active: false,
     }]);
   });
