@@ -35,7 +35,7 @@ creatives[]
 └── assignments.assigned_packages[]   assignment approval + insights
 ```
 
-When `media_buy.insight_notifications.repair_tasks` includes `list_creatives`, the two assignment projections MUST agree on `media_buy_id`, `package_id`, `creative_id`, approval state, rejection reason, scoped approval outcomes, and evaluated insight state. The seller includes `media_buy_id` and `approval_status` on every creative assignment row, even when insights are unknown. Inline-only sellers use `get_media_buys` without implementing this reverse projection.
+When `media_buy.relationship_notifications.projection_tasks` includes `list_creatives`, the two assignment projections MUST agree on `media_buy_id`, `package_id`, `creative_id`, approval state, rejection reason, scoped approval outcomes, and evaluated insight state. The seller includes `media_buy_id` and `approval_status` on every creative assignment row, even when insights are unknown. Inline-only sellers use `get_media_buys` without implementing this reverse projection.
 
 Do not put assignment-specific fatigue or approval on the creative root. One creative can be fatigued or rejected on one publisher while remaining effective and approved elsewhere. When a multi-publisher assignment has mixed eligibility, the scalar is `partially_approved` and complete `approval_scopes[]` carries a disjoint partition: one row per normalized scope, using either publisher-wide or placement-specific rows for a publisher, never both. Uniform assignments omit the array.
 
@@ -129,7 +129,7 @@ The outer cursor limits creatives. For bounded portfolio discovery, request `ass
 
 ## Webhooks
 
-Sellers advertise this contract with the paired `media_buy.supported_insight_types` and `media_buy.insight_notifications` capabilities. Every seller declares `insights.changed` and `get_media_buys`. A creative-library seller additionally pairs `creative.assignment_changed` with `list_creatives`. The capability also declares whether activity logs are available:
+Sellers advertise this contract with `media_buy.relationship_notifications`. Every insight-capable seller also declares `supported_insight_types` and includes `insights.changed`; a seller without an insight catalog may declare `creative.assignment_changed` alone when it can detect assignment or approval changes, including when it is inline-only. A creative-library seller may independently advertise the bounded `list_creatives` reverse projection. The capability also declares whether activity logs are available:
 
 ```json
 {
@@ -145,13 +145,13 @@ Sellers advertise this contract with the paired `media_buy.supported_insight_typ
 
 `insights.changed` fires after the seller observes a semantic assertion-set or evaluation-coverage change. It does not fire because only `insights_as_of` advanced. `creative.assignment_changed` fires when an assignment is added, removed, or its assignment-specific approval state/reason changes. Removing an assignment with stored insights also fires `insights.changed` with `change_kind: "assignment_removed"`; the two fires have no ordering guarantee.
 
-Subscriptions are prospective and do not replay already-current insights. After a subscriber is activated or reactivated, the buyer performs an unfiltered baseline read before relying on invalidations. A material in-place creative-content update retires the prior assignment evaluation: the seller fires `insights.changed` with `change_kind: "invalidated"` and omits the stale snapshot as unknown until reevaluated, or atomically publishes a strictly newer evaluation and fires `updated`.
+Subscriptions are prospective and do not replay already-current insights. After activation or reactivation, establish a complete baseline through `get_media_buys`: either enumerate known `media_buy_ids`, or request all seven `status_filter` values and follow pagination to exhaustion. Do not use `insight_types` for this baseline. A material in-place creative-content update retires the prior assignment evaluation: the seller fires `insights.changed` with `change_kind: "invalidated"` and omits the stale snapshot as unknown until reevaluated, or atomically publishes a strictly newer evaluation and fires `updated`.
 
 Both payloads are small signed invalidations containing account, media-buy, package, and—when applicable—creative identity. Buyers:
 
 1. verify the registered webhook signature;
 2. dedupe by `idempotency_key`;
-3. reread `get_media_buys` or `list_creatives` without an insight filter; and
+3. reread `get_media_buys` without an insight filter (the bounded `list_creatives` projection may assist discovery but cannot prove complete state); and
 4. reconcile from the snapshot, never from the webhook payload.
 
 Retries reuse the same `idempotency_key`. Poll-based upstream integrations fire when they detect a change; capability support does not promise native-platform detection latency. Relevant delivery attempts appear on the declared repair reads when `supports_webhook_activity` is true and activity was requested.

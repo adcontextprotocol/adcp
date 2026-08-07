@@ -204,7 +204,7 @@
     },
     "notification_configs": {
       "type": "array",
-      "description": "Account-level webhook subscriptions for creative lifecycle/assignment changes, insights.changed, account status, and wholesale feed changes. Buyers manage entries via sync_accounts and verify persisted state on list_accounts. Insight and assignment payloads are invalidations repaired through get_media_buys or list_creatives. Distinct from per-resource push_notification_config. Entries are keyed by account-scoped subscriber_id; credentials are write-only.",
+      "description": "Account-level webhook subscriptions for creative lifecycle/assignment changes, insights.changed, account status, and wholesale feed changes. Buyers manage entries via sync_accounts and verify persisted state on list_accounts. Insight and assignment payloads are invalidations repaired completely through get_media_buys; list_creatives may provide a bounded reverse projection. Distinct from per-resource push_notification_config. Entries are keyed by account-scoped subscriber_id; credentials are write-only.",
       "items": {
         "$ref": "/schemas/core/notification-config.json"
       },

@@ -179,7 +179,7 @@ describe('relationship-scoped insights', () => {
   it('advertises supported types without a separate feature or type version', () => {
     const fullCapabilities = {
       status: 'completed',
-      supported_protocols: ['media_buy'],
+      supported_protocols: ['media_buy', 'creative'],
       adcp: {
         major_versions: [3],
         idempotency: { supported: false }
@@ -197,11 +197,12 @@ describe('relationship-scoped insights', () => {
           'pacing_risk',
           'budget_constrained'
         ],
-        insight_notifications: {
+        relationship_notifications: {
           supported: true,
           registration_task: 'sync_accounts',
           event_types: ['insights.changed', 'creative.assignment_changed'],
-          repair_tasks: ['get_media_buys', 'list_creatives'],
+          repair_tasks: ['get_media_buys'],
+          projection_tasks: ['list_creatives'],
           supports_webhook_activity: true
         }
       },
@@ -216,7 +217,7 @@ describe('relationship-scoped insights', () => {
 
     const unsigned = {
       status: 'completed',
-      supported_protocols: ['media_buy'],
+      supported_protocols: ['media_buy', 'creative'],
       adcp: {
         major_versions: [3],
         idempotency: { supported: false }
@@ -224,11 +225,12 @@ describe('relationship-scoped insights', () => {
       account: { supported_billing: ['operator'] },
       media_buy: {
         supported_insight_types: ['creative_fatigue'],
-        insight_notifications: {
+        relationship_notifications: {
           supported: true,
           registration_task: 'sync_accounts',
           event_types: ['insights.changed', 'creative.assignment_changed'],
-          repair_tasks: ['get_media_buys', 'list_creatives']
+          repair_tasks: ['get_media_buys'],
+          projection_tasks: ['list_creatives']
         }
       }
     };
@@ -237,6 +239,15 @@ describe('relationship-scoped insights', () => {
       ...unsigned,
       webhook_signing: { supported: true }
     }), false);
+    assertValid(validateCapabilities, {
+      ...unsigned,
+      webhook_signing: {
+        supported: true,
+        profile: 'adcp/webhook-signing/v1',
+        algorithms: ['ed25519'],
+        legacy_hmac_fallback: false
+      }
+    });
 
     const inlineOnlyCapabilities = {
       status: 'completed',
@@ -245,7 +256,7 @@ describe('relationship-scoped insights', () => {
       account: { supported_billing: ['operator'] },
       media_buy: {
         supported_insight_types: ['budget_constrained'],
-        insight_notifications: {
+        relationship_notifications: {
           supported: true,
           registration_task: 'sync_accounts',
           event_types: ['insights.changed'],
@@ -264,9 +275,63 @@ describe('relationship-scoped insights', () => {
       ...inlineOnlyCapabilities,
       media_buy: {
         ...inlineOnlyCapabilities.media_buy,
-        insight_notifications: {
-          ...inlineOnlyCapabilities.media_buy.insight_notifications,
+        relationship_notifications: {
+          ...inlineOnlyCapabilities.media_buy.relationship_notifications,
+          event_types: ['creative.assignment_changed']
+        }
+      }
+    }), false);
+    assertValid(validateCapabilities, {
+      ...inlineOnlyCapabilities,
+      media_buy: {
+        ...inlineOnlyCapabilities.media_buy,
+        relationship_notifications: {
+          ...inlineOnlyCapabilities.media_buy.relationship_notifications,
           event_types: ['insights.changed', 'creative.assignment_changed']
+        }
+      }
+    });
+    assert.equal(validateCapabilities({
+      ...inlineOnlyCapabilities,
+      media_buy: {
+        ...inlineOnlyCapabilities.media_buy,
+        relationship_notifications: {
+          ...inlineOnlyCapabilities.media_buy.relationship_notifications,
+          projection_tasks: ['list_creatives']
+        }
+      }
+    }), false);
+    assertValid(validateCapabilities, {
+      ...inlineOnlyCapabilities,
+      supported_protocols: ['media_buy', 'creative'],
+      media_buy: {
+        ...inlineOnlyCapabilities.media_buy,
+        relationship_notifications: {
+          ...inlineOnlyCapabilities.media_buy.relationship_notifications,
+          repair_tasks: ['get_media_buys'],
+          projection_tasks: ['list_creatives']
+        }
+      }
+    });
+
+    const assignmentOnlyCapabilities = {
+      ...inlineOnlyCapabilities,
+      media_buy: {
+        relationship_notifications: {
+          supported: true,
+          registration_task: 'sync_accounts',
+          event_types: ['creative.assignment_changed'],
+          repair_tasks: ['get_media_buys']
+        }
+      }
+    };
+    assertValid(validateCapabilities, assignmentOnlyCapabilities);
+    assert.equal(validateCapabilities({
+      ...assignmentOnlyCapabilities,
+      media_buy: {
+        relationship_notifications: {
+          ...assignmentOnlyCapabilities.media_buy.relationship_notifications,
+          event_types: ['insights.changed']
         }
       }
     }), false);
@@ -286,13 +351,18 @@ describe('relationship-scoped insights', () => {
     });
   });
 
-  it('supports a bounded sparse creative assignment projection', () => {
+  it('supports a bounded creative assignment projection with the released item envelope', () => {
     assertValid(validateListCreatives, {
       status: 'completed',
       query_summary: { total_matching: 1, returned: 1 },
       pagination: { has_more: false },
       creatives: [{
         creative_id: 'creative_1',
+        name: 'Creative one',
+        format_kind: 'image',
+        status: 'approved',
+        created_date: '2026-08-01T00:00:00Z',
+        updated_date: '2026-08-04T12:00:00Z',
         assignments: {
           assignment_count: 300,
           returned_assignment_count: 1,
@@ -387,15 +457,41 @@ describe('relationship-scoped insights', () => {
       assert.equal(actual, vector.valid, vector.name + ': ' + ajvErrors(validateInsightBearing));
     }
 
-    const firesByEvent = {
-      subscriber_activated: [],
-      assertion_set_changed: ['insights.changed'],
-      insights_as_of_only_changed: [],
-      creative_content_materially_changed: ['insights.changed'],
-      assignment_removed: ['insights.changed', 'creative.assignment_changed']
-    };
+    function firesForVector(vector) {
+      const firesByEvent = {
+        subscriber_activated: [],
+        assertion_set_changed: ['insights.changed'],
+        insights_as_of_only_changed: [],
+        creative_content_materially_changed: ['insights.changed']
+      };
+      if (vector.event !== 'assignment_removed') {
+        return [...firesByEvent[vector.event]];
+      }
+      const fires = [];
+      if (vector.retires_stored_insight_keys &&
+          vector.advertised_event_types.includes('insights.changed')) {
+        fires.push('insights.changed');
+      }
+      if (vector.advertised_event_types.includes('creative.assignment_changed')) {
+        fires.push('creative.assignment_changed');
+      }
+      return fires;
+    }
     for (const vector of vectors.webhook_lifecycle_cases) {
-      assert.deepEqual(firesByEvent[vector.event], vector.expected_fires, vector.name);
+      assert.deepEqual(firesForVector(vector), vector.expected_fires, vector.name);
+      if (vector.baseline_request) {
+        assertValid(validateGetRequest, vector.baseline_request);
+        assert.deepEqual(vector.baseline_request.status_filter, [
+          'pending_creatives',
+          'pending_start',
+          'active',
+          'paused',
+          'completed',
+          'rejected',
+          'canceled'
+        ], vector.name + ': baseline covers every status');
+        assert.equal(vector.must_exhaust_pagination, true, vector.name + ': baseline exhausts pagination');
+      }
     }
 
     const requiredInsightByWarning = {
@@ -406,6 +502,25 @@ describe('relationship-scoped insights', () => {
       const requiredType = requiredInsightByWarning[vector.warning_code];
       const actual = !requiredType || vector.supported_insight_types.includes(requiredType);
       assert.equal(actual, vector.valid, vector.name);
+    }
+
+    function projectionCountsValid(vector) {
+      const assignment = vector.assignments;
+      const returned = assignment.returned_assignment_count;
+      if (returned !== assignment.assigned_packages.length) return false;
+      if (returned > assignment.assignment_count) return false;
+      const isMatching = vector.projection === 'matching';
+      const hasMatchingCount = Object.hasOwn(assignment, 'matching_assignment_count');
+      if (isMatching !== hasMatchingCount) return false;
+      const qualifying = isMatching
+        ? assignment.matching_assignment_count
+        : assignment.assignment_count;
+      if (qualifying < returned || qualifying > assignment.assignment_count) return false;
+      return assignment.assignments_truncated === (qualifying > returned);
+    }
+
+    for (const vector of vectors.assignment_projection_count_cases) {
+      assert.equal(projectionCountsValid(vector), vector.valid, vector.name);
     }
 
     for (const vector of vectors.delivery_identity_cases) {
