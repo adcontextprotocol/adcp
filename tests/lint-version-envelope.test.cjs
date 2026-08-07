@@ -31,6 +31,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const YAML = require('yaml');
 
 const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'schemas', 'source');
 const ENVELOPE_REF = '/schemas/core/version-envelope.json';
@@ -82,4 +83,37 @@ test('every schema that allOfs the version envelope has permissive additionalPro
       'not bypass parent strict-mode. Violations:\n' +
       violations.map((v) => `  ${v.file} — ${v.reason}`).join('\n'),
   );
+});
+
+test('release-precision version grammar stays aligned across inlined negotiation surfaces', () => {
+  const readJson = (relativePath) => JSON.parse(
+    fs.readFileSync(path.join(SOURCE_DIR, relativePath), 'utf8'),
+  );
+  const canonicalPattern = readJson('core/version-envelope.json').properties.adcp_version.pattern;
+
+  const inlinedPatterns = [
+    readJson('trusted-match/context-match-request.json').properties.adcp_version.pattern,
+    readJson('trusted-match/identity-match-request.json').properties.adcp_version.pattern,
+    readJson('error-details/version-unsupported.json').properties.supported_versions.items.pattern,
+    readJson('protocol/get-adcp-capabilities-response.json').properties.adcp.properties.supported_versions.items.pattern,
+  ];
+  assert.deepEqual(inlinedPatterns, Array(inlinedPatterns.length).fill(canonicalPattern));
+
+  const storyboardPath = path.resolve(
+    __dirname,
+    '..',
+    'static',
+    'compliance',
+    'source',
+    'universal',
+    'version-negotiation.yaml',
+  );
+  const storyboard = YAML.parse(fs.readFileSync(storyboardPath, 'utf8'));
+  const checks = storyboard.phases.flatMap((phase) =>
+    (phase.steps || []).flatMap((step) => step.validations || []),
+  );
+  const versionPatternCheck = checks.find(
+    (check) => check.check === 'envelope_field_pattern' && check.path === 'adcp_version',
+  );
+  assert.equal(versionPatternCheck?.pattern, canonicalPattern);
 });

@@ -1,6 +1,7 @@
 {
   "name": "Multiple Signature-Input labels — verifier MUST process exactly one",
   "spec_reference": "#adcp-rfc-9421-profile (One signature per request)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

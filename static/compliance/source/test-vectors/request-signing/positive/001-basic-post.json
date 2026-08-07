@@ -1,6 +1,7 @@
 {
   "name": "Basic POST, Ed25519, no content-digest coverage",
   "spec_reference": "#verifier-checklist-requests (all steps pass)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

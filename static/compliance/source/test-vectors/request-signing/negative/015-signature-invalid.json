@@ -1,6 +1,7 @@
 {
   "name": "Signature header is well-formed but cryptographically invalid over the signature base",
   "spec_reference": "#verifier-checklist-requests step 10",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

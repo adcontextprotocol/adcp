@@ -1,6 +1,7 @@
 {
   "name": "Unsigned tasks/cancel JSON-RPC POST; method is in protocol_methods_required_for",
   "spec_reference": "#signed-requests-transport-layer (protocol_methods_* namespace; pre-check 0)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",
