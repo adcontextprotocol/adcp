@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.11
+
+### Patch Changes
+
+- ee58aac: Clarify that 3.1 SDKs preserve pixel-ratio registry metadata without interpreting it, while typed validation, precedence, and error semantics begin in 3.2.
+- 1f7f4c2: Fix the creative-fate compliance storyboard to build creative assets from the required slots declared by the seller's selected product format. Clarify that runners must resolve context substitutions recursively before sending requests.
+
 ## 3.1.10
 
 ### Patch Changes
