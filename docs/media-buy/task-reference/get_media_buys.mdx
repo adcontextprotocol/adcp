@@ -18,8 +18,8 @@ Any media buy returned by `get_media_buys` MUST be reachable by every task in it
 
 Sellers that need to partition inventory away from a caller MUST do so at the **account boundary**, not within-account. See [Account Ownership vs. Creation Surface](/docs/media-buy/specification#account-ownership-vs-creation-surface).
 
-**Request Schema**: [`/schemas/latest/media-buy/get-media-buys-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buys-request.json)
-**Response Schema**: [`/schemas/latest/media-buy/get-media-buys-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buys-response.json)
+**Request Schema**: [`/schemas/v3/media-buy/get-media-buys-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buys-request.json)
+**Response Schema**: [`/schemas/v3/media-buy/get-media-buys-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buys-response.json)
 
 ## Request Parameters
 
@@ -187,7 +187,7 @@ When `include_webhook_activity: true`, each returned media buy MAY carry a `webh
 
 The record shape, request-field names, scoping, retention floor, three-state presence, and cardinality rules are uniform across AdCP resources that adopt this surface. See [Webhook activity log pattern](/docs/protocol/snapshot-and-log#webhook-activity-log-pattern) on the snapshot/log contract page for the cross-resource normative section — the rules below restate it for the media-buy call site and add the media-buy-specific capability gate.
 
-Per-buy events (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) use the buy's `push_notification_config`; their `subscriber_id` may be absent in a single-subscriber setup. Insight and assignment invalidations use account `notification_configs[]`; their `subscriber_id` is required. Support for the latter is declared by `media_buy.insight_notifications`, including whether this activity log is available.
+Per-buy events (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) use the buy's `push_notification_config`; their `subscriber_id` may be absent in a single-subscriber setup. Insight and assignment invalidations use account `notification_configs[]`; their `subscriber_id` is required. Support for the latter is declared by `media_buy.relationship_notifications`, including whether this activity log is available.
 
 | Field | Description |
 |-------|-------------|
@@ -225,13 +225,13 @@ Per-buy events (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) use t
 
 | State | Meaning |
 |-------|---------|
-| Field **omitted** | Seller does not surface an applicable activity log for this buy. Neither a declared per-buy webhook surface nor `media_buy.insight_notifications.supports_webhook_activity` provides one, no relevant subscriber is registered, or the seller does not persist fire history. |
+| Field **omitted** | Seller does not surface an applicable activity log for this buy. Neither a declared per-buy webhook surface nor `media_buy.relationship_notifications.supports_webhook_activity` provides one, no relevant subscriber is registered, or the seller does not persist fire history. |
 | Empty array `[]` | Seller persists fire history but has fired nothing recent for this principal. |
 | Non-empty array | Actual fire records, most-recent first. |
 
-For per-buy events, sellers whose declared `propagation_surfaces` excludes `webhook` omit those records. That does not suppress account-level insight/assignment records when `media_buy.insight_notifications.supports_webhook_activity` is true.
+For per-buy events, sellers whose declared `propagation_surfaces` excludes `webhook` omit those records. That does not suppress account-level insight/assignment records when `media_buy.relationship_notifications.supports_webhook_activity` is true.
 
-**Diagnosing an unexpected omission.** For a per-buy event, check the buy's `push_notification_config` and `media_buy.propagation_surfaces`. For an insight or assignment event, check the account's `notification_configs[]` and `media_buy.insight_notifications.supports_webhook_activity`. If the relevant registration and capability both check out, omission is a seller-side persistence gap.
+**Diagnosing an unexpected omission.** For a per-buy event, check the buy's `push_notification_config` and `media_buy.propagation_surfaces`. For an insight or assignment event, check the account's `notification_configs[]` and `media_buy.relationship_notifications.supports_webhook_activity`. If the relevant registration and capability both check out, omission is a seller-side persistence gap.
 
 **Privacy:**
 

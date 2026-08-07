@@ -7,7 +7,7 @@ Adopt a joined implementation of [#4248](https://github.com/adcontextprotocol/ad
 - structured `warnings[]` on successful create/update operations;
 - compact current `insights[]` on `get_media_buys`, with an optional bounded `list_creatives` reverse projection rather than a new task;
 - scoped assignment approval mirrored when both read directions are declared; and
-- mandatory `insights.changed` invalidations, with optional paired assignment invalidations for creative-library sellers.
+- mandatory `insights.changed` invalidations, with independently optional assignment invalidations and creative-library reverse projections.
 
 This proposal does not introduce insight IDs, history, lifecycle resources, methodology sub-versions, or a generic apply-recommendation dispatcher.
 
@@ -76,7 +76,7 @@ list_creatives
 creatives[].assignments.assigned_packages[].insights[]
 ```
 
-The last two paths are optional reverse projections of the same package–creative relationship. Every insight-capable seller exposes the authoritative relationship through `get_media_buys`. A creative-library seller advertises `list_creatives` in `insight_notifications.repair_tasks`; only then must it include `media_buy_id` and `approval_status` on every reverse assignment row and keep both projections coherent.
+The last path is an optional reverse projection of the same package–creative relationship. Every seller exposes the authoritative relationship through `get_media_buys`. A creative-library seller advertises `list_creatives` in `relationship_notifications.projection_tasks`; only then must it include `media_buy_id` and `approval_status` on every reverse assignment row and keep both projections coherent. This bounded projection is useful for discovery but is not a repair task.
 
 Uniform eligibility uses the existing scalar approval. Mixed publisher/placement outcomes use `approval_status: partially_approved` plus a complete, disjoint `approval_scopes[]` partition on both projections. Each normalized `(publisher_domain, optional placement_id)` occurs once. For a publisher, the array uses either one publisher-wide outcome or placement-specific outcomes, never both; there is no implicit override precedence. This avoids both falsely flattening and contradicting “approved on publisher A, rejected on publisher B.”
 
@@ -99,7 +99,7 @@ Snapshots change stored state only when strictly newer. Equal-timestamp conflict
 - Values use OR logic and combine with other filters using AND.
 - `list_creatives.assignment_projection: matching` returns only nested assignments matching `filters.insight_types`; `assignment_limit` bounds rows per creative at 200.
 - `returned_assignment_count`, `matching_assignment_count`, and `assignments_truncated` make nested completeness explicit. Truncated results are discovery-only; `get_media_buys` is the complete repair path.
-- Sparse creative responses require only `creative_id`; other requested fields are optional by construction.
+- Creative field projections preserve the released required envelope: `creative_id`, `name`, `status`, `created_date`, `updated_date`, and exactly one format identity. `fields` limits only optional payload.
 
 ## Webhook contract
 
@@ -107,9 +107,9 @@ All insight-capable sellers accept account-level `notification_configs[]` subscr
 
 - `insights.changed`.
 
-Creative-library sellers additionally accept `creative.assignment_changed` and pair it with the `list_creatives` repair task. Inline-only sellers declare only `insights.changed` and `get_media_buys`. These are signed invalidations. Declaring the capability requires `webhook_signing.supported: true`. Payloads identify the relationship but never carry authoritative insight or approval state.
+Every insight-capable seller declares `insights.changed` in `relationship_notifications`; a seller without an insight catalog may declare `creative.assignment_changed` alone when it can detect assignment or approval changes, including when it is inline-only. A creative-library seller may independently declare the bounded `list_creatives` reverse projection. `get_media_buys` is always the complete repair task. These are signed invalidations. Declaring the capability requires a usable `webhook_signing` block with `supported: true`, `profile`, `algorithms`, and `legacy_hmac_fallback`. Payloads identify the relationship but never carry authoritative insight or approval state.
 
-Subscriptions are prospective and do not replay current conditions. After activation/reactivation the buyer performs an unfiltered baseline read. `insights.changed` fires for assertion-set changes, evaluation-coverage changes, and deletion of an assignment that retires stored keys. Advancing only `insights_as_of` does not fire. A material in-place creative update invalidates prior assignment evaluations, emits `change_kind: invalidated`, and omits stale snapshots until reevaluation (or atomically publishes a strictly newer evaluation and fires `updated`). `creative.assignment_changed` fires for assignment addition/removal and assignment approval/reason/scoped-outcome changes. Retried delivery reuses `idempotency_key`; re-emission of the same logical change retains `notification_id`.
+Subscriptions are prospective and do not replay current conditions. After activation/reactivation the buyer establishes a complete baseline through `get_media_buys`, either by enumerating known IDs or by requesting all seven media-buy statuses and following pagination to exhaustion; it does not use `insight_types`. `insights.changed` fires for assertion-set changes, evaluation-coverage changes, and deletion of an assignment that retires stored keys. Advancing only `insights_as_of` does not fire. A material in-place creative update invalidates prior assignment evaluations, emits `change_kind: invalidated`, and omits stale snapshots until reevaluation (or atomically publishes a strictly newer evaluation and fires `updated`). `creative.assignment_changed` fires for assignment addition/removal and assignment approval/reason/scoped-outcome changes. Retried delivery reuses `idempotency_key`; re-emission of the same logical change retains `notification_id`.
 
 ## Warning contract
 
@@ -143,7 +143,7 @@ The protocol object remains an `Insight`; buyer products may present it as a rec
 5. Accept success-with-warning and reject warnings on terminal or submitted arms.
 6. Fire `insights.changed` on semantic change but not timestamp-only reevaluation.
 7. Fire `creative.assignment_changed` for approval changes and assignment deletion when that optional event is declared.
-8. Treat subscriptions as prospective, establish a baseline read, dedupe retries, and repair through an unfiltered authoritative read.
+8. Treat subscriptions as prospective, establish a complete all-status or known-ID baseline, dedupe retries, and repair through an unfiltered authoritative `get_media_buys` read.
 9. Invalidate assignment evaluations after material in-place creative updates.
 
 The machine-readable vectors in `static/compliance/source/test-vectors/relationship-scoped-insights.json` cover type/evaluation membership, scope containment, logical-key uniqueness, prospective bootstrap, semantic-change firing, timestamp-only suppression, creative-update invalidation, assignment removal, and delivery identity.

@@ -66,7 +66,12 @@
       "name": "subscription-is-prospective",
       "event": "subscriber_activated",
       "expected_fires": [],
-      "buyer_action": "baseline_unfiltered_read"
+      "buyer_action": "complete_get_media_buys_baseline",
+      "baseline_request": {
+        "status_filter": ["pending_creatives", "pending_start", "active", "paused", "completed", "rejected", "canceled"],
+        "pagination": { "max_results": 100 }
+      },
+      "must_exhaust_pagination": true
     },
     {
       "name": "semantic-assertion-change",
@@ -88,10 +93,28 @@
       "buyer_action": "unfiltered_repair_read"
     },
     {
-      "name": "assignment-removal-with-insights",
+      "name": "assignment-removal-with-insights-and-both-events-advertised",
       "event": "assignment_removed",
+      "advertised_event_types": ["insights.changed", "creative.assignment_changed"],
+      "retires_stored_insight_keys": true,
       "expected_fires": ["insights.changed", "creative.assignment_changed"],
       "order": "any",
+      "buyer_action": "unfiltered_repair_read"
+    },
+    {
+      "name": "assignment-removal-with-optional-event-not-advertised",
+      "event": "assignment_removed",
+      "advertised_event_types": ["insights.changed"],
+      "retires_stored_insight_keys": true,
+      "expected_fires": ["insights.changed"],
+      "buyer_action": "unfiltered_repair_read"
+    },
+    {
+      "name": "assignment-only-seller-removal",
+      "event": "assignment_removed",
+      "advertised_event_types": ["creative.assignment_changed"],
+      "retires_stored_insight_keys": false,
+      "expected_fires": ["creative.assignment_changed"],
       "buyer_action": "unfiltered_repair_read"
     }
   ],
@@ -113,6 +136,76 @@
       "warning_code": "fields_ignored_due_to_precedence",
       "supported_insight_types": [],
       "valid": true
+    }
+  ],
+  "assignment_projection_count_cases": [
+    {
+      "name": "all-projection-truncated-consistently",
+      "projection": "all",
+      "assignments": {
+        "assignment_count": 3,
+        "returned_assignment_count": 2,
+        "assignments_truncated": true,
+        "assigned_packages": [{ "package_id": "pkg_1" }, { "package_id": "pkg_2" }]
+      },
+      "valid": true
+    },
+    {
+      "name": "returned-count-must-equal-array-length",
+      "projection": "all",
+      "assignments": {
+        "assignment_count": 3,
+        "returned_assignment_count": 1,
+        "assignments_truncated": true,
+        "assigned_packages": [{ "package_id": "pkg_1" }, { "package_id": "pkg_2" }]
+      },
+      "valid": false
+    },
+    {
+      "name": "all-projection-truncation-must-match-counts",
+      "projection": "all",
+      "assignments": {
+        "assignment_count": 3,
+        "returned_assignment_count": 2,
+        "assignments_truncated": false,
+        "assigned_packages": [{ "package_id": "pkg_1" }, { "package_id": "pkg_2" }]
+      },
+      "valid": false
+    },
+    {
+      "name": "matching-projection-complete-consistently",
+      "projection": "matching",
+      "assignments": {
+        "assignment_count": 5,
+        "returned_assignment_count": 2,
+        "matching_assignment_count": 2,
+        "assignments_truncated": false,
+        "assigned_packages": [{ "package_id": "pkg_1" }, { "package_id": "pkg_2" }]
+      },
+      "valid": true
+    },
+    {
+      "name": "matching-projection-requires-matching-count",
+      "projection": "matching",
+      "assignments": {
+        "assignment_count": 5,
+        "returned_assignment_count": 2,
+        "assignments_truncated": false,
+        "assigned_packages": [{ "package_id": "pkg_1" }, { "package_id": "pkg_2" }]
+      },
+      "valid": false
+    },
+    {
+      "name": "matching-truncation-must-use-matching-count",
+      "projection": "matching",
+      "assignments": {
+        "assignment_count": 5,
+        "returned_assignment_count": 2,
+        "matching_assignment_count": 3,
+        "assignments_truncated": false,
+        "assigned_packages": [{ "package_id": "pkg_1" }, { "package_id": "pkg_2" }]
+      },
+      "valid": false
     }
   ],
   "approval_scope_cases": [

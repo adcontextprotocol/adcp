@@ -11,8 +11,8 @@ Sync advertiser accounts with a seller for one or more brand/operator pairs, or 
 
 **Response Time**: ~1s. Account provisioning is synchronous; credit and legal review may require human action (indicated by `status: "pending_approval"` with a `setup.url`).
 
-**Request Schema**: [`/schemas/latest/account/sync-accounts-request.json`](https://adcontextprotocol.org/schemas/latest/account/sync-accounts-request.json)
-**Response Schema**: [`/schemas/latest/account/sync-accounts-response.json`](https://adcontextprotocol.org/schemas/latest/account/sync-accounts-response.json)
+**Request Schema**: [`/schemas/v3/account/sync-accounts-request.json`](https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json)
+**Response Schema**: [`/schemas/v3/account/sync-accounts-response.json`](https://adcontextprotocol.org/schemas/v3/account/sync-accounts-response.json)
 
 ## Quick start
 
@@ -178,7 +178,7 @@ Schema enforces the exclusivity via `oneOf` — sending both shapes on the same 
 
 `notification_configs[]` carries account-level webhook subscribers for creative lifecycle and assignment changes, `insights.changed`, account status, wholesale feed changes, and future account-anchored events.
 
-Insight and assignment subscriptions are prospective: activation or reactivation does not replay conditions that were already current. After activation, buyers perform an unfiltered baseline read using the repair tasks declared in `media_buy.insight_notifications` before relying on later invalidations.
+Insight and assignment subscriptions are prospective: activation or reactivation does not replay conditions that were already current. After activation, buyers establish a complete baseline through `get_media_buys` before relying on later invalidations: enumerate known media-buy IDs or request every media-buy status and follow pagination to exhaustion, without an insight filter. The optional bounded `list_creatives` projection is not sufficient to prove complete state.
 
 `account.status_changed` is the durable account lifecycle event. Use it for status transitions after the initial `sync_accounts` result, such as `pending_approval → active`, `pending_approval → rejected`, `active → payment_required`, `active → suspended`, recovery back to `active`, or terminal `closed`. It is not a replacement for the one-shot `push_notification_config` on this task: that channel can report the async result of the original provisioning operation, while `notification_configs[]` subscribers outlive the task.
 

@@ -147,7 +147,7 @@
       "if": {
         "properties": {
           "media_buy": {
-            "required": ["insight_notifications"]
+            "required": ["relationship_notifications"]
           }
         },
         "required": ["media_buy"]
@@ -161,9 +161,37 @@
                 "const": true
               }
             },
-            "required": ["supported"]
+            "required": ["supported", "profile", "algorithms", "legacy_hmac_fallback"]
           }
         }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "relationship_notifications": {
+                "properties": {
+                  "projection_tasks": {
+                    "contains": { "const": "list_creatives" }
+                  }
+                },
+                "required": ["projection_tasks"]
+              }
+            },
+            "required": ["relationship_notifications"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "supported_protocols": {
+            "contains": { "const": "creative" }
+          }
+        },
+        "required": ["supported_protocols"]
       }
     }
   ],
@@ -704,16 +732,16 @@
         },
         "supported_insight_types": {
           "type": "array",
-          "description": "Insight types this seller can expose on get_media_buys media-buy/package/creative-assignment snapshots. Each type's meaning is defined by the negotiated AdCP release; insight types do not carry independent sub-versions. This is availability, not complete upstream coverage. Sellers declaring this capability MUST also declare insight_notifications. Creative-library sellers may additionally advertise list_creatives as a repair task and creative.assignment_changed as an event; inline-only sellers are not required to implement that reverse projection.",
+          "description": "Insight types this seller can expose on get_media_buys media-buy/package/creative-assignment snapshots. Each type's meaning is defined by the negotiated AdCP release; insight types do not carry independent sub-versions. This is availability, not complete upstream coverage. Sellers declaring this capability MUST also declare relationship_notifications with insights.changed. Assignment-only sellers may declare relationship_notifications without an insight catalog.",
           "items": {
             "$ref": "/schemas/enums/insight-type.json"
           },
           "minItems": 1,
           "uniqueItems": true
         },
-        "insight_notifications": {
+        "relationship_notifications": {
           "type": "object",
-          "description": "Durable account-level invalidations for insight changes and, when declared, creative-assignment changes. Every insight-capable seller supports insights.changed with get_media_buys as the universal repair read. A seller with a creative-library reverse projection additionally declares the paired creative.assignment_changed event and list_creatives repair task. Presence means the seller accepts the declared subscriptions through sync_accounts notification_configs. Timestamp-only reevaluation does not fire. Poll-based upstream integrations fire when they detect a change; this declaration does not promise upstream detection latency.",
+          "description": "Durable account-level invalidations for insight, creative-assignment, and assignment-approval changes. Every insight-capable seller includes insights.changed; a seller without an insight catalog may declare creative.assignment_changed alone. get_media_buys is the complete authoritative repair read. creative.assignment_changed is independent of the optional bounded list_creatives reverse projection, so inline-only sellers can advertise approval and assignment invalidations. Presence means the seller accepts the declared subscriptions through sync_accounts notification_configs. Timestamp-only reevaluation does not fire. Poll-based upstream integrations fire when they detect a change; this declaration does not promise upstream detection latency.",
           "properties": {
             "supported": {
               "type": "boolean",
@@ -727,7 +755,7 @@
             },
             "event_types": {
               "type": "array",
-              "description": "Invalidation events supported by this seller. insights.changed is mandatory. creative.assignment_changed is optional and paired with list_creatives for sellers exposing the reverse creative-library projection.",
+              "description": "Relationship invalidation events supported by this seller. insights.changed is required when supported_insight_types is present and invalid without an insight catalog. creative.assignment_changed is independently available when the seller can detect assignment or assignment-approval changes; it does not require insight support or list_creatives.",
               "items": {
                 "type": "string",
                 "enum": ["insights.changed", "creative.assignment_changed"]
@@ -738,13 +766,24 @@
             },
             "repair_tasks": {
               "type": "array",
-              "description": "Authoritative snapshot reads used after an invalidation. get_media_buys is mandatory. list_creatives is optional and paired with creative.assignment_changed.",
+              "description": "Complete authoritative snapshot reads used after an invalidation. get_media_buys is mandatory and is the only 3.2 repair task for this contract.",
               "items": {
                 "type": "string",
-                "enum": ["get_media_buys", "list_creatives"]
+                "const": "get_media_buys"
               },
               "minItems": 1,
-              "maxItems": 2,
+              "maxItems": 1,
+              "uniqueItems": true
+            },
+            "projection_tasks": {
+              "type": "array",
+              "description": "Optional bounded reverse projections of relationship-scoped insight and approval state. list_creatives is a discovery/read convenience for creative-library sellers, not a complete repair path; declaring it also requires creative in supported_protocols. Buyers fall back to get_media_buys whenever nested assignments are truncated or a relationship must be proven absent.",
+              "items": {
+                "type": "string",
+                "const": "list_creatives"
+              },
+              "minItems": 1,
+              "maxItems": 1,
               "uniqueItems": true
             },
             "supports_webhook_activity": {
@@ -754,40 +793,6 @@
             }
           },
           "required": ["supported", "registration_task", "event_types", "repair_tasks"],
-          "allOf": [
-            {
-              "properties": {
-                "event_types": { "contains": { "const": "insights.changed" } },
-                "repair_tasks": { "contains": { "const": "get_media_buys" } }
-              }
-            },
-            {
-              "if": {
-                "properties": {
-                  "event_types": { "contains": { "const": "creative.assignment_changed" } }
-                },
-                "required": ["event_types"]
-              },
-              "then": {
-                "properties": {
-                  "repair_tasks": { "contains": { "const": "list_creatives" } }
-                }
-              }
-            },
-            {
-              "if": {
-                "properties": {
-                  "repair_tasks": { "contains": { "const": "list_creatives" } }
-                },
-                "required": ["repair_tasks"]
-              },
-              "then": {
-                "properties": {
-                  "event_types": { "contains": { "const": "creative.assignment_changed" } }
-                }
-              }
-            }
-          ],
           "additionalProperties": false
         },
         "features": {
@@ -1301,9 +1306,36 @@
         }
       },
       "dependencies": {
-        "supported_insight_types": ["insight_notifications"],
-        "insight_notifications": ["supported_insight_types"]
-      }
+        "supported_insight_types": ["relationship_notifications"]
+      },
+      "allOf": [
+        {
+          "if": { "required": ["supported_insight_types"] },
+          "then": {
+            "properties": {
+              "relationship_notifications": {
+                "properties": {
+                  "event_types": { "contains": { "const": "insights.changed" } }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "relationship_notifications": {
+                "properties": {
+                  "event_types": { "contains": { "const": "insights.changed" } }
+                },
+                "required": ["event_types"]
+              }
+            },
+            "required": ["relationship_notifications"]
+          },
+          "then": { "required": ["supported_insight_types"] }
+        }
+      ]
     },
     "signals": {
       "type": "object",
@@ -1868,7 +1900,7 @@
       "properties": {
         "supported": {
           "type": "boolean",
-          "description": "Whether this agent signs outbound webhooks with the AdCP RFC 9421 webhook profile. When false or absent, webhooks are delivered with legacy Bearer or HMAC-SHA256 auth only and receivers MUST NOT expect a Signature header. When the seller advertises mutating-webhook emission (i.e., `media_buy.reporting_delivery_methods` includes `webhook`, `media_buy.content_standards.supports_webhook_delivery` is true, `media_buy.insight_notifications.supported` is true, `wholesale_feed_webhooks.supported` is true, `adcp.capability_changes.notifications.supported` is true, or `account.notifications.supported` is true), this MUST be `true` — emitting state-changing webhooks unsigned is a downgrade vector that lets an on-path attacker forge delivery callbacks. See `x-adcp-validation`.",
+          "description": "Whether this agent signs outbound webhooks with the AdCP RFC 9421 webhook profile. When false or absent, webhooks are delivered with legacy Bearer or HMAC-SHA256 auth only and receivers MUST NOT expect a Signature header. When the seller advertises mutating-webhook emission (i.e., `media_buy.reporting_delivery_methods` includes `webhook`, `media_buy.content_standards.supports_webhook_delivery` is true, `media_buy.relationship_notifications.supported` is true, `wholesale_feed_webhooks.supported` is true, `adcp.capability_changes.notifications.supported` is true, or `account.notifications.supported` is true), this MUST be `true` — emitting state-changing webhooks unsigned is a downgrade vector that lets an on-path attacker forge delivery callbacks. See `x-adcp-validation`.",
           "x-adcp-validation": {
             "verifier_constraints": {
               "must_equal_when": {
@@ -1895,7 +1927,7 @@
                     "equals": true
                   },
                   {
-                    "field": "media_buy.insight_notifications.supported",
+                    "field": "media_buy.relationship_notifications.supported",
                     "equals": true
                   }
                 ]
@@ -1926,20 +1958,7 @@
           "default": false
         }
       },
-      "required": ["supported"],
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "supported": { "const": true }
-            },
-            "required": ["supported"]
-          },
-          "then": {
-            "required": ["profile", "algorithms", "legacy_hmac_fallback"]
-          }
-        }
-      ]
+      "required": ["supported"]
     },
     "identity": {
       "type": "object",

@@ -246,7 +246,7 @@ The learner must explain that the update succeeded and the warning is only its i
 
 The learner must reject treating the warning as either an error or durable state.
 
-Finally, after activating the subscriber and establishing an unfiltered baseline read, the learner receives these invalidations in either order:
+Finally, after activating the subscriber and establishing a complete `get_media_buys` baseline (known IDs or every status, fully paginated, without `insight_types`), the learner receives these invalidations in either order:
 
 ```json
 {

@@ -213,12 +213,12 @@
               },
               "matching_assignment_count": {
                 "type": "integer",
-                "description": "Total active assignments matching filters.insight_types when assignment_projection was matching. May exceed returned_assignment_count.",
+                "description": "Total active assignments matching filters.insight_types. MUST be present exactly when assignment_projection was matching. May exceed returned_assignment_count.",
                 "minimum": 0
               },
               "assignments_truncated": {
                 "type": "boolean",
-                "description": "True when more qualifying assignments exist than were returned under assignment_limit. Buyers needing complete state repair through get_media_buys."
+                "description": "True exactly when more qualifying assignments exist than were returned under assignment_limit. Qualifying means assignment_count for the all projection and matching_assignment_count for the matching projection. Buyers needing complete state repair through get_media_buys."
               },
               "assigned_packages": {
                 "type": "array",
@@ -233,7 +233,7 @@
                     },
                     "media_buy_id": {
                       "type": "string",
-                      "description": "Media buy containing this package. A seller advertising list_creatives in media_buy.insight_notifications.repair_tasks MUST include this field on every assignment row, including rows where insights is omitted as unknown, so buyers can key and reread the relationship unambiguously when package IDs are reused across media buys.",
+                      "description": "Media buy containing this package. A seller advertising list_creatives in media_buy.relationship_notifications.projection_tasks MUST include this field on every assignment row, including rows where insights is omitted as unknown, so buyers can key and reread the relationship unambiguously when package IDs are reused across media buys.",
                       "x-entity": "media_buy"
                     },
                     "assigned_date": {
@@ -243,7 +243,7 @@
                     },
                     "approval_status": {
                       "$ref": "/schemas/enums/creative-approval-status.json",
-                      "description": "Aggregate approval state for this creative in this package assignment. This mirrors the same relationship in get_media_buys. Sellers advertising list_creatives as an insight repair task MUST include it; partially_approved requires approval_scopes."
+                      "description": "Aggregate approval state for this creative in this package assignment. This mirrors the same relationship in get_media_buys. Sellers advertising list_creatives as an insight projection task MUST include it; partially_approved requires approval_scopes."
                     },
                     "rejection_reason": {
                       "type": "string",
@@ -402,6 +402,16 @@
             "dependencies": {
               "assigned_packages": ["returned_assignment_count", "assignments_truncated"]
             },
+            "x-adcp-validation": {
+              "verifier_constraints": {
+                "returned_assignment_count_equals_assigned_packages_length": true,
+                "returned_assignment_count_lte_assignment_count": true,
+                "matching_assignment_count_present_iff_matching_projection": true,
+                "matching_assignment_count_between_returned_and_assignment_count": true,
+                "assignments_truncated_iff_qualifying_count_exceeds_returned_count": true
+              },
+              "spec": "specs/relationship-scoped-insights.md#query-contract"
+            },
             "additionalProperties": true
           },
           "snapshot": {
@@ -492,28 +502,33 @@
             "maxItems": 200
           }
         },
-        "required": ["creative_id"],
+        "required": [
+          "creative_id",
+          "name",
+          "status",
+          "created_date",
+          "updated_date"
+        ],
         "oneOf": [
           {
             "title": "Listed creative (named-format reference)",
-            "required": ["format_id"],
+            "required": [
+              "format_id"
+            ],
             "not": {
-              "required": ["format_kind"]
+              "required": [
+                "format_kind"
+              ]
             }
           },
           {
             "title": "Listed creative (canonical format kind)",
-            "required": ["format_kind"],
+            "required": [
+              "format_kind"
+            ],
             "not": {
-              "required": ["format_id"]
-            }
-          },
-          {
-            "title": "Sparse listed creative",
-            "not": {
-              "anyOf": [
-                { "required": ["format_id"] },
-                { "required": ["format_kind"] }
+              "required": [
+                "format_id"
               ]
             }
           }

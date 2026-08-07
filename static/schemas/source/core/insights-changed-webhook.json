@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/insights-changed-webhook.json",
   "title": "Insights Changed Webhook",
-  "description": "Account-anchored invalidation fired when the semantic insight snapshot or its evaluation coverage changes on a media buy, package, or package–creative assignment. Registered prospectively through sync_accounts notification_configs with event_types: [\"insights.changed\"]; activation does not replay current insights, so buyers establish an unfiltered baseline. The payload is not authoritative insight state: receivers verify signing, dedupe by idempotency_key, then use a declared repair read without an insight filter. Re-evaluation that changes only insights_as_of MUST NOT fire; a material in-place creative update invalidates prior assignment evaluations and MUST fire.",
+  "description": "Account-anchored invalidation fired when the semantic insight snapshot or its evaluation coverage changes on a media buy, package, or package–creative assignment. Registered prospectively through sync_accounts notification_configs with event_types: [\"insights.changed\"]; activation does not replay current insights, so buyers establish a complete get_media_buys baseline by enumerating known IDs or requesting every media-buy status and exhausting pagination, without an insight filter. The payload is not authoritative insight state: receivers verify signing, dedupe by idempotency_key, then use get_media_buys without an insight filter. Re-evaluation that changes only insights_as_of MUST NOT fire; a material in-place creative update invalidates prior assignment evaluations and MUST fire.",
   "type": "object",
   "properties": {
     "idempotency_key": {
