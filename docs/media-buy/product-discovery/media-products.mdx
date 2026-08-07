@@ -23,8 +23,8 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `audio_distribution_types` (list[string], optional): Declared audio distribution types that may be included in this product, using IAB Tech Lab/OpenRTB 2.6 `audio.feed` definitions with AdCP-native names: `music_streaming_service`, `fm_am_broadcast`, `podcast`, `catch_up_radio`, `web_radio`, `video_game`, and `text_to_speech`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
 - `sponsored_placement_types` (list[string], optional): Declared sponsored-placement types for catalog-driven retail-media products: `sponsored_search`, `sponsored_display`, and `sponsored_native`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
 - `social_placement_surfaces` (list[string], optional): Declared social-placement surfaces for social products: `feed`, `stories`, `short_video`, `explore`, and `search`. Aggregate products and ad-network products may include multiple values. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.
-- `format_ids` (list[FormatID], conditional): Legacy named-format references. Products must include `format_ids`, `format_options`, or both. See [Creative Formats](/docs/creative/formats).
-- `format_options` (list[ProductFormatDeclaration], conditional): 3.1+ canonical format-option declarations accepted by this product. Buyers prefer `format_options` when both format fields are present. Product-level formats are the upper bound for the sellable product; placement-level formats can narrow this set but cannot add formats the product does not accept. Buyer `FormatOptionRef` selectors use `{scope: "publisher", publisher_domain, format_option_id}` for publisher-declared options and `{scope: "product", format_option_id}` for product-local options.
+- `format_options` (list[ProductFormatDeclaration], required for 3.2 authoring): Canonical format declarations accepted by this product. Product-level formats are the upper bound for the sellable product; placement-level formats can narrow this set but cannot add formats or `locale_policy` ranges the product does not accept. A declaration's optional `locale_policy.accepted_language_ranges` exposes seller-enforced creative-language eligibility before purchase. Buyer `FormatOptionRef` selectors use `{scope: "publisher", publisher_domain, format_option_id}` for publisher-declared options and `{scope: "product", format_option_id}` for product-local options.
+- `format_ids` (list[FormatID], deprecated compatibility only): Optional projection for older 3.x peers. A 3.2 seller must not use this field as its only authored creative contract. When both fields are emitted, every legacy reference must resolve to the same underlying declaration in `format_options`. See [Creative Formats](/docs/creative/formats).
 - `placements` (list[Placement], optional): Specific public ad placements within this product. Each placement declares `kind` (`publisher_ref` or `seller_inline`) and `mode` (`targetable` or `included`); seller-private delivery objects are not exposed here. See [Placements](#placements).
 - `shows` (list[CollectionSelector], optional): Shows covered by this product, grouped by publisher. Each entry has `publisher_domain` and `collection_ids` referencing shows in the publisher's `adagents.json`. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments).
 - `episodes` (list[Episode], optional): Specific episodes available within this product. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments).
@@ -43,6 +43,8 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `signal_targeting_allowed` (bool, optional, default: false): Whether this product has a package-level signal targeting surface. Editability is controlled by `signal_targeting_rules`.
 - `signal_targeting_options` (list[ProductSignalTargetingOption], optional): Inline seller-offered signals that may be buyer-selected or seller-applied for this product. These may be product-local signal options or data-provider signals the seller is authorized to apply. See [Signal Targeting](#signal-targeting).
 - `signal_targeting_rules` (SignalTargetingRules, optional): Composition rules such as single/multi-select limits for the selectable signals.
+- `audience_evidence` (list[AudienceEvidence], optional): Immutable, digest-pinned population evidence explaining audience composition, affinity, or estimated reach. This is planning evidence, not exact targeting or legal-age verification. See [Audience evidence](#audience-evidence).
+- `audience_evidence_selections` (list[AudienceEvidenceSelection], optional): Exact evidence snapshots that satisfied a required evidence policy or affected ranking for this discovery result.
 - `catalog_types` (list[string], optional): Catalog types this product supports for catalog-driven campaigns. A sponsored product listing declares `["product"]`, a job board declares `["job", "offering"]`. Buyers match synced catalogs to products via this field. See [Catalogs](/docs/creative/catalogs).
 - `catalog_match` (object, optional): When the buyer provides a `catalog` on `get_products`, indicates which catalog items are eligible for this product. Contains `matched_gtins` (cross-retailer GTIN matches), `matched_ids` (generic item ID matches), `matched_count`, and `submitted_count`.
 - `metric_optimization` (object, optional): Metric optimization capabilities for this product. Presence indicates the product supports `optimization_goals` with `kind: "metric"`. See [Metric optimization](#metric-optimization).
@@ -91,6 +93,60 @@ Products that support `optimization_goals` with `kind: "event"` declare their ca
 | `platform_managed` | boolean | No | Whether the seller provides always-on measurement (e.g., retailer purchase attribution). When true, `sync_event_sources` returns seller-managed event sources. |
 
 See [Conversion Tracking & Optimization Goals](/docs/media-buy/conversion-tracking) for the full optimization goals reference.
+
+### Audience evidence
+
+`audience_evidence[]` gives a buyer structured reasons that inventory may suit an audience even when the seller cannot deterministically identify or target every user in that audience. Each item identifies an immutable `snapshot_id`, provider version, canonical `content_digest`, audience characteristic, relationship, baseline population, evidence type, population-level methodology, provider, measurement window, and freshness.
+
+```json
+{
+  "audience_evidence": [
+    {
+      "evidence_id": "evidence_northstar_age_affinity",
+      "snapshot_id": "evidence_snapshot_2026_q2",
+      "version": "2026-q2",
+      "content_digest": "sha256:2a9cba3b29a6804e53bdb15a348b5e9741cfc613c210a91f61b0276655c5f1df",
+      "audience": {
+        "dimension": "age",
+        "range": { "min": 25, "max": 34 }
+      },
+      "relationship": "index",
+      "value": 1.8,
+      "unit": "ratio",
+      "baseline": {
+        "system": "https://measurement.example/populations",
+        "population_id": "us_adults",
+        "version": "2026-q2"
+      },
+      "evidence_type": "measured",
+      "methodology": "projected",
+      "subject_type": "individual",
+      "provider": { "domain": "measurement.example" },
+      "measurement_window": { "start": "2026-04-01", "end": "2026-06-30" },
+      "sample_size": 12000,
+      "confidence": 0.92,
+      "last_updated": "2026-07-15T00:00:00Z",
+      "methodology_url": "https://measurement.example/methodology/audience-projection"
+    }
+  ]
+}
+```
+
+The three concepts remain separate:
+
+- `audience_evidence` says something about an inventory population.
+- `demographic_targeting` and package targeting overlays say what the seller can execute for individual delivery decisions.
+- age-restriction and identity-attestation surfaces handle legal compliance for a particular subject.
+
+`content_digest` is SHA-256 over the RFC 8785 canonical evidence core with both `content_digest` and `attestation_refs` omitted. References are excluded so a later independent credential can be attached without changing the immutable evidence snapshot or creating a recursive digest. The built-in `age` characteristic uses completed years: values and range bounds are non-negative integers and `range.min` cannot exceed `range.max`.
+
+`projected` is deliberately defined only for population evidence. It does not expand the user-level signal methodology vocabulary. Optional `attestation_refs[]` use the shared portable-attestation contract as an independent verification layer; they do not change `evidence_type`. Their subject identifies the exact evidence `snapshot_id` and carries the evidence `content_digest`. Evaluators still apply their own issuer and resolver allowlists.
+
+When a buyer supplies evidence requirements and evidence affects product inclusion or rank, the returned Product carries `audience_evidence_selections[]` with the exact matching snapshots and `decision_use` of `eligibility` or `recommendation`. This decision readback is mandatory even when the buyer's `fields` projection omitted `audience_evidence_selections`; projection may omit the optional full evidence payload, not the explanation of an applied policy.
+
+At buy time, a package can repeat `audience_evidence_requirements` and can carry `audience_evidence_pins[]` copied from discovery. Every pin includes `evidence_id`, `snapshot_id`, `version`, and `content_digest`; the seller rejects a missing or mutated snapshot instead of substituting current catalog content. The confirmed Package returns a matching `audience_evidence_selections[]` entry with `decision_use: "package_construction"` for every accepted pin and every snapshot used to satisfy package requirements, and preserves that readback on later package reads.
+
+When an attestation affected either decision, readback preserves the exact reference and its `AttestationEvaluation` as one pair. That pair is valid only when the reference is published on the selected snapshot, its claim and issuer satisfy both buyer and seller policy, `reference_digest` covers that same reference, the outcome is `verified`, and both the subject digest and action-binding digest equal the evidence `content_digest`. An evaluation for one reference cannot verify a different reference. Sellers retain the full immutable snapshot and evaluations for at least as long as the package remains readable. Buyers should cache the evidence returned during discovery; AdCP 3.2 does not introduce a buyer-controlled snapshot fetch URL. Sellers may embed the full snapshot in readback, but need not duplicate it on every product or package.
 
 ### Pricing Models
 
@@ -206,7 +262,7 @@ Products can optionally declare specific public ad placements within their inven
 - **Creative assignment** - Different creatives can be assigned to targetable placements
 - **Omitting placement targeting** - Creatives without `placement_refs` or legacy `placement_ids` run on all buyer-targetable placements in the package, and the seller still controls included-only delivery composition
 - **Use registered IDs when available** - If the publisher declares canonical `placements` in `adagents.json`, product placements SHOULD use the catalog ID as `placement_id`
-- **Preserve registry semantics** - When a product references a registered placement, it is referring to that same placement. The product may narrow `format_ids` or `format_options`, or add operational detail, but it should not change the placement's meaning incompatibly
+- **Preserve registry semantics** - When a product references a registered placement, it is referring to that same placement. The product may narrow canonical `format_options` or add operational detail, but it should not change the placement's meaning incompatibly
 - **Tags stay useful at product level** - Product placements can carry `tags` for grouping and should align with registry tags when the placement comes from the publisher registry
 
 `mode` is required for new senders as of May 25, 2026. During the six-month migration window ending November 25, 2026, buyers may tolerate legacy products where `placements[]` entries omit `mode` and treat those placements as targetable for creative assignment. After November 25, 2026, buyers should fail closed on missing `mode`.
@@ -278,13 +334,57 @@ This is a discovery signal, not a verification claim. Buyers can filter for prod
 
 #### Format precedence with placements
 
-Product-level `format_ids` and `format_options` define the creative formats accepted by the product as a whole. Placement-level `format_ids` or `format_options`, whether returned inline on the product placement or inherited from a public publisher placement declaration, only narrow that product-wide set for the specific placement.
+Product-level `format_options` define the creative formats accepted by the product as a whole. Placement-level `format_options`, whether returned inline on the product placement or inherited from a public publisher placement declaration, only narrow that product-wide set for the specific placement. Deprecated `format_ids` may appear only as a 3.x compatibility projection of the same declarations.
+
+For a multi-publisher or multi-placement product, the product-level list is the union of formats the seller can traffic somewhere in the product. It is not a promise that every option works on every placement. Compute each placement's effective set independently by intersecting the product declaration with that placement's publisher declaration.
 
 If both product and placement format declarations are present, buyers compute the effective accepted formats for that placement as their intersection. For legacy `format_ids`, first project named formats to canonical declarations through `canonical`, `v1_format_ref`, or the canonical mapping registry; do not compare raw `(agent_url, id)` values after projection. A legacy 300x250 display ID and a canonical `image` declaration with `width: 300` and `height: 250` are compatible. For 3.1+ `format_options`, match publisher-declared options by `{publisher_domain, format_option_id}`, match product-local options by `format_option_id` when `publisher_domain` is omitted, and otherwise match declarations with the same `format_kind` whose placement parameters narrow the product declaration.
+
+For a multi-publisher product without explicit `placements[]`, each `publisher_properties[]` selector is an eligibility slice. A publisher-scoped format option applies only to slices for the matching `publisher_domain`; a product-local option applies to every slice. One creative intended for the entire product must satisfy the intersection across all slices. A set of distinct creatives may use the union only when it covers every slice. If a seller or buyer cannot determine a slice's effective formats from the product and resolved publisher catalog, it must fail closed and require the seller to add placements or return a refined product.
 
 Product gating is stricter than equivalence matching. When the product or placement declares fixed constraints such as `width`, `height`, `duration_ms_exact`, or a duration range, the buyer's selected format or creative manifest must declare and satisfy those constraints. A broad request (`format_kind: "image"` with no dimensions, or `video_hosted` with no duration) does not satisfy a fixed-size or fixed-duration product. For ranges, satisfaction means containment: a range-based request satisfies a product only when every value it permits falls within the product's accepted range; overlap alone is insufficient. An exact duration satisfies a range when the exact value falls inside it. The reverse is allowed: a broad product declaration can accept a specific 300x250 image or 30-second video unless another product constraint excludes it. See [format matching vs product satisfaction](/docs/creative/canonical-formats#format-matching-vs-product-satisfaction).
 
 If a placement has no format declaration, it inherits the product-level formats. A placement-only format that is absent from the product-level declaration is a seller conformance error, not an expansion of the product's creative contract; buyers should fail closed for that format and not treat it as accepted.
+
+For a product or selected package containing multiple included placements, a single creative intended to run everywhere must be in the intersection of all selected placements' effective sets. If distinct creatives may be assigned by placement, the package can expose the union, but the selected creative set must cover every included delivery placement. If any placement has an empty intersection or remains uncovered, the seller must reject or refine the product/package; it must not silently remove that inventory after purchase. Price, floor, availability, and deal eligibility stay on the product or pricing option—they are commercial facts, not creative-format parameters.
+
+#### Creative locale constraints
+
+A format option may carry `locale_policy.accepted_language_ranges` when the
+seller can execute only particular creative languages. The policy narrows the
+same base format; it does not create a locale-specific `format_kind` or a
+synthetic ID such as `display_image_fr_only`.
+
+Ranges use RFC 4647 Basic Filtering. Seller range `fr` accepts materialized
+creative variants tagged `fr`, `fr-CA`, or `fr-FR`; seller range `fr-CA` does
+not accept bare `fr` or `fr-FR`. Buyers SHOULD compare planned or existing
+creative locale topology during discovery and discard incompatible products
+before `create_media_buy`. A source-only locale topology is sufficient for a
+monolingual creative.
+
+At assignment, the seller computes the effective product-and-placement format
+declaration and rejects with `CREATIVE_LOCALE_NOT_ACCEPTED` when no materialized
+variant matches. The check runs independently for every placement where the
+assignment may serve. A placement may introduce a locale policy when the
+product option is unconstrained; when both carry policies, placement ranges may
+narrow product ranges (`fr-CA` under `fr`) but cannot broaden them. The seller filters eligible variants before
+buyer Lookup, explicit fallback, or default behavior; `serve_default` is valid
+only when the default is eligible. Nonmatching variants remain reusable on
+other products.
+
+The effective locale policy is snapshotted when the seller accepts an
+assignment. Later product-catalog changes apply only to new or changed
+assignments; they do not silently rewrite or remove an existing assignment.
+
+Sellers exposing a locale-constrained product or placement MUST advertise
+`creative.localization` and `creative.has_creative_library: true`; buyers sync
+the locale topology before assigning because inline media-buy creatives cannot
+carry it. Locale-constrained effective options are canonical-only. No product
+or placement `format_id` may project to one, including when only a placement
+introduces the policy. Buyers use a format-options-aware canonical path:
+`format_option_refs` when published or required for disambiguation, otherwise a
+direct `format_kind`/`params` selector. They never rely on `format_ids` for the
+constrained route.
 
 #### Placement Object Structure
 
@@ -298,9 +398,9 @@ If a placement has no format declaration, it inherits the product-level formats.
   "description": "Above-the-fold banner on the homepage",
   "mode": "targetable",
   "tags": ["homepage", "display", "premium"],
-  "format_ids": [
-    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
-    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_970x250"}
+  "format_options": [
+    {"format_option_id": "display_728x90", "format_kind": "image", "params": {"width": 728, "height": 90}},
+    {"format_option_id": "display_970x250", "format_kind": "image", "params": {"width": 970, "height": 250}}
   ]
 }
 ```
@@ -312,9 +412,9 @@ If a placement has no format declaration, it inherits the product-level formats.
   "product_id": "news_site_premium",
   "name": "News Site Premium Package",
   "description": "Premium placements across news site",
-  "format_ids": [
-    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"},
-    {"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}
+  "format_options": [
+    {"format_option_id": "display_728x90", "format_kind": "image", "params": {"width": 728, "height": 90}},
+    {"format_option_id": "display_300x250", "format_kind": "image", "params": {"width": 300, "height": 250}}
   ],
   "placements": [
     {
@@ -324,7 +424,7 @@ If a placement has no format declaration, it inherits the product-level formats.
       "name": "Homepage Banner",
       "mode": "targetable",
       "tags": ["homepage", "display", "premium"],
-      "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_728x90"}]
+      "format_options": [{"format_option_id": "display_728x90", "format_kind": "image", "params": {"width": 728, "height": 90}}]
     },
     {
       "kind": "publisher_ref",
@@ -333,7 +433,7 @@ If a placement has no format declaration, it inherits the product-level formats.
       "name": "Article Sidebar",
       "mode": "targetable",
       "tags": ["article", "display"],
-      "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250"}]
+      "format_options": [{"format_option_id": "display_300x250", "format_kind": "image", "params": {"width": 300, "height": 250}}]
     },
     {
       "kind": "seller_inline",
@@ -420,9 +520,9 @@ A product combining `delivery_type: "guaranteed"`, `exclusivity: "exclusive"`, a
   "publisher_properties": [
     { "publisher_domain": "crestnetwork.example", "property_ids": ["crest_podcasts"] }
   ],
-  "format_ids": [
-    { "agent_url": "https://ads.crestnetwork.example", "id": "audio_pre_roll_30s" },
-    { "agent_url": "https://ads.crestnetwork.example", "id": "audio_mid_roll_60s" }
+  "format_options": [
+    { "format_option_id": "audio_pre_roll_30s", "format_kind": "audio_hosted", "params": { "duration_ms_exact": 30000 } },
+    { "format_option_id": "audio_mid_roll_60s", "format_kind": "audio_hosted", "params": { "duration_ms_exact": 60000 } }
   ],
   "collections": [{ "publisher_domain": "crestnetwork.example", "collection_ids": ["signal_noise"] }],
   "delivery_type": "guaranteed",
@@ -448,9 +548,9 @@ Category exclusivity works for multi-collection bundles where the publisher sepa
   "publisher_properties": [
     { "publisher_domain": "crestnetwork.example", "property_ids": ["crest_podcasts"] }
   ],
-  "format_ids": [
-    { "agent_url": "https://ads.crestnetwork.example", "id": "audio_pre_roll_30s" },
-    { "agent_url": "https://ads.crestnetwork.example", "id": "audio_mid_roll_60s" }
+  "format_options": [
+    { "format_option_id": "audio_pre_roll_30s", "format_kind": "audio_hosted", "params": { "duration_ms_exact": 30000 } },
+    { "format_option_id": "audio_mid_roll_60s", "format_kind": "audio_hosted", "params": { "duration_ms_exact": 60000 } }
   ],
   "collections": [{ "publisher_domain": "crestnetwork.example", "collection_ids": ["signal_noise", "market_beat", "founder_stories"] }],
   "delivery_type": "guaranteed",
@@ -645,15 +745,9 @@ A server can offer a general catalog, but it can also return:
   "publisher_properties": [
     { "publisher_domain": "streaming.example.com", "selection_type": "all" }
   ],
-  "format_ids": [
-    {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "video_15s"
-    },
-    {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "video_30s"
-    }
+  "format_options": [
+    { "format_option_id": "video_15s", "format_kind": "video_hosted", "params": { "duration_ms_exact": 15000 } },
+    { "format_option_id": "video_30s", "format_kind": "video_hosted", "params": { "duration_ms_exact": 30000 } }
   ],
   "delivery_type": "guaranteed",
   "pricing_options": [
@@ -699,15 +793,9 @@ A server can offer a general catalog, but it can also return:
   "publisher_properties": [
     { "publisher_domain": "gaming.example.com", "selection_type": "all" }
   ],
-  "format_ids": [
-    {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250"
-    },
-    {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_728x90"
-    }
+  "format_options": [
+    { "format_option_id": "display_300x250", "format_kind": "image", "params": { "width": 300, "height": 250 } },
+    { "format_option_id": "display_728x90", "format_kind": "image", "params": { "width": 728, "height": 90 } }
   ],
   "delivery_type": "non_guaranteed",
   "pricing_options": [
@@ -750,19 +838,10 @@ A server can offer a general catalog, but it can also return:
   "publisher_properties": [
     { "publisher_domain": "groceryretail.example.com", "selection_type": "all" }
   ],
-  "format_ids": [
-    {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250"
-    },
-    {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_728x90"
-    },
-    {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "video_15s"
-    }
+  "format_options": [
+    { "format_option_id": "display_300x250", "format_kind": "image", "params": { "width": 300, "height": 250 } },
+    { "format_option_id": "display_728x90", "format_kind": "image", "params": { "width": 728, "height": 90 } },
+    { "format_option_id": "video_15s", "format_kind": "video_hosted", "params": { "duration_ms_exact": 15000 } }
   ],
   "delivery_type": "guaranteed",
   "pricing_options": [
@@ -794,7 +873,7 @@ A server can offer a general catalog, but it can also return:
 
 ## Product Cards
 
-Product cards provide visual representations of products for display in user interfaces. Publishers can optionally include card definitions that reference card formats and provide the assets needed to render attractive visual cards.
+Product cards provide visual representations of products for user interfaces. They are typed inline and do not use creative format references.
 
 ### Card Types
 
@@ -819,31 +898,28 @@ Publishers should provide at least the standard card, and optionally a detailed 
   // ... other product fields ...
 
   "product_card": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "product_card_standard"
+    "title": "Premium CTV - Living Room Audiences",
+    "description": "Reach cord-cutters on premium streaming content.",
+    "image": {
+      "asset_type": "image",
+      "url": "https://cdn.example.com/products/ctv_hero.jpg"
     },
-    "manifest": {
-      "display_name": "Premium CTV - Living Room Audiences",
-      "hero_image_url": "https://cdn.example.com/products/ctv_hero.jpg",
-      "brief_highlight": "Perfect for reaching cord-cutters and premium streaming audiences"
-    }
+    "price_label": "From $22 CPM",
+    "cta_label": "View details"
   },
 
   "product_card_detailed": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "product_card_detailed"
-    },
-    "manifest": {
-      "display_name": "Premium CTV - Living Room Audiences",
-      "description": "Reach high-income households with premium CTV inventory during peak viewing hours...",
-      "carousel_images": [
-        "https://cdn.example.com/products/ctv_context1.jpg",
-        "https://cdn.example.com/products/ctv_context2.jpg"
-      ],
-      "specifications_markdown": "# Technical Specifications\n\n..."
-    }
+    "title": "Premium CTV - Living Room Audiences",
+    "description": "Reach high-income households during peak viewing hours.",
+    "hero_image": { "asset_type": "image", "url": "https://cdn.example.com/products/ctv_hero.jpg" },
+    "carousel_images": [
+      { "asset_type": "image", "url": "https://cdn.example.com/products/ctv_context1.jpg" },
+      { "asset_type": "image", "url": "https://cdn.example.com/products/ctv_context2.jpg" }
+    ],
+    "specifications": [
+      { "label": "Resolution", "value": "1920x1080" },
+      { "label": "Duration", "value": "30 seconds" }
+    ]
   }
 }
 ```

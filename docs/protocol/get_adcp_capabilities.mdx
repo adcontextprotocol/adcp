@@ -66,7 +66,7 @@ Version Negotiation Flow:
 - If `adcp_major_version` is provided but unsupported → return `VERSION_UNSUPPORTED` (buyer should call without `adcp_major_version` to discover supported versions)
 - If `adcp_major_version` is omitted → assume the highest supported version
 
-**Why major versions, not minor?** Semver policy guarantees backward compatibility within a major version. A seller at 3.1 can serve a buyer at 3.0 without negotiation. The capability model handles feature-level differences — buyers check specific capabilities (targeting systems, features, extensions) rather than version numbers to determine compatibility.
+**Why major versions, not minor?** Semver policy guarantees backward compatibility within a major version for stable surfaces. Explicitly experimental surfaces follow the narrower [experimental-status contract](/docs/reference/experimental-status): they require runtime opt-in through `experimental_features` and may change inside 3.x after the required notice. A seller at 3.1 can otherwise serve a buyer at 3.0 without negotiation. The capability model handles feature-level differences — buyers check specific capabilities (targeting systems, features, extensions) rather than version numbers to determine compatibility.
 
 ## Request Parameters
 
@@ -86,6 +86,7 @@ Core AdCP protocol information:
 | `major_versions` | integer[] | **Required.** AdCP major versions supported (e.g., `[3]`) |
 | `idempotency` | object | **Required.** Idempotency semantics. See [idempotency](#idempotency). |
 | `capability_changes` | object | Optional. Freshness metadata and opt-in `capabilities.changed` invalidation webhooks for cached capability documents. See [capability_changes](#capability_changes). |
+| `attestations` | object | Optional. Allowlisted portable-attestation claim types, issuers, resolvers, verifiers, proof formats, and delivery methods this agent evaluates. See [attestations](#attestations). |
 
 #### idempotency
 
@@ -156,6 +157,115 @@ A **material capability change** is any externally advertised contract change th
 Non-contract operational changes that do not alter the `get_adcp_capabilities` response body do not require a revision or webhook fire.
 
 `capabilities.changed` webhooks are invalidation signals, not replacement documents. The payload identifies the agent, change time, reason, required post-change `capabilities_version`, and optional advisory `changed_paths[]`; receivers SHOULD re-run `get_adcp_capabilities` and replace their cached snapshot from the fresh response. Sellers MUST publish the new capability snapshot before firing the webhook so the webhook's `capabilities_version` is observable on read. If a receiver reads before the webhook revision is observable, it SHOULD retry with normal transient-error backoff and retain the prior cached snapshot until a matching or newer authoritative snapshot is available. The payload schema is [`/schemas/v3/core/capabilities-changed-webhook.json`](https://adcontextprotocol.org/schemas/v3/core/capabilities-changed-webhook.json).
+
+### adcp.governance_enforcement
+
+Declares cross-role enforcement of buyer governance for consequential tasks. This core capability is intentionally separate from the top-level `governance` block: `governance` describes an agent that provides governance services, while `adcp.governance_enforcement` describes a media, signal, brand, creative, or other service that consumes governance authorization before committing state.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tasks` | object[] | Task-scoped enforcement claims. Each entry has `task` and `modes`; the corresponding request schema defines when the operation is commitment-bearing through `x-governed-commitment`. `task` is the semantic uniqueness key: emit one entry per task and combine modes in that entry. |
+
+```json
+{
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 },
+    "governance_enforcement": {
+      "tasks": [
+        { "task": "create_media_buy", "modes": ["signed_context", "online_execution_check"] },
+        { "task": "activate_signal", "modes": ["signed_context"] }
+      ]
+    }
+  }
+}
+```
+
+The declaration is part of the experimental `governance.campaign` surface, so an implementing service also lists `governance.campaign` in top-level `experimental_features`. `signed_context` is defined for every governed role. `online_execution_check` is currently available only for `create_media_buy` and `update_media_buy`, where `planned_delivery` provides a standardized prepared-result shape; it always implies `signed_context`. The state transition follows prepare → check → commit and commits atomically only when the response is `approved`. Execution checks are binary (`approved` or `denied`).
+
+Advertising a task also commits the service to deterministic applicability. It resolves the commercial account from the request or existing resource before the side effect; when it cannot do so, it returns `ACCOUNT_REQUIRED`. It never treats a missing token as evidence that the buyer is ungoverned. Conditional task annotations use `trigger_overrides_exemption`: any commitment-increasing part of a mixed atomic update requires governance.
+
+Current conformance runners continue to grade the legacy `media_buy.governance_aware` create path. Task-scoped grading for this new block will land with role-specific observable workflows; until then, registries MUST NOT present the experimental declaration as a certified claim.
+
+The legacy `media_buy.governance_aware` boolean remains the compatibility claim for the historically graded `create_media_buy` consultation path. Agents use the core block for explicit task-scoped claims.
+
+### adcp.attestations
+
+Declares the portable attestations this agent is prepared to evaluate. The block is shared across protocol roles and therefore lives under `adcp`: a seller may evaluate an attestation directly, while a governance agent may evaluate the same presentation for a governance action.
+
+The authoritative shape is [`attestation-capabilities.json`](https://adcontextprotocol.org/schemas/v3/core/attestation-capabilities.json). See [Portable attestations](/docs/building/by-layer/L1/security#portable-attestations) for the normative resolution and verification procedure.
+
+```json
+{
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 },
+    "attestations": {
+      "accepted_claim_types": [
+        "https://claims.example/audience/methodology-reviewed",
+        "https://adcontextprotocol.org/claims/rights/grant"
+      ],
+      "accepted_proof_formats": [
+        "https://www.w3.org/TR/vc-jose-cose/"
+      ],
+      "supported_delivery_methods": [
+        "issuer_credential_id",
+        "embedded"
+      ],
+      "accepted_issuers": [
+        {
+          "issuer": {
+            "type": "origin",
+            "origin": "https://credentials.example"
+          },
+          "claim_types": ["https://claims.example/audience/methodology-reviewed"],
+          "resolvers": [
+            {
+              "resolver_id": "primary",
+              "url": "https://resolver.credentials.example/v1/credentials",
+              "authentication": "evaluator_managed"
+            }
+          ]
+        },
+        {
+          "issuer": {
+            "type": "brand",
+            "brand": { "domain": "novabrands.example", "brand_id": "nova_talent" }
+          },
+          "claim_types": ["https://adcontextprotocol.org/claims/rights/grant"],
+          "proof_formats": ["https://www.w3.org/TR/vc-jose-cose/"],
+          "resolvers": [
+            {
+              "resolver_id": "rights-primary",
+              "url": "https://rights.novabrands.example/credentials",
+              "authentication": "evaluator_managed"
+            }
+          ]
+        }
+      ],
+      "accepted_verifiers": [
+        {
+          "agent_url": "https://verification.example/adcp"
+        }
+      ],
+      "max_embedded_credential_bytes": 262144
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `accepted_claim_types` | URI[] | **Required.** Open claim identifiers the evaluator accepts. This is evaluator policy, not an AdCP issuer or claim registry. |
+| `accepted_proof_formats` | URI[] | **Required.** Open credential/proof formats the evaluator can verify. |
+| `supported_delivery_methods` | string[] | **Required.** Any of `credential_uri`, `issuer_credential_id`, and `embedded`. |
+| `accepted_issuers` | object[] | **Required.** Canonical issuers plus their permitted credential origins and evaluator-configured resolver endpoints. |
+| `accepted_verifiers` | object[] | Optional verifier-agent allowlist. Presenter nominations must match this list but never control evaluator routing. |
+| `max_embedded_credential_bytes` | integer | Optional embedded-proof byte limit; evaluators enforce it before parsing. Protocol maximum: 1 MiB. |
+
+Changing an attestation allowlist can change whether future requests are accepted and whether cached evaluations remain reusable. It is therefore a material capability change and SHOULD update `adcp.capability_changes.capabilities_version` and fire `capabilities.changed` when notifications are enabled.
+
+The rights-grant claim URI is a domain profile, not a globally trusted issuer list. A seller that advertises `media_buy.rights_attestations` also lists `https://adcontextprotocol.org/claims/rights/grant` here and configures each acceptable rights-agent issuer, resolver, proof format, and credential origin. Buyer-supplied values cannot expand that policy.
 
 ### supported_protocols
 
@@ -469,6 +579,50 @@ Sellers that support a geographic targeting level SHOULD support both inclusion 
 
 Use `postal_code` for the normal postal code string in countries without a more specific registered local system. During the 3.x migration, sellers SHOULD emit equivalent deprecated aliases such as `us_zip` alongside native country keys where an alias exists. Buyers and SDKs SHOULD normalize both shapes before making capability decisions.
 
+#### rights_attestations
+
+Declares how this seller evaluates portable rights-grant credentials carried in creative `rights[]`. Presence requires `adcp.attestations`, and its `accepted_claim_types` MUST include `https://adcontextprotocol.org/claims/rights/grant`.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `requirement` | `optional \| required` | yes | `required` makes a current verified seller evaluation a serving-eligibility condition. `optional` permits an independent legacy contractual path, but unattested constraints remain machine-unverified. |
+
+```json
+{
+  "media_buy": {
+    "rights_attestations": {
+      "requirement": "required"
+    }
+  }
+}
+```
+
+The buyer carries `AttestationReference` values and never supplies a trusted outcome. The seller evaluates the exact reference, holder issuer, authorized rights-agent key, subject, grant digest, validity, and fresh revocation status and returns seller-produced `rights_attestation_evaluations` on creative readback. Sparse `list_creatives` reads request `rights_attestation_evaluations`; the seller automatically includes `creative_id` and `rights` so each result can be paired with the retained constraint. Neither capability mode permits fallback to `rights_constraint.verification_url`; that deprecated URL has no authorization meaning.
+
+#### audience_evidence
+
+Structured product audience-evidence support. Presence means the seller publishes immutable `Product.audience_evidence` snapshots, evaluates the declared buyer policy modes in `get_products.filters.audience_evidence_requirements`, and retains digest-pinned package readback. This is discovery and planning support, not audience targeting.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `supported_requirement_modes` | string[] | **Required** | Supported policy modes: `required`, `preferred`, or both. Unsupported hard modes must be rejected, never silently ignored. |
+| `supported_presence_modes` | string[] | **Required** | Supported presence semantics: `required`, `when_available`, or both. |
+| `supports_attestation_evaluation` | boolean | **Required** | Whether the seller evaluates evidence `attestation_refs[]` under `adcp.attestations` and preserves the exact reference and evaluation in package readback. |
+
+```json
+{
+  "media_buy": {
+    "audience_evidence": {
+      "supported_requirement_modes": ["required", "preferred"],
+      "supported_presence_modes": ["required", "when_available"],
+      "supports_attestation_evaluation": true
+    }
+  }
+}
+```
+
+See [Audience evidence](/docs/media-buy/product-discovery/media-products#audience-evidence) and [`get_products` evidence requirements](/docs/media-buy/task-reference/get_products#audience-evidence-requirements).
+
 #### audience_targeting
 
 Audience targeting capabilities. Presence of this object indicates the seller supports audience targeting, including `sync_audiences` and `audience_include`/`audience_exclude` in targeting overlays. Describes what identifier types the seller accepts for audience matching, size constraints, and expected matching latency.
@@ -526,17 +680,30 @@ Creative protocol capabilities. Only present if `creative` is in `supported_prot
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `supports_compliance` | boolean | When `true`, this creative agent can process briefs with compliance requirements (`required_disclosures`, `prohibited_claims`) and will validate that disclosures can be satisfied by the target format. Use the `disclosure_positions` filter on `list_creative_formats` to find compatible formats. |
+| `supports_compliance` | boolean | When `true`, this creative agent can process briefs with compliance requirements and validate them against its canonical supported-format declarations. |
+| `supported_formats` | object[] | Canonical creative operation catalog. New 3.2 producers MUST emit a stable `capability_id`, a full canonical `format` declaration, and explicit `operations` (`build`, `validate`, `preview`). Exact publisher support carries `{publisher_domain, format_option_id}` inside `format`; generic capabilities declare a satisfiable canonical parameter envelope. For 3.x compatibility, consumers accept entries without `capability_id` and interpret absent `operations` as `build`; such entries can be matched by contract but not selected through a capability-ID route. Replaces `list_creative_formats` in 3.2. |
 | `supports_transformers` | boolean | When `true`, this creative agent offers account-scoped transformers — the selectable units of build capability (voices, models, styles) discovered via [`list_transformers`](/docs/creative/task-reference/list_transformers) and selected with `transformer_id` (plus the typed `config` bag) on [`build_creative`](/docs/creative/task-reference/build_creative). When `false` or absent, the agent does not expose transformers; `list_transformers` is unavailable and `build_creative` ignores `transformer_id`/`config`. Pre-call discriminator for routing across creative agents. |
 | `supports_refinement` | boolean | When `true`, this creative agent retains produced `build_variant` leaves (for an agent-defined window) and can re-build from one via `refine_from_build_variant_id` on [`build_creative`](/docs/creative/task-reference/build_creative) — applying a natural-language instruction in `message` plus an optional `config` delta, returning new lineage-linked variants. A build-time capability independent of generation/transformation. When `false` or absent, `refine_from_build_variant_id` returns `UNSUPPORTED_FEATURE`; refine via the transform path (`creative_manifest` + `message`) instead. |
 | `refinable_retention_seconds` | integer | When `supports_refinement` is `true`, the **guaranteed-minimum** window (a floor, not a ceiling) during which a produced `build_variant_id` stays refinable via `refine_from_build_variant_id`. A ref within the window SHOULD resolve; the agent MAY retain longer. Omit to leave the window agent-defined (buyers treat refinability as best-effort and handle `REFERENCE_NOT_FOUND`). |
 | `multiplicity` | object | Pre-call fan-out discriminators so a buyer knows before sending `max_creatives`/`max_variants`: `supports_catalog_fanout` + `max_creatives_limit`, `supports_variants` + `max_variants_limit`, and `variant_dimensions[]` (which `variant_axis.dimension` values are supported). Over-limit requests are **clamped** to the ceilings (shortfall shown via `items_returned` < `items_total`), not rejected. Absent means no fan-out — `build_creative` produces a single creative. Individual transformers may narrow this via `transformer.multiplicity`. |
 | `supports_spend_controls` | boolean | When `true`, `build_creative` honors a per-call `max_spend` ceiling (returns a partial paid build with `budget_status: "capped"` + a `BUDGET_CAP_REACHED` advisory rather than overspending) and supports `mode: "estimate"` dry-runs (a projected cost band, producing/billing nothing). When `false` or absent, both are rejected with `UNSUPPORTED_FEATURE`. Meaningful only with `bills_through_adcp: true`. |
+| `localization` | object | Presence advertises materialized source-only or source-plus-target locale topology on `sync_creatives`/`list_creatives` and therefore requires `has_creative_library: true`. `locale_matching` is always `rfc4647_lookup`; optional per-creative `locale_fallbacks` provide explicit buyer-approved language-family substitutions, and `max_target_variants` optionally narrows the protocol ceiling of 50 (`0` means source-only). This is a coarse structural capability, not an all-locales promise: accepted ranges are published per product format through `locale_policy`, and the seller validates locale/format/account support per assignment. Advertised support commits the agent to explicit fallback/default/unmatched behavior, creative-wide review, transactional replacement, exact readback, seller-policy precedence, and delivery attribution. It does not request or advertise translation generation. |
 | `bills_through_adcp` | boolean | When `true`, this creative agent bills through the AdCP rate-card surface — `list_creatives` returns `pricing_options` (with `include_pricing=true` and an authenticated account), `build_creative` populates `pricing_option_id` and `vendor_cost`, and `report_usage` accepts records against the rate card. When `false` or absent, the agent bills out of band (flat license, SaaS contract, bundled enterprise agreement); buyers should skip pricing fields and tolerate `report_usage` returning `accepted: 0` with `BILLING_OUT_OF_BAND` errors. Pre-call discriminator for routing across creative agents. |
 
 ### governance
 
 Governance protocol capabilities. Only present if `governance` is in `supported_protocols`. Governance agents declare capabilities across four domains: property evaluation, creative evaluation, content standards verification, and policy registry integration.
+
+#### runtime_attestations
+
+Signal-activation policy layered on the shared `adcp.attestations` allowlist. Presence means this governance agent accepts `check_governance.runtime_attestations[]` when `purchase_type` is `signal_activation`.
+
+| Field | Type | Description |
+|---|---|---|
+| `signal_activation.requirement` | string | `optional` permits a signal-activation check with no runtime evidence; `required` means omission cannot approve the check. Optional means evidence may be absent, not that supplied invalid evidence becomes trusted. |
+| `signal_activation.claim_types` | URI[] | Signal-quality claims accepted for this action. MUST be a subset of `adcp.attestations.accepted_claim_types`; issuer, resolver, verifier, proof, and delivery policy remains in the shared block. |
+
+See [`check_governance` runtime signal attestations](/docs/governance/campaign/tasks/check_governance#runtime-signal-attestations) for request, evaluation, signed-context, and audit binding.
 
 #### property_features
 
@@ -1210,7 +1377,17 @@ An agent can implement multiple protocols from a single endpoint. This is common
     "supports_generation": true,
     "supports_transformation": false,
     "supports_compliance": false,
-    "bills_through_adcp": true
+    "bills_through_adcp": true,
+    "supported_formats": [
+      {
+        "capability_id": "display_image_generator",
+        "operations": ["build", "validate", "preview"],
+        "format": {
+          "format_kind": "image",
+          "params": { "width": 300, "height": 250 }
+        }
+      }
+    ]
   }
 }
 ```
@@ -1220,7 +1397,7 @@ This agent supports:
 - **Creative Protocol**: Creative library management, AI-powered creative generation, variant-level delivery analytics via `get_creative_delivery`
 - **Shared account**: A single account established via `sync_accounts` applies to both protocols
 
-When `supported_protocols` includes `"creative"`, the buyer can call Creative Protocol tasks (`list_creative_formats`, `sync_creatives`, `get_creative_delivery`, etc.) on this agent. See [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities).
+When `supported_protocols` includes `"creative"`, inspect the `creative` capability block for the tasks and canonical formats this endpoint actually supports. `list_creative_formats` is deprecated in 3.2. See [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities).
 
 ### Geo Standards Reference
 

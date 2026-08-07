@@ -6,6 +6,8 @@
     "product_id": "product",
     "creative_id": "creative",
     "audience_id": "audience",
+    "evidence_id": "audience_evidence",
+    "snapshot_id": "audience_evidence_snapshot",
     "event_source_id": "event_source",
     "catalog_id": "catalog",
     "signal_agent_segment_id": "signal_activation_id",
@@ -22,6 +24,7 @@
     "offering_id": "offering",
     "property_id": "property",
     "task_id": "task",
+    "credential_id": "attestation_credential",
     "pricing_option_id": "__scope_specific__"
   },
   "$comment_ambiguous": "`list_id` is ambiguous (property_list vs collection_list); annotate via shared type refs (core/property-list-ref.json, core/collection-list-ref.json) or per-site. `plan_id` splits governance_plan vs media_plan and must be scope-specific. `pricing_option_id` splits product_pricing_option vs vendor_pricing_option. `policy_id` splits governance_registry_policy vs governance_inline_policy — policy-entry.json is tagged inline at the shared type; string-array use sites (policy_ids, shared_policy_ids, registry_policy_ids) are registry; findings and audit entries are deliberately un-annotated with $comment (see #2685). The patch script must be run with `--scope <dir>` and a per-scope overlay map for these."

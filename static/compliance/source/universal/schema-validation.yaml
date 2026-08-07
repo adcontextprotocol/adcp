@@ -44,8 +44,12 @@ fixtures:
     - product_id: "test-product"
       delivery_type: "non_guaranteed"
       channels: ["display"]
-      format_ids:
-        - id: "display_300x250"
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
   pricing_options:
     - product_id: "test-product"
       pricing_option_id: "test-pricing"
@@ -116,7 +120,7 @@ phases:
           - name: human-readable product name
           - description: detailed description of the product and its inventory
           - publisher_properties: array (minItems: 1) of publisher property selectors
-          - format_ids: array of format_id objects — each with agent_url (URI) and id
+          - format_options: non-empty array of canonical ProductFormatDeclaration objects
           - delivery_type: "guaranteed" or "non_guaranteed"
           - pricing_options: array (minItems: 1) — each with pricing_option_id, pricing_model, and currency
           - reporting_capabilities: fully-formed object with required sub-fields:
@@ -202,19 +206,20 @@ phases:
             path: "context.correlation_id"
             value: "schema_validation--pricing_options_present"
             description: "Context correlation_id returned unchanged"
-  - id: format_id_reconciliation
-    title: "Format ID and pricing option reconciliation"
+  - id: format_option_reconciliation
+    title: "Format option and pricing option reconciliation"
     narrative: |
       Identifiers returned by get_products must be accepted back by the same agent in
       subsequent calls. Two common reconciliation failures:
 
-      1. Format IDs: the seller returns format_id objects in products that their own
-         validation rejects when the buyer echoes them back in sync_creatives.
+      1. Format options: the seller returns canonical declarations that their own
+         validation rejects when the buyer echoes the selected format_kind and option
+         reference back in sync_creatives.
       2. Pricing option IDs: the seller returns pricing_option_id values in products
          that create_media_buy rejects when the buyer references them.
 
       These validations confirm structural correctness — that required fields exist and
-      are well-formed. Full roundtrip verification (echoing a product's format_id into
+      are well-formed. Full roundtrip verification (echoing a product's canonical format into
       sync_creatives and confirming acceptance) requires a stateful multi-step test,
       which is covered by the media_buy_seller storyboard's creative_sync phase.
 
@@ -222,7 +227,7 @@ phases:
       - id: get_products_for_formats
         title: "Get products and verify identifiers"
         narrative: |
-          Request products and verify that each product includes format_ids and
+          Request products and verify that each product includes format_options and
           pricing_options with the required fields. These identifiers will be echoed
           back in create_media_buy and sync_creatives — if they are malformed or
           missing, the buyer cannot complete the purchase.
@@ -233,16 +238,16 @@ phases:
         comply_scenario: schema_compliance
         stateful: false
         expected: |
-          Return products with format_ids and pricing_options. Each format_id must have:
-          - agent_url: URI of the agent that defines the format
-          - id: format identifier within that agent's namespace
-          - Optional: width, height, duration_ms for parameterized formats
+          Return products with format_options and pricing_options. Each format option must have:
+          - format_option_id: stable option identifier
+          - format_kind: canonical creative discriminator
+          - params: canonical constraints such as dimensions or duration
 
           Each pricing_option must have:
           - pricing_option_id: unique identifier echoed in create_media_buy
           - pricing_model: CPM, CPC, flat_rate, etc.
 
-          These identifiers must be accepted unchanged in subsequent requests.
+          These canonical selectors must be accepted unchanged in subsequent requests.
 
         sample_request:
           buying_mode: "brief"
@@ -256,21 +261,18 @@ phases:
           context:
             correlation_id: "schema_validation--get_products_for_formats"
 
-        context_outputs:
-          - name: product_format_id
-            path: "products[0].format_ids[0]"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
           - check: field_present
-            path: "products[0].format_ids"
-            description: "Products include format_ids array"
+            path: "products[0].format_options"
+            description: "Products include canonical format_options"
           - check: field_present
-            path: "products[0].format_ids[0].agent_url"
-            description: "Format IDs include agent_url"
+            path: "products[0].format_options[0].format_option_id"
+            description: "Format options include a stable option identifier"
           - check: field_present
-            path: "products[0].format_ids[0].id"
-            description: "Format IDs include id"
+            path: "products[0].format_options[0].format_kind"
+            description: "Format options carry a canonical format declaration"
           - check: field_present
             path: "products[0].pricing_options[0].pricing_option_id"
             description: "Pricing options include pricing_option_id — must be accepted in create_media_buy"
@@ -283,58 +285,6 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "schema_validation--get_products_for_formats"
-            description: "Context correlation_id returned unchanged"
-
-      - id: list_formats_match
-        title: "Verify format catalog includes product formats"
-        narrative: |
-          Call list_creative_formats for the first format_id returned on a
-          product and verify that the format catalog resolves that exact
-          reference. The seller's format catalog must cover that referenced
-          format.
-        task: list_creative_formats
-        requires_tool: list_creative_formats
-        schema_ref: "creative/list-creative-formats-request.json"
-        response_schema_ref: "creative/list-creative-formats-response.json"
-        doc_ref: "/creative/task-reference/list_creative_formats"
-        comply_scenario: schema_compliance
-        stateful: false
-        expected: |
-          Return the format matching the agent's own product format_id:
-          - format_id.agent_url must match the agent's own URL
-          - format_id.id values must include those referenced by products
-          - Each format must define asset requirements (types, dimensions, mime types)
-
-          If the agent returns format_ids in products that don't appear in
-          list_creative_formats, buyers cannot construct valid sync_creatives requests.
-
-        sample_request:
-          format_ids:
-            - "$context.product_format_id"
-          pagination:
-            max_results: 1
-          context:
-            correlation_id: "schema_validation--list_formats_match"
-
-        validations:
-          - check: response_schema
-            description: "Response matches list-creative-formats-response.json schema"
-          - check: field_present
-            path: "formats[0].format_id.agent_url"
-            description: "Formats include format_id with agent_url"
-          - check: field_present
-            path: "formats[0].format_id.id"
-            description: "Formats include format_id with id"
-          - check: field_value
-            path: "formats[0].format_id"
-            value: "$context.product_format_id"
-            description: "Filtered format response returns the product's exact format_id"
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "schema_validation--list_formats_match"
             description: "Context correlation_id returned unchanged"
 
   - id: temporal_validation

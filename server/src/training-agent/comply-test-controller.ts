@@ -33,6 +33,7 @@ import type {
   ComplyDeliveryAccumulator,
   ComplyBudgetSimulation,
 } from './types.js';
+import { supportsGetProductsRejected } from './types.js';
 import { getSession, sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
@@ -136,6 +137,54 @@ function getOrCreateDeliveryAccumulator(session: SessionState, mediaBuyId: strin
   return cumulative;
 }
 
+type VendorMetricIdentity = {
+  vendor: { domain: string; brand_id?: string };
+  metric_id: string;
+};
+
+function normalizeVendorMetricIdentity(value: unknown): VendorMetricIdentity | null {
+  if (!isRecord(value) || !isRecord(value.vendor)) return null;
+  if (typeof value.vendor.domain !== 'string' || value.vendor.domain.length === 0) return null;
+  if (typeof value.metric_id !== 'string' || value.metric_id.length === 0) return null;
+  return {
+    vendor: {
+      domain: value.vendor.domain,
+      ...(typeof value.vendor.brand_id === 'string' && { brand_id: value.vendor.brand_id }),
+    },
+    metric_id: value.metric_id,
+  };
+}
+
+function normalizeVendorMetricIdentities(value: unknown): VendorMetricIdentity[] | null {
+  if (!Array.isArray(value)) return null;
+  const normalized = value.map(normalizeVendorMetricIdentity);
+  return normalized.every((entry): entry is VendorMetricIdentity => entry !== null) ? normalized : null;
+}
+
+function validatePackageMetricMap(
+  value: unknown,
+  mb: MediaBuyState,
+  field: string,
+  requireValue: boolean,
+): string | null {
+  if (value === undefined) return null;
+  if (!isRecord(value)) return `${field} must be an object keyed by package_id`;
+  const packageIds = new Set(mb.packages.map(pkg => pkg.packageId));
+  for (const [packageId, entries] of Object.entries(value)) {
+    if (!packageIds.has(packageId)) return `${field}.${packageId} references an unknown package_id`;
+    if (normalizeVendorMetricIdentities(entries) === null) {
+      return `${field}.${packageId} must contain valid vendor/metric_id entries`;
+    }
+    if (
+      requireValue
+      && (entries as unknown[]).some(entry => !isRecord(entry) || typeof entry.value !== 'number' || !Number.isFinite(entry.value))
+    ) {
+      return `${field}.${packageId} entries require a finite numeric value`;
+    }
+  }
+  return null;
+}
+
 function applyExtendedDeliveryParams(cumulative: ComplyDeliveryAccumulator, params: Record<string, unknown>) {
   if (typeof params.is_final === 'boolean') cumulative.isFinal = params.is_final;
   if (typeof params.finalized_at === 'string') cumulative.finalizedAt = params.finalized_at;
@@ -148,6 +197,22 @@ function applyExtendedDeliveryParams(cumulative: ComplyDeliveryAccumulator, para
   if (params.viewability && typeof params.viewability === 'object' && !Array.isArray(params.viewability)) {
     cumulative.viewability = params.viewability as ComplyDeliveryAccumulator['viewability'];
   }
+  if (Array.isArray(params.not_yet_measurable_vendor_metrics)) {
+    cumulative.deferredVendorMetrics = normalizeVendorMetricIdentities(params.not_yet_measurable_vendor_metrics) ?? [];
+  }
+  if (isRecord(params.vendor_metric_values_by_package)) {
+    cumulative.vendorMetricValuesByPackage = Object.fromEntries(
+      Object.entries(params.vendor_metric_values_by_package).map(([packageId, values]) => [packageId, values as unknown[]]),
+    );
+  }
+  if (isRecord(params.not_yet_measurable_vendor_metrics_by_package)) {
+    cumulative.deferredVendorMetricsByPackage = Object.fromEntries(
+      Object.entries(params.not_yet_measurable_vendor_metrics_by_package).map(([packageId, values]) => [
+        packageId,
+        normalizeVendorMetricIdentities(values) ?? [],
+      ]),
+    );
+  }
 }
 
 function extendedDeliverySnapshot(cumulative: ComplyDeliveryAccumulator): Record<string, unknown> {
@@ -159,6 +224,9 @@ function extendedDeliverySnapshot(cumulative: ComplyDeliveryAccumulator): Record
     ...(cumulative.frequency !== undefined ? { frequency: cumulative.frequency } : {}),
     ...(cumulative.reachWindow ? { reach_window: cumulative.reachWindow } : {}),
     ...(cumulative.viewability ? { viewability: cumulative.viewability } : {}),
+    ...(cumulative.deferredVendorMetrics ? { not_yet_measurable_vendor_metrics: cumulative.deferredVendorMetrics } : {}),
+    ...(cumulative.vendorMetricValuesByPackage ? { vendor_metric_values_by_package: cumulative.vendorMetricValuesByPackage } : {}),
+    ...(cumulative.deferredVendorMetricsByPackage ? { not_yet_measurable_vendor_metrics_by_package: cumulative.deferredVendorMetricsByPackage } : {}),
   };
 }
 
@@ -188,6 +256,7 @@ function normalizeSeedPackage(pkg: Record<string, unknown>, mbStart: string, mbE
     context: isRecord(pkg.context) ? pkg.context : undefined,
     legacyOmitProductId: !hasProductId,
     optimizationGoals: Array.isArray(pkg.optimizationGoals) ? pkg.optimizationGoals as PackageState['optimizationGoals'] : Array.isArray(pkg.optimization_goals) ? pkg.optimization_goals as PackageState['optimizationGoals'] : undefined,
+    committedMetrics: Array.isArray(pkg.committedMetrics) ? pkg.committedMetrics as PackageState['committedMetrics'] : Array.isArray(pkg.committed_metrics) ? pkg.committed_metrics as PackageState['committedMetrics'] : undefined,
   };
 }
 
@@ -764,7 +833,7 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
       const formatOptionRef = (fx.format_option_ref as Record<string, unknown> | undefined) ?? existing?.formatOptionRef;
       const formatId = (fx.format_id as CreativeState['formatId'])
         ?? existing?.formatId
-        ?? (formatKind ? { agent_url: getAgentUrl(), id: formatKind } : { id: 'display_300x250' });
+        ?? { agent_url: getAgentUrl(), id: formatKind ?? 'image' };
       session.creatives.set(creativeId, {
         creativeId,
         formatId,
@@ -788,6 +857,7 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
       const defaultFlightEnd = new Date(Date.now() + 90 * 86_400_000).toISOString();
       session.governancePlans.set(planId, {
         planId,
+        ownerAgentUrl: existing?.ownerAgentUrl ?? principal ?? 'https://agenticadvertising.org/training-controller',
         version: (fx.version as number | undefined) ?? existing?.version ?? 1,
         status: (fx.status as GovernancePlanState['status']) ?? existing?.status ?? 'active',
         brand: (fx.brand as BrandReference) ?? existing?.brand ?? { domain: 'acmeoutdoor.example' },
@@ -885,6 +955,7 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
  * cross-impl tests no longer rely on it). */
 const LOCAL_SCENARIOS = [
   'force_create_media_buy_arm',
+  'force_get_products_arm',
   'force_task_completion',
   'force_creative_purge',
   'force_wholesale_feed_webhook',
@@ -1057,6 +1128,16 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   if (scenario === 'force_create_media_buy_arm') {
     return handleForceCreateMediaBuyArm(session, rawArgs);
   }
+  if (scenario === 'force_get_products_arm' && params.arm === 'rejected') {
+    if (!supportsGetProductsRejected(ctx.servedAdcpVersion)) {
+      return {
+        success: false,
+        error: 'UNKNOWN_SCENARIO',
+        error_detail: "force_get_products_arm with arm='rejected' requires AdCP 3.2 or later",
+      };
+    }
+    return handleForceGetProductsRejection(session, ctx.principal ?? 'anonymous', params);
+  }
   if (scenario === 'force_task_completion') {
     return handleForceTaskCompletion(sessionKey, rawArgs);
   }
@@ -1166,20 +1247,33 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     return { success: true, message: `Creative format "${formatId}" seeded — list_creative_formats will use the seeded catalog process-wide` };
   }
 
-  // Pre-capture extended simulate_delivery fields before the SDK dispatcher strips
-  // unknown params. The SDK's TestControllerStore.simulateDelivery interface can lag
-  // this repo's controller schema, so rawArgs remains the compatibility path for
-  // new delivery metrics until the SDK accepts them natively.
+  // Validate local simulate_delivery extensions before dispatch. Persist them
+  // only after the SDK confirms success so a rejected simulation cannot leave
+  // values or deferrals behind in session state.
   if (scenario === 'simulate_delivery') {
     const params = (rawArgs.params ?? {}) as Record<string, unknown>;
     const mediaBuyId = params.media_buy_id as string | undefined;
-    const vendorMetricValues = params.vendor_metric_values;
     const mb = mediaBuyId ? findMediaBuy(session, mediaBuyId) : undefined;
     if (mb) {
-      const cumulative = getOrCreateDeliveryAccumulator(session, mediaBuyId!, mb.currency);
-      applyExtendedDeliveryParams(cumulative, params);
-      if (Array.isArray(vendorMetricValues) && vendorMetricValues.length > 0) {
-        cumulative.vendorMetricValues = vendorMetricValues;
+      if (
+        mb.packages.length > 1
+        && (params.vendor_metric_values !== undefined || params.not_yet_measurable_vendor_metrics !== undefined)
+      ) {
+        return {
+          success: false,
+          error: 'INVALID_PARAMS',
+          error_detail: 'Multi-package buys require package-scoped vendor metric values and deferrals',
+        };
+      }
+      if (
+        params.not_yet_measurable_vendor_metrics !== undefined
+        && normalizeVendorMetricIdentities(params.not_yet_measurable_vendor_metrics) === null
+      ) {
+        return { success: false, error: 'INVALID_PARAMS', error_detail: 'not_yet_measurable_vendor_metrics must contain valid vendor/metric_id entries' };
+      }
+      for (const field of ['vendor_metric_values_by_package', 'not_yet_measurable_vendor_metrics_by_package'] as const) {
+        const error = validatePackageMetricMap(params[field], mb, field, field === 'vendor_metric_values_by_package');
+        if (error) return { success: false, error: 'INVALID_PARAMS', error_detail: error };
       }
     }
   }
@@ -1196,6 +1290,12 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     const params = (rawArgs.params ?? {}) as Record<string, unknown>;
     const mediaBuyId = params.media_buy_id as string | undefined;
     const cumulative = mediaBuyId ? getDeliverySimulation(session, mediaBuyId) : undefined;
+    if (cumulative) {
+      applyExtendedDeliveryParams(cumulative, params);
+      if (Array.isArray(params.vendor_metric_values)) {
+        cumulative.vendorMetricValues = params.vendor_metric_values;
+      }
+    }
     const simulatedExtras: Record<string, unknown> = {};
     if (params.reach !== undefined) simulatedExtras.reach = params.reach;
     if (params.frequency !== undefined) simulatedExtras.frequency = params.frequency;
@@ -1204,6 +1304,15 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     if (params.is_final !== undefined) simulatedExtras.is_final = params.is_final;
     if (params.finalized_at !== undefined) simulatedExtras.finalized_at = params.finalized_at;
     if (params.measurement_window !== undefined) simulatedExtras.measurement_window = params.measurement_window;
+    if (params.not_yet_measurable_vendor_metrics !== undefined) {
+      simulatedExtras.not_yet_measurable_vendor_metrics = params.not_yet_measurable_vendor_metrics;
+    }
+    if (params.vendor_metric_values_by_package !== undefined) {
+      simulatedExtras.vendor_metric_values_by_package = params.vendor_metric_values_by_package;
+    }
+    if (params.not_yet_measurable_vendor_metrics_by_package !== undefined) {
+      simulatedExtras.not_yet_measurable_vendor_metrics_by_package = params.not_yet_measurable_vendor_metrics_by_package;
+    }
     if (Object.keys(simulatedExtras).length > 0 || cumulative) {
       const response = sdkResponse as unknown as Record<string, unknown>;
       return {
@@ -1759,6 +1868,55 @@ function handleForceCreateMediaBuyArm(session: SessionState, rawArgs: Record<str
     success: true,
     forced: { arm, task_id: taskId },
     message: `Next create_media_buy call from this sandbox account will return the submitted arm with task_id ${taskId}`,
+  };
+}
+
+function handleForceGetProductsRejection(
+  session: SessionState,
+  principal: string,
+  params: Record<string, unknown>,
+): object {
+  const reason = params.reason;
+  if (typeof reason !== 'string' || reason.length === 0 || reason.length > 2000) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'reason must be a non-empty string up to 2000 characters',
+    };
+  }
+
+  const rawSuggestions = params.suggestions;
+  if (
+    rawSuggestions !== undefined
+    && (
+      !Array.isArray(rawSuggestions)
+      || rawSuggestions.length === 0
+      || rawSuggestions.length > 20
+      || rawSuggestions.some(item => typeof item !== 'string' || item.length === 0 || item.length > 1000)
+    )
+  ) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'suggestions must contain between 1 and 20 non-empty strings up to 1000 characters each',
+    };
+  }
+
+  const suggestions = rawSuggestions as string[] | undefined;
+  enforceMapCap(session.complyExtensions.forcedGetProductsRejections, principal, 'forced get_products rejections');
+  session.complyExtensions.forcedGetProductsRejections.set(principal, {
+    reason,
+    ...(suggestions && { suggestions: [...suggestions] }),
+  });
+
+  return {
+    success: true,
+    forced: {
+      arm: 'rejected',
+      reason,
+      ...(suggestions && { suggestions: [...suggestions] }),
+    },
+    message: 'Next brief/refine get_products call from this sandbox account will return the rejected arm',
   };
 }
 

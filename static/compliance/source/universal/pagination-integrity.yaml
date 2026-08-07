@@ -60,7 +60,7 @@ prerequisites:
     The runner seeds three creatives ahead of time so a small page-size
     request reliably triggers a continuation page on the first call. No
     assets are required — the seeded creatives only need an id, status, and
-    format_id for list_creatives to surface them.
+    canonical format_kind for list_creatives to surface them.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
@@ -68,16 +68,13 @@ fixtures:
   creatives:
     - creative_id: "pagination_integrity_creative_1"
       status: "approved"
-      format_id:
-        id: "display_static"
+      format_kind: "image"
     - creative_id: "pagination_integrity_creative_2"
       status: "approved"
-      format_id:
-        id: "display_static"
+      format_kind: "image"
     - creative_id: "pagination_integrity_creative_3"
       status: "approved"
-      format_id:
-        id: "display_static"
+      format_kind: "image"
 
 phases:
   - id: capability_discovery

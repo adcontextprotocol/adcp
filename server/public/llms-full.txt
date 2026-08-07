@@ -22,7 +22,7 @@ Tasks:
 - **update_media_buy**: Modify an existing media buy (budget changes, flight dates, targeting adjustments)
 - **get_media_buys**: Retrieve details and status of existing media buys
 - **get_media_buy_delivery**: Get delivery and performance metrics for active media buys
-- **list_creative_formats**: Discover the creative formats a publisher or platform supports
+- **get_products** `format_options[]`: Discover the canonical creative contracts a product supports (`list_creative_formats` is deprecated in 3.2)
 - **list_creatives**: List creatives that have been synced or assigned to media buys
 - **sync_creatives**: Upload or sync creative assets to a publisher or platform
 - **sync_audiences**: Share audience segments between platforms for targeting
@@ -36,14 +36,14 @@ Tasks:
 The creative domain handles creative asset management, format discovery, rendering, and delivery verification.
 
 Tasks:
-- **list_creative_formats**: Discover supported creative formats with specifications (dimensions, file types, duration limits)
+- **get_adcp_capabilities**: Discover a creative agent's canonical `supported_formats[]` and agent-local capability IDs
 - **build_creative**: Request generation or assembly of creative assets from components, templates, or briefs
 - **preview_creative**: Generate a preview render of a creative in a specified format
 - **get_creative_delivery**: Verify creative delivery metrics and rendering quality
 
 Key concepts:
 - Creative manifests describe the structure and components of a creative asset
-- Format IDs use structured objects with agent_url and id fields
+- Canonical manifests use `format_kind` and optional `format_option_ref`; named format IDs are deprecated in 3.2
 - Renders array describes visual output with structured dimensions
 - Supports display, video, audio, carousel, and DOOH channels
 - Creative provenance tracking for AI-generated content

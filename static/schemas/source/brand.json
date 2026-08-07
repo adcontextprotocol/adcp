@@ -93,7 +93,7 @@
     },
     "localized_name": {
       "type": "object",
-      "description": "A localized name with BCP 47 locale code key (e.g., 'en_US', 'fr_CA', 'zh_CN') and name value. Bare language codes ('en') are accepted as wildcards for backwards compatibility.",
+      "description": "A localized name using the legacy underscore-separated language/region key convention (for example 'en_US', 'fr_CA', or 'zh_CN') and a name value. Bare language codes such as 'en' are also accepted for backwards compatibility. These keys are not AdCP locale-tag values: a bridge to /schemas/core/locale-tag.json replaces '_' with '-', applies the AdCP canonical wire profile, and validates the result rather than passing the key through unchanged.",
       "minProperties": 1,
       "maxProperties": 1,
       "additionalProperties": {

@@ -99,9 +99,11 @@ Implications:
 
 ## Trust model
 
-Identical to the single-target tool. Per-result `status` follows the same direction-asymmetric rules: rejections (`disputed` / `not_ours`) are authoritative on a single signed response; assertions (`owned` / `pending_review` / `transferring` / `licensed_*`) require reciprocation before extending positive trust.
+Identical to the single-target tool. Per-result `status` follows the same direction-asymmetric rules only after the envelope receives verifier-local `trust: "trusted"`: trusted rejections (`disputed` / `not_ours`) are authoritative, while trusted assertions (`owned` / `pending_review` / `transferring` / `licensed_*`) require reciprocation before extending positive trust. An `untrusted` envelope cannot extend or revoke relationship trust in either direction.
 
 One top-level `signed_response` envelope attests the full `results[]` array. Its `request_hash` binds the entire `claims[]` request, caller identity, resolved `brand_domain`, and responding `agent_url`; there is no per-result signature. Consumers using signed bulk results for online decisions apply the same freshness rule as the single-target task: use the earlier of HTTP cache expiry and `signed_response.payload.exp`. Audit stores that extract one rejected result from a bulk response MUST also retain the original batch request and result index, because the envelope verifies the whole batch rather than a standalone per-result artifact.
+
+The single-target [brand-authorization cross-check](/docs/building/by-layer/L1/security#designated-task-response-signing) applies to the one batch envelope. Batch verifiers SHOULD deduplicate brand.json resolution by `brand_domain` and JWKS resolution by canonical resolved `jwks_uri` within a call, then attach one verifier-local authorization result to the envelope. An unavailable or failed binding makes every result in that envelope `untrusted`; it does not alter the signer-asserted per-result `verification_status` values.
 
 **No "single-call mutual assertion" shortcut.** A bulk call against one agent does NOT establish mutual assertion for the assertion-direction claims in that batch, even if both halves of a relationship pair appear inside the same bulk request. Mutual assertion is a property of two parties agreeing — the leaf-side agent still has to be called separately for any `subsidiary` claim that returns `owned`, the licensor's agent still has to be called for any `licensed_in`, and so on. Batching is about MCP-round-trip economics, not about collapsing the trust model.
 

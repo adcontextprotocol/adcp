@@ -115,7 +115,7 @@ The full normative rules, including payload canonicalization and the oracle-resi
 
 When a plan is approved for spend, the governance agent issues a signed JWS token — not a shared secret, not an opaque cookie, but a public-key-verifiable attestation bound to:
 
-- **`sub`** — the specific plan being authorized
+- **`sub`** — an issuer-generated opaque governed-action binding; the seller cannot derive the buyer's plan ID from it
 - **`aud`** — the specific seller allowed to act on it
 - **`phase`** — whether this is intent, purchase, modification, or delivery
 - **`exp`** — when the authorization expires (15 min for intent, ≤30 days for execution)
@@ -139,13 +139,14 @@ Key properties:
 
 ## What gets signed — and what doesn't
 
-Five application-layer signing surfaces exist in 3.x — four sharing the JWKS publication pattern, plus TMP's own envelope:
+AdCP 3.2 has six application-layer signing surfaces — five sharing the JWKS publication pattern, plus TMP's own envelope:
 
 - **Inbound request signing.** Buyers (and sellers acting as buyer-side clients) sign their outbound tool calls with [RFC 9421](/docs/building/by-layer/L1/security#request-signing). Key purpose `adcp_use: "request-signing"`.
 - **Outbound webhook signing.** Sellers sign asynchronous [webhook deliveries](/docs/building/by-layer/L1/security#webhook-callbacks) — task completion, status changes, downstream events, and any specialism-scoped durable artifact (brand-rights, AAO Verified compliance, sales-intelligence relay, governance receipts). RFC 9421. Key purpose `adcp_use: "request-signing"`; deprecated `adcp_use: "webhook-signing"` keys remain accepted on the webhook path for backward compatibility.
 - **Governance attestation signing.** Governance agents sign the JWS tokens that authorize spend (Layer 4 above). Distinct profile from RFC 9421, with its own key purpose (`adcp_use: "governance-signing"`), JWKS, and revocation list.
 - **Designated-task response payload signing.** A closed list of tasks — currently `verify_brand_claim` and its bulk variant `verify_brand_claims` — sign their response *payload* as a [JWS envelope](/docs/building/by-layer/L1/security#request-signing) carried inside the response body. Key purpose `adcp_use: "response-signing"`. The signature is load-bearing for the brand-protocol direction-asymmetric trust model; receivers parse the response body and verify the JWS against the responding agent's published key. This is payload-envelope JWS, not RFC 9421 §2.2.9 transport response signing — the latter is not defined in 3.x for any task, including the designated ones. See [Brand Protocol: trust model](/docs/brand-protocol/tasks/verify_brand_claim#trust-model).
-- **Trusted Match Protocol envelope.** TMP signs match-time requests with its own Ed25519 envelope, scaled to TMP's per-request budget (sample-verify at ~5%); it shares JWKS publication with the four surfaces above but is its own profile. See [TMP signing model](/docs/trusted-match/specification#signing-model).
+- **Portable credential signing.** Proof formats carried through the shared attestation model sign independently issued credentials. When an AdCP agent publishes the credential verification key through its `agents[].jwks_uri`, that JWK uses the generic `adcp_use: "attestation-signing"` purpose; domain profiles such as rights grants do not coin their own key purpose. The proof format defines its signature input and algorithm, while AdCP binds issuer policy, subject, resolution, and consuming-action evaluation.
+- **Trusted Match Protocol envelope.** TMP signs match-time requests with its own Ed25519 envelope, scaled to TMP's per-request budget (sample-verify at ~5%); it shares JWKS publication with the five surfaces above but is its own profile. See [TMP signing model](/docs/trusted-match/specification#signing-model).
 
 **Synchronous AdCP responses are NOT signed at the transport layer.** Outside the designated-task list (`verify_brand_claim` family — payload-envelope JWS, not RFC 9421 transport), buyers MUST NOT rely on response signatures; integrity guarantees for synchronous replies are delivered by TLS within the authenticated session. Artifacts requiring at-rest attestation MUST be delivered via signed webhooks. This applies symmetrically to MCP `tools/call` replies and to A2A non-streaming responses (and their streaming `artifactUpdate` frames); A2A push-notification delivery already rides the signed-webhook path covered by the second surface above.
 

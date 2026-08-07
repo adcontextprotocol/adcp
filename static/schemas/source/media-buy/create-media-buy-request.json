@@ -44,7 +44,15 @@
     }
   ],
   "x-mutates-state": true,
+  "x-governed-commitment": { "scope": "always" },
   "properties": {
+    "governance_context": {
+      "type": "string",
+      "description": "Opaque intent authorization for this media-buy commitment. Required when governance applies to the resolved account.",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
+    },
     "idempotency_key": {
       "type": "string",
       "description": "Client-generated unique key for this request. If a request with the same idempotency_key and account has already been processed, the seller returns the existing media buy rather than creating a duplicate. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
@@ -54,7 +62,8 @@
     },
     "plan_id": {
       "type": "string",
-      "description": "Campaign governance plan identifier. Required when the account has governance_agents. The seller includes this in the committed check_governance request so the governance agent can validate against the correct plan.",
+      "description": "DEPRECATED on seller-facing requests. New buyers send the approved governance_context on the protocol envelope; the seller forwards that opaque context and does not need the plan identifier. If both are present, the governance agent MUST reject a mismatch. Removed in 4.0.",
+      "deprecated": true,
       "x-entity": "governance_plan"
     },
     "account": {
@@ -202,6 +211,7 @@
         },
         "authentication": {
           "type": "object",
+          "deprecated": true,
           "description": "Legacy authentication configuration for webhook delivery (A2A-compatible). Opts the receiver into Bearer or HMAC-SHA256 signing. Both schemes are deprecated; the preferred signing profile for new integrations is RFC 9421, where the seller signs with a key published at its brand.json agents[] entry and the buyer verifies against the seller's JWKS — no shared secret crosses the wire (see docs/building/implementation/security.mdx#webhook-callbacks). This field is required in AdCP 3.x; the requirement is removed in AdCP 4.0 when the default RFC 9421 path becomes the only path.",
           "properties": {
             "schemes": {
