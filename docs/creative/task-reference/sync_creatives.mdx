@@ -162,10 +162,12 @@ Implementations that acknowledge a creative on the synchronous success branch bu
 | `format_id`         | FormatId            | Conditional | Legacy named-format path. Structured object with `agent_url` and `id`. Required when `format_kind` is omitted; mutually exclusive with `format_kind`. |
 | `format_kind`       | CanonicalFormatKind | Conditional | 3.1+ canonical-format path. Required when `format_id` is omitted; mutually exclusive with `format_id`. |
 | `format_option_ref` | FormatOptionRef     | No          | Optional structured reference to a product or publisher format option. Required when the target product has multiple options with the same `format_kind`. |
-| `assets`            | object              | Yes         | Assets keyed by role (e.g., `{video: {...}, thumbnail: {...}}`). Catalogs are included as assets with `asset_type: "catalog"`. See [Catalogs](/docs/creative/catalogs). |
+| `assets`            | object              | Yes         | Assets keyed by the selected format's slot name (`asset_id` for legacy named formats; `asset_group_id` for canonical formats). Catalogs are included as assets with `asset_type: "catalog"`. See [Catalogs](/docs/creative/catalogs). |
 | `tags`              | string[]            | No          | Searchable tags for creative organization                          |
 
 Provide either the legacy `format_id` or the canonical `format_kind` path, never both. New 3.1+ integrations should prefer `format_kind` with `format_option_ref` when routing depends on a product's declared format option.
+
+Before uploading, buyers MUST verify each creative manifest against the selected seller-declared format. For a legacy `format_id`, resolve the definition with `list_creative_formats`; the manifest MUST include every required asset keyed by its exact `asset_id`. For a canonical `format_kind`, validate against the target product's `format_options[]` and key required slots by `asset_group_id`.
 
 ### Promoting a build_creative variant
 
@@ -833,7 +835,7 @@ Poll `tasks/get` or wait for the webhook. The completion artifact carries the `c
 
 ## Best practices
 
-1. **Use upsert semantics** - Same `creative_id` updates existing creative rather than creating duplicates. This allows iterative creative development. Note: updates are blocked for creatives in active delivery (see #7).
+1. **Use upsert semantics** - Same `creative_id` updates existing creative rather than creating duplicates. This allows iterative creative development. Note: updates are blocked for creatives in active delivery (see #6).
 
 2. **Rehearse seller acceptance first** - Use `dry_run: true` when you need to catch upload, upsert, assignment, account, policy, or format errors before mutating the seller's creative library. Use `validate_input` earlier in the workflow only for manifest-structure preflight or multi-target product comparison.
 
@@ -843,9 +845,7 @@ Poll `tasks/get` or wait for the webhook. The completion artifact carries the `c
 
 5. **Brand identity** - For generative creatives, validate brand identity schema before syncing to avoid processing failures.
 
-6. **Check format support** - Use `list_creative_formats` to verify product supports your creative formats before uploading.
-
-7. **Active delivery protection** - Creatives assigned to active, non-paused packages cannot be updated or deleted via `delete_missing`. Pause the package first, unassign the creative via `update_media_buy`, or create a new creative with a different `creative_id`.
+6. **Active delivery protection** - Creatives assigned to active, non-paused packages cannot be updated or deleted via `delete_missing`. Pause the package first, unassign the creative via `update_media_buy`, or create a new creative with a different `creative_id`.
 
 ## Related tasks
 
