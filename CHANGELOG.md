@@ -4,6 +4,13 @@
 
 - Cross-role governance enforcement: the experimental `governance.campaign` surface will add typed `target_agent`, task-scoped `adcp.governance_enforcement`, critical task/payload/commitment JWS bindings, intent-only conditions negotiation, and governance-authoritative settlement. The implementation may merge during 3.2 development; the beta-to-GA period provides the experimental-surface notice window. See the 3.2 release notes and migration guide.
 
+## 3.1.11
+
+### Patch Changes
+
+- ee58aac: Clarify that 3.1 SDKs preserve pixel-ratio registry metadata without interpreting it, while typed validation, precedence, and error semantics begin in 3.2.
+- 1f7f4c2: Fix the creative-fate compliance storyboard to build creative assets from the required slots declared by the seller's selected product format. Clarify that runners must resolve context substitutions recursively before sending requests.
+
 ## 3.1.10
 
 ### Patch Changes
