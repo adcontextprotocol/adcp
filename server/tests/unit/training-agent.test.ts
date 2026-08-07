@@ -44,6 +44,7 @@ import { TrainingSalesPlatform } from '../../src/training-agent/v6-sales-platfor
 import { TrainingCreativePlatform } from '../../src/training-agent/v6-creative-platform.js';
 import { TrainingCreativeBuilderPlatform } from '../../src/training-agent/v6-creative-builder-platform.js';
 import { clearAudienceStore } from '../../src/training-agent/audience-handlers.js';
+import { handleProvidePerformanceFeedback } from '../../src/training-agent/catalog-event-handlers.js';
 
 // Valid channels per the enum schema at static/schemas/source/enums/channels.json
 const VALID_CHANNELS = [
@@ -1250,6 +1251,44 @@ describe('createTrainingAgentServer', () => {
       'third_party_format',
       'capability',
     ]);
+  });
+
+  it('returns an applied receipt for compact performance feedback', async () => {
+    await runWithSessionContext(async () => {
+      const session = await getSession('open:default');
+      session.mediaBuys.set('mb_feedback_test', {} as any);
+
+      const result = await handleProvidePerformanceFeedback({
+        media_buy_id: 'mb_feedback_test',
+        measurement_period: {
+          start: '2026-07-01T00:00:00Z',
+          end: '2026-07-31T23:59:59Z',
+        },
+        performance_index: 1.35,
+        baseline: 'control_group',
+        metric: {
+          scope: 'vendor',
+          vendor: { domain: 'measurement.example' },
+          metric_id: 'incremental_revenue_index',
+        },
+        producer: { domain: 'measurement.example' },
+        methodology: 'geo_incrementality',
+        study_ref: 'study_42',
+      }, DEFAULT_CTX);
+
+      expect(result.success).toBe(true);
+      expect(result.feedback_id).toMatch(/^fb_[0-9a-f]{32}$/);
+      expect(result.application_status).toBe('applied');
+      expect(result.received_at).toBe(result.applied_at);
+      expect(Number.isNaN(Date.parse(result.received_at))).toBe(false);
+      expect(result).toMatchObject({
+        media_buy_id: 'mb_feedback_test',
+        baseline: 'control_group',
+        producer: { domain: 'measurement.example' },
+        methodology: 'geo_incrementality',
+        study_ref: 'study_42',
+      });
+    });
   });
 
   it('get_adcp_capabilities response uses 3.0 capability model', async () => {

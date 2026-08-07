@@ -411,10 +411,16 @@ carry. That inconsistency should be resolved separately rather than expanded.
 
 - Existing request fields and required fields are unchanged.
 - Existing success responses remain valid.
+- `feedback_id`, `status`, `submitted_at`, and `applied_at` remain available as
+  deprecated optional properties on the standalone core type. They are not
+  assertion inputs; task receipts now carry the corresponding receiver state.
 - `metric_type`, `feedback_source`, and the documented `vendor` producer field
   remain accepted.
 - `metric_type` and `vendor` are deprecated in favor of `metric` and
   `producer`.
+- When `baseline` is absent, `performance_index = 1.0` retains its legacy
+  meaning of expected performance. When `baseline` is present, 1.0 means that
+  named baseline.
 - `additionalProperties` policy is unchanged.
 - Released `dist/schemas/<version>` artifacts remain immutable.
 

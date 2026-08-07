@@ -62,6 +62,20 @@ describe("compact performance feedback and measurement-agent discovery", () => {
     );
   });
 
+  it("retains deprecated stored-record fields on the published core type", () => {
+    const schema = readSchema("/schemas/core/performance-feedback.json");
+
+    for (const field of [
+      "feedback_id",
+      "status",
+      "submitted_at",
+      "applied_at",
+    ]) {
+      assert.equal(schema.properties[field].deprecated, true, field);
+      assert.equal(schema.required.includes(field), false, field);
+    }
+  });
+
   it("accepts compact measurement-provider feedback with evidence and provenance", () => {
     assert.equal(
       validateRequest({

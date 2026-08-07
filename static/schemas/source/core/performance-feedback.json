@@ -5,6 +5,11 @@
   "description": "One optimizer-ready assertion about a media buy, package, or creative. This is a compact projection of buyer- or measurement-provider analysis, not a transport for raw exposure logs, attribution models, or complete study datasets.",
   "type": "object",
   "properties": {
+    "feedback_id": {
+      "type": "string",
+      "deprecated": true,
+      "description": "Deprecated stored-record identifier retained for compatibility with the previously published standalone core type. New senders omit it from assertions; receivers issue feedback_id in the provide_performance_feedback receipt."
+    },
     "media_buy_id": {
       "type": "string",
       "minLength": 1,
@@ -30,7 +35,7 @@
     "performance_index": {
       "type": "number",
       "minimum": 0,
-      "description": "Normalized decision signal. 1.0 equals the named baseline, values below 1.0 underperform it, and values above 1.0 outperform it. For ratio-compatible metrics, producers SHOULD compute observed performance divided by baseline performance."
+      "description": "Normalized decision signal. When baseline is present, 1.0 equals that named baseline, values below 1.0 underperform it, and values above 1.0 outperform it. When baseline is absent, 1.0 retains the legacy meaning of expected performance. For ratio-compatible metrics, producers SHOULD compute observed performance divided by baseline performance."
     },
     "baseline": {
       "$ref": "/schemas/enums/performance-baseline.json",
@@ -125,6 +130,24 @@
       "type": "string",
       "minLength": 1,
       "description": "Receiver-issued feedback_id of the earlier assertion this one replaces at the same hop. Revisions are new immutable assertions rather than mutations."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["accepted", "queued", "applied", "rejected"],
+      "deprecated": true,
+      "description": "Deprecated stored-record processing status retained for compatibility with the previously published standalone core type. New task responses use application_status for optimizer disposition and the task envelope status for task lifecycle."
+    },
+    "submitted_at": {
+      "type": "string",
+      "format": "date-time",
+      "deprecated": true,
+      "description": "Deprecated stored-record submission timestamp retained for compatibility. New task responses use received_at."
+    },
+    "applied_at": {
+      "type": "string",
+      "format": "date-time",
+      "deprecated": true,
+      "description": "Deprecated stored-record field retained for compatibility. New assertions omit it; sellers return applied_at in the provide_performance_feedback receipt when application_status is applied."
     }
   },
   "required": ["media_buy_id", "measurement_period", "performance_index"],
