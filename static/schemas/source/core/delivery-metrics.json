@@ -382,6 +382,9 @@
           "description": "Row-specific methodology context that doesn't fit the structured fields (e.g., a partial-period proration or a market-specific estimate adjustment). Same role as dooh_metrics.calculation_notes — canonical methodology declarations belong on the measurement vendor's discoverable surfaces, not here."
         }
       },
+      "dependencies": {
+        "estimated_impressions": ["estimation_basis"]
+      },
       "additionalProperties": true
     },
     "viewability": {
