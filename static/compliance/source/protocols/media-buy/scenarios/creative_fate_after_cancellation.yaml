@@ -91,6 +91,8 @@ phases:
             key: "format_kind"
           - path: "products[0].format_options[0].format_option_id"
             key: "format_option_id"
+          - path: "products[0].format_options[0].params"
+            key: "format_params"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -172,12 +174,7 @@ phases:
                 scope: "product"
                 format_option_id: "$context.format_option_id"
               assets:
-                image:
-                  asset_type: "image"
-                  url: "https://cdn.pinnacle-agency.example/acme-reuse-banner.png"
-                  width: 300
-                  height: 250
-                  mime_type: "image/png"
+                $build_assets_from_format: "$context.format_params"
           assignments:
             - creative_id: "acme_reuse_banner_001"
               package_id: "$context.package_id"
@@ -373,9 +370,10 @@ phases:
       - id: reassign_creative
         title: "Assign the original creative_id to the new package"
         narrative: |
-          Reference the original creative by creative_id only (no assets, no re-upload)
-          and assign it to the new package. The seller resolves the creative_id from
-          the library; if the creative was evaporated on cancel, this call fails.
+          Reference the original creative by creative_id and resubmit the source assets
+          required by the selected product format, then assign it to the new package.
+          The seller resolves the creative_id from the library; if the creative was
+          evaporated on cancel, this call fails.
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
@@ -400,13 +398,12 @@ phases:
             # leaving `creatives: undefined` which fails pre-flight zod.
             - creative_id: "acme_reuse_banner_001"
               name: "Reassigned creative"
-              format_kind: "image"
+              format_kind: "$context.format_kind"
+              format_option_ref:
+                scope: "product"
+                format_option_id: "$context.format_option_id"
               assets:
-                image:
-                  asset_type: "image"
-                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/banner_300x250.jpg"
-                  width: 300
-                  height: 250
+                $build_assets_from_format: "$context.format_params"
           assignments:
             - creative_id: "acme_reuse_banner_001"
               package_id: "$context.second_package_id"
