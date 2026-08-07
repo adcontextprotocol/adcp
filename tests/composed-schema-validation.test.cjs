@@ -2161,6 +2161,43 @@ async function runTests() {
 
   log('');
 
+  // oauth — explicit capability gate for the universal OAuth metadata graph
+  // storyboard (adcp#4293). The block is optional, but when present it must
+  // carry the supported discriminator.
+  log('Get AdCP Capabilities Response (oauth capability gate):', 'info');
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      oauth: { supported: true },
+    },
+    'Accepts an explicit oauth.supported capability claim'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      oauth: { supported: false },
+    },
+    'Accepts an explicit unsupported OAuth capability declaration'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      oauth: {},
+    },
+    'Rejects an OAuth capability block without the supported discriminator'
+  );
+
+  log('');
+
   // request_signing.protocol_methods_* — JSON-RPC method namespace (adcp#4318).
   // The `protocol_methods_supported_for` / `_warn_for` / `_required_for` arrays
   // carry JSON-RPC method strings (e.g. `tasks/cancel`); plain AdCP tool names

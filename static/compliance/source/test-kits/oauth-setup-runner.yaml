@@ -1,0 +1,253 @@
+# OAuth Setup Runner — Passive Metadata Graph Contract
+#
+# Applies to universal/oauth-setup.yaml when get_adcp_capabilities declares
+# `oauth.supported: true`. This contract deliberately performs no authorization
+# flow, token exchange, or dynamic client registration.
+
+id: oauth_setup_runner
+profile: adcp/oauth-metadata-graph/v1
+applies_to:
+  universal_storyboard: oauth-setup
+
+description: |
+  Black-box contract for evaluating the public OAuth discovery graph of an AdCP
+  endpoint. The runner derives the RFC 9728 well-known URL from the complete
+  agent URL, fetches that document, follows every explicitly listed RFC 8414
+  issuer, and passively checks the public endpoints those documents advertise.
+
+  The contract is intentionally origin-neutral. A protected resource may use an
+  authorization server on another origin; `https://agent.example.com/mcp`
+  explicitly naming `https://identity.example.net` is conformant when the latter's
+  metadata is reachable and its `issuer` is exactly
+  `https://identity.example.net`. Treating every off-origin issuer as leakage would
+  reject common hosted-identity deployments and is not required by RFC 9728. This
+  proves structural consistency only: callers still pin or authorize acceptable
+  issuers through policy or onboarding before trusting tokens from them.
+
+harness_mode: black_box
+activity_mode: passive
+
+discovery:
+  protected_resource_metadata:
+    source: agent_url
+    well_known_suffix: /.well-known/oauth-protected-resource
+    path_construction: rfc9728_section_3
+    method: GET
+    credentials: none
+    follow_redirects: true
+    require_status: 200
+    require_content_type: application/json
+    required_fields:
+      resource: absolute_https_uri
+      authorization_servers: non_empty_array_of_absolute_https_issuer_uris_without_userinfo_query_or_fragment
+    resource_comparison: exact_string_equal_to_agent_url_after_json_decoding_no_url_normalization
+
+  authorization_server_metadata:
+    source: protected_resource_metadata.authorization_servers
+    traversal: every_item
+    well_known_suffix: /.well-known/oauth-authorization-server
+    path_construction: rfc8414_section_3
+    method: GET
+    credentials: none
+    follow_redirects: true
+    require_status: 200
+    require_content_type: application/json
+    required_fields:
+      issuer: absolute_https_issuer_uri_without_userinfo_query_or_fragment
+    issuer_comparison: exact_string_equal_to_source_issuer_after_json_decoding_no_url_normalization
+    conditional_fields:
+      response_types_supported: |
+        Required as a non-empty array when the effective grant set uses the
+        authorization endpoint. For a token-endpoint-only server (for example,
+        `grant_types_supported: [client_credentials]`) it MUST be omitted rather
+        than emitted as an empty array. AdCP 3.2 normatively adopts the technical
+        correction proposed by RFC 8414 Erratum 7793; its RFC Editor status is
+        still Reported, not Verified. This profile decision avoids requiring an
+        impossible non-empty response-type declaration from token-only servers.
+      authorization_endpoint: |
+        Required when the effective grant set uses the authorization endpoint.
+        The effective set is `grant_types_supported` when present, otherwise the
+        RFC 8414 default `[authorization_code, implicit]`. Authorization code and
+        implicit use the authorization endpoint. Unknown extension grants do not
+        create an inferred requirement unless their response types include
+        `code` or `token`.
+      token_endpoint: |
+        Required unless the effective grant set contains only `implicit`, per
+        RFC 8414 section 2. Do not require it merely because the original issue
+        listed it: the RFC's conditional requirement is authoritative.
+      jwks_uri: |
+        Optional under RFC 8414. When advertised, it MUST be an absolute HTTPS
+        URL and resolve to HTTP 200 JSON containing a `keys` array.
+      registration_endpoint: |
+        Optional under RFC 8414. When advertised, it MUST be an absolute HTTPS
+        URL. Baseline conformance MUST NOT send an RFC 7591 registration request.
+
+endpoint_probes:
+  authorization_endpoint:
+    mode: passive_reachability
+    method: GET
+    credentials: none
+    follow_redirects: false
+    success_status_classes: [2xx, 3xx]
+    success_statuses: [400, 401, 403, 405, 429]
+    failure_statuses: [404, 410, 5xx]
+    rationale: "A parameterless authorization request commonly returns 400 or redirects to login; either proves the endpoint is deployed."
+  token_endpoint:
+    mode: passive_transport_reachability
+    method: GET
+    credentials: none
+    follow_redirects: false
+    success_status_classes: [2xx, 3xx, 4xx]
+    failure_status_classes: [5xx]
+    failure_statuses: [410]
+    rationale: "RFC 6749 token requests use POST, but this passive grade MUST NOT submit a grant. Any non-5xx HTTP response except 410 proves transport reachability; 404/405 may be method-specific and are not treated as token-protocol semantics."
+  jwks_uri:
+    mode: document
+    method: GET
+    credentials: none
+    follow_redirects: true
+    require_status: 200
+    require_content_type: application/json
+    require_shape:
+      keys: array
+
+fetch_policy:
+  credentials: none
+  fresh_stateless_client: true
+  cookie_jar: disabled
+  ambient_auth: disabled
+  netrc: disabled
+  strip_request_headers:
+    - authorization
+    - cookie
+    - proxy-authorization
+  strip_sensitive_headers_on_every_redirect: true
+  production_schemes: [https]
+  allow_http_only_with_explicit_local_dev_flag: true
+  connect_timeout_ms: 5000
+  total_timeout_ms: 10000
+  max_response_bytes: 262144
+  accept_content_encoding: identity_only
+  max_encoded_response_bytes: 262144
+  max_decoded_response_bytes: 262144
+  enforce_byte_limits_while_streaming_before_allocation_or_parsing: true
+  max_redirects: 3
+  validate_every_redirect_target: true
+  resolve_and_validate_all_addresses_before_connect: true
+  revalidate_dns_on_every_redirect: true
+  address_requirement: globally_routable_unicast_per_current_iana_special_purpose_registries
+  canonicalize_all_ip_literal_forms_before_classification: true
+  blocked_network_examples:
+    - this_network
+    - loopback
+    - link_local
+    - private
+    - carrier_grade_nat
+    - documentation
+    - benchmarking
+    - multicast
+    - reserved
+    - unspecified
+    - ipv6_unique_local
+  reject_url_credentials: true
+  reject_fragments: true
+  redact_query_values_in_output: true
+
+dns_policy:
+  resolve_once_per_hop: true
+  reject_if_any_answer_is_blocked: true
+  connect_only_to_validated_address: true
+  verify_connected_peer_address: true
+  normalize_ipv4_mapped_ipv6: true
+  preserve_original_hostname_for_tls_sni_and_verification: true
+
+graph_limits:
+  max_authorization_servers: 16
+  max_unique_urls: 64
+  max_total_requests: 64
+  max_total_response_bytes: 2097152
+  max_concurrency: 4
+  whole_run_timeout_ms: 60000
+  deduplicate_exact_urls: true
+
+diagnostic_codes:
+  oauth_protected_resource_metadata_unavailable: "The derived RFC 9728 document did not return HTTP 200 JSON."
+  oauth_protected_resource_metadata_invalid: "The RFC 9728 response was not a JSON object or omitted a required field."
+  oauth_resource_mismatch: "The RFC 9728 resource value was not exactly equal to the agent endpoint after JSON decoding; URL normalization is forbidden."
+  oauth_authorization_servers_empty: "authorization_servers was absent, not an array, or empty."
+  oauth_authorization_server_url_invalid: "An authorization_servers item was not an absolute HTTPS issuer URI."
+  oauth_authorization_server_metadata_unavailable: "A referenced RFC 8414 document did not return HTTP 200 JSON."
+  oauth_authorization_server_metadata_invalid: "An RFC 8414 response was not a JSON object or violated required/conditional field shape."
+  oauth_issuer_mismatch: "RFC 8414 issuer was not exactly equal to the issuer used to derive that document's URL after JSON decoding; URL normalization is forbidden."
+  oauth_endpoint_url_invalid: "An applicable endpoint URL was not absolute HTTPS, contained credentials, or contained a fragment."
+  oauth_endpoint_unreachable: "An applicable authorization or token endpoint failed the passive reachability policy."
+  oauth_jwks_unavailable: "An advertised jwks_uri did not return HTTP 200 JSON with a keys array."
+  oauth_fetch_blocked: "A document or endpoint URL violated the SSRF/redirect fetch policy."
+  oauth_graph_limit_exceeded: "The metadata graph exceeded an authorization-server, URL, request, byte, concurrency, redirect, or whole-run limit."
+
+diagnostic_precedence:
+  description: |
+    Select the first failure by this declared order and by source-array order,
+    never by concurrent request completion time. A blocked fetch always reports
+    `oauth_fetch_blocked`, including blocked JWKS and redirect targets. A non-2xx
+    metadata response reports `*_unavailable`; a 2xx response with invalid JSON
+    or shape reports `*_invalid`. Missing or empty `authorization_servers` uses
+    the more specific `oauth_authorization_servers_empty` code.
+  order:
+    - oauth_graph_limit_exceeded
+    - oauth_fetch_blocked
+    - oauth_protected_resource_metadata_unavailable
+    - oauth_protected_resource_metadata_invalid
+    - oauth_resource_mismatch
+    - oauth_authorization_servers_empty
+    - oauth_authorization_server_url_invalid
+    - oauth_authorization_server_metadata_unavailable
+    - oauth_authorization_server_metadata_invalid
+    - oauth_issuer_mismatch
+    - oauth_endpoint_url_invalid
+    - oauth_endpoint_unreachable
+    - oauth_jwks_unavailable
+
+redaction_policy:
+  applies_to:
+    - request_urls
+    - redirect_history
+    - diagnostic_urls
+    - location_headers
+  query_rendering: preserve_parameter_names_replace_each_value_with_REDACTED
+  userinfo_rendering: reject_before_fetch_and_render_REDACTED
+  fragments: reject_before_fetch
+
+vector_contract:
+  source: test-vectors/oauth-setup/vectors.json
+  execution: |
+    Runner implementations MUST execute the deterministic corpus without real
+    network access by resolving each request from the vector's `responses` map.
+    Every positive vector must pass and every negative vector must fail with the
+    exact `expected_outcome.error_code`. The corpus tests the grader, not an
+    agent; it prevents a runner bug from turning unsafe or inconsistent metadata
+    into a false PASS.
+
+scope:
+  in_scope: |
+    - RFC 9728 well-known URL construction and protected-resource consistency.
+    - Every explicitly advertised RFC 8414 authorization server.
+    - RFC 8414 required and conditional field shape.
+    - Passive reachability of applicable authorization, token, and JWKS endpoints.
+    - HTTPS and SSRF safety for every initial URL and redirect target.
+    - Deterministic runner vectors, including an off-origin issuer that MUST pass.
+  out_of_scope: |
+    - Authorization-code, PKCE, client-credentials, or refresh-token round trips.
+    - RFC 7591 registration transactions, disposable credential storage, or cleanup.
+    - Scope sufficiency for a particular caller or account.
+    - Access-token signature, audience, expiry, or revocation validation.
+    - OpenID Provider Configuration at `/.well-known/openid-configuration`.
+
+references:
+  universal_storyboard: universal/oauth-setup.yaml
+  test_vectors: test-vectors/oauth-setup/vectors.json
+  runner_implementation: https://github.com/adcontextprotocol/adcp-client/issues/2455
+  rfc_9728: https://www.rfc-editor.org/rfc/rfc9728
+  rfc_8414: https://www.rfc-editor.org/rfc/rfc8414
+  rfc_8414_reported_erratum_7793: https://www.rfc-editor.org/errata/eid7793
+  rfc_7591: https://www.rfc-editor.org/rfc/rfc7591

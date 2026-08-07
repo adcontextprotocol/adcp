@@ -1,0 +1,168 @@
+id: oauth_setup
+version: "1.0.0"
+title: "OAuth discovery and metadata consistency"
+category: oauth_setup
+summary: "Capability-gated evaluation of an agent's RFC 9728 protected-resource metadata and the complete RFC 8414 authorization-server graph it advertises."
+track: security_transport
+introduced_in: "3.2"
+
+requires_capability:
+  path: oauth.supported
+  equals: true
+
+required_tools:
+  - get_adcp_capabilities
+
+narrative: |
+  OAuth failures often appear only after a user completes authorization: the protected
+  resource names the wrong audience, an issuer document identifies a different issuer,
+  or a token/JWKS endpoint is not actually reachable. This universal storyboard grades
+  the public discovery graph before a client is asked to handle credentials.
+
+  **Gating.** The storyboard runs only when `get_adcp_capabilities` declares
+  `oauth.supported: true`. Agents using static Bearer keys, HTTP Basic, mTLS, or RFC 9421
+  without OAuth omit the block or declare `supported: false` and receive a
+  `not_applicable` result. An agent MUST NOT claim OAuth support merely because it accepts
+  an opaque Bearer API key.
+
+  **Scope.** The runner fetches the RFC 9728 protected-resource metadata derived from the
+  full agent endpoint, then follows every issuer in `authorization_servers` to its RFC 8414
+  authorization-server metadata. It checks exact resource and issuer relationships,
+  conditional RFC 8414 required fields, HTTPS URL shape, and passive reachability of the
+  authorization, token, and JWKS endpoints when applicable. An authorization server may be
+  on a different origin from the agent; explicit reference plus a self-consistent issuer
+  proves structural consistency, so off-origin placement is not itself a failure. It does
+  not establish that the issuer is trusted: callers still pin or authorize acceptable
+  issuers through policy or onboarding before accepting their tokens.
+
+  **No active registration.** If an RFC 8414 document advertises
+  `registration_endpoint`, the runner validates that it is an HTTPS URL but does not send
+  an RFC 7591 registration request. Active dynamic registration requires disposable
+  credentials, an explicit consent gate, per-tenant isolation, and cleanup semantics; it is
+  a separate future capability-gated grade.
+
+agent:
+  interaction_model: "*"
+  capabilities:
+    - oauth_protected_resource
+  examples:
+    - "Any AdCP agent declaring `oauth.supported: true`"
+
+caller:
+  role: compliance_runner
+  example: "AdCP Verified runner performing passive OAuth discovery"
+
+prerequisites:
+  description: |
+    The target endpoint uses HTTPS and returns `oauth.supported: true` from
+    `get_adcp_capabilities`. No client identifier, access token, or registration credential
+    is required: every request made by this storyboard is a public, passive discovery or
+    reachability probe. Local development runners MAY allow HTTP only behind an explicit
+    `--allow-http`-style option; production conformance never does.
+  test_kit: "test-kits/oauth-setup-runner.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "OAuth capability declaration"
+    narrative: |
+      Confirm that the agent explicitly opts into the OAuth metadata grade. The root
+      capability gate normally performs this selection before execution; the step keeps the
+      declaration visible in the graded report and catches a capability document that changes
+      between selection and execution.
+
+    steps:
+      - id: get_capabilities
+        title: "Verify oauth.supported is true"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return a schema-valid capability response containing `oauth.supported: true`.
+        sample_request:
+          context:
+            correlation_id: "oauth_setup--get_capabilities"
+        validations:
+          - check: field_present
+            path: "oauth"
+            description: "Agent declares the OAuth capability block"
+          - check: field_value
+            path: "oauth.supported"
+            value: true
+            description: "Agent explicitly opts into OAuth metadata conformance"
+
+  - id: metadata_graph
+    title: "Protected-resource and authorization-server metadata graph"
+    narrative: |
+      Fetch the RFC 9728 document at the well-known URL derived from the complete agent
+      endpoint. The `oauth_metadata_graph` validation then follows every explicitly named
+      authorization server and passively probes its advertised endpoints under the bounded
+      fetch policy in the runner contract. Oversized graphs fail deterministically before
+      traversal exceeds the contract's authorization-server, URL, request, byte, concurrency,
+      or whole-run limits.
+
+      RFC 8414 requirements are conditional: `authorization_endpoint` is required when an
+      advertised/default grant uses it, `token_endpoint` is required unless the server is
+      implicit-only. `response_types_supported` is required when an authorization endpoint is
+      used and omitted for token-endpoint-only servers. AdCP 3.2 normatively adopts the
+      technical correction proposed by RFC 8414 Erratum 7793, whose RFC Editor status remains
+      **Reported** rather than Verified, to avoid requiring an impossible non-empty response-type
+      declaration from client-credentials-only servers. `jwks_uri` and `registration_endpoint` are optional
+      under RFC 8414, but when present their values must
+      be HTTPS URLs; an advertised JWKS must also resolve to a JSON JWK Set. The runner does
+      not turn optional metadata into an AdCP requirement.
+
+    steps:
+      - id: evaluate_oauth_metadata
+        title: "Evaluate the complete OAuth discovery graph"
+        task: protected_resource_metadata
+        doc_ref: "/protocol/authentication"
+        comply_scenario: oauth_setup_discovery
+        stateful: false
+        expected: |
+          RFC 9728 metadata returns HTTP 200 JSON, its `resource` is exactly equal to the
+          agent endpoint after JSON string decoding (with no URL normalization),
+          `authorization_servers` is non-empty, and every referenced RFC 8414
+          document is self-consistent with reachable endpoints as applicable.
+        sample_response:
+          resource: "https://agent.example.com/mcp"
+          authorization_servers:
+            - "https://identity.example.net"
+          bearer_methods_supported:
+            - "header"
+        validations:
+          - check: http_status
+            value: 200
+            description: "RFC 9728 protected-resource metadata is reachable"
+          - check: field_present
+            path: "resource"
+            description: "Protected-resource metadata declares its resource identifier"
+          - check: field_pattern
+            path: "resource"
+            pattern: "^https://"
+            description: "The protected resource identifier uses HTTPS"
+          - check: field_present
+            path: "authorization_servers"
+            description: "Protected-resource metadata declares authorization servers"
+          - check: oauth_metadata_graph
+            description: "The resource identifier, every advertised authorization server, and every applicable public endpoint are exact, reachable, and internally consistent"
+
+grading:
+  pass_criteria: |
+    Both phases pass. The metadata graph fails on the first deterministic error code from the
+    runner contract; runners SHOULD continue safe independent probes after a failure so the
+    report can include additional observations, but multiple findings do not change the
+    boolean result. No OAuth capability claim produces `not_applicable`, not PASS.
+  report_format: |
+    Report the protected-resource URL, every authorization-server metadata URL followed, and
+    every passive endpoint probe. Failures include the stable diagnostic code plus the
+    offending URL, issuer, or field. Secrets never appear because the storyboard issues no
+    credentialed requests.
+
+references:
+  protected_resource_metadata: https://www.rfc-editor.org/rfc/rfc9728
+  authorization_server_metadata: https://www.rfc-editor.org/rfc/rfc8414
+  dynamic_client_registration: https://www.rfc-editor.org/rfc/rfc7591
+  test_vectors: /compliance/{version}/test-vectors/oauth-setup/vectors.json
