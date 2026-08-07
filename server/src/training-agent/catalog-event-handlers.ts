@@ -112,8 +112,16 @@ interface EventSourceState {
   createdAt: string;
 }
 
+interface PerformanceFeedbackState {
+  feedbackId: string;
+  sessionKey: string;
+  receivedAt: string;
+  assertion: PerformanceFeedbackInput;
+}
+
 const catalogStore = new Map<string, Map<string, CatalogState>>();
 const eventSourceStore = new Map<string, Map<string, EventSourceState>>();
+const performanceFeedbackStore = new Map<string, PerformanceFeedbackState>();
 
 function getCatalogMap(sessionKey: string): Map<string, CatalogState> {
   let map = catalogStore.get(sessionKey);
@@ -158,6 +166,7 @@ export function findEventSourceInSession(sessionKey: string, eventSourceId: stri
 export function clearCatalogEventStores(): void {
   catalogStore.clear();
   eventSourceStore.clear();
+  performanceFeedbackStore.clear();
 }
 
 // ── Shared schema fragment ───────────────────────────────────────
@@ -175,6 +184,92 @@ const ACCOUNT_REF_SCHEMA = {
       required: ['brand'],
     },
   ],
+};
+
+const PERFORMANCE_BASELINES = [
+  'campaign_target', 'control_group', 'seller_history',
+  'buyer_portfolio', 'market_benchmark', 'other',
+] as const;
+
+const STANDARD_PERFORMANCE_METRICS = [
+  'impressions', 'spend', 'clicks', 'ctr', 'views', 'completed_views',
+  'completion_rate', 'conversions', 'conversion_value', 'roas',
+  'cost_per_acquisition', 'new_to_brand_rate', 'leads', 'reach', 'frequency',
+  'grps', 'engagements', 'engagement_rate', 'follows', 'saves',
+  'profile_visits', 'viewability', 'quartile_data', 'dooh_metrics',
+  'cost_per_click', 'cost_per_completed_view', 'cpm', 'downloads',
+  'units_sold', 'new_to_brand_units', 'plays', 'incremental_sales_lift',
+  'brand_lift', 'foot_traffic', 'conversion_lift', 'brand_search_lift',
+] as const;
+
+const METRIC_QUALIFIER_SCHEMA = {
+  type: 'object',
+  properties: {
+    viewability_standard: { type: 'string', enum: ['mrc', 'groupm'] },
+    completion_source: { type: 'string', enum: ['seller_attested', 'vendor_attested'] },
+    attribution_methodology: { type: 'string', enum: ['deterministic_purchase', 'probabilistic', 'panel_based', 'modeled'] },
+    attribution_window: {
+      type: 'object',
+      properties: {
+        interval: { type: 'integer', minimum: 1 },
+        unit: { type: 'string', enum: ['seconds', 'minutes', 'hours', 'days', 'campaign'] },
+      },
+      required: ['interval', 'unit'],
+      additionalProperties: false,
+    },
+    lift_dimension: { type: 'string', enum: ['awareness', 'consideration', 'favorability', 'purchase_intent', 'ad_recall'] },
+  },
+  additionalProperties: false,
+};
+
+const PERFORMANCE_FEEDBACK_METRIC_SCHEMA = {
+  type: 'object',
+  oneOf: [
+    {
+      properties: {
+        scope: { type: 'string', const: 'standard' },
+        metric_id: { type: 'string', enum: [...STANDARD_PERFORMANCE_METRICS] },
+        qualifier: METRIC_QUALIFIER_SCHEMA,
+      },
+      required: ['scope', 'metric_id'],
+      additionalProperties: false,
+    },
+    {
+      properties: {
+        scope: { type: 'string', const: 'vendor' },
+        vendor: {
+          type: 'object',
+          properties: {
+            domain: { type: 'string', pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$' },
+            brand_id: { type: 'string', pattern: '^[a-z0-9_]+$' },
+          },
+          required: ['domain'],
+          additionalProperties: true,
+        },
+        metric_id: { type: 'string', minLength: 1, maxLength: 64, pattern: '^[a-z][a-z0-9_]*$' },
+      },
+      required: ['scope', 'vendor', 'metric_id'],
+      additionalProperties: false,
+    },
+  ],
+};
+
+const PERFORMANCE_FEEDBACK_EVIDENCE_SCHEMA = {
+  type: 'object',
+  properties: {
+    sample_size: { type: 'integer', minimum: 1 },
+    confidence_interval: {
+      type: 'object',
+      properties: {
+        lower: { type: 'number' },
+        upper: { type: 'number' },
+        level: { type: 'number', exclusiveMinimum: 0, exclusiveMaximum: 1 },
+      },
+      required: ['lower', 'upper', 'level'],
+      additionalProperties: false,
+    },
+  },
+  additionalProperties: false,
 };
 
 // ── Tool definitions ─────────────────────────────────────────────
@@ -297,22 +392,22 @@ export const CATALOG_EVENT_TOOLS = [
         creative_id: { type: 'string' },
         baseline: {
           type: 'string',
-          enum: ['campaign_target', 'control_group', 'seller_history', 'buyer_portfolio', 'market_benchmark', 'other'],
+          enum: [...PERFORMANCE_BASELINES],
         },
-        metric: { type: 'object' },
-        metric_type: { type: 'string', enum: ['overall_performance', 'conversion_rate', 'roas', 'cpa', 'engagement_rate'] },
+        metric: PERFORMANCE_FEEDBACK_METRIC_SCHEMA,
+        metric_type: { type: 'string', enum: ['overall_performance', 'conversion_rate', 'brand_lift', 'click_through_rate', 'completion_rate', 'viewability', 'brand_safety', 'cost_efficiency'] },
         feedback_source: { type: 'string', enum: ['buyer_attribution', 'third_party_measurement', 'platform_analytics', 'verification_partner'] },
-        producer: { type: 'object', properties: { domain: { type: 'string' }, brand_id: { type: 'string' } }, required: ['domain'] },
-        vendor: { type: 'object', properties: { domain: { type: 'string' }, brand_id: { type: 'string' } }, required: ['domain'] },
-        methodology: { type: 'string' },
-        methodology_version: { type: 'string' },
-        study_ref: { type: 'string' },
-        evidence: { type: 'object' },
+        producer: { type: 'object', properties: { domain: { type: 'string', pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$' }, brand_id: { type: 'string', pattern: '^[a-z0-9_]+$' } }, required: ['domain'] },
+        vendor: { type: 'object', properties: { domain: { type: 'string', pattern: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$' }, brand_id: { type: 'string', pattern: '^[a-z0-9_]+$' } }, required: ['domain'] },
+        methodology: { type: 'string', minLength: 1, maxLength: 100 },
+        methodology_version: { type: 'string', minLength: 1, maxLength: 100 },
+        study_ref: { type: 'string', minLength: 1, maxLength: 255 },
+        evidence: PERFORMANCE_FEEDBACK_EVIDENCE_SCHEMA,
         evidence_ref: { type: 'string', format: 'uri' },
         as_of: { type: 'string', format: 'date-time' },
         final: { type: 'boolean' },
-        supersedes_feedback_id: { type: 'string' },
-        idempotency_key: { type: 'string' },
+        supersedes_feedback_id: { type: 'string', minLength: 1 },
+        idempotency_key: { type: 'string', minLength: 16, maxLength: 255, pattern: '^[A-Za-z0-9_.:-]{16,255}$' },
       },
       required: ['media_buy_id', 'measurement_period', 'performance_index'],
     },
@@ -322,6 +417,94 @@ export const CATALOG_EVENT_TOOLS = [
 // ── Handler implementations ─────────────────────────────────────
 
 const VALID_CATALOG_TYPES = ['product', 'offering', 'inventory', 'store', 'promotion', 'hotel', 'flight', 'job', 'vehicle', 'real_estate', 'education', 'destination'];
+
+const DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+const BRAND_ID_PATTERN = /^[a-z0-9_]+$/;
+const VENDOR_METRIC_ID_PATTERN = /^[a-z][a-z0-9_]*$/;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
+  return Object.keys(value).every(key => allowed.has(key));
+}
+
+function isBrandRef(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (typeof value.domain !== 'string' || !DOMAIN_PATTERN.test(value.domain)) return false;
+  return value.brand_id === undefined
+    || (typeof value.brand_id === 'string' && BRAND_ID_PATTERN.test(value.brand_id));
+}
+
+function validateMetricQualifier(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const allowed = new Set([
+    'viewability_standard', 'completion_source', 'attribution_methodology',
+    'attribution_window', 'lift_dimension',
+  ]);
+  if (!hasOnlyKeys(value, allowed)) return false;
+  if (value.viewability_standard !== undefined && !['mrc', 'groupm'].includes(value.viewability_standard as string)) return false;
+  if (value.completion_source !== undefined && !['seller_attested', 'vendor_attested'].includes(value.completion_source as string)) return false;
+  if (value.attribution_methodology !== undefined && !['deterministic_purchase', 'probabilistic', 'panel_based', 'modeled'].includes(value.attribution_methodology as string)) return false;
+  if (value.lift_dimension !== undefined && !['awareness', 'consideration', 'favorability', 'purchase_intent', 'ad_recall'].includes(value.lift_dimension as string)) return false;
+  if (value.attribution_window !== undefined) {
+    const window = value.attribution_window;
+    if (!isRecord(window) || !hasOnlyKeys(window, new Set(['interval', 'unit']))) return false;
+    if (!Number.isInteger(window.interval) || (window.interval as number) < 1) return false;
+    if (!['seconds', 'minutes', 'hours', 'days', 'campaign'].includes(window.unit as string)) return false;
+    if (window.unit === 'campaign' && window.interval !== 1) return false;
+  }
+  return true;
+}
+
+function validatePerformanceMetric(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.scope !== 'string') return false;
+  if (value.scope === 'standard') {
+    if (!hasOnlyKeys(value, new Set(['scope', 'metric_id', 'qualifier']))) return false;
+    if (!STANDARD_PERFORMANCE_METRICS.includes(value.metric_id as typeof STANDARD_PERFORMANCE_METRICS[number])) return false;
+    return value.qualifier === undefined || validateMetricQualifier(value.qualifier);
+  }
+  if (value.scope === 'vendor') {
+    if (!hasOnlyKeys(value, new Set(['scope', 'vendor', 'metric_id']))) return false;
+    return isBrandRef(value.vendor)
+      && typeof value.metric_id === 'string'
+      && value.metric_id.length <= 64
+      && VENDOR_METRIC_ID_PATTERN.test(value.metric_id);
+  }
+  return false;
+}
+
+function validatePerformanceEvidence(value: unknown): boolean {
+  if (!isRecord(value) || !hasOnlyKeys(value, new Set(['sample_size', 'confidence_interval']))) return false;
+  if (value.sample_size !== undefined && (!Number.isInteger(value.sample_size) || (value.sample_size as number) < 1)) return false;
+  if (value.confidence_interval !== undefined) {
+    const interval = value.confidence_interval;
+    if (!isRecord(interval) || !hasOnlyKeys(interval, new Set(['lower', 'upper', 'level']))) return false;
+    if (typeof interval.lower !== 'number' || typeof interval.upper !== 'number' || typeof interval.level !== 'number') return false;
+    if (!(interval.level > 0 && interval.level < 1)) return false;
+  }
+  return true;
+}
+
+function validateCompactPerformanceFeedback(req: PerformanceFeedbackInput): string | undefined {
+  if (req.baseline !== undefined && !PERFORMANCE_BASELINES.includes(req.baseline as typeof PERFORMANCE_BASELINES[number])) {
+    return 'baseline is not a recognized performance baseline';
+  }
+  if (req.metric !== undefined && !validatePerformanceMetric(req.metric)) {
+    return 'metric must be a valid standard or vendor performance metric identity';
+  }
+  if (req.evidence !== undefined && !validatePerformanceEvidence(req.evidence)) {
+    return 'evidence must contain a valid sample size and/or confidence interval';
+  }
+  if (req.producer !== undefined && !isBrandRef(req.producer)) {
+    return 'producer must be a valid BrandRef';
+  }
+  if ((req.methodology !== undefined || req.methodology_version !== undefined) && req.producer === undefined) {
+    return 'producer is required when methodology or methodology_version is present';
+  }
+  return undefined;
+}
 
 export async function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncCatalogsInput;
@@ -623,6 +806,13 @@ export async function handleProvidePerformanceFeedback(args: ToolArgs, ctx: Trai
     };
   }
 
+  const compactValidationError = validateCompactPerformanceFeedback(req);
+  if (compactValidationError) {
+    return {
+      errors: [{ code: 'INVALID_REQUEST', message: compactValidationError }],
+    };
+  }
+
   // Validate media buy exists. The request-level session key is fine when
   // the caller carries account/brand; when those are stripped by the SDK
   // against the published tool schema (framework's auto-generated
@@ -640,14 +830,20 @@ export async function handleProvidePerformanceFeedback(args: ToolArgs, ctx: Trai
     }
   }
 
-  const appliedAt = new Date().toISOString();
+  const receivedAt = new Date().toISOString();
+  const feedbackId = `fb_${randomUUID().replace(/-/g, '')}`;
+  performanceFeedbackStore.set(feedbackId, {
+    feedbackId,
+    sessionKey,
+    receivedAt,
+    assertion: req,
+  });
 
   return {
     success: true,
-    feedback_id: `fb_${randomUUID().replace(/-/g, '')}`,
-    application_status: 'applied',
-    received_at: appliedAt,
-    applied_at: appliedAt,
+    feedback_id: feedbackId,
+    application_status: 'accepted',
+    received_at: receivedAt,
     media_buy_id: req.media_buy_id,
     measurement_period: req.measurement_period,
     performance_index: req.performance_index,

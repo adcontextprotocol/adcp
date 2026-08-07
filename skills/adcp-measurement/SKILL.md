@@ -15,8 +15,8 @@ A measurement agent can:
 
 1. publish the metrics it computes through `get_adcp_capabilities.measurement.metrics[]`;
 2. declare `measurement.produces_performance_feedback: true` when it produces optimizer-ready assertions;
-3. obtain buyer-approved data from an orchestrator through AdCP delivery reads, reporting webhooks, cloud buckets, or existing SDK, clean-room, and offline integrations; and
-4. return compact assertions through the negotiated task, webhook, or offline path, after which the orchestrator decides what to send to each seller.
+3. obtain buyer-approved data from an orchestrator through its `get_media_buy_delivery` task; and
+4. return compact assertions through its `provide_performance_feedback` task, after which the orchestrator decides what to send to each seller.
 
 The measurement agent never needs seller credentials. The orchestrator controls cohort consistency, seller-ID mapping, normalization, and disclosure. `report_usage` is a vendor-service consumption and billing task, not general measurement interchange.
 
@@ -30,8 +30,6 @@ Publish an agent entry with `type: "measurement"` in the provider's `brand.json`
   "experimental_features": ["measurement.core"],
   "measurement": {
     "produces_performance_feedback": true,
-    "delivery_input_methods": ["pull", "webhook", "offline"],
-    "feedback_output_methods": ["task", "webhook", "offline"],
     "metrics": [
       {
         "metric_id": "incremental_revenue_index",
@@ -47,13 +45,13 @@ Publish an agent entry with `type: "measurement"` in the provider's `brand.json`
 
 Metric identity is `(provider BrandRef, metric_id)`. Do not assume vendor metric IDs are globally unique.
 
-When `produces_performance_feedback` is true, both method arrays are required.
+The first experimental gateway tier fixes the interchange tasks rather than negotiating method arrays.
 
 ## Orchestrator gateway and authorization
 
-The buyer orchestrator's experimental `measurement_gateway` capability means it exposes the interchange boundary; it does not grant access by itself. The orchestrator intersects `delivery_output_methods` and `feedback_input_methods` with the provider's corresponding method lists, then provisions the chosen paths on an orchestrator account. Sellers are not part of this provider authorization.
+The buyer orchestrator's experimental `measurement_gateway` capability means it exposes the task boundary; it does not grant access by itself. The orchestrator provisions the provider on an orchestrator account. Sellers are not part of this provider authorization.
 
-For task-based return, the provider's authenticated principal needs `provide_performance_feedback` on its orchestrator account. Add `get_media_buy_delivery` only when the provider pulls reporting from the orchestrator:
+The provider's authenticated principal receives the two first-tier gateway tasks on its orchestrator account:
 
 ```json
 {
@@ -62,22 +60,15 @@ For task-based return, the provider's authenticated principal needs `provide_per
 }
 ```
 
-Omit either task when its corresponding path is webhook or offline; those paths use provisioned callback-signing or cloud credentials.
-
 Use an orchestrator-defined `custom:` scope name if desired. The task list is normative; the custom name is not.
 
-The orchestrator can expose delivery through the same interfaces a seller uses:
-
-- pull through `get_media_buy_delivery`;
-- push through reporting webhooks;
-- offline files through a provisioned cloud bucket; or
-- an existing provider integration.
+Webhook and offline interchange are not part of this tier; they require explicit registration, credentials, payload, and receipt contracts before they can be advertised as interoperable AdCP paths.
 
 The orchestrator exposes measurement-facing media-buy, package, and creative IDs to the provider and retains their mapping to every seller-local ID.
 
 ## Producing feedback
 
-Submit one assertion per task call, webhook event, or offline record:
+Submit one assertion per task call:
 
 ```json
 {
@@ -106,7 +97,7 @@ Submit one assertion per task call, webhook event, or offline record:
 
 Rules:
 
-- `1.0` equals the named baseline.
+- `1.0` equals the named baseline. For higher-is-better ratios use observed/baseline; for lower-is-better ratios such as CPA use baseline/observed.
 - `producer` must match authenticated provider identity at the orchestrator gateway.
 - `study_ref` is correlation only; it never asks a seller to construct experiment arms.
 - Keep raw logs, model coefficients, identity paths, and full study datasets outside the feedback payload.
@@ -134,11 +125,11 @@ Do not claim causal delivery impact from `applied`. It means the seller consumed
 
 ### 1. Orchestrator supplies data
 
-The orchestrator negotiates pull, webhook, bucket, or existing-integration delivery with the provider and supplies only buyer-approved data. It applies the same user or geographic cohort definition across sellers before measurement.
+The provider calls the orchestrator's `get_media_buy_delivery` task for buyer-approved data. The orchestrator applies the same user or geographic cohort definition across sellers before measurement.
 
 ### 2. Provider returns feedback
 
-The provider sends compact assertions to the orchestrator gateway. Authenticated provider identity binds `producer`; raw logs, model coefficients, and identity paths remain outside the payload.
+The provider calls the orchestrator gateway's `provide_performance_feedback` task. Authenticated provider identity binds `producer`; raw logs, model coefficients, and identity paths remain outside the payload.
 
 ### 3. Orchestrator fans out
 

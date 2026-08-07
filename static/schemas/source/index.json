@@ -272,6 +272,10 @@
         },
         "performance-feedback": {
           "$ref": "/schemas/core/performance-feedback.json",
+          "description": "Stored processing record for performance feedback"
+        },
+        "performance-feedback-assertion": {
+          "$ref": "/schemas/core/performance-feedback-assertion.json",
           "description": "One compact optimizer-ready assertion about a media buy, package, or creative"
         },
         "creative-variant": {

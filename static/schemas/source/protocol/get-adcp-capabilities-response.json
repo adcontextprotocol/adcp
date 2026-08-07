@@ -13,6 +13,56 @@
     },
     {
       "if": {
+        "required": ["measurement_gateway"]
+      },
+      "then": {
+        "properties": {
+          "supported_protocols": {
+            "contains": { "const": "measurement" }
+          },
+          "experimental_features": {
+            "contains": { "const": "measurement.gateway" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "required": ["measurement"]
+      },
+      "then": {
+        "properties": {
+          "supported_protocols": {
+            "contains": { "const": "measurement" }
+          },
+          "experimental_features": {
+            "contains": { "const": "measurement.core" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "required": ["performance_feedback"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "measurement.core" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
         "properties": {
           "governance": {
             "required": ["runtime_attestations"]
@@ -586,10 +636,12 @@
         },
         "performance_feedback": {
           "type": "object",
+          "x-status": "experimental",
           "description": "Structured seller performance-feedback support beyond the legacy scalar contract. Presence means the seller accepts compact baseline/metric/provenance fields from a buyer orchestrator and returns a feedback_id.",
           "properties": {
             "reports_application_status": {
               "type": "boolean",
+              "x-status": "experimental",
               "description": "Whether provide_performance_feedback responses include an honest application_status of accepted, applied, or not_applied. accepted is explicitly not an application claim. Sellers that cannot determine optimizer disposition omit this claim or set it false.",
               "default": false
             }
@@ -1880,30 +1932,20 @@
     "measurement_gateway": {
       "type": "object",
       "x-status": "experimental",
-      "description": "Buyer-controlled interchange gateway between an orchestrator and measurement providers. Presence means the orchestrator can expose buyer-approved cross-seller delivery using reused media-buy reporting interfaces and receive compact performance feedback without granting providers seller credentials. Orchestrators implementing this block MUST include measurement in supported_protocols and measurement.gateway in experimental_features; this gateway role does not claim the media_buy seller protocol.",
+      "description": "Buyer-controlled task gateway between an orchestrator and measurement providers. In the first experimental tier, providers read buyer-approved cross-seller delivery through get_media_buy_delivery and return compact assertions through provide_performance_feedback, without receiving seller credentials. Orchestrators implementing this block MUST include measurement in supported_protocols and measurement.gateway in experimental_features; this gateway role does not claim the media_buy seller protocol.",
       "properties": {
-        "delivery_output_methods": {
-          "type": "array",
-          "description": "How the orchestrator can supply delivery data to measurement providers. pull means the provider calls the orchestrator's get_media_buy_delivery task; webhook means the orchestrator pushes reporting callbacks; offline means the orchestrator provisions cloud-bucket delivery.",
-          "items": {
-            "type": "string",
-            "enum": ["pull", "webhook", "offline"]
-          },
-          "minItems": 1,
-          "uniqueItems": true
+        "delivery_task": {
+          "type": "string",
+          "const": "get_media_buy_delivery",
+          "description": "Task providers call on the orchestrator gateway to read buyer-approved delivery."
         },
-        "feedback_input_methods": {
-          "type": "array",
-          "description": "How the orchestrator can receive provider results. task means the provider calls provide_performance_feedback on the gateway; webhook means the provider pushes the same compact assertion to an orchestrator callback; offline means the provider writes compact assertion files through an account-provisioned cloud path.",
-          "items": {
-            "type": "string",
-            "enum": ["task", "webhook", "offline"]
-          },
-          "minItems": 1,
-          "uniqueItems": true
+        "feedback_task": {
+          "type": "string",
+          "const": "provide_performance_feedback",
+          "description": "Task providers call on the orchestrator gateway to return one compact assertion."
         }
       },
-      "required": ["delivery_output_methods", "feedback_input_methods"],
+      "required": ["delivery_task", "feedback_task"],
       "additionalProperties": true
     },
     "measurement": {
@@ -1913,28 +1955,8 @@
       "properties": {
         "produces_performance_feedback": {
           "type": "boolean",
-          "description": "Whether this measurement agent produces compact provide_performance_feedback assertions for a buyer-controlled orchestrator gateway. The gateway may supply delivery through get_media_buy_delivery, webhooks, cloud buckets, or existing integrations; the provider submits feedback to the gateway, which decides what to forward to each seller.",
+          "description": "Whether this measurement agent produces compact provide_performance_feedback assertions for a buyer-controlled orchestrator gateway. In the first experimental tier the provider reads delivery through the gateway's get_media_buy_delivery task and returns assertions through its provide_performance_feedback task. The gateway decides what to forward to each seller.",
           "default": false
-        },
-        "delivery_input_methods": {
-          "type": "array",
-          "description": "Orchestrator delivery methods this provider can consume. The orchestrator selects an intersection with measurement_gateway.delivery_output_methods during account setup.",
-          "items": {
-            "type": "string",
-            "enum": ["pull", "webhook", "offline"]
-          },
-          "minItems": 1,
-          "uniqueItems": true
-        },
-        "feedback_output_methods": {
-          "type": "array",
-          "description": "Methods this provider can use to return compact assertions. The orchestrator selects an intersection with measurement_gateway.feedback_input_methods during account setup.",
-          "items": {
-            "type": "string",
-            "enum": ["task", "webhook", "offline"]
-          },
-          "minItems": 1,
-          "uniqueItems": true
         },
         "metrics": {
           "type": "array",
@@ -2027,22 +2049,7 @@
           "uniqueItems": true
         }
       },
-      "required": ["metrics"],
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "produces_performance_feedback": {
-                "const": true
-              }
-            },
-            "required": ["produces_performance_feedback"]
-          },
-          "then": {
-            "required": ["delivery_input_methods", "feedback_output_methods"]
-          }
-        }
-      ]
+      "required": ["metrics"]
     },
     "compliance_testing": {
       "type": "object",

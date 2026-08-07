@@ -48,7 +48,7 @@ See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for
 - Handle pricing negotiation, budget allocation, and multi-agent orchestration
 - Use refinement and package requests for complex buying scenarios
 - Monitor and optimize campaign delivery using protocol tools
-- Explain the measurement-agent loop: make the orchestrator a buyer-controlled delivery and feedback gateway, negotiate pull/webhook/bucket inputs, authenticate provider output, and fan normalized assertions out to sellers without granting providers seller access
+- Explain the measurement-agent loop: make the orchestrator a buyer-controlled gateway for the fixed `get_media_buy_delivery` and `provide_performance_feedback` tasks, authenticate provider output, and fan normalized assertions out to sellers without granting providers seller access
 - Reason about failure modes, conflict resolution, and edge cases
 
 ## Prerequisite reading
@@ -206,7 +206,7 @@ During the module, Addie will guide you through hands-on exercises:
 6. **State machine walkthrough** — Create a buy and trace it through `pending_creatives` (no creatives attached) → `sync_creatives` → `pending_start` → `active` at flight start. Use `get_media_buys` at each step to read `status`, `valid_actions`, and transition timestamps. Force a seller rejection from `pending_start` via the sandbox controller and verify the terminal state.
 7. **Lifecycle management** — Check `valid_actions`, cancel a package, handle `NOT_CANCELLABLE`, use `revision` for concurrency
 8. **Broadcast billing and delivery** — Create a broadcast buy with a buy-level `agency_estimate_number` and one package that overrides it with a station-specific estimate number. Verify both appear on delivery reconciliation. Call `get_media_buy_delivery` and interpret the measurement window fields: explain why `c3` data may be incomplete immediately after broadcast and when the `c7` window closes.
-9. **Multi-agent orchestration and execution** — Manage campaigns across multiple sellers. Trace a cross-publisher suppression scenario: a viewer sees an ad on publisher A, then visits publisher B within the 2-hour recency window — what does Identity Match return and why? Configure frequency parameters (5/week, 2-hour minimum recency) and predict delivery impact. Explain why Context Match and Identity Match are structurally separated. Then configure an orchestrator-hosted measurement gateway: choose pull, webhook, or bucket delivery; grant only the needed orchestrator tasks; ingest provider feedback; and map one cross-seller result into seller-local submissions.
+9. **Multi-agent orchestration and execution** — Manage campaigns across multiple sellers. Trace a cross-publisher suppression scenario: a viewer sees an ad on publisher A, then visits publisher B within the 2-hour recency window — what does Identity Match return and why? Configure frequency parameters (5/week, 2-hour minimum recency) and predict delivery impact. Explain why Context Match and Identity Match are structurally separated. Then design (conceptually, outside the public sales-agent sandbox) an orchestrator-hosted measurement gateway that exposes `get_media_buy_delivery` and `provide_performance_feedback`, grants only those orchestrator tasks, and maps one cross-seller result into seller-local submissions.
 
 ## Assessment
 

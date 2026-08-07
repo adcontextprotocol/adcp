@@ -2,14 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/provide-performance-feedback-request.json",
   "title": "Provide Performance Feedback Request",
-  "description": "Submits one compact optimizer-ready assertion. Measurement agents submit to a buyer-controlled orchestrator gateway; the orchestrator validates, normalizes, and forwards feedback to sellers under the buyer's identity. Data acquisition is deliberately flexible: the orchestrator may expose AdCP delivery reads, webhooks, cloud buckets, or existing integrations.",
+  "description": "Submits one compact optimizer-ready assertion. Measurement agents submit to a buyer-controlled orchestrator gateway through this task; the orchestrator validates, normalizes, and forwards feedback to sellers under the buyer's identity.",
   "type": "object",
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
     },
     {
-      "$ref": "/schemas/core/performance-feedback.json"
+      "$ref": "/schemas/core/performance-feedback-assertion.json"
     }
   ],
   "x-mutates-state": true,

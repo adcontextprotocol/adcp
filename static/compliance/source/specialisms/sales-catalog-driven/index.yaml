@@ -728,8 +728,8 @@ phases:
         doc_ref: "/media-buy/task-reference/provide_performance_feedback"
         stateful: true
         expected: |
-          Acknowledge the feedback. The seller should adjust delivery optimization
-          based on the performance_index signal.
+          Return an honest disposition. `accepted` acknowledges stored receipt and
+          eligibility for evaluation; only `applied` claims optimizer use.
 
         sample_request:
           account:
@@ -745,6 +745,8 @@ phases:
           metric:
             scope: "standard"
             metric_id: "conversions"
+          producer:
+            domain: "pinnacle-agency.example"
           methodology: "deterministic_attribution"
           final: true
 

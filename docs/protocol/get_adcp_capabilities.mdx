@@ -408,6 +408,8 @@ Presence declares that a seller accepts compact baseline/metric/provenance field
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `reports_application_status` | A seller response honestly distinguishes `accepted`, `applied`, and `not_applied` in `application_status`. `accepted` means stored and eligible for evaluation, not optimizer use. |
 
+Because this compact contract is experimental, a seller declaring `media_buy.performance_feedback` also lists `measurement.core` in top-level `experimental_features`. This does not make the seller a measurement provider or require `measurement` in `supported_protocols`.
+
 See [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) and `measurement_gateway` below for the provider → orchestrator → seller flow.
 
 #### creative_approval_mode
@@ -815,22 +817,22 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
 
 ### measurement_gateway
 
-Experimental buyer-orchestrator role within the measurement protocol. Presence means the orchestrator exposes a controlled interchange boundary to providers without granting them seller credentials. Orchestrators implementing it include `measurement` in `supported_protocols` and `measurement.gateway` in `experimental_features`.
+Experimental buyer-orchestrator role within the measurement protocol. Presence means the orchestrator exposes a controlled task boundary to providers without granting them seller credentials. Orchestrators implementing it include `measurement` in `supported_protocols` and `measurement.gateway` in `experimental_features`.
 
-The orchestrator intersects its methods with the selected provider's `measurement.delivery_input_methods` and `measurement.feedback_output_methods`, then provisions the chosen paths on the provider's orchestrator account.
+The first experimental tier deliberately has one interoperable path: providers pull buyer-approved delivery from the orchestrator's `get_media_buy_delivery` task and return one compact assertion through its `provide_performance_feedback` task. Webhook and offline interchange remain future work until their registration, credential, payload, and receipt contracts are defined.
 
-| Field                     | Type     | Description                                                                                                                                                                                                           |
-| ------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `delivery_output_methods` | string[] | How the orchestrator supplies delivery: `pull` through the orchestrator's `get_media_buy_delivery`, `webhook` reporting callbacks, or `offline` cloud-bucket delivery.                                                |
-| `feedback_input_methods`  | string[] | How the orchestrator receives compact assertions: `task` through `provide_performance_feedback`, `webhook` callbacks carrying the same assertion shape, or `offline` files through an account-provisioned cloud path. |
+| Field           | Type   | Description                                                                                     |
+| --------------- | ------ | ----------------------------------------------------------------------------------------------- |
+| `delivery_task` | string | Required constant: `get_media_buy_delivery`. Providers call it on the orchestrator gateway.      |
+| `feedback_task` | string | Required constant: `provide_performance_feedback`. Providers call it on the orchestrator gateway. |
 
 ```json
 {
   "supported_protocols": ["measurement"],
   "experimental_features": ["measurement.gateway"],
   "measurement_gateway": {
-    "delivery_output_methods": ["pull", "webhook", "offline"],
-    "feedback_input_methods": ["task", "webhook", "offline"]
+    "delivery_task": "get_media_buy_delivery",
+    "feedback_task": "provide_performance_feedback"
   }
 }
 ```
@@ -848,11 +850,9 @@ Measurement agents publish a per-metric catalog so buyers know which metrics eac
 | Field                           | Type     | Description                                                                                                                                                                                                   |
 | ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `produces_performance_feedback` | boolean  | Whether the agent produces compact `provide_performance_feedback` assertions for a buyer-controlled orchestrator gateway. The orchestrator authenticates the provider and decides what to forward to sellers. |
-| `delivery_input_methods`        | string[] | Orchestrator delivery methods the provider can consume: `pull`, `webhook`, or `offline`.                                                                                                                      |
-| `feedback_output_methods`       | string[] | Result paths the provider can use: `task`, `webhook`, or `offline`.                                                                                                                                           |
 | `metrics`                       | object[] | **Required.** Per-metric catalog described below.                                                                                                                                                             |
 
-When `produces_performance_feedback` is true, both method arrays are required; a provider cannot claim feedback production without declaring at least one usable input and output path.
+Providers using the first gateway tier consume `get_media_buy_delivery` and produce `provide_performance_feedback`; there are no method-negotiation arrays in this release.
 
 #### metrics
 
@@ -873,8 +873,6 @@ Array of metrics this measurement agent computes.
 {
   "measurement": {
     "produces_performance_feedback": true,
-    "delivery_input_methods": ["pull", "webhook", "offline"],
-    "feedback_output_methods": ["task", "webhook", "offline"],
     "metrics": [
       {
         "metric_id": "attention_units",

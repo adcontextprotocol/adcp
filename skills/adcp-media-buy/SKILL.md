@@ -148,6 +148,7 @@ Modify an existing campaign.
 
 ```json
 {
+  "idempotency_key": "update-mb-abc123-2024-04-pause",
   "media_buy_id": "mb_abc123",
   "updates": {
     "budget_change": 5000,
@@ -307,6 +308,7 @@ Submit one compact optimizer-ready assertion. Measurement agents call a buyer-co
 
 ```json
 {
+  "idempotency_key": "feedback-mb-abc123-2025-01-final",
   "media_buy_id": "mb_abc123",
   "measurement_period": {
     "start": "2025-01-01T00:00:00Z",
@@ -318,6 +320,7 @@ Submit one compact optimizer-ready assertion. Measurement agents call a buyer-co
     "scope": "standard",
     "metric_id": "conversions"
   },
+  "producer": { "domain": "pinnacle-measurement.example" },
   "methodology": "deterministic_attribution",
   "final": true
 }
@@ -325,22 +328,23 @@ Submit one compact optimizer-ready assertion. Measurement agents call a buyer-co
 
 **Key fields:**
 
+- `idempotency_key` (string, required): Stable key for this logical assertion; retries reuse the same key and payload
 - `media_buy_id` (string, required): Publisher's media buy identifier
 - `measurement_period` (object, required): Time period with `start` and `end` (ISO 8601)
-- `performance_index` (number, required): Normalized score — 1.0 equals `baseline`, lower underperforms, higher outperforms
+- `performance_index` (number, required): Normalized score — 1.0 equals `baseline`, lower underperforms, higher outperforms. Use observed/baseline for higher-is-better ratios and baseline/observed for lower-is-better ratios such as CPA.
 - `baseline` (string, required for compact-contract producers): `campaign_target`, `control_group`, `seller_history`, `buyer_portfolio`, `market_benchmark`, or `other`
 - `package_id` (string, optional): Specific package for package-level feedback
 - `creative_id` (string, optional): Specific creative for creative-level feedback
 - `metric` (object, optional): Standard/vendor metric identity; preferred over deprecated `metric_type`
-- `producer` (BrandRef, optional): Measurement provider that produced the analysis; the orchestrator verifies it against provider identity before preserving it on seller submissions
+- `producer` (BrandRef, conditionally required): Measurement provider that produced the analysis; required when `methodology` or `methodology_version` is present. The orchestrator verifies it against provider identity before preserving it on seller submissions
 - `methodology`, `methodology_version` (string, optional): Provider-scoped open identifiers
 - `study_ref` (string, optional): Opaque correlation reference, never an experiment-execution instruction
 - `evidence` / `evidence_ref` (optional): Small inline summary and provider-hosted detail
 - `final`, `as_of`, `supersedes_feedback_id` (optional): Maturation and immutable revision fields
 
-Sellers declaring `media_buy.performance_feedback` return `feedback_id`. When `reports_application_status` is true, inspect `application_status`: `accepted` is not an application claim; `applied` means the signal entered optimizer inputs; `not_applied` includes a reason. Do not confuse this with the response envelope's task `status`.
+Sellers declaring `media_buy.performance_feedback` also list `measurement.core` in top-level `experimental_features` and return `feedback_id`. When `reports_application_status` is true, inspect `application_status`: `accepted` is not an application claim; `applied` means the signal entered optimizer inputs; `not_applied` includes a reason. Do not confuse this with the response envelope's task `status`.
 
-Do not send raw measurement datasets through this task or through `report_usage`. The orchestrator may supply delivery through `get_media_buy_delivery`, webhooks, cloud buckets, or existing integrations; providers return only the compact decision signal to the orchestrator gateway.
+Do not send raw measurement datasets through this task or through `report_usage`. In the first gateway tier the provider reads delivery through the orchestrator's `get_media_buy_delivery` task and returns only the compact decision signal through `provide_performance_feedback`.
 
 ---
 

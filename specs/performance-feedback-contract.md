@@ -14,11 +14,11 @@ The proposed contract has five parts:
 1. Preserve the existing one-assertion `provide_performance_feedback` task.
 2. Add only the semantics needed to interpret the index: baseline, metric,
    producer, provider-scoped methodology, compact evidence, and maturation.
-3. Make the buyer orchestrator the measurement gateway. It exposes approved
-   delivery through seller-like pull, webhook, or cloud-bucket interfaces and
-   authenticates provider output.
-4. Let providers keep using existing SDK, file, clean-room, platform, and
-   offline data paths when those are preferable.
+3. Make the buyer orchestrator the measurement gateway. In the first tier it
+   exposes approved delivery through `get_media_buy_delivery` and authenticates
+   provider output through `provide_performance_feedback`.
+4. Defer webhook and offline interchange until AdCP defines their registration,
+   credential, payload, and receipt contracts.
 5. Let only the orchestrator share normalized feedback with sellers, preserving
    common cohort definitions, seller-local ID mapping, and buyer control.
 
@@ -66,8 +66,8 @@ optimizer-ready output.
    coefficients, identity paths, and full reports with the provider.
 7. **Receipt is not application.** `accepted` is never presented as proof that
    the optimizer used the signal.
-8. **The orchestrator owns interchange.** It negotiates how providers receive
-   buyer-approved data, how they return results, and what each seller sees.
+8. **The orchestrator owns interchange.** It authorizes provider access to the
+   gateway tasks, maps identifiers, and decides what each seller sees.
 
 ## Proposed request
 
@@ -129,9 +129,10 @@ Compact-contract producers populate one enum:
 - `market_benchmark`
 - `other`
 
-`performance_index = 1.0` means equality with this baseline. For metrics where a
-positive ratio is meaningful, producers should calculate observed performance
-divided by baseline performance. The raw baseline value need not be disclosed.
+`performance_index = 1.0` means equality with this baseline. For ratio metrics,
+higher-is-better measures use observed divided by baseline; lower-is-better
+measures such as CPA use baseline divided by observed. In both cases values
+above 1.0 mean better performance. The raw baseline value need not be disclosed.
 
 `baseline` remains schema-optional during 3.x compatibility because the task
 already accepts requests without it. Sellers declaring the new capability may
@@ -273,8 +274,6 @@ Measurement provider:
   "experimental_features": ["measurement.core"],
   "measurement": {
     "produces_performance_feedback": true,
-    "delivery_input_methods": ["pull", "webhook", "offline"],
-    "feedback_output_methods": ["task", "webhook", "offline"],
     "metrics": [
       {
         "metric_id": "incremental_revenue_index",
@@ -293,8 +292,8 @@ Buyer orchestrator gateway:
   "supported_protocols": ["measurement"],
   "experimental_features": ["measurement.gateway"],
   "measurement_gateway": {
-    "delivery_output_methods": ["pull", "webhook", "offline"],
-    "feedback_input_methods": ["task", "webhook", "offline"]
+    "delivery_task": "get_media_buy_delivery",
+    "feedback_task": "provide_performance_feedback"
   }
 }
 ```
@@ -303,6 +302,7 @@ Seller:
 
 ```json
 {
+  "experimental_features": ["measurement.core"],
   "media_buy": {
     "performance_feedback": {
       "reports_application_status": true
@@ -313,9 +313,9 @@ Seller:
 
 These are routing claims, not access grants.
 
-A provider that sets `produces_performance_feedback: true` must declare both
-method arrays. This prevents a discoverable producer from advertising a result
-that no gateway can actually exchange with it.
+A provider that sets `produces_performance_feedback: true` uses the fixed
+first-tier gateway tasks. Method arrays are intentionally absent until complete
+contracts exist for additional paths.
 
 ### Authorization
 
@@ -331,12 +331,10 @@ gateway:
 }
 ```
 
-The task list follows the selected methods: include `get_media_buy_delivery`
-for provider pull and `provide_performance_feedback` for task-based return.
-Webhook and offline paths use their provisioned callback signing or cloud
-credentials instead. Orchestrators may use a `custom:` scope name, but the task
-list carries the normative task permission. Measurement providers do not
-receive seller-account grants.
+The provider receives `get_media_buy_delivery` and
+`provide_performance_feedback` on its orchestrator account. Orchestrators may
+use a `custom:` scope name, but the task list carries the normative task
+permission. Measurement providers do not receive seller-account grants.
 
 No new standard named scope is proposed.
 
@@ -353,15 +351,10 @@ Seller delivery ──► Buyer orchestrator ──► Measurement agent
 
 1. The orchestrator collects delivery from each seller and applies common user
    or geographic cohort definitions.
-2. The orchestrator intersects `measurement_gateway.delivery_output_methods`
-   with `measurement.delivery_input_methods`: provider pull from the
-   orchestrator's `get_media_buy_delivery`, orchestrator reporting webhook, or
-   cloud bucket. Existing integrations remain valid out of band.
-3. The parties intersect `measurement_gateway.feedback_input_methods` with
-   `measurement.feedback_output_methods`. Task delivery uses
-   `provide_performance_feedback`; webhook and offline delivery carry the same
-   compact assertion shape. The gateway authenticates the provider and binds
-   `producer`.
+2. The provider calls the orchestrator's `get_media_buy_delivery` task for
+   buyer-approved delivery.
+3. The provider calls the orchestrator's `provide_performance_feedback` task.
+   The gateway authenticates the provider and binds `producer`.
 4. The orchestrator validates and normalizes the assertions, chooses what to
    disclose, maps its measurement-facing identifiers to seller-local IDs, and
    calls each seller's `provide_performance_feedback` under the buyer's
@@ -370,10 +363,9 @@ Seller delivery ──► Buyer orchestrator ──► Measurement agent
 5. The orchestrator retains the mapping between provider receipts and seller
    receipts/application dispositions as the cross-seller audit trail.
 
-The capability intersection discovers compatible paths; account setup records
-the selected path and provisions credentials, callbacks, or buckets. A future
-connection resource is warranted only if implementations need dynamic
-renegotiation after account setup.
+Account authorization grants the two gateway tasks. Future webhook or offline
+paths require a separate connection/configuration contract rather than an
+undeclared out-of-band assumption.
 
 ## Why not `report_usage`?
 
@@ -397,23 +389,23 @@ carry. That inconsistency should be resolved separately rather than expanded.
 
 - **New:** `enums/performance-baseline.json`
 - **New:** `core/performance-feedback-metric.json`
-- **Changed:** `core/performance-feedback.json` becomes the canonical assertion
-  rather than a parallel stored-record model.
+- **New:** `core/performance-feedback-assertion.json` defines compact request
+  assertions while the published stored-record type remains intact.
 - **Changed:** `provide-performance-feedback-request.json` composes the
   canonical assertion plus idempotency/context fields.
 - **Changed:** `provide-performance-feedback-response.json` adds receipt and
   application-disposition fields.
 - **Changed:** `get-adcp-capabilities-response.json` adds distinct seller,
-  measurement-provider, and buyer-orchestrator gateway declarations, including
-  two-sided delivery-method negotiation.
+  measurement-provider, and buyer-orchestrator gateway declarations for the
+  first-tier task path.
 
 ## Compatibility
 
 - Existing request fields and required fields are unchanged.
 - Existing success responses remain valid.
-- `feedback_id`, `status`, `submitted_at`, and `applied_at` remain available as
-  deprecated optional properties on the standalone core type. They are not
-  assertion inputs; task receipts now carry the corresponding receiver state.
+- The standalone `core/performance-feedback.json` remains a stored-record type
+  with its previously required fields unchanged. Compact request fields live in
+  the new assertion schema.
 - `metric_type`, `feedback_source`, and the documented `vendor` producer field
   remain accepted.
 - `metric_type` and `vendor` are deprecated in favor of `metric` and
@@ -447,8 +439,8 @@ Tests cover:
    with protocol task status.
 5. Measurement provider, orchestrator gateway, and seller capability roles
    validate independently.
-6. The training seller accepts the compact fields and returns an applied
-   receipt.
+6. The training seller validates the compact fields and returns a replay-safe
+   accepted receipt without claiming optimizer application.
 
 ## Working-group questions
 

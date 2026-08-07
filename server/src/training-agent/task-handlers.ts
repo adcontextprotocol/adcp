@@ -7508,6 +7508,12 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         : ctx.tenantId === 'creative' || ctx.tenantId === 'creative-builder'
           ? [{ task: 'build_creative', modes: ['signed_context'] }]
           : [];
+  const experimentalFeatures = [
+    ...((governanceEnforcementTasks.length > 0 || ctx.tenantId === 'governance')
+      ? ['governance.campaign']
+      : []),
+    ...((ctx.tenantId === 'sales' || ctx.tenantId == null) ? ['measurement.core'] : []),
+  ];
   return {
     adcp_version: DEFAULT_ADCP_VERSION,
     adcp: {
@@ -7519,9 +7525,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       }),
     },
     supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand'],
-    ...((governanceEnforcementTasks.length > 0 || ctx.tenantId === 'governance') && {
-      experimental_features: ['governance.campaign'],
-    }),
+    ...(experimentalFeatures.length > 0 && { experimental_features: experimentalFeatures }),
     specialisms: [],
     request_signing: {
       supported: signingCap.supported,

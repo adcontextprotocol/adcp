@@ -11,7 +11,7 @@ The caller is therefore either:
 - an authenticated measurement agent calling the buyer orchestrator; or
 - the buyer orchestrator calling a seller.
 
-Measurement agents do not receive seller credentials. The orchestrator exposes buyer-approved delivery through the same patterns a seller would use—`get_media_buy_delivery`, reporting webhooks, or a cloud bucket—or through an existing SDK, clean room, or offline workflow.
+Measurement agents do not receive seller credentials. In the first experimental gateway tier, the provider reads buyer-approved cross-seller delivery from the orchestrator's `get_media_buy_delivery` task and returns compact assertions through its `provide_performance_feedback` task.
 
 **Request schema:** [`provide-performance-feedback-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json)
 
@@ -110,7 +110,7 @@ The nested `metric.vendor` identifies who defines the metric. It can differ from
 | `market_benchmark` | External market or category benchmark.                              |
 | `other`            | Another producer-defined baseline described in the linked evidence. |
 
-The producer does not need to disclose the raw baseline value. For ratio-compatible metrics, it SHOULD calculate `observed performance / baseline performance`.
+The producer does not need to disclose the raw baseline value. For ratio-compatible metrics, higher-is-better measures SHOULD use `observed / baseline`; lower-is-better measures such as CPA SHOULD use `baseline / observed`. In both cases values above `1.0` mean better performance.
 
 ### Producer and methodology
 
@@ -160,7 +160,7 @@ Measurement agents are discoverable through `brand.json` entries with `type: "me
 
 A measurement agent that sets `measurement.produces_performance_feedback: true` can produce this task's compact assertion. A buyer orchestrator exposes the receiving boundary through the separate experimental `measurement_gateway` capability, without claiming to be a media-buy seller.
 
-The orchestrator gives each provider a scoped account. When the negotiated paths are pull and task, access uses existing task authorization:
+The orchestrator gives each provider a scoped account. The first experimental tier uses existing task authorization:
 
 ```json
 {
@@ -171,13 +171,13 @@ The orchestrator gives each provider a scoped account. When the negotiated paths
 }
 ```
 
-Include `get_media_buy_delivery` only for provider pull and `provide_performance_feedback` only for task-based return. Webhook and offline paths use the callback-signing or cloud credentials provisioned for those paths.
+Both tasks are part of the first-tier gateway contract. The provider never receives seller-account access. Webhook and offline interchange are deferred until AdCP defines their registration, credential, payload, and receipt contracts.
 
 The resulting flow is:
 
 1. The orchestrator discovers a measurement agent and its metrics.
-2. The orchestrator intersects `measurement_gateway.delivery_output_methods` with the provider's `measurement.delivery_input_methods`. For pull, the provider calls the orchestrator's `get_media_buy_delivery`; for push or offline delivery, the orchestrator uses reporting webhooks or a provisioned cloud bucket. The provider can also keep an existing SDK, clean-room, or file integration.
-3. The parties similarly intersect `measurement_gateway.feedback_input_methods` with `measurement.feedback_output_methods`. With `task`, the provider calls `provide_performance_feedback` on the orchestrator gateway; webhook and offline paths carry the same compact assertion shape. The orchestrator authenticates the provider, validates provenance, and stores its own `feedback_id`.
+2. The provider calls the orchestrator's `get_media_buy_delivery` task for buyer-approved, cross-seller delivery.
+3. The provider calls `provide_performance_feedback` on the orchestrator gateway. The orchestrator authenticates the provider, validates provenance, and stores its own `feedback_id`.
 4. The orchestrator decides what to share with each seller, maps its cross-seller identifiers to seller-local media-buy/package/creative IDs, and calls each seller's `provide_performance_feedback` under the buyer's identity.
 5. Seller receipts and `application_status` values return to the orchestrator, which owns the cross-seller audit trail.
 
@@ -192,8 +192,8 @@ Buyer orchestrator gateway:
   "supported_protocols": ["measurement"],
   "experimental_features": ["measurement.gateway"],
   "measurement_gateway": {
-    "delivery_output_methods": ["pull", "webhook", "offline"],
-    "feedback_input_methods": ["task", "webhook", "offline"]
+    "delivery_task": "get_media_buy_delivery",
+    "feedback_task": "provide_performance_feedback"
   }
 }
 ```
@@ -202,6 +202,7 @@ Seller:
 
 ```json
 {
+  "experimental_features": ["measurement.core"],
   "media_buy": {
     "performance_feedback": {
       "reports_application_status": true
@@ -218,8 +219,6 @@ Measurement provider:
   "experimental_features": ["measurement.core"],
   "measurement": {
     "produces_performance_feedback": true,
-    "delivery_input_methods": ["pull", "webhook", "offline"],
-    "feedback_output_methods": ["task", "webhook", "offline"],
     "metrics": [
       {
         "metric_id": "incremental_revenue_index",

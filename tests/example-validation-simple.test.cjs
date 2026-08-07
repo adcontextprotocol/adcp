@@ -1498,13 +1498,12 @@ async function runTests() {
         "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
       },
       "supported_protocols": ["measurement"],
+      "experimental_features": ["measurement.core"],
       "account": {
         "supported_billing": ["operator"]
       },
       "measurement": {
         "produces_performance_feedback": true,
-        "delivery_input_methods": ["pull", "webhook", "offline"],
-        "feedback_output_methods": ["task", "webhook", "offline"],
         "metrics": [
           {
             "metric_id": "attention_units",

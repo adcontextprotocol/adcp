@@ -49,7 +49,7 @@
     "test:hmac-signer-conformance": "node --test --test-force-exit --test-timeout=30000 tests/webhook-hmac-signer-conformance.test.cjs",
     "test:webhook-signing-vectors": "node --test --test-force-exit --test-timeout=30000 tests/webhook-signing-vectors.test.cjs",
     "test:webhook-receiver-envelope": "node --test --test-force-exit --test-timeout=30000 tests/webhook-receiver-envelope.test.cjs",
-    "test:transport-errors": "node --test --test-force-exit --test-timeout=30000 tests/transport-error-mapping.test.cjs",
+    "test:transport-errors": "node --test --test-force-exit --test-timeout=30000 tests/transport-error-mapping.test.cjs tests/request-signing-body-integrity.test.cjs",
     "test:targeting-overlay-vectors": "node --test --test-force-exit --test-timeout=30000 tests/media-buy-targeting-overlay-vectors.test.cjs",
     "test:demographic-targeting": "node --test --test-force-exit --test-timeout=30000 tests/demographic-targeting.test.cjs",
     "test:attestation-vectors": "node --test --test-force-exit --test-timeout=30000 tests/attestation-vectors.test.cjs",
