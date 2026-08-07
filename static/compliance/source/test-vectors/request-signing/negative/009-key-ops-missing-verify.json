@@ -1,6 +1,7 @@
 {
   "name": "Presented JWK is scoped to governance signing (adcp_use != request-signing)",
   "spec_reference": "#verifier-checklist-requests step 8",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

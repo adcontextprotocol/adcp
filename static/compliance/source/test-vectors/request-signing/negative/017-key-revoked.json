@@ -1,6 +1,7 @@
 {
   "name": "Signing keyid is listed in the revocation list",
   "spec_reference": "#verifier-checklist-requests step 9",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

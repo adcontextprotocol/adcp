@@ -1,6 +1,7 @@
 {
   "name": "URL path percent-encoded unreserved bytes decoded per RFC 3986 §6.2.2.2",
   "spec_reference": "#adcp-rfc-9421-profile (@target-uri canonicalization step 6: decode percent-encoded unreserved characters)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

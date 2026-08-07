@@ -4,7 +4,7 @@ Test vectors for the AdCP RFC 9421 request-signing profile. These fixtures drive
 
 Specification: [Signed Requests (Transport Layer)](https://adcontextprotocol.org/docs/building/by-layer/L1/security#signed-requests-transport-layer) in `docs/building/by-layer/L1/security.mdx`.
 
-**Canonical URLs.** These vectors are served at `https://adcontextprotocol.org/compliance/{version}/test-vectors/request-signing/`, with `{version}` being either a specific release (e.g. `3.0.0`) or `latest` (tracks the most recent GA). Tree preserved — `keys.json`, `negative/*.json`, `positive/*.json` all resolvable. SDKs SHOULD fetch from the versioned CDN path and record the version under test rather than requiring a checkout of the spec repo. Example: `https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/positive/001-basic-post.json`.
+**Canonical URLs.** These vectors are served at `https://adcontextprotocol.org/compliance/{version}/test-vectors/request-signing/`, with `{version}` being either a specific release (e.g. `3.0.0`) or `latest` (tracks the most recent GA). Tree preserved — `keys.json`, `negative/*.json`, `profile-3.2/{positive,negative}/*.json`, and `positive/*.json` are all resolvable. SDKs SHOULD fetch from the versioned CDN path and record the version under test rather than requiring a checkout of the spec repo. Example: `https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/positive/001-basic-post.json`.
 
 ## Scope
 
@@ -17,7 +17,8 @@ test-vectors/request-signing/
 ├── README.md                             this file
 ├── keys.json                             test keypairs (Ed25519 + ES256) in JWK format with adcp_use values
 ├── canonicalization.json                 pure URL-canonicalization cases (no crypto) — every rule from the @target-uri algorithm + malformed-authority rejections
-├── negative/                             vectors that MUST fail verification
+├── body-integrity-policy.json            3.2 substitution, list-mode, fallback-auth, downgrade, and no-body policy matrix
+├── negative/                             legacy 3.1 vectors that MUST fail verification
 │   ├── 001-no-signature-header.json      → request_signature_required (pre-check 0; op in required_for)
 │   ├── 002-wrong-tag.json                → request_signature_tag_invalid (step 3)
 │   ├── 003-expired-signature.json        → request_signature_window_invalid (step 5; expired)
@@ -46,6 +47,9 @@ test-vectors/request-signing/
 │   ├── 026-non-ascii-host.json            → request_signature_header_malformed (step 1; raw IDN U-label on wire; MUST be A-label)
 │   ├── 027-webhook-registration-authentication-unsigned.json → request_signature_required (webhook-reg with push_notification_config.authentication over bearer on a seller supporting signing; operation NOT in required_for)
 │   └── 028-unsigned-protocol-method-required.json → request_signature_required (unsigned `tasks/cancel` JSON-RPC POST; method is in `protocol_methods_required_for`)
+├── profile-3.2/                          3.2-only wire-format vectors
+│   ├── positive/001-post-with-content-digest.json  RFC 8941 Base64 + required body binding
+│   └── negative/001-base64url-sf-binary.json       → request_signature_header_malformed (legacy alphabet)
 └── positive/                             vectors that MUST verify successfully
     ├── 001-basic-post.json                   Ed25519, no content-digest
     ├── 002-post-with-content-digest.json     Ed25519, content-digest covered
@@ -105,6 +109,7 @@ Every vector is a single JSON file with this shape:
 {
   "name": "human-readable description",
   "spec_reference": "#anchor in security.mdx (checklist step or pre-check)",
+  "signing_profile_version": "3.2",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",
@@ -112,14 +117,14 @@ Every vector is a single JSON file with this shape:
     "headers": {
       "Content-Type": "application/json",
       "Signature-Input": "sig1=(...)",
-      "Signature": "sig1=:base64url_signature:",
-      "Content-Digest": "sha-256=:base64url_digest:"
+      "Signature": "sig1=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==:",
+      "Content-Digest": "sha-256=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:"
     },
     "body": "{\"...\":\"...\"}"
   },
   "verifier_capability": {
     "supported": true,
-    "covers_content_digest": "either",
+    "covers_content_digest": "required",
     "required_for": ["create_media_buy"]
   },
   "jwks_ref": ["test-ed25519-2026"],
@@ -142,8 +147,10 @@ Every vector is a single JSON file with this shape:
 
 - **`name`** — one-line description.
 - **`spec_reference`** — anchor in `security.mdx` the vector tests, including the checklist step number.
+- **`signing_profile_version`** — version whose signing semantics the vector exercises. Every fixture in the root `positive/` and `negative/` directories is pinned to `3.1`; 3.2 verifiers MUST NOT silently reinterpret them as 3.2 cases.
 - **`reference_now`** — Unix seconds. Treat as the wall-clock value the verifier should use when evaluating the signature window. Inject into your test harness rather than using `Date.now()`.
 - **`request`** — the raw HTTP request the verifier receives. `headers` is case-insensitive; `body` is the exact byte string on the wire (empty string for GETs).
+- **Binary header values** — the 3.1 fixtures preserve AdCP's legacy unpadded Base64URL override. Profile 3.2 uses RFC 8941 `sf-binary`: standard Base64 with required padding, not Base64URL. The zero-byte values above illustrate the 3.2 wire grammar only; real vectors contain cryptographically valid bytes.
 - **`verifier_capability`** — the `request_signing` block the verifier advertises. Drives expected behavior on content-digest coverage (`"required"` | `"forbidden"` | `"either"`) and whether unsigned requests to the operation are rejected pre-check.
 - **`jwks_ref`** — array of `kid` strings from `keys.json`. The test harness builds the verifier's view of the signing agent's JWKS by selecting those entries. Present on most vectors.
 - **`jwks_override`** — full JWKS object (`{ keys: [...] }`) that replaces the default `jwks_ref` lookup for this vector. Used when a vector needs a JWK that is NOT in the canonical `keys.json` (e.g., a malformed `key_ops` to test step 8 rejection). Mutually exclusive with `jwks_ref`.
