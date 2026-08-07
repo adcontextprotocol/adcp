@@ -1,6 +1,7 @@
 {
   "name": "Per-keyid replay cache entry cap exceeded (abuse or misconfigured signer)",
   "spec_reference": "#verifier-checklist-requests step 9a (per-keyid cap; before crypto verify) and #transport-replay-dedup",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

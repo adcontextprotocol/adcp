@@ -15,7 +15,7 @@
       "description": "Release-precision versions the seller speaks. Authoritative — buyers SHOULD select a value from this list and retry.",
       "items": {
         "type": "string",
-        "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$"
+        "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
       },
       "minItems": 1,
       "examples": [

@@ -2,7 +2,7 @@ id: signed_requests
 version: "1.0.0"
 title: "Signed requests — RFC 9421 transport-layer verification"
 category: signed_requests
-summary: "Agent verifies RFC 9421 HTTP Signatures on incoming AdCP requests per the transport-layer profile. Universal capability-gated storyboard — runs for any agent advertising `request_signing.supported: true` regardless of `supported_protocols`. Graded against conformance vectors covering every checklist step and canonicalization-edge rule."
+summary: "Agent verifies RFC 9421 HTTP Signatures on incoming AdCP requests per the 3.1-compatible transport-layer profile. Universal capability-gated storyboard — runs for any agent advertising `request_signing.supported: true` regardless of `supported_protocols`. Graded against the legacy wire suite covering every 3.1 checklist step and canonicalization-edge rule."
 track: security_transport
 required_tools:
   - get_adcp_capabilities
@@ -49,6 +49,10 @@ narrative: |
   exactly as documented in the conformance vectors at
   `/compliance/{version}/test-vectors/request-signing/` and sends them to the agent. The
   agent's responses are compared against the vectors' `expected_outcome`:
+
+  This storyboard's current black-box runner contract is 3.1-compatible. It does not
+  claim 3.2 certification. The repository CI reference evaluator covers the 3.2
+  body-integrity policy while runner-side profile selection is added.
 
   - Positive vectors MUST produce a non-4xx response — the agent accepted the signed request.
   - Negative vectors MUST produce `401` with `WWW-Authenticate: Signature error="<code>"`,

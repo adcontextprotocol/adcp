@@ -1,6 +1,7 @@
 {
   "name": "JWK declares alg=EdDSA but crv=P-256 (parameter-mismatch on presented key)",
   "spec_reference": "#verifier-checklist-requests step 8 (key-purpose + parameter consistency; RFC 8037 binds alg=EdDSA to OKP key types, not EC)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

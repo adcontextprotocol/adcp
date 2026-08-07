@@ -116,7 +116,7 @@ phases:
 
           - check: envelope_field_pattern
             path: "adcp_version"
-            pattern: "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$"
+            pattern: "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
             description: "Seller echoes a valid release-precision adcp_version string on the response envelope"
 
           - check: field_present

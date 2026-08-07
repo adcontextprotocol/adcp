@@ -1,6 +1,7 @@
 {
   "name": "IPv6 literal authority; brackets preserved in @target-uri and @authority",
   "spec_reference": "#adcp-rfc-9421-profile (@target-uri canonicalization step 2: IPv6 brackets preserved; @authority derivation)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

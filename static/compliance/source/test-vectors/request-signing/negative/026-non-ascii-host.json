@@ -1,6 +1,7 @@
 {
   "name": "URL authority contains raw IDN U-label (non-ASCII bytes in host)",
   "spec_reference": "#adcp-rfc-9421-profile (@target-uri canonicalization: hosts MUST be ASCII A-labels; RFC 5891 §4.4)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",
