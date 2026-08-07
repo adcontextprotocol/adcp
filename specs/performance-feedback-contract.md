@@ -450,9 +450,9 @@ Tests cover:
    sellers return only `feedback_id` until an asynchronous audit path exists?
 3. Should a future delivery row expose an opaque stable key for arbitrary
    dimensional feedback, or are media-buy/package/creative scopes sufficient?
-4. Is capability intersection plus account provisioning sufficient to select
-   input/output paths, or do implementations need a mutable
-   orchestrator/provider connection resource?
+4. When will the two fixed first-tier tasks need to expand to a negotiated
+   method set? The current design defers webhook and offline paths until
+   complete registration, credential, payload, and receipt contracts exist.
 5. Should `report_usage` documentation retreat to its billing/consumption role
    immediately, or does its buyer-attested settlement language require a
    separate migration proposal?
