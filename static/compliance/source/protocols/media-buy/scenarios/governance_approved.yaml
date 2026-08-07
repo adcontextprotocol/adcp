@@ -47,13 +47,20 @@ fixtures:
     - product_id: "outdoor_display_q2"
       delivery_type: "guaranteed"
       channels: ["display"]
-      format_ids:
-        - id: "display_300x250"
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
     - product_id: "outdoor_video_q2"
       delivery_type: "guaranteed"
       channels: ["video"]
-      format_ids:
-        - id: "video_15s"
+      format_options:
+        - format_option_id: "video_15s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 15000
   pricing_options:
     - product_id: "outdoor_display_q2"
       pricing_option_id: "cpm_standard"

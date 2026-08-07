@@ -411,6 +411,16 @@ export async function setSlackDmThread(personId: string, channelId: string, thre
   );
 }
 
+/** Clear permanent Slack DM coordinates after Slack marks the channel unwritable. */
+export async function clearSlackDmThread(personId: string, channelId: string): Promise<void> {
+  await query(
+    `UPDATE person_relationships
+     SET slack_dm_channel_id = NULL, slack_dm_thread_ts = NULL, updated_at = NOW()
+     WHERE id = $1 AND slack_dm_channel_id = $2`,
+    [personId, channelId]
+  );
+}
+
 /** Mark a person as opted out of all proactive outreach. */
 export async function setOptedOut(personId: string, optedOut: boolean): Promise<void> {
   await query(

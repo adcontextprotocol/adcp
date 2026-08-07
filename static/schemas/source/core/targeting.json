@@ -153,8 +153,8 @@
       "minItems": 1
     },
     "demographics": {
-      "$ref": "/schemas/core/demographic-predicate.json",
-      "description": "Canonical demographic audience targeting intent. AdCP 3.2 standardizes age first. This is distinct from age_restriction: demographics selects an audience, while age_restriction expresses a legal eligibility or verification floor. Sellers MUST compile this predicate exactly using the selected product's demographic_targeting capability or reject it; they MUST NOT silently broaden, narrow, default, or drop it. A buyer choosing a suggested supported predicate submits that predicate as a new request."
+      "$ref": "/schemas/core/demographic-targeting-intent.json",
+      "description": "Canonical demographic audience targeting intent with optional constraints on how age may be determined. AdCP 3.2 standardizes age first. This is distinct from age_restriction: demographics selects an audience, while age_restriction expresses a legal eligibility or verification floor. Sellers MUST compile the predicate exactly using the selected product's demographic_targeting capability and an accepted determination basis or reject it; they MUST NOT silently broaden, narrow, default, drop, or substitute the basis. A buyer choosing a suggested supported predicate submits that predicate as a new request."
     },
     "frequency_cap": {
       "$ref": "/schemas/core/frequency-cap.json"
@@ -439,6 +439,41 @@
               "age": {
                 "properties": {
                   "include_unknown": { "const": false }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "A legal verification requirement always narrows demographic targeting. When the buyer supplies accepted_bases and age_restriction requires verification, verified must be accepted; otherwise the constraints have an empty intersection and the request is invalid.",
+      "if": {
+        "properties": {
+          "age_restriction": {
+            "properties": {
+              "verification_required": { "const": true }
+            },
+            "required": ["verification_required"]
+          },
+          "demographics": {
+            "properties": {
+              "age": { "required": ["accepted_bases"] }
+            },
+            "required": ["age"]
+          }
+        },
+        "required": ["demographics", "age_restriction"]
+      },
+      "then": {
+        "properties": {
+          "demographics": {
+            "properties": {
+              "age": {
+                "properties": {
+                  "accepted_bases": {
+                    "contains": { "const": "verified" }
+                  }
                 }
               }
             }

@@ -941,6 +941,27 @@
       color: var(--color-success-700);
       margin: 0;
     }
+
+    .module-resume-state {
+      margin-top: var(--space-2);
+      color: var(--color-text-secondary);
+      font-size: var(--text-xs);
+    }
+
+    .contributions-section {
+      max-width: 900px;
+      margin: 0 auto var(--space-8);
+    }
+
+    .contribution-item {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--space-3);
+      padding: var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      margin-top: var(--space-2);
+    }
   </style>
 </head>
 <body>
@@ -996,6 +1017,12 @@
       </div>
     </div>
 
+    <div id="contributions-section" class="contributions-section" style="display: none;">
+      <h2>My protocol contributions</h2>
+      <p style="color: var(--color-text-secondary);">Questions that became concrete proposals while you learned.</p>
+      <div id="contributions-list"></div>
+    </div>
+
     <!-- Earned credentials are rendered inline in tier cards -->
   </div>
 
@@ -1008,6 +1035,7 @@
         certifications: [],
         credentials: [],
         myCredentials: [],
+        contributions: [],
         moduleDetails: {},
         isAuthenticated: false,
         isMember: false,
@@ -1055,6 +1083,7 @@
           var authFetches = [
             fetch('/api/me/certification/progress').then(function(r) { return r.ok ? r.json() : null; }),
             fetch('/api/me/certification/credentials').then(function(r) { return r.ok ? r.json() : null; }),
+            fetch('/api/me/certification/contributions').then(function(r) { return r.ok ? r.json() : null; }),
           ];
 
           var authResults = await Promise.all(authFetches);
@@ -1065,6 +1094,9 @@
           }
           if (authResults[1]) {
             state.myCredentials = authResults[1].credentials || [];
+          }
+          if (authResults[2]) {
+            state.contributions = authResults[2].contributions || [];
           }
         }
 
@@ -1361,6 +1393,7 @@
         renderHeaderActions();
         renderTiers();
         renderLearningPath();
+        renderContributions();
       }
 
       function renderHeaderActions() {
@@ -1376,7 +1409,16 @@
         var hasAnyProgress = state.progress.length > 0;
         if (hasAnyProgress && startBtn) {
           startBtn.textContent = 'Pick up where you left off';
-          startBtn.href = '/chat?topic=certification&action=continue';
+          var active = state.progress.find(function(p) { return p.status === 'in_progress'; });
+          if (active) {
+            startBtn.href = '#';
+            startBtn.onclick = function(event) {
+              event.preventDefault();
+              window.startModule(active.module_id);
+            };
+          } else {
+            startBtn.href = '/chat?topic=certification&action=continue';
+          }
           // Hide placement option for returning learners
           if (assessBtn) assessBtn.style.display = 'none';
         }
@@ -1568,6 +1610,47 @@
         container.innerHTML = html;
       }
 
+      function renderContributions() {
+        var section = document.getElementById('contributions-section');
+        var list = document.getElementById('contributions-list');
+        if (!section || !list || !state.contributions.length) return;
+        section.style.display = '';
+        list.innerHTML = state.contributions.map(function(item) {
+          var url = item.github_issue_url || item.draft_url;
+          try {
+            var parsedUrl = new URL(url);
+            url = parsedUrl.protocol === 'https:' && parsedUrl.hostname === 'github.com' ? parsedUrl.href : '';
+          } catch (e) { url = ''; }
+          var action = item.status === 'submitted' ? 'View issue' : 'Open draft';
+          return '<div class="contribution-item">' +
+            '<div><strong>' + esc(item.title) + '</strong><div class="module-resume-state">' +
+            esc(item.repository) + (item.module_id ? ' · ' + esc(item.module_id) : '') + '</div></div>' +
+            '<div>' + (url ? '<a href="' + esc(url).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener">' + action + '</a>' : '') +
+            (item.status === 'drafted' ? ' <button class="btn-start btn-start-secondary contribution-confirm" data-id="' + esc(item.id) + '">Confirm submitted</button>' : '') + '</div>' +
+            '</div>';
+        }).join('');
+        list.querySelectorAll('.contribution-confirm').forEach(function(button) {
+          button.addEventListener('click', async function() {
+            var issueUrl = window.prompt('Paste the GitHub issue URL you submitted:');
+            if (!issueUrl) return;
+            var response = await fetch('/api/me/certification/contributions/' + encodeURIComponent(button.dataset.id) + '/confirm', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ issue_url: issueUrl }),
+            });
+            var result = await response.json().catch(function() { return {}; });
+            if (!response.ok) {
+              window.alert(result.error || 'Unable to verify that issue.');
+              return;
+            }
+            var index = state.contributions.findIndex(function(item) { return item.id === button.dataset.id; });
+            if (index >= 0) state.contributions[index] = result.contribution;
+            renderContributions();
+          });
+        });
+      }
+
       function renderAssessmentDisclosure(mod, status) {
         var isTestedOut = status === 'tested_out';
         var prog = state.progress.find(function(p) { return p.module_id === mod.id; });
@@ -1615,6 +1698,7 @@
 
       function renderModule(mod) {
         var status = getModuleStatus(mod.id, mod.is_free, mod.prerequisites);
+        var prog = state.progress.find(function(p) { return p.module_id === mod.id; });
         var canStart = status === 'available' || status === 'in_progress';
         var isLocked = status === 'locked';
         var isComplete = status === 'completed' || status === 'tested_out';
@@ -1649,6 +1733,13 @@
           html += '    <button class="btn-start btn-start-secondary" disabled>Locked</button>';
         }
         html += '  </div>';
+        if (status === 'in_progress' && prog && prog.experience && prog.experience.checkpoint) {
+          var checkpoint = prog.experience.checkpoint;
+          var saved = new Date(checkpoint.saved_at).toLocaleString();
+          html += '<div class="module-resume-state">Progress saved ' + esc(saved) +
+            ' · ' + checkpoint.demonstrations_verified.length + ' of ' +
+            checkpoint.required_demonstrations + ' demonstrations verified</div>';
+        }
         if (isComplete && state.isAuthenticated) {
           html += renderAssessmentDisclosure(mod, status);
         }
@@ -1716,11 +1807,31 @@
           return;
         }
 
-        try {
-          await fetch('/api/me/certification/modules/' + moduleId + '/start', { method: 'POST' });
-        } catch (e) { /* continue anyway */ }
+        var prog = state.progress.find(function(p) { return p.module_id === moduleId; });
+        if (prog && prog.status === 'in_progress') {
+          try {
+            var response = await fetch('/api/me/certification/modules/' + encodeURIComponent(moduleId) + '/resume', {
+              method: 'POST',
+              credentials: 'include',
+            });
+            if (response.ok) {
+              var experience = await response.json();
+              var target = '/chat?topic=certification&module=' + encodeURIComponent(moduleId) + '&action=resume';
+              if (experience.resume_conversation_id) {
+                target += '&conversation=' + encodeURIComponent(experience.resume_conversation_id);
+              }
+              window.location.href = target;
+              return;
+            }
+          } catch (e) { /* fall through to checkpoint-based recovery */ }
+          window.location.href = '/chat?topic=certification&module=' + encodeURIComponent(moduleId) + '&action=resume';
+          return;
+        }
 
-        window.location.href = '/chat?topic=certification&module=' + moduleId;
+        // Let Addie's start tool create progress and bind it to the new chat
+        // thread atomically. Pre-starting here produced orphaned modules with
+        // no reliable conversation to resume.
+        window.location.href = '/chat?topic=certification&module=' + encodeURIComponent(moduleId);
       };
 
       window.loadAssessmentDetails = async function(modId, detailsEl) {

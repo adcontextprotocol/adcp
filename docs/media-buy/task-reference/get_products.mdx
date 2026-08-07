@@ -42,12 +42,19 @@ if (!result.success) {
 
 // Validate response against schema
 const validated = GetProductsResponseSchema.parse(result.data);
-console.log(`Found ${validated.products.length} products`);
+if (validated.status === 'rejected') {
+  console.log(`Seller declined the brief: ${validated.reason}`);
+  for (const suggestion of validated.suggestions ?? []) {
+    console.log(`- ${suggestion}`);
+  }
+} else {
+  console.log(`Found ${validated.products.length} products`);
 
-// Access validated product fields
-for (const product of validated.products) {
-  console.log(`- ${product.name} (${product.delivery_type})`);
-  console.log(`  Formats: ${product.format_ids.map(f => f.id).join(', ')}`);
+  // Access validated product fields
+  for (const product of validated.products) {
+    console.log(`- ${product.name} (${product.delivery_type})`);
+    console.log(`  Formats: ${product.format_options.map(option => option.format_kind).join(', ')}`);
+  }
 }
 ```
 
@@ -63,7 +70,12 @@ async def discover_products():
             'domain': 'acmecorp.com'
         }
     )
-    print(f"Found {len(result.products)} products")
+    if result.status == 'rejected':
+        print(f"Seller declined the brief: {result.reason}")
+        for suggestion in result.suggestions or []:
+            print(f"- {suggestion}")
+    else:
+        print(f"Found {len(result.products)} products")
 
 asyncio.run(discover_products())
 ```
@@ -138,7 +150,7 @@ asyncio.run(discover_with_filters())
 | `account` | AccountRef | No | Account reference for account-specific pricing. Returns products with pricing from this account's rate card. |
 | `catalog` | [Catalog](/docs/creative/catalogs) | No | Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Requires `brand`. See [Catalog discovery](#catalog-discovery) below. |
 | `filters` | Filters | No | Structured filters (see below) |
-| `fields` | string[] | No | Specific product fields to include in the response for lightweight discovery. When requesting signal metadata, buyers SHOULD request `included_signals` for non-selectable bundled/planned signals, and `signal_targeting_allowed`, `signal_targeting_options`, and `signal_targeting_rules` for package-level signal selection. |
+| `fields` | string[] | No | Specific product fields to include in the response for lightweight discovery. Request `audience_evidence` for the full evidence payload. When an audience-evidence policy affects inclusion or ranking, the seller MUST return `audience_evidence_selections` even if this projection omitted it; projection does not suppress required decision provenance. When requesting signal metadata, buyers SHOULD request `included_signals` for non-selectable bundled/planned signals, and `signal_targeting_allowed`, `signal_targeting_options`, and `signal_targeting_rules` for package-level signal selection. |
 | `property_list` | PropertyListRef | No | [AdCP 3.0] Reference to a property list for filtering. See [Property Lists](/docs/governance/property/tasks/property_lists) |
 | `pagination` | PaginationRequest | No | Cursor-based pagination to cap returned `products[]` in curated/refined responses or walk wholesale product feeds (see below) |
 | `if_wholesale_feed_version` | string | No | Opaque `wholesale_feed_version` token from a prior wholesale-mode `get_products` response from this agent. Only valid with `buying_mode: "wholesale"`. When provided, the seller compares against its current wholesale product feed version for the buyer's `cache_scope` and MAY return `unchanged: true` (with `products` omitted) if nothing has changed. Version scope excludes `pagination.cursor`: `public` is keyed by (agent, `buying_mode`, `filters`, `property_list`, `catalog`); `account` adds account identity. See [Wholesale feed versioning](#wholesale-feed-versioning). |
@@ -167,7 +179,9 @@ The seller must declare `features.property_list_filtering: true` in [`get_adcp_c
 | `is_fixed_price` | boolean | Legacy filter for fixed-price vs auction products. `true` returns options with `fixed_price`; `false` returns options established through `bid_price`. Contingent options such as `revenue_share` match neither value and are omitted whenever this filter is present. |
 | `pricing_structures` | string[] | Filter by how the payable price is determined: `fixed`, `auction`, or `contingent`. Sellers return only matching `pricing_options`. Use `contingent` to discover `revenue_share`. When combined with `is_fixed_price`, both filters apply. |
 | `pricing_currencies` | string[] | Filter by ISO 4217 currencies the buyer can use for the media product transaction (e.g., `["USD"]`). Products match when they offer at least one product-level `pricing_options` entry in one of the requested currencies and any seller-applied or otherwise mandatory product-scoped signal charges are satisfiable in one of those currencies or have no incremental price. Sellers MUST return only matching product `pricing_options` so buyers can select deterministically from discovery. Optional signal or vendor add-on pricing is not pruned by this filter. |
-| `format_ids` | FormatID[] | Filter by specific format IDs |
+| `format_kinds` | string[] | Filter by canonical format kinds |
+| `format_option_refs` | FormatOptionRef[] | Filter by exact publisher- or product-scoped canonical format options |
+| `format_ids` | FormatID[] | Deprecated 3.x named-format compatibility filter |
 | `standard_formats_only` | boolean | Only return products accepting IAB standard formats |
 | `min_exposures` | integer | Minimum exposures needed for measurement validity |
 | `start_date` | string | Campaign start date in ISO 8601 format (YYYY-MM-DD) for availability checks |
@@ -188,6 +202,42 @@ The seller must declare `features.property_list_filtering: true` in [`get_adcp_c
 | `required_performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | Filter to products that can meet the buyer's performance standard requirements. Each entry specifies a metric, threshold, and vendor (e.g., "DoubleVerify for viewability at 70% MRC"). Products that cannot meet these thresholds or do not support the specified vendors are excluded. |
 | `required_metrics` | string[] ([metric vocabulary](/docs/media-buy/media-buys/optimization-reporting)) | Filter to products whose `reporting_capabilities.available_metrics` is a superset of these metrics — i.e., products that commit to reporting all listed metrics in delivery. Use for capability discovery (e.g., `["completed_views"]` for a CTV CPCV buy). Sellers MUST silently exclude products that cannot meet the list — filter-not-fail; do not return an error. The product's declared `available_metrics` becomes the binding reporting contract carried into the resulting media buy. |
 | `required_vendor_metrics` | object[] | Filter to products whose `reporting_capabilities.vendor_metrics` covers vendor-defined metrics (proprietary attention, emissions, panel demographics, brand-lift surveys, etc.). Each entry pins `vendor` (BrandRef) and/or `metric_id` — at least one. Cross-vendor discovery (e.g., "any attention measurement") is the buyer agent's responsibility: resolve which vendors offer a category via the vendors' `brand.json` records, then enumerate them as filter entries. Same filter-not-fail semantics as `required_metrics`. |
+| `audience_evidence_requirements` | AudienceEvidenceRequirements | Apply buyer-authored admissibility or ranking policy to `Product.audience_evidence`. `requirement_mode` distinguishes hard filtering from preference; `evidence_presence` distinguishes evidence-must-exist from apply-when-published. |
+
+### Audience evidence requirements
+
+The reusable `audience_evidence_requirements` object attaches under `filters`, so the same contract applies to natural-language brief curation, wholesale feeds, and refine requests.
+
+```json
+{
+  "filters": {
+    "audience_evidence_requirements": {
+      "requirement_mode": "required",
+      "evidence_presence": "required",
+      "accepted_methodologies": ["observed", "declared", "derived", "projected"],
+      "excluded_methodologies": ["inferred", "modeled"],
+      "accepted_evidence_types": ["measured"],
+      "accepted_subject_types": ["individual", "household"],
+      "minimum_confidence": 0.8,
+      "maximum_age": { "interval": 90, "unit": "days" },
+      "methodology_documentation_required": true,
+      "independent_attestation_required": true
+    }
+  }
+}
+```
+
+Seller behavior is normative:
+
+- `requirement_mode: "required"` excludes a product when it publishes evidence but no item satisfies every constraint. With `evidence_presence: "required"`, a product that publishes no evidence is also excluded. With `when_available`, a product with no evidence remains eligible.
+- `requirement_mode: "preferred"` never turns a mismatch into a hard exclusion. Sellers rank products with matching evidence higher and explain the selected evidence when returning or constructing a package.
+- When evidence affects product inclusion or rank, the returned product MUST carry the exact matching snapshots in `audience_evidence_selections[]`, with `decision_use` set to `eligibility` or `recommendation`, even if the request's `fields` projection omitted that field. A product admitted because `when_available` found no published evidence has no selection to report.
+- Sellers evaluate freshness from `last_updated` at request evaluation time. They do not synthesize missing provider, confidence, methodology, documentation, or attestation data.
+- Accepted lists and excluded lists are evaluated together; `excluded_methodologies` and `excluded_providers` always win when the same value appears in both lists.
+- `independent_attestation_required` requires `accepted_attestation_issuers` and is satisfied only by one exact reference/evaluation pair. The reference must be published on the evidence, its issuer and claim type must match the buyer allowlists and seller's shared `adcp.attestations` policy, its subject digest must equal the evidence digest, the evaluation must cover that same reference with outcome `verified`, and its action-binding digest must equal the evidence digest. Buyer issuer and claim-type constraints narrow seller policy; they never broaden it.
+- Buyers inspect `media_buy.audience_evidence` capabilities first. Sellers MUST NOT silently ignore unsupported hard requirement or presence modes; they return a structured unsupported/invalid-request error. A preferred mode the seller does not support may be omitted by the buyer or explicitly rejected by the seller, but is never misrepresented as applied.
+
+Audience evidence does not populate `targeting_overlay`, `demographic_targeting`, or an age-verification field. If the buyer also needs exact execution, it requests that independently through the corresponding product and package targeting surfaces.
 
 ### Placement fields
 
@@ -204,7 +254,7 @@ Each returned placement may carry:
 | `audio_distribution_types` | Declared audio distribution types for radio, streaming-audio, podcast, gaming, and other audio inventory, using the IAB Tech Lab/OpenRTB 2.6 `audio.feed` definitions with AdCP-native names. Concrete placements usually declare one value; aggregate placements may declare multiple. |
 | `sponsored_placement_types` | Declared sponsored-placement types for catalog-driven retail-media inventory. Concrete placements usually declare one value; aggregate placements may declare multiple. |
 | `social_placement_surfaces` | Declared social-placement surfaces for social inventory. Concrete placements usually declare one value; aggregate placements may declare multiple. |
-| `format_ids` / `format_options` | Placement-specific creative support. Product-level formats are the upper bound; placement-level formats narrow the effective accepted set for that placement and must not add formats the product does not accept. |
+| `format_options` | Placement-specific canonical creative support. Product-level formats are the upper bound; placement-level formats narrow the effective accepted set for that placement and must not add formats or `locale_policy` language ranges the product does not accept. Deprecated `format_ids` may appear only on the 3.x compatibility path. |
 
 Publishers can authorize sales agents for specific publisher placements using `authorized_agents[].placement_ids` or `authorized_agents[].placement_tags` in `adagents.json`. Sellers should only return publisher-referenced placements they are authorized to sell.
 
@@ -346,7 +396,8 @@ Returns an array of `products` and optionally `proposals`.
 | `name` | string | Human-readable product name |
 | `description` | string | Detailed product description |
 | `publisher_properties` | PublisherProperty[] | Array of publisher entries, each with `publisher_domain` and either `property_ids` or `property_tags` |
-| `format_ids` | FormatID[] | Supported creative format IDs |
+| `format_options` | ProductFormatDeclaration[] | Closed canonical creative contracts this product can deliver, including optional seller-enforced `locale_policy.accepted_language_ranges` that buyers use to preflight planned creative languages before purchase. |
+| `format_ids` | FormatID[] | Deprecated 3.x compatibility projection, when emitted. Locale-constrained options cannot be represented on this path. |
 | `delivery_type` | string | `"guaranteed"` or `"non_guaranteed"` |
 | `delivery_measurement` | DeliveryMeasurement | (Optional) How delivery is measured (impressions, views, etc.) |
 | `pricing_options` | PricingOption[] | Available pricing models (CPM, CPCV, etc.). Auction options may include `floor_price` and optional `price_guidance`. Bid-based auction models (CPM, vCPM, CPC, CPCV, CPV) may also include optional `max_bid` (boolean). |
@@ -396,7 +447,9 @@ Publishers may return proposals alongside products - structured media plans with
 | `proposal_id` | string | Unique identifier for finalizing this proposal and, once committed, executing it via `create_media_buy` |
 | `proposal_status` | string | Lifecycle state. `draft` means the proposal must be finalized via `get_products` refine action `finalize` before create. `committed` means the proposal can be executed via `create_media_buy` before `expires_at`. When absent, treat the proposal as ready to buy for backward compatibility. |
 | `name` | string | Human-readable name for the media plan |
-| `allocations` | ProductAllocation[] | Budget allocations across products (percentages must sum to 100). Each allocation may include optional `start_time` and `end_time` for per-flight scheduling. |
+| `budget_allocation` | BudgetAllocation | Optional cross-product allocation configuration. Omission means a fixed proposal; `seller_optimized` delegates continuous allocation to the seller. |
+| `pacing` | string | Optional aggregate media-buy pacing recommendation. On a committed proposal this is part of the firm delivery terms. |
+| `allocations` | ProductAllocation[] | Fixed proposals use exact `allocation_percentage` values summing to 100. Seller-optimized proposals omit exact percentages and may use `min_spend_target_percentage` and `max_spend_percentage`. Each allocation may include optional flight dates and subordinate `pacing`, which becomes package pacing on execution. |
 | `forecast` | DeliveryForecast | Aggregate delivery forecast for the proposal. Contains forecast points with metric ranges. See [Delivery Forecasts](/docs/media-buy/product-discovery/media-products#delivery-forecasts) |
 | `total_budget_guidance` | object | Optional min/recommended/max budget guidance |
 | `brief_alignment` | string | How this proposal addresses the campaign brief |
@@ -486,13 +539,13 @@ When the seller can attribute exclusions to specific filters, the response MAY i
 
 ### incomplete array
 
-When the seller cannot complete all work within the `time_budget` (or due to its own internal limits), the response includes `incomplete` — an array declaring what is missing. Buyers can use `estimated_wait` to decide whether to retry with a larger budget.
+When the seller returns usable results but cannot complete all work within the `time_budget` (or due to its own internal limits), the response includes `incomplete` — an array declaring what is missing. `incomplete` is a completeness statement, not a retry classification: buyers MUST NOT infer that retrying the same request will succeed. `estimated_wait`, when present, lets a buyer decide whether to make a new attempt with a larger time budget.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `scope` | string | Yes | `"products"`: not all inventory sources were searched. `"pricing"`: products returned but pricing is absent or unconfirmed. `"forecast"`: products returned but forecast data is absent. `"proposals"`: proposals were not generated or are incomplete. `"wholesale_feed"`: in wholesale mode, full feed enumeration could not complete. |
 | `description` | string | Yes | Human-readable explanation of what is missing and why. |
-| `estimated_wait` | Duration | No | How much additional time would resolve this scope. |
+| `estimated_wait` | Duration | No | Additional time expected to help resolve this scope. This is planning guidance, not a retry instruction or guarantee. |
 
 ### Wholesale feed versioning
 
@@ -542,7 +595,7 @@ Response (wholesale product feed changed — full payload returned, abbreviated)
       "name": "Premium CTV — US",
       "description": "Run-of-network CTV inventory across premium publishers.",
       "publisher_properties": [{ "publisher_domain": "streamhaus.example.com", "property_ids": ["primetime_ctv"] }],
-      "format_ids": [{ "id": "video_ctv_1080p_30s" }],
+      "format_options": [{ "format_option_id": "video_ctv_1080p_30s", "format_kind": "video_hosted", "params": { "width": 1920, "height": 1080, "duration_ms_exact": 30000 } }],
       "delivery_type": "guaranteed",
       "pricing_options": [
         { "pricing_option_id": "po_cpm_v2", "pricing_model": "cpm", "currency": "USD", "fixed_price": 18.50 }
@@ -559,7 +612,7 @@ Response (wholesale product feed changed — full payload returned, abbreviated)
 - A returned `wholesale_feed_version` is scoped to the request parameters that produced it. Buyers MUST cache the version alongside the `(account, filters, buying_mode, property_list, catalog)` tuple used.
 - `pricing_version` is an optional finer-grained token: when present, it changes when prices move but `wholesale_feed_version` changes only when structure/metadata moves. Common for rate-card sweeps that don't change product metadata.
 - **`if_pricing_version` requires `if_wholesale_feed_version`.** Pricing has no structural baseline of its own. Sending `if_pricing_version` without `if_wholesale_feed_version` is a schema-level error. The seller's evaluation is two-stage: wholesale feed mismatch returns the full payload (pricing is implicitly stale); wholesale feed match with pricing mismatch also returns the full payload (so the buyer sees updated `pricing_options`); both match → `unchanged: true`.
-- **`filters` canonicalization.** Sellers MUST treat the `filters` object as canonicalized before hashing into the `wholesale_feed_version` keyspace: keys MUST be sorted lexicographically, omitted-and-default values MUST be treated identically (a missing `delivery_type` key is the same scope as `delivery_type: null`), array values MUST be sorted where the filter has set semantics (e.g., `channels`, `format_ids`, `required_metrics`) and preserved-order where the filter has sequence semantics (e.g., `preferred_delivery_types`). Buyers that pass equivalent-but-differently-shaped filter objects MUST receive the same `wholesale_feed_version` from the seller. This rule prevents silent stale-mirror bugs from key-order or default-elision differences between buyer SDKs. **Forward-compat default:** new filter fields added in 3.x minor versions MUST declare set-vs-sequence semantics in their schema (via `x-canonicalization: set | sequence` or equivalent prose); absent an explicit declaration, the rule defaults to **set-semantics** (sort before hashing). Sellers and SDKs that drift on this default produce cache misses that consumers can't explain.
+- **`filters` canonicalization.** Sellers MUST treat the `filters` object as canonicalized before hashing into the `wholesale_feed_version` keyspace: keys MUST be sorted lexicographically, omitted-and-default values MUST be treated identically (a missing `delivery_type` key is the same scope as `delivery_type: null`), array values MUST be sorted where the filter has set semantics (e.g., `channels`, `format_kinds`, `format_option_refs`, `required_metrics`) and preserved-order where the filter has sequence semantics (e.g., `preferred_delivery_types`). Buyers that pass equivalent-but-differently-shaped filter objects MUST receive the same `wholesale_feed_version` from the seller. This rule prevents silent stale-mirror bugs from key-order or default-elision differences between buyer SDKs. **Forward-compat default:** new filter fields added in 3.x minor versions MUST declare set-vs-sequence semantics in their schema (via `x-canonicalization: set | sequence` or equivalent prose); absent an explicit declaration, the rule defaults to **set-semantics** (sort before hashing). Sellers and SDKs that drift on this default produce cache misses that consumers can't explain.
 - **Pagination interaction.** `wholesale_feed_version` describes the wholesale product feed as a whole, not individual pages. Sellers MUST return `wholesale_feed_version` on every paginated page (not only the first) when they declare `wholesale_feed_versioning.supported: true`; sellers that do not declare versioning SHOULD do the same. When the wholesale feed mutates between pages, the new version surfaces on the next page and the buyer MUST restart pagination from `cursor: null` — the partial pages they've already received describe a stale version. Sellers MAY alternatively snapshot the feed at the start of pagination and serve all pages from that snapshot under the original version; either implementation is conformant as long as `wholesale_feed_version` on a given page is the version that page belongs to.
 - **`unchanged: true` and in-progress pagination.** A buyer that is mid-pagination on `cursor: X` MAY send `if_wholesale_feed_version` matching the version their pages so far were drawn from. If the seller confirms `unchanged: true`, the response omits `products[]` and pagination envelope entirely; the buyer abandons their in-progress walk under that version with confidence that no further pages would have produced new data. Sellers MAY NOT use the conditional-fetch short-circuit to skip individual pages within an active pagination — `unchanged` is feed-versus-cached-version, not per-page.
 - Pre-v3.1 sellers that ignore `if_wholesale_feed_version` simply return the full payload — semantically correct, just inefficient (same as the unchanged-server path in HTTP).
@@ -629,7 +682,7 @@ if (result.success && result.data) {
     for (const entry of result.data.incomplete) {
       console.log(`Incomplete: ${entry.scope} — ${entry.description}`);
       if (entry.estimated_wait) {
-        console.log(`  Would resolve in ${entry.estimated_wait.interval} ${entry.estimated_wait.unit}`);
+        console.log(`  Seller estimates more time may help: ${entry.estimated_wait.interval} ${entry.estimated_wait.unit}`);
       }
     }
   }
@@ -658,7 +711,7 @@ async def discover_with_time_budget():
         print(f"Incomplete: {entry['scope']} — {entry['description']}")
         if 'estimated_wait' in entry:
             wait = entry['estimated_wait']
-            print(f"  Would resolve in {wait['interval']} {wait['unit']}")
+            print(f"  Seller estimates more time may help: {wait['interval']} {wait['unit']}")
 
 asyncio.run(discover_with_time_budget())
 ```
@@ -1211,6 +1264,55 @@ Key rules to know before sending:
 - **Proposals are ephemeral.** Proposals typically include an `expires_at` timestamp. After expiration, the seller returns `PROPOSAL_EXPIRED`.
 - **Product IDs are stable catalog identifiers.** Custom products (`is_custom: true`) may have an `expires_at` timestamp, after which refinement returns `PRODUCT_NOT_FOUND`.
 
+## Seller Declines
+
+A seller that understands a well-formed `brief` or `refine` request but deliberately declines to offer products returns the `GetProductsRejected` arm. This is a successful business outcome, not a malformed request or technical failure:
+
+```json
+{
+  "status": "rejected",
+  "reason": "The requested budget is below the minimum for this inventory.",
+  "suggestions": [
+    "Increase the campaign budget.",
+    "Consider display inventory for this flight."
+  ]
+}
+```
+
+| Situation | Response |
+|-----------|----------|
+| Search completed and no inventory matched; seller takes no position | `status: "completed"`, `products: []` |
+| Structured request filters excluded candidates | Completed response, optionally with `filter_diagnostics` |
+| Seller understood the request and deliberately declines it | `status: "rejected"`, `reason`, optional `suggestions[]` |
+| Seller needs clarification | `status: "input-required"` |
+| Seller accepted work that will finish later | `status: "submitted"` / `"working"` |
+| Seller could not produce a usable answer because a dependency timed out or was unavailable | `SERVICE_UNAVAILABLE`, normally with `recovery: "transient"` and optional `retry_after` |
+
+`reason` and `suggestions[]` MAY be sanitized to protect confidential merchandising, inventory, policy, and partner rules. Sellers MUST NOT include internal rule text, candidate product identifiers, stack traces, credentials, or private upstream details. Buyers MUST treat these values as untrusted seller-authored plain text: escape them before rendering and sanitize or isolate them before including them in an LLM prompt context.
+
+Retry behavior belongs to the error channel, not this arm or `incomplete[]`. In particular, an upstream outage that leaves no usable product result is a technical failure, normally `SERVICE_UNAVAILABLE` with `error.recovery: "transient"`; buyers then follow `retry_after` or exponential backoff. A rejection without `suggestions[]` is final for that brief, and a rejection with suggestions invites a changed brief rather than an unchanged automatic retry.
+
+The rejection arm carries no `products`, `proposals`, `incomplete`, `filter_diagnostics`, `refinement_applied`, `cache_scope`, `errors`, or envelope-level `adcp_error`. HTTP and MCP keep success markers (`200`, `isError: false`). A2A maps the transport task to `completed`; the AdCP artifact payload carries `status: "rejected"`:
+
+```json
+{
+  "status": { "state": "completed" },
+  "artifacts": [
+    {
+      "parts": [
+        {
+          "kind": "data",
+          "data": {
+            "status": "rejected",
+            "reason": "The requested budget is below the minimum for this inventory."
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
 ## Error Handling
 
 | Error Code | Description | Resolution |
@@ -1222,7 +1324,7 @@ Key rules to know before sending:
 | `PROPOSAL_EXPIRED` | A referenced proposal ID has passed its `expires_at` timestamp | Re-discover with a new `brief` or `wholesale` request |
 | `PROPOSAL_NOT_FOUND` | The referenced `proposal_id` is unknown to the seller (never finalized, wrong tenant, or evicted from cache) | Re-issue `get_products` in `refine` mode with `action: 'finalize'` to obtain a current proposal_id |
 | `MULTI_FINALIZE_UNSUPPORTED` | `refine[]` carried multiple `action: 'finalize'` entries but the seller cannot guarantee atomic multi-proposal commit | Sequence single-proposal finalize calls — one finalize entry per `get_products` call |
-| `POLICY_VIOLATION` | Category blocked for advertiser | See policy response message for details |
+| `POLICY_VIOLATION` | The request itself violates an applicable policy and must be corrected | Review the structured policy details and revise the request. A seller making a deliberate business decision to decline an otherwise well-formed brief uses `status: "rejected"` instead. |
 
 ### Authentication Comparison
 
@@ -1328,14 +1430,15 @@ const final =
 
 if (final.status === 'failed') {
   throw new Error(final.error?.message ?? 'get_products failed');
-}
-
-if (final.status !== 'completed') {
+} else if (final.status === 'rejected') {
+  console.log(`Seller declined the brief: ${final.reason}`);
+  console.log(final.suggestions ?? []);
+} else if (final.status !== 'completed') {
   throw new Error(`Unhandled get_products status: ${final.status}`);
-}
-
-for (const product of final.products) {
-  console.log(product.name);
+} else {
+  for (const product of final.products) {
+    console.log(product.name);
+  }
 }
 ```
 
@@ -1646,6 +1749,7 @@ Response (200 OK):
 | `input-required` | Need clarification on the brief | Answer the question and continue |
 | `working` | Searching across multiple sources | Wait on the open connection / transport progress stream |
 | `submitted` | Custom curation queued | Poll `get_task_status` (legacy `tasks/get`) with `task_id`; also wait for webhook notification if `push_notification_config` / A2A `configuration.pushNotificationConfig` was accepted |
+| `rejected` | Seller understood the brief but deliberately declined it | Read the sanitized reason; revise and resubmit only when `suggestions[]` offers a recovery path |
 | `failed` | Search couldn't complete | Check error message, adjust brief |
 
 **Note:** For the complete status list see [Task Lifecycle](/docs/building/by-layer/L3/task-lifecycle).
@@ -1658,7 +1762,7 @@ After discovering products:
 
 1. **Review Options**: Compare products, pricing, and targeting capabilities
 2. **Create Media Buy**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) to execute campaign
-3. **Prepare Creatives**: Use [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) to see format requirements
+3. **Prepare Creatives**: Use each returned product's canonical `format_options[]` to see format requirements
 4. **Supply Assets**: Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for library-backed sellers, or inline `packages[].creatives` for inline-only sellers
 
 ## Learn More

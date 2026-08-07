@@ -1,6 +1,7 @@
 {
   "name": "Missing Signature-Input header; operation is in required_for",
   "spec_reference": "#verifier-checklist-requests pre-check (required_for enforcement)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

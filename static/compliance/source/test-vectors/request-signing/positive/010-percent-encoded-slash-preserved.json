@@ -1,6 +1,7 @@
 {
   "name": "URL path with %2F (reserved) preserved literally through remove_dot_segments",
   "spec_reference": "#adcp-rfc-9421-profile (@target-uri canonicalization step 5: remove_dot_segments operates on percent-encoded form; step 6: reserved bytes stay percent-encoded)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

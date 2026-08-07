@@ -258,6 +258,28 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
       expect(messages[1].content).toBe('Second');
       expect(messages[2].content).toBe('Third');
     });
+
+    it('returns bounded newest pages in chronological order and clamps options', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: 'test-paginated-thread',
+        user_type: 'workos',
+      });
+      for (let index = 1; index <= 5; index += 1) {
+        await threadService.addMessage({
+          thread_id: thread.thread_id,
+          role: index % 2 ? 'user' : 'assistant',
+          content: `page-${index}`,
+        });
+      }
+
+      expect((await threadService.getThreadMessages(thread.thread_id, { limit: 2 })).map(m => m.content))
+        .toEqual(['page-4', 'page-5']);
+      expect((await threadService.getThreadMessages(thread.thread_id, { limit: 2, offset: 2 })).map(m => m.content))
+        .toEqual(['page-2', 'page-3']);
+      expect((await threadService.getThreadMessages(thread.thread_id, { limit: 0, offset: -1 })).map(m => m.content))
+        .toEqual(['page-5']);
+    });
   });
 
   describe('addMessageFeedback', () => {
@@ -275,12 +297,13 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
         content: 'Answer',
       });
 
-      await threadService.addMessageFeedback(assistantMsg.message_id, {
+      await threadService.addMessageFeedback(thread.thread_id, assistantMsg.message_id, {
         rating: 5,
         rating_category: 'helpfulness',
         rating_notes: 'Very helpful!',
         feedback_tags: ['clear', 'accurate'],
         rated_by: 'user_test',
+        rating_source: 'user',
       });
 
       // Fetch the message again to verify
@@ -290,6 +313,39 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
       expect(ratedMsg?.rating).toBe(5);
       expect(ratedMsg?.rating_category).toBe('helpfulness');
       expect(ratedMsg?.rated_by).toBe('user_test');
+    });
+
+    it('does not update a message when the supplied thread does not own it', async () => {
+      const ownerThread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_WEB_EXTERNAL_ID}-owner`,
+        user_type: 'workos',
+      });
+      const otherThread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_WEB_EXTERNAL_ID}-other`,
+        user_type: 'workos',
+      });
+      const ownerMessage = await threadService.addMessage({
+        thread_id: ownerThread.thread_id,
+        role: 'assistant',
+        content: 'Private answer',
+      });
+
+      const updated = await threadService.addMessageFeedback(
+        otherThread.thread_id,
+        ownerMessage.message_id,
+        {
+          rating: 1,
+          rating_notes: 'Cross-thread overwrite',
+          rated_by: 'user_other',
+          rating_source: 'user',
+        },
+      );
+
+      expect(updated).toBe(false);
+      const messages = await threadService.getThreadMessages(ownerThread.thread_id);
+      expect(messages.find((message) => message.message_id === ownerMessage.message_id)?.rating).toBeNull();
     });
   });
 

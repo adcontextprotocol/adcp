@@ -3,15 +3,14 @@ name: Slash Command Dispatch
 # Routes `/<command>` comments on issues and PRs to dedicated handler
 # workflows via repository_dispatch events. Uses peter-evans/slash-command-
 # dispatch so we get:
-#   - Built-in permission checks (only OWNER / MEMBER / COLLABORATOR trigger)
+#   - Event association plus repository-write permission checks
 #   - Reactions on the triggering comment (eyes on ack, +1 on success, -1 on fail)
 #   - Clean separation: this workflow routes, downstream handlers do the work
 #
-# Required repo secret:
-#   TRIAGE_DISPATCH_PAT  — Personal Access Token with `repo` scope (or fine-
-#                         grained: contents:write, issues:write, pull-requests:write
-#                         on this repo). GITHUB_TOKEN cannot fire
-#                         repository_dispatch events.
+# Required repo secrets:
+#   SECRETARIAT_APP_ID / SECRETARIAT_APP_PRIVATE_KEY — mint a short-lived App
+#                         token for repository_dispatch. GITHUB_TOKEN resolves
+#                         caller permissions and adds reactions.
 #
 # Current commands:
 #   /triage [modifier]  — fire the triage routine on this issue. Modifiers
@@ -23,23 +22,64 @@ on:
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
 
 jobs:
   dispatch:
     name: Dispatch slash command
     runs-on: ubuntu-latest
     timeout-minutes: 2
-    # Skip bot-authored comments always.
+    # Reject outsiders before spending a runner. The first step below then
+    # preserves the stricter write-or-higher repository permission boundary.
     if: >-
       github.event.comment.user.type != 'Bot' &&
-      !endsWith(github.event.comment.user.login, '[bot]')
+      !endsWith(github.event.comment.user.login, '[bot]') &&
+      startsWith(github.event.comment.body, '/triage') &&
+      (
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'
+      )
     steps:
+      - name: Mint Secretariat App token
+        id: app-token
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          app-id: ${{ secrets.SECRETARIAT_APP_ID }}
+          private-key: ${{ secrets.SECRETARIAT_APP_PRIVATE_KEY }}
+          owner: adcontextprotocol
+          repositories: adcp
+          permission-contents: write
+          permission-pull-requests: read
+
+      - name: Resolve caller repository permission
+        id: caller
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          set -euo pipefail
+          permission=$(gh api \
+            "repos/${REPOSITORY}/collaborators/${COMMENTER}/permission" \
+            --jq '.permission')
+          echo "permission=${permission}" >> "$GITHUB_OUTPUT"
+          case "$permission" in
+            write|maintain|admin) echo "allowed=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "allowed=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
       - name: Slash command dispatch
+        if: steps.caller.outputs.allowed == 'true'
         uses: peter-evans/slash-command-dispatch@v5
         with:
-          token: ${{ secrets.TRIAGE_DISPATCH_PAT }}
+          token: ${{ steps.app-token.outputs.token }}
+          reaction-token: ${{ github.token }}
           commands: |
             triage
-          permission: write
+          # Caller authorization is enforced before the action. The App token
+          # is used only for dispatch, not permission lookup or reactions.
+          permission: none
           reactions: true
           issue-type: both

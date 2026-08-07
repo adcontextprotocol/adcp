@@ -11,7 +11,7 @@ import type { Request, RequestHandler } from "express";
 import { z } from "zod";
 import escapeHtml from "escape-html";
 import { findOwnerOrgForUser } from "../services/agent-ownership.js";
-import { CreativeAgentClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
+import { AdCPClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
 import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex, listAllComplianceStoryboards } from "@adcp/sdk/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
@@ -91,6 +91,13 @@ import {
   CommunityMirrorListResponseSchema,
   CommunityMirrorGetResponseSchema,
   CommunityMirrorPublishResponseSchema,
+  CommunityMirrorProposalSubmissionResponseSchema,
+  CommunityMirrorProposalListResponseSchema,
+  CommunityMirrorProposalGetResponseSchema,
+  CommunityMirrorProposalReviewRequestSchema,
+  CommunityMirrorProposalRejectRequestSchema,
+  CommunityMirrorProposalApprovalResponseSchema,
+  CommunityMirrorProposalDecisionResponseSchema,
   CommunityMirrorDeleteResponseSchema,
   CommunityMirrorPublishErrorSchema,
   AdagentsAuthorizedAgentSchema,
@@ -208,11 +215,29 @@ type PublisherFormatSummary = {
   format_option_id?: string;
   display_name: string;
   format_kind: string;
+  sample_render_url?: string;
   params?: Record<string, unknown>;
   applies_to_property_ids?: string[];
   applies_to_property_tags?: string[];
   seller_preference?: string;
   experimental?: boolean;
+};
+
+type PublisherPlacementSummary = {
+  placement_id: string;
+  name: string;
+  description?: string;
+  property_ids?: string[];
+  property_tags?: string[];
+  collection_ids?: string[];
+  channels?: string[];
+  tags?: string[];
+  format_options?: Array<{
+    format_option_id?: string;
+    format_kind: string;
+    params?: Record<string, unknown>;
+  }>;
+  source: 'adagents_json' | 'community';
 };
 
 function recordOrNull(value: unknown): Record<string, unknown> | null {
@@ -223,6 +248,17 @@ function recordOrNull(value: unknown): Record<string, unknown> | null {
 
 function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function httpsUrlOrUndefined(value: unknown): string | undefined {
+  const raw = stringOrUndefined(value);
+  if (!raw) return undefined;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function stringArray(value: unknown, cap = 8): string[] {
@@ -358,6 +394,7 @@ function summarizeFormats(
         format_option_id: optionId,
         display_name: displayName,
         format_kind: formatKind,
+        sample_render_url: httpsUrlOrUndefined(format.sample_render_url),
         params,
         applies_to_property_ids: appliesToPropertyIds,
         applies_to_property_tags: appliesToPropertyTags,
@@ -367,6 +404,55 @@ function summarizeFormats(
     })
     .filter((format): format is PublisherFormatSummary => !!format)
     .slice(0, 100);
+}
+
+function summarizePlacements(
+  manifest: Record<string, unknown> | null | undefined,
+  source: 'adagents_json' | 'community',
+): PublisherPlacementSummary[] {
+  const rawPlacements = Array.isArray(manifest?.placements) ? manifest.placements : [];
+  const rawFormats = Array.isArray(manifest?.formats) ? manifest.formats : [];
+  const formatsById = new Map<string, Record<string, unknown>>();
+  for (const raw of rawFormats) {
+    const format = recordOrNull(raw);
+    const id = format && stringOrUndefined(format.format_option_id);
+    if (format && id) formatsById.set(id, format);
+  }
+
+  return rawPlacements.flatMap(raw => {
+    const placement = recordOrNull(raw);
+    const placementId = placement && stringOrUndefined(placement.placement_id);
+    const name = placement && stringOrUndefined(placement.name);
+    if (!placement || !placementId || !name) return [];
+
+    const rawOptions = Array.isArray(placement.format_options) ? placement.format_options : [];
+    const formatOptions = rawOptions.flatMap(rawOption => {
+      const option = recordOrNull(rawOption);
+      if (!option) return [];
+      const optionId = stringOrUndefined(option.format_option_id);
+      const resolved = optionId && !stringOrUndefined(option.format_kind)
+        ? formatsById.get(optionId)
+        : option;
+      if (!resolved) return [];
+      const formatKind = stringOrUndefined(resolved.format_kind);
+      const params = recordOrNull(resolved.params);
+      if (!formatKind || !params) return [];
+      return [{ format_option_id: optionId ?? stringOrUndefined(resolved.format_option_id), format_kind: formatKind, params }];
+    });
+
+    return [{
+      placement_id: placementId,
+      name,
+      description: stringOrUndefined(placement.description),
+      property_ids: stringArray(placement.property_ids, 500),
+      property_tags: stringArray(placement.property_tags, 500),
+      collection_ids: stringArray(placement.collection_ids, 500),
+      channels: stringArray(placement.channels, 100),
+      tags: stringArray(placement.tags, 100),
+      format_options: formatOptions.length ? formatOptions : undefined,
+      source,
+    }];
+  }).slice(0, 500);
 }
 import { AAO_UA_COMPLIANCE } from "../config/user-agents.js";
 
@@ -1266,7 +1352,7 @@ registry.registerPath({
   summary: "List agents",
   description:
     "List all agents in the registry. Optionally enrich with health checks, capabilities, and property summaries via query parameters. " +
-    "Measurement-vendor filters (`metric_id`, `accreditation`, `q`) imply `type=measurement` when `type` is unset; an explicit `type` other than `measurement` returns 400.",
+    "Measurement-vendor filters (`metric_id`, `accreditation`, `q`) imply `type=measurement`. Canonical creative-capability filters (`format_kind`, `publisher_domain`, `format_option_id`, `capability_id`, `creative_operation`) match any endpoint exposing that creative surface, including mixed sales/creative agents; add an explicit `type` only to narrow by primary registry classification.",
   tags: ["Agent Discovery"],
   request: {
     query: z.object({
@@ -1276,16 +1362,38 @@ registry.registerPath({
       properties: z.enum(["true"]).optional(),
       compliance: z.enum(["true"]).optional(),
       metric_id: z.union([z.string(), z.array(z.string())]).optional().openapi({
-        description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable (each value is OR'd within the param, AND'd with other filters). Implies `type=measurement`.",
+        description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable; multiple values are AND'd (vendor must carry all named metrics). When combined with `accreditation`, a cross-product AND applies — each (metric_id, accreditation) pair must be covered by the same metrics element. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`.",
         example: "attention_units",
       }),
       accreditation: z.union([z.string(), z.array(z.string())]).optional().openapi({
-        description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response).",
+        description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable; multiple values are AND'd. When combined with `metric_id`, a cross-product AND applies — see `metric_id` description. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response).",
         example: "MRC",
       }),
       q: z.string().max(64).optional().openapi({
         description: "Measurement-vendor filter: case-insensitive substring match against `measurement.metrics[].metric_id`. v1 scope: metric_id only (description/standard search is a follow-up). Max 64 chars; SQL wildcard characters are escaped. Implies `type=measurement`.",
         example: "attention",
+      }),
+      format_kind: z.union([z.string(), z.array(z.string())]).optional().openapi({
+        description: "Canonical creative-capability filter: exact match on creative.supported_formats[].format.format_kind. Repeatable with OR semantics. Matches standalone creative agents and mixed-role endpoints.",
+        example: "video_hosted",
+      }),
+      publisher_domain: z.string().optional().openapi({
+        description: "Canonical creative-capability filter: exact publisher_domain on the same supported-format entry. Pair with format_option_id to find endpoints claiming an exact publisher format.",
+        example: "shorts.streamhaus.example",
+      }),
+      format_option_id: z.string().optional().openapi({
+        description: "Canonical creative-capability filter: exact publisher format_option_id on the same supported-format entry.",
+        example: "spotlight_video",
+      }),
+      capability_id: z.string().optional().openapi({
+        description: "Canonical creative-capability filter: exact endpoint-local creative.supported_formats[].capability_id.",
+      }),
+      creative_operation: z.union([
+        z.enum(["build", "validate", "preview"]),
+        z.array(z.enum(["build", "validate", "preview"])),
+      ]).optional().openapi({
+        description: "Canonical creative-capability filter: required supported operation on the same format entry. Repeatable with OR semantics.",
+        example: "build",
       }),
       verification_mode: z.array(z.enum(["spec", "live"])).optional().openapi({
         description:
@@ -1544,6 +1652,7 @@ registry.registerPath({
   request: {
     query: z.object({
       domain: z.string().openapi({ example: "voxmedia.com" }),
+      include: z.literal("placements").optional().openapi({ description: "Set to placements to include eligibility-oriented placement summaries with resolved canonical format options." }),
     }),
   },
   responses: {
@@ -1784,6 +1893,105 @@ registry.registerPath({
 // Community Mirrors
 registry.registerPath({
   method: "get",
+  path: "/api/registry/mirror-proposals",
+  operationId: "listCommunityMirrorProposals",
+  summary: "List community mirror proposals",
+  description:
+    "List the caller's own community-mirror proposals. Registry moderators and AgenticAdvertising.org administrators see the review queue and may filter by status; their default is `pending`.",
+  tags: ["Community Mirrors"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    query: z.object({
+      status: z.enum(["pending", "approved", "rejected"]).optional(),
+      review_queue: z.enum(["true", "false"]).optional().openapi({
+        description: "Set to `true` for the cross-organization moderator queue; non-moderators receive 403.",
+      }),
+      limit: z.number().int().max(50).optional(),
+      offset: z.number().int().optional(),
+    }),
+  },
+  responses: {
+    200: { description: "Community mirror proposal list", content: { "application/json": { schema: CommunityMirrorProposalListResponseSchema } } },
+    400: { description: "Invalid status", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Moderator access required for the review queue", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
+    500: { description: "Failed to list proposals", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/mirror-proposals/{id}",
+  operationId: "getCommunityMirrorProposal",
+  summary: "Get community mirror proposal",
+  description:
+    "Fetch a proposal owned by the caller. Registry moderators and AgenticAdvertising.org administrators may fetch any proposal.",
+  tags: ["Community Mirrors"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: { params: z.object({ id: z.string().uuid() }) },
+  responses: {
+    200: { description: "Community mirror proposal", content: { "application/json": { schema: CommunityMirrorProposalGetResponseSchema } } },
+    400: { description: "Invalid proposal identifier", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Proposal not found or not visible to the caller", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
+    500: { description: "Failed to read proposal", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/mirror-proposals/{id}/approve",
+  operationId: "approveCommunityMirrorProposal",
+  summary: "Approve community mirror proposal",
+  description:
+    "Approve and atomically publish a pending proposal. Requires a registry moderator or AgenticAdvertising.org administrator.",
+  tags: ["Community Mirrors"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: { required: true, content: { "application/json": { schema: CommunityMirrorProposalReviewRequestSchema } } },
+  },
+  responses: {
+    200: { description: "Proposal approved and mirror published", content: { "application/json": { schema: CommunityMirrorProposalApprovalResponseSchema } } },
+    400: { description: "Invalid identifier, review body, or stale schema conformance", content: { "application/json": { schema: CommunityMirrorPublishErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Reviewer role required", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Proposal not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Proposal changed after review, its base mirror is stale, or it was already reviewed", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
+    500: { description: "Failed to approve proposal", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/mirror-proposals/{id}/reject",
+  operationId: "rejectCommunityMirrorProposal",
+  summary: "Reject community mirror proposal",
+  description:
+    "Reject a pending proposal with reviewer notes. Requires a registry moderator or AgenticAdvertising.org administrator.",
+  tags: ["Community Mirrors"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: { required: true, content: { "application/json": { schema: CommunityMirrorProposalRejectRequestSchema } } },
+  },
+  responses: {
+    200: { description: "Proposal rejected", content: { "application/json": { schema: CommunityMirrorProposalDecisionResponseSchema } } },
+    400: { description: "Invalid identifier or review body", content: { "application/json": { schema: CommunityMirrorPublishErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Reviewer role required", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Proposal not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Proposal changed after review or was already reviewed", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
+    500: { description: "Failed to reject proposal", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
   path: "/api/registry/mirrors",
   operationId: "listCommunityMirrors",
   summary: "List community mirrors",
@@ -1836,9 +2044,9 @@ registry.registerPath({
   method: "put",
   path: "/api/registry/mirrors/{platform}",
   operationId: "publishCommunityMirror",
-  summary: "Publish community mirror",
+  summary: "Publish or propose community mirror",
   description:
-    "Publish or update a catalog-only adagents.json community mirror. Requires a registry moderator or AgenticAdvertising.org admin. The service validates the assembled document against adagents.json, forces `authorized_agents: []`, regenerates `$schema` and `last_updated`, and updates derived publisher-domain catalog rows.",
+    "Submit a catalog-only adagents.json community mirror. Registry moderators and AgenticAdvertising.org administrators publish immediately; other authenticated organization callers create or refresh a pending proposal and receive HTTP 202. Contributor proposals are limited to 1 MiB and 2,000 catalog items. The service validates the assembled document against adagents.json, forces `authorized_agents: []`, and regenerates `$schema` and `last_updated`.",
   tags: ["Community Mirrors"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -1859,9 +2067,11 @@ registry.registerPath({
   },
   responses: {
     200: { description: "Community mirror published", content: { "application/json": { schema: CommunityMirrorPublishResponseSchema } } },
+    202: { description: "Community mirror proposal accepted for review", content: { "application/json": { schema: CommunityMirrorProposalSubmissionResponseSchema } } },
     400: { description: "Invalid platform, request body, or adagents.json conformance failure", content: { "application/json": { schema: CommunityMirrorPublishErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
-    403: { description: "Only registry moderators or AgenticAdvertising.org admins can manage community mirrors", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Organization context required for community proposals", content: { "application/json": { schema: ErrorSchema } } },
+    413: { description: "Proposal body or catalog item count exceeds the contributor limit", content: { "application/json": { schema: ErrorSchema } } },
     429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
     500: { description: "Failed to publish community mirror", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -1962,12 +2172,12 @@ registry.registerPath({
   method: "get",
   path: "/api/public/agent-formats",
   operationId: "getAgentFormats",
-  summary: "Get agent formats",
-  description: "Fetch creative formats from a creative agent.",
+  summary: "Get creative-agent format capabilities",
+  description: "Fetch get_adcp_capabilities creative.supported_formats[] from a creative agent.",
   tags: ["Agent Probing"],
   request: { query: z.object({ url: z.string() }) },
   responses: {
-    200: { description: "Creative formats", content: { "application/json": { schema: z.object({ success: z.boolean(), formats: z.array(z.unknown()) }) } } },
+    200: { description: "Canonical creative capabilities", content: { "application/json": { schema: z.object({ success: z.boolean(), formats: z.array(z.unknown()) }) } } },
   },
 });
 
@@ -2232,7 +2442,8 @@ const AgentEventPayloadSchema = z
     category_taxonomy: z.string().nullable().optional(),
     tags: z.array(z.string()).optional(),
     delivery_types: z.array(z.string()).optional(),
-    format_ids: z.array(z.string()).optional(),
+    format_ids: z.array(z.string()).optional().openapi({ description: "Deprecated 3.x named-format profile projection." }),
+    format_kinds: z.array(z.string()).optional(),
     property_count: z.number().int().optional(),
     publisher_count: z.number().int().optional(),
     has_tmp: z.boolean().optional(),
@@ -2344,6 +2555,9 @@ const PublisherEventPayloadSchema = z
     agent_count: z.number().int().optional(),
     property_count: z.number().int().optional(),
     collection_count: z.number().int().optional(),
+    format_count: z.number().int().nonnegative().optional().openapi({ description: "Number of top-level formats[] declarations after the revision." }),
+    placement_count: z.number().int().nonnegative().optional().openapi({ description: "Number of top-level placements[] declarations after the revision." }),
+    changed_fields: z.array(z.string()).min(1).optional().openapi({ description: "Semantic top-level adagents.json fields changed by this revision, including formats or placements. Present on newly emitted 3.2 change events." }),
     discovery_method: z.string().optional(),
     manager_domain: z.string().nullable().optional(),
     source: z.string().optional(),
@@ -2418,7 +2632,7 @@ registry.registerPath({
   operationId: "getRegistryFeed",
   summary: "Registry change feed",
   description:
-    "Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days. The `freshness` object reports when the response was generated, the newest matching event currently visible to the feed, and the resulting feed lag.\n\nType filtering supports glob patterns: `property.*` matches `property.created`, `property.updated`, etc.",
+    "Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days. The `freshness` object reports when the response was generated, the newest matching event currently visible to the feed, and the resulting feed lag. `publisher.adagents_changed` covers semantic changes in every top-level catalog field, including formats-only and placements-only revisions; new 3.2 events identify them in `payload.changed_fields`.\n\nType filtering supports glob patterns: `property.*` matches `property.created`, `property.updated`, etc.",
   tags: ["Change Feed"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -2654,7 +2868,7 @@ registry.registerPath({
               categories: z.array(z.string()),
               tags: z.array(z.string()),
               delivery_types: z.array(z.string()),
-              format_ids: z.array(z.unknown()).openapi({ description: "Creative format identifiers supported by this agent" }),
+              format_kinds: z.array(z.string()).openapi({ description: "Canonical format kinds present in this agent's indexed inventory profile" }),
               property_count: z.number().int(),
               publisher_count: z.number().int(),
               has_tmp: z.boolean(),
@@ -3520,7 +3734,7 @@ registry.registerPath({
             client_id: z.string().max(2048).openapi({ description: "OAuth client ID. May be a `$ENV:VAR_NAME` reference." }),
             client_secret: z.string().max(8192).openapi({ description: "OAuth client secret. May be a `$ENV:VAR_NAME` reference. Stored encrypted at rest." }),
             scope: z.string().max(1024).optional().openapi({ description: "Space-separated OAuth scope values." }),
-            resource: z.string().max(2048).optional().openapi({ description: "RFC 8707 resource indicator." }),
+            resource: z.union([z.string().max(2048), z.array(z.string().max(2048)).min(1).max(8)]).optional().openapi({ description: 'RFC 8707 resource indicator. Accepts a single URI string or an array of 1–8 URI strings for multi-resource authorization servers (Keycloak strict, AWS Cognito multi-RS).' }),
             audience: z.string().max(2048).optional().openapi({ description: "Audience parameter for audience-validating authorization servers." }),
             auth_method: z.enum(["basic", "body"]).optional().openapi({ description: "Client-credentials placement: basic (HTTP Basic header, RFC 6749 §2.3.1 preferred) or body (form fields). SDK default is basic." }),
           }),
@@ -5484,10 +5698,49 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string" && x.length > 0);
         return [];
       };
-      const metricIds = toArray(req.query.metric_id);
-      const accreditations = toArray(req.query.accreditation);
+      // Deduplicate before limit checks so repeated values don't inflate counts.
+      const metricIds = [...new Set(toArray(req.query.metric_id))];
+      const accreditations = [...new Set(toArray(req.query.accreditation))];
       const qParam = typeof req.query.q === "string" ? req.query.q : undefined;
       const hasMeasurementFilter = metricIds.length > 0 || accreditations.length > 0 || (qParam !== undefined && qParam.length > 0);
+      const formatKinds = toArray(req.query.format_kind);
+      const creativeOperations = toArray(req.query.creative_operation);
+      const publisherDomain = typeof req.query.publisher_domain === "string" ? req.query.publisher_domain : undefined;
+      const formatOptionId = typeof req.query.format_option_id === "string" ? req.query.format_option_id : undefined;
+      const capabilityId = typeof req.query.capability_id === "string" ? req.query.capability_id : undefined;
+      const hasCreativeFilter = formatKinds.length > 0 || creativeOperations.length > 0 || Boolean(publisherDomain || formatOptionId || capabilityId);
+
+      if (hasMeasurementFilter && hasCreativeFilter) {
+        return res.status(400).json({
+          error: "measurement and creative capability filters cannot be combined",
+        });
+      }
+
+      // Per-filter and cross-product limits. No route rate-limiter exists on this
+      // endpoint, so we bound the M×N @> predicate count here to prevent
+      // inadvertent (or adversarial) query cost spikes and to stay well below
+      // PostgreSQL's 65 535 bind-parameter ceiling.
+      const METRIC_ID_LIMIT = 20;
+      const ACCREDITATION_LIMIT = 20;
+      const FILTER_PAIR_LIMIT = 100;
+      if (metricIds.length > METRIC_ID_LIMIT) {
+        return res.status(400).json({
+          error: `metric_id: too many values (${metricIds.length}); maximum is ${METRIC_ID_LIMIT}`,
+        });
+      }
+      if (accreditations.length > ACCREDITATION_LIMIT) {
+        return res.status(400).json({
+          error: `accreditation: too many values (${accreditations.length}); maximum is ${ACCREDITATION_LIMIT}`,
+        });
+      }
+      if (metricIds.length > 0 && accreditations.length > 0) {
+        const pairCount = metricIds.length * accreditations.length;
+        if (pairCount > FILTER_PAIR_LIMIT) {
+          return res.status(400).json({
+            error: `metric_id × accreditation cross-product (${metricIds.length} × ${accreditations.length} = ${pairCount}) exceeds the ${FILTER_PAIR_LIMIT}-pair limit`,
+          });
+        }
+      }
 
       if (hasMeasurementFilter) {
         if (type && type !== "measurement") {
@@ -5496,6 +5749,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           });
         }
         type = "measurement" as AgentType;
+      }
+
+      if (hasCreativeFilter) {
+        const invalidOperations = creativeOperations.filter((operation) => !["build", "validate", "preview"].includes(operation));
+        if (invalidOperations.length > 0) {
+          return res.status(400).json({
+            error: `Invalid creative_operation value(s): ${invalidOperations.join(", ")}`,
+            valid_values: ["build", "validate", "preview"],
+          });
+        }
       }
 
       // Length cap on q. Wildcards (% _) get rejected outright rather than
@@ -5553,6 +5816,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           metric_ids: metricIds,
           accreditations,
           q: qFilter,
+        });
+        federatedAgents = federatedAgents.filter((fa) => matchingUrls.has(fa.url));
+      }
+      if (hasCreativeFilter) {
+        const matchingUrls = await agentSnapshotDb.filterCreativeAgents({
+          format_kinds: formatKinds,
+          publisher_domain: publisherDomain,
+          format_option_id: formatOptionId,
+          capability_id: capabilityId,
+          operations: creativeOperations,
         });
         federatedAgents = federatedAgents.filter((fa) => matchingUrls.has(fa.url));
       }
@@ -8154,6 +8427,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     if (!rawDomain) {
       return res.status(400).json({ error: "Missing required query param: domain" });
     }
+    const include = typeof req.query.include === 'string' ? req.query.include : undefined;
+    if (include !== undefined && include !== 'placements') {
+      return res.status(400).json({ error: "Invalid include value; expected placements" });
+    }
 
     try {
       const domain = extractDomain(rawDomain);
@@ -8643,6 +8920,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         properties: projectedProperties,
         brand: summarizeBrandManifest(brandManifest, files.brand_json.name),
         formats: summarizeFormats(cachedAdagentsManifest, projectedProperties),
+        ...(include === 'placements' && cachedAdagentsManifest
+          ? { placements: summarizePlacements(cachedAdagentsManifest, cachedSourceType === 'community' ? 'community' : 'adagents_json') }
+          : {}),
         authorized_agents: authorizations.map(a => {
           if (skipRollup) {
             return {
@@ -9212,9 +9492,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       if (agentType === "creative") {
         try {
-          const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
-          const formats = await creativeClient.listFormats();
-          stats.format_count = formats.length;
+          const capabilityClient = new AdCPClient([{
+            id: "creative-capability-discovery",
+            name: "Creative capability discovery",
+            agent_uri: url,
+            protocol: "mcp",
+          }], withSdkSafeTransport({})).agent("creative-capability-discovery");
+          const result = await capabilityClient.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
+          const creative = (result.data as Record<string, unknown> | undefined)?.creative as Record<string, unknown> | undefined;
+          stats.format_count = Array.isArray(creative?.supported_formats) ? creative.supported_formats.length : 0;
         } catch (statsError) {
           logger.debug({ err: statsError, url }, "Failed to fetch creative formats");
           stats.format_count = 0;
@@ -9253,23 +9539,19 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
 
     try {
-      const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
-      const formats = await creativeClient.listFormats();
+      const capabilityClient = new AdCPClient([{
+        id: "creative-capability-discovery",
+        name: "Creative capability discovery",
+        agent_uri: url,
+        protocol: "mcp",
+      }], withSdkSafeTransport({})).agent("creative-capability-discovery");
+      const result = await capabilityClient.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
+      const creative = (result.data as Record<string, unknown> | undefined)?.creative as Record<string, unknown> | undefined;
+      const formats = Array.isArray(creative?.supported_formats) ? creative.supported_formats : [];
 
       return res.json({
         success: true,
-        formats: formats.map((format) => {
-          return {
-            format_id: format.format_id,
-            name: format.name,
-            description: format.description,
-            example_url: format.example_url,
-            renders: format.renders,
-            assets: format.assets,
-            output_format_ids: format.output_format_ids,
-            agent_url: format.agent_url,
-          };
-        }),
+        formats,
       });
     } catch (error) {
       logger.warn({ err: error, url }, "Agent formats fetch failed");
@@ -9311,7 +9593,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           pricing_model: p.pricing_model,
           base_rate: p.base_rate,
           currency: p.currency,
-          format_ids: p.format_ids,
+          format_options: p.format_options,
           delivery_channels: p.delivery_channels,
           targeting_capabilities: p.targeting_capabilities,
         })),
@@ -10207,8 +10489,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         };
 
         const response = await profilesDb.search(searchQuery);
+        const results = response.results.map(result => {
+          const { format_ids: _deprecatedFormatIds, ...rest } = result;
+          return { ...rest, format_kinds: result.format_kinds ?? [] };
+        });
 
-        return res.json(response);
+        return res.json({ ...response, results });
       } catch (error: any) {
         if (error?.message?.includes('Invalid cursor')) {
           return res.status(400).json({ error: "Invalid cursor format" });

@@ -26,6 +26,7 @@ import { notifyPublishedPost } from "../notifications/slack.js";
 import { notifyUser } from "../notifications/notification-service.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
 import { validateFetchUrl, validateRedirectTarget, sanitizeUrl } from "../utils/url-security.js";
+import { normalizePerspectiveExternalUrl } from "../utils/perspective-url.js";
 import { reindexDocument } from "../addie/jobs/committee-document-indexer.js";
 import { refreshWorkingGroupDocs } from "../addie/mcp/docs-indexer.js";
 import { createChannel, setChannelPurpose, sendChannelMessage, inviteToChannel, isSlackConfigured } from "../slack/client.js";
@@ -1431,6 +1432,12 @@ export function createCommitteeRouters(): {
             message: 'Slug must contain only lowercase letters, numbers, and hyphens',
           });
         }
+        if (error.is('invalid_external_url')) {
+          return res.status(400).json({
+            error: 'Invalid external URL',
+            message: 'Link posts require an HTTPS external URL without credentials',
+          });
+        }
         if (error.is('duplicate_post_slug')) {
           return res.status(409).json({
             error: 'Slug already exists',
@@ -1503,6 +1510,27 @@ export function createCommitteeRouters(): {
         }
       }
 
+      const normalizedIncomingExternalUrl = external_url == null
+        ? external_url
+        : normalizePerspectiveExternalUrl(external_url);
+      const effectiveContentType = content_type ?? post.content_type;
+      const effectiveExternalUrl = external_url === undefined
+        ? normalizePerspectiveExternalUrl(post.external_url)
+        : normalizedIncomingExternalUrl;
+      const persistedExternalUrl = external_url === undefined
+        ? normalizePerspectiveExternalUrl(post.external_url)
+        : normalizedIncomingExternalUrl;
+      if (
+        (external_url != null && !normalizedIncomingExternalUrl) ||
+        (external_url === undefined && post.external_url != null && !persistedExternalUrl) ||
+        (effectiveContentType === 'link' && !effectiveExternalUrl)
+      ) {
+        return res.status(400).json({
+          error: 'Invalid external URL',
+          message: 'Link posts require an HTTPS external URL without credentials',
+        });
+      }
+
       const result = await pool.query(
         `UPDATE perspectives SET
           slug = COALESCE($1, slug),
@@ -1524,7 +1552,7 @@ export function createCommitteeRouters(): {
           content ?? post.content,
           category ?? post.category,
           excerpt ?? post.excerpt,
-          external_url ?? post.external_url,
+          persistedExternalUrl,
           external_site_name ?? post.external_site_name,
           finalMembersOnly,
           postId,
@@ -2281,6 +2309,16 @@ export function createCommitteeRouters(): {
         });
       }
 
+      const normalizedExternalUrl = external_url == null
+        ? null
+        : normalizePerspectiveExternalUrl(external_url);
+      if (external_url != null && !normalizedExternalUrl) {
+        return res.status(400).json({
+          error: 'Invalid external URL',
+          message: 'Link posts require an HTTPS external URL without credentials',
+        });
+      }
+
       const authorNameFinal = author_name || (user.firstName && user.lastName
         ? `${user.firstName} ${user.lastName}`
         : user.email);
@@ -2301,7 +2339,7 @@ export function createCommitteeRouters(): {
           category || null,
           excerpt || null,
           content || null,
-          external_url || null,
+          normalizedExternalUrl,
           external_site_name || null,
           authorNameFinal,
           author_title || null,
@@ -2328,7 +2366,7 @@ export function createCommitteeRouters(): {
           authorName: authorNameFinal,
           contentType: content_type || 'article',
           excerpt: excerpt || undefined,
-          externalUrl: external_url || undefined,
+          externalUrl: normalizedExternalUrl || undefined,
           category: category || undefined,
           isMembersOnly: is_members_only || false,
         }).catch(err => {
@@ -2392,11 +2430,31 @@ export function createCommitteeRouters(): {
         }
       }
 
-      const wasPublished = existing.rows[0].status === 'published';
+
+      const existingPost = existing.rows[0];
+      const normalizedIncomingExternalUrl = external_url == null
+        ? external_url
+        : normalizePerspectiveExternalUrl(external_url);
+      const effectiveContentType = content_type ?? existingPost.content_type;
+      const effectiveExternalUrl = external_url === undefined
+        ? normalizePerspectiveExternalUrl(existingPost.external_url)
+        : normalizedIncomingExternalUrl;
+      if (
+        (external_url != null && !normalizedIncomingExternalUrl) ||
+        (external_url === undefined && existingPost.external_url != null && !effectiveExternalUrl) ||
+        (effectiveContentType === 'link' && !effectiveExternalUrl)
+      ) {
+        return res.status(400).json({
+          error: 'Invalid external URL',
+          message: 'Link posts require an HTTPS external URL without credentials',
+        });
+      }
+
+      const wasPublished = existingPost.status === 'published';
       const willBePublished = status === 'published';
       const publishedAt = willBePublished && !wasPublished
         ? new Date()
-        : existing.rows[0].published_at;
+        : existingPost.published_at;
 
       const result = await pool.query(
         `UPDATE perspectives SET
@@ -2428,7 +2486,7 @@ export function createCommitteeRouters(): {
           category || null,
           excerpt || null,
           content || null,
-          external_url || null,
+          effectiveExternalUrl,
           external_site_name || null,
           author_name || null,
           author_title || null,

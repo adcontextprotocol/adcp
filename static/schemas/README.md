@@ -92,7 +92,12 @@ const product = {
   "product_id": "ctv_sports_premium",
   "name": "CTV Sports Premium",
   "description": "Premium CTV inventory on sports content",
-  "format_ids": ["video_16x9_30s"],
+  "channels": ["ctv"],
+  "format_options": [{
+    "format_kind": "video_hosted",
+    "format_option_id": "video_hosted_30s",
+    "params": { "duration_ms_exact": 30000, "containers": ["mp4"] }
+  }],
   "delivery_type": "guaranteed",
   "is_fixed_price": true
 };
@@ -118,7 +123,12 @@ product = {
     "product_id": "ctv_sports_premium",
     "name": "CTV Sports Premium",
     "description": "Premium CTV inventory on sports content",
-    "format_ids": ["video_16x9_30s"],
+    "channels": ["ctv"],
+    "format_options": [{
+        "format_kind": "video_hosted",
+        "format_option_id": "video_hosted_30s",
+        "params": {"duration_ms_exact": 30000, "containers": ["mp4"]}
+    }],
     "delivery_type": "guaranteed",
     "is_fixed_price": True
 }
@@ -185,7 +195,8 @@ All properties include comprehensive descriptions explaining their purpose and u
 
 All media buy tasks are covered with complete request/response schemas:
 - `get_products` - Product discovery
-- `list_creative_formats` - Format discovery  
+- `get_products.format_options[]` - Sales deliverability discovery
+- `get_adcp_capabilities.creative.supported_formats[]` - Creative operation discovery
 - `create_media_buy` - Campaign creation
 - `sync_creatives` - Creative upload and management
 - `update_media_buy` - Campaign updates

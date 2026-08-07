@@ -37,7 +37,7 @@ jobs:
 
       - name: Mint App token (for the workflow-mod gate comment)
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3.2.0
         with:
           app-id: ${{ secrets.SECRETARIAT_APP_ID }}
           private-key: ${{ secrets.SECRETARIAT_APP_PRIVATE_KEY }}
@@ -73,7 +73,7 @@ jobs:
 
       - name: Comment and skip when PR modifies review workflow
         if: steps.workflow-mod.outputs.modified == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9.0.0
         env:
           MODIFIED_FILES: ${{ steps.workflow-mod.outputs.modified_files }}
         with:

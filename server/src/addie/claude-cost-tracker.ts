@@ -42,6 +42,7 @@
  *   intentionally triggers truncation to make responses "free".
  */
 
+import { randomUUID } from 'crypto';
 import { createLogger } from '../logger.js';
 import { query } from '../db/client.js';
 import { TIER_PRESERVING_STATUSES } from '../db/organization-db.js';
@@ -55,8 +56,15 @@ const MICROS_PER_DOLLAR = 1_000_000;
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Per-user daily budgets in USD micros. Tier-aware so anonymous /
- * Explorer users get a smaller ceiling than paying members.
+ * Slack sharing metadata may be this old when choosing a public-community
+ * cost scope. Ten seconds avoids an uncached conversations.info call on every
+ * busy-channel turn while bounding exposure to a recent Slack Connect change.
+ */
+export const SLACK_COST_CHANNEL_INFO_MAX_AGE_MS = 10_000;
+
+/**
+ * Per-scope daily budgets in USD micros. User tiers distinguish member
+ * entitlements; public community discussions use a workspace scope.
  *
  * Rationales:
  * - `anonymous`: $3/day. Sized to slightly exceed the per-IP message
@@ -72,6 +80,9 @@ const WINDOW_MS = 24 * 60 * 60 * 1000;
  * - `member_paid`: $25/day. Paying members get a generous ceiling
  *   that's still a real cap — a runaway automated session still
  *   trips it within an hour of sustained abuse.
+ * - `public_community`: $25/day across public, non-shared Slack channels.
+ *   Community discussions do not consume a participant's personal budget,
+ *   while the workspace ceiling still bounds automated or abusive spend.
  * - `aao_team`: uncapped. AAO staff/admin/team users are operating
  *   the service, not consuming member benefits, so they should not
  *   hit a self-service spend ceiling while doing support or admin work.
@@ -80,16 +91,18 @@ export const DAILY_BUDGET_USD = {
   anonymous: 3,
   member_free: 5,
   member_paid: 25,
-} as const satisfies Record<'anonymous' | 'member_free' | 'member_paid', number>;
+  public_community: 25,
+} as const satisfies Record<'anonymous' | 'member_free' | 'member_paid' | 'public_community', number>;
 
-type CappedUserTier = keyof typeof DAILY_BUDGET_USD;
-const DAILY_BUDGET_MICROS: Record<CappedUserTier, number> = {
+type CappedTier = keyof typeof DAILY_BUDGET_USD;
+const DAILY_BUDGET_MICROS: Record<CappedTier, number> = {
   anonymous: DAILY_BUDGET_USD.anonymous * MICROS_PER_DOLLAR,
   member_free: DAILY_BUDGET_USD.member_free * MICROS_PER_DOLLAR,
   member_paid: DAILY_BUDGET_USD.member_paid * MICROS_PER_DOLLAR,
+  public_community: DAILY_BUDGET_USD.public_community * MICROS_PER_DOLLAR,
 };
 
-export type UserTier = CappedUserTier | 'aao_team';
+export type UserTier = CappedTier | 'aao_team';
 
 export interface CostCheckResult {
   ok: boolean;
@@ -101,6 +114,12 @@ export interface CostCheckResult {
   retryAfterMs?: number;
   /** The tier threshold that applies. */
   tier?: UserTier;
+  /** True when the normal tier cap was exceeded but a bounded certification reserve allowed the call. */
+  usedCertificationReserve?: boolean;
+  /** Cross-replica lease held while a reserve-eligible completion call runs. */
+  certificationLeaseId?: string;
+  /** Another completion call already owns the reserve lease. */
+  reserveBusy?: boolean;
 }
 
 /**
@@ -112,6 +131,9 @@ export interface CostTrackerStore {
   sumInWindow(key: string, windowMs: number): Promise<{ totalMicros: number; firstAtMs: number | null }>;
   /** Persist one charge. */
   record(key: string, costMicros: number, model: string, usage: ClaudeUsage): Promise<void>;
+  claimCertificationLease(key: string, leaseId: string): Promise<boolean>;
+  renewCertificationLease(key: string, leaseId: string): Promise<boolean>;
+  releaseCertificationLease(key: string, leaseId: string): Promise<void>;
   /** Test-only: clear all state. */
   reset(): Promise<void>;
 }
@@ -139,6 +161,38 @@ class PostgresStore implements CostTrackerStore {
     );
   }
 
+  async claimCertificationLease(key: string, leaseId: string): Promise<boolean> {
+    const result = await query(
+      `INSERT INTO certification_completion_leases (scope_key, lease_id, expires_at)
+       VALUES ($1, $2, NOW() + INTERVAL '10 minutes')
+       ON CONFLICT (scope_key) DO UPDATE SET
+         lease_id = EXCLUDED.lease_id,
+         expires_at = EXCLUDED.expires_at,
+         created_at = NOW()
+       WHERE certification_completion_leases.expires_at < NOW()
+       RETURNING lease_id`,
+      [key, leaseId],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async releaseCertificationLease(key: string, leaseId: string): Promise<void> {
+    await query(
+      `DELETE FROM certification_completion_leases WHERE scope_key = $1 AND lease_id = $2`,
+      [key, leaseId],
+    );
+  }
+
+  async renewCertificationLease(key: string, leaseId: string): Promise<boolean> {
+    const result = await query(
+      `UPDATE certification_completion_leases
+       SET expires_at = NOW() + INTERVAL '10 minutes'
+       WHERE scope_key = $1 AND lease_id = $2`,
+      [key, leaseId],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async reset(): Promise<void> {
     await query(`TRUNCATE addie_token_cost_events`);
   }
@@ -146,6 +200,7 @@ class PostgresStore implements CostTrackerStore {
 
 class InMemoryStore implements CostTrackerStore {
   private readonly events = new Map<string, Array<{ atMs: number; micros: number }>>();
+  private readonly certificationLeases = new Map<string, string>();
 
   async sumInWindow(key: string, windowMs: number): Promise<{ totalMicros: number; firstAtMs: number | null }> {
     const cutoff = Date.now() - windowMs;
@@ -160,8 +215,23 @@ class InMemoryStore implements CostTrackerStore {
     this.events.set(key, existing);
   }
 
+  async claimCertificationLease(key: string, leaseId: string): Promise<boolean> {
+    if (this.certificationLeases.has(key)) return false;
+    this.certificationLeases.set(key, leaseId);
+    return true;
+  }
+
+  async releaseCertificationLease(key: string, leaseId: string): Promise<void> {
+    if (this.certificationLeases.get(key) === leaseId) this.certificationLeases.delete(key);
+  }
+
+  async renewCertificationLease(key: string, leaseId: string): Promise<boolean> {
+    return this.certificationLeases.get(key) === leaseId;
+  }
+
   async reset(): Promise<void> {
     this.events.clear();
+    this.certificationLeases.clear();
   }
 }
 
@@ -179,14 +249,18 @@ let store: CostTrackerStore = new PostgresStore();
 export async function checkCostCap(
   userId: string | null | undefined,
   tier: UserTier,
+  options?: { certificationReserveUsd?: number },
 ): Promise<CostCheckResult> {
   if (!userId) return { ok: true };
   if (SYSTEM_USER_IDS.has(userId)) return { ok: true };
   if (tier === 'aao_team') return { ok: true, tier };
 
-  const budgetMicros = DAILY_BUDGET_MICROS[tier];
+  const baseBudgetMicros = DAILY_BUDGET_MICROS[tier];
+  const reserveMicros = Math.max(0, options?.certificationReserveUsd ?? 0) * MICROS_PER_DOLLAR;
+  const budgetMicros = baseBudgetMicros + reserveMicros;
   const { totalMicros, firstAtMs } = await store.sumInWindow(userId, WINDOW_MS);
   const remainingMicros = Math.max(0, budgetMicros - totalMicros);
+  const usedCertificationReserve = reserveMicros > 0 && totalMicros >= baseBudgetMicros;
 
   if (totalMicros >= budgetMicros && firstAtMs !== null) {
     return {
@@ -195,7 +269,22 @@ export async function checkCostCap(
       remainingUsd: 0,
       retryAfterMs: Math.max(0, firstAtMs + WINDOW_MS - Date.now()),
       tier,
+      usedCertificationReserve,
     };
+  }
+
+  let certificationLeaseId: string | undefined;
+  if (reserveMicros > 0 && usedCertificationReserve) {
+    certificationLeaseId = randomUUID();
+    if (!await store.claimCertificationLease(userId, certificationLeaseId)) {
+      return {
+        ok: false,
+        spentCents: Math.round(totalMicros / 10_000),
+        remainingUsd: remainingMicros / MICROS_PER_DOLLAR,
+        tier,
+        reserveBusy: true,
+      };
+    }
   }
 
   return {
@@ -203,7 +292,34 @@ export async function checkCostCap(
     spentCents: Math.round(totalMicros / 10_000),
     remainingUsd: remainingMicros / MICROS_PER_DOLLAR,
     tier,
+    usedCertificationReserve,
+    certificationLeaseId,
   };
+}
+
+export async function releaseCertificationReserve(
+  userId: string | null | undefined,
+  leaseId: string | undefined,
+): Promise<void> {
+  if (!userId || !leaseId) return;
+  try {
+    await store.releaseCertificationLease(userId, leaseId);
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to release certification completion lease');
+  }
+}
+
+export async function renewCertificationReserve(
+  userId: string | null | undefined,
+  leaseId: string | undefined,
+): Promise<boolean> {
+  if (!userId || !leaseId) return false;
+  try {
+    return await store.renewCertificationLease(userId, leaseId);
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to renew certification completion lease');
+    return false;
+  }
 }
 
 /**
@@ -237,13 +353,28 @@ export async function recordCost(
  * understands what happened.
  */
 export function formatCapExceededMessage(result: CostCheckResult): string {
+  if (result.reserveBusy) {
+    return 'A certification completion reply is already processing. Please wait a moment and reload this conversation.';
+  }
   const tier = result.tier ?? 'anonymous';
+  const retryHours = result.retryAfterMs == null
+    ? null
+    : Math.max(1, Math.ceil(result.retryAfterMs / (60 * 60 * 1000)));
+  const retryMessage = retryHours == null
+    ? 'Please try again when your rolling daily limit resets.'
+    : `Please try again in about ${retryHours} ${retryHours === 1 ? 'hour' : 'hours'}.`;
   if (tier === 'aao_team') {
     return 'AAO team usage is uncapped.';
   }
+  if (tier === 'public_community') {
+    return (
+      `Public Addie discussions have reached today's community conversation capacity. ` +
+      `${retryMessage} Ping the AgenticAdvertising.org team if the discussion is time-sensitive.`
+    );
+  }
   return (
     `You've reached your daily conversation limit with Addie. ` +
-    `Please try again tomorrow. ` +
+    `${retryMessage} ` +
     (tier === 'member_paid'
       ? 'Ping the AgenticAdvertising.org team if you need a higher ceiling for legitimate work.'
       : 'Upgrade your membership at https://agenticadvertising.org/dashboard/membership for a higher daily limit.')
@@ -412,6 +543,51 @@ export async function buildSlackCostScope(
   const userId = memberContext?.workos_user?.workos_user_id ?? `slack:${slackUserId}`;
   const tier = await resolveUserTierFromDb(userId);
   return { userId, tier };
+}
+
+export interface SlackChannelCostContext {
+  channelId: string;
+  isPrivate: boolean | undefined;
+  isShared: boolean | undefined;
+  isOrgShared: boolean | undefined;
+  isPendingExtShared?: boolean;
+}
+
+export interface SlackCostOptions {
+  costScope: { userId: string; tier: UserTier };
+}
+
+/**
+ * Choose the Claude cost-control options for a Slack conversation.
+ * Public, non-shared channel discussions benefit the whole community,
+ * so they use a bounded workspace scope instead of one participant's
+ * personal daily cap. The resulting shared-fate ceiling is intentional:
+ * it bounds total community spend, and exhaustion pauses all public-channel
+ * discussions rather than charging or blocking one participant personally.
+ * DMs, private/shared channels, reactions, and unresolved privacy remain
+ * user-scoped.
+ */
+export async function buildSlackCostOptions(
+  memberContext: Pick<MemberContext, 'workos_user'> | null | undefined,
+  slackUserId: string,
+  channelContext?: SlackChannelCostContext,
+): Promise<SlackCostOptions> {
+  const isPublicCommunityDiscussion = channelContext !== undefined &&
+    channelContext.channelId.trim().length > 0 &&
+    channelContext.isPrivate === false &&
+    channelContext.isShared === false &&
+    channelContext.isOrgShared === false &&
+    channelContext.isPendingExtShared !== true;
+
+  if (isPublicCommunityDiscussion) {
+    return {
+      costScope: {
+        userId: 'slack-public-community',
+        tier: 'public_community',
+      },
+    };
+  }
+  return { costScope: await buildSlackCostScope(memberContext, slackUserId) };
 }
 
 /**

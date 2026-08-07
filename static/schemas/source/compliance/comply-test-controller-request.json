@@ -124,6 +124,14 @@
         ],
         "properties": {
           "params": {
+            "properties": {
+              "arm": {
+                "enum": [
+                  "submitted",
+                  "input-required"
+                ]
+              }
+            },
             "required": [
               "arm"
             ],
@@ -163,7 +171,10 @@
           "params": {
             "properties": {
               "arm": {
-                "const": "submitted"
+                "enum": [
+                  "submitted",
+                  "rejected"
+                ]
               }
             },
             "required": [
@@ -181,7 +192,49 @@
                 "then": {
                   "required": [
                     "task_id"
-                  ]
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "reason"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "suggestions"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "arm": {
+                      "const": "rejected"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "reason"
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "task_id"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "message"
+                        ]
+                      }
+                    ]
+                  }
                 }
               }
             ]
@@ -809,6 +862,60 @@
           },
           "additionalProperties": true
         },
+        "vendor_metric_values": {
+          "type": "array",
+          "description": "Vendor-defined metric values to inject into the next delivery report. Used by simulate_delivery. The reference seller reconciles these rows against each package's seller-stamped committed_metrics contract.",
+          "items": {
+            "$ref": "/schemas/core/vendor-metric-value.json"
+          }
+        },
+        "vendor_metric_values_by_package": {
+          "type": "object",
+          "description": "Package-scoped vendor-defined values to inject, keyed by package_id. Used by simulate_delivery for multi-package buys. Sellers MUST use this form whenever more than one package could carry the same vendor/metric_id key; the legacy media-buy-scoped vendor_metric_values form is unambiguous only for a single-package buy.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "/schemas/core/vendor-metric-value.json"
+            }
+          }
+        },
+        "not_yet_measurable_vendor_metrics": {
+          "type": "array",
+          "description": "Committed vendor metrics that are not yet measurable for the simulated measurement window. Used by simulate_delivery to prove that a future metric is omitted from missing_metrics until its measurement window matures.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "vendor": {
+                "$ref": "/schemas/core/brand-ref.json"
+              },
+              "metric_id": {
+                "$ref": "/schemas/core/vendor-metric-id.json"
+              }
+            },
+            "required": ["vendor", "metric_id"],
+            "additionalProperties": false
+          }
+        },
+        "not_yet_measurable_vendor_metrics_by_package": {
+          "type": "object",
+          "description": "Package-scoped committed vendor metrics that are not yet measurable for the simulated window, keyed by package_id. Used by simulate_delivery for multi-package buys so a deferral on one package never suppresses another package's overdue gap.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "vendor": {
+                  "$ref": "/schemas/core/brand-ref.json"
+                },
+                "metric_id": {
+                  "$ref": "/schemas/core/vendor-metric-id.json"
+                }
+              },
+              "required": ["vendor", "metric_id"],
+              "additionalProperties": false
+            }
+          }
+        },
         "spend_percentage": {
           "type": "number",
           "minimum": 0,
@@ -819,9 +926,10 @@
           "type": "string",
           "enum": [
             "submitted",
-            "input-required"
+            "input-required",
+            "rejected"
           ],
-          "description": "Response arm for the next forced operation call. Used by force_create_media_buy_arm, force_get_products_arm, and force_get_signals_arm. v1 supports 'submitted' for all three operations; create_media_buy also supports 'input-required'. 'completed' is covered by force_task_completion after a submitted task exists; 'working' is an out-of-band progress signal, not an initial response arm."
+          "description": "Response arm for the next forced operation call. Used by force_create_media_buy_arm, force_get_products_arm, and force_get_signals_arm. 'submitted' is supported for all three operations; create_media_buy also supports 'input-required'; get_products also supports 'rejected'. 'completed' is covered by force_task_completion after a submitted task exists; 'working' is an out-of-band progress signal, not an initial response arm."
         },
         "task_id": {
           "type": "string",
@@ -834,9 +942,27 @@
           "maxLength": 2000,
           "description": "Optional human-readable explanation surfaced on the next forced operation response. Used by force_create_media_buy_arm, force_get_products_arm, and force_get_signals_arm for the submitted arm. Plain text only."
         },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "Deterministic buyer-facing reason the seller MUST emit on the next get_products response when force_get_products_arm uses arm 'rejected'. Plain text only; MUST NOT expose confidential internal rules, inventory identifiers, credentials, or stack traces."
+        },
+        "suggestions": {
+          "type": "array",
+          "description": "Optional deterministic alternatives the seller MUST emit on the next get_products rejection. Used only by force_get_products_arm with arm 'rejected'.",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
         "format_id": {
           "type": "string",
-          "description": "Creative format ID to seed. Used by seed_creative_format. The seller MUST expose this format ID in list_creative_formats responses for the duration of the compliance session."
+          "deprecated": true,
+          "description": "**DEPRECATED 3.x compatibility fixture.** Legacy named-format ID to seed for seed_creative_format scenarios. The seller MUST expose it through the deprecated list_creative_formats projection for the duration of the compliance session. Canonical 3.2 scenarios seed creative.supported_formats capabilities instead."
         },
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",

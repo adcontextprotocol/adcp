@@ -8,6 +8,9 @@ track: governance
 required_tools:
   - create_property_list
 
+requires_scenarios:
+  - governance/property_list_change_webhook_signing
+
 # Cross-step assertion (adcp#2664). status.monotonic rejects resource
 # status transitions observed across steps that aren't on the spec
 # lifecycle graph. Silent on property-list-only runs (no tracked

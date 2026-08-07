@@ -28,6 +28,7 @@ import type { MCPAuthContext } from "./mcp/auth.js";
 import { createLogger } from "./logger.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
 import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
+import { serializeInlineScriptJson } from './utils/inline-script-json.js';
 
 const logger = createLogger('mcp-tools');
 
@@ -203,9 +204,24 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "get_creative_capabilities_for_agent",
+    description:
+      "Query an endpoint's canonical creative build, validation, and preview capabilities through get_adcp_capabilities",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        agent_url: {
+          type: "string",
+          description: "Agent URL to query",
+        },
+      },
+      required: ["agent_url"],
+    },
+  },
+  {
     name: "list_creative_formats_for_agent",
     description:
-      "Query an agent for supported creative formats (proxy tool that calls list_creative_formats on the agent)",
+      "Deprecated 3.x compatibility proxy for list_creative_formats. New workflows use get_creative_capabilities_for_agent.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -947,9 +963,11 @@ export class MCPToolHandler {
         }
       }
 
+      case "get_creative_capabilities_for_agent":
       case "list_creative_formats_for_agent": {
         const agentUrl = args?.agent_url as string;
         const params = (args?.params || {}) as Record<string, unknown>;
+        const canonical = name === "get_creative_capabilities_for_agent";
 
         try {
           const { AdCPClient } = await import("@adcp/sdk");
@@ -961,15 +979,17 @@ export class MCPToolHandler {
           }], withSdkSafeTransport({}));
           const client = multiClient.agent("query");
 
-          const result = await client.executeTask("list_creative_formats", params);
+          const result = canonical
+            ? await client.getAdcpCapabilities({})
+            : await client.executeTask("list_creative_formats", params);
 
-          if (!result.success) {
+          if ('success' in result && !result.success) {
             return {
               content: [
                 {
                   type: "resource",
                   resource: {
-                    uri: `adcp://formats/${agentUrl}`,
+                    uri: `adcp://${canonical ? 'capabilities' : 'formats'}/${agentUrl}`,
                     mimeType: "application/json",
                     text: JSON.stringify({ error: result.error || "Failed to list formats" }),
                   },
@@ -983,7 +1003,7 @@ export class MCPToolHandler {
               {
                 type: "resource",
                 resource: {
-                  uri: `adcp://formats/${agentUrl}`,
+                  uri: `adcp://${canonical ? 'capabilities' : 'formats'}/${agentUrl}`,
                   mimeType: "application/json",
                   text: JSON.stringify(result.data),
                 },
@@ -997,7 +1017,7 @@ export class MCPToolHandler {
               {
                 type: "resource",
                 resource: {
-                  uri: `adcp://formats/${agentUrl}`,
+                  uri: `adcp://${canonical ? 'capabilities' : 'formats'}/${agentUrl}`,
                   mimeType: "application/json",
                   text: JSON.stringify({ error: message }),
                 },
@@ -2119,7 +2139,7 @@ export class MCPToolHandler {
     }
 
     // Inject the surface data into the shell
-    const surfaceScript = `window.__SI_SURFACE__ = ${JSON.stringify(surface)};`;
+    const surfaceScript = `window.__SI_SURFACE__ = ${serializeInlineScriptJson(surface)};`;
     const injectedHtml = shellHtml.replace(
       /\/\/ This will be replaced by server-side injection[\s\S]*?\/\/ window\.__SI_SURFACE__ = .*$/m,
       surfaceScript

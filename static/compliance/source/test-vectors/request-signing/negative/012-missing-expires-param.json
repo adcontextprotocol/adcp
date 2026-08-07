@@ -1,6 +1,7 @@
 {
   "name": "Signature-Input is missing the required 'expires' parameter",
   "spec_reference": "#verifier-checklist-requests step 2",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

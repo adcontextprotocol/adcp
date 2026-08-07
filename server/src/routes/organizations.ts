@@ -1137,12 +1137,20 @@ export function createOrganizationsRouter(): Router {
       const user = req.user!;
       const { orgId } = req.params;
 
-      // Verify user is member of this organization
+      // Domain verification changes organization-wide identity and automatic
+      // membership behavior. Keep it aligned with the canonical domain
+      // add/verify routes: owners and admins only.
       const membership = await resolveUserOrgMembership(workos, user.id, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
+        });
+      }
+      if (membership.role !== 'owner' && membership.role !== 'admin') {
+        return res.status(403).json({
+          error: 'Insufficient permissions',
+          message: 'Only owners and admins can verify organization domains',
         });
       }
 

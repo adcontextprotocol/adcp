@@ -29,12 +29,16 @@ import type {
 } from '@slack/bolt/dist/Assistant';
 import type { Router } from 'express';
 import { createLogger } from '../logger.js';
+import { deliverAndRecordDirectMessage } from './direct-message-delivery.js';
 
 const logger = createLogger('addie-bolt-app');
 import { sanitizeSpeakerName } from './prompts.js';
 import { captureEvent } from '../utils/posthog.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type AddieResponse, type UserScopedToolsResult } from './claude-client.js';
-import { buildSlackCostScope } from './claude-cost-tracker.js';
+import {
+  buildSlackCostOptions,
+  SLACK_COST_CHANNEL_INFO_MAX_AGE_MS,
+} from './claude-cost-tracker.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
@@ -558,6 +562,35 @@ async function buildChannelContext(channelId: string): Promise<Partial<ThreadCon
   }
 
   return context;
+}
+
+/**
+ * Resolve recent Slack sharing metadata only when a channel message is
+ * actually about to invoke Claude. A seconds-scale cache age keeps
+ * cost-scope eligibility fresh without putting conversations.info on every
+ * busy-channel turn or fetching metadata for messages the router ignores.
+ */
+async function buildCurrentChannelCostOptions(
+  memberContext: MemberContext | null | undefined,
+  slackUserId: string,
+  channelId: string,
+) {
+  const channelInfo = await getChannelInfo(channelId, {
+    maxAgeMs: SLACK_COST_CHANNEL_INFO_MAX_AGE_MS,
+  });
+  return buildSlackCostOptions(
+    memberContext,
+    slackUserId,
+    channelInfo
+      ? {
+          channelId,
+          isPrivate: channelInfo.is_private,
+          isShared: channelInfo.is_shared,
+          isOrgShared: channelInfo.is_org_shared,
+          isPendingExtShared: channelInfo.is_pending_ext_shared,
+        }
+      : undefined,
+  );
 }
 
 let addieDb: AddieDatabase | null = null;
@@ -1739,7 +1772,7 @@ async function handleUserMessage({
         : {}),
     slackUserId: userId,
     threadId: thread.thread_id,
-    costScope: await buildSlackCostScope(memberContext, userId),
+    ...(await buildSlackCostOptions(memberContext, userId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 
@@ -2574,16 +2607,15 @@ async function handleAppMention({
       : undefined;
 
   // Admin users get higher iteration limit for bulk operations.
-  // Cost cap (#2790 / #2950): prefer WorkOS user ID; fall back to a
-  // namespaced Slack ID so unmapped users still get a bounded
-  // daily Addie spend budget.
+  // Public home-workspace discussions use a bounded community budget;
+  // private/shared channels remain user-scoped.
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(mentionModelOverride ? { modelOverride: mentionModelOverride } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
-    costScope: await buildSlackCostScope(memberContext, userId),
+    ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
     currentSpeakerName: resolveSpeakerDisplayName(mentionMemberContext ?? memberContext),
   };
 
@@ -2721,7 +2753,7 @@ async function handleFeedbackAction({ ack, body, client }: any): Promise<void> {
       // Update the message with feedback
       // Use numeric rating: 5 for positive, 1 for negative
       try {
-        await threadService.addMessageFeedback(latestAssistant.message_id, {
+        await threadService.addMessageFeedback(thread.thread_id, latestAssistant.message_id, {
           rating: isPositive ? 5 : 1,
           rating_category: isPositive ? 'helpful' : 'not_helpful',
           rated_by: userId,
@@ -3556,8 +3588,8 @@ async function handleDirectMessage(
     .filter(Boolean)
     .join('\n\n');
 
-  // Admin users get higher iteration limit for bulk operations.
-  // Cost cap scope follows the mention-handler pattern above.
+  // Admin users get higher iteration limit for bulk operations. DMs
+  // remain user-scoped.
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(routedTools.requiresPrecision
@@ -3568,7 +3600,7 @@ async function handleDirectMessage(
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
-    costScope: await buildSlackCostScope(memberContext, userId),
+    ...(await buildSlackCostOptions(memberContext, userId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 
@@ -3597,21 +3629,70 @@ async function handleDirectMessage(
   // 2. Regular DMs: response threads to the user's message (Slack shows
   //    threaded DM replies inline, so UX is unchanged)
   const replyThreadTs = event.thread_ts || event.ts;
-  let responseTs: string | undefined;
-  try {
-    const postResult = await boltApp.client.chat.postMessage({
-      channel: channelId,
-      text: wrapUrlsForSlack(outputValidation.sanitized),
-      thread_ts: replyThreadTs,
-    });
-    responseTs = postResult.ts;
-  } catch (error) {
-    logger.error({ error }, 'Addie Bolt: Failed to send DM response');
-  }
+
+  const assistantFlagged = response.flagged || outputValidation.flagged;
+  const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
+  const boltClient = boltApp.client;
+  const assistantMessage = {
+    thread_id: thread.thread_id,
+    role: 'assistant' as const,
+    content: outputValidation.sanitized,
+    tools_used: response.tools_used,
+    tool_calls: response.tool_executions?.map(exec => ({
+      name: exec.tool_name,
+      input: exec.parameters,
+      result: exec.result,
+      duration_ms: exec.duration_ms,
+      is_error: exec.is_error,
+    })),
+    model: AddieModelConfig.chat,
+    latency_ms: Date.now() - startTime,
+    tokens_input: response.usage?.input_tokens,
+    tokens_output: response.usage?.output_tokens,
+    flagged: assistantFlagged,
+    flag_reason: flagReason || undefined,
+    timing: response.timing ? {
+      system_prompt_ms: response.timing.system_prompt_ms,
+      total_llm_ms: response.timing.total_llm_ms,
+      total_tool_ms: response.timing.total_tool_execution_ms,
+      iterations: response.timing.iterations,
+    } : undefined,
+    tokens_cache_creation: response.usage?.cache_creation_input_tokens,
+    tokens_cache_read: response.usage?.cache_read_input_tokens,
+    active_rule_ids: response.active_rule_ids,
+  };
+  const delivery = await deliverAndRecordDirectMessage({
+    channelId,
+    userId,
+    threadId: thread.thread_id,
+    assistantMessage,
+    userMessageFlagged,
+    assistantFlagged,
+    flagReason: [inputValidation.reason, flagReason].filter(Boolean).join('; '),
+    dependencies: {
+      postMessage: () => boltClient.chat.postMessage({
+        channel: channelId,
+        text: wrapUrlsForSlack(outputValidation.sanitized),
+        thread_ts: replyThreadTs,
+      }),
+      addMessage: (message) => threadService.addMessage(message),
+      flagThread: (threadId, reason) => threadService.flagThread(threadId, reason),
+    },
+  });
 
   // If no permanent thread existed, save the user's message ts as the permanent
   // thread so the orchestrator will continue in this same thread later.
-  if (!permThreadTs) {
+  if (delivery.permanentFailure) {
+    try {
+      const rel = cachedRel ?? await relationshipDb.getRelationshipBySlackId(userId);
+      if (rel?.slack_dm_channel_id === channelId) {
+        await relationshipDb.clearSlackDmThread(rel.id, channelId);
+        logger.info({ userId, channelId }, 'Addie Bolt: Cleared unwritable permanent DM thread');
+      }
+    } catch (error) {
+      logger.debug({ error, userId }, 'Addie Bolt: Could not clear unwritable permanent thread');
+    }
+  } else if (!permThreadTs) {
     try {
       const rel = cachedRel ?? await relationshipDb.getRelationshipBySlackId(userId);
       if (rel && !rel.slack_dm_thread_ts) {
@@ -3620,55 +3701,6 @@ async function handleDirectMessage(
       }
     } catch (error) {
       logger.debug({ error, userId }, 'Addie Bolt: Could not save permanent thread');
-    }
-  }
-
-  // Log assistant response to unified thread
-  const assistantFlagged = response.flagged || outputValidation.flagged;
-  const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-
-  try {
-    await threadService.addMessage({
-      thread_id: thread.thread_id,
-      role: 'assistant',
-      content: outputValidation.sanitized,
-      tools_used: response.tools_used,
-      tool_calls: response.tool_executions?.map(exec => ({
-        name: exec.tool_name,
-        input: exec.parameters,
-        result: exec.result,
-        duration_ms: exec.duration_ms,
-        is_error: exec.is_error,
-      })),
-      model: AddieModelConfig.chat,
-      latency_ms: Date.now() - startTime,
-      tokens_input: response.usage?.input_tokens,
-      tokens_output: response.usage?.output_tokens,
-      flagged: assistantFlagged,
-      flag_reason: flagReason || undefined,
-      timing: response.timing ? {
-        system_prompt_ms: response.timing.system_prompt_ms,
-        total_llm_ms: response.timing.total_llm_ms,
-        total_tool_ms: response.timing.total_tool_execution_ms,
-        iterations: response.timing.iterations,
-      } : undefined,
-      tokens_cache_creation: response.usage?.cache_creation_input_tokens,
-      tokens_cache_read: response.usage?.cache_read_input_tokens,
-      active_rule_ids: response.active_rule_ids,
-    });
-  } catch (error) {
-    logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save assistant message');
-  }
-
-  // Flag the thread if any message was flagged
-  if (userMessageFlagged || assistantFlagged) {
-    try {
-      await threadService.flagThread(
-        thread.thread_id,
-        [inputValidation.reason, flagReason].filter(Boolean).join('; ')
-      );
-    } catch (error) {
-      logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to flag thread');
     }
   }
 
@@ -3686,14 +3718,14 @@ async function handleDirectMessage(
     tools_used: response.tools_used,
     model: AddieModelConfig.chat,
     latency_ms: Date.now() - startTime,
-    flagged: userMessageFlagged || assistantFlagged,
-    flag_reason: [inputValidation.reason, flagReason].filter(Boolean).join('; ') || undefined,
+    delivery_status: delivery.delivered ? 'delivered' : 'failed',
+    flagged: userMessageFlagged || assistantFlagged || !delivery.delivered,
+    flag_reason: [
+      inputValidation.reason,
+      flagReason,
+      delivery.delivered ? undefined : `Slack delivery failed: ${delivery.errorCode ?? 'unknown_error'}`,
+    ].filter(Boolean).join('; ') || undefined,
   });
-
-  logger.info(
-    { userId, channelId, latencyMs: Date.now() - startTime },
-    'Addie Bolt: DM response sent'
-  );
 }
 
 /**
@@ -3949,15 +3981,15 @@ async function handleActiveThreadReply({
       ? ModelConfig.depth
       : undefined;
 
-  // Admin users get higher iteration limit.
-  // Cost cap scope follows the mention-handler pattern above.
+  // Admin users get higher iteration limit. Public home-workspace
+  // discussions use a bounded community budget; other channels stay user-scoped.
   const processOptions = {
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(threadModelOverride ? { modelOverride: threadModelOverride } : {}),
     requestContext,
     slackUserId: userId,
     threadId: thread.thread_id,
-    costScope: await buildSlackCostScope(memberContext, userId),
+    ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 
@@ -4547,14 +4579,15 @@ async function handleChannelMessage({
         ? ModelConfig.depth
         : undefined;
     const effectiveModel = channelModelOverride ?? AddieModelConfig.chat;
-    // Cost cap scope follows the mention-handler pattern above.
+    // Public home-workspace discussions use a bounded community budget;
+    // private/shared channels stay user-scoped.
     const processOptions = {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
       ...(channelModelOverride ? { modelOverride: channelModelOverride } : {}),
       requestContext,
       slackUserId: userId,
       threadId: thread.thread_id,
-      costScope: await buildSlackCostScope(memberContext, userId),
+      ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
       currentSpeakerName: resolveSpeakerDisplayName(memberContext),
     };
     const response = await claudeClient.processMessage(messageText, undefined, filteredTools, undefined, processOptions);
@@ -5260,7 +5293,7 @@ async function handleReactionAdded({
       userInput = '[User reacted with ' + reaction + ' emoji as positive feedback]';
       // Record as positive feedback
       try {
-        await threadService.addMessageFeedback(lastAssistantMessage.message_id, {
+        await threadService.addMessageFeedback(thread.thread_id, lastAssistantMessage.message_id, {
           rating: 5,
           rating_category: 'emoji_feedback',
           rating_notes: `User reacted with :${reaction}:`,
@@ -5276,7 +5309,7 @@ async function handleReactionAdded({
       userInput = '[User reacted with ' + reaction + ' emoji as negative feedback]';
       // Record as negative feedback
       try {
-        await threadService.addMessageFeedback(lastAssistantMessage.message_id, {
+        await threadService.addMessageFeedback(thread.thread_id, lastAssistantMessage.message_id, {
           rating: 1,
           rating_category: 'emoji_feedback',
           rating_notes: `User reacted with :${reaction}:`,
@@ -5353,13 +5386,13 @@ async function handleReactionAdded({
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id, channelContext);
 
   // Admin users get higher iteration limit for bulk operations.
-  // Cost cap scope follows the mention-handler pattern above.
+  // Reactions can confirm tool actions, so they remain user-scoped.
   const processOptions = {
     ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     requestContext,
     slackUserId: reactingUserId,
     threadId: thread.thread_id,
-    costScope: await buildSlackCostScope(memberContext, reactingUserId),
+    ...(await buildSlackCostOptions(memberContext, reactingUserId)),
     currentSpeakerName: resolveSpeakerDisplayName(memberContext),
   };
 

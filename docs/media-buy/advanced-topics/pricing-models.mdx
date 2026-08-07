@@ -317,7 +317,6 @@ Buyers should verify the measurement provider meets their campaign requirements 
   "pricing_model": "cpc",
   "currency": "USD",
   "floor_price": 0.50,
-  "max_bid": true,
   "price_guidance": {
     "p50": 1.20,
     "p75": 2.00
@@ -626,7 +625,7 @@ The value can be a sellers.json domain, an AdCP account ID, or a human-readable 
 
 The invariant is: `list_price` with all `fee` and `discount` adjustments applied sequentially equals `fixed_price`. Commission and settlement adjustments don't participate — they're disclosed for transparency. If no fee or discount adjustments are present, `fixed_price` must equal `list_price`.
 
-This invariant applies only when `fixed_price` is present on the parent object. For auction-based packages (where only `bid_price` exists), `price_breakdown` is informational — see [On Confirmed Packages](#on-confirmed-packages).
+This invariant applies only when `fixed_price` is present on the parent object. For auction-based packages, `price_breakdown` is informational — see [On Confirmed Packages](#on-confirmed-packages).
 
 Fee and discount adjustments compound in array order using these formulas:
 
@@ -699,7 +698,7 @@ The `price_breakdown` field also appears on the package response (confirmed line
   "package_id": "pkg_67890",
   "product_id": "premium_display",
   "pricing_option_id": "cpm_eur_auction",
-  "bid_price": 12.50,
+  "bidding": { "bid_amount": 12.50 },
   "budget": 10000,
   "price_breakdown": {
     "list_price": 12.50,
@@ -776,9 +775,10 @@ Publishers can offer the same product in multiple currencies:
 ### Auction Pricing (`fixed_price` absent)
 - Final price determined through auction
 - Publisher provides `floor_price` (hard minimum) and optional `price_guidance` (percentile hints)
-- Bid-based auction models (`cpm`, `vcpm`, `cpc`, `cpcv`, `cpv`) may also include optional `max_bid: true` to explicitly signal `bid_price` is treated as buyer maximum willingness to pay (ceiling mode)
 - Common for non-guaranteed inventory
-- Buyer submits `bid_price` in media buy request
+- Buyer expresses execution intent explicitly with `bidding.bid_amount` or `bidding.max_bid`
+
+The pricing option is the seller's commercial offer; `bidding` is the buyer's execution instruction. The pricing option supplies the auction unit and must use the media-buy currency. Every package budget, minimum-spend target, and canonical bidding amount uses that single denomination; split packages requiring another currency into a separate media buy. In 3.2, pricing-option `max_bid` and package `bid_price` remain only as deprecated migration fields. A seller-offered boolean no longer determines whether buyer input is a manual bid, auction ceiling, or average outcome-cost control.
 
 **Auction Example**:
 ```json
@@ -787,7 +787,6 @@ Publishers can offer the same product in multiple currencies:
   "pricing_model": "cpcv",
   "currency": "USD",
   "floor_price": 0.08,
-  "max_bid": true,
   "price_guidance": {
     "p25": 0.10,
     "p50": 0.12,
@@ -799,7 +798,7 @@ Publishers can offer the same product in multiple currencies:
 
 ## Buyer Selection Process
 
-Each package specifies its own pricing option, which determines currency and pricing model:
+Each package specifies its own pricing option, which determines pricing model and auction unit. Its declared currency must match the single media-buy currency:
 
 ```json
 {
@@ -811,21 +810,21 @@ Each package specifies its own pricing option, which determines currency and pri
   "brief": "Q1 Brand Campaign",
   "packages": [{
     "product_id": "premium_ctv",
-    "format_ids": [{"agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s"}],
+    "format_option_refs": [{ "scope": "product", "format_option_id": "video_30s" }],
     "pricing_option_id": "cpcv_usd_auction",
     "budget": 50000,
     "pacing": "even",
-    "bid_price": 0.16
+    "bidding": { "max_bid": 0.16 }
   }]
 }
 ```
 
 **How it works:**
 1. Package selects `pricing_option_id` from product (e.g., "cpcv_usd_auction")
-2. Pricing option determines currency, pricing model, and fixed vs auction
-3. Package `budget` is in the pricing option's currency
-4. Auction-based pricing requires `bid_price`; it is the exact honored price unless `max_bid: true`, which switches it to a maximum-willingness-to-pay ceiling
-5. Sellers validate currency compatibility across packages
+2. Pricing option determines pricing model, auction unit, and fixed vs auction; its currency must match the media buy
+3. Package `budget` and all canonical `bidding` amounts use the media-buy currency
+4. Auction-based pricing uses explicit `bidding.bid_amount` for a manual auction bid or `bidding.max_bid` for a hard per-auction ceiling, expressed per the pricing option's unit
+5. Sellers reject currency-mismatched packages rather than converting amounts; buyers split them into separate media buys
 
 ## Reporting Metrics by Pricing Model
 
@@ -852,15 +851,9 @@ A publisher offering Connected TV inventory with multiple pricing options:
   "product_id": "ctv_premium_sports",
   "name": "Premium Sports CTV",
   "description": "High-engagement sports content on CTV devices",
-  "format_ids": [
-    {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "video_15s"
-    },
-    {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "video_30s"
-    }
+  "format_options": [
+    { "format_option_id": "video_15s", "format_kind": "video_hosted", "params": { "duration_ms_exact": 15000 } },
+    { "format_option_id": "video_30s", "format_kind": "video_hosted", "params": { "duration_ms_exact": 30000 } }
   ],
   "delivery_type": "guaranteed",
   "pricing_options": [

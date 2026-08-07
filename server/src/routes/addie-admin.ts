@@ -704,7 +704,17 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         return res.status(400).json({ error: "Rating must be a number between 1 and 5" });
       }
 
-      const updated = await threadService.addMessageFeedback(messageId, {
+      const threadResult = await query<{ thread_id: string }>(
+        `SELECT thread_id FROM addie_thread_messages WHERE message_id = $1`,
+        [messageId]
+      );
+      const threadId = threadResult.rows[0]?.thread_id;
+      if (!threadId) {
+        logger.warn({ messageId }, "No message found to add feedback to");
+        return res.status(404).json({ error: "Message not found" });
+      }
+
+      const updated = await threadService.addMessageFeedback(threadId, messageId, {
         rating,
         rating_category,
         rating_notes,
@@ -720,21 +730,15 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       }
 
       // Also mark the thread as reviewed when admin provides feedback
-      const threadResult = await query<{ thread_id: string }>(
-        `SELECT thread_id FROM addie_thread_messages WHERE message_id = $1`,
-        [messageId]
-      );
-      if (threadResult.rows[0]) {
-        try {
-          await threadService.reviewThread(
-            threadResult.rows[0].thread_id,
-            req.user?.id || "admin",
-            rating_notes || undefined
-          );
-        } catch (reviewError) {
-          // Log but don't fail - feedback was saved successfully
-          logger.warn({ err: reviewError, threadId: threadResult.rows[0].thread_id }, "Failed to mark thread as reviewed after feedback");
-        }
+      try {
+        await threadService.reviewThread(
+          threadId,
+          req.user?.id || "admin",
+          rating_notes || undefined
+        );
+      } catch (reviewError) {
+        // Log but don't fail - feedback was saved successfully
+        logger.warn({ err: reviewError, threadId }, "Failed to mark thread as reviewed after feedback");
       }
 
       logger.info({ messageId, rating, ratingSource: 'admin' }, "Added feedback to message");

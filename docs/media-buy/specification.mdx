@@ -229,6 +229,11 @@ Discover advertising inventory using natural language briefs or explicit wholesa
 - Sales agents MUST return products matching the brief criteria when a brief is provided
 - Sales agents MUST include `product_id` and `pricing_options` for each product
 - Sales agents SHOULD include relevance scoring when multiple products match
+- Sales agents that understand a well-formed `brief` or `refine` request but deliberately decline to offer products for commercial, availability, or seller-policy reasons MUST return the `GetProductsRejected` arm with `status: "rejected"` and a buyer-facing `reason`
+- Sales agents MUST NOT use `GetProductsRejected` for a completed search with no matching inventory, incomplete work, or a technical failure: use `status: "completed"` with `products: []`, a usable partial response with `incomplete[]` / an async task arm, or the error channel respectively
+- `incomplete[]` describes missing scopes in an otherwise usable response; it does not classify the condition as retryable. A timeout or unavailable upstream that prevents a usable response MUST use the error channel, normally `SERVICE_UNAVAILABLE` with `error.recovery: "transient"` and optional `retry_after`
+- Sales agents using `GetProductsRejected` MUST NOT also return `products`, `proposals`, `incomplete`, `filter_diagnostics`, `refinement_applied`, `cache_scope`, `errors`, or envelope-level `adcp_error`; the task completed successfully with a structured business outcome rather than a full or partial search result
+- Orchestrators receiving `GetProductsRejected` MUST treat the transport call as successful, dispatch on `status: "rejected"`, and use `suggestions[]` when present to decide whether to revise and resubmit the brief
 
 **Refinement requirements:**
 
@@ -246,18 +251,21 @@ Each `get_products` request with `buying_mode: "refine"` is self-contained — s
 - Sales agents that return `refinement_applied` MUST echo `scope` on each entry and MUST echo `product_id` / `proposal_id` for product and proposal scopes, so orchestrators can cross-validate alignment
 - Sales agents MAY return proposals alongside products in refine mode, even when the orchestrator did not include proposal entries
 
-### list_creative_formats
+### Canonical creative-format discovery
 
-**Schema**: [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-request.json) / [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-response.json)
+Sales-agent `list_creative_formats` is deprecated in AdCP 3.2. An agent-global list cannot represent product-, placement-, account-, or inventory-specific deliverability.
 
-**Reference**: [`list_creative_formats` task](/docs/creative/task-reference/list_creative_formats)
+Use these canonical sources instead:
 
-Discover creative format requirements and specifications.
+- Publisher acceptance: publisher `adagents.json.formats[]`
+- Sales-agent deliverability: `get_products` `Product.format_options[]`
+- Creative production/validation/preview: creative agent `get_adcp_capabilities.creative.supported_formats[]`
 
 **Requirements:**
-- Sales agents MUST return all supported creative formats
-- Sales agents MUST include technical specifications for each format
-- Sales agents SHOULD reference standard format IDs from the Creative Protocol when applicable
+- Sales agents MUST publish the closed sellable format set on every product's canonical `format_options[]`
+- Placement-level declarations MAY narrow, but MUST NOT broaden, the product set
+- Sales agents MUST NOT present publisher-catalog formats as if every declared format were deliverable by that agent
+- Compatibility `list_creative_formats` responses MAY be projected from canonical declarations for older 3.x peers, but MUST NOT be independently authored
 
 ### create_media_buy
 
@@ -370,7 +378,7 @@ When `pending_creatives` or `pending_start` is masking a create-time hold from `
 For creative changes, `sync_creatives` in `valid_actions` is a legacy creative-change action label, not proof that the `sync_creatives` task exists. Buyers use the creative path the seller advertises: `sync_creatives` and `creative_assignments` for sellers with `creative.has_creative_library: true`, or `packages[].creatives` on `update_media_buy` for inline-only sellers that advertise `media_buy.features.inline_creative_management: true`.
 
 - Orchestrators MAY request revision history by setting `include_history` to the number of most-recent entries desired. Sales agents SHOULD return a `history` array per media buy when `include_history > 0`, containing revision number, timestamp, server-derived actor identity, action type, and optional summary. History entries MUST be ordered most-recent-first.
-- Sales agents MUST include a media-buy currency and MUST denominate monetary fields consistently (`snapshot.currency` -> `package.currency` -> `media_buy.currency`)
+- Sales agents MUST include one media-buy currency for every AdCP-authored buy. `total_budget`, package budget/minimum constraints, and canonical BiddingPolicy monetary fields use that denomination, and every selected pricing option MUST declare it. Packages requiring another currency belong in a separate media buy. `package.currency` remains a legacy/external-buy readback field; `snapshot.currency` may identify an upstream reporting denomination but MUST NOT reinterpret authored budget or bidding values.
 - Sales agents SHOULD include creative approval outcomes and pending format requirements when available
 - If `include_snapshot` is true and snapshot data is omitted for a package, sales agents MUST return `snapshot_unavailable_reason`
 - When `include_snapshot` is true and snapshots are returned, each snapshot MUST include `as_of` and `staleness_seconds`
@@ -470,6 +478,8 @@ Common error codes:
 - `NOT_CANCELLABLE`: Media buy or package cannot be canceled in its current state
 - `GOVERNANCE_DENIED`: A registered governance agent denied the transaction. Buyer may restructure the buy, escalate to human spending authority, or contact the governance agent.
 - `TERMS_REJECTED`: Buyer-proposed `measurement_terms` were rejected by the seller. Error details SHOULD identify which term failed and the seller's acceptable range or supported vendors. Recovery: adjust the proposed terms and retry, or omit `measurement_terms` to accept the product's defaults.
+- `BIDDING_PLACEMENT_CONFLICT`: Media-buy/package bidding scopes cannot be represented by the provider's native campaign, package, or shared-strategy placement. Sellers MUST reject before mutation and identify conflicting scopes where safe.
+- `AMBIGUOUS_BIDDING_POLICY`: Canonical `bidding` and legacy bidding fields are both present on the same effective package. Sellers reject rather than choosing precedence.
 - `REQUOTE_REQUIRED`: An `update_media_buy` request changes the parameter envelope (budget, flight dates, volume, targeting) the original quote was priced against. The `pricing_option` remains locked; the seller is declining the requested shape at that price. Distinct from `TERMS_REJECTED` (measurement) and `POLICY_VIOLATION` (content). Recovery in 3.1 is to adjust the update to fit the current quote, rediscover products/terms, add packages when `add_packages` is available, or create a separate media buy. AdCP 3.1 does not define an amendment-quote artifact that can be attached to `update_media_buy`. Sellers SHOULD populate `error.details.envelope_field` with the field path(s) that breached the envelope (e.g., `packages[0].budget`, `end_time`) so the buyer's agent can autonomously re-discover.
 - `VALIDATION_ERROR`: Request format or parameter errors
 - `AUTH_MISSING`: No credentials were presented. Recovery: correctable.
@@ -531,7 +541,7 @@ Sales agents SHOULD target the following response times:
 
 | Operation Type | Target Latency |
 |----------------|----------------|
-| Simple lookups (list_creative_formats) | < 1 second |
+| Capability/catalog lookups | < 1 second |
 | Discovery with AI/LLM (get_products) | < 60 seconds |
 | Reporting queries (get_media_buy_delivery) | < 60 seconds |
 | Campaign operations (create, update, sync) | Async acceptable |
@@ -566,8 +576,8 @@ Sales agents MAY require human approval for any operation. Approval is modelled 
 | [`media-buy/create-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-response.json) | create_media_buy response |
 | [`media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-request.json) | update_media_buy request |
 | [`media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-response.json) | update_media_buy response |
-| [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-request.json) | list_creative_formats request |
-| [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-response.json) | list_creative_formats response |
+| [`media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-request.json) | Deprecated named-format compatibility request |
+| [`media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-creative-formats-response.json) | Deprecated named-format compatibility response |
 | [`creative/list-creatives-request.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creatives-request.json) | list_creatives request (Creative Protocol) |
 | [`creative/list-creatives-response.json`](https://adcontextprotocol.org/schemas/v3/creative/list-creatives-response.json) | list_creatives response (Creative Protocol) |
 | [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json) | sync_creatives request (Creative Protocol) |
