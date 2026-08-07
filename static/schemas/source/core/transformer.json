@@ -53,7 +53,7 @@
           "rights_id": {
             "type": "string",
             "x-entity": "rights_grant",
-            "description": "Optional rights offering or grant identifier associated with this provisioned voice. This is provenance metadata only, not a build_creative rights token."
+            "description": "Optional rights offering or buyer-specific grant identifier associated with this provisioned voice. Brand-side voice_synthesis uses rights_offering_id for the configuration-time offering anchor. This transformer field may carry that offering ID or a grant ID after provisioning; it remains provenance metadata only, not a build_creative rights token."
           }
         },
         "required": ["brand_agent", "voice_id"],
