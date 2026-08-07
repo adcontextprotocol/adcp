@@ -156,11 +156,13 @@ Implementations that acknowledge a creative on the synchronous success branch bu
 | `format_kind`       | CanonicalFormatKind | Yes for 3.2 authoring | Portable canonical format path. Pair with `format_option_ref` when exact routing is required. |
 | `format_id`         | FormatId            | Deprecated | Named-format compatibility path for older 3.x peers; mutually exclusive with `format_kind`. |
 | `format_option_ref` | FormatOptionRef     | No          | Optional structured reference to a product or publisher format option. Required when the target product has multiple options with the same `format_kind`. |
-| `assets`            | object              | Yes         | Assets keyed by role (e.g., `{video: {...}, thumbnail: {...}}`). Catalogs are included as assets with `asset_type: "catalog"`. See [Catalogs](/docs/creative/catalogs). |
+| `assets`            | object              | Yes         | Assets keyed by the selected format's slot name (`asset_group_id` for canonical formats). Catalogs are included as assets with `asset_type: "catalog"`. See [Catalogs](/docs/creative/catalogs). |
 | `localization`      | object \| null       | No          | Sync-only explicit source and target locale variants. Requires `get_adcp_capabilities.creative.localization`. An object replaces the complete locale set; null removes it. Omission preserves existing localization only when source assets are exactly unchanged. |
 | `tags`              | string[]            | No          | Searchable tags for creative organization                          |
 
 New 3.2 integrations use `format_kind` with `format_option_ref` when routing depends on a product's declared option. A compatibility implementation may accept the legacy branch from an older peer, but never mixes both shapes.
+
+Before uploading, buyers MUST verify each creative manifest against the target product's canonical `format_options[]`. The manifest MUST include every asset slot that the selected format option declares as required, keyed by that slot's `asset_group_id`.
 
 ### Native localization
 
@@ -926,7 +928,7 @@ Poll `tasks/get` or wait for the webhook. The completion artifact carries the `c
 
 ## Best practices
 
-1. **Use upsert semantics** - Same `creative_id` updates existing creative rather than creating duplicates. This allows iterative creative development. Note: updates are blocked for creatives in active delivery (see #7).
+1. **Use upsert semantics** - Same `creative_id` updates existing creative rather than creating duplicates. This allows iterative creative development. Note: updates are blocked for creatives in active delivery (see #6).
 
 2. **Rehearse seller acceptance first** - Use `dry_run: true` when you need to catch upload, upsert, assignment, account, policy, or format errors before mutating the seller's creative library. Use `validate_input` earlier in the workflow only for manifest-structure preflight or multi-target product comparison.
 
@@ -936,9 +938,7 @@ Poll `tasks/get` or wait for the webhook. The completion artifact carries the `c
 
 5. **Brand identity** - For generative creatives, validate brand identity schema before syncing to avoid processing failures.
 
-6. **Check format support** - Verify the manifest against the product's canonical `format_options[]` before uploading.
-
-7. **Active delivery protection** - Creatives assigned to active, non-paused packages cannot be updated or deleted via `delete_missing`. Pause the package first, unassign the creative via `update_media_buy`, or create a new creative with a different `creative_id`.
+6. **Active delivery protection** - Creatives assigned to active, non-paused packages cannot be updated or deleted via `delete_missing`. Pause the package first, unassign the creative via `update_media_buy`, or create a new creative with a different `creative_id`.
 
 ## Related tasks
 
