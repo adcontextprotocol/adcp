@@ -57,7 +57,6 @@ These operations are publicly accessible:
 |-----------|------|
 | `get_adcp_capabilities` | Agent capability discovery |
 | `get_products` | Public inventory discovery |
-| `list_creative_formats` | Public format catalog |
 
 ## Webhook Security
 
@@ -99,7 +98,7 @@ Normative rules for the legacy scheme when a seller elects to support it:
 
 Any URL that a buyer, seller, or governance agent provides for another party to fetch is an SSRF vector. This includes `push_notification_config.url`, `accounts[].notification_configs[].url`, `sync_agent_notification_configs.notification_configs[].url`, `accounts[].governance_agents[].url` (the seller fetches this when it calls `check_governance`), collection-list `webhook_url`, TMP provider `endpoint`, `adagents.json` `authoritative_location`, and `reporting_bucket.setup_instructions`.
 
-Account-level webhook subscribers registered through `sync_accounts.accounts[].notification_configs[]` and agent-level subscribers registered through `sync_agent_notification_configs.notification_configs[]` also require endpoint ownership proof before activation. SSRF validation proves the seller is not calling an internal network address; it does not prove the buyer controls the public HTTPS endpoint. Sellers MUST complete an RFC 9421-signed activation challenge or equivalent proof-of-control before treating a new or changed active subscriber as active, and the receiver MUST verify the seller identity, delivery auth metadata, and event type set before echoing the challenge. Paused subscribers (`active: false`) may skip only the outbound proof challenge while inactive; sellers MUST still enforce URL parsing, HTTPS, hostname normalization, and reserved-range rejection at write time, and paused subscribers MUST NOT receive fires until reactivated. Account-level challenges use [`webhook-challenge.json`](https://adcontextprotocol.org/schemas/v3/core/webhook-challenge.json) and bind `account_id`; agent-level challenges use [`agent-webhook-challenge.json`](https://adcontextprotocol.org/schemas/v3/core/agent-webhook-challenge.json) and bind `scope: "agent"` instead of an account.
+Account-level webhook subscribers registered through `sync_accounts.accounts[].notification_configs[]` and agent-level subscribers registered through `sync_agent_notification_configs.notification_configs[]` also require endpoint ownership proof before activation. SSRF validation proves the seller is not calling an internal network address; it does not prove the buyer controls the public HTTPS endpoint. Sellers MUST complete an RFC 9421-signed activation challenge or equivalent proof-of-control before treating a new or changed active subscriber as active. Account-level challenge signatures bind the account, subscriber ID, exact normalized webhook URL through the covered `@target-uri`, expiry through the signature's `expires` parameter, delivery auth metadata, and normalized event type set; the receiver MUST verify every binding before echoing the single-use nonce. Paused subscribers (`active: false`) may skip only the outbound proof challenge while inactive; sellers MUST still enforce URL parsing, HTTPS, hostname normalization, and reserved-range rejection at write time, and paused subscribers MUST NOT receive fires until reactivated. Account-level challenges use [`webhook-challenge.json`](https://adcontextprotocol.org/schemas/v3/core/webhook-challenge.json) and bind `account_id`; agent-level challenges use [`agent-webhook-challenge.json`](https://adcontextprotocol.org/schemas/v3/core/agent-webhook-challenge.json) and bind `scope: "agent"` instead of an account.
 
 Before any outbound fetch to a counterparty-controlled URL, fetchers MUST:
 
@@ -127,6 +126,114 @@ Feature-specific security sections extend these rules with their own lifecycle a
 - [Collection lists](/docs/governance/collection/tasks/collection_lists#security-considerations) — `auth_token` scope and revocation, distribution-ID validation, webhook signature normative rules.
 - [Managed networks `authoritative_location`](/docs/governance/property/managed-networks#security-considerations) — validator fetch semantics, change detection, relationship termination.
 - [TMP provider registration](/docs/trusted-match/specification#provider-registration-security) — dynamic registration authentication, router-to-provider auth, `/health` info-leakage rules.
+
+## Portable attestations
+
+Portable attestations let one agent reference an independently issued claim without making the presenter or AdCP the trust authority. A seller or governance agent publishes what it will evaluate through `get_adcp_capabilities.adcp.attestations`; a presenter supplies an `AttestationReference`; the evaluator resolves and verifies the credential under its own policy.
+
+The evaluator is always the **verifier-of-record**. A presentation is a locator and claim hint. It is not proof, a routing instruction, or permission to fetch an arbitrary URL. RFC 9421 request signing authenticates the presenting agent and protects the request in transit, but it does not prove the presented claim.
+
+### Data model and separation
+
+Implementations MUST keep three layers distinct:
+
+1. **Presentation** — the portable reference supplied by a buyer or another agent.
+2. **Credential** — the issuer-signed claim found through the reference or supplied as an embedded proof.
+3. **Evaluation** — the receiving seller's or governance agent's result after applying its trust policy.
+
+<!-- Using latest because these schemas are not yet released in any version.
+     Update to the correct version alias after the next release. -->
+The shared schemas are [`attestation-reference.json`](https://adcontextprotocol.org/schemas/v3/core/attestation-reference.json), [`attestation-issuer.json`](https://adcontextprotocol.org/schemas/v3/core/attestation-issuer.json), [`attestation-subject.json`](https://adcontextprotocol.org/schemas/v3/core/attestation-subject.json), and [`attestation-evaluation.json`](https://adcontextprotocol.org/schemas/v3/core/attestation-evaluation.json).
+
+Every presentation identifies an issuer, an open URI-namespaced `claim_type`, a typed subject, and at least one delivery path:
+
+| Path | Presentation fields | Evaluator behavior |
+|---|---|---|
+| HTTPS credential | `locator.type: credential_uri` + `credential_uri` | Match the URI's canonical origin to the accepted issuer's `credential_origins` before DNS resolution or any request. |
+| Issuer credential ID | `locator.type: issuer_credential_id` + `credential_id` + `resolver_id` | Resolve `resolver_id` to a URL from the evaluator's own capability configuration, then send the fixed resolver request defined below. The presentation never carries the resolver URL. |
+| Embedded credential | `embedded_credential.format` + `embedded_credential.value` | Enforce the advertised byte limit before parsing, then verify the supported format locally or through an accepted verifier. |
+
+A presentation MAY carry both a locator and an embedded credential. In that case `content_digest` is REQUIRED, the evaluator MUST obtain both representations, and the exact bytes of each MUST independently match that digest before either is trusted. It MUST verify both credentials under the same proof-format and issuer rules. A missing, unverifiable, or mismatched representation is a hard failure; the evaluator MUST NOT select the representation that passes or fall back to an unpinned body. `credential_version` and `validity_hint` are planning hints only; the credential is authoritative for version, validity, scope, and revocation.
+
+For a resource subject, `subject.content_digest` optionally pins the content or immutable snapshot the credential is about. It is part of the complete typed subject comparison. It is distinct from the presentation-level `content_digest`, which pins credential bytes.
+
+Issuer and claim identifiers are open vocabularies. An evaluator listing them expresses only its own policy; it is not an AgenticAdvertising.org endorsement or a global trust registry.
+
+The presenter MAY nominate `verify_agent.agent_url`, but it MUST match `accepted_verifiers[]` after [URL canonicalization](/docs/reference/url-canonicalization). The evaluator MAY use that verifier, another accepted verifier, or local verification. It MUST NOT call an off-list presenter-supplied endpoint.
+
+### Normative evaluation procedure
+
+For every presentation, an evaluator MUST perform these steps in order:
+
+1. **Validate without network access.** Reject malformed issuer, subject, locator, proof format, and digest fields. JSON inputs MUST be strict-parsed with duplicate object keys rejected before JCS, digest computation, schema validation, or field extraction; a last-key-wins or first-key-wins parser is insufficient.
+2. **Apply the capability allowlist.** Match the canonical issuer, claim type, delivery method, proof format when known, and nominated verifier. Reject an untrusted issuer, resolver, credential origin, or verifier without an outbound request.
+3. **Select delivery.** For `credential_uri`, validate the canonical origin against the issuer capability. For `issuer_credential_id`, map `resolver_id` through that capability. For embedded delivery, enforce `max_embedded_credential_bytes` before parsing.
+4. **Resolve safely when needed.** Apply the fetch contract below to the evaluator-selected URL.
+5. **Verify the credential deterministically.** Confirm proof/signature integrity, issuer identity, claim type, complete typed subject, claim scope, validity period, and revocation state. Verify `content_digest` before using credential contents. Cryptographic verification, issuer-key authorization, canonicalization, equality checks, and outcome selection MUST run in deterministic code rather than an LLM. Credential bytes and resolver responses MUST NOT be placed in an LLM context before these checks; an LLM MAY assist a later policy workflow but cannot establish a `verified` outcome.
+6. **Apply local trust policy.** A cryptographically valid credential may still be unacceptable for this claim, subject, jurisdiction, action, or time.
+7. **Emit a stable outcome.** Never convert resolution or policy failure into success merely because the presenter asserted the claim.
+8. **Bind the result.** Carry the exact presentation digest and action binding in the domain result or readback that relied on it.
+
+### Attestation resolution fetch contract
+
+For `issuer_credential_id`, the resolver transport is fixed: `POST` to the evaluator-configured resolver URL with `Content-Type: application/json` and a strict JSON body whose only member is `{"credential_id":"<presentation credential_id>"}`. The credential ID MUST NOT be interpolated into the URL path or query. Credential-URI fetches carry no Authorization header or cookies. Resolver authentication, when configured as `evaluator_managed`, is loaded by the evaluator and sent only to the exact configured resolver endpoint; credentials from the incoming task, a credential response, or another origin MUST NOT be forwarded.
+
+Before every credential or resolver request, evaluators MUST:
+
+1. Require HTTPS and reject userinfo, fragments, and non-HTTPS schemes.
+2. Match the canonical credential origin or configured resolver ID to `accepted_issuers[]` before DNS resolution.
+3. Resolve the hostname and reject private, loopback, link-local, unique-local, CGNAT, multicast, special-use, and cloud-metadata destinations, including IPv4-mapped IPv6 forms.
+4. Pin the connection to the validated address, or validate the post-TLS peer address before sending request bytes, to prevent DNS rebinding.
+5. Disable redirects and treat every 3xx response as `resolution_failed`. The redirect limit is zero. Authentication headers and cookies MUST NOT be forwarded to any other endpoint.
+6. Apply a connect timeout of at most 10 seconds, a read timeout of at most 10 seconds, and a streamed response-body cap of 1 MiB.
+7. Keep resolver credentials outside AdCP task payloads and LLM-visible arguments. `authentication: evaluator_managed` means the evaluator loads them from its own secret store.
+8. Avoid returning connection-detail differences to the presenter. Map network details to stable outcomes without exposing internal topology.
+
+Before parsing a task that can carry portable attestations, implementations MUST enforce an overall task-body cap of 4 MiB, a maximum JSON nesting depth of 64, and at most 100,000 aggregate object members and array elements. These are whole-task caps, not per-attestation allowances, and apply in addition to the advertised per-credential `max_embedded_credential_bytes` (whose protocol ceiling is 1 MiB). Reject an over-limit body before schema evaluation, JCS, credential extraction, logging of body content, or any LLM-visible processing. An evaluator that advertises `embedded` delivery MUST advertise and enforce `max_embedded_credential_bytes`.
+
+These rules extend the general [SSRF profile](#webhook-url-validation-ssrf). A URL is never authorized solely because it appeared in a signed request.
+
+Resolver access can disclose which buyer, signal, campaign, or claim is being evaluated. Evaluators SHOULD prefer privacy-preserving resolution, send no unnecessary campaign identifiers, disclose resolver access to their operators and users, and bound logs and caches accordingly.
+
+### Issuer signing-key authority
+
+A mathematically valid signature does not by itself establish the `AttestationIssuer` named by the presentation or credential. For each accepted proof format, the evaluator MUST authorize the verification key for that canonical issuer through either (a) the proof format's authenticated issuer-key discovery and binding procedure or (b) an evaluator-managed local trust anchor configured for that issuer and proof format. Unauthenticated key URLs, presenter-supplied keys, and a credential's bare `kid` value are not trust anchors. A credential signed correctly by a key that is not authorized for its claimed issuer has outcome `invalid`, even if the key is trusted for another issuer.
+
+Key discovery is itself part of the proof-format verifier and MUST apply that format's transport, chain, algorithm, key-use, revocation, and freshness requirements. The evaluator MUST bind cached keys to canonical issuer identity and proof format; it MUST NOT reuse a same-named `kid` across issuers.
+
+### Outcomes, action binding, and caching
+
+Stable outcomes are `verified`, `not_found`, `expired`, `revoked`, `invalid`, `unsupported`, `unverifiable`, `untrusted_issuer`, `untrusted_resolver`, `subject_mismatch`, `digest_mismatch`, and `resolution_failed`. Only `verified` means all required credential and policy checks passed.
+
+Every `AttestationEvaluation` requires `reference_digest`, computed as SHA-256 over the RFC 8785 JSON Canonicalization Scheme representation of the complete `AttestationReference`, including an embedded credential. Duplicate JSON object keys MUST already have been rejected before canonicalization. Outcomes based on obtained credential bytes also carry `credential_digest` and `proof_format`, so the digest's byte interpretation is explicit. For dual delivery, `credential_digest` records the resolved bytes while `reference_digest` independently binds the embedded bytes; both representations have already matched the required presentation digest. A domain consumer that relies on the result MUST carry `action_binding` with a domain-defined action type and either an action identifier or canonical action digest.
+
+This produces two independent bindings: `reference_digest` identifies exactly what was evaluated; `action_binding` identifies the governance decision, evidence snapshot, rights decision, or other action that relied on it. Portable credentials SHOULD remain reusable across sellers unless the issuer's model requires a specific audience; the transaction binding belongs to the evaluation result rather than automatically inside every credential.
+
+Evaluators MAY cache results, but cache keys MUST include canonical issuer identity, locator, proof format, and credential or reference digest. Cache lifetime MUST be bounded by the earliest of credential expiry, issuer/verifier key refresh, revocation freshness policy, evaluator policy, and `valid_until`. Trust-policy or revocation changes invalidate prior success.
+
+### Rights-grant attestation profile (3.2)
+
+Rights constraints compose the shared portable-attestation primitive; they do not define a rights-only JWS or trust store. The buyer carries `rights_constraint.attestation_refs[]`, the serving seller remains verifier-of-record, and only the seller produces [`RightsAttestationEvaluation`](https://adcontextprotocol.org/schemas/v3/core/rights-attestation-evaluation.json) readback. A buyer-authored evaluation or the mere presence of a reference has no authorization value.
+
+The rights profile uses these identifiers:
+
+- claim type: `https://adcontextprotocol.org/claims/rights/grant`
+- resource subject type: `https://adcontextprotocol.org/claims/subjects/rights-grant`
+- action type: `https://adcontextprotocol.org/actions/rights-grant-evaluation`
+
+Each reference MUST use a `brand` issuer exactly equal to `rights_holder`. After URL canonicalization, `subject.namespace` MUST equal `rights_constraint.rights_agent.url`; `subject.id` MUST equal `rights_id`; and `subject.content_digest` MUST equal the constraint's `content_digest`. The digest is `sha256:` plus lowercase-hex SHA-256 of `UTF8(JCS(rights_constraint minus { content_digest, attestation_refs, verification_url }))`. Omitting an optional member is distinct from supplying an empty value. The projection deliberately excludes `verification_url`, which is a deprecated legacy display hint with no fetch or authorization semantics, and includes `ext` plus future grant fields so new serving restrictions cannot be added outside the signed projection.
+
+For AdCP 3.2, every acquired `acquire_rights` response and every reissued `update_rights` constraint MUST carry `content_digest` plus at least one `attestation_refs` entry. The schema keeps them optional only so a 3.2 parser can ingest 3.1 constraints; absence means machine-unverified/informational, never authorized. Multiple references are alternative delivery or proof paths—one current `verified` result is sufficient unless evaluator policy requires more.
+
+The resolved or embedded credential MUST cryptographically protect the exact issuer, claim type, complete typed subject, grant version, validity, and credential identifier. A `verified` result additionally requires authenticated issuer-bound status evidence for that exact credential and grant, an approved constraint, current credential and grant validity, exact digest agreement, and evaluator policy accepting the issuer, proof format, delivery method, jurisdiction, and consuming action. The evaluator MUST bind the actual status-proof verification key through the same exact holder rights-agent JWKS and `attestation-signing` purpose as the credential key; signature validity without that authority check is insufficient. Verified evaluations MUST carry `revocation_checked_at` and `valid_until`; the latter is the earliest credential/grant expiry, revocation-freshness bound, key-refresh bound, and local-policy bound. Missing, stale, swapped, superseded, or unverifiable status cannot produce `verified`. A seller still checks the actual use, country, time, and impression-cap ledger; a grant evaluation cannot prove remaining cap. Partial revocation revokes the old credential and issues a new narrowed constraint/reference rather than leaving the old broad credential valid.
+
+For 3.2 evaluation, `rights_holder` is mandatory and issuer-key authorization chains to that exact BrandRef. Before DNS or any fetch, the evaluator MUST exact-match the holder against its accepted issuer policy; an off-policy holder fails with zero network access. Resolve `rights_holder.domain` using the standard SSRF-safe brand.json contract: HTTPS only, reserved/private/link-local IP rejection before and after DNS, DNS pinning, bounded redirects and response size (256 KiB), deadlines, and negative caching. When `brand_id` is present, select exactly one `brands[]` entry whose `id` equals it; use that entry's `agents[]` when present, otherwise the house `agents[]` fallback. When `brand_id` is absent, the document must unambiguously represent the single brand or house. Select exactly one applicable entry with `type: "rights"`, canonical `url == rights_agent.url`, and exact `id == rights_agent.id`. Never aggregate sibling-brand agents or discover a key from a credential-supplied URL. Resolve JWKS only from the selected entry and bind the actual credential verification key by JWK thumbprint, not `kid` alone. AdCP-agent credential keys use the shared portable-credential purpose `adcp_use: "attestation-signing"`; this is not a rights-only purpose. `response-signing` remains reserved for designated brand-response payloads.
+
+Every seller-produced rights evaluation MUST bind both `action_id == rights_id` and `action_digest == content_digest` under the rights action type and MUST satisfy `reference_digest == sha256(JCS(reference))`. It MUST have `outcome: verified`, and the seller MUST retrieve the byte-identical result from its own local evaluation store keyed by `(evaluated_by, reference_digest)` before relying on it. The `evaluated_by` string is descriptive, not provenance: buyer-authored, foreign-seller, absent-store, and locally mismatched readback all fail closed. This is a reusable evaluation of one exact rights grant, not a serving authorization. The same evaluator may reuse its locally persisted result for another creative carrying the identical unchanged grant until `evaluation.valid_until`; another seller never trusts that readback as its own evaluation. Creative identity, media buy, use, country, delivery scope, and cap state are separate eligibility inputs and MUST be checked at the consuming boundary. The seller persists the exact reference/evaluation pair in creative readback and re-evaluates no later than `evaluation.valid_until`.
+
+Sellers advertise this behavior with `media_buy.rights_attestations.requirement`. Presence requires `adcp.attestations` and the exact rights claim URI in `accepted_claim_types`. `required` makes a current verified result a serving-eligibility condition. `optional` permits a separately established legacy contractual path, but the constraint remains machine-unverified and implementations MUST NOT downgrade to `verification_url`.
+
+Versioned fixtures under `/compliance/{version}/test-vectors/attestations/` cover resolved and embedded credentials, off-policy issuers and resolvers, expiry and revocation, subject and digest mismatch, and resolution failure. Implementations must produce the expected outcome and perform no network access for off-policy cases.
 
 ## Authentication Best Practices
 
@@ -617,6 +724,7 @@ This profile applies to `governance_context` (#2306) and to any future AdCP arti
 | `authorized_payload_hash` | Conditional | `base64url_no_pad(SHA-256(JCS(payload_without_governance_metadata)))`, REQUIRED with `authorized_task` and listed in `crit`. The excluded top-level fields are exactly `governance_context` and `context`; `target_agent` lives on the governance check rather than in the downstream payload. Every business field, including `idempotency_key`, remains bound. The service recomputes this value over the received task request before committing. |
 | `policy_decisions` | No | Compact array of `{ policy_id, outcome }` entries (may include `confidence`). Visible to the seller. Governance agents SHOULD omit this in privacy-sensitive deployments (see [Privacy considerations](#privacy-considerations)) and use `policy_decision_hash` instead. |
 | `policy_decision_hash` | No | SHA-256 hash of the canonicalized decision log, hex-encoded. When present, sellers treat it as an opaque integrity anchor; full log is retrievable by auditors via `audit_log_pointer`. Governance agents MUST include either `policy_decisions` or `policy_decision_hash` (both is permitted). |
+| `runtime_attestation_binding_digest` | Conditional | Required when the check evaluated `runtime_attestations[]`. MUST byte-equal the check response field of the same name: `sha256:` plus lowercase-hex SHA-256 of `JCS({ evaluations, findings })`, where `evaluations` is the ordered `runtime_attestation_evaluations[]` array and `findings` is the ordered response subset carrying `attestation_reference_digest`. This binds the exact credential/reference digests, normalized outcomes, confidence-bearing findings, and governance-check action binding without putting credential bodies in the token. Audit-layer claim; sellers persist it as opaque cargo and do not recompute it. |
 | `audit_log_pointer` | No | HTTPS URL consumable by `get_plan_audit_logs` for the full decision evidence. When present, auditors can fetch the full log using the pointer; access control is governed by the governance agent. |
 | `status` | No | Optional forward-compatibility hook. When present, MUST be a JSON object conforming to a future IETF JWT Status List mechanism (draft-ietf-oauth-status-list). Verifiers that do not understand `status` MUST NOT reject solely on its presence unless it appears in `crit`. |
 
@@ -625,6 +733,8 @@ Cross-language implementations SHOULD validate payload canonicalization and the 
 **Unknown-extension handling**: verifiers ignore unknown non-critical claims. When a claim changes authorization semantics, the issuer also emits the same-named protected-header marker and lists it in `crit`; verifiers that do not recognize that header extension MUST reject. Verifiers MUST also reject when the critical marker and its corresponding claim do not appear together.
 
 **Size**: a typical token with `policy_decision_hash` fits comfortably under the 4096-character envelope limit. Implementations MUST NOT put large evidence payloads in the token; use `audit_log_pointer` instead.
+
+When `runtime_attestation_binding_digest` is present, governance agents MUST retain the full ordered evaluations and attestation-bound findings in the corresponding `get_plan_audit_logs` check entry. The entry-level digest, response-level digest, and signed claim MUST be identical. Auditors recompute the digest from the retained arrays; any mismatch means the signed decision and audit readback disagree. This claim MUST NOT appear in `crit`: like `plan_hash`, it is audit-layer evidence that ordinary sellers cannot independently recompute from the spend-commit request.
 
 **`plan_hash` is audit-layer, not wire-layer**: the `plan_hash` claim is cryptographic cargo the token carries for off-wire verification by the governance agent, auditors, and buyer-side compliance. It is not part of this profile's seller verification contract and is never listed in `crit`. Canonicalization, excluded fields, retention rules, and test vectors are specified in [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit) (governance spec). Sellers persist and forward `governance_context` verbatim and perform the 15-step verification checklist below — authenticity, authorization scope, freshness — without inspecting `plan_hash`.
 
@@ -886,7 +996,7 @@ The field name and schema shape (single string, ≤4096 chars) do not change bet
 
 [Signed Governance Context](#signed-governance-context) signs an authorization artifact. Request signing signs the request itself — method, target URI, headers, and (by default) body bytes — establishing cryptographically that a specific agent issued the request, with replay and tampering protection. A valid signature proves only one thing: **the request came from the agent whose key signed it.** Whether that agent is *authorized* to act for the brand named in the request body is a separate concern, governed by the target house's `authorized_operator[]` in brand.json. This section defines authentication only; authorization lookup is specified by the brand.json schema and happens whether requests are signed or not.
 
-AdCP 3.0 defines this profile as **optional and capability-advertised** via `request_signing` on `get_adcp_capabilities`. AdCP 4.0 — the next breaking-changes accumulation window — will require it for spend-committing operations. The substrate ships in 3.0 so early adopters can surface canonicalization and proxy interop bugs before enforcement. See [Transport migration timeline](#transport-migration-timeline).
+AdCP 3.0 defines this profile as **optional and capability-advertised** via `request_signing` on `get_adcp_capabilities`. AdCP 3.2 keeps signing optional but makes body integrity mandatory whenever signing is used: every accepted signature on a request with a body covers `content-digest`. AdCP 4.0 — the next breaking-changes accumulation window — additionally requires signing for spend-committing operations. See [Transport migration timeline](#transport-migration-timeline).
 
 **Roles:**
 - **Agents** sign requests with a key published at their own `jwks_uri` in their operator's brand.json `agents[]` entry. The operator (the domain hosting brand.json) may be a house buying direct or an authorized third party — this profile does not distinguish. The signer is always an agent.
@@ -924,26 +1034,37 @@ This profile uses ordinary JWS signing, not RFC 7797 unencoded payloads. The JWS
 
 `brand_domain` is a tenant-binding field, not an echo. A multi-brand agent MUST populate it from its server-side tenant resolution and the brand.json entry whose policy store produced the answer; it MUST NOT copy it from the request body. `agent_url` is the canonical URL of the responding `agents[]` entry whose `response-signing` JWK verifies the envelope. Online verifiers MUST reject envelopes at or after `exp` after applying only small clock-skew tolerance; audit verifiers MAY verify after `exp`, but only as historical evidence that the brand-agent signed that payload during the stated `iat`/`exp` window.
 
+**Brand-authorization cross-check (3.2 advisory).** A valid signature proves only that *some* agent holding a `response-signing` key signed the payload — not that the key is authorized to answer for `brand_domain`. `brand_domain` and `agent_url` are fields *inside* the payload the same key signs, so resolving the envelope's `kid` from an attacker-selected agent origin confirms authorship, not brand authority. Before treating a cryptographically valid `verify_brand_claim` / `verify_brand_claims` envelope as evidence about the asserted `brand_domain`, an online 3.2 verifier SHOULD:
+
+1. Resolve `https://{brand_domain}/.well-known/brand.json` following the SSRF-safe [brand.json resolution](#buyer-identity-resolution) rules (one redirect, no chains). Apply the trust-root fetch budgets: strict JSON parsing with duplicate keys rejected, a 256 KiB body cap, 5 s connect and 10 s total deadlines, successful-cache lifetime no longer than the JWKS revocation polling interval, and negative caching of at most 60 s.
+2. Resolve the agent collection for the asserted domain, then locate exactly one entry whose `type` is `brand` and whose `url` matches the envelope's `agent_url` after applying the shared [URL canonicalization](/docs/reference/url-canonicalization) algorithm. For a Brand Agent or Brand Canonical Document, use the top-level `agents[]`. For a House Portfolio whose `house.domain` equals `brand_domain`, use `house.agents[]`. Otherwise, locate exactly one inline `brands[]` entry whose `url` hostname equals `brand_domain`; use that brand's `agents[]` when present, or `house.agents[]` only when the brand does not override `agents[]`. Never aggregate sibling brands' agents, and do not search `brand_refs[]`, because those entries require resolving the child's canonical document. No domain or agent match is `agent_not_authorized`; multiple inline-domain or canonical agent matches are `agent_authorization_ambiguous`.
+3. Resolve the JWKS source **only** from that matched entry's `jwks_uri`, defaulting when absent to `/.well-known/jwks.json` at the origin of the matched entry's `url`. Never accept a JWKS URI supplied by the envelope or discovered independently from the envelope's `agent_url` host. Deduplicate fetches by canonical resolved JWKS URI.
+4. Require exactly one JWK whose `kid` matches the protected header, enforce `use: "sig"`, `key_ops` containing `"verify"`, and exact `adcp_use: "response-signing"`, then bind it to the key that verified the envelope. Either re-verify the JWS with this authorized JWK or compare RFC 7638 thumbprints of the authorized and already-verified public keys. Equal `kid` strings are insufficient; zero matches, duplicate matches, or different key material are `untrusted`.
+
+The cross-check produces a verifier-local [`BrandResponseAuthorizationResult`](https://adcontextprotocol.org/schemas/v3/core/brand-response-authorization-result.json); it is never a field asserted by the responding agent. A successful lookup and key-material binding returns `trust: "trusted"`. Any fetch failure, missing or ambiguous agent entry, missing or duplicate `kid`, key-material mismatch, or key-purpose failure returns `trust: "untrusted"` with the corresponding reason. If a verifier skips the cross-check, it MUST treat the envelope as `untrusted` for relationship decisions. “Advisory” means a failed or skipped cross-check does not transport-reject an otherwise cryptographically valid response; it does not make authorization verification optional when extending or revoking relationship trust. A 3.2 verifier MUST NOT let an untrusted result extend or revoke relationship trust on its own, but MAY retain the cryptographically valid envelope as unauthenticated historical evidence or combine it with independent mutual-assertion evidence. It MUST NOT hard-reject solely because this additive advisory check failed. Mandatory cryptographic authorization binding and incompatible hard-fail behavior are deferred to 4.0.
+
+For `verify_brand_claims`, implementations SHOULD deduplicate brand.json fetches by `brand_domain` and JWKS fetches by canonical resolved `jwks_uri` within the batch verification operation to avoid request amplification against brand origins. The advisory applies symmetrically to assertions (`owned`, `licensed_*`, and similar) and rejections (`disputed`, `not_ours`). Conformance vectors and the paired executable reference evaluator live at [`brand-response-signing/brand-authorization-cross-check`](https://adcontextprotocol.org/compliance/latest/test-vectors/brand-response-signing/brand-authorization-cross-check.json).
+
 Response-signing keys are scoped by brand tenant as well as by purpose. A shared multi-brand fleet MUST publish distinct response-signing key material and distinct `kid` values for each `brand_domain` it serves, even when the same software and `agent_url` serve multiple brands. Cross-brand reuse of a response-signing JWK is a profile violation because it defeats tenant-bound replay analysis; this rule is stricter than ordinary cross-purpose separation and applies only to `adcp_use: "response-signing"` keys.
 
 #### Transport scope
 
-| Class | 3.0 | 4.0 |
-|---|---|---|
-| Spend-committing (`create_media_buy`, `update_media_buy`, `acquire_*`, `activate_signal`) | Optional, capability-advertised | Required |
-| Reversible state changes (`sync_creatives`, `update_creative_status`) | Optional | Recommended |
-| Read / discovery (`get_products`, `get_media_buy_delivery`, `list_*`) | Not in scope | Not in scope |
-| TMP `provider_endpoint_url` requests | Out of scope (TMP has its own envelope) | Out of scope |
+| Class | 3.0–3.1 | 3.2 | 4.0 |
+|---|---|---|---|
+| Spend-committing (`create_media_buy`, `update_media_buy`, `acquire_*`, `activate_signal`) | Signing optional; legacy body-binding modes available | Signing optional; every signed body is digest-bound | Signing required and every signed body is digest-bound |
+| Reversible state changes (`sync_creatives`, `update_creative_status`) | Signing optional; legacy body-binding modes available | Signing optional; every signed body is digest-bound | Signing recommended; every signed body is digest-bound |
+| Read / discovery (`get_products`, `get_media_buy_delivery`, `list_*`) | Not in scope | Not in scope | Not in scope |
+| TMP `provider_endpoint_url` requests | Out of scope (TMP has its own envelope) | Out of scope | Out of scope |
 
 Read calls remain bearer-authenticated. Signing read traffic adds verification cost without proportionate benefit; signing's purpose is integrity of state-changing operations.
 
-#### Quickstart: opt into request signing in 3.0
+#### Quickstart: opt into request signing
 
-For implementers who want to pilot signing in 3.0 before the 4.0 flip:
+For implementers adopting request signing in 3.2 ahead of the 4.0 enforcement flip:
 
 **As an agent that signs requests:**
 
-0. Call `get_adcp_capabilities` on the target seller. Read `request_signing.supported_for` and `required_for` to see which AdCP operations the seller expects you to sign, and read `request_signing.protocol_methods_supported_for` / `protocol_methods_required_for` to see which JSON-RPC protocol methods (e.g., `tasks/cancel`) the seller's verifier covers. Read `covers_content_digest` (`"required"` / `"forbidden"` / `"either"`) to see whether you must, must not, or may cover `content-digest`.
+0. Call `get_adcp_capabilities` on the target seller. Read `request_signing.supported_for` and `required_for` to see which AdCP operations the seller expects you to sign, and read `request_signing.protocol_methods_supported_for` / `protocol_methods_required_for` to see which JSON-RPC protocol methods (e.g., `tasks/cancel`) the seller's verifier covers. A 3.2 signing peer MUST advertise `covers_content_digest: "required"`; `"either"` and `"forbidden"` identify a legacy 3.0/3.1 signing posture only.
 1. Generate an Ed25519 keypair: `openssl genpkey -algorithm ed25519 -out signing-key.pem`.
 2. Export the public key as a JWK. Add `"kid"`, `"use": "sig"`, `"key_ops": ["verify"]`, `"adcp_use": "request-signing"`, and `"alg": "EdDSA"`.
 3. Publish the JWK at your agent's `jwks_uri` (the URL declared on your `agents[]` entry in brand.json; defaults to `/.well-known/jwks.json` at your agent URL's origin).
@@ -952,12 +1073,12 @@ For implementers who want to pilot signing in 3.0 before the 4.0 flip:
 
 **As a verifier (seller):**
 
-1. Advertise `request_signing.supported: true` in `get_adcp_capabilities`. Leave `required_for: []` during the pilot; add operations incrementally per counterparty.
+1. Advertise `request_signing.supported: true` and `covers_content_digest: "required"` in `get_adcp_capabilities`. Leave `required_for: []` during the pilot; add operations incrementally per counterparty. Signing remains optional in 3.2, but a signature that is presented on a request with a body is never body-optional.
 2. Enable signature verification middleware on mutating routes. Implement the [verifier checklist](#verifier-checklist-requests) — all 14 checks (13 numbered steps plus sub-step 9a), short-circuit on first failure.
-3. Start in shadow mode (verify and log; do not reject on failure) for a pilot counterparty before populating `required_for`. Surface verification failures in monitoring rather than operations for the first few weeks.
+3. Start in shadow mode for a pilot counterparty before populating `required_for`. Record well-formed verification and body-binding failures, establish no signer identity from them, and continue only under independent authentication. Partial or malformed signature-header pairs still hard-reject. Surface verification failures in monitoring for the first few weeks.
 4. Run the conformance negative vectors against your verifier — each rejection MUST produce the vector's stated `error_code`. The vector's `failed_step` is informational; an implementation that rejects with the correct error code is conformant even if its internal step numbering differs.
 
-**Minimum viable verifier (3.0 shadow mode):** steps 1–9, 9a, and 10 of the checklist, in-memory replay cache, one-minute revocation polling with a lightweight `kid`-membership check (full grace semantics deferred). This is acceptable for log-and-observe shadow mode because no request is being rejected on replay or digest failure. **Before adding any operation to `required_for`, implement steps 11–13** — digest recompute (step 11), replay insert after success (step 13), and the full revocation-stale grace window (part of step 9). Flipping to enforce with an incomplete verifier surfaces replay and body-integrity gaps on live production traffic rather than in shadow logs. Do not skip ahead of step 1 — malformed signatures always reject, never fall back.
+**Minimum viable 3.2 verifier:** implement the complete checklist, including digest recomputation, before advertising `request_signing.supported: true`. The older 3.0/3.1 shadow-mode allowance that deferred digest enforcement does not satisfy the 3.2 body-integrity contract. Do not skip ahead of step 1 — malformed signatures always reject, never fall back.
 
 #### Production key storage
 
@@ -1051,18 +1172,11 @@ When the verifier resolves a `keyid` and finds `"alg": "EdDSA"` on the JWK, the 
 
 **One signature per request.** Verifiers MUST process exactly one `Signature-Input` label (conventionally `sig1`) and MUST ignore any additional labels present in the request. Intermediaries that need to re-sign a relayed request MUST replace the upstream labels rather than append to them. Full relay-chaining semantics (when a relay wants to preserve the originator's signature) are tracked in [#2324](https://github.com/adcontextprotocol/adcp/issues/2324) and out of scope for 3.0.
 
-**Binary value encoding (`Signature`, `Content-Digest`).** RFC 9421 §3.1 and §2.1.3 emit binary values as the RFC 8941 Structured Field `sf-binary` token (`:<base64>:`), and RFC 8941 §3.3.5 specifies the standard base64 alphabet (RFC 4648 §4) with `+`/`/` and `=` padding. The AdCP profile OVERRIDES this: `Signature` and `Content-Digest` sf-binary values MUST be encoded with **base64url without padding** (RFC 4648 §5), producing tokens whose inner bytes draw from `[A-Za-z0-9_-]` with no trailing `=`.
+**Request-profile binary value encoding (`Signature`, `Content-Digest`).** RFC 9421 and RFC 9530 encode these values as RFC 8941 Structured Field `sf-binary` tokens (`:<base64>:`). AdCP 3.2 request signing (`tag="adcp/request-signing/v1"`) aligns with those RFCs: signers MUST use the standard RFC 4648 §4 Base64 alphabet with `+` and `/` and the padding required by RFC 8941; request verifiers MUST parse the field as `sf-binary` before using its decoded bytes. Base64URL characters (`-` and `_`) are not valid inside 3.2 request `sf-binary` and MUST be rejected as `request_signature_header_malformed`. This differs intentionally from the `nonce` signature parameter, whose quoted string value uses unpadded Base64URL.
 
-Rationale: URL-safe, pad-free, and symmetric with the `nonce` sig-param which is already specified base64url-unpadded. It avoids the two interop hazards of standard base64 in HTTP header values — `/` that some proxies rewrite and `=` that some header parsers treat as a structured-field parameter delimiter.
+AdCP 3.0/3.1 request signing used a legacy profile override that encoded these binary values as unpadded Base64URL. A request signer selects the wire encoding from the trusted negotiated signing profile: use legacy Base64URL only on an explicitly negotiated 3.0/3.1 request-signing endpoint, and use RFC 8941 Base64 for 3.2 and later. A 3.2 request verifier MUST NOT reinterpret a Base64URL token as `sf-binary` or retry it through a legacy decoder. The versioned conformance fixtures preserve both profiles so SDKs can test an intentional migration rather than accepting both alphabets ambiguously. The separately routed `adcp/webhook-signing/v1` profile retains its legacy Base64URL encoding throughout 3.x; webhook parser selection is endpoint/profile configuration and MUST NOT enable a fallback in the 3.2 request parser.
 
-Verifier requirements:
-
-1. Signers MUST emit base64url-no-padding only. A signer that emits a `Signature` or `Content-Digest` value containing `+`, `/`, or `=` is non-conformant.
-2. Verifiers MUST accept base64url-no-padding. Verifiers SHOULD ALSO lenient-decode pure standard-base64 tokens (translate `+`→`-` then `/`→`_`, then strip any trailing `=`, then base64url-decode) for interop with counterparties that predate this clarification. This lenience is a compatibility affordance scheduled for removal in **AdCP 3.2** — signers relying on it MUST migrate to base64url-no-padding before then.
-3. Verifiers MUST reject any token that mixes alphabets (any character in `[+/=]` AND any character in `[-_]` within the same token value) with `request_signature_header_malformed`. Mixed-alphabet tokens are ambiguous: `A+B-` could decode to different bytes depending on the order of "translate standard-base64 chars" and "base64url-decode" steps, and differing `Content-Digest` bytes across verifiers let an attacker stage a digest mismatch that one verifier accepts and another rejects.
-4. The `expected_signature_base` field in the conformance vectors is independent of binary-value encoding — it contains the canonical signature base bytes, not any header-field encoding. Only the emitted `Signature` token itself is encoded.
-
-**Note on `Content-Digest` from non-AdCP upstreams.** RFC 9530 §2 defines `Content-Digest` and defers sf-binary to RFC 8941 (standard base64), so a conformant 9530 emitter from another ecosystem (a CDN, a non-AdCP framework) may populate `Content-Digest` on an inbound request using the RFC 8941 default. The AdCP override above applies to **signed AdCP requests**; verifiers processing such a request MUST use the override rules. Verifiers handling unsigned traffic or `Content-Digest` from non-AdCP upstreams MAY accept either encoding — this is outside the signing profile's scope.
+The `expected_signature_base` field in the conformance vectors is independent of binary-value encoding: it contains the canonical signature-base bytes, while the emitted `Signature` token contains the resulting signature bytes encoded as `sf-binary`.
 
 **Operation names in `required_for` / `supported_for` are AdCP protocol operation names** (`create_media_buy`, `update_media_buy`, `acquire_rights`, etc.) — not MCP tool names, A2A skill names, or any transport-specific rename. Verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. This is how cross-transport verifiers agree on what "signed for `create_media_buy`" means.
 
@@ -1071,14 +1185,14 @@ Verifier requirements:
 | Field | Contents | Match semantics |
 |---|---|---|
 | `request_signing.protocol_methods_supported_for` | JSON-RPC method strings (e.g., `"tasks/cancel"`) | Verifier accepts and validates a signature when the JSON-RPC `method` field of the inbound request matches. |
-| `request_signing.protocol_methods_warn_for` | Same | Shadow-mode mirror of `warn_for`: log failures, do not reject. |
+| `request_signing.protocol_methods_warn_for` | Same | Shadow-mode mirror of `warn_for`: record well-formed verification failures, establish no signer identity, and continue only under independent authentication. Malformed signature-header pairs still hard-reject. |
 | `request_signing.protocol_methods_required_for` | Same | Reject unsigned matches with `request_signature_required`. |
 
 The matched value is the JSON-RPC envelope's `method` field (`tasks/cancel`, `tasks/get`, …), **not** the MCP `tools/call` `params.name`. AdCP tool names (no `/`) MUST NOT appear in any `protocol_methods_*` array, and JSON-RPC method names (containing `/`) MUST NOT appear in `supported_for` / `warn_for` / `required_for`. Verifiers MUST reject capability blocks that violate the namespace split with a configuration-time error rather than silently coercing strings between the two. **Verifiers MUST NOT cross-namespace match: a `protocol_methods_required_for` membership MUST NOT be satisfied by a body whose JSON-RPC `method` is `tools/call` (even if `params.name` happens to equal a listed method string), and a `required_for` membership MUST NOT be satisfied by a body whose JSON-RPC `method` is anything other than `tools/call`.** The two buckets are matched against disjoint envelope fields.
 
 The signature-base construction is identical for both namespaces: the same RFC 9421 covered components apply (`@target-uri`, `@method`, `content-digest` per the seller's `covers_content_digest` policy, `authorization` when present), with `@target-uri` and `@method` reflecting the actual HTTP request — not the JSON-RPC method string. Buyers signing a `tasks/cancel` POST sign exactly as they would for any other mutating call; the only thing the new fields change is the seller's declaration of which JSON-RPC methods are in scope for verification.
 
-**Cross-namespace replay risk on shared transport.** When a single `@target-uri` accepts both `tools/call` envelopes and JSON-RPC protocol methods (the canonical MCP layout — both POST to `/mcp`), `@target-uri` and `@method` alone do not bind which JSON-RPC method the body invokes; the `method` field lives in the body. Without `content-digest` coverage, an on-path attacker who captures a signed `tools/call` request can swap the body to `{"method":"tasks/cancel",...}` (or vice-versa) within the signature window and the verifier will accept it. Sellers that populate `protocol_methods_required_for` (or any `protocol_methods_*`) on a transport shared with `tools/call` therefore SHOULD set `covers_content_digest: 'required'` so the body — and through it the JSON-RPC method — is bound to the signature. Sellers that cannot adopt `'required'` MUST mount AdCP and protocol-method traffic on distinct `@target-uri`s so that `@target-uri` itself partitions the namespaces.
+**Body substitution on shared transport.** When a single `@target-uri` accepts `tools/call` envelopes and JSON-RPC protocol methods (the canonical MCP layout — both POST to `/mcp`), `@target-uri` and `@method` alone do not bind the body. Without `content-digest` coverage, an on-path attacker can substitute another tool, switch `tools/call` to `tasks/cancel`, or change parameters within the same method during the signature window. Distinct URIs do not solve same-method parameter substitution, so they are not an integrity alternative. In 3.2 every accepted signature on a request with a body MUST cover `content-digest`, regardless of which operation or protocol-method list caused the verifier to process it.
 
 Buyers reading capability blocks in 3.x MUST NOT assume protocol-method coverage from `supported_for` / `required_for`: a seller that lists `create_media_buy` in `required_for` and is silent on `protocol_methods_*` is not declaring `tasks/cancel` coverage. Buyer SDKs that sign `tasks/cancel` opportunistically (the only defensible default when the seller is silent) MAY do so without violating the spec, but interoperable enforcement only emerges once the seller populates `protocol_methods_supported_for` or `protocol_methods_required_for`.
 
@@ -1256,7 +1370,7 @@ Otherwise, verifiers MUST apply these 15 checks (14 numbered steps plus sub-step
 3. Reject if `tag` is not exactly `adcp/request-signing/v1` (`request_signature_tag_invalid`).
 4. Reject if `alg` is not in the allowlist (`ed25519`, `ecdsa-p256-sha256`). Library defaults MUST NOT be relied upon (`request_signature_alg_not_allowed`).
 5. Reject if `expires ≤ created`, `created > now + 60 s`, `expires < now − 60 s`, or `expires − created > 300 s` (`request_signature_window_invalid`).
-6. Reject (`request_signature_components_incomplete`) if covered components do not include all of: `@method`, `@target-uri`, `@authority`. If a body is present, reject if `content-type` is not covered. If the verifier's `covers_content_digest` capability is `"required"`, reject if `content-digest` is not covered. If the verifier's `covers_content_digest` capability is `"forbidden"` and `content-digest` IS covered, reject with `request_signature_components_unexpected`.
+6. Reject (`request_signature_components_incomplete`) if covered components do not include all of: `@method`, `@target-uri`, `@authority`. If a body is present, reject if `content-type` is not covered. Under the 3.2 profile, also reject if `content-digest` is not covered. A verifier operating an explicitly configured 3.0/3.1 compatibility endpoint applies its advertised legacy mode instead: `"required"` rejects missing coverage, while `"forbidden"` rejects present coverage with `request_signature_components_unexpected`.
 7. Resolve `keyid` to a JWK via [Agent key publication](#agent-key-publication). If the verifier has no cached agent → JWKS mapping for the signing agent, run [Discovering an agent's signing keys via `brand_json_url`](#discovering-an-agents-signing-keys-via-brand_json_url) before this step — its 8-step preamble (capabilities → `identity.brand_json_url` → brand.json → agents[] → jwks_uri) is a precondition for `keyid` resolution and short-circuits with the `request_signature_brand_*` and `request_signature_key_origin_*` codes from that section. On `kid` miss within an established mapping, refetch once (subject to the 30-second cooldown between refetches) before rejecting with `request_signature_key_unknown`. Reject if `keyid` cannot be resolved to a specific `agents[]` entry.
 8. Verify the JWK's `use` is `"sig"`, `key_ops` includes `"verify"`, and `adcp_use` equals `"request-signing"`. Reject (`request_signature_key_purpose_invalid`) on any mismatch — including absent `adcp_use`, which MUST be treated as non-conforming.
 9. Check the [Transport revocation](#transport-revocation) list. Reject if `keyid` ∈ `revoked_kids` (`request_signature_key_revoked`). Reject with `request_signature_revocation_stale` if the verifier has not refreshed the revocation list within grace.
@@ -1294,7 +1408,7 @@ The normative rule is:
 - A **signed** request enters the [verifier checklist](#verifier-checklist-requests) and is evaluated on its cryptographic merits, whether or not the operation is in `required_for`.
 - A **malformed signature** blocks fallback regardless, per the malformed-signature rule in the checklist preamble. Broken signatures signal signer intent and MUST NOT downgrade silently to bearer.
 
-`warn_for` is unchanged by this rule: it was already non-rejecting for unsigned requests and continues to surface signed-but-invalid signatures as monitoring signal during rollout.
+`warn_for` remains non-rejecting only for unsigned requests and well-formed signatures that fail verification or body binding when an independent authenticator succeeds. Those failures establish no signer identity. A partial or malformed `Signature` / `Signature-Input` pair still hard-rejects regardless of `warn_for` or fallback credentials, because it cannot be safely interpreted as either signed or unsigned traffic.
 
 <Warning>
 **Seller enforcement — pick the posture that matches your capability declaration.**
@@ -1303,7 +1417,7 @@ Three enforcement postures are valid; sellers MUST pick one and configure their 
 
 - **Strict (signing is unconditional for this operation).** Sellers MUST either stop accepting bearer/API-key/mTLS for the operation entirely, *or* gate the fallback authenticator on a per-caller flag that rejects non-signed requests from counterparties who have completed 9421 onboarding. This is the posture where `required_for` rejects everything unsigned.
 - **Prefer signing, accept fallback (recommended during rollout).** Advertise `required_for` for the operation but leave bearer open. The composition rule applies: unsigned-unauthenticated callers are rejected, unsigned-bearer-authed callers pass. Good for quarters-long migrations where buyers onboard to 9421 at their own pace.
-- **Advisory only.** Move the operation to `warn_for` (or `supported_for`) rather than `required_for`. The verifier verifies signatures when present and logs failures, but never rejects for missing signature.
+- **Advisory only.** Move the operation to `warn_for` rather than `required_for`. The verifier records missing signatures and well-formed verification or body-binding failures, establishes no signer identity from them, and continues only under independent authentication. Partial or malformed signature-header pairs still hard-reject.
 
 *Example of the per-caller flag (strict posture):* a seller whose `agents[]` entries carry a `signing_onboarded: true` flag on 9421-ready counterparties configures its bearer authenticator to reject bearer credentials whose resolved agent has `signing_onboarded: true` for operations in `required_for`. Other agents continue to authenticate via bearer until their flag flips. Promotion to `required_for` stays operationally safe — existing bearer traffic continues while onboarded counterparties are held to the stricter bar.
 </Warning>
@@ -1328,9 +1442,11 @@ Covering `content-digest` binds the request body bytes to the signature. For spe
 **If you control the transport**, preserve bodies byte-for-byte end-to-end and cover `content-digest`. **If you don't control the transport**, fix it rather than degrade the security guarantee. Validate end-to-end with a `POST` echo test against a test endpoint before sending real traffic.
 </Warning>
 
-Verifiers that genuinely cannot preserve body bytes due to legacy infrastructure MAY advertise `covers_content_digest: "forbidden"`; this is an opt-out for the narrow case where the infrastructure cannot be fixed. `"required"` is recommended for all spend-committing operations. `"either"` is the default — signers choose per-request, and the verifier accepts both covered and uncovered forms.
+AdCP 3.2 verifiers that advertise request-signing support MUST advertise `covers_content_digest: "required"`. Every accepted signature on a request with a body MUST include and cover `content-digest`; this applies uniformly before the verifier trusts the body enough to classify an operation. The `"either"` and `"forbidden"` values are deprecated compatibility postures for 3.0/3.1 endpoints only and are removed in 4.0. Infrastructure that rewrites bodies MUST use a separately configured legacy endpoint/origin or disable request signing under 3.2.
 
-**`"required"` is strict.** When a verifier advertises `covers_content_digest: "required"`, a signed request with a body that does not cover `content-digest` is a hard reject with `request_signature_components_incomplete`. Verifiers MUST NOT accept it as a "soft" signed-but-body-unbound request; there is no soft mode. Signers that don't want to cover `content-digest` for a given call MUST route to a verifier whose policy is `"either"` or `"forbidden"`, or not sign the call at all.
+The endpoint's trusted configuration and negotiated capability select this policy before body parsing or dispatch. An `adcp_version`, operation name, or JSON-RPC method inside an unbound body MUST NOT downgrade a 3.2 verifier to a legacy mode. A shared endpoint that advertises 3.2 applies the 3.2 rule to signed body-bearing traffic; operators needing a legacy posture use a separately configured endpoint or origin. A 3.2 signer SHOULD cover `content-digest` even when a legacy peer advertises `"either"`; an explicit legacy `"forbidden"` posture is incompatible with 3.2 capability negotiation rather than a reason to retry without binding.
+
+**`"required"` is strict.** A signed request with a body that does not cover `content-digest` is rejected with `request_signature_components_incomplete`. A digest mismatch uses `request_signature_digest_mismatch`; changing both the body and digest invalidates the signature. A client MUST NOT automatically retry unsigned or without digest coverage after either failure. Requests with no body do not require `content-digest`.
 
 #### Transport replay dedup
 
@@ -1364,7 +1480,7 @@ Verifiers advertise signing support and per-call requirements via the `request_s
 {
   "request_signing": {
     "supported": true,
-    "covers_content_digest": "either",
+    "covers_content_digest": "required",
     "required_for": [],
     "warn_for": ["create_media_buy"],
     "supported_for": [
@@ -1378,17 +1494,17 @@ Verifiers advertise signing support and per-call requirements via the `request_s
 ```
 
 - `supported`: when true, the verifier validates signatures when present. When false or absent, signatures are ignored.
-- `covers_content_digest`: one of `"required"`, `"forbidden"`, or `"either"` (default). `"required"`: signers MUST cover `content-digest`; unsigned-body signatures are rejected. `"forbidden"`: signers MUST NOT cover `content-digest`; body-bound signatures are rejected. `"either"`: signer chooses; verifier accepts both.
+- `covers_content_digest`: `"required"` for every 3.2 signing profile. `"either"` and `"forbidden"` remain decodable only for explicit 3.0/3.1 compatibility and MUST NOT be negotiated as a 3.2 signing posture.
 - `required_for`: AdCP protocol operation names (not transport-specific) for which **unsigned requests that present no other valid credential** are rejected with `request_signature_required`. Empty in 3.0 by default. Signers MUST sign any listed operation. Composition with bearer, API key, or mTLS fallbacks is governed by [Composition with fallback authenticators](#composition-with-fallback-authenticators) — in particular, unsigned requests that present a valid fallback credential are accepted, and sellers that intend signing to be unconditional MUST configure their fallback authenticators to reject other credential types for the operation.
-- `warn_for`: operations for which the verifier verifies signatures when present, logs failures in monitoring, but **does NOT reject**. Used as a shadow-mode bridge from `supported_for` to `required_for`. Enables per-counterparty pilots where the seller watches real-traffic failure rates before enforcing. Precedence: `required_for > warn_for > supported_for`. Signers SHOULD sign operations in `warn_for`; verifiers MUST NOT reject unsigned or failed-verify requests to these operations.
+- `warn_for`: operations for which the verifier verifies signatures when present and records failures in monitoring. Used as a shadow-mode bridge from `supported_for` to `required_for`. Precedence: `required_for > warn_for > supported_for`. A missing signature or a well-formed signature that fails verification or body binding MUST NOT establish verified-signer identity; processing may continue only when an independent bearer, API-key, or mTLS authenticator succeeds. A partial or malformed `Signature` / `Signature-Input` pair always hard-rejects. Verifiers MUST NOT convert a failed signature into an authenticated signer merely because the operation is in shadow mode.
 - `supported_for`: operations for which signatures are verified when present but not required. Signers SHOULD sign these. Typically a superset of `required_for` and `warn_for`.
 
 **Rollout pattern:**
 1. Announce signing readiness: add the operation to `supported_for`. Counterparties can begin signing but nothing changes if they don't.
-2. Promote to shadow mode: move the operation to `warn_for`. The verifier logs verification failures; traffic is unaffected. Operators monitor the failure rate and debug.
+2. Promote to shadow mode: move the operation to `warn_for`. The verifier logs verification failures and relies on independent authentication for that traffic. Operators monitor the failure rate and debug.
 3. Enforce: when the failure rate drops below the operator's threshold, move to `required_for`. Unsigned or invalid-signature requests to that operation are now rejected.
 
-In 3.0, verifiers ship with `required_for: []` and populate it selectively. `warn_for` is the recommended pre-production stop before flipping to enforce. In 4.0 the protocol normatively requires `required_for` to include all spend-committing operations the verifier supports, and `covers_content_digest: "required"` is recommended for those operations.
+In 3.0/3.1, verifiers ship with `required_for: []` and populate it selectively. In 3.2, signing remains optional and the operation/protocol-method lists still decide whether signing is supported, shadowed, or required; they no longer alter the cryptographic component set. For `warn_for`, missing or invalid body binding is recorded but MUST NOT establish verified-signer identity, and processing may continue only under independently valid authentication. For `supported_for` and `required_for`, a presented body-bearing signature without digest coverage rejects. In 4.0, `required_for` additionally includes every supported spend-committing operation.
 
 #### Transport error taxonomy
 
@@ -1490,9 +1606,9 @@ Buyers MUST NOT derive signer identity from webhook payload fields (`task_id`, `
 - **Buyers MUST reject with `webhook_mode_mismatch` and alarm**, not silently downgrade, when they receive a 9421-signed webhook after registering with `authentication.credentials`, or when they receive HMAC-signed webhooks after registering without `authentication`. Rejection is the safety property; alarming is the telemetry — a buyer that alarms but accepts the payload has already handed authority to the mismatched signing scheme. The rejection surfaces as HTTP `401` with the stable error code so sender-side retry logic can route it to incident response rather than replaying identically.
 - **Buyers SHOULD negotiate HMAC-mode out-of-band** at onboarding when interoperating with sellers that have not yet implemented 9421. Durable per-counterparty mode selection in operator records is not MITM-mutable the way a per-request field is.
 
-**Verifier checklist for webhooks.** Apply these 15 checks (14 numbered steps plus sub-step 9a) in order, short-circuiting on the first failure. Step 14 decomposes into 14a (strict-parse requirement) and 14b (logging discipline) — both apply whenever step 14 runs; they are elaborations of one check, not separate checks in the count. The steps below are the [request verifier checklist](#verifier-checklist-requests) with **two parameter substitutions** — the `tag` value (`adcp/webhook-signing/v1` instead of `adcp/request-signing/v1`) and the direction-of-trust resolution (seller's brand.json `agents[]` entry instead of the buyer's). Step 14 (body well-formedness) is identical across the two profiles; only the error-code prefix differs (`webhook_body_malformed` vs `request_body_malformed`). Implementations SHOULD share verifier code between the two profiles, branch on the two parameter substitutions, and configure the profile-specific error codes — NOT fork the implementation. Error codes are prefixed `webhook_*` — most carry the `webhook_signature_*` infix, plus structural codes without it (currently `webhook_target_uri_malformed`, `webhook_mode_mismatch`, `webhook_body_malformed`) — so caller-side error handling distinguishes the two profiles.
+**Verifier checklist for webhooks.** Apply these 15 checks (14 numbered steps plus sub-step 9a) in order, short-circuiting on the first failure. Step 14 decomposes into 14a (strict-parse requirement) and 14b (logging discipline) — both apply whenever step 14 runs; they are elaborations of one check, not separate checks in the count. The steps below are the [request verifier checklist](#verifier-checklist-requests) with **three profile substitutions** — the `tag` value (`adcp/webhook-signing/v1` instead of `adcp/request-signing/v1`), the direction-of-trust resolution (seller's brand.json `agents[]` entry instead of the buyer's), and webhook v1's legacy unpadded Base64URL binary-value decoder instead of the 3.2 request profile's RFC 8941 Base64 decoder. Parser mode comes from the trusted webhook route/profile configuration before header parsing; it is not a lenient fallback after request-profile parsing fails. Step 14 (body well-formedness) is identical across the two profiles; only the error-code prefix differs (`webhook_body_malformed` vs `request_body_malformed`). Implementations SHOULD share verifier code between the two profiles, branch on the three profile parameters, and configure the profile-specific error codes — NOT fork the implementation. Error codes are prefixed `webhook_*` — most carry the `webhook_signature_*` infix, plus structural codes without it (currently `webhook_target_uri_malformed`, `webhook_mode_mismatch`, `webhook_body_malformed`) — so caller-side error handling distinguishes the two profiles.
 
-1. Parse `Signature-Input` and `Signature` headers per RFC 9421 §4. Reject if malformed (`webhook_signature_header_malformed`). If `Signature` or `Signature-Input` is present without the other, reject with the same code — a bound pair, not a guessable one.
+1. Parse `Signature-Input` structure per RFC 9421 §4 and decode the `Signature` binary token with the webhook-v1 unpadded Base64URL profile. Reject if malformed (`webhook_signature_header_malformed`). If `Signature` or `Signature-Input` is present without the other, reject with the same code — a bound pair, not a guessable one.
 2. Reject if any of `created`, `expires`, `nonce`, `keyid`, `alg`, or `tag` is absent from the `Signature-Input` parameters (`webhook_signature_params_incomplete`).
 3. Reject if `tag` is not exactly `adcp/webhook-signing/v1` (`webhook_signature_tag_invalid`). Byte-for-byte match; no case-folding.
 4. Reject if `alg` is not in the allowlist (`ed25519`, `ecdsa-p256-sha256`). Library defaults MUST NOT be relied upon (`webhook_signature_alg_not_allowed`).
@@ -1606,12 +1722,13 @@ Codes parallel the [request-signing error taxonomy](#transport-error-taxonomy), 
 
 #### TMP cross-reference
 
-**TMP keys MUST declare a distinct `adcp_use` value** (or omit it entirely) so verifiers reject them for request signing via step 8. Publishing TMP keys at the same `jwks_uri` as request-signing and webhook-signing keys is permitted and encouraged — one publication pattern, five signing systems, each `kid`-scoped:
+**TMP keys MUST declare a distinct `adcp_use` value** (or omit it entirely) so verifiers reject them for request signing via step 8. Publishing TMP keys at the same `jwks_uri` as request-signing and webhook-signing keys is permitted and encouraged — one publication pattern, six signing systems in 3.2, each `kid`-scoped:
 
 - governance JWS — `adcp_use: "governance-signing"`
 - request signing (RFC 9421) — `adcp_use: "request-signing"` (also signs webhooks; see [Webhook callbacks](#webhook-callbacks))
 - webhook signing (RFC 9421) — uses the `request-signing` key; the legacy `adcp_use: "webhook-signing"` value is **deprecated** (still accepted, pending removal — see follow-up issue in the deprecation note)
 - designated-task response-payload JWS — `adcp_use: "response-signing"` (see [Designated-task payload-envelope response signing](#designated-task-response-signing) above)
+- portable credentials issued by an AdCP agent — `adcp_use: "attestation-signing"` (the credential proof format still defines the signature input and algorithm)
 - TMP envelope — TMP's own future `adcp_use` value
 
 Cross-purpose reuse is prevented automatically because every verifier enforces an exact `adcp_use` match on its own profile.
@@ -1625,8 +1742,9 @@ AdCP 4.0 is the next breaking-changes accumulation window. Mandatory request sig
 | Phase | Status | Behavior |
 |---|---|---|
 | 3.0 GA | Optional, capability-advertised | Verifiers MAY validate; `required_for: []` by default. Signers MAY sign. Reference vectors ship; reference SDK pilots begin. |
-| 3.x | Reference SDKs ship; pilots surface bugs | Conformance test vectors drive cross-SDK interop. Early adopters turn on `required_for` with named counterparties, incrementally. |
-| 4.0 | Required for spend-committing operations | `required_for` MUST include `create_media_buy`, `acquire_*`, and any spend-committing operation the verifier supports. Signers MUST sign. `covers_content_digest: "required"` recommended for those operations. |
+| 3.0–3.1 | Reference SDKs ship; pilots surface bugs | `covers_content_digest` defaults to `"either"`; explicit `"forbidden"` remains available for legacy body-rewriting infrastructure. Early adopters turn on `required_for` incrementally. |
+| 3.2 | Signing remains optional; body integrity becomes mandatory when used | An agent advertising request signing MUST explicitly emit `covers_content_digest: "required"`. Every accepted signature on a request with a body covers `content-digest`; legacy modes require a separately configured 3.0/3.1 endpoint. |
+| 4.0 | Required for spend-committing operations | `required_for` MUST include `create_media_buy`, `acquire_*`, and every spend-committing operation the verifier supports. Signers MUST sign; legacy digest modes are removed. |
 
 Implementations that ship signing in 3.x SHOULD enable verifier-side `required_for` selectively (per-counterparty pilot, then broader rollout) before 4.0 to validate end-to-end paths against real traffic — this is what makes the 4.0 transition feasible without ecosystem-wide breakage.
 
@@ -1832,7 +1950,7 @@ Outbound-fetch code paths (governance JWKS, brand.json, revocation list, webhook
 - TLS 1.2 **secure renegotiation** (RFC 5746) MUST be enabled if renegotiation is supported at all. Insecure-renegotiation-tolerant stacks are a MUST-disable.
 - **TLS compression** (CRIME) MUST be off.
 - **Heartbeat extension** MUST be off on TLS 1.2 endpoints (Heartbleed lineage).
-- **0-RTT / early-data** on TLS 1.3 MUST NOT be enabled for any endpoint that accepts mutating AdCP operations. 0-RTT is replayable by design; idempotency and signature-nonce dedup are not free rescues once the request has hit application logic. Read-only discovery endpoints (`get_adcp_capabilities`, `list_creative_formats`) MAY use 0-RTT; everything else MUST NOT.
+- **0-RTT / early-data** on TLS 1.3 MUST NOT be enabled for any endpoint that accepts mutating AdCP operations. 0-RTT is replayable by design; idempotency and signature-nonce dedup are not free rescues once the request has hit application logic. Read-only `get_adcp_capabilities` MAY use 0-RTT; everything else MUST NOT.
 
 ### mTLS transport
 

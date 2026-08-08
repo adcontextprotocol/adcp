@@ -191,9 +191,7 @@ phases:
         sample_request:
           idempotency_key: "$generate:uuid_v4#creative_evaluator_auth_off_list"
           message: "Create two best-of-N display variants for Acme Outdoor's winter trip offer."
-          target_format_id:
-            agent_url: "https://your-agent.example.com"
-            id: "$context.build_capability_id"
+          target_capability_id: "$context.build_capability_id"
           max_variants: 2
           variant_axis:
             dimension: "best_of_n"
@@ -253,9 +251,7 @@ phases:
         sample_request:
           idempotency_key: "$generate:uuid_v4#creative_evaluator_auth_feature_agent_off_list"
           message: "Create two best-of-N display variants for Acme Outdoor's winter trip offer."
-          target_format_id:
-            agent_url: "https://your-agent.example.com"
-            id: "$context.build_capability_id"
+          target_capability_id: "$context.build_capability_id"
           max_variants: 2
           variant_axis:
             dimension: "best_of_n"
@@ -320,9 +316,7 @@ phases:
         sample_request:
           idempotency_key: "$generate:uuid_v4#creative_evaluator_auth_payload_credential"
           message: "Create two best-of-N display variants for Acme Outdoor's winter trip offer."
-          target_format_id:
-            agent_url: "https://your-agent.example.com"
-            id: "$context.build_capability_id"
+          target_capability_id: "$context.build_capability_id"
           max_variants: 2
           variant_axis:
             dimension: "best_of_n"
@@ -397,9 +391,7 @@ phases:
         sample_request:
           idempotency_key: "$generate:uuid_v4#creative_evaluator_auth_accepted"
           message: "Create two best-of-N display variants for Acme Outdoor's winter trip offer."
-          target_format_id:
-            agent_url: "https://your-agent.example.com"
-            id: "$context.build_capability_id"
+          target_capability_id: "$context.build_capability_id"
           max_variants: 2
           variant_axis:
             dimension: "best_of_n"
@@ -512,9 +504,7 @@ phases:
         sample_request:
           idempotency_key: "$generate:uuid_v4#creative_evaluator_auth_unavailable"
           message: "Create two best-of-N display variants for Acme Outdoor's winter trip offer."
-          target_format_id:
-            agent_url: "https://your-agent.example.com"
-            id: "$context.build_capability_id"
+          target_capability_id: "$context.build_capability_id"
           max_variants: 2
           variant_axis:
             dimension: "best_of_n"

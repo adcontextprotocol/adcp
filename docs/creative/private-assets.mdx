@@ -22,12 +22,7 @@ The recommended pattern is **presigned URLs**. Most cloud storage providers supp
 
 ```json
 {
-  "format_id": {
-    "agent_url": "https://creatives.example.com",
-    "id": "display_static",
-    "width": 300,
-    "height": 250
-  },
+  "format_kind": "image",
   "assets": {
     "banner_image": {
       "url": "https://my-bucket.s3.amazonaws.com/brand/logo.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=3600&X-Amz-Signature=...",

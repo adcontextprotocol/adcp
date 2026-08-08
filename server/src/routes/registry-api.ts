@@ -11,7 +11,7 @@ import type { Request, RequestHandler } from "express";
 import { z } from "zod";
 import escapeHtml from "escape-html";
 import { findOwnerOrgForUser } from "../services/agent-ownership.js";
-import { CreativeAgentClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
+import { AdCPClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
 import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex, listAllComplianceStoryboards } from "@adcp/sdk/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
@@ -35,6 +35,7 @@ import {
 import {
   comply,
   complianceResultToDbInput,
+  isNonExecutableCoverageGapScenario,
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
   computeSpecialismStatus,
@@ -223,6 +224,23 @@ type PublisherFormatSummary = {
   experimental?: boolean;
 };
 
+type PublisherPlacementSummary = {
+  placement_id: string;
+  name: string;
+  description?: string;
+  property_ids?: string[];
+  property_tags?: string[];
+  collection_ids?: string[];
+  channels?: string[];
+  tags?: string[];
+  format_options?: Array<{
+    format_option_id?: string;
+    format_kind: string;
+    params?: Record<string, unknown>;
+  }>;
+  source: 'adagents_json' | 'community';
+};
+
 function recordOrNull(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -387,6 +405,55 @@ function summarizeFormats(
     })
     .filter((format): format is PublisherFormatSummary => !!format)
     .slice(0, 100);
+}
+
+function summarizePlacements(
+  manifest: Record<string, unknown> | null | undefined,
+  source: 'adagents_json' | 'community',
+): PublisherPlacementSummary[] {
+  const rawPlacements = Array.isArray(manifest?.placements) ? manifest.placements : [];
+  const rawFormats = Array.isArray(manifest?.formats) ? manifest.formats : [];
+  const formatsById = new Map<string, Record<string, unknown>>();
+  for (const raw of rawFormats) {
+    const format = recordOrNull(raw);
+    const id = format && stringOrUndefined(format.format_option_id);
+    if (format && id) formatsById.set(id, format);
+  }
+
+  return rawPlacements.flatMap(raw => {
+    const placement = recordOrNull(raw);
+    const placementId = placement && stringOrUndefined(placement.placement_id);
+    const name = placement && stringOrUndefined(placement.name);
+    if (!placement || !placementId || !name) return [];
+
+    const rawOptions = Array.isArray(placement.format_options) ? placement.format_options : [];
+    const formatOptions = rawOptions.flatMap(rawOption => {
+      const option = recordOrNull(rawOption);
+      if (!option) return [];
+      const optionId = stringOrUndefined(option.format_option_id);
+      const resolved = optionId && !stringOrUndefined(option.format_kind)
+        ? formatsById.get(optionId)
+        : option;
+      if (!resolved) return [];
+      const formatKind = stringOrUndefined(resolved.format_kind);
+      const params = recordOrNull(resolved.params);
+      if (!formatKind || !params) return [];
+      return [{ format_option_id: optionId ?? stringOrUndefined(resolved.format_option_id), format_kind: formatKind, params }];
+    });
+
+    return [{
+      placement_id: placementId,
+      name,
+      description: stringOrUndefined(placement.description),
+      property_ids: stringArray(placement.property_ids, 500),
+      property_tags: stringArray(placement.property_tags, 500),
+      collection_ids: stringArray(placement.collection_ids, 500),
+      channels: stringArray(placement.channels, 100),
+      tags: stringArray(placement.tags, 100),
+      format_options: formatOptions.length ? formatOptions : undefined,
+      source,
+    }];
+  }).slice(0, 500);
 }
 import { AAO_UA_COMPLIANCE } from "../config/user-agents.js";
 
@@ -1286,7 +1353,7 @@ registry.registerPath({
   summary: "List agents",
   description:
     "List all agents in the registry. Optionally enrich with health checks, capabilities, and property summaries via query parameters. " +
-    "Measurement-vendor filters (`metric_id`, `accreditation`, `q`) imply `type=measurement` when `type` is unset; an explicit `type` other than `measurement` returns 400.",
+    "Measurement-vendor filters (`metric_id`, `accreditation`, `q`) imply `type=measurement`. Canonical creative-capability filters (`format_kind`, `publisher_domain`, `format_option_id`, `capability_id`, `creative_operation`) match any endpoint exposing that creative surface, including mixed sales/creative agents; add an explicit `type` only to narrow by primary registry classification.",
   tags: ["Agent Discovery"],
   request: {
     query: z.object({
@@ -1306,6 +1373,28 @@ registry.registerPath({
       q: z.string().max(64).optional().openapi({
         description: "Measurement-vendor filter: case-insensitive substring match against `measurement.metrics[].metric_id`. v1 scope: metric_id only (description/standard search is a follow-up). Max 64 chars; SQL wildcard characters are escaped. Implies `type=measurement`.",
         example: "attention",
+      }),
+      format_kind: z.union([z.string(), z.array(z.string())]).optional().openapi({
+        description: "Canonical creative-capability filter: exact match on creative.supported_formats[].format.format_kind. Repeatable with OR semantics. Matches standalone creative agents and mixed-role endpoints.",
+        example: "video_hosted",
+      }),
+      publisher_domain: z.string().optional().openapi({
+        description: "Canonical creative-capability filter: exact publisher_domain on the same supported-format entry. Pair with format_option_id to find endpoints claiming an exact publisher format.",
+        example: "shorts.streamhaus.example",
+      }),
+      format_option_id: z.string().optional().openapi({
+        description: "Canonical creative-capability filter: exact publisher format_option_id on the same supported-format entry.",
+        example: "spotlight_video",
+      }),
+      capability_id: z.string().optional().openapi({
+        description: "Canonical creative-capability filter: exact endpoint-local creative.supported_formats[].capability_id.",
+      }),
+      creative_operation: z.union([
+        z.enum(["build", "validate", "preview"]),
+        z.array(z.enum(["build", "validate", "preview"])),
+      ]).optional().openapi({
+        description: "Canonical creative-capability filter: required supported operation on the same format entry. Repeatable with OR semantics.",
+        example: "build",
       }),
       verification_mode: z.array(z.enum(["spec", "live"])).optional().openapi({
         description:
@@ -1564,6 +1653,7 @@ registry.registerPath({
   request: {
     query: z.object({
       domain: z.string().openapi({ example: "voxmedia.com" }),
+      include: z.literal("placements").optional().openapi({ description: "Set to placements to include eligibility-oriented placement summaries with resolved canonical format options." }),
     }),
   },
   responses: {
@@ -2083,12 +2173,12 @@ registry.registerPath({
   method: "get",
   path: "/api/public/agent-formats",
   operationId: "getAgentFormats",
-  summary: "Get agent formats",
-  description: "Fetch creative formats from a creative agent.",
+  summary: "Get creative-agent format capabilities",
+  description: "Fetch get_adcp_capabilities creative.supported_formats[] from a creative agent.",
   tags: ["Agent Probing"],
   request: { query: z.object({ url: z.string() }) },
   responses: {
-    200: { description: "Creative formats", content: { "application/json": { schema: z.object({ success: z.boolean(), formats: z.array(z.unknown()) }) } } },
+    200: { description: "Canonical creative capabilities", content: { "application/json": { schema: z.object({ success: z.boolean(), formats: z.array(z.unknown()) }) } } },
   },
 });
 
@@ -2353,7 +2443,8 @@ const AgentEventPayloadSchema = z
     category_taxonomy: z.string().nullable().optional(),
     tags: z.array(z.string()).optional(),
     delivery_types: z.array(z.string()).optional(),
-    format_ids: z.array(z.string()).optional(),
+    format_ids: z.array(z.string()).optional().openapi({ description: "Deprecated 3.x named-format profile projection." }),
+    format_kinds: z.array(z.string()).optional(),
     property_count: z.number().int().optional(),
     publisher_count: z.number().int().optional(),
     has_tmp: z.boolean().optional(),
@@ -2465,6 +2556,9 @@ const PublisherEventPayloadSchema = z
     agent_count: z.number().int().optional(),
     property_count: z.number().int().optional(),
     collection_count: z.number().int().optional(),
+    format_count: z.number().int().nonnegative().optional().openapi({ description: "Number of top-level formats[] declarations after the revision." }),
+    placement_count: z.number().int().nonnegative().optional().openapi({ description: "Number of top-level placements[] declarations after the revision." }),
+    changed_fields: z.array(z.string()).min(1).optional().openapi({ description: "Semantic top-level adagents.json fields changed by this revision, including formats or placements. Present on newly emitted 3.2 change events." }),
     discovery_method: z.string().optional(),
     manager_domain: z.string().nullable().optional(),
     source: z.string().optional(),
@@ -2539,7 +2633,7 @@ registry.registerPath({
   operationId: "getRegistryFeed",
   summary: "Registry change feed",
   description:
-    "Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days. The `freshness` object reports when the response was generated, the newest matching event currently visible to the feed, and the resulting feed lag.\n\nType filtering supports glob patterns: `property.*` matches `property.created`, `property.updated`, etc.",
+    "Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days. The `freshness` object reports when the response was generated, the newest matching event currently visible to the feed, and the resulting feed lag. `publisher.adagents_changed` covers semantic changes in every top-level catalog field, including formats-only and placements-only revisions; new 3.2 events identify them in `payload.changed_fields`.\n\nType filtering supports glob patterns: `property.*` matches `property.created`, `property.updated`, etc.",
   tags: ["Change Feed"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -2775,7 +2869,7 @@ registry.registerPath({
               categories: z.array(z.string()),
               tags: z.array(z.string()),
               delivery_types: z.array(z.string()),
-              format_ids: z.array(z.unknown()).openapi({ description: "Creative format identifiers supported by this agent" }),
+              format_kinds: z.array(z.string()).openapi({ description: "Canonical format kinds present in this agent's indexed inventory profile" }),
               property_count: z.number().int(),
               publisher_count: z.number().int(),
               has_tmp: z.boolean(),
@@ -5610,6 +5704,18 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       const accreditations = [...new Set(toArray(req.query.accreditation))];
       const qParam = typeof req.query.q === "string" ? req.query.q : undefined;
       const hasMeasurementFilter = metricIds.length > 0 || accreditations.length > 0 || (qParam !== undefined && qParam.length > 0);
+      const formatKinds = toArray(req.query.format_kind);
+      const creativeOperations = toArray(req.query.creative_operation);
+      const publisherDomain = typeof req.query.publisher_domain === "string" ? req.query.publisher_domain : undefined;
+      const formatOptionId = typeof req.query.format_option_id === "string" ? req.query.format_option_id : undefined;
+      const capabilityId = typeof req.query.capability_id === "string" ? req.query.capability_id : undefined;
+      const hasCreativeFilter = formatKinds.length > 0 || creativeOperations.length > 0 || Boolean(publisherDomain || formatOptionId || capabilityId);
+
+      if (hasMeasurementFilter && hasCreativeFilter) {
+        return res.status(400).json({
+          error: "measurement and creative capability filters cannot be combined",
+        });
+      }
 
       // Per-filter and cross-product limits. No route rate-limiter exists on this
       // endpoint, so we bound the M×N @> predicate count here to prevent
@@ -5644,6 +5750,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           });
         }
         type = "measurement" as AgentType;
+      }
+
+      if (hasCreativeFilter) {
+        const invalidOperations = creativeOperations.filter((operation) => !["build", "validate", "preview"].includes(operation));
+        if (invalidOperations.length > 0) {
+          return res.status(400).json({
+            error: `Invalid creative_operation value(s): ${invalidOperations.join(", ")}`,
+            valid_values: ["build", "validate", "preview"],
+          });
+        }
       }
 
       // Length cap on q. Wildcards (% _) get rejected outright rather than
@@ -5701,6 +5817,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           metric_ids: metricIds,
           accreditations,
           q: qFilter,
+        });
+        federatedAgents = federatedAgents.filter((fa) => matchingUrls.has(fa.url));
+      }
+      if (hasCreativeFilter) {
+        const matchingUrls = await agentSnapshotDb.filterCreativeAgents({
+          format_kinds: formatKinds,
+          publisher_domain: publisherDomain,
+          format_option_id: formatOptionId,
+          capability_id: capabilityId,
+          operations: creativeOperations,
         });
         federatedAgents = federatedAgents.filter((fa) => matchingUrls.has(fa.url));
       }
@@ -7905,35 +8031,6 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           steps_total: 0,
         };
         const serializedStoryboardStatus = serializeStoryboardRunStatus(storyboardStatus);
-        const isRunnerApplicabilitySkip = (scenarioId: string, step: {
-          skip_reason?: string;
-          step_id?: unknown;
-          requirement?: unknown;
-        }): boolean => {
-          switch (step.skip_reason) {
-            case 'capability_unsupported':
-              return true;
-            case 'missing_test_kit_contract':
-              return scenarioId === 'idempotency/rate_limit_replay_invariant' &&
-                step.step_id === 'expect_rate_limit_not_replayed';
-            case 'requirement_unmet':
-              return step.requirement === 'webhook_receiver';
-            default:
-              return false;
-          }
-        };
-        const isControllerCoverageGapScenario = (scenario: { scenario?: unknown; steps?: any[] }): boolean => {
-          const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
-          const scenarioId = typeof scenario.scenario === 'string' ? scenario.scenario : '';
-          return steps.length > 0 && steps.every((step) => {
-            if (!step?.skipped) return false;
-            return step.skip_reason === 'peer_branch_taken' ||
-              step.skip_reason === 'peer_substituted' ||
-              step.skip_reason === 'missing_test_controller' ||
-              (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller') ||
-              isRunnerApplicabilitySkip(scenarioId, step);
-          });
-        };
         const uiDiagnostics = (dbInput.step_diagnostics ?? []).map((diagnostic) => ({
           run_id: run.id,
           agent_url: agentUrl,
@@ -7957,7 +8054,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
                   t.scenarios.filter((s) => s.scenario === step.comply_scenario),
                 )
               : [];
-            const executableScenarios = matchingScenarios.filter((s) => !isControllerCoverageGapScenario(s));
+            const executableScenarios = matchingScenarios.filter(
+              (s) => !isNonExecutableCoverageGapScenario(s),
+            );
 
             const passed = executableScenarios.length > 0
               ? executableScenarios.every((s) => s.overall_passed)
@@ -8301,6 +8400,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     const rawDomain = req.query.domain as string;
     if (!rawDomain) {
       return res.status(400).json({ error: "Missing required query param: domain" });
+    }
+    const include = typeof req.query.include === 'string' ? req.query.include : undefined;
+    if (include !== undefined && include !== 'placements') {
+      return res.status(400).json({ error: "Invalid include value; expected placements" });
     }
 
     try {
@@ -8791,6 +8894,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         properties: projectedProperties,
         brand: summarizeBrandManifest(brandManifest, files.brand_json.name),
         formats: summarizeFormats(cachedAdagentsManifest, projectedProperties),
+        ...(include === 'placements' && cachedAdagentsManifest
+          ? { placements: summarizePlacements(cachedAdagentsManifest, cachedSourceType === 'community' ? 'community' : 'adagents_json') }
+          : {}),
         authorized_agents: authorizations.map(a => {
           if (skipRollup) {
             return {
@@ -9360,9 +9466,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       if (agentType === "creative") {
         try {
-          const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
-          const formats = await creativeClient.listFormats();
-          stats.format_count = formats.length;
+          const capabilityClient = new AdCPClient([{
+            id: "creative-capability-discovery",
+            name: "Creative capability discovery",
+            agent_uri: url,
+            protocol: "mcp",
+          }], withSdkSafeTransport({})).agent("creative-capability-discovery");
+          const result = await capabilityClient.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
+          const creative = (result.data as Record<string, unknown> | undefined)?.creative as Record<string, unknown> | undefined;
+          stats.format_count = Array.isArray(creative?.supported_formats) ? creative.supported_formats.length : 0;
         } catch (statsError) {
           logger.debug({ err: statsError, url }, "Failed to fetch creative formats");
           stats.format_count = 0;
@@ -9401,23 +9513,19 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
 
     try {
-      const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
-      const formats = await creativeClient.listFormats();
+      const capabilityClient = new AdCPClient([{
+        id: "creative-capability-discovery",
+        name: "Creative capability discovery",
+        agent_uri: url,
+        protocol: "mcp",
+      }], withSdkSafeTransport({})).agent("creative-capability-discovery");
+      const result = await capabilityClient.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
+      const creative = (result.data as Record<string, unknown> | undefined)?.creative as Record<string, unknown> | undefined;
+      const formats = Array.isArray(creative?.supported_formats) ? creative.supported_formats : [];
 
       return res.json({
         success: true,
-        formats: formats.map((format) => {
-          return {
-            format_id: format.format_id,
-            name: format.name,
-            description: format.description,
-            example_url: format.example_url,
-            renders: format.renders,
-            assets: format.assets,
-            output_format_ids: format.output_format_ids,
-            agent_url: format.agent_url,
-          };
-        }),
+        formats,
       });
     } catch (error) {
       logger.warn({ err: error, url }, "Agent formats fetch failed");
@@ -9459,7 +9567,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           pricing_model: p.pricing_model,
           base_rate: p.base_rate,
           currency: p.currency,
-          format_ids: p.format_ids,
+          format_options: p.format_options,
           delivery_channels: p.delivery_channels,
           targeting_capabilities: p.targeting_capabilities,
         })),
@@ -10355,8 +10463,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         };
 
         const response = await profilesDb.search(searchQuery);
+        const results = response.results.map(result => {
+          const { format_ids: _deprecatedFormatIds, ...rest } = result;
+          return { ...rest, format_kinds: result.format_kinds ?? [] };
+        });
 
-        return res.json(response);
+        return res.json({ ...response, results });
       } catch (error: any) {
         if (error?.message?.includes('Invalid cursor')) {
           return res.status(400).json({ error: "Invalid cursor format" });

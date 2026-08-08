@@ -2,7 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/format.json",
   "title": "Format",
-  "description": "Represents a creative format with its requirements",
+  "description": "**DEPRECATED in 3.2.** Legacy named-format definition retained for older 3.x peers and list_creative_formats compatibility projections. New products and creative agents author ProductFormatDeclaration canonical contracts instead.",
+  "deprecated": true,
   "type": "object",
   "$defs": {
     "baseIndividualAsset": {

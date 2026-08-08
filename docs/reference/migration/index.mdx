@@ -13,6 +13,10 @@ This page covers every breaking change when upgrading from AdCP 2.x to 3.0, with
 **Upgrading from 3.0 to 3.1?** Use the [3.0 to 3.1 migration guide](/docs/reference/migration/3-0-to-3-1). This page is for the breaking v2.x to 3.0 upgrade.
 </Info>
 
+<Info>
+**Preparing for 3.2?** See [Migrating secured asset access](/docs/reference/migration/asset-access) to replace inline provider credentials with signed URLs or pre-authorized workload identity.
+</Info>
+
 <Warning>
 **v2 is unsupported as of 3.0 GA and fully deprecated on August 1, 2026 (UTC).** See the [v2 sunset page](/docs/reference/v2-sunset) for the full timeline, AAO registry policy, and why v2 is not safe for interoperable production.
 </Warning>
@@ -124,6 +128,14 @@ During migration, sellers can accept both v2 and v3 traffic and buyers can route
   </Card>
   <Card title="Attribution" icon="link" href="/docs/reference/migration/attribution">
     Integer days to structured `Duration` objects
+  </Card>
+</CardGroup>
+
+## 3.2 migration guides
+
+<CardGroup cols={2}>
+  <Card title="Secured asset access" icon="key" href="/docs/reference/migration/asset-access">
+    Replace inline provider credentials with signed URLs or pre-authorized workload identity
   </Card>
 </CardGroup>
 

@@ -354,11 +354,18 @@ export async function getAlertHistory(
   return result.rows;
 }
 
-export async function resolveAlert(alertId: string): Promise<void> {
-  await query(
-    `UPDATE network_alert_history SET resolved_at = NOW() WHERE id = $1`,
-    [alertId]
+export async function resolveAlert(
+  orgId: string,
+  alertId: string
+): Promise<boolean> {
+  const result = await query<{ id: string }>(
+    `UPDATE network_alert_history
+     SET resolved_at = COALESCE(resolved_at, NOW())
+     WHERE org_id = $1 AND id = $2
+     RETURNING id`,
+    [orgId, alertId]
   );
+  return result.rows.length > 0;
 }
 
 // ─── Alert evaluation ───────────────────────────────────────────────────────

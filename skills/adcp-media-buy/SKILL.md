@@ -24,7 +24,6 @@ The Media Buy Protocol provides 11 standardized tasks for managing advertising c
 |------|---------|---------------|
 | `get_products` | Discover inventory using structured constraints and/or a brief | ~60s |
 | `get_adcp_capabilities` | See agent capabilities, supported protocols, and publisher properties | ~1s |
-| `list_creative_formats` | View creative specifications | ~1s |
 | `create_media_buy` | Create campaigns | Minutes-Days |
 | `update_media_buy` | Modify campaigns | Minutes-Days |
 | `get_media_buys` | Retrieve campaign state and status | ~1-5s |
@@ -37,7 +36,7 @@ The Media Buy Protocol provides 11 standardized tasks for managing advertising c
 ## Typical Workflow
 
 1. **Discover products**: `get_products` with structured filters and targeting; add a brief for semantic curation
-2. **Verify the offer**: inspect pricing, forecast, `overlay_support`, and any `targeting_resolution`
+2. **Verify the offer**: inspect pricing, forecast, canonical `format_options[]`, `overlay_support`, and any `targeting_resolution`
 3. **Review formats**: `list_creative_formats` for the returned product formats
 4. **Create campaign**: `create_media_buy` with the selected configured product and budget
 5. **Upload creatives**: `sync_creatives` to add creative assets
@@ -45,13 +44,13 @@ The Media Buy Protocol provides 11 standardized tasks for managing advertising c
 
 ---
 
-## Canonical formats (AdCP 3.1+)
+## Canonical formats (AdCP 3.2)
 
 Products carry `format_options[]`: a list of `ProductFormatDeclaration` entries describing the creative shapes the product accepts. Each declaration carries:
 
-- `format_kind` — canonical type (image / html5 / display_tag / video_hosted / video_vast / audio_hosted / audio_daast / image_carousel / responsive_creative / sponsored_placement / agent_placement / custom)
+- `format_kind` — one of the 12 canonicals: `image`, `html5`, `display_tag`, `image_carousel`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `sponsored_placement`, `native_in_feed`, `responsive_creative`, or `agent_placement`; use `custom` only with `format_shape` and `format_schema`
 - `params` — per-canonical parameters narrowing the format (dimensions, durations, codecs, char limits, CTA enums)
-- Optional `capability_id` — disambiguates when a product carries multiple declarations of the same `format_kind`, and lets a placement reference a publisher-catalog declaration by ID rather than inlining
+- Optional `format_option_id` — disambiguates product options and identifies publisher-catalog declarations when paired with `publisher_domain`
 - Optional `v1_format_ref: [{agent_url, id}]` — array linking this v2 declaration to one or more v1 named formats (for dual emission during the v1↔v2 migration). Multi-size declarations should carry one ref per size
 - Optional `seller_preference: "preferred" | "accepted" | "discouraged"` — soft routing hint when a multi-format product has several options at the same price
 
@@ -59,7 +58,7 @@ Products carry `format_options[]`: a list of `ProductFormatDeclaration` entries 
 
 **Size flexibility.** Display canonicals (image / html5 / display_tag) declare size in one of three modes: fixed (`width`+`height`), multi-size (`sizes: [{w,h}]` — mirrors OpenRTB `banner.format[]`), or responsive (`min_width`/`max_width`/`min_height`/`max_height`). Modes are mutually exclusive.
 
-**Discovering publisher catalogs.** `list_creative_formats(publisher_domain="meta.com")` returns the publisher's authoritative format list by reading `<publisher_domain>/.well-known/adagents.json` `formats[]`, falling back to the AAO community mirror at `https://creative.adcontextprotocol.org/translated/<platform>/adagents.json`, then to agent-derived from own products. Response carries `source: "publisher" | "aao_mirror" | "agent_derived"` so buyers know which tier produced the list.
+**Discovering publisher catalogs.** Call `GET https://agenticadvertising.org/api/registry/publisher?domain=<publisher_domain>` for publisher-origin → AgenticAdvertising.org community-catalog → fail-closed resolution and provenance. Add `&include=placements` for provenance-labeled placement summaries with resolved canonical format options. The lookup's top-level `formats[]` remains a lossy display summary; fetch the returned raw registry or hosting URL when you need custom schema fields or other omitted declaration fields. Do not infer publisher authority from a seller's product catalog. Seller-specific deliverability comes from that seller's `Product.format_options[]`.
 
 **Conversion tracking lives elsewhere.** Pixel-firing, conversion events, and attribution belong on `sync_event_sources` / `event_log` (campaign-scoped), NOT on creative format declarations. Sending `pixel_id` in `platform_extensions` on a format is a category error.
 
@@ -129,6 +128,7 @@ prose, look for one response-level confirmation in
 
 **Response contains:**
 - `products`: Array of matching products with `product_id`, `name`, `description`, `pricing_options`
+- Each product includes canonical `format_options[]` and targeting capabilities
 - `overlay_support`: binding product-scoped dimensions selectable later
 - `targeting_resolution.modifications`: sparse differences from the requested structured overlay; selecting the product accepts them
 - Response `targeting_resolution.brief_targeting`: the seller's single structured interpretation of hard targeting inferred from prose
@@ -274,9 +274,10 @@ Upload and manage creative assets.
     {
       "creative_id": "hero_video_30s",
       "name": "Brand Hero Video",
-      "format_id": {
-        "agent_url": "https://creative.adcontextprotocol.org",
-        "id": "video_standard_30s"
+      "format_kind": "video_hosted",
+      "format_option_ref": {
+        "scope": "product",
+        "format_option_id": "video_30s"
       },
       "assets": {
         "video": {
@@ -297,7 +298,8 @@ Upload and manage creative assets.
 **Key fields:**
 - `creatives` (array, required): Creative assets to sync
   - `creative_id`: Your unique identifier
-  - `format_id`: Object with `agent_url` and `id` from format specifications
+  - `format_kind`: Canonical format accepted by the selected product
+  - `format_option_ref`: Product or publisher option when `format_kind` alone is ambiguous
   - `assets`: Asset content (video, image, html, etc.)
 - `assignments` (object, optional): Map creative_id to package IDs
 - `dry_run` (boolean): Preview changes without applying
@@ -416,19 +418,18 @@ Brand context is provided by domain reference:
 
 The agent resolves the domain to retrieve the brand's identity (name, colors, guidelines, etc.) from its `brand.json` file.
 
-### Format IDs
+### Canonical format options
 
-Creative format identifiers are structured objects:
+Products declare their closed accepted set directly:
 ```json
 {
-  "format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250"
-  }
+  "format_option_id": "display_image_300x250",
+  "format_kind": "image",
+  "params": { "width": 300, "height": 250 }
 }
 ```
 
-The `agent_url` specifies which creative agent defines the format. Use `https://creative.adcontextprotocol.org` for standard IAB formats.
+Buyers select the option with `format_option_refs[]` on the package and submit a manifest using `format_kind` plus `format_option_ref`. Compound named format IDs are deprecated in 3.2.
 
 ### Pricing Options
 

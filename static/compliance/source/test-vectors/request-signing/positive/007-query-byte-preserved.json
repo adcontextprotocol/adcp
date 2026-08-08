@@ -1,6 +1,7 @@
 {
   "name": "URL query string preserves byte order (not alphabetized)",
   "spec_reference": "#adcp-rfc-9421-profile (@target-uri canonicalization step 7: preserve query byte-for-byte)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

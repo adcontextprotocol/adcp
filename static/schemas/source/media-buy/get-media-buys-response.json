@@ -151,6 +151,7 @@
           },
           "valid_actions": {
             "type": "array",
+            "deprecated": true,
             "description": "Flat-vocabulary actions the buyer can perform on this media buy in its current state. Eliminates the need for agents to internalize the state machine — the seller declares what is permitted right now. Deprecated in favor of `available_actions[]`, which carries `mode` (self_serve / conditional_self_serve / requires_approval), optional SLA, and optional `terms_ref`. Sellers SHOULD populate both during the 3.x deprecation window; consumers MUST prefer `available_actions[]` when both are present. Removed in 4.0.",
             "items": {
               "$ref": "/schemas/enums/media-buy-valid-action.json"
@@ -269,7 +270,8 @@
                 },
                 "format_ids": {
                   "type": "array",
-                  "description": "Legacy named-format IDs supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it, including dual-emission cases where another selector won precedence.",
+                  "deprecated": true,
+                  "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format IDs supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it, including dual-emission cases where another selector won precedence.",
                   "items": {
                     "$ref": "/schemas/core/format-id.json"
                   },
@@ -381,9 +383,33 @@
                     "additionalProperties": true
                   }
                 },
+                "formats_to_provide": {
+                  "type": "array",
+                  "description": "The immutable canonical creative contracts established for this package at booking time. Each entry is the selected Product.format_options declaration, or the equivalent declaration normalized from a direct format_kind + params selector. Compare this full checklist with formats_pending to determine current creative readiness.",
+                  "items": {
+                    "$ref": "/schemas/core/product-format-declaration.json"
+                  },
+                  "minItems": 1
+                },
+                "formats_pending": {
+                  "type": "array",
+                  "description": "Canonical package-time format declarations from formats_to_provide that do not yet have creative coverage through sync_creatives or inline creative assignment. Each entry preserves the full contract needed to select a compatible creative agent, including ID-less unique-kind and direct canonical selections. An empty emitted array means every formats_to_provide requirement is covered. Absence means readiness was not reported, so buyers MUST NOT infer full coverage from omission.",
+                  "items": {
+                    "$ref": "/schemas/core/product-format-declaration.json"
+                  }
+                },
+                "format_ids_to_provide": {
+                  "type": "array",
+                  "deprecated": true,
+                  "description": "**DEPRECATED in 3.2.** Legacy named-format projection of formats_to_provide retained for older 3.x peers. New sellers emit canonical formats_to_provide declarations.",
+                  "items": {
+                    "$ref": "/schemas/core/format-id.json"
+                  }
+                },
                 "format_ids_pending": {
                   "type": "array",
-                  "description": "Format IDs from the original create_media_buy format_ids_to_provide that have not yet been uploaded via sync_creatives. When empty or absent, all required formats have been provided.",
+                  "deprecated": true,
+                  "description": "**DEPRECATED in 3.2.** Legacy named-format projection of formats_pending retained for older 3.x peers. New sellers emit canonical formats_pending declarations. An empty emitted array means every projected requirement is covered. Absence means legacy readiness was not reported and MUST NOT be interpreted as full coverage.",
                   "items": {
                     "$ref": "/schemas/core/format-id.json"
                   }

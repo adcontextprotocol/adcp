@@ -38,6 +38,7 @@ import {
   NAME_REQUIRED_MARKER,
   ensureCertifierCredential,
 } from '../../services/certification-credential-issuance.js';
+import { linkCertificationModuleThread } from '../../services/certification-experience.js';
 
 export { NAME_REQUIRED_MARKER };
 
@@ -609,7 +610,11 @@ async function checkAndFormatCredentials(
   userId: string,
   memberContext: MemberContext | null,
 ): Promise<string[]> {
+  const allowPaidCredentials = await certDb.hasEffectiveMembershipForUser(userId);
   const awarded = await certDb.checkAndAwardCredentials(userId);
+
+  const creds = await certDb.getCredentials();
+  const credMap = new Map(creds.map(c => [c.id, c]));
 
   // Pick up the "awarded earlier, never issued to Certifier" backlog so a
   // post-set_my_name retry actually finalizes the certificate. Bounded to a
@@ -624,6 +629,7 @@ async function checkAndFormatCredentials(
     .filter(c =>
       !c.certifier_credential_id &&
       !awarded.includes(c.credential_id) &&
+      (allowPaidCredentials || (credMap.get(c.credential_id)?.tier ?? Number.POSITIVE_INFINITY) <= 1) &&
       (now - new Date(c.awarded_at).getTime()) < RETRY_WINDOW_MS,
     )
     .map(c => c.credential_id);
@@ -631,13 +637,17 @@ async function checkAndFormatCredentials(
   const toProcess = [...new Set([...awarded, ...deferred])];
   if (toProcess.length === 0) return [];
 
-  const creds = await certDb.getCredentials();
-  const credMap = new Map(creds.map(c => [c.id, c]));
   const lines: string[] = [''];
   let nameRequired = false;
   for (const credId of toProcess) {
     const cred = credMap.get(credId);
     if (cred) {
+      // External issuance is its own authorization boundary. Recheck directly
+      // before each paid badge call so membership ending during assessment or
+      // an earlier network request cannot reuse a stale positive decision.
+      if (cred.tier > 1 && !(await certDb.hasEffectiveMembershipForUser(userId))) {
+        continue;
+      }
       const result = await issueCertifierBadge(userId, credId, cred, memberContext);
       if (result === NAME_REQUIRED_MARKER) {
         nameRequired = true;
@@ -1580,9 +1590,20 @@ export function createCertificationToolHandlers(
    * trigger that surfaces the latent state — they never see the drift.
    */
   const ensureMembership = async (): Promise<boolean> => {
-    if (memberContext?.is_member) return true;
     const orgId = memberContext?.organization?.workos_organization_id;
-    if (!orgId || !stripe) return false;
+    const userId = getUserId();
+    if (!userId) return false;
+
+    // This is an authorization boundary, so do not trust the conversation's
+    // captured member context or the normal five-minute membership cache. Use
+    // the same user-level resolver as background issuance so membership via a
+    // second organization is handled consistently.
+    if (await certDb.hasEffectiveMembershipForUser(userId)) {
+      memberContext = memberContext ? { ...memberContext, is_member: true } : memberContext;
+      return true;
+    }
+    if (!orgId) return false;
+    if (!stripe) return false;
 
     const result = await attemptStripeReconciliation(orgId, {
       pool: getPool(),
@@ -1590,19 +1611,24 @@ export function createCertificationToolHandlers(
       logger,
     });
 
-    if (!result.healed) return false;
+    if (!result.healed && result.reason !== 'already_entitled') return false;
+
+    // Lazy reconciliation accepts a broader set of Stripe states for billing
+    // continuity. Certification uses the canonical membership rule (active,
+    // not canceled), so refresh and re-resolve instead of trusting `healed`.
+    const isMember = await certDb.hasEffectiveMembershipForUser(userId);
 
     if (memberContext?.organization) {
       memberContext = {
         ...memberContext,
-        is_member: true,
+        is_member: isMember,
         organization: {
           ...memberContext.organization,
-          subscription_status: result.subscriptionStatus,
+          ...(result.healed && { subscription_status: result.subscriptionStatus }),
         },
       };
     }
-    return true;
+    return isMember;
   };
 
   // ----- list_certification_tracks -----
@@ -1849,7 +1875,11 @@ export function createCertificationToolHandlers(
         return `Module ${moduleId} is already ${existingMod.status.replace('_', ' ')}. You can proceed to the next module or use get_learner_progress to check your overall progress.`;
       }
 
-      await certDb.startModule(userId, moduleId);
+      if (options?.threadId) {
+        await certDb.startModule(userId, moduleId, options.threadId);
+      } else {
+        await certDb.startModule(userId, moduleId);
+      }
       if (options?.trainingModuleContext) {
         options.trainingModuleContext.moduleId = moduleId;
       }
@@ -1970,6 +2000,14 @@ export function createCertificationToolHandlers(
       const unavailable = unavailableSpecialistMessage(moduleId);
       if (unavailable) return notCompleted(moduleId, 'state', unavailable);
 
+      const mod = await certDb.getModule(moduleId);
+      if (!mod) return notCompleted(moduleId, 'state', `Module ${moduleId} was not found.`);
+
+      const hasMembership = await ensureMembership();
+      if (!mod.is_free && !hasMembership) {
+        return notCompleted(moduleId, 'state', membershipRequiredMessage(moduleId, memberContext));
+      }
+
       // Verify module is in-progress before allowing completion
       const progress = await certDb.getProgress(userId);
       const moduleProgress = progress.find(p => p.module_id === moduleId);
@@ -1992,7 +2030,6 @@ export function createCertificationToolHandlers(
       const scores = input.scores as Record<string, number>;
       if (!scores || typeof scores !== 'object') return 'Scores are required to complete a module.';
 
-      const mod = await certDb.getModule(moduleId);
       const ac = mod?.assessment_criteria as certDb.AssessmentCriteria | undefined;
 
       // Validate scores against assessment criteria (range, dimensions, floor, threshold)
@@ -2088,6 +2125,11 @@ export function createCertificationToolHandlers(
       const retrySeconds = Math.max(1, Math.ceil((rate.retryAfterMs ?? 60000) / 1000));
       return `Rate limit exceeded on check_credentials. Try again in ~${retrySeconds} seconds.`;
     }
+    // A deferred badge retry is also an entitlement recovery point. Give a
+    // Stripe-active organization with stale local state the same lazy-heal
+    // opportunity as the paid learning gates. The issuance path still
+    // revalidates membership immediately before every paid badge call.
+    await ensureMembership();
     const lines = await checkAndFormatCredentials(userId, memberContext);
     if (lines.length === 0) {
       return 'No new credentials to issue. Your existing credentials are unchanged.';
@@ -2245,7 +2287,8 @@ export function createCertificationToolHandlers(
         const mod = moduleMap.get(id);
         return mod && !mod.is_free;
       });
-      if (paidModules.length > 0 && !(await ensureMembership())) {
+      const hasMembership = await ensureMembership();
+      if (paidModules.length > 0 && !hasMembership) {
         return membershipRequiredMessage(paidModules[0], memberContext);
       }
 
@@ -2437,7 +2480,11 @@ export function createCertificationToolHandlers(
       }
 
       // Start the module and create an attempt
-      await certDb.startModule(userId, moduleId);
+      if (options?.threadId) {
+        await certDb.startModule(userId, moduleId, options.threadId);
+      } else {
+        await certDb.startModule(userId, moduleId);
+      }
       const attempt = await certDb.createAttempt(userId, mod.track_id, options?.threadId, moduleId);
       if (options?.trainingModuleContext) {
         options.trainingModuleContext.moduleId = moduleId;
@@ -2583,6 +2630,10 @@ export function createCertificationToolHandlers(
             return 'This exam attempt is already completed, but I could not find the capstone module needed to reconcile credential issuance. Ask an admin to run the certification repair from the admin dashboard.';
           }
 
+          if (!(await ensureMembership())) {
+            return notCompleted(capstoneMod.id, 'state', membershipRequiredMessage(capstoneMod.id, memberContext));
+          }
+
           const completedScores = asNumberRecord(attempt.scores);
           if (!completedScores) {
             return notCompleted(capstoneMod.id, 'state', `This capstone attempt is already passed, but its recorded scores are missing. Ask an admin to use Certification > Attempts needing attention for attempt ${attempt.id}.`);
@@ -2629,6 +2680,9 @@ export function createCertificationToolHandlers(
       const capstoneId = capstoneMod.id;
       const unavailable = unavailableSpecialistMessage(capstoneId);
       if (unavailable) return notCompleted(capstoneId, 'state', unavailable);
+      if (!(await ensureMembership())) {
+        return notCompleted(capstoneId, 'state', membershipRequiredMessage(capstoneId, memberContext));
+      }
       const deltaDef = getDeltaForModule(capstoneId) ?? null;
       const deltaStatus = deltaDef
         ? await certDb.getDeltaStatus(deltaDef, userId)
@@ -2811,6 +2865,12 @@ export function createCertificationToolHandlers(
       const userId = getUserId();
       if (!userId) return 'User not authenticated.';
 
+      const mod = await certDb.getModule(moduleId);
+      if (!mod) return `Module ${moduleId} was not found.`;
+      if (!mod.is_free && !(await ensureMembership())) {
+        return membershipRequiredMessage(moduleId, memberContext);
+      }
+
       // Validate module is in-progress before saving checkpoint
       const progress = await certDb.getProgress(userId);
       const modProgress = progress.find(p => p.module_id === moduleId);
@@ -2834,7 +2894,6 @@ export function createCertificationToolHandlers(
 
       // Validate demonstration IDs and evidence keys are real criteria for this module
       if (demonstrationsVerified.length || (demonstrationEvidence && Object.keys(demonstrationEvidence).length > 0)) {
-        const mod = await certDb.getModule(moduleId);
         if (demonstrationsVerified.length) {
           const invalid = validateDemonstrationIds(mod, demonstrationsVerified);
           if (invalid.length > 0) {
@@ -2864,6 +2923,7 @@ export function createCertificationToolHandlers(
         demonstration_evidence: demonstrationEvidence,
         notes: enrichedNotes,
       });
+      await linkCertificationModuleThread(userId, moduleId, options?.threadId);
 
       const demoCount = demonstrationsVerified.length;
       return `Teaching checkpoint saved for ${moduleId}. Phase: ${currentPhase}. Covered ${conceptsCovered.length} concepts, ${conceptsRemaining.length} remaining. Demonstrations verified: ${demoCount}.`;
@@ -2917,7 +2977,7 @@ Validate in two parts.
 npx @adcp/sdk@latest test-mcp get_products '{"brief":"<your campaign brief>"}'
 \`\`\`
 
-Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products → create_media_buy → list_creative_formats → sync_creatives.
+Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products (select a canonical \`format_options[]\` entry) → create_media_buy → get_adcp_capabilities on the chosen creative endpoint → sync_creatives with \`format_kind\` and optional \`format_option_ref\`.
 
 2. Validate the 3.2 targeting-aware objectives with schema fixtures: request decomposition, required future targeting support, disclosed modification acceptance/rejection, and effective package readback. The public agent does not validate those fields until https://github.com/adcontextprotocol/adcp/issues/6199 lands. After that issue is complete, rerun the targeting-aware fixtures live.
 

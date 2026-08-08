@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { globSync } from 'glob';
 
@@ -49,6 +49,31 @@ function shouldCheck(url) {
   return !SKIPPED_PATH_PREFIXES.some((prefix) => parsed.pathname.startsWith(prefix));
 }
 
+function resolvesToLocalDocsSource(url) {
+  const parsed = new URL(url);
+  if (parsed.hostname !== 'docs.adcontextprotocol.org') return false;
+
+  let relativePath;
+  try {
+    relativePath = decodeURIComponent(parsed.pathname)
+      .replace(/^\/+/, '')
+      .replace(/\/+$/, '');
+  } catch {
+    return false;
+  }
+  if (relativePath === '' || relativePath === 'docs') {
+    relativePath = 'docs/intro';
+  }
+  if (relativePath.split('/').includes('..')) return false;
+
+  return [
+    `${relativePath}.md`,
+    `${relativePath}.mdx`,
+    `${relativePath}/index.md`,
+    `${relativePath}/index.mdx`,
+  ].some((candidate) => existsSync(join(ROOT, candidate)));
+}
+
 async function fetchStatus(url, method, retries = 3) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -83,6 +108,16 @@ function isReachableStatus(status) {
 }
 
 async function checkUrl(url) {
+  // Current-source docs are deployed after merge, so checking them against
+  // the production host makes PR CI race the previous deployment. Mintlify's
+  // broken-links command validates navigation and relative routes above this
+  // step; here, accept an absolute docs URL when its repository-owned source
+  // exists. Generated API routes (which have no .md/.mdx source) still fall
+  // through to the live network check.
+  if (resolvesToLocalDocsSource(url)) {
+    return { ok: true, method: 'LOCAL_SOURCE' };
+  }
+
   try {
     const headStatus = await fetchStatus(url, 'HEAD');
     if (isReachableStatus(headStatus)) {

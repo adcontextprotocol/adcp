@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/get-products-response.json",
   "title": "Get Products Response",
-  "description": "Response payload for get_products task",
+  "description": "Canonical response contract for get_products, including completed results, terminal failures, wholesale unchanged responses, and the structured GetProductsRejected business outcome.",
   "type": "object",
   "allOf": [
     {
@@ -10,6 +10,51 @@
     },
     {
       "$ref": "/schemas/core/protocol-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "not": {
+              "const": "rejected"
+            }
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "reason"
+              ]
+            },
+            {
+              "required": [
+                "suggestions"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "rejected"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "$ref": "/schemas/media-buy/get-products-rejected.json"
+      }
     }
   ],
   "properties": {
@@ -68,6 +113,22 @@
       "description": "Task-specific errors and warnings (e.g., product filtering issues)",
       "items": {
         "$ref": "/schemas/core/error.json"
+      }
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000,
+      "description": "Buyer-facing market explanation required only on the GetProductsRejected arm. MAY be sanitized to protect confidential seller rules. Plain text only."
+    },
+    "suggestions": {
+      "type": "array",
+      "description": "Actionable alternatives available only on the GetProductsRejected arm.",
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000
       }
     },
     "property_list_applied": {
@@ -183,7 +244,7 @@
     },
     "incomplete": {
       "type": "array",
-      "description": "Declares what the seller could not finish within the buyer's time_budget or due to internal limits. Each entry identifies a scope that is missing or partial. Absent when the response is fully complete.",
+      "description": "Declares what the seller could not finish within the buyer's time_budget or due to internal limits while still returning a usable response. Each entry identifies a scope that is missing or partial. Absent when the response is fully complete. This field does not classify the condition as retryable; retryability is carried by error.recovery on the error channel.",
       "minItems": 1,
       "items": {
         "type": "object",
@@ -209,7 +270,7 @@
                 "$ref": "/schemas/core/duration.json"
               }
             ],
-            "description": "How much additional time would resolve this scope. Allows the buyer to decide whether to retry with a larger time_budget."
+            "description": "How much additional time is expected to resolve this scope. Allows the buyer to decide whether to make a new attempt with a larger time_budget; its presence is not an automatic-retry instruction."
           }
         },
         "required": [
@@ -374,7 +435,7 @@
     "if": {
       "properties": {
         "status": {
-          "const": "failed"
+          "const": "rejected"
         }
       },
       "required": [
@@ -382,17 +443,32 @@
       ]
     },
     "then": {
-      "description": "Failed response: errors[] carries the terminal failure details; products[] and cache_scope are not required because no product result was produced.",
-      "required": [
-        "errors"
-      ]
+      "$ref": "/schemas/media-buy/get-products-rejected.json"
     },
     "else": {
-      "description": "Standard response: products[] MUST be present and cache_scope MUST declare the response's cache layer. wholesale_feed_version is required by the wholesale-mode contract and verifier constraints, but is not schema-required here because this response schema is shared by non-wholesale reads.",
-      "required": [
-        "products",
-        "cache_scope"
-      ]
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "description": "Failed response: errors[] carries the terminal failure details; products[] and cache_scope are not required because no product result was produced.",
+        "required": [
+          "errors"
+        ]
+      },
+      "else": {
+        "description": "Standard response: products[] MUST be present and cache_scope MUST declare the response's cache layer. wholesale_feed_version is required by the wholesale-mode contract and verifier constraints, but is not schema-required here because this response schema is shared by non-wholesale reads.",
+        "required": [
+          "products",
+          "cache_scope"
+        ]
+      }
     }
   },
   "additionalProperties": true

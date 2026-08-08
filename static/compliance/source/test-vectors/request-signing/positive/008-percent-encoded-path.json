@@ -1,6 +1,7 @@
 {
   "name": "URL path percent-encoded bytes normalized to uppercase hex",
   "spec_reference": "#adcp-rfc-9421-profile (@target-uri canonicalization step 6: normalize percent-encoding)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

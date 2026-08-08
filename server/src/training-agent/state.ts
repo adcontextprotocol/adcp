@@ -183,6 +183,7 @@ function createSession(): SessionState {
     negotiatedPricingOptions: new Map(),
     creatives: new Map(),
     signalActivations: new Map(),
+    buildVariantTargets: new Map(),
     usageRecords: [],
     complyExtensions: {
       accountStatuses: new Map(),
@@ -194,6 +195,7 @@ function createSession(): SessionState {
       seededCreativeFormats: new Map(),
       seededMeasurementCatalogs: new Map(),
       provenanceAuditObservations: new Map(),
+      forcedGetProductsRejections: new Map(),
     },
     createdAt: now,
     lastAccessedAt: now,
@@ -397,6 +399,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
     contentStandards: asMap(hydrated.contentStandards, fresh.contentStandards),
     rightsGrants: asMap(hydrated.rightsGrants, fresh.rightsGrants),
     negotiatedPricingOptions: asMap(hydrated.negotiatedPricingOptions, fresh.negotiatedPricingOptions),
+    buildVariantTargets: asMap(hydrated.buildVariantTargets, fresh.buildVariantTargets),
     usageRecords: Array.isArray(hydrated.usageRecords) ? hydrated.usageRecords : [],
     complyExtensions: {
       accountStatuses: asMap(hydratedComply.accountStatuses, fresh.complyExtensions.accountStatuses),
@@ -409,6 +412,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
       seededMeasurementCatalogs: asMap(hydratedComply.seededMeasurementCatalogs, fresh.complyExtensions.seededMeasurementCatalogs),
       provenanceAuditObservations: asMap(hydratedComply.provenanceAuditObservations, fresh.complyExtensions.provenanceAuditObservations),
       forcedCreateMediaBuyArm: hydratedComply.forcedCreateMediaBuyArm,
+      forcedGetProductsRejections: asMap(hydratedComply.forcedGetProductsRejections, fresh.complyExtensions.forcedGetProductsRejections),
       forcedUpstreamUnavailable: hydratedComply.forcedUpstreamUnavailable,
     },
     lastGetProductsContext: (hydrated.lastGetProductsContext as SessionState['lastGetProductsContext']) ?? undefined,

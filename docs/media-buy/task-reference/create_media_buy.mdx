@@ -43,24 +43,14 @@ const result = await testAgent.createMediaBuy({
     {
       product_id: 'prod_d979b543',
       pricing_option_id: 'cpm_usd_auction',
-      format_ids: [
-        {
-          agent_url: 'https://creative.adcontextprotocol.org',
-          id: 'display_300x250_image'
-        }
-      ],
+      format_option_refs: [{ scope: 'product', format_option_id: 'display_300x250_image' }],
       budget: 2500,
       bidding: { bid_amount: 5.00 }
     },
     {
       product_id: 'prod_e8fd6012',
       pricing_option_id: 'cpm_usd_auction',
-      format_ids: [
-        {
-          agent_url: 'https://creative.adcontextprotocol.org',
-          id: 'display_300x250_html'
-        }
-      ],
+      format_option_refs: [{ scope: 'product', format_option_id: 'display_300x250_html' }],
       budget: 2500,
       bidding: { bid_amount: 4.50 }
     }
@@ -107,24 +97,16 @@ async def create_campaign():
             {
                 'product_id': 'prod_d979b543',
                 'pricing_option_id': 'cpm_usd_auction',
-                'format_ids': [
-                    {
-                        'agent_url': 'https://creative.adcontextprotocol.org',
-                        'id': 'display_300x250_image'
-                    }
-                ],
+                'format_kind': 'image',
+                'params': {'width': 300, 'height': 250},
                 'budget': 2500,
                 'bidding': {'bid_amount': 5.00}
             },
             {
                 'product_id': 'prod_e8fd6012',
                 'pricing_option_id': 'cpm_usd_auction',
-                'format_ids': [
-                    {
-                        'agent_url': 'https://creative.adcontextprotocol.org',
-                        'id': 'display_300x250_html'
-                    }
-                ],
+                'format_kind': 'html5',
+                'params': {'width': 300, 'height': 250},
                 'budget': 2500,
                 'bidding': {'bid_amount': 4.50}
             }
@@ -148,7 +130,7 @@ asyncio.run(create_campaign())
 npx @adcp/sdk@latest \
   https://test-agent.adcontextprotocol.org/sales/mcp \
   create_media_buy \
-  '{"brand":{"domain":"acmecorp.com"},"packages":[{"product_id":"prod_d979b543","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bidding":{"bid_amount":5.00}},{"product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bidding":{"bid_amount":4.50}}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
+  '{"brand":{"domain":"acmecorp.com"},"packages":[{"product_id":"prod_d979b543","pricing_option_id":"cpm_usd_auction","format_option_refs":[{"scope":"product","format_option_id":"display_300x250_image"}],"budget":30000,"bidding":{"bid_amount":5.00}},{"product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_auction","format_option_refs":[{"scope":"product","format_option_id":"display_300x250_html"}],"budget":20000,"bidding":{"bid_amount":4.50}}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
   --auth $ADCP_AUTH_TOKEN
 ```
 
@@ -192,9 +174,9 @@ When executing a proposal, `proposal_status` on the returned proposal determines
 |-----------|------|----------|-------------|
 | `product_id` | string | Yes | Opaque configured-product ID from `get_products`. It is stable within the discovery/refinement context that issued it, including subsequent `refine` calls, but is not guaranteed to remain valid in an independent discovery context. Selecting it accepts any `targeting_resolution` disclosed on that product. Sellers MUST echo it on every response package object representing the request. |
 | `pricing_option_id` | string | Yes | Pricing option ID from product's `pricing_options` array |
-| `format_ids` | FormatID[] | No | Legacy named-format selector. Format IDs that will be used — must be supported by product. When omitted (and no 3.1+ format-option selector or direct canonical selector is present), defaults to all formats supported by the product. Format-option-aware buyer SDKs targeting a heterogeneous seller population SHOULD dual-emit this alongside `format_option_refs` so legacy-format-only sellers receive an explicit format set rather than defaulting to all-formats. |
-| `format_option_refs` | FormatOptionRef[] | No | 3.1+ format-option selector. Structured references to entries in the package's target product `format_options[]`: `{scope: "publisher", publisher_domain, format_option_id}` for publisher-catalog-backed options, or `{scope: "product", format_option_id}` for product-local options (see [canonical formats](/docs/creative/canonical-formats)). When present, `format_option_refs` wins over both `format_ids` and direct `format_kind`/`params`. Sellers MUST reject with `UNSUPPORTED_FEATURE` (field path `packages[i].format_option_refs[j]`) when an entry doesn't match a `format_options[]` entry, when the product is legacy-format-only, or when the product's `format_options[]` entries don't publish selectable `format_option_id` values. |
-| `format_kind` | CanonicalFormatKind | No | 3.1+ direct canonical selector. Names the canonical format shape this package targets when the buyer is authoring by canonical kind rather than by `format_option_refs[]` or `format_ids[]`. Pair with `params` when the product declaration requires dimensions, duration, sizes, codecs, or other canonical parameters. If `format_ids[]` is also present and `format_option_refs[]` is absent, sellers validate `format_ids[]`; `format_kind` is only an informational echo of the same normalized shape. |
+| `format_option_refs` | FormatOptionRef[] | No | Canonical 3.2 selector into the product's `format_options[]`: publisher-scoped or product-scoped. |
+| `format_kind` | CanonicalFormatKind | No | Direct canonical selector. Pair with enough `params` to satisfy the product declaration. |
+| `format_ids` | FormatID[] | Deprecated | Named-format compatibility selector accepted only from older 3.x peers. New buyers do not dual-emit it. |
 | `params` | object | No | Parameters for the direct canonical selector in `format_kind`. Follows the selected canonical's parameter vocabulary. Requires `format_kind`; `params` alone is schema-invalid. A broad selector such as `{format_kind: "image"}` does not satisfy a product whose `format_options[]` fixes `params.width` and `params.height`; sellers reject under-specified direct selectors with `UNSUPPORTED_FEATURE` or an equivalent format-selector error. |
 | `budget` | number | Conditional | Hard lifetime package spend cap in the media-buy currency. Required in fixed mode. Optional in seller-optimized mode; it remains a ceiling, not a current or reserved allocation. |
 | `min_spend_target` | number | No | Soft lifetime package spend target in the media-buy currency for seller-optimized allocation. The seller should attempt to reach it, but it is not a billing or delivery guarantee. |
@@ -205,6 +187,8 @@ When executing a proposal, `proposal_status` on the returned proposal determines
 | `bid_price` | number | No | **Deprecated in 3.2.** Use `bidding.bid_amount` or `bidding.max_bid`. A package cannot supply both representations. |
 | `optimization_goals` | [OptimizationGoal[]](/docs/media-buy/conversion-tracking/#optimization-goals) | No | Objective functions for this package: what to optimize and in what priority. Currency controls belong in `bidding`; legacy `target.cost_per` and `target.per_ad_spend` remain accepted only for migration. |
 | `targeting_overlay` | TargetingOverlay | No | Additional constraints intersected with the configured targeting represented by `product_id` (see [Targeting](/docs/media-buy/advanced-topics/targeting)). The resulting package echoes the complete effective overlay. Direct create-time additions must compile exactly or be rejected. For `demographics`, inspect the selected product's `demographic_targeting` declaration first; sellers never silently broaden or narrow the original. Use `placement_selection` here to select targetable placements; creative assignment placement refs only route creatives. |
+| `audience_evidence_requirements` | AudienceEvidenceRequirements | No | Package-level suitability policy. Sellers reject an unsatisfied required policy rather than dropping it, and return every snapshot used to satisfy it in the confirmed package's `audience_evidence_selections` with `decision_use: "package_construction"`. This is not a targeting instruction. |
+| `audience_evidence_pins` | AudienceEvidencePin[] | No | Exact discovery snapshots the buyer requires, each pinned by `evidence_id`, `snapshot_id`, `version`, and `content_digest`. Sellers reject missing, substituted, or mutated snapshots. Every accepted pin is returned in the confirmed package's `audience_evidence_selections` and retained on package readback. |
 | `start_time` | string | No | ISO 8601 date-time for this package's flight start. When omitted, inherits the media buy's `start_time`. Must fall within the media buy's date range. Does not support `"asap"`. |
 | `end_time` | string | No | ISO 8601 date-time for this package's flight end. When omitted, inherits the media buy's `end_time`. Must fall within the media buy's date range. |
 | `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
@@ -295,7 +279,9 @@ A provider portfolio bidding strategy illustrates the current abstraction bounda
 | `confirmed_at` | ISO 8601 timestamp when the seller committed to the media buy. Stable after it is set. May be `null` in deferred/manual approval flows until seller commitment occurs. |
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
 | `revision` | Initial media-buy revision. Use this value as the `revision` token on the next `update_media_buy` call intended to change state. |
-| `packages` | Array of created packages with complete state. Packages may include per-package `creative_deadline` when different from the media buy deadline, and SHOULD echo every format selector field supplied on create (`format_option_refs`, `format_ids`, and/or `format_kind`/`params`) so read surfaces are lossless even when one selector wins precedence. |
+| `packages` | Array of created packages with complete state. Packages MAY include a per-package `creative_deadline` and SHOULD echo canonical selectors supplied on create so read surfaces are lossless. When additional creative coverage is required, each package carries `formats_to_provide[]`: full canonical ProductFormatDeclaration snapshots normalized from the selected product contract. When the request included audience-evidence pins or requirements, each package MUST return matching `audience_evidence_selections` with `decision_use: "package_construction"`. |
+
+Treat `packages[].formats_to_provide[]` as the stable creative checklist established at booking time. Each full declaration can be matched against a creative agent's live `creative.supported_formats[].format`, even when the product option has no `format_option_id`. After uploads or assignments, call `get_media_buys`: `packages[].formats_pending[]` contains the declarations that still lack creative coverage. The deprecated `format_ids_to_provide` / `format_ids_pending` projections exist only for older 3.x peers.
 
 `confirmed_at` is seller commitment time, not a delivery-status timestamp. Do not update it when a buy later pauses, resumes, starts delivery, completes, or reports performance. A committed synchronous create stamps it immediately. Use the `submitted` response branch when no `media_buy_id` is being returned to the buyer. Sellers MAY instead return synchronous success with `media_buy_id`, `packages`, and `confirmed_at: null` for a provisional buy; such buys MUST be retrievable via `get_media_buys` and MUST transition by setting `confirmed_at` exactly once on commitment. A provisional buy with `confirmed_at: null` MUST NOT be `active` and MUST NOT include `packages[].committed_metrics`.
 
@@ -399,9 +385,9 @@ const result = await testAgent.createMediaBuy({
   packages: [{
     product_id: 'prod_d979b543',
     pricing_option_id: 'cpm_usd_auction',
-    format_ids: [{
-      agent_url: 'https://creative.adcontextprotocol.org',
-      id: 'display_300x250_image'
+    format_option_refs: [{
+      scope: 'product',
+      format_option_id: 'display_300x250_image'
     }],
     budget: 2500,
     bidding: { bid_amount: 5.00 },
@@ -448,10 +434,8 @@ async def create_targeted_campaign():
         packages=[{
             'product_id': 'prod_d979b543',
             'pricing_option_id': 'cpm_usd_auction',
-            'format_ids': [{
-                'agent_url': 'https://creative.adcontextprotocol.org',
-                'id': 'display_300x250_image'
-            }],
+            'format_kind': 'image',
+            'params': {'width': 300, 'height': 250},
             'budget': 2500,
             'bidding': {'bid_amount': 5.00},
             'targeting_overlay': {
@@ -731,21 +715,17 @@ const result = await testAgent.createMediaBuy({
   packages: [{
     product_id: 'prod_d979b543',
     pricing_option_id: 'cpm_usd_auction',
-    format_ids: [{
-      agent_url: 'https://creative.adcontextprotocol.org',
-      id: 'display_300x250_image'
-    }],
+    format_option_refs: [{ scope: 'product', format_option_id: 'display_300x250_image' }],
     budget: 2500,
     bidding: { bid_amount: 5.00 },
     creatives: [{
       creative_id: 'hero_video_30s',
       name: 'Hero Video',
-      format_id: {
-        agent_url: 'https://creative.adcontextprotocol.org',
-        id: 'display_300x250_image'
-      },
+      format_kind: 'image',
+      format_option_ref: { scope: 'product', format_option_id: 'display_300x250_image' },
       assets: {
         image: {
+          asset_type: 'image',
           url: 'https://cdn.example.com/hero-banner.jpg',
           width: 300,
           height: 250
@@ -788,21 +768,17 @@ async def create_with_creatives():
         packages=[{
             'product_id': 'prod_d979b543',
             'pricing_option_id': 'cpm_usd_auction',
-            'format_ids': [{
-                'agent_url': 'https://creative.adcontextprotocol.org',
-                'id': 'display_300x250_image'
-            }],
+            'format_kind': 'image',
+            'params': {'width': 300, 'height': 250},
             'budget': 2500,
             'bidding': {'bid_amount': 5.00},
             'creatives': [{
                 'creative_id': 'hero_video_30s',
                 'name': 'Hero Video',
-                'format_id': {
-                    'agent_url': 'https://creative.adcontextprotocol.org',
-                    'id': 'display_300x250_image'
-                },
+                'format_kind': 'image',
                 'assets': {
-                    'image': {
+                    'image_main': {
+                        'asset_type': 'image',
                         'url': 'https://cdn.example.com/hero-banner.jpg',
                         'width': 300,
                         'height': 250
@@ -845,10 +821,7 @@ const result = await testAgent.createMediaBuy({
   packages: [{
     product_id: 'prod_d979b543',
     pricing_option_id: 'cpm_usd_auction',
-    format_ids: [{
-      agent_url: 'https://creative.adcontextprotocol.org',
-      id: 'display_300x250_image'
-    }],
+    format_option_refs: [{ scope: 'product', format_option_id: 'display_300x250_image' }],
     budget: 2500,
     bidding: { bid_amount: 5.00 }
   }],
@@ -896,10 +869,8 @@ async def create_with_reporting():
         packages=[{
             'product_id': 'prod_d979b543',
             'pricing_option_id': 'cpm_usd_auction',
-            'format_ids': [{
-                'agent_url': 'https://creative.adcontextprotocol.org',
-                'id': 'display_300x250_image'
-            }],
+            'format_kind': 'image',
+            'params': {'width': 300, 'height': 250},
             'budget': 2500,
             'bidding': {'bid_amount': 5.00}
         }],
@@ -1107,6 +1078,7 @@ Common errors and resolutions:
 | `REQUOTE_REQUIRED` | A later package overlay is executable but falls outside the configured product's priced or guaranteed envelope | Re-run `get_products` with the exact targeting in `targeting_overlay`, then create from the returned configuration |
 | `POLICY_VIOLATION` | Brand/product violates policy | Review publisher's content policies |
 | `INVALID_PRICING_OPTION` | pricing_option_id not found | Use ID from product's `pricing_options` |
+| `CREATIVE_LOCALE_NOT_ACCEPTED` | An assigned library creative has no materialized locale variant accepted by an in-scope format option, or its `serve_default` points outside that option's eligible set | Read `format_options[].locale_policy`, supply a matching source/target variant, narrow placement scope, choose another option, or change the default policy |
 | `CREATIVE_ID_EXISTS` | Creative ID already exists in the seller's creative namespace | For library-backed sellers, assign existing creatives via `creative_assignments` or update via `sync_creatives`; for inline-only sellers, use a different package-scoped `creative_id` |
 
 Example error response:
@@ -1115,9 +1087,9 @@ Example error response:
 {
   "errors": [{
     "code": "UNSUPPORTED_FEATURE",
-    "message": "Product 'prod_d979b543' does not support format 'display_728x90'",
-    "field": "packages[0].format_ids[0]",
-    "suggestion": "Use display_300x250_image, display_300x250_html, or display_300x250_generative formats"
+    "message": "Product 'prod_d979b543' does not accept image creatives at 728×90",
+    "field": "packages[0].params",
+    "details": { "supported_sizes": [{ "width": 300, "height": 250 }] }
   }]
 }
 ```
@@ -1126,14 +1098,27 @@ Example error response:
 
 ### Format Specification
 
-Each package SHOULD specify the formats it will use, via `format_ids[]` (legacy named-format path — structured `{agent_url, id}` references), `format_option_refs[]` (3.1+ format-option path — references into the product's `format_options[]`), or a direct canonical selector (`format_kind` plus optional `params`). Omitting all format selectors defaults to all formats supported by the product. Specifying lets the system:
+Each package SHOULD specify the formats it will use via `format_option_refs[]` or a direct canonical selector (`format_kind` plus optional `params`). Omitting selectors defaults to all product options.
 
 - Publish placeholder creatives in ad servers
 - Pin exactly what creative assets are needed
 - Validate that the product supports the requested formats
 - Track which assets are missing
 
-Selector precedence is deterministic: `format_option_refs[]` wins when present; otherwise `format_ids[]` wins when present; otherwise direct `format_kind`/`params` is used; otherwise the package defaults to all product formats. Use `format_option_refs[]` when the buyer's codebase reads `Product.format_options[]` and the product publishes selectable `format_option_id` values; use `format_ids[]` when integrating with legacy-format-only sellers or libraries. Use direct `format_kind` only when the buyer has enough canonical parameters to satisfy the target product declaration without a product-local reference. Dual-emission of `format_option_refs[]` and `format_ids[]` is allowed and recommended for buyer SDKs targeting a mixed seller population — see the `format_ids` row above.
+Selector precedence is deterministic: `format_option_refs[]` wins when present; otherwise direct `format_kind`/`params` is used; otherwise the package defaults to all product options. Deprecated `format_ids[]` is interpreted only on the negotiated legacy compatibility path and must normalize to the same canonical contract.
+
+Before purchase, buyers SHOULD also inspect the selected declaration's optional
+`locale_policy.accepted_language_ranges`. These seller ranges use RFC 4647
+Basic Filtering and let the buyer determine whether a planned or existing
+creative has at least one eligible materialized locale variant. A constrained
+option is canonical-only and must use a format-options-aware canonical path:
+`format_option_refs` when published or needed for disambiguation, otherwise
+direct `format_kind` with satisfying `params`. Legacy `format_ids` cannot
+preserve the policy. Media buys may be created
+before creatives exist, so discovery prevents incompatible planning while hard
+enforcement occurs when a creative is assigned. When one assignment can serve
+across several placements, the creative must satisfy each effective placement
+locale policy independently or the buyer must narrow its placement scope.
 
 3.1+ format-option example (buyer authoring against a publisher-scoped `Product.format_options[]` entry):
 
@@ -1315,43 +1300,26 @@ When creating a media buy, format specification enables:
 ### Complete Workflow
 
 ```
-1. list_creative_formats → Get available format specifications
-2. get_products → Find products (returns format_ids[] and/or format_options[])
-3. Validate compatibility → Ensure products support desired formats
-4. create_media_buy → Specify formats via format_ids[] (v1),
-                       format_option_refs[] (v2 reference), or
+1. get_products → Find products and read canonical format_options[]
+2. Validate compatibility → Ensure products support desired formats
+3. create_media_buy → Specify formats via format_option_refs[] or
                        format_kind/params (direct canonical);
                        omit for all-formats default
    └── Publisher creates placeholders
-   └── Clear creative requirements established
-5. Creative supply → Upload matching files via `sync_creatives` for library-backed sellers, or inline `packages[].creatives` for inline-only sellers
-6. Campaign activation → Replace placeholders with real creatives
+   └── Response snapshots canonical requirements in packages[].formats_to_provide[]
+4. Creative supply → Upload matching files via `sync_creatives` for library-backed sellers, or inline `packages[].creatives` for inline-only sellers
+   └── Poll get_media_buys; remaining coverage appears in packages[].formats_pending[]
+5. Campaign activation → Replace placeholders with real creatives
 ```
 
 ### Format Validation
 
 Publishers MUST validate:
 - All formats are supported by the product
-- Format specifications match `list_creative_formats` output
+- Package selections match the product's canonical `format_options[]`
 - Creative requirements can be fulfilled within timeline
 
-Invalid legacy named-format example:
-
-```json
-{
-  "errors": [{
-    "code": "UNSUPPORTED_FEATURE",
-    "message": "Product 'ctv_sports_premium' does not support format 'audio_standard_30s'",
-    "field": "packages[0].format_ids[0]",
-    "supported_formats": [
-      { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_standard_30s" },
-      { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_standard_15s" }
-    ]
-  }]
-}
-```
-
-Invalid 3.1+ format-option example:
+Invalid canonical format-option example:
 
 ```json
 {

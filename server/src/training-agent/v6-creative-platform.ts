@@ -140,7 +140,7 @@ export class TrainingCreativePlatform
 
   creative: CreativeAdServerPlatform<TrainingCreativeMeta> = {
     buildCreative: async (req, ctx) => {
-      const result = await handleBuildCreative(req as ToolArgs, buildTrainingCtx(ctx));
+      const result = await handleBuildCreative(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       // F16 (`bca20dfb`) — framework's discriminator passes through
       // pre-shaped BuildCreativeSuccess / BuildCreativeMultiSuccess
       // envelopes. v5 returns the envelope shape directly.
@@ -148,11 +148,11 @@ export class TrainingCreativePlatform
       return translateV5Result(result) as any;
     },
     previewCreative: async (req, ctx) => {
-      const result = await handlePreviewCreative(req as ToolArgs, buildTrainingCtx(ctx));
+      const result = await handlePreviewCreative(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
     listCreatives: async (req, ctx) => {
-      const result = await handleListCreatives(req as ToolArgs, buildTrainingCtx(ctx));
+      const result = await handleListCreatives(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
     listCreativeFormats: async (req, ctx) => {
@@ -160,7 +160,7 @@ export class TrainingCreativePlatform
       return translateV5Result(result);
     },
     getCreativeDelivery: async (filter, ctx) => {
-      const result = await handleGetCreativeDelivery(filter as ToolArgs, buildTrainingCtx(ctx));
+      const result = await handleGetCreativeDelivery(filter as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
     syncCreatives: async (creatives, ctx) => {
@@ -178,7 +178,10 @@ export class TrainingCreativePlatform
         ...fromInput,
         ...(brandDomain && { brand: { domain: brandDomain } }),
       };
-      const result = await handleSyncCreatives(args as unknown as ToolArgs, buildTrainingCtx(ctx));
+      const result = await handleSyncCreatives(
+        args as unknown as ToolArgs,
+        buildTrainingCtx(ctx, this.storyboardCompat),
+      );
       // v5 returns wire-wrapped `{ creatives: [...] }`; v6 wants rows.
       const wrapped = translateV5Result<{ creatives?: unknown[] }>(result);
       return (wrapped.creatives ?? []) as SyncCreativesRow[];

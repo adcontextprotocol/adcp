@@ -597,10 +597,41 @@ components:
         creative_capabilities:
           type: object
           properties:
-            formats_supported:
+            supported_formats:
               type: array
               items:
-                type: string
+                type: object
+                properties:
+                  capability_id:
+                    type: string
+                  format:
+                    type: object
+                    properties:
+                      format_kind:
+                        type: string
+                      publisher_domain:
+                        type: string
+                      format_option_id:
+                        type: string
+                      params:
+                        type: object
+                        additionalProperties: {}
+                    required:
+                      - format_kind
+                    additionalProperties: {}
+                  operations:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - build
+                        - validate
+                        - preview
+                    minItems: 1
+                required:
+                  - format
+                  - operations
+                additionalProperties: {}
             can_generate:
               type: boolean
             can_validate:
@@ -608,10 +639,11 @@ components:
             can_preview:
               type: boolean
           required:
-            - formats_supported
+            - supported_formats
             - can_generate
             - can_validate
             - can_preview
+          additionalProperties: {}
         signals_capabilities:
           type: object
           properties:
@@ -1194,7 +1226,66 @@ components:
             required:
               - display_name
               - format_kind
-          description: Display-oriented summary of top-level adagents.json `formats[]`, normalized for publisher pages and agent discovery clients. Each entry preserves `format_kind`, `format_option_id`, and canonical params.
+          description: Lossy display-oriented summary of top-level adagents.json `formats[]`, normalized for publisher pages and eligibility discovery. It preserves `format_kind`, `format_option_id`, params, property scope, preference, and experimental status, but omits `v1_format_ref`, `canonical_formats_only`, `applies_to_channels`, `publisher_domain`, and custom `format_shape`/`format_schema`. Fetch the canonical document at hosting.resolved_url (or hosting.expected_url when self-hosted) for creative validation.
+        placements:
+          type: array
+          items:
+            type: object
+            properties:
+              placement_id:
+                type: string
+              name:
+                type: string
+              description:
+                type: string
+              property_ids:
+                type: array
+                items:
+                  type: string
+              property_tags:
+                type: array
+                items:
+                  type: string
+              collection_ids:
+                type: array
+                items:
+                  type: string
+              channels:
+                type: array
+                items:
+                  type: string
+              tags:
+                type: array
+                items:
+                  type: string
+              format_options:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    format_option_id:
+                      type: string
+                    format_kind:
+                      type: string
+                      description: Resolved canonical format kind accepted by this placement.
+                    params:
+                      type: object
+                      additionalProperties: {}
+                      description: Resolved canonical narrowing for this placement format.
+                  required:
+                    - format_kind
+                description: Placement format references resolved against the same response's top-level formats plus any inline canonical declarations.
+              source:
+                type: string
+                enum:
+                  - adagents_json
+                  - community
+                description: Publisher-origin placements are adagents_json; moderator-maintained catalog placements are community.
+            required:
+              - placement_id
+              - name
+              - source
+          description: Eligibility-oriented publisher placement summaries. Present only when the request includes `include=placements`; format references are resolved to canonical kind/params so callers can join property → placement → format without a second origin fetch.
         authorized_agents:
           type: array
           items:
@@ -3153,6 +3244,11 @@ components:
           type: array
           items:
             type: string
+          description: Deprecated 3.x named-format profile projection.
+        format_kinds:
+          type: array
+          items:
+            type: string
         property_count:
           type: integer
         publisher_count:
@@ -3494,6 +3590,20 @@ components:
           type: integer
         collection_count:
           type: integer
+        format_count:
+          type: integer
+          minimum: 0
+          description: Number of top-level formats[] declarations after the revision.
+        placement_count:
+          type: integer
+          minimum: 0
+          description: Number of top-level placements[] declarations after the revision.
+        changed_fields:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          description: Semantic top-level adagents.json fields changed by this revision, including formats or placements. Present on newly emitted 3.2 change events.
         discovery_method:
           type: string
         manager_domain:
@@ -6199,7 +6309,7 @@ paths:
     get:
       operationId: listAgents
       summary: List agents
-      description: List all agents in the registry. Optionally enrich with health checks, capabilities, and property summaries via query parameters. Measurement-vendor filters (`metric_id`, `accreditation`, `q`) imply `type=measurement` when `type` is unset; an explicit `type` other than `measurement` returns 400.
+      description: List all agents in the registry. Optionally enrich with health checks, capabilities, and property summaries via query parameters. Measurement-vendor filters (`metric_id`, `accreditation`, `q`) imply `type=measurement`. Canonical creative-capability filters (`format_kind`, `publisher_domain`, `format_option_id`, `capability_id`, `creative_operation`) match any endpoint exposing that creative surface, including mixed sales/creative agents; add an explicit `type` only to narrow by primary registry classification.
       tags:
         - Agent Discovery
       parameters:
@@ -6278,6 +6388,61 @@ paths:
           required: false
           description: "Measurement-vendor filter: case-insensitive substring match against `measurement.metrics[].metric_id`. v1 scope: metric_id only (description/standard search is a follow-up). Max 64 chars; SQL wildcard characters are escaped. Implies `type=measurement`."
           name: q
+          in: query
+        - schema:
+            anyOf:
+              - type: string
+              - type: array
+                items:
+                  type: string
+            description: "Canonical creative-capability filter: exact match on creative.supported_formats[].format.format_kind. Repeatable with OR semantics. Matches standalone creative agents and mixed-role endpoints."
+            example: video_hosted
+          required: false
+          description: "Canonical creative-capability filter: exact match on creative.supported_formats[].format.format_kind. Repeatable with OR semantics. Matches standalone creative agents and mixed-role endpoints."
+          name: format_kind
+          in: query
+        - schema:
+            type: string
+            description: "Canonical creative-capability filter: exact publisher_domain on the same supported-format entry. Pair with format_option_id to find endpoints claiming an exact publisher format."
+            example: shorts.streamhaus.example
+          required: false
+          description: "Canonical creative-capability filter: exact publisher_domain on the same supported-format entry. Pair with format_option_id to find endpoints claiming an exact publisher format."
+          name: publisher_domain
+          in: query
+        - schema:
+            type: string
+            description: "Canonical creative-capability filter: exact publisher format_option_id on the same supported-format entry."
+            example: spotlight_video
+          required: false
+          description: "Canonical creative-capability filter: exact publisher format_option_id on the same supported-format entry."
+          name: format_option_id
+          in: query
+        - schema:
+            type: string
+            description: "Canonical creative-capability filter: exact endpoint-local creative.supported_formats[].capability_id."
+          required: false
+          description: "Canonical creative-capability filter: exact endpoint-local creative.supported_formats[].capability_id."
+          name: capability_id
+          in: query
+        - schema:
+            anyOf:
+              - type: string
+                enum:
+                  - build
+                  - validate
+                  - preview
+              - type: array
+                items:
+                  type: string
+                  enum:
+                    - build
+                    - validate
+                    - preview
+            description: "Canonical creative-capability filter: required supported operation on the same format entry. Repeatable with OR semantics."
+            example: build
+          required: false
+          description: "Canonical creative-capability filter: required supported operation on the same format entry. Repeatable with OR semantics."
+          name: creative_operation
           in: query
         - schema:
             type: array
@@ -6856,6 +7021,15 @@ paths:
             example: voxmedia.com
           required: true
           name: domain
+          in: query
+        - schema:
+            type: string
+            enum:
+              - placements
+            description: Set to placements to include eligibility-oriented placement summaries with resolved canonical format options.
+          required: false
+          description: Set to placements to include eligibility-oriented placement summaries with resolved canonical format options.
+          name: include
           in: query
       responses:
         "200":
@@ -8054,8 +8228,8 @@ paths:
   /api/public/agent-formats:
     get:
       operationId: getAgentFormats
-      summary: Get agent formats
-      description: Fetch creative formats from a creative agent.
+      summary: Get creative-agent format capabilities
+      description: Fetch get_adcp_capabilities creative.supported_formats[] from a creative agent.
       tags:
         - Agent Probing
       parameters:
@@ -8066,7 +8240,7 @@ paths:
           in: query
       responses:
         "200":
-          description: Creative formats
+          description: Canonical creative capabilities
           content:
             application/json:
               schema:
@@ -8603,7 +8777,7 @@ paths:
       operationId: getRegistryFeed
       summary: Registry change feed
       description: |-
-        Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days. The `freshness` object reports when the response was generated, the newest matching event currently visible to the feed, and the resulting feed lag.
+        Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days. The `freshness` object reports when the response was generated, the newest matching event currently visible to the feed, and the resulting feed lag. `publisher.adagents_changed` covers semantic changes in every top-level catalog field, including formats-only and placements-only revisions; new 3.2 events identify them in `payload.changed_fields`.
 
         Type filtering supports glob patterns: `property.*` matches `property.created`, `property.updated`, etc.
       tags:
@@ -9154,10 +9328,11 @@ paths:
                           type: array
                           items:
                             type: string
-                        format_ids:
+                        format_kinds:
                           type: array
-                          items: {}
-                          description: Creative format identifiers supported by this agent
+                          items:
+                            type: string
+                          description: Canonical format kinds present in this agent's indexed inventory profile
                         property_count:
                           type: integer
                         publisher_count:
@@ -9185,7 +9360,7 @@ paths:
                         - categories
                         - tags
                         - delivery_types
-                        - format_ids
+                        - format_kinds
                         - property_count
                         - publisher_count
                         - has_tmp

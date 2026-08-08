@@ -75,34 +75,6 @@ phases:
             path: "context.correlation_id"
             value: "media_buy_seller_creative_reception--get_capabilities"
             description: "Context correlation_id returned unchanged"
-  - id: discover_accepted_formats
-    title: "Discover accepted formats"
-    narrative: |
-      The buyer first needs to know what creative formats your platform accepts.
-      For a publisher, this includes your native ad formats, display placements,
-      and any custom units. For retail media, this might include product listing
-      formats or sponsored product cards.
-
-    steps:
-      - id: list_formats
-        title: "Discover accepted creative formats"
-        narrative: |
-          The buyer asks: "What creative formats does your platform accept?" Your
-          platform returns the formats you support — native post formats, display
-          units, video slots, or product listing formats.
-        task: list_creative_formats
-        requires_tool: list_creative_formats
-        schema_ref: "creative/list-creative-formats-request.json"
-        response_schema_ref: "creative/list-creative-formats-response.json"
-        doc_ref: "/creative/task-reference/list_creative_formats"
-        comply_scenario: creative_sync
-        stateful: false
-        expected: |
-          Return the creative formats your platform accepts. Each format should define:
-          - Asset requirements (what the buyer needs to provide)
-          - Render dimensions
-          - Any catalog requirements (for product-feed formats)
-
   - id: push_creatives
     title: "Push creative assets"
     narrative: |
@@ -142,9 +114,7 @@ phases:
           creatives:
             - creative_id: "acme_summer_native_001"
               name: "Acme Summer Sale — native 2026"
-              format_id:
-                agent_url: "https://your-platform.example.com"
-                id: "native_post"
+              format_kind: "native_in_feed"
               assets:
                 headline:
                   asset_type: "text"
@@ -210,9 +180,7 @@ phases:
           request_type: "single"
           creative_manifest:
             creative_id: "acme_summer_native_001"
-            format_id:
-              agent_url: "https://your-platform.example.com"
-              id: "native_post"
+            format_kind: "native_in_feed"
             assets:
               headline:
                 asset_type: "text"

@@ -64,6 +64,25 @@ const SHA = 'sha256:000000000000000000000000000000000000000000000000000000000000
 const NEGATIVE_CASES = {
   '/schemas/core/product-format-declaration.json': [
     {
+      label: 'publisher_domain requires format_option_id',
+      expected: false,
+      doc: {
+        publisher_domain: 'daily-pulse.example',
+        format_kind: 'image',
+        params: { width: 300, height: 250 },
+      },
+    },
+    {
+      label: 'publisher-scoped declaration accepts complete identity pair',
+      expected: true,
+      doc: {
+        publisher_domain: 'daily-pulse.example',
+        format_option_id: 'homepage_image',
+        format_kind: 'image',
+        params: { width: 300, height: 250 },
+      },
+    },
+    {
       label: 'format_kind=image rejects stray format_schema',
       expected: false,
       doc: {

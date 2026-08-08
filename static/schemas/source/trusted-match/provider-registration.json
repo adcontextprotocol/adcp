@@ -61,7 +61,7 @@
     },
     "priority": {
       "type": "integer",
-      "description": "Provider ordering for merge conflict resolution. Lower values have higher priority. When two providers return offers for the same package_id (a configuration error), the router keeps the offer from the higher-priority provider. Also used for adaptive timeout allocation — higher-priority providers receive a larger share of the latency budget.",
+      "description": "Provider ordering for Context Match offer conflict resolution. Lower values have higher priority. When two providers return offers for the same package_id (a configuration error), the router keeps the offer from the higher-priority provider; equal priorities are broken by first response received. Identity Match eligibility remains a responder-scoped union because silent omission is not a negative vote. Also used for adaptive timeout allocation — higher-priority providers receive a larger share of the latency budget.",
       "minimum": 0,
       "default": 0
     },

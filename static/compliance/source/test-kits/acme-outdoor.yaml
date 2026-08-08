@@ -15,8 +15,8 @@ name: "Acme Outdoor"
 description: "Fictional outdoor gear brand for storyboard testing"
 sandbox: true
 
-# Set to true when the agent under test declares at least one audio format in
-# list_creative_formats. Enables the audio_build phase in the creative_template
+# Set to true when the agent under test declares at least one audio build entry in
+# creative.supported_formats. Enables the audio_build phase in the creative_template
 # storyboard. Leave false for display-only template agents.
 supports_audio_formats: false
 
@@ -119,6 +119,34 @@ assets:
       height: 600
       mime_type: "image/jpeg"
       description: "Wide skyscraper hero — vertical trail scene"
+
+    - id: "hero_970x250"
+      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-970x250.jpg"
+      width: 970
+      height: 250
+      mime_type: "image/jpeg"
+      description: "Billboard hero — panoramic mountain expedition"
+
+    - id: "hero_300x600"
+      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-300x600.jpg"
+      width: 300
+      height: 600
+      mime_type: "image/jpeg"
+      description: "Half-page hero — vertical climbing scene"
+
+    - id: "hero_336x280"
+      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-336x280.jpg"
+      width: 336
+      height: 280
+      mime_type: "image/jpeg"
+      description: "Large rectangle hero — trail camp at sunrise"
+
+    - id: "hero_1080x1920"
+      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-1080x1920.jpg"
+      width: 1080
+      height: 1920
+      mime_type: "image/jpeg"
+      description: "Full-screen portrait hero — hiker approaching a summit"
 
     - id: "hero_master"
       url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-master.jpg"

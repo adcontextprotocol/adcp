@@ -266,7 +266,7 @@ Rights management agents coordinate with LLM providers (Midjourney, ElevenLabs, 
 
 ### Creative lifecycle
 
-Creative manifests carry an optional `rights` array — each entry is a rights constraint from a different rights holder. A single creative may combine talent likeness + music license, each with different validity periods and country restrictions. For v1, rights constraints are informational metadata.
+Creative manifests carry an optional `rights` array — each entry is a rights constraint from a different rights holder. A single creative may combine talent likeness + music license, each with different validity periods and country restrictions. Legacy constraints are informational metadata. In 3.2, a digest-pinned constraint carries a holder-issued credential reference, but remains only a presentation until the consuming seller verifies it and returns its own current evaluation.
 
 Usage is reported back to the rights agent via `report_usage` with the `rights_id` field for cap tracking and billing.
 

@@ -80,6 +80,7 @@ export interface AddieInteractionLog {
   tools_used: string[];
   model: string;
   latency_ms: number;
+  delivery_status?: 'delivered' | 'failed';
   flagged: boolean;
   flag_reason?: string;
 }

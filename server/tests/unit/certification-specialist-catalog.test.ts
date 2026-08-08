@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   createAttempt: vi.fn(),
   getAttemptForUser: vi.fn(),
   getModulesForTrack: vi.fn(),
+  hasEffectiveMembershipForUser: vi.fn(),
 }));
 
 vi.mock('../../src/db/certification-db.js', () => ({
@@ -49,6 +50,7 @@ describe('specialist certification catalog', () => {
       status: 'in_progress',
       started_at: new Date().toISOString(),
     });
+    mocks.hasEffectiveMembershipForUser.mockResolvedValue(true);
   });
 
   it('advertises S6 as a specialist module and labels S5 unavailable', () => {

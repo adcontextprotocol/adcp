@@ -15,6 +15,14 @@
       "description": "ID of the product this package is based on. For packages created from an explicit create_media_buy package request, sellers MUST echo the request package's product_id on every response package object that represents that requested package.",
       "x-entity": "product"
     },
+    "audience_evidence_selections": {
+      "type": "array",
+      "description": "Exact immutable audience-evidence snapshots that affected recommendation, eligibility, or package construction. A confirmed package MUST include a package_construction selection matching every buyer audience_evidence_pin and every snapshot used to satisfy package audience_evidence_requirements; this readback remains mandatory on subsequent package read surfaces. This is decision provenance only; applied targeting remains exclusively in targeting_overlay and demographic_targeting_resolution.",
+      "items": {
+        "$ref": "/schemas/core/audience-evidence-selection.json"
+      },
+      "minItems": 1
+    },
     "budget": {
       "type": "number",
       "description": "Hard lifetime spend cap for this package in the media-buy currency. Every selected pricing option in an AdCP-authored media buy MUST declare that same currency. In seller-optimized allocation mode this is a ceiling, not a current allocation. May be omitted when the package is bounded only by the shared media-buy total.",
@@ -63,7 +71,8 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Legacy named-format IDs supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it, including dual-emission cases where `format_option_refs` was the winning selector, so read surfaces preserve the original wire contract. Omitted means the request did not carry legacy format_ids unless the seller cannot reconstruct legacy requests created before this field was persisted.",
+      "deprecated": true,
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format IDs supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it, including dual-emission cases where `format_option_refs` was the winning selector, so read surfaces preserve the original wire contract. Omitted means the request did not carry legacy format_ids unless the seller cannot reconstruct legacy requests created before this field was persisted.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }
@@ -155,9 +164,33 @@
         "$ref": "/schemas/core/creative-assignment.json"
       }
     },
+    "formats_to_provide": {
+      "type": "array",
+      "description": "Canonical creative contracts that the buyer must satisfy for this package. Each entry is a package-time snapshot of a selected Product.format_options declaration (or the equivalent declaration normalized from a direct format_kind + params selector) and MUST equal or narrow that product contract. Full declarations keep the requirement stable if the live product or publisher catalog later changes and remain usable when format_option_id is absent. Sellers SHOULD emit this field whenever additional creative coverage is required.",
+      "items": {
+        "$ref": "/schemas/core/product-format-declaration.json"
+      },
+      "minItems": 1
+    },
+    "formats_pending": {
+      "type": "array",
+      "description": "The declarations from formats_to_provide that do not yet have creative coverage through sync_creatives or inline creative assignment. An empty emitted array means every required format is covered. Absence means readiness was not reported, so buyers MUST NOT infer full coverage from omission. Sellers SHOULD emit this field with formats_to_provide when returning current package readiness.",
+      "items": {
+        "$ref": "/schemas/core/product-format-declaration.json"
+      }
+    },
     "format_ids_to_provide": {
       "type": "array",
-      "description": "Format IDs that creative assets will be provided for this package",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.2.** Legacy named-format projection of formats_to_provide retained for older 3.x peers. New sellers emit canonical formats_to_provide declarations.",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      }
+    },
+    "format_ids_pending": {
+      "type": "array",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.2.** Legacy named-format projection of formats_pending retained for older 3.x peers. New sellers emit canonical formats_pending declarations. An empty emitted array means every projected requirement is covered. Absence means legacy readiness was not reported and MUST NOT be interpreted as full coverage.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }

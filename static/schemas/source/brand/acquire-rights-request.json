@@ -64,10 +64,25 @@
         },
         "format_ids": {
           "type": "array",
-          "description": "Creative formats that will be produced",
+          "deprecated": true,
+          "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named formats that will be produced. Use `format_kinds` and optional `format_option_refs`.",
           "items": {
             "$ref": "/schemas/core/format-id.json"
           }
+        },
+        "format_kinds": {
+          "type": "array",
+          "description": "Canonical creative format kinds that will be produced under the rights grant.",
+          "items": { "$ref": "/schemas/core/canonical-format-kind.json" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "format_option_refs": {
+          "type": "array",
+          "description": "Exact canonical publisher or product format options covered by the planned rights use, when kind alone is insufficient.",
+          "items": { "$ref": "/schemas/core/format-option-ref.json" },
+          "minItems": 1,
+          "uniqueItems": true
         },
         "estimated_impressions": {
           "type": "integer",

@@ -105,11 +105,13 @@
                   "docs/reference/migration/audiences",
                   "docs/reference/migration/attribution",
                   "docs/reference/migration/media-buy-status",
+                  "docs/reference/migration/asset-access",
                   "docs/reference/migration/cross-role-governance-enforcement"
                 ]
               },
               "docs/protocol/architecture",
               "docs/protocol/design-principles",
+              "docs/protocol/language-and-localization",
               "docs/protocol/capabilities-explorer",
               "docs/spec-guidelines",
               "docs/protocol/required-tasks",
@@ -348,7 +350,9 @@
                       "docs/creative/channels/broadcast",
                       "docs/creative/channels/display",
                       "docs/creative/channels/audio",
+                      "docs/creative/channels/radio",
                       "docs/creative/channels/dooh",
+                      "docs/creative/channels/print",
                       "docs/creative/channels/carousels",
                       "docs/creative/channels/social-native"
                     ]
@@ -517,6 +521,7 @@
                   {
                     "group": "Tasks",
                     "pages": [
+                      "docs/brand-protocol/tasks/search_brands",
                       "docs/brand-protocol/tasks/get_brand_identity",
                       "docs/brand-protocol/tasks/verify_brand_claim",
                       "docs/brand-protocol/tasks/verify_brand_claims",
@@ -2302,6 +2307,11 @@
     {
       "source": "/docs/creative/channels/dooh",
       "destination": "/dist/docs/3.1.2/creative/channels/dooh",
+      "permanent": false
+    },
+    {
+      "source": "/docs/creative/channels/print",
+      "destination": "/dist/docs/3.1.2/creative/channels/print",
       "permanent": false
     },
     {

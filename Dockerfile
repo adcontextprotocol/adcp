@@ -112,6 +112,15 @@ if [ "$remaining" -gt 0 ]; then
   echo "ERROR: $remaining .git dirs remain after stripping" >&2
   exit 1
 fi
+# Git repositories can contain tracked symbolic links. Remove every link before
+# the cache is copied into the runtime image; runtime indexing independently
+# enforces the same no-link boundary.
+find /repos -type l -exec rm -f {} +
+remaining_links=$(find /repos -type l | wc -l)
+if [ "$remaining_links" -gt 0 ]; then
+  echo "ERROR: $remaining_links symbolic links remain after sanitizing" >&2
+  exit 1
+fi
 rm /repos/clone.sh
 # Only markdown/MDX files are indexed by search_repos at runtime. Keep this
 # in sync with EXTERNAL_REPOS indexPatterns if non-markdown sources are added.

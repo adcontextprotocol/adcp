@@ -4,6 +4,29 @@
   "title": "MCP Webhook Payload",
   "description": "Standard envelope for HTTP-based push notifications (MCP). This defines the wire format sent to the URL configured in `pushNotificationConfig`. NOTE: This envelope is NOT used in A2A integration, which uses native Task/TaskStatusUpdateEvent messages with the AdCP payload nested in `status.message.parts[].data`.",
   "type": "object",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "task_type": { "const": "get_products" },
+          "result": {
+            "properties": {
+              "status": { "const": "rejected" }
+            },
+            "required": ["status"]
+          }
+        },
+        "required": ["task_type", "result"]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "/schemas/media-buy/get-products-rejected.json"
+          }
+        }
+      }
+    }
+  ],
   "properties": {
     "idempotency_key": {
       "type": "string",
@@ -124,10 +147,14 @@
                 "buyer_ref": "line-001"
               },
               "creative_assignments": [],
-              "format_ids_to_provide": [
+              "formats_to_provide": [
                 {
-                  "agent_url": "https://creative.adcontextprotocol.org",
-                  "id": "video_standard_30s"
+                  "format_kind": "video_hosted",
+                  "format_option_id": "video_standard_30s",
+                  "params": {
+                    "duration_ms_exact": 30000,
+                    "containers": ["mp4"]
+                  }
                 }
               ]
             }

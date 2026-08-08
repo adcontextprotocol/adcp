@@ -107,6 +107,7 @@
     },
     "delivery": {
       "type": "object",
+      "deprecated": true,
       "description": "Deprecated buyer-reported delivery snapshot. Required when outcome is 'delivery'. It is audit evidence only and MUST NOT increase committed obligation; sellers use check_governance phase 'delivery' for authoritative monitoring.",
       "properties": {
         "reporting_period": {

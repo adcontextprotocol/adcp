@@ -27,6 +27,7 @@ describe('checkpoint_teaching_progress handler', () => {
     }));
     mocks.getModule.mockResolvedValue({
       id: 'A1',
+      is_free: true,
       assessment_criteria: null,
       exercise_definitions: null,
     });
@@ -80,6 +81,7 @@ describe('checkpoint_teaching_progress handler', () => {
   it('splits comma-separated demonstration IDs before validation', async () => {
     mocks.getModule.mockResolvedValue({
       id: 'A1',
+      is_free: true,
       exercise_definitions: [{
         success_criteria: [
           { id: 'a1_ex1_sc0', text: 'First criterion' },

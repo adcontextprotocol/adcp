@@ -1,6 +1,7 @@
 {
   "name": "Signature-Input present but syntactically invalid (downgrade protection)",
   "spec_reference": "#verifier-checklist-requests pre-check (malformed header, no bearer fallback)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

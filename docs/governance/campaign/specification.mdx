@@ -581,7 +581,48 @@ Governance agents declare their Campaign Governance support in `get_adcp_capabil
 
 ```json
 {
+  "adcp": {
+    "attestations": {
+      "accepted_claim_types": [
+        "https://claims.example/audience/population-stability"
+      ],
+      "accepted_proof_formats": [
+        "https://formats.example/jcs-signed-json"
+      ],
+      "supported_delivery_methods": [
+        "credential_uri",
+        "issuer_credential_id",
+        "embedded"
+      ],
+      "accepted_issuers": [
+        {
+          "issuer": {
+            "type": "origin",
+            "origin": "https://credentials.example"
+          },
+          "credential_origins": [
+            "https://credentials.example"
+          ],
+          "resolvers": [
+            {
+              "resolver_id": "primary",
+              "url": "https://resolver.credentials.example/v1/credentials",
+              "authentication": "evaluator_managed"
+            }
+          ]
+        }
+      ]
+    }
+  },
   "governance": {
+    "runtime_attestations": {
+      "signal_activation": {
+        "requirement": "required",
+        "claim_types": [
+          "https://claims.example/audience/population-stability"
+        ]
+      }
+    },
     "campaign_governance": {
       "categories": [
         {
@@ -615,6 +656,31 @@ Governance agents declare their Campaign Governance support in `get_adcp_capabil
   }
 }
 ```
+
+`adcp.attestations` is the shared portable-attestation trust and delivery allowlist. `governance.runtime_attestations` is the action-specific policy: presence enables `check_governance.runtime_attestations[]` for signal activation, `requirement` controls whether omission is allowed, and `claim_types` MUST be a subset of the shared accepted claims. Governance capabilities do not duplicate resolver URLs or verifier trust; those remain centralized in the shared block.
+
+### Runtime signal-quality evaluation
+
+`runtime_attestations[]` is standardized per-check evidence for `purchase_type: signal_activation` when `tool` is `activate_signal` and `payload.action` is `activate` or omitted (the default). It MUST NOT be supplied for `payload.action: deactivate`, and a `requirement: required` policy applies only to activation: missing evidence MUST NOT block deactivation. The evidence is outside the campaign plan: it neither changes declared plan intent nor provides delegation authority. Plan-level `delegations[]` remains the only delegation-continuity mechanism.
+
+AdCP does not define a credential issuance API or an orchestrator-side discovery/retrieval API for attestation references. The orchestrator obtains references through an issuer-defined or other out-of-band mechanism before calling `check_governance`. Once presented, evaluator-side credential resolution follows the shared portable-attestation contract and the governance agent's published allowlist.
+
+For each presentation, the governance agent applies the shared [portable-attestation procedure](/docs/building/by-layer/L1/security#portable-attestations), then checks the complete typed subject against the governed signal and action. For `activate_signal`, `subject.id` matches `payload.signal_agent_segment_id`; `subject.namespace` and any richer signal identity are reconciled with the signals agent and plan state known to the governance agent. A matching opaque id under a different namespace is a subject mismatch.
+
+The response carries exactly one ordered `runtime_attestation_evaluations[]` result per presentation. Evaluation `outcome`, `confidence`, and `reason_codes` are produced by the governance agent; they are never authoritative buyer input. Every evaluation binds to the current `check_id` through `action_binding`.
+
+The governance agent also computes:
+
+```text
+attestation_bound_findings = findings filtered to entries with attestation_reference_digest
+runtime_attestation_binding_digest =
+  "sha256:" + lowercase_hex(SHA-256(JCS({
+    evaluations: runtime_attestation_evaluations,
+    findings: attestation_bound_findings
+  })))
+```
+
+Array order is preserved. Omitted optional fields remain omitted; implementations MUST NOT synthesize defaults before JCS canonicalization. The response, signed `governance_context`, and `get_plan_audit_logs` check entry carry the identical digest. Audit logs retain ordered `{ reference, evaluation }` pairs and the complete attestation-bound findings. Auditors MUST first verify that each evaluation's `reference_digest` equals SHA-256 of RFC 8785 JCS over its paired reference, then recompute the binding digest from the ordered evaluations and findings.
 
 ## Integration with `create_media_buy`
 
@@ -767,6 +833,8 @@ Closed list — governance agents MUST NOT extend or shrink it; any addition is 
 None of these appear in the `sync_plans` request schema (`additionalProperties: false` on the plan item); they exist only on the governance agent's persisted plan state. The list is stated explicitly so an implementer naively hashing their internal state struct strips the right fields. Implementations that discover additional GA-internal fields on their persisted plan state beyond this list MUST treat those fields as **IN the preimage** until the profile version bumps — fail-safe toward inclusion, not exclusion. The "anything that looks like bookkeeping → strip" shortcut silently diverges every implementation that guesses differently; the safe default is "if it is not on the closed list, it is part of the hash."
 
 All other fields — including `ext`, `custom_policies`, `objectives`, `delegations`, `human_override`, and every field declared in the `sync_plans` plan-item schema — are IN the preimage. Caller guidance:
+
+`check_governance.runtime_attestations[]` is not a plan field and is therefore outside this preimage. Its omission or change does not alter `plan_hash`; the separate `runtime_attestation_binding_digest` binds that per-check evidence and evaluation to the signed governance decision.
 
 - **`ext` is part of the preimage.** Buyers MUST NOT place rotating tokens or retry-unstable values inside `ext` on a plan; a value that changes between re-syncs invalidates every outstanding governance_context token for the plan even when the buyer's declared intent is unchanged (consistent with idempotency's treatment of `ext`).
 - **`delegations[].expires_at`** is declared intent and SHOULD be stable across re-syncs of the same plan; regenerating it from "now + N days" on every sync causes hash churn.
@@ -1098,6 +1166,7 @@ Every plan maintains an ordered audit trail of all validated actions and reporte
 - Any internal escalations and their resolutions (recorded by the governance agent)
 - The human approver identity (when human review occurred internally)
 - Delivery metrics over time
+- Ordered runtime attestation `{ reference, evaluation }` pairs, their binding digest, and complete findings linked by `attestation_reference_digest`
 
 This audit trail serves compliance and reporting needs. For regulated categories (political advertising, financial services), the trail provides evidence that governance was applied to every transaction.
 
