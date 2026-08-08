@@ -11,6 +11,7 @@ import {
 } from '../certification/s2-canonical-formats-delta.js';
 import { S2_DELTA_DEFINITION, type DeltaDefinition } from '../config/recertification-deltas.js';
 import { getDeltaRelease } from './system-settings-db.js';
+import { invalidateMembershipCache, resolveEffectiveMembership } from './org-filters.js';
 
 const logger = createLogger('certification-db');
 
@@ -1111,7 +1112,40 @@ export async function recordAdminCredentialReissueEvent(input: {
  * Check and auto-award any credentials the user has become eligible for.
  * Returns a list of newly awarded credential IDs.
  */
-export async function checkAndAwardCredentials(userId: string): Promise<string[]> {
+export async function hasEffectiveMembershipForUser(userId: string): Promise<boolean> {
+  const orgs = await query<{ workos_organization_id: string }>(
+    `SELECT DISTINCT workos_organization_id
+     FROM organization_memberships
+     WHERE workos_user_id = $1`,
+    [userId],
+  );
+  const memberships = await Promise.all(orgs.rows.map(row => {
+    // Credential award/issuance is an authorization boundary. Force a fresh
+    // canonical lookup instead of accepting the normal five-minute cache.
+    invalidateMembershipCache(row.workos_organization_id);
+    return resolveEffectiveMembership(row.workos_organization_id);
+  }));
+  return memberships.some(membership => membership.is_member);
+}
+
+export async function checkAndAwardCredentials(
+  userId: string,
+  options: { maxTier?: number } = {},
+): Promise<string[]> {
+  // Callers at an interactive membership boundary can pass an explicit cap
+  // after performing Stripe lazy reconciliation. Background and admin callers
+  // intentionally fall back to the canonical persisted membership resolver so
+  // they cannot bypass the paid-tier gate by calling this low-level function.
+  const membershipMaxTier = await hasEffectiveMembershipForUser(userId)
+    ? Number.POSITIVE_INFINITY
+    : 1;
+  // A caller may narrow authorization (for example, free-only issuance), but
+  // it may never widen the fresh canonical membership decision.
+  const requestedMaxTier = Number.isNaN(options.maxTier)
+    ? 1
+    : options.maxTier ?? Number.POSITIVE_INFINITY;
+  const maxTier = Math.min(requestedMaxTier, membershipMaxTier);
+
   const [credentials, existing] = await Promise.all([
     getCredentials(),
     getUserCredentials(userId),
@@ -1121,6 +1155,7 @@ export async function checkAndAwardCredentials(userId: string): Promise<string[]
 
   // Process in tier order so prerequisites are checked correctly
   for (const credential of credentials) {
+    if (maxTier !== undefined && credential.tier > maxTier) continue;
     if (heldSet.has(credential.id)) continue;
 
     const { eligible } = await checkCredentialEligibility(userId, credential.id);
