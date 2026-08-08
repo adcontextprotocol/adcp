@@ -1,0 +1,141 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/multi_state_display.json",
+  "title": "Canonical Format: Multi-State Display",
+  "description": "Seller-rendered premium display unit with a finite set of buyer-known visual states and breakpoint-specific canvases. The buyer supplies one `state_canvases` image for every declared state × breakpoint pair, plus a landing URL and optional shared video/copy assets. Use this canonical only when the seller renders the unit and the buyer can know every rendered layout before launch. A buyer-delivered tag is `display_tag`; per-impression algorithmic assembly is `responsive_creative`. Fullscreen and overlay states SHOULD use user-initiated triggers. The `trigger` value is the machine-readable answer to whether the unit auto-expands.",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "experimental": {
+      "default": true,
+      "description": "Experimental in AdCP 3.2 while the creative working group gathers implementation evidence across premium web-display sellers."
+    },
+    "v1_translatable": {
+      "default": false,
+      "description": "No v1 named-format equivalent can express multiple seller-rendered states and their breakpoint bindings."
+    },
+    "since_version": { "default": "3.2" },
+    "composition_model": { "default": "deterministic" },
+    "slots": {
+      "default": [
+        { "asset_group_id": "state_canvases", "asset_type": "image", "required": true, "min": 1 },
+        { "asset_group_id": "video_main", "asset_type": "video", "required": false },
+        { "asset_group_id": "cta", "asset_type": "text", "required": false },
+        { "asset_group_id": "messaging", "asset_type": "text", "required": false },
+        { "asset_group_id": "legal_text", "asset_type": "text", "required": false },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true }
+      ],
+      "description": "Default manifest slots. `state_canvases` is array-valued; each image MUST carry `state_id` and `breakpoint_id`. Semantic validation requires exactly one image for every declared state × breakpoint pair and rejects duplicates, undeclared pairs, missing pairs, and dimension mismatches."
+    },
+    "states": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Finite rendering states known at buy time. State IDs and breakpoint IDs form the required canvas-key matrix.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "state_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "Stable identifier used by `state_canvases[].state_id`."
+          },
+          "trigger": {
+            "type": "string",
+            "enum": ["on_load", "auto_collapse", "scroll_dock", "user_expand", "user_collapse", "user_dismiss"],
+            "description": "Transition that enters this state. Overlay/fullscreen states SHOULD use a user-initiated value."
+          },
+          "anchoring": {
+            "type": "string",
+            "enum": ["inline", "sticky_top", "sticky_bottom", "overlay", "fullscreen_overlay"]
+          },
+          "breakpoints": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "breakpoint_id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "description": "Stable identifier used by `state_canvases[].breakpoint_id`."
+                },
+                "width": { "type": "integer", "minimum": 1 },
+                "height": { "type": "integer", "minimum": 1 },
+                "height_range": {
+                  "type": "array",
+                  "items": { "type": "integer", "minimum": 1 },
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "description": "Inclusive [minimum, maximum] accepted canvas height. The first value MUST be no greater than the second; semantic validators enforce ordering."
+                }
+              },
+              "required": ["breakpoint_id", "width"],
+              "anyOf": [
+                { "required": ["height"], "not": { "required": ["height_range"] } },
+                { "required": ["height_range"], "not": { "required": ["height"] } }
+              ],
+              "additionalProperties": true
+            }
+          },
+          "close_affordance": {
+            "type": "boolean",
+            "description": "Whether this state visibly renders a seller-controlled close affordance."
+          }
+        },
+        "required": ["state_id", "trigger", "anchoring", "breakpoints", "close_affordance"],
+        "additionalProperties": true
+      }
+    },
+    "user_controls": {
+      "type": "object",
+      "properties": {
+        "dismissible": { "type": "boolean" },
+        "user_collapsible": { "type": "boolean" }
+      },
+      "required": ["dismissible", "user_collapsible"],
+      "additionalProperties": true
+    },
+    "canvas_constraints": {
+      "type": "array",
+      "description": "Rectangular areas constraining buyer artwork. Omitted state/breakpoint selectors apply the constraint to every canvas.",
+      "items": { "$ref": "/schemas/core/canvas-constraint.json" }
+    },
+    "duration_ms_range": {
+      "type": "array",
+      "items": { "anyOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }] },
+      "minItems": 2,
+      "maxItems": 2,
+      "contains": { "type": "integer", "minimum": 0 },
+      "description": "Accepted embedded-video duration [min, max]. `duration_ms_exact` takes precedence when both are present."
+    },
+    "duration_ms_exact": { "type": "integer", "minimum": 1 },
+    "aspect_ratio": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
+      "description": "Embedded-video aspect ratio."
+    },
+    "containers": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["mp4", "webm", "mov"] },
+      "uniqueItems": true
+    },
+    "video_playback": {
+      "type": "string",
+      "enum": ["none", "auto_muted", "user_initiated"]
+    },
+    "max_initial_load_kb": { "type": "integer", "minimum": 1 },
+    "polite_load": { "type": "boolean" }
+  },
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "state_id_uniqueness": "states[].state_id values must be unique",
+      "breakpoint_id_uniqueness": "breakpoints[].breakpoint_id values must be unique within each state",
+      "height_range_order": "height_range minimum must be less than or equal to maximum",
+      "state_canvas_coverage": "exactly one state_canvases image per declared state and breakpoint pair",
+      "state_canvas_dimensions": "canvas width must equal the declared width and height must equal fixed height or fall within height_range",
+      "state_canvas_extras": "undeclared and duplicate state/breakpoint pairs are rejected"
+    },
+    "spec": "docs/creative/canonical-formats.mdx#premium-display-in-32"
+  },
+  "required": ["states", "user_controls"],
+  "additionalProperties": true
+}

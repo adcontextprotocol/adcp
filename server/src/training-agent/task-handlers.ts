@@ -49,6 +49,8 @@ import type {
 import { CreativeManifestSchema } from '@adcp/sdk/schemas';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getCanonicalBase } from './canonical-base.js';
+import { validateProtocolSchema } from '../services/protocol-schema-validator.js';
+import { getPromotedFormatShapes } from '../services/format-shape-promotion-registry.js';
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
 function escapeHtmlAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -123,6 +125,7 @@ type ValidateInputArgs = ToolArgs & {
     format_id?: FormatID;
     format_option_ref?: Record<string, unknown>;
     assets?: Record<string, unknown>;
+    component_assets?: Record<string, Record<string, unknown>>;
   };
   targets?: ValidateInputTarget[];
 };
@@ -247,6 +250,15 @@ const CANONICAL_FORMAT_SLOTS: Record<string, CanonicalSlot[]> = {
     { asset_group_id: 'offering_ref', asset_type: 'text' },
     { asset_group_id: 'landing_page_url', asset_type: 'url' },
   ],
+  multi_state_display: [
+    { asset_group_id: 'state_canvases', asset_type: 'image', required: true, min: 1 },
+    { asset_group_id: 'video_main', asset_type: 'video' },
+    { asset_group_id: 'cta', asset_type: 'text' },
+    { asset_group_id: 'messaging', asset_type: 'text' },
+    { asset_group_id: 'legal_text', asset_type: 'text' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url', required: true },
+  ],
+  page_takeover: [],
 };
 const BUILD_CREATIVE_FORMAT_ALIASES: Record<string, string> = {
   display_300x250_generative: 'display_300x250',
@@ -2831,18 +2843,40 @@ type CanonicalFormatRef = { agent_url?: string; id?: string };
 type CanonicalFormatOption = {
   format_option_id?: string;
   format_kind?: string;
+  format_shape?: string;
   v1_format_ref?: CanonicalFormatRef[];
 };
 
 function collectCanonicalFormatAdvisories(products: Product[]): TaskError[] {
   const errors: TaskError[] = [];
+  const promotedFormatShapes = getPromotedFormatShapes();
 
   for (let productIndex = 0; productIndex < products.length; productIndex++) {
     const product = products[productIndex] as Product & {
       format_ids?: CanonicalFormatRef[];
       format_options?: CanonicalFormatOption[];
     };
-    if (!Array.isArray(product.format_ids) || !Array.isArray(product.format_options)) continue;
+    if (!Array.isArray(product.format_options)) continue;
+    product.format_options.forEach((option, optionIndex) => {
+      if (option.format_kind !== 'custom' || typeof option.format_shape !== 'string') return;
+      const promotion = promotedFormatShapes[option.format_shape];
+      if (!promotion) return;
+      errors.push({
+        code: 'FORMAT_SHAPE_PROMOTED',
+        message: `Product ${product.product_id} uses legacy custom format shape ${option.format_shape}; migrate to ${promotion.promoted_to}.`,
+        field: `products[${productIndex}].format_options[${optionIndex}].format_shape`,
+        recovery: 'correctable',
+        source: 'producer',
+        details: {
+          product_id: product.product_id,
+          format_shape: option.format_shape,
+          promoted_to: promotion.promoted_to,
+          promotion_release: promotion.promotion_release,
+          transition_end: promotion.transition_end,
+        },
+      });
+    });
+    if (!Array.isArray(product.format_ids)) continue;
     if (product.format_ids.length === 0 || product.format_options.length === 0) continue;
 
     const declaredRefs = new Set(
@@ -4681,7 +4715,24 @@ function schemaIssueField(path: Array<string | number>): string {
   return `manifest.${path.map(part => typeof part === 'number' ? `[${part}]` : part).join('.')}`.replace(/\.\[/g, '[');
 }
 
-function validateManifestSchema(manifest: NonNullable<ValidateInputArgs['manifest']>): ValidateInputViolation[] {
+function jsonPointerPath(pointer: string): Array<string | number> {
+  if (!pointer) return [];
+  return pointer.slice(1).split('/').map(part => {
+    const decoded = part.replace(/~1/g, '/').replace(/~0/g, '~');
+    return /^\d+$/.test(decoded) ? Number(decoded) : decoded;
+  });
+}
+
+async function validateManifestSchema(manifest: NonNullable<ValidateInputArgs['manifest']>): Promise<ValidateInputViolation[]> {
+  if (manifest.format_kind === 'multi_state_display' || manifest.format_kind === 'page_takeover') {
+    const result = await validateProtocolSchema('/schemas/core/creative-manifest.json', manifest);
+    return result.errors.map(issue => ({
+      rule: 'schema',
+      field: schemaIssueField(jsonPointerPath(issue.instancePath)),
+      expected: issue.message ?? 'valid creative manifest',
+      predicted: issue.keyword,
+    }));
+  }
   const parsed = CreativeManifestSchema.safeParse(manifest);
   if (parsed.success) return [];
   return parsed.error.issues.map(issue => ({
@@ -4742,6 +4793,9 @@ function validateAssetUrls(manifest: NonNullable<ValidateInputArgs['manifest']>)
   const seen = new WeakSet<object>();
   for (const [slotId, slotValue] of Object.entries(assets)) {
     collectAssetUrlViolations(slotValue, `assets.${slotId}`, violations, seen);
+  }
+  for (const [componentId, componentAssets] of Object.entries(manifest.component_assets ?? {})) {
+    collectAssetUrlViolations(componentAssets, `component_assets.${componentId}`, violations, seen);
   }
   return violations;
 }
@@ -4811,6 +4865,560 @@ function validateManifestSlots(
     }
   }
 
+  return violations;
+}
+
+function validateMultiStateDisplayManifest(
+  params: Record<string, unknown>,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+): ValidateInputViolation[] {
+  const violations: ValidateInputViolation[] = [];
+  const expected = new Map<string, { width: number; height?: number; heightRange?: [number, number] }>();
+  const stateIds = new Set<string>();
+  const states = Array.isArray(params.states) ? params.states : [];
+  if (states.length === 0) {
+    violations.push({
+      rule: 'multi_state_display_states_required',
+      field: 'params.states',
+      expected: 'at least one declared state',
+      predicted: params.states,
+    });
+  }
+
+  for (const [stateIndex, rawState] of states.entries()) {
+    if (!rawState || typeof rawState !== 'object') continue;
+    const state = rawState as Record<string, unknown>;
+    if (typeof state.state_id !== 'string') continue;
+    if (stateIds.has(state.state_id)) {
+      violations.push({
+        rule: 'unique_state_id',
+        field: `params.states[${stateIndex}].state_id`,
+        expected: 'unique state_id',
+        predicted: state.state_id,
+      });
+    }
+    stateIds.add(state.state_id);
+    const breakpointIds = new Set<string>();
+    const breakpoints = Array.isArray(state.breakpoints) ? state.breakpoints : [];
+    for (const [breakpointIndex, rawBreakpoint] of breakpoints.entries()) {
+      if (!rawBreakpoint || typeof rawBreakpoint !== 'object') continue;
+      const breakpoint = rawBreakpoint as Record<string, unknown>;
+      if (typeof breakpoint.breakpoint_id !== 'string' || typeof breakpoint.width !== 'number') continue;
+      if (breakpointIds.has(breakpoint.breakpoint_id)) {
+        violations.push({
+          rule: 'unique_breakpoint_id',
+          field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}].breakpoint_id`,
+          expected: 'unique within state',
+          predicted: breakpoint.breakpoint_id,
+        });
+      }
+      breakpointIds.add(breakpoint.breakpoint_id);
+      const heightRange = Array.isArray(breakpoint.height_range)
+        && breakpoint.height_range.length === 2
+        && breakpoint.height_range.every(value => typeof value === 'number')
+        ? breakpoint.height_range as [number, number]
+        : undefined;
+      if (heightRange && heightRange[0] > heightRange[1]) {
+        violations.push({
+          rule: 'height_range_order',
+          field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}].height_range`,
+          expected: '[minimum, maximum] with minimum <= maximum',
+          predicted: heightRange,
+        });
+      }
+      expected.set(`${state.state_id}:${breakpoint.breakpoint_id}`, {
+        width: breakpoint.width,
+        ...(typeof breakpoint.height === 'number' && { height: breakpoint.height }),
+        ...(heightRange && { heightRange }),
+      });
+    }
+  }
+
+  const canvases = slotValues(manifest.assets, 'state_canvases');
+  const seen = new Set<string>();
+  for (const [index, rawCanvas] of canvases.entries()) {
+    if (!rawCanvas || typeof rawCanvas !== 'object' || Array.isArray(rawCanvas)) continue;
+    const canvas = rawCanvas as Record<string, unknown>;
+    const key = `${String(canvas.state_id)}:${String(canvas.breakpoint_id)}`;
+    const target = expected.get(key);
+    if (!target) {
+      violations.push({
+        rule: 'state_canvas_declared_pair',
+        field: `assets.state_canvases[${index}]`,
+        expected: [...expected.keys()],
+        predicted: key,
+      });
+      continue;
+    }
+    if (seen.has(key)) {
+      violations.push({
+        rule: 'state_canvas_unique_pair',
+        field: `assets.state_canvases[${index}]`,
+        expected: 'exactly one canvas per state and breakpoint',
+        predicted: key,
+      });
+    }
+    seen.add(key);
+    if (canvas.width !== target.width) {
+      violations.push({
+        rule: 'state_canvas_width',
+        field: `assets.state_canvases[${index}].width`,
+        expected: target.width,
+        predicted: canvas.width,
+      });
+    }
+    if (target.height !== undefined && canvas.height !== target.height) {
+      violations.push({
+        rule: 'state_canvas_height',
+        field: `assets.state_canvases[${index}].height`,
+        expected: target.height,
+        predicted: canvas.height,
+      });
+    }
+    if (target.heightRange && (
+      typeof canvas.height !== 'number'
+      || canvas.height < target.heightRange[0]
+      || canvas.height > target.heightRange[1]
+    )) {
+      violations.push({
+        rule: 'state_canvas_height_range',
+        field: `assets.state_canvases[${index}].height`,
+        expected: target.heightRange,
+        predicted: canvas.height,
+      });
+    }
+  }
+  for (const key of expected.keys()) {
+    if (!seen.has(key)) {
+      violations.push({
+        rule: 'state_canvas_required_pair',
+        field: 'assets.state_canvases',
+        expected: key,
+      });
+    }
+  }
+  const constraints = Array.isArray(params.canvas_constraints) ? params.canvas_constraints : [];
+  for (const [constraintIndex, rawConstraint] of constraints.entries()) {
+    if (!rawConstraint || typeof rawConstraint !== 'object' || Array.isArray(rawConstraint)) continue;
+    const constraint = rawConstraint as Record<string, unknown>;
+    const stateId = typeof constraint.state_id === 'string' ? constraint.state_id : undefined;
+    const breakpointId = typeof constraint.breakpoint_id === 'string' ? constraint.breakpoint_id : undefined;
+    const candidates = [...expected.entries()].filter(([key]) => {
+      const [candidateState, candidateBreakpoint] = key.split(':');
+      return (!stateId || candidateState === stateId) && (!breakpointId || candidateBreakpoint === breakpointId);
+    });
+    if (candidates.length === 0) {
+      violations.push({
+        rule: 'canvas_constraint_selector',
+        field: `params.canvas_constraints[${constraintIndex}]`,
+        expected: [...expected.keys()],
+        predicted: { state_id: stateId, breakpoint_id: breakpointId },
+      });
+      continue;
+    }
+    violations.push(...validateCanvasConstraintRegion(
+      constraint,
+      `params.canvas_constraints[${constraintIndex}]`,
+      candidates.map(([, canvas]) => ({
+        width: canvas.width,
+        height: canvas.height ?? canvas.heightRange?.[0],
+      })),
+    ));
+  }
+  const videoAssets = slotValues(manifest.assets, 'video_main');
+  if (videoAssets.length > 0) {
+    const video = videoAssets.length === 1 && isRecord(videoAssets[0]) ? videoAssets[0] : undefined;
+    const durationExact = typeof params.duration_ms_exact === 'number' ? params.duration_ms_exact : undefined;
+    const durationRange = Array.isArray(params.duration_ms_range) ? params.duration_ms_range : undefined;
+    const durationSatisfied = durationExact !== undefined
+      ? video?.duration_ms === durationExact
+      : (!durationRange || (
+          typeof video?.duration_ms === 'number'
+          && (typeof durationRange[0] !== 'number' || video.duration_ms >= durationRange[0])
+          && (typeof durationRange[1] !== 'number' || video.duration_ms <= durationRange[1])
+        ));
+    const ratioParts = typeof params.aspect_ratio === 'string'
+      ? params.aspect_ratio.split(':').map(Number)
+      : undefined;
+    const aspectSatisfied = !ratioParts || (
+      Number.isFinite(ratioParts[0])
+      && Number.isFinite(ratioParts[1])
+      && ratioParts[1] !== 0
+      && typeof video?.width === 'number'
+      && typeof video.height === 'number'
+      && video.height > 0
+      && Math.abs(video.width / video.height - ratioParts[0] / ratioParts[1]) < 0.01
+    );
+    const allowedContainers = Array.isArray(params.containers)
+      ? params.containers.filter((value): value is string => typeof value === 'string')
+      : [];
+    const containerSatisfied = allowedContainers.length === 0 || (
+      typeof video?.container_format === 'string'
+      && allowedContainers.includes(video.container_format)
+    );
+    if (!video || !durationSatisfied || !aspectSatisfied || !containerSatisfied) {
+      violations.push({
+        rule: 'multi_state_display_video_params',
+        field: 'assets.video_main',
+        expected: {
+          cardinality: 'exactly one video when supplied',
+          ...(durationExact !== undefined && { duration_ms_exact: durationExact }),
+          ...(durationExact === undefined && durationRange && { duration_ms_range: durationRange }),
+          ...(params.aspect_ratio !== undefined && { aspect_ratio: params.aspect_ratio }),
+          ...(allowedContainers.length > 0 && { containers: allowedContainers }),
+        },
+        predicted: videoAssets,
+      });
+    }
+  }
+  return violations;
+}
+
+function validateCanvasConstraintRegion(
+  constraint: Record<string, unknown>,
+  field: string,
+  canvases: Array<{ width: number; height?: number }>,
+): ValidateInputViolation[] {
+  const region = constraint.region && typeof constraint.region === 'object' && !Array.isArray(constraint.region)
+    ? constraint.region as Record<string, unknown>
+    : undefined;
+  if (!region) return [];
+  const { x, y, width, height } = region;
+  if (![x, y, width, height].every(value => typeof value === 'number')) return [];
+  const unit = region.unit === 'percent' ? 'percent' : 'px';
+  const maxWidth = unit === 'percent' ? 100 : undefined;
+  const maxHeight = unit === 'percent' ? 100 : undefined;
+  if (maxWidth !== undefined && ((x as number) + (width as number) > maxWidth || (y as number) + (height as number) > maxHeight!)) {
+    return [{
+      rule: 'canvas_constraint_region_bounds',
+      field: `${field}.region`,
+      expected: 'percent region contained within 0..100 on both axes',
+      predicted: region,
+    }];
+  }
+  if (unit === 'px' && canvases.some(canvas =>
+    (x as number) + (width as number) > canvas.width
+    || (canvas.height !== undefined && (y as number) + (height as number) > canvas.height)
+  )) {
+    return [{
+      rule: 'canvas_constraint_region_bounds',
+      field: `${field}.region`,
+      expected: 'pixel region contained within every selected canvas',
+      predicted: region,
+    }];
+  }
+  return [];
+}
+
+function resolveTakeoverComponentOption(
+  product: Product,
+  ref: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const options = (product as unknown as { format_options?: unknown[] }).format_options;
+  if (!Array.isArray(options) || typeof ref.format_option_id !== 'string') return undefined;
+  return options.find((rawOption): rawOption is Record<string, unknown> => {
+    if (!rawOption || typeof rawOption !== 'object') return false;
+    const option = rawOption as Record<string, unknown>;
+    if (option.format_option_id !== ref.format_option_id) return false;
+    if (ref.scope === 'publisher') {
+      return typeof ref.publisher_domain === 'string' && option.publisher_domain === ref.publisher_domain;
+    }
+    return ref.scope === 'product' && option.publisher_domain === undefined;
+  });
+}
+
+function canonicalSlotsForDeclaration(declaration: Record<string, unknown>): CanonicalSlot[] {
+  const kind = typeof declaration.format_kind === 'string' ? declaration.format_kind : '';
+  const declarationParams = declaration.params && typeof declaration.params === 'object' && !Array.isArray(declaration.params)
+    ? declaration.params as Record<string, unknown>
+    : {};
+  return normalizeCanonicalSlots(declarationParams.slots) ?? CANONICAL_FORMAT_SLOTS[kind] ?? [];
+}
+
+function prefixComponentViolations(
+  componentId: string,
+  violations: ValidateInputViolation[],
+): ValidateInputViolation[] {
+  return violations.map(violation => ({
+    ...violation,
+    field: violation.field.startsWith('assets')
+      ? violation.field.replace(/^assets/, `component_assets.${componentId}`)
+      : violation.field,
+  }));
+}
+
+async function validatePageTakeoverDeclaration(
+  product: Product,
+  params: Record<string, unknown>,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+): Promise<ValidateInputViolation[]> {
+  const violations: ValidateInputViolation[] = [];
+  const componentIds = new Set<string>();
+  const componentDeclarations = new Map<string, Record<string, unknown>>();
+  const requiredComponents = new Set<string>();
+  const components = Array.isArray(params.components) ? params.components : [];
+  if (components.length === 0) {
+    violations.push({
+      rule: 'page_takeover_components_required',
+      field: 'params.components',
+      expected: 'at least one component',
+      predicted: params.components,
+    });
+  }
+  for (const [componentIndex, rawComponent] of components.entries()) {
+    if (!rawComponent || typeof rawComponent !== 'object') continue;
+    const component = rawComponent as Record<string, unknown>;
+    if (typeof component.component_id !== 'string') continue;
+    if (componentIds.has(component.component_id)) {
+      violations.push({
+        rule: 'unique_component_id',
+        field: `params.components[${componentIndex}].component_id`,
+        expected: 'unique component_id',
+        predicted: component.component_id,
+      });
+    }
+    componentIds.add(component.component_id);
+    if (component.required === true) requiredComponents.add(component.component_id);
+    let declaration: Record<string, unknown> | undefined;
+    if (component.format_option_ref && typeof component.format_option_ref === 'object') {
+      declaration = resolveTakeoverComponentOption(
+        product,
+        component.format_option_ref as Record<string, unknown>,
+      );
+      if (!declaration) {
+        violations.push({
+          rule: 'takeover_component_format_option_ref',
+          field: `params.components[${componentIndex}].format_option_ref`,
+          expected: 'sibling format option on the same product',
+          predicted: component.format_option_ref,
+        });
+      } else if (declaration.format_kind === 'custom' || declaration.format_kind === 'page_takeover') {
+        violations.push({
+          rule: 'takeover_component_format_kind',
+          field: `params.components[${componentIndex}].format_option_ref`,
+          expected: 'non-custom, non-page_takeover sibling format',
+          predicted: declaration.format_kind,
+        });
+      }
+    } else if (typeof component.format_kind === 'string' && component.params && typeof component.params === 'object') {
+      declaration = { format_kind: component.format_kind, params: component.params };
+      if (component.format_kind === 'custom' || component.format_kind === 'page_takeover') {
+        violations.push({
+          rule: 'takeover_component_format_kind',
+          field: `params.components[${componentIndex}].format_kind`,
+          expected: 'non-custom, non-page_takeover canonical format',
+          predicted: component.format_kind,
+        });
+      }
+    }
+    if (declaration && declaration.format_kind !== 'custom' && declaration.format_kind !== 'page_takeover') {
+      componentDeclarations.set(component.component_id, declaration);
+      const schemaResult = await validateProtocolSchema(
+        '/schemas/core/product-format-declaration.json',
+        declaration,
+      );
+      for (const issue of schemaResult.errors) {
+        violations.push({
+          rule: 'takeover_component_params_schema',
+          field: `params.components[${componentIndex}]${issue.instancePath.replaceAll('/', '.')}`,
+          expected: issue.message ?? 'params valid for selected canonical',
+          predicted: issue.keyword,
+        });
+      }
+      const componentConstraints = Array.isArray(component.canvas_constraints) ? component.canvas_constraints : [];
+      const declarationParams = declaration.params && typeof declaration.params === 'object'
+        ? declaration.params as Record<string, unknown>
+        : {};
+      const canvases: Array<{ width: number; height?: number; stateId?: string; breakpointId?: string }> = [];
+      if (typeof declarationParams.width === 'number') {
+        canvases.push({
+          width: declarationParams.width,
+          height: typeof declarationParams.height === 'number' ? declarationParams.height : undefined,
+        });
+      }
+      for (const [key, value] of Object.entries(declarationParams)) {
+        if ((key !== 'sizes' && !key.endsWith('_sizes')) || !Array.isArray(value)) continue;
+        for (const size of value) {
+          if (!isRecord(size) || typeof size.width !== 'number') continue;
+          canvases.push({
+            width: size.width,
+            height: typeof size.height === 'number' ? size.height : undefined,
+          });
+        }
+      }
+      if (declaration.format_kind === 'multi_state_display') {
+        for (const state of Array.isArray(declarationParams.states) ? declarationParams.states : []) {
+          if (!isRecord(state) || typeof state.state_id !== 'string') continue;
+          for (const breakpoint of Array.isArray(state.breakpoints) ? state.breakpoints : []) {
+            if (!isRecord(breakpoint)
+              || typeof breakpoint.breakpoint_id !== 'string'
+              || typeof breakpoint.width !== 'number') continue;
+            const heightRange = Array.isArray(breakpoint.height_range) ? breakpoint.height_range : [];
+            canvases.push({
+              width: breakpoint.width,
+              height: typeof breakpoint.height === 'number'
+                ? breakpoint.height
+                : (typeof heightRange[0] === 'number' ? heightRange[0] : undefined),
+              stateId: state.state_id,
+              breakpointId: breakpoint.breakpoint_id,
+            });
+          }
+        }
+      }
+      for (const [constraintIndex, rawConstraint] of componentConstraints.entries()) {
+        if (!rawConstraint || typeof rawConstraint !== 'object' || Array.isArray(rawConstraint)) continue;
+        const constraint = rawConstraint as Record<string, unknown>;
+        const hasSelector = constraint.state_id !== undefined || constraint.breakpoint_id !== undefined;
+        if (hasSelector && declaration.format_kind !== 'multi_state_display') {
+          violations.push({
+            rule: 'takeover_canvas_constraint_selector',
+            field: `params.components[${componentIndex}].canvas_constraints[${constraintIndex}]`,
+            expected: 'state_id and breakpoint_id selectors only on multi_state_display components',
+            predicted: { state_id: constraint.state_id, breakpoint_id: constraint.breakpoint_id },
+          });
+        }
+        const selectedCanvases = declaration.format_kind === 'multi_state_display'
+          ? canvases.filter(canvas =>
+              (constraint.state_id === undefined || constraint.state_id === canvas.stateId)
+              && (constraint.breakpoint_id === undefined || constraint.breakpoint_id === canvas.breakpointId))
+          : canvases;
+        if (declaration.format_kind === 'multi_state_display' && selectedCanvases.length === 0) {
+          violations.push({
+            rule: 'takeover_canvas_constraint_selector',
+            field: `params.components[${componentIndex}].canvas_constraints[${constraintIndex}]`,
+            expected: 'selector matching a declared state and breakpoint',
+            predicted: { state_id: constraint.state_id, breakpoint_id: constraint.breakpoint_id },
+          });
+        }
+        const region = isRecord(constraint.region) ? constraint.region : undefined;
+        if (region?.unit !== 'percent' && selectedCanvases.length === 0) {
+          violations.push({
+            rule: 'takeover_canvas_constraint_canvas_required',
+            field: `params.components[${componentIndex}].canvas_constraints[${constraintIndex}].region`,
+            expected: 'a component declaration with finite canvas dimensions for pixel constraints',
+            predicted: declarationParams,
+          });
+        }
+        violations.push(...validateCanvasConstraintRegion(
+          constraint,
+          `params.components[${componentIndex}].canvas_constraints[${constraintIndex}]`,
+          selectedCanvases,
+        ));
+      }
+    }
+  }
+  const sharedSlots = Array.isArray(params.shared_slots) ? params.shared_slots : [];
+  const sharedSlotIds = new Set<string>();
+  const sharedByComponent = new Map<string, CanonicalSlot[]>();
+  for (const [slotIndex, rawSlot] of sharedSlots.entries()) {
+    if (!rawSlot || typeof rawSlot !== 'object') continue;
+    const slot = rawSlot as Record<string, unknown>;
+    const slotId = typeof slot.asset_group_id === 'string' ? slot.asset_group_id : undefined;
+    const slotType = typeof slot.asset_type === 'string' ? slot.asset_type : undefined;
+    if (slotId && sharedSlotIds.has(slotId)) {
+      violations.push({
+        rule: 'takeover_shared_slot_unique',
+        field: `params.shared_slots[${slotIndex}].asset_group_id`,
+        expected: 'unique shared asset_group_id',
+        predicted: slotId,
+      });
+    }
+    if (slotId) sharedSlotIds.add(slotId);
+    const consumers = Array.isArray(slot.consumed_by) ? slot.consumed_by : [];
+    for (const [consumerIndex, consumer] of consumers.entries()) {
+      if (typeof consumer !== 'string') continue;
+      if (!componentIds.has(consumer)) {
+        violations.push({
+          rule: 'takeover_shared_slot_consumer',
+          field: `params.shared_slots[${slotIndex}].consumed_by[${consumerIndex}]`,
+          expected: [...componentIds],
+          predicted: consumer,
+        });
+        continue;
+      }
+      if (!slotId || !slotType) continue;
+      const declaration = componentDeclarations.get(consumer);
+      const accepted = declaration
+        ? canonicalSlotsForDeclaration(declaration).find(candidate => candidate.asset_group_id === slotId)
+        : undefined;
+      if (!accepted || accepted.asset_type !== slotType) {
+        violations.push({
+          rule: 'takeover_shared_slot_compatibility',
+          field: `params.shared_slots[${slotIndex}].consumed_by[${consumerIndex}]`,
+          expected: declaration ? canonicalSlotsForDeclaration(declaration) : [],
+          predicted: { component_id: consumer, asset_group_id: slotId, asset_type: slotType },
+        });
+        continue;
+      }
+      const list = sharedByComponent.get(consumer) ?? [];
+      list.push({ asset_group_id: slotId, asset_type: slotType });
+      sharedByComponent.set(consumer, list);
+    }
+  }
+
+  const componentAssets = manifest.component_assets ?? {};
+  for (const componentId of Object.keys(componentAssets)) {
+    if (!componentIds.has(componentId)) {
+      violations.push({
+        rule: 'takeover_component_assets_declared',
+        field: `component_assets.${componentId}`,
+        expected: [...componentIds],
+        predicted: componentId,
+      });
+    }
+  }
+  for (const [componentId, declaration] of componentDeclarations) {
+    const supplied = componentAssets[componentId];
+    if (!supplied && requiredComponents.has(componentId)) {
+      violations.push({
+        rule: 'takeover_component_assets_required',
+        field: `component_assets.${componentId}`,
+        expected: 'asset map for required component',
+      });
+      continue;
+    }
+    if (!supplied) continue;
+    const effectiveAssets = { ...supplied };
+    for (const sharedSlot of sharedByComponent.get(componentId) ?? []) {
+      if (Object.hasOwn(effectiveAssets, sharedSlot.asset_group_id)) {
+        violations.push({
+          rule: 'takeover_shared_slot_duplicate_supply',
+          field: `component_assets.${componentId}.${sharedSlot.asset_group_id}`,
+          expected: 'shared asset supplied only at manifest.assets',
+          predicted: 'component-specific duplicate',
+        });
+        continue;
+      }
+      const sharedValue = manifest.assets?.[sharedSlot.asset_group_id];
+      if (sharedValue !== undefined) effectiveAssets[sharedSlot.asset_group_id] = sharedValue;
+    }
+    const componentManifest = {
+      format_kind: String(declaration.format_kind),
+      assets: effectiveAssets,
+    };
+    violations.push(...prefixComponentViolations(componentId, validateManifestSlots(
+      componentManifest,
+      canonicalSlotsForDeclaration(declaration),
+    )));
+    const declarationParams = declaration.params && typeof declaration.params === 'object'
+      ? declaration.params as Record<string, unknown>
+      : {};
+    if (declaration.format_kind !== 'multi_state_display'
+      && !canonicalParamsSatisfied(componentManifest as CreativeManifest, declarationParams)) {
+      violations.push({
+        rule: 'takeover_component_params_satisfied',
+        field: `component_assets.${componentId}`,
+        expected: declarationParams,
+        predicted: effectiveAssets,
+      });
+    }
+    if (declaration.format_kind === 'multi_state_display') {
+      violations.push(...prefixComponentViolations(
+        componentId,
+        validateMultiStateDisplayManifest(declarationParams, componentManifest),
+      ));
+    }
+  }
   return violations;
 }
 
@@ -5045,11 +5653,11 @@ function validateCapabilityTarget(
     : { target, result_kind: 'validated_pass' };
 }
 
-function validateProductTarget(
+async function validateProductTarget(
   target: ValidateInputTarget,
   manifest: NonNullable<ValidateInputArgs['manifest']>,
   product: Product | undefined,
-): ValidateInputResult {
+): Promise<ValidateInputResult> {
   if (!product) {
     return {
       target,
@@ -5103,8 +5711,31 @@ function validateProductTarget(
   const params = declaration.params && typeof declaration.params === 'object'
     ? declaration.params as Record<string, unknown>
     : {};
-  const slots = normalizeCanonicalSlots(params.slots) ?? CANONICAL_FORMAT_SLOTS[formatKind] ?? [];
-  const violations = validateManifestSlots(manifest, slots);
+  const declaredSlots = formatKind === 'page_takeover' ? params.shared_slots : params.slots;
+  const slots = normalizeCanonicalSlots(declaredSlots) ?? CANONICAL_FORMAT_SLOTS[formatKind] ?? [];
+  const declarationSchemaViolations: ValidateInputViolation[] = [];
+  if (formatKind === 'multi_state_display' || formatKind === 'page_takeover') {
+    const schemaResult = await validateProtocolSchema(
+      '/schemas/core/product-format-declaration.json',
+      declaration,
+    );
+    for (const issue of schemaResult.errors) {
+      declarationSchemaViolations.push({
+        rule: 'product_format_declaration_schema',
+        field: `products[].format_options[]${issue.instancePath.replaceAll('/', '.')}`,
+        expected: issue.message ?? 'valid product format declaration',
+        predicted: issue.keyword,
+      });
+    }
+  }
+  const semanticViolations = formatKind === 'multi_state_display'
+    ? validateMultiStateDisplayManifest(params, manifest)
+    : (formatKind === 'page_takeover' ? await validatePageTakeoverDeclaration(product, params, manifest) : []);
+  const violations = [
+    ...declarationSchemaViolations,
+    ...validateManifestSlots(manifest, slots),
+    ...semanticViolations,
+  ];
   if (params.synthesis_nondeterministic === true) {
     const sourceViolation = nondeterministicSourceViolation(params);
     if (sourceViolation) {
@@ -5179,7 +5810,7 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
   }
 
   const schemaViolations = [
-    ...validateManifestSchema(req.manifest),
+    ...await validateManifestSchema(req.manifest),
     ...validateAssetUrls(req.manifest),
   ];
   if (schemaViolations.length > 0) {
@@ -6609,10 +7240,23 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       format_kind?: string;
       format_option_ref?: Record<string, unknown>;
       assets?: Record<string, unknown>;
+      component_assets?: Record<string, Record<string, unknown>>;
     };
     const formatId = creativeShape.format_id;
     const formatKind = typeof creativeShape.format_kind === 'string' ? creativeShape.format_kind : undefined;
     const formatOptionRef = creativeShape.format_option_ref;
+
+    if (formatKind === 'page_takeover' || creativeShape.component_assets !== undefined) {
+      const schemaResult = await validateProtocolSchema('/schemas/core/creative-asset.json', creative);
+      if (!schemaResult.valid) {
+        return {
+          errors: schemaResult.errors.map(issue => ({
+            code: 'INVALID_REQUEST',
+            message: `creatives[].${issue.instancePath.replace(/^\//, '').replaceAll('/', '.') || 'creative'}: ${issue.message ?? 'invalid page takeover creative'}`,
+          })) as TaskError[],
+        };
+      }
+    }
 
     if (!formatId && !formatKind) {
       return {
@@ -6680,6 +7324,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
         formatKind,
         formatOptionRef,
         assets: creativeShape.assets as CreativeState['assets'],
+        componentAssets: creativeShape.component_assets as CreativeState['componentAssets'],
         name: creative.name,
         status: existingCreative?.status ?? 'approved',
         syncedAt: new Date().toISOString(),
@@ -6695,6 +7340,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
               }
               : { format_id: internalFormatId }),
             assets: (creative as unknown as { assets: Record<string, unknown> }).assets as CreativeManifest['assets'],
+            ...(creativeShape.component_assets && { component_assets: creativeShape.component_assets as CreativeManifest['component_assets'] }),
           } : existingCreative?.manifest),
         pricingOptionId: existingCreative?.pricingOptionId,
         purge: existingCreative?.purge,
@@ -6924,6 +7570,9 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
         created_date: c.syncedAt,
         updated_date: c.syncedAt,
         ...(c.manifest?.assets && (!selectedFields || selectedFields.has('assets')) && { assets: c.manifest.assets }),
+        ...(c.manifest?.component_assets
+          && (!selectedFields || selectedFields.has('component_assets'))
+          && { component_assets: c.manifest.component_assets }),
       };
       if (emitPricing && c.formatId?.id && (!selectedFields || selectedFields.has('pricing_options'))) {
         base.pricing_options = [getCreativePricing(req.account!, c)];

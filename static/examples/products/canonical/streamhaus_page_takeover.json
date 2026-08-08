@@ -1,0 +1,122 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "streamhaus_page_takeover",
+  "name": "StreamHaus page takeover",
+  "description": "Coordinated page takeover combining an expandable sticky leaderboard with a 2560×1440 skin. The video is shared with the leaderboard, while the CTA is consumed by both components.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "streamhaus.example",
+      "selection_type": "all"
+    }
+  ],
+  "channels": ["display", "olv"],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "takeover_flat_rate",
+      "pricing_model": "flat_rate",
+      "currency": "USD",
+      "fixed_price": 75000
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 120,
+    "timezone": "America/New_York",
+    "supports_webhooks": true,
+    "available_metrics": ["impressions", "clicks", "spend", "ctr", "viewability", "completion_rate"],
+    "date_range_support": "date_range"
+  },
+  "format_options": [
+    {
+      "format_kind": "multi_state_display",
+      "format_option_id": "takeover_sticky_leaderboard",
+      "display_name": "Takeover sticky leaderboard",
+      "canonical_formats_only": true,
+      "experimental": true,
+      "params": {
+        "experimental": true,
+        "states": [
+          {
+            "state_id": "expanded",
+            "trigger": "on_load",
+            "anchoring": "inline",
+            "close_affordance": true,
+            "breakpoints": [
+              { "breakpoint_id": "desktop", "width": 640, "height": 210 },
+              { "breakpoint_id": "mobile", "width": 320, "height": 210 }
+            ]
+          },
+          {
+            "state_id": "collapsed",
+            "trigger": "auto_collapse",
+            "anchoring": "sticky_top",
+            "close_affordance": true,
+            "breakpoints": [
+              { "breakpoint_id": "desktop", "width": 640, "height": 70 },
+              { "breakpoint_id": "mobile", "width": 320, "height": 70 }
+            ]
+          }
+        ],
+        "user_controls": { "dismissible": true, "user_collapsible": true },
+        "duration_ms_exact": 15000,
+        "aspect_ratio": "16:9",
+        "containers": ["mp4"],
+        "video_playback": "auto_muted"
+      }
+    },
+    {
+      "format_kind": "page_takeover",
+      "format_option_id": "coordinated_page_takeover",
+      "display_name": "Coordinated page takeover",
+      "canonical_formats_only": true,
+      "experimental": true,
+      "params": {
+        "experimental": true,
+        "components": [
+          {
+            "component_id": "leaderboard",
+            "placement_role": "masthead",
+            "required": true,
+            "format_option_ref": {
+              "scope": "product",
+              "format_option_id": "takeover_sticky_leaderboard"
+            }
+          },
+          {
+            "component_id": "skin",
+            "placement_role": "page_skin",
+            "required": true,
+            "canvas_constraints": [
+              {
+                "constraint": "safe_area",
+                "region": { "x": 640, "y": 0, "width": 1280, "height": 1440, "unit": "px" }
+              }
+            ],
+            "format_kind": "image",
+            "params": {
+              "width": 2560,
+              "height": 1440,
+              "image_formats": ["png", "jpg"]
+            }
+          }
+        ],
+        "shared_slots": [
+          {
+            "asset_group_id": "video_main",
+            "asset_type": "video",
+            "required": false,
+            "consumed_by": ["leaderboard"]
+          },
+          {
+            "asset_group_id": "cta",
+            "asset_type": "text",
+            "required": false,
+            "consumed_by": ["leaderboard", "skin"]
+          }
+        ],
+        "exclusivity": "all_slots"
+      }
+    }
+  ]
+}

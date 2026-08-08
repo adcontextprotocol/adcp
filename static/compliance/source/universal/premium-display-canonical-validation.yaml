@@ -1,0 +1,411 @@
+id: premium_display_canonical_validation
+version: "1.0.0"
+title: "Premium display canonical validation"
+category: schema_validation
+summary: "Validates AdCP 3.2 multi-state canvas coverage and page-takeover component resolution, asset namespacing, and shared-slot references."
+track: creative
+introduced_in: "3.2"
+required_tools:
+  - validate_input
+  - comply_test_controller
+
+requires:
+  - controller
+
+narrative: |
+  AdCP 3.2 adds deterministic multi-state display and coordinated page
+  takeover canonicals. Sellers validate every declared state/breakpoint canvas,
+  resolve takeover components within the target product, require assets for
+  required components, and reject unknown shared-slot consumers.
+
+agent:
+  interaction_model: creative
+  capabilities:
+    - validates_canonical_formats
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: "The runner seeds premium-display products before exercising product-target validation."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "premium_multi_state_display"
+      name: "Premium multi-state display"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "multi_state_display"
+          format_option_id: "expandable_leaderboard"
+          canonical_formats_only: true
+          params:
+            states:
+              - state_id: "expanded"
+                trigger: "on_load"
+                anchoring: "inline"
+                close_affordance: true
+                breakpoints:
+                  - breakpoint_id: "desktop"
+                    width: 640
+                    height: 210
+                  - breakpoint_id: "mobile"
+                    width: 320
+                    height: 210
+              - state_id: "collapsed"
+                trigger: "auto_collapse"
+                anchoring: "sticky_top"
+                close_affordance: true
+                breakpoints:
+                  - breakpoint_id: "desktop"
+                    width: 640
+                    height: 70
+                  - breakpoint_id: "mobile"
+                    width: 320
+                    height: 70
+            user_controls:
+              dismissible: true
+              user_collapsible: true
+
+    - product_id: "premium_page_takeover"
+      name: "Premium page takeover"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "image"
+          format_option_id: "masthead_image"
+          canonical_formats_only: true
+          params:
+            width: 970
+            height: 250
+        - format_kind: "page_takeover"
+          format_option_id: "page_takeover"
+          canonical_formats_only: true
+          params:
+            components:
+              - component_id: "masthead"
+                placement_role: "masthead"
+                required: true
+                format_option_ref:
+                  scope: "product"
+                  format_option_id: "masthead_image"
+              - component_id: "skin"
+                placement_role: "skin"
+                required: true
+                format_kind: "image"
+                params:
+                  width: 2560
+                  height: 1440
+            shared_slots:
+              - asset_group_id: "cta"
+                asset_type: "text"
+                required: true
+                consumed_by: ["masthead", "skin"]
+            exclusivity: "all_slots"
+
+    - product_id: "premium_page_takeover_bad_ref"
+      name: "Premium page takeover with unresolved component"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "page_takeover"
+          format_option_id: "bad_ref_takeover"
+          canonical_formats_only: true
+          params:
+            components:
+              - component_id: "masthead"
+                placement_role: "masthead"
+                required: true
+                format_option_ref:
+                  scope: "product"
+                  format_option_id: "missing_format"
+            exclusivity: "named_slots"
+
+    - product_id: "premium_page_takeover_bad_consumer"
+      name: "Premium page takeover with unknown shared consumer"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "page_takeover"
+          format_option_id: "bad_consumer_takeover"
+          canonical_formats_only: true
+          params:
+            components:
+              - component_id: "skin"
+                placement_role: "skin"
+                required: true
+                format_kind: "image"
+                params:
+                  width: 2560
+                  height: 1440
+            shared_slots:
+              - asset_group_id: "cta"
+                asset_type: "text"
+                required: false
+                consumed_by: ["missing_component"]
+            exclusivity: "named_slots"
+
+    - product_id: "premium_page_takeover_bad_shared_type"
+      name: "Premium page takeover with incompatible shared slot"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "page_takeover"
+          format_option_id: "bad_shared_type_takeover"
+          canonical_formats_only: true
+          params:
+            components:
+              - component_id: "skin"
+                placement_role: "skin"
+                required: true
+                format_kind: "image"
+                params: { width: 2560, height: 1440 }
+            shared_slots:
+              - asset_group_id: "video_main"
+                asset_type: "video"
+                required: false
+                consumed_by: ["skin"]
+            exclusivity: "named_slots"
+
+    - product_id: "premium_page_takeover_bad_canvas"
+      name: "Premium page takeover with overflowing canvas constraint"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "page_takeover"
+          format_option_id: "bad_canvas_takeover"
+          canonical_formats_only: true
+          params:
+            components:
+              - component_id: "skin"
+                placement_role: "skin"
+                required: true
+                format_kind: "image"
+                params:
+                  sizes: [{ width: 2560, height: 1440 }]
+                canvas_constraints:
+                  - constraint: "safe_area"
+                    region: { unit: "px", x: 2500, y: 0, width: 100, height: 100 }
+            exclusivity: "named_slots"
+
+phases:
+  - id: multi_state_canvas_matrix
+    title: "Multi-state canvas matrix"
+    steps:
+      - id: validate_complete_canvas_matrix
+        title: "Accept complete state and breakpoint canvas coverage"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.0"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "multi_state_display"
+            assets:
+              state_canvases:
+                - { asset_type: "image", url: "https://cdn.acme.example/expanded-desktop.png", state_id: "expanded", breakpoint_id: "desktop", width: 640, height: 210 }
+                - { asset_type: "image", url: "https://cdn.acme.example/expanded-mobile.png", state_id: "expanded", breakpoint_id: "mobile", width: 320, height: 210 }
+                - { asset_type: "image", url: "https://cdn.acme.example/collapsed-desktop.png", state_id: "collapsed", breakpoint_id: "desktop", width: 640, height: 70 }
+                - { asset_type: "image", url: "https://cdn.acme.example/collapsed-mobile.png", state_id: "collapsed", breakpoint_id: "mobile", width: 320, height: 70 }
+              landing_page_url: { asset_type: "url", url: "https://acmeoutdoor.example/launch" }
+          targets:
+            - { kind: "product", id: "premium_multi_state_display" }
+        validations:
+          - check: response_schema
+          - { check: field_value, path: "results[0].result_kind", value: "validated_pass" }
+
+      - id: reject_incomplete_canvas_matrix
+        title: "Reject wrong dimensions and missing state canvas"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.0"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "multi_state_display"
+            assets:
+              state_canvases:
+                - { asset_type: "image", url: "https://cdn.acme.example/expanded-desktop.png", state_id: "expanded", breakpoint_id: "desktop", width: 641, height: 210 }
+                - { asset_type: "image", url: "https://cdn.acme.example/expanded-mobile.png", state_id: "expanded", breakpoint_id: "mobile", width: 320, height: 210 }
+                - { asset_type: "image", url: "https://cdn.acme.example/collapsed-desktop.png", state_id: "collapsed", breakpoint_id: "desktop", width: 640, height: 70 }
+              landing_page_url: { asset_type: "url", url: "https://acmeoutdoor.example/launch" }
+          targets:
+            - { kind: "product", id: "premium_multi_state_display" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "state_canvas_width" }
+
+  - id: page_takeover_components
+    title: "Page-takeover component validation"
+    steps:
+      - id: validate_namespaced_component_assets
+        title: "Accept namespaced assets for required components"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.0"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "page_takeover"
+            assets:
+              cta: { asset_type: "text", content: "Explore" }
+            component_assets:
+              masthead:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/masthead.png", width: 970, height: 250 }
+              skin:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/skin.png", width: 2560, height: 1440 }
+          targets:
+            - { kind: "product", id: "premium_page_takeover" }
+        validations:
+          - check: response_schema
+          - { check: field_value, path: "results[0].result_kind", value: "validated_pass" }
+
+      - id: reject_missing_component_assets
+        title: "Reject missing assets for a required component"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.0"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "page_takeover"
+            assets:
+              cta: { asset_type: "text", content: "Explore" }
+            component_assets:
+              masthead:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/masthead.png", width: 970, height: 250 }
+          targets:
+            - { kind: "product", id: "premium_page_takeover" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "takeover_component_assets_required" }
+
+      - id: reject_unresolved_component
+        title: "Reject unresolved sibling component reference"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.0"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest: { format_kind: "page_takeover", assets: {}, component_assets: {} }
+          targets:
+            - { kind: "product", id: "premium_page_takeover_bad_ref" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "takeover_component_format_option_ref" }
+
+      - id: reject_unknown_shared_consumer
+        title: "Reject unknown shared-slot consumer"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.0"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "page_takeover"
+            assets: {}
+            component_assets:
+              skin:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/skin.png", width: 2560, height: 1440 }
+          targets:
+            - { kind: "product", id: "premium_page_takeover_bad_consumer" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "takeover_shared_slot_consumer" }
+
+      - id: reject_incompatible_shared_slot
+        title: "Reject a shared slot incompatible with its consumer"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.0"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "page_takeover"
+            assets: {}
+            component_assets:
+              skin:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/skin.png", width: 2560, height: 1440 }
+          targets:
+            - { kind: "product", id: "premium_page_takeover_bad_shared_type" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "takeover_shared_slot_compatibility" }
+
+      - id: reject_overflowing_canvas_constraint
+        title: "Reject a pixel constraint outside a sized component canvas"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.0"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "page_takeover"
+            assets: {}
+            component_assets:
+              skin:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/skin.png", width: 2560, height: 1440 }
+          targets:
+            - { kind: "product", id: "premium_page_takeover_bad_canvas" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "canvas_constraint_region_bounds" }

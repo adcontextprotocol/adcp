@@ -30,6 +30,16 @@
       "exclusiveMinimum": 0,
       "description": "Intrinsic pixels per logical render pixel (for example `2` for a 600×500 image intended to render at 300×250). Optional because a validator can infer the ratio when the target format declares logical dimensions. When supplied, it MUST agree with both `width / logical_width` and `height / logical_height`; it is never a substitute for the intrinsic `width` and `height` fields."
     },
+    "state_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Binding used only when this image populates a `multi_state_display` `state_canvases` slot. It MUST match one declared `states[].state_id`. Omit for ordinary image slots."
+    },
+    "breakpoint_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Binding used only when this image populates a `multi_state_display` `state_canvases` slot. It MUST match one breakpoint declared on the selected state. Omit for ordinary image slots."
+    },
     "format": {
       "type": "string",
       "description": "Image file format (jpg, png, gif, webp, etc.)"
