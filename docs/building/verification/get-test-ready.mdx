@@ -56,6 +56,10 @@ The runner must obtain a sandbox account before it can do anything. Your `requir
 
 **Account-id namespaces (`require_operator_auth: true`).** Accounts must be pre-provisioned by a human on your side or by an upstream platform. The runner calls `list_accounts` with a sandbox filter to discover pre-existing test accounts. If your credential is bound to exactly one sandbox account, return that singleton. Publish a short note telling operators how to request one — include the contact, the expected turnaround, and what credentials they'll receive.
 
+<Note>
+When your response includes the `account` capability block, its `require_operator_auth` flag — not the presence of `list_accounts` — selects the account model. Keep the flag `false` (or omit the flag, since `false` is its schema default) for buyer-declared natural-key accounts even if your agent also exposes `list_accounts`. Do not omit the entire `account` block: without account capability data, runners may retain a legacy `list_accounts` discovery heuristic. Set the flag to `true` only when callers must use seller-assigned account IDs. In that mode, the sandbox credential must expose one unambiguous account for the storyboard brand; if it exposes a roster, make sure exactly one row matches the test kit's `brand.house.domain`. Do not advertise `false` merely to bypass an ambiguous roster — that tells buyers the wrong account model.
+</Note>
+
 Full details and examples: [Sandbox mode](/docs/media-buy/advanced-topics/sandbox).
 
 ## Step 3 — Implement the compliance test controller
