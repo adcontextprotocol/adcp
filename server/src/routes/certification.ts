@@ -1137,9 +1137,10 @@ export function createCertificationRouters() {
       // Then: backfill badges for credentials missing them
       const needsBadgeUrl = await query<{
         id: string; workos_user_id: string; credential_id: string;
+        tier: number;
         certifier_credential_id: string | null; certifier_public_id: string | null;
       }>(
-        `SELECT uc.id, uc.workos_user_id, uc.credential_id,
+        `SELECT uc.id, uc.workos_user_id, uc.credential_id, cc.tier,
                 uc.certifier_credential_id, uc.certifier_public_id
          FROM user_credentials uc
          JOIN certification_credentials cc ON cc.id = uc.credential_id
@@ -1149,10 +1150,15 @@ export function createCertificationRouters() {
       );
 
       let updated = 0;
+      let skippedInactive = 0;
       const errors: string[] = [];
 
       for (const row of needsBadgeUrl.rows) {
         try {
+          if (row.tier > 1 && !(await certDb.hasEffectiveMembershipForUser(row.workos_user_id))) {
+            skippedInactive++;
+            continue;
+          }
           const result = await ensureCertifierCredential({
             userId: row.workos_user_id,
             credentialId: row.credential_id,
@@ -1165,7 +1171,13 @@ export function createCertificationRouters() {
         }
       }
 
-      res.json({ total: needsBadgeUrl.rows.length, updated, errors, credentialsAwarded });
+      res.json({
+        total: needsBadgeUrl.rows.length,
+        updated,
+        skipped_inactive: skippedInactive,
+        errors,
+        credentialsAwarded,
+      });
     } catch (error) {
       logger.error({ error }, 'Failed to backfill badges');
       res.status(500).json({ error: 'Internal server error' });

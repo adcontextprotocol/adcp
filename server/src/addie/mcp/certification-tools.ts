@@ -609,8 +609,15 @@ function formatUtcDate(value: string | null): string {
 async function checkAndFormatCredentials(
   userId: string,
   memberContext: MemberContext | null,
+  allowPaidCredentials: boolean,
 ): Promise<string[]> {
-  const awarded = await certDb.checkAndAwardCredentials(userId);
+  const awarded = await certDb.checkAndAwardCredentials(
+    userId,
+    { maxTier: allowPaidCredentials ? Number.POSITIVE_INFINITY : 1 },
+  );
+
+  const creds = await certDb.getCredentials();
+  const credMap = new Map(creds.map(c => [c.id, c]));
 
   // Pick up the "awarded earlier, never issued to Certifier" backlog so a
   // post-set_my_name retry actually finalizes the certificate. Bounded to a
@@ -625,6 +632,7 @@ async function checkAndFormatCredentials(
     .filter(c =>
       !c.certifier_credential_id &&
       !awarded.includes(c.credential_id) &&
+      (allowPaidCredentials || (credMap.get(c.credential_id)?.tier ?? Number.POSITIVE_INFINITY) <= 1) &&
       (now - new Date(c.awarded_at).getTime()) < RETRY_WINDOW_MS,
     )
     .map(c => c.credential_id);
@@ -632,8 +640,6 @@ async function checkAndFormatCredentials(
   const toProcess = [...new Set([...awarded, ...deferred])];
   if (toProcess.length === 0) return [];
 
-  const creds = await certDb.getCredentials();
-  const credMap = new Map(creds.map(c => [c.id, c]));
   const lines: string[] = [''];
   let nameRequired = false;
   for (const credId of toProcess) {
@@ -1973,6 +1979,14 @@ export function createCertificationToolHandlers(
       const unavailable = unavailableSpecialistMessage(moduleId);
       if (unavailable) return notCompleted(moduleId, 'state', unavailable);
 
+      const mod = await certDb.getModule(moduleId);
+      if (!mod) return notCompleted(moduleId, 'state', `Module ${moduleId} was not found.`);
+
+      const hasMembership = await ensureMembership();
+      if (!mod.is_free && !hasMembership) {
+        return notCompleted(moduleId, 'state', membershipRequiredMessage(moduleId, memberContext));
+      }
+
       // Verify module is in-progress before allowing completion
       const progress = await certDb.getProgress(userId);
       const moduleProgress = progress.find(p => p.module_id === moduleId);
@@ -1983,7 +1997,7 @@ export function createCertificationToolHandlers(
           'Congratulate them warmly — they earned this. Do NOT share any scores or percentages with the learner.',
         ];
         try {
-          lines.push(...await checkAndFormatCredentials(userId, memberContext));
+          lines.push(...await checkAndFormatCredentials(userId, memberContext, hasMembership));
         } catch (credError) {
           logger.error({ error: credError }, 'Failed to check credential eligibility');
         }
@@ -1995,7 +2009,6 @@ export function createCertificationToolHandlers(
       const scores = input.scores as Record<string, number>;
       if (!scores || typeof scores !== 'object') return 'Scores are required to complete a module.';
 
-      const mod = await certDb.getModule(moduleId);
       const ac = mod?.assessment_criteria as certDb.AssessmentCriteria | undefined;
 
       // Validate scores against assessment criteria (range, dimensions, floor, threshold)
@@ -2061,7 +2074,7 @@ export function createCertificationToolHandlers(
 
       // Auto-check and award credentials
       try {
-        lines.push(...await checkAndFormatCredentials(userId, memberContext));
+        lines.push(...await checkAndFormatCredentials(userId, memberContext, hasMembership));
       } catch (credError) {
         logger.error({ error: credError }, 'Failed to check credential eligibility');
       }
@@ -2091,7 +2104,8 @@ export function createCertificationToolHandlers(
       const retrySeconds = Math.max(1, Math.ceil((rate.retryAfterMs ?? 60000) / 1000));
       return `Rate limit exceeded on check_credentials. Try again in ~${retrySeconds} seconds.`;
     }
-    const lines = await checkAndFormatCredentials(userId, memberContext);
+    const hasMembership = await ensureMembership();
+    const lines = await checkAndFormatCredentials(userId, memberContext, hasMembership);
     if (lines.length === 0) {
       return 'No new credentials to issue. Your existing credentials are unchanged.';
     }
@@ -2248,7 +2262,8 @@ export function createCertificationToolHandlers(
         const mod = moduleMap.get(id);
         return mod && !mod.is_free;
       });
-      if (paidModules.length > 0 && !(await ensureMembership())) {
+      const hasMembership = await ensureMembership();
+      if (paidModules.length > 0 && !hasMembership) {
         return membershipRequiredMessage(paidModules[0], memberContext);
       }
 
@@ -2281,7 +2296,7 @@ export function createCertificationToolHandlers(
 
       // Check for newly earned credentials
       try {
-        lines.push(...await checkAndFormatCredentials(userId, memberContext));
+        lines.push(...await checkAndFormatCredentials(userId, memberContext, hasMembership));
       } catch (credError) {
         logger.error({ error: credError }, 'Failed to check credential eligibility after test-out');
       }
@@ -2590,6 +2605,10 @@ export function createCertificationToolHandlers(
             return 'This exam attempt is already completed, but I could not find the capstone module needed to reconcile credential issuance. Ask an admin to run the certification repair from the admin dashboard.';
           }
 
+          if (!(await ensureMembership())) {
+            return notCompleted(capstoneMod.id, 'state', membershipRequiredMessage(capstoneMod.id, memberContext));
+          }
+
           const completedScores = asNumberRecord(attempt.scores);
           if (!completedScores) {
             return notCompleted(capstoneMod.id, 'state', `This capstone attempt is already passed, but its recorded scores are missing. Ask an admin to use Certification > Attempts needing attention for attempt ${attempt.id}.`);
@@ -2607,7 +2626,7 @@ export function createCertificationToolHandlers(
           lines.push('The capstone was already recorded, so I rechecked module completion and credential issuance.');
 
           try {
-            lines.push(...await checkAndFormatCredentials(userId, memberContext));
+            lines.push(...await checkAndFormatCredentials(userId, memberContext, true));
           } catch (credError) {
             logger.error({ error: credError, userId, attemptId: attempt.id }, 'Failed to reconcile credentials for already-passed capstone');
             return notCompleted(capstoneMod.id, 'state', `This capstone attempt is already passed, but credential issuance failed during reconciliation. Ask an admin to use Certification > Attempts needing attention for attempt ${attempt.id}.`);
@@ -2636,6 +2655,9 @@ export function createCertificationToolHandlers(
       const capstoneId = capstoneMod.id;
       const unavailable = unavailableSpecialistMessage(capstoneId);
       if (unavailable) return notCompleted(capstoneId, 'state', unavailable);
+      if (!(await ensureMembership())) {
+        return notCompleted(capstoneId, 'state', membershipRequiredMessage(capstoneId, memberContext));
+      }
       const deltaDef = getDeltaForModule(capstoneId) ?? null;
       const deltaStatus = deltaDef
         ? await certDb.getDeltaStatus(deltaDef, userId)
@@ -2758,7 +2780,7 @@ export function createCertificationToolHandlers(
 
         // Auto-award credentials (including specialist)
         try {
-          lines.push(...await checkAndFormatCredentials(userId, memberContext));
+          lines.push(...await checkAndFormatCredentials(userId, memberContext, true));
         } catch (credError) {
           logger.error({ error: credError }, 'Failed to check credential eligibility');
         }
@@ -2818,6 +2840,12 @@ export function createCertificationToolHandlers(
       const userId = getUserId();
       if (!userId) return 'User not authenticated.';
 
+      const mod = await certDb.getModule(moduleId);
+      if (!mod) return `Module ${moduleId} was not found.`;
+      if (!mod.is_free && !(await ensureMembership())) {
+        return membershipRequiredMessage(moduleId, memberContext);
+      }
+
       // Validate module is in-progress before saving checkpoint
       const progress = await certDb.getProgress(userId);
       const modProgress = progress.find(p => p.module_id === moduleId);
@@ -2841,7 +2869,6 @@ export function createCertificationToolHandlers(
 
       // Validate demonstration IDs and evidence keys are real criteria for this module
       if (demonstrationsVerified.length || (demonstrationEvidence && Object.keys(demonstrationEvidence).length > 0)) {
-        const mod = await certDb.getModule(moduleId);
         if (demonstrationsVerified.length) {
           const invalid = validateDemonstrationIds(mod, demonstrationsVerified);
           if (invalid.length > 0) {
