@@ -8229,7 +8229,7 @@ paths:
     get:
       operationId: getAgentFormats
       summary: Get creative-agent format capabilities
-      description: Fetch get_adcp_capabilities creative.supported_formats[] from a creative agent.
+      description: Fetch get_adcp_capabilities creative.supported_formats[] from a creative agent, falling back to the deprecated list_creative_formats catalog for 3.1-compatible agents.
       tags:
         - Agent Probing
       parameters:
@@ -8254,6 +8254,35 @@ paths:
                 required:
                   - success
                   - formats
+  /api/public/agent-publishers:
+    get:
+      operationId: getAgentPublishers
+      summary: Get agent publisher properties
+      description: Fetch public list_authorized_properties data from a sales agent.
+      tags:
+        - Agent Probing
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: url
+          in: query
+      responses:
+        "200":
+          description: Publisher properties
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  properties:
+                    type: array
+                    items: {}
+                required:
+                  - success
+                  - properties
   /api/public/agent-products:
     get:
       operationId: getAgentProducts

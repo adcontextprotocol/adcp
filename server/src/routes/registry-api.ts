@@ -144,6 +144,7 @@ import { getDevUser, isDevModeEnabled } from "../middleware/auth.js";
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
 import { resolveCallerOrgId } from "./helpers/resolve-caller-org.js";
 import { canonicalizeAgentUrl, PublisherDatabase } from "../db/publisher-db.js";
+import { buildCreativeCapabilities } from "../creative-agent/task-handlers.js";
 import {
   AuthorizationSnapshotDatabase,
   EvidenceValidationError,
@@ -2174,11 +2175,24 @@ registry.registerPath({
   path: "/api/public/agent-formats",
   operationId: "getAgentFormats",
   summary: "Get creative-agent format capabilities",
-  description: "Fetch get_adcp_capabilities creative.supported_formats[] from a creative agent.",
+  description: "Fetch get_adcp_capabilities creative.supported_formats[] from a creative agent, falling back to the deprecated list_creative_formats catalog for 3.1-compatible agents.",
   tags: ["Agent Probing"],
   request: { query: z.object({ url: z.string() }) },
   responses: {
     200: { description: "Canonical creative capabilities", content: { "application/json": { schema: z.object({ success: z.boolean(), formats: z.array(z.unknown()) }) } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/public/agent-publishers",
+  operationId: "getAgentPublishers",
+  summary: "Get agent publisher properties",
+  description: "Fetch public list_authorized_properties data from a sales agent.",
+  tags: ["Agent Probing"],
+  request: { query: z.object({ url: z.string() }) },
+  responses: {
+    200: { description: "Publisher properties", content: { "application/json": { schema: z.object({ success: z.boolean(), properties: z.array(z.unknown()) }) } } },
   },
 });
 
@@ -5937,6 +5951,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               if (h.stats_json) {
                 enrichedAgent.stats = h.stats_json;
               }
+              // The health snapshot comes from the latest tools/list probe;
+              // the capability catalog can lag on a separate crawl cadence.
+              // Keep the legacy capabilities count fresh for consumers that
+              // have not yet moved to health.tools_count.
+              if (enrichedAgent.capabilities && h.tools_count != null) {
+                enrichedAgent.capabilities.tools_count = h.tools_count;
+              }
             }
           }
 
@@ -9519,9 +9540,38 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         agent_uri: url,
         protocol: "mcp",
       }], withSdkSafeTransport({})).agent("creative-capability-discovery");
-      const result = await capabilityClient.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
-      const creative = (result.data as Record<string, unknown> | undefined)?.creative as Record<string, unknown> | undefined;
-      const formats = Array.isArray(creative?.supported_formats) ? creative.supported_formats : [];
+      let formats: unknown[] = [];
+      let capabilityError: unknown;
+
+      try {
+        const result = await capabilityClient.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
+        const creative = (result.data as Record<string, unknown> | undefined)?.creative as Record<string, unknown> | undefined;
+        formats = Array.isArray(creative?.supported_formats) ? creative.supported_formats : [];
+      } catch (error) {
+        capabilityError = error;
+        logger.debug({ err: error, url }, "Canonical creative capability discovery failed; trying legacy formats");
+      }
+
+      if (formats.length === 0) {
+        try {
+          const legacyResult = await capabilityClient.executeTask("list_creative_formats", {});
+          if (!legacyResult.success) {
+            throw new Error(legacyResult.error || "Legacy creative format discovery failed");
+          }
+          const legacyData = legacyResult.data as unknown;
+          const legacyFormats = Array.isArray(legacyData)
+            ? legacyData
+            : legacyData && typeof legacyData === "object" && Array.isArray((legacyData as Record<string, unknown>).formats)
+              ? (legacyData as { formats: unknown[] }).formats
+              : [];
+          formats = buildCreativeCapabilities(
+            legacyFormats.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === "object" && !Array.isArray(entry))),
+          );
+        } catch (error) {
+          if (capabilityError) throw error;
+          logger.debug({ err: error, url }, "Legacy creative format discovery failed");
+        }
+      }
 
       return res.json({
         success: true,
@@ -9535,6 +9585,49 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       }
 
       return res.status(502).json({ error: "Failed to fetch formats" });
+    }
+  });
+
+  router.get("/public/agent-publishers", async (req, res) => {
+    const { url } = req.query;
+
+    if (!url || typeof url !== "string") {
+      return res.status(400).json({ error: "URL is required" });
+    }
+
+    try {
+      const client = new SingleAgentClient({
+        id: "publisher-discovery",
+        name: "publisher-discovery-client",
+        agent_uri: url,
+        protocol: "mcp",
+      }, withSdkSafeTransport({}));
+      const result = await client.executeTask("list_authorized_properties", {});
+      if (!result.success) {
+        throw new Error(result.error || "Publisher discovery failed");
+      }
+      const data = result.data as unknown;
+      const properties = Array.isArray(data)
+        ? data
+        : data && typeof data === "object" && Array.isArray((data as Record<string, unknown>).properties)
+          ? (data as { properties: unknown[] }).properties
+          : data && typeof data === "object" && Array.isArray((data as Record<string, unknown>).publisher_domains)
+            ? (data as { publisher_domains: string[] }).publisher_domains.map(domain => ({
+                identifier: domain,
+                domain,
+                type: "domain",
+              }))
+            : [];
+
+      return res.json({ success: true, properties });
+    } catch (error) {
+      logger.warn({ err: error, url }, "Agent publishers fetch failed");
+
+      if (error instanceof Error && error.name === "TimeoutError") {
+        return res.status(504).json({ error: "Connection timeout", message: "Agent did not respond within the timeout period" });
+      }
+
+      return res.status(502).json({ error: "Failed to fetch publishers" });
     }
   });
 
