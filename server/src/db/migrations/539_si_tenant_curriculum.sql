@@ -1,4 +1,4 @@
--- Migration 533: /si training tenant — curriculum gaps and tenant pinning.
+-- Migration 539: /si training tenant — curriculum gaps and tenant pinning.
 --
 -- Installs three curriculum fixes that were blocked by the missing /si tenant:
 --   1. C3 c3_ex2: replace connect_to_si_agent (Addie host tool) with

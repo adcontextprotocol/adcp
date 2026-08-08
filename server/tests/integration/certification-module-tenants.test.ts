@@ -65,13 +65,13 @@ describe('certification_modules.tenant_ids (migration 464)', () => {
     expect(a3!.tenant_ids).toBeNull();
   });
 
-  it('C3 is pinned to creative and si tenants (migration 533)', async () => {
+  it('C3 is pinned to creative and si tenants (migration 539)', async () => {
     const c3 = await getModule('C3');
     expect(c3).not.toBeNull();
     expect(c3!.tenant_ids).toEqual(['creative', 'si']);
   });
 
-  it('S5 (SI capstone) is pinned to si as primary, then creative and sales (migration 533)', async () => {
+  it('S5 (SI capstone) is pinned to si as primary, then creative and sales (migration 539)', async () => {
     const s5 = await getModule('S5');
     expect(s5).not.toBeNull();
     expect(s5!.tenant_ids).toEqual(['si', 'creative', 'sales']);
