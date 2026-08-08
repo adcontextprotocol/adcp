@@ -243,9 +243,12 @@ or packages broken out by DMA or placement.
 
 Request requirements and product support deliberately use different schemas.
 The buyer request contains dimensions and required systems, never seller maxima.
-A product value of `true` satisfies any protocol-valid requirement for that
-dimension. When both sides use objects, every required boolean must be true in
+A product value of `true`, where the dimension permits that form, satisfies any
+protocol-valid requirement for that dimension. When both sides use objects, every required boolean must be true in
 the product and every required array must be a subset of the product array.
+Named places always use the object form: every requested identifier-system and country key must exist,
+and the requested place types and catalog versions must be subsets of the
+corresponding Product support arrays.
 Missing or unknown requirements do not match. Product-only limits such as
 `max_values_per_package` and `max_packages` are returned for planning after the
 match.
@@ -353,6 +356,49 @@ Seller behavior is normative:
 - Buyers inspect `media_buy.audience_evidence` capabilities first. Sellers MUST NOT silently ignore unsupported hard requirement or presence modes; they return a structured unsupported/invalid-request error. A preferred mode the seller does not support may be omitted by the buyer or explicitly rejected by the seller, but is never misrepresented as applied.
 
 Audience evidence does not populate `targeting_overlay`, `demographic_targeting`, or an age-verification field. If the buyer also needs exact execution, it requests that independently through the corresponding product and package targeting surfaces.
+
+Known place IDs belong in `targeting_overlay`, so the returned product's
+availability, pricing, and forecast are scoped to the effective place
+constraint. If the buyer will choose IDs later, `required_overlay_support`
+asks for the country, identifier system, place type, and optional catalog
+version that the product must let the buyer select:
+
+```json
+{
+  "$schema": "/schemas/media-buy/get-products-request.json",
+  "buying_mode": "brief",
+  "brief": "Local video inventory for a municipal services campaign",
+  "targeting_overlay": {
+    "geo_places": [{
+      "country": "NL",
+      "system": "geonames",
+      "system_version": "2026-05",
+      "place_type": "city",
+      "values": ["2759794"]
+    }]
+  },
+  "required_overlay_support": {
+    "geo_places": {
+      "systems": {
+        "geonames": {
+          "countries": { "NL": ["city"] },
+          "system_versions": ["2026-05"]
+        }
+      }
+    }
+  }
+}
+```
+
+The returned Product `overlay_support.geo_places` is binding permission to
+supply matching place IDs on packages later, subject to disclosed limits. It
+does not guarantee value-specific inventory or preserve an earlier forecast or
+price before the IDs are provided. If the eventual values fall outside the
+configured product's priced or guaranteed envelope, the seller rejects create
+with `REQUOTE_REQUIRED` and the buyer rediscovers with those exact values in
+`targeting_overlay.geo_places`. Inclusion and exclusion permission are
+independent; request `geo_places_exclude` separately when exclusions will be
+chosen later.
 
 ### Placement fields
 

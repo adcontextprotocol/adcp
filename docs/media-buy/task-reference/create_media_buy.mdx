@@ -192,6 +192,17 @@ When executing a proposal, `proposal_status` on the returned proposal determines
 | `start_time` | string | No | ISO 8601 date-time for this package's flight start. When omitted, inherits the media buy's `start_time`. Must fall within the media buy's date range. Does not support `"asap"`. |
 | `end_time` | string | No | ISO 8601 date-time for this package's flight end. When omitted, inherits the media buy's `end_time`. Must fall within the media buy's date range. |
 | `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
+
+For `targeting_overlay.geo_places` and `geo_places_exclude`, create-time values
+must be within the selected Product's corresponding `overlay_support` tuple.
+Unsupported dimensions, systems, countries, place types, or combinations return
+`UNSUPPORTED_FEATURE`. A supported tuple with an invalid, unknown, or deprecated
+ID—or an unsupported explicit catalog version—returns `INVALID_REQUEST` with
+`error.field` on the offending field. Valid targeting with zero executable
+inventory returns `TARGETING_TOO_NARROW`. Executable targeting outside the
+configured product's priced or guaranteed envelope returns `REQUOTE_REQUIRED`,
+after which the buyer rediscovers with the exact overlay. An accepted create
+confirms the selected terms for the complete effective targeting.
 | `creatives` | CreativeAsset[] | No | Upload new creative assets inline and assign. Requires `media_buy.features.inline_creative_management: true`; when the seller also advertises `creative.has_creative_library: true`, `creative_id` must not already exist in the library. |
 | `context` | object | No | Opaque correlation data echoed unchanged in the package response, webhooks, and read surfaces. Use to map seller-assigned `package_id` back to your internal line items, campaign structure, or tracking state. Buyers targeting mixed seller populations SHOULD include a per-package correlation value here, commonly `context.buyer_ref`, for legacy sellers that do not echo `product_id`. |
 | `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `measurement_terms` apply. |
@@ -1064,6 +1075,7 @@ Common errors and resolutions:
 | `UNSUPPORTED_FEATURE` | Canonical or legacy compatibility selector does not resolve or satisfy the product's closed accepted set | Re-author against the product's `format_options[]`, include required canonical parameters, or select a published `format_option_id`. |
 | `BUDGET_TOO_LOW` | Budget below product minimum | Increase budget or choose different product |
 | `TARGETING_TOO_NARROW` | Targeting yields zero inventory | Broaden geographic or audience criteria |
+| `REQUOTE_REQUIRED` | A later package overlay is executable but falls outside the configured product's priced or guaranteed envelope | Re-run `get_products` with the exact targeting in `targeting_overlay`, then create from the returned configuration |
 | `POLICY_VIOLATION` | Brand/product violates policy | Review publisher's content policies |
 | `INVALID_PRICING_OPTION` | pricing_option_id not found | Use ID from product's `pricing_options` |
 | `CREATIVE_LOCALE_NOT_ACCEPTED` | An assigned library creative has no materialized locale variant accepted by an in-scope format option, or its `serve_default` points outside that option's eligible set | Read `format_options[].locale_policy`, supply a matching source/target variant, narrow placement scope, choose another option, or change the default policy |

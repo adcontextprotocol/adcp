@@ -756,6 +756,17 @@
                   "description": "Postal area targeting. Prefer the native country-keyed map where each ISO 3166-1 alpha-2 country lists supported country-local postal systems. Deprecated legacy country-fused postal-system boolean aliases may be emitted alongside native country keys during migration.",
                   "$ref": "/schemas/core/postal-area-support.json"
                 },
+                "geo_places": {
+                  "type": "object",
+                  "description": "Place targeting support keyed by collision-safe identifier system. Each system declares exact country-to-place-type combinations, accepted catalog versions, and a machine-readable resolver. Sellers MUST reject unsupported systems, country/type pairs, versions, and identifiers rather than silently dropping them.",
+                  "propertyNames": {
+                    "$ref": "/schemas/core/geo-place-system.json"
+                  },
+                  "additionalProperties": {
+                    "$ref": "/schemas/core/geo-place-support.json"
+                  },
+                  "minProperties": 1
+                },
                 "age_restriction": {
                   "type": "object",
                   "description": "Age restriction capabilities for compliance (alcohol, gambling)",

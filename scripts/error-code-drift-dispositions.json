@@ -226,6 +226,11 @@
       "target_version": "3.1",
       "note": "Placement catalog public/private boundary error (#4993). Surfaces when get_products or adagents.json public placements leak seller-private fields such as visibility/source/origin/delivery_mappings so monitoring can alarm distinctly from generic schema failures."
     },
+    "PLACE_TARGET_UNAVAILABLE": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Identifier-based place targeting (#5588). Non-fatal get_media_buys resource-state error when a catalog-pinned target can no longer execute; preserves the echoed target and provides a correctable resolver/update path. Wire change — held for 3.1."
+    },
     "FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
@@ -265,6 +270,11 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.2",
       "note": "Per-record usage validation rejection for report_usage (#5892). Additive standard vocabulary; held for 3.2."
+    },
+    "TARGETING_TOO_NARROW": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Identifier-based place targeting (#5588). Create-time rejection when a valid effective place overlay yields zero executable inventory; additive vocabulary held for 3.2."
     }
   }
 }

@@ -305,7 +305,7 @@
                 },
                 "targeting_overlay": {
                   "$ref": "/schemas/core/targeting.json",
-                  "description": "Complete effective targeting applied to this package, including configured-product targeting and the most recent package-specific overlay. Sellers SHOULD echo persisted targeting so buyers can verify stored state without replaying requests. Sellers using placement, property-list, or collection-list targeting MUST include the committed inventory selection here. placement_selection mode default SHOULD resolve to mode selected with committed refs when enumerable."
+                  "description": "Complete effective targeting applied to this package, including configured-product targeting and the most recent package-specific overlay. Sellers SHOULD echo persisted targeting so buyers can verify stored state without replaying requests. Sellers MUST echo geo_places and geo_places_exclude whenever either was persisted, including the exact applied system_version and normalized values, so buyers can audit catalog-backed targeting. Sellers using placement, property-list, or collection-list targeting MUST include the committed inventory selection here. placement_selection mode default SHOULD resolve to mode selected with committed refs when enumerable."
                 },
                 "targeting_resolution": {
                   "$ref": "/schemas/core/package-targeting-resolution.json",
@@ -566,7 +566,7 @@
     },
     "errors": {
       "type": "array",
-      "description": "Task-specific errors (e.g., media buy not found)",
+      "description": "Task-specific errors. A read may return media_buys plus nonfatal resource-state errors. If a pinned place target becomes unexecutable, sellers MUST include PLACE_TARGET_UNAVAILABLE with recovery=correctable, field pointing to the exact media_buys[N].packages[M].targeting_overlay.geo_places[_exclude][A].values[V] response path, and details containing media_buy_id, package_id, system, system_version, country, place_type, and value. The persisted target remains echoed until an intentional update replaces it.",
       "items": {
         "$ref": "/schemas/core/error.json"
       }
