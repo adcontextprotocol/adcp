@@ -392,9 +392,18 @@ export class CrawlerService {
         if (url.hostname === AAO_HOST &&
             url.pathname === `/brands/${domain}/brand.json`) {
           const hosted = await this.brandDb.getHostedBrandByDomain(domain);
-          if (hosted && !hosted.domain_verified) {
-            await this.brandDb.updateHostedBrand(hosted.id, { domain_verified: true });
-            log.debug({ domain }, 'Brand verified');
+          if (hosted) {
+            // A valid pointer at the publisher's origin is terminal origin
+            // evidence even when ownership was already verified. Persisting
+            // source_type + last_validated prevents publisher-page reads from
+            // scheduling this same brand crawl every debounce interval.
+            await this.brandDb.updateHostedBrand(hosted.id, {
+              domain_verified: true,
+              origin_validated: true,
+            });
+            if (!hosted.domain_verified) {
+              log.debug({ domain }, 'Brand verified');
+            }
           }
         }
       } catch {

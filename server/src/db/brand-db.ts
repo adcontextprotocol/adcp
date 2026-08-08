@@ -233,6 +233,8 @@ export interface CreateHostedBrandInput {
 export interface UpdateHostedBrandInput {
   brand_json?: Record<string, unknown>;
   domain_verified?: boolean;
+  /** Mark a successful live origin read as terminal brand.json evidence. */
+  origin_validated?: boolean;
   verification_token?: string;
   is_public?: boolean;
   workos_organization_id?: string;
@@ -424,6 +426,10 @@ export class BrandDatabase {
     if (input.domain_verified !== undefined) {
       updates.push(`domain_verified = $${paramIndex++}`);
       values.push(input.domain_verified);
+    }
+    if (input.origin_validated === true) {
+      updates.push(`source_type = 'brand_json'`);
+      updates.push(`last_validated = NOW()`);
     }
     if (input.verification_token !== undefined) {
       updates.push(`verification_token = $${paramIndex++}`);

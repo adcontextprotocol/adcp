@@ -112,4 +112,43 @@ describe('CrawlerService brand.json ingestion', () => {
       source_type: 'brand_json',
     }));
   });
+
+  it('persists terminal origin evidence for an already-verified hosted pointer', async () => {
+    const { CrawlerService } = await import('../../src/crawler.js');
+    const ctx = Object.create((CrawlerService as any).prototype);
+    const updateHostedBrand = vi.fn().mockResolvedValue(undefined);
+    Object.assign(ctx, {
+      brandManager: {
+        validateDomain: vi.fn().mockResolvedValue({
+          valid: true,
+          errors: [],
+          warnings: [],
+          domain: 'hosted.example',
+          url: 'https://hosted.example/.well-known/brand.json',
+          variant: 'authoritative_location',
+          raw_data: {
+            authoritative_location: 'https://agenticadvertising.org/brands/hosted.example/brand.json',
+          },
+        }),
+      },
+      brandDb: {
+        getHostedBrandByDomain: vi.fn().mockResolvedValue({
+          id: 'brand_hosted',
+          domain_verified: true,
+        }),
+        updateHostedBrand,
+      },
+    });
+
+    await expect(ctx.scanBrandForDomain('hosted.example')).resolves.toEqual({
+      found: true,
+      valid: true,
+      variant: 'authoritative_location',
+      manifestPersisted: false,
+    });
+    expect(updateHostedBrand).toHaveBeenCalledWith('brand_hosted', {
+      domain_verified: true,
+      origin_validated: true,
+    });
+  });
 });
