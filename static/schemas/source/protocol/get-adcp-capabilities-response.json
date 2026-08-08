@@ -832,23 +832,23 @@
                 },
                 "placement_selection": {
                   "type": "boolean",
-                  "description": "Seller-wide rollup indicating at least one product supports targeting_overlay.placement_selection. Product.overlay_support and Product.placements remain authoritative for a selected product."
+                  "description": "When true, seller-wide rollup indicating at least one product supports targeting_overlay.placement_selection. False or absence makes no product-level promise. Product.overlay_support and Product.placements remain authoritative for a selected product."
                 },
                 "property_list": {
                   "type": "boolean",
-                  "description": "Seller-wide rollup for targeting_overlay.property_list inclusion targeting. Product.overlay_support is authoritative."
+                  "description": "When true, seller-wide rollup indicating at least one product supports targeting_overlay.property_list inclusion targeting. False or absence makes no product-level promise. Product.overlay_support is authoritative."
                 },
                 "property_list_exclude": {
                   "type": "boolean",
-                  "description": "Seller-wide rollup for targeting_overlay.property_list_exclude targeting. Product.overlay_support is authoritative."
+                  "description": "When true, seller-wide rollup indicating at least one product supports targeting_overlay.property_list_exclude targeting. False or absence makes no product-level promise. Product.overlay_support is authoritative."
                 },
                 "collection_list": {
                   "type": "boolean",
-                  "description": "Seller-wide rollup for targeting_overlay.collection_list inclusion targeting. Product.overlay_support is authoritative."
+                  "description": "When true, seller-wide rollup indicating at least one product supports targeting_overlay.collection_list inclusion targeting. False or absence makes no product-level promise. Product.overlay_support is authoritative."
                 },
                 "collection_list_exclude": {
                   "type": "boolean",
-                  "description": "Seller-wide rollup for targeting_overlay.collection_list_exclude targeting. Product.overlay_support is authoritative."
+                  "description": "When true, seller-wide rollup indicating at least one product supports targeting_overlay.collection_list_exclude targeting. False or absence makes no product-level promise. Product.overlay_support is authoritative."
                 },
                 "geo_proximity": {
                   "type": "object",

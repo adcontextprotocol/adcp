@@ -31,13 +31,15 @@ Answer: Standardize facts that already have protocol fields; do not standardize 
 **Structured-first targeting rule:**
 - Use `filters` for hard offer constraints—metadata, dates, budget,
   availability, commercial fit, and reporting capabilities—that decide which
-  products may be returned.
+  products may be returned. Their exclusion semantics are identical in
+  `brief`, `wholesale`, and `refine` modes.
 - Use `targeting_overlay` for exact delivery constraints known now.
 - Use `required_overlay_support` for dimensions whose values will be chosen on packages later.
 - Use the brief for goals, context, semantic intent, preferences, and requirements without a structured representation.
 - Hard prose remains binding. Response-level `targeting_resolution.brief_targeting` is the seller's recommended single machine-readable confirmation of what it inferred.
 - Sparse `targeting_resolution.modifications` are proposed differences from a structured overlay. Selecting the configured product accepts the disclosed resolution.
 - No targeting-resolution echo confirms only an unchanged structured overlay; it does not confirm prose interpretation.
+- Targeting-aware discovery is release-gated, not controlled by a separate feature flag. Use it only when `get_adcp_capabilities.adcp.supported_versions` and the echoed `adcp_version` establish a 3.2 contract. With a 3.1-or-earlier or major-only seller, omit the 3.2 fields and use retained legacy filters or explicit brief prose; never treat ignored unknown fields as acceptance.
 
 **Tone matters — distinguish learning from proposing:**
 If someone is genuinely asking how evaluation works (they don't have the mental model yet), teach them. Walk through the flow. Be helpful, not dismissive.

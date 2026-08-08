@@ -94,6 +94,16 @@ uvx adcp \
 
 Use structured filters for hard product requirements such as channel, delivery type, format, currency, and reporting support. Filters are valid and have the same exclusion semantics in `brief`, `wholesale`, and `refine` modes; the mode changes curation and lifecycle behavior, not whether filters apply. Concrete delivery targeting belongs in `targeting_overlay`; future selectable targeting belongs in `required_overlay_support`.
 
+For every deterministic predicate in `filters`, every returned product MUST
+satisfy that predicate according to the field's documented match semantics.
+Sellers MUST exclude non-matching products in all three buying modes; they MUST
+NOT accept a schema-valid filter and return the unfiltered curated set, wholesale
+feed, or refinement result. A filter can validly produce the same result as an
+unfiltered request, so conformance is established from the returned products'
+membership and field values—not merely by requiring two responses to differ.
+Natural-language relevance to a `brief` remains a curation judgment and is not
+part of this deterministic filter rule.
+
 <CodeGroup>
 
 ```javascript JavaScript
@@ -154,7 +164,7 @@ asyncio.run(discover_with_filters())
 | `filters` | Filters | No | Offer filters such as channel, format, delivery type, dates, budget, currency, and reporting support. They decide which products may be returned but do not become package delivery targeting. Valid in `brief`, `wholesale`, and `refine`; non-matching products are excluded in every mode. Legacy targeting-like fields remain accepted during migration but are deprecated. |
 | `targeting_overlay` | TargetingOverlay | No | Concrete delivery constraints the buyer expects to carry into `create_media_buy`. Prefer this over equivalent brief prose: it is compact, deterministic, and avoids lossy extraction. Returned products, pricing, and forecasts MUST account for the effective targeting. A product that cannot honor the request exactly is omitted or returned with sparse Product `targeting_resolution.modifications`; absence of Product resolution confirms exact acceptance of the structured overlay for that product. |
 | `required_overlay_support` | TargetingOverlayRequirements | No | Buyer minimums for targeting dimensions whose values will be supplied on packages later. This requests selectable capability, not current values and not one product per value. The request cannot contain seller limit fields. Every returned product MUST declare `overlay_support` covering all requested fields and system-array subsets; missing or unknown requirements exclude the product. |
-| `fields` | string[] | No | Specific product fields to include for lightweight discovery. `product_id` and `name` are always included. Projection never suppresses safety-critical request-specific fields: modified products include `targeting_resolution` and `expires_at`, a request with `required_overlay_support` receives `overlay_support`, and evidence-driven inclusion or ranking receives `audience_evidence_selections`. Request `audience_evidence` for the full evidence payload. When requesting signal metadata, buyers SHOULD request `included_signals` for non-selectable bundled/planned signals and the signal-targeting fields for selectable package-level signals. |
+| `fields` | string[] | No | Specific product fields to include for lightweight discovery. `product_id` and `name` are always included. Request `audience_evidence` for the full evidence payload. Projection never suppresses required decision readback: modified products include `targeting_resolution` and `expires_at`; a request with `required_overlay_support` receives `overlay_support`; and when an audience-evidence policy affects inclusion or ranking, the seller returns `audience_evidence_selections`. When requesting signal metadata, buyers SHOULD request `included_signals` for bundled/planned signals and the `signal_targeting_*` fields for package-level selection. |
 | `property_list` | PropertyListRef | No | Deprecated discovery-only property filter. Use `targeting_overlay.property_list` for a concrete delivery constraint or `required_overlay_support.property_list` when the list will be selected later. |
 | `pagination` | PaginationRequest | No | Cursor-based pagination to cap returned `products[]` in curated/refined responses or walk wholesale product feeds (see below) |
 | `if_wholesale_feed_version` | string | No | Opaque `wholesale_feed_version` token from a prior wholesale-mode `get_products` response from this agent. Only valid with `buying_mode: "wholesale"`. Version scope excludes `pagination.cursor`: `public` is keyed by (agent, `buying_mode`, `filters`, `targeting_overlay`, `required_overlay_support`, deprecated `property_list`, `catalog`); `account` adds account identity. See [Wholesale feed versioning](#wholesale-feed-versioning). |
@@ -779,7 +789,7 @@ Response (wholesale product feed changed — full payload returned, abbreviated)
 **Rules**
 
 - Tokens are **opaque**. No format, no ordering, no inspection.
-- A returned `wholesale_feed_version` is scoped to the request parameters that produced it. Buyers MUST cache the version alongside the `(account, filters, buying_mode, property_list, catalog)` tuple used.
+- A returned `wholesale_feed_version` is scoped to the request parameters that produced it. Buyers MUST cache the version alongside the `(account, buying_mode, filters, targeting_overlay, required_overlay_support, deprecated property_list, catalog)` tuple used.
 - `pricing_version` is an optional finer-grained token: when present, it changes when prices move but `wholesale_feed_version` changes only when structure/metadata moves. Common for rate-card sweeps that don't change product metadata.
 - **`if_pricing_version` requires `if_wholesale_feed_version`.** Pricing has no structural baseline of its own. Sending `if_pricing_version` without `if_wholesale_feed_version` is a schema-level error. The seller's evaluation is two-stage: wholesale feed mismatch returns the full payload (pricing is implicitly stale); wholesale feed match with pricing mismatch also returns the full payload (so the buyer sees updated `pricing_options`); both match → `unchanged: true`.
 - **`filters` canonicalization.** Sellers MUST treat the `filters` object as canonicalized before hashing into the `wholesale_feed_version` keyspace: keys MUST be sorted lexicographically, omitted-and-default values MUST be treated identically (a missing `delivery_type` key is the same scope as `delivery_type: null`), array values MUST be sorted where the filter has set semantics (e.g., `channels`, `format_kinds`, `format_option_refs`, `required_metrics`) and preserved-order where the filter has sequence semantics (e.g., `preferred_delivery_types`). Buyers that pass equivalent-but-differently-shaped filter objects MUST receive the same `wholesale_feed_version` from the seller. This rule prevents silent stale-mirror bugs from key-order or default-elision differences between buyer SDKs. **Forward-compat default:** new filter fields added in 3.x minor versions MUST declare set-vs-sequence semantics in their schema (via `x-canonicalization: set | sequence` or equivalent prose); absent an explicit declaration, the rule defaults to **set-semantics** (sort before hashing). Sellers and SDKs that drift on this default produce cache misses that consumers can't explain.
@@ -799,8 +809,8 @@ Sellers publish two notional layers: a **public layer** (the rate-card / structu
 
 | Layer | Cache key | What's stored |
 |---|---|---|
-| Public | `(agent, buying_mode, filters, property_list, catalog)` | `wholesale_feed_version_public`, the wholesale product feed payload as seen without an account ref |
-| Account overlay | `(agent, buying_mode, filters, property_list, catalog, account_id)` | `wholesale_feed_version_account`, the wholesale product feed payload as seen WITH this account ref, when `cache_scope: "account"` was returned |
+| Public | `(agent, buying_mode, filters, targeting_overlay, required_overlay_support, deprecated property_list, catalog)` | `wholesale_feed_version_public`, the wholesale product feed payload as seen without an account ref |
+| Account overlay | `(agent, buying_mode, filters, targeting_overlay, required_overlay_support, deprecated property_list, catalog, account_id)` | `wholesale_feed_version_account`, the wholesale product feed payload as seen WITH this account ref, when `cache_scope: "account"` was returned |
 
 **Behavior.**
 

@@ -163,7 +163,7 @@
     },
     "fields": {
       "type": "array",
-      "description": "Specific product fields to include in the response. When omitted, all fields are returned. product_id and name are always included, and new integrations request canonical format_options rather than deprecated format_ids. Safety-critical request-specific fields override projection: targeting_resolution and expires_at MUST be included with modifications, overlay_support MUST be included when required_overlay_support was requested, and audience_evidence_selections MUST be included when evidence affected eligibility or ranking. fields controls the optional audience_evidence payload, not the evidence decision receipt. Response-level brief targeting confirmation is not a projected product field.",
+      "description": "Specific product fields to include in the response. When omitted, all fields are returned. Use for lightweight discovery calls where only a subset of product data is needed. product_id and name are always included. `format_ids` is a deprecated 3.x compatibility projection; new integrations request canonical `format_options`. Safety-critical request-specific fields override projection: Product.targeting_resolution and expires_at MUST be included whenever the seller returns modifications, overlay_support MUST be included when required_overlay_support was requested, and audience_evidence_selections MUST be included when filters.audience_evidence_requirements affects eligibility or ranking. fields controls the optional audience_evidence payload, not the evidence decision receipt. Response-level brief targeting confirmation is not a projected product field.",
       "minItems": 1,
       "items": {
         "type": "string",

@@ -13,12 +13,17 @@ This skill enables you to execute the AdCP Media Buy Protocol with sales agents.
 
 > **3.2 preview:** Targeting-aware discovery fields are available only when the
 > seller serves AdCP 3.2+ and the installed SDK exposes the 3.2 schema. Check
-> `get_adcp_capabilities.supported_versions` before sending them. The public
+> `get_adcp_capabilities.adcp.supported_versions`, pin the selected release in
+> `adcp_version`, and validate the echoed served release before sending them.
+> A missing release-precision declaration, a 3.1-or-earlier result, or a
+> major-only declaration is not evidence of support: omit the 3.2 fields and use
+> legacy targeting filters or explicit brief prose. Do not probe by sending
+> unknown fields because a legacy open schema may accept and ignore them. The public
 > training agent will implement this flow after the 3.2 beta SDK release; until
 > then use its legacy brief exercise and do not treat ignored unknown fields as
 > acceptance.
 
-The Media Buy Protocol provides 11 standardized tasks for managing advertising campaigns:
+The Media Buy Protocol provides 10 current standardized tasks for managing advertising campaigns:
 
 | Task | Purpose | Response Time |
 |------|---------|---------------|
@@ -36,8 +41,8 @@ The Media Buy Protocol provides 11 standardized tasks for managing advertising c
 ## Typical Workflow
 
 1. **Discover products**: `get_products` with structured filters and targeting; add a brief for semantic curation
-2. **Verify the offer**: inspect pricing, forecast, canonical `format_options[]`, `overlay_support`, and any `targeting_resolution`
-3. **Review formats**: `list_creative_formats` for the returned product formats
+2. **Verify the offer**: inspect pricing, forecast, `overlay_support`, and any `targeting_resolution`
+3. **Review formats**: inspect each returned product's canonical `format_options[]`
 4. **Create campaign**: `create_media_buy` with the selected configured product and budget
 5. **Upload creatives**: `sync_creatives` to add creative assets
 6. **Monitor delivery**: `get_media_buy_delivery` to track performance
@@ -54,7 +59,7 @@ Products carry `format_options[]`: a list of `ProductFormatDeclaration` entries 
 - Optional `v1_format_ref: [{agent_url, id}]` — array linking this v2 declaration to one or more v1 named formats (for dual emission during the v1↔v2 migration). Multi-size declarations should carry one ref per size
 - Optional `seller_preference: "preferred" | "accepted" | "discouraged"` — soft routing hint when a multi-format product has several options at the same price
 
-**Multi-format products.** A flexible publisher slot is one product with N format_options entries — e.g., NYTimes Homepage accepts image OR html5 OR display_tag at multiple sizes via three format_options, one per type. Buyer picks the creative type they ship.
+**Multi-format products.** A flexible publisher slot is one product with N format_options entries — e.g., Pinnacle Media's homepage accepts image OR html5 OR display_tag at multiple sizes via three format_options, one per type. Buyer picks the creative type they ship.
 
 **Size flexibility.** Display canonicals (image / html5 / display_tag) declare size in one of three modes: fixed (`width`+`height`), multi-size (`sizes: [{w,h}]` — mirrors OpenRTB `banner.format[]`), or responsive (`min_width`/`max_width`/`min_height`/`max_height`). Modes are mutually exclusive.
 
@@ -137,26 +142,6 @@ prose, look for one response-level confirmation in
 Treat `product_id` as the opaque identity of this configured offer. Keep it
 within the same discovery/refinement context and purchase it before
 `expires_at`; do not assume it is a permanent cross-session ID.
-
----
-
-### list_creative_formats
-
-View supported creative specifications.
-
-**Request:**
-```json
-{
-  "asset_types": ["video", "image"]
-}
-```
-
-**Key fields:**
-- `asset_types` (array, optional): Filter by asset types (image, video, audio, text, html, vast, etc.)
-- `name_search` (string, optional): Case-insensitive partial match on name or description
-
-**Response contains:**
-- `formats`: Array of format specifications with dimensions, requirements, and asset schemas
 
 ---
 

@@ -679,6 +679,21 @@ items, and overloading that term would obscure the configured-offer model.
 Filters remain useful, but their scope becomes narrower and easier to explain.
 They select product attributes and commercial or operational capabilities.
 
+Filter behavior is invariant across buying modes. For every deterministic
+filter predicate, every returned product must satisfy that predicate according
+to its field-level match semantics. A seller must not accept `filters` and then
+return an unfiltered curated set, wholesale feed, or refinement result. On
+`refine`, a supplied `filters` object is the complete replacement filter state;
+when it is omitted, the referenced configured product's bound discovery
+constraints remain in force.
+
+Compliance tests this by seeding both matching and non-matching products and
+asserting membership, field values, and boundary behavior. It never assumes
+that a filtered response must differ from an unfiltered response, because both
+can legitimately contain the same products. Brief relevance remains outside
+this deterministic assertion; explicit hard brief requirements are binding but
+require separate tests of the seller's structured interpretation.
+
 Likely retained filters include:
 
 - `channels`;
@@ -879,15 +894,25 @@ release, so no released 3.1 wire shape is removed.
 5. Deprecate targeting-like fields in `product-filters.json`.
 6. Align demographic discovery and package readback with lifecycle-specific
    targeting-resolution schemas without permitting non-equivalent stored execution.
-7. Add conformance scenarios for exact targeting, inherent satisfaction,
-   selectable satisfaction, sparse modification acceptance, large set deltas,
-   product expiration, future overlay support, purchased-placement selection,
-   and the separation between inventory selection and creative routing.
+7. Add conformance scenarios for deterministic filter behavior in brief,
+   wholesale, and refine modes; exact targeting; inherent and selectable
+   satisfaction; sparse modification acceptance; large set deltas; product
+   expiration; future overlay support; purchased inventory selection; and the
+   separation between inventory selection and creative routing.
 
 During a compatibility window, sellers may translate legacy targeting filters
 into the corresponding discovery overlay. Requests that provide both a legacy
 field and its overlay replacement must either be semantically identical or be
-rejected as ambiguous.
+rejected with `INVALID_REQUEST` as ambiguous.
+
+Release negotiation is the coarse compatibility gate; this design does not add
+a redundant `targeting_aware_discovery` feature flag. Buyers use the 3.2 entry
+in `get_adcp_capabilities.adcp.supported_versions`, pin `adcp_version` on the
+request, and validate against the echoed served release. A buyer that sees only
+3.1-or-earlier release precision, or only ambiguous legacy major precision,
+must omit the 3.2 discovery fields and use the retained legacy fields or brief
+prose. A 3.2 seller serving a 3.1 pin emits a 3.1-shaped response; if it cannot
+serve 3.1, it returns `VERSION_UNSUPPORTED` rather than relabeling 3.2 output.
 
 ## Schema surface
 
