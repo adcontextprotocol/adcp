@@ -136,12 +136,14 @@ Identity tokens come from existing providers (ID5, LiveRamp, UID2, etc.) that ar
 When the publisher sends a Context Match request:
 
 1. The router identifies all providers configured for the request's `property_rid` with `context_match` capability.
-2. It sends the request to all matching providers in parallel over HTTP/2.
+2. It sends the request to all matching providers in parallel over HTTP/2 and validates their responses against `provider-context-match-response.json`. That provider-hop schema permits `signals.targeting_kvs` but forbids `signals_by_provider`.
 3. It waits for responses up to the latency budget (default: 50ms).
 4. It merges responses:
    - **Offers** are collected from all providers. If two providers return offers for the same `package_id` (uncommon — packages are typically provider-specific), the router keeps the offer from the higher-priority provider (lower `priority` value). Equal priorities are broken by first response received. Duplicate `package_id` across providers is a configuration error; the router SHOULD log a warning that identifies both providers and the selected winner.
-   - **Enrichment signals** are concatenated. Segments from all providers are combined into a single list. Targeting key-values from different providers are namespaced to prevent collisions.
-5. It returns the merged response to the publisher.
+   - **Enrichment signals** are merged by kind. Segments from all providers are combined into `signals.segments`. Targeting key-values retain provider attribution: for every provider that returns a non-empty `signals.targeting_kvs` list, the router copies the list unchanged into `signals_by_provider[provider_id].targeting_kvs`, using the publisher-assigned `provider_id` from that provider's registration. The router MUST derive this key itself and MUST ignore or reject any provider-supplied `signals_by_provider` map. A provider with no targeting pairs is omitted.
+5. It validates the merged response against `context-match-response.json` and returns it to the publisher. That router-hop schema permits `signals_by_provider` and forbids flattened `signals.targeting_kvs` even when no attributed bucket is present.
+
+The publisher resolves each `(provider_id, key)` tuple in `signals_by_provider` to the ad-server destination configured for that provider on the local surface. This mapping is publisher-owned deployment configuration and does not travel between provider and router. Tuples without a local mapping MUST be dropped; the publisher MUST NOT fall back to treating an unrecognized provider-local key as a global ad-server key. Distinct providers may therefore use the same local key without collision or cross-provider name capture.
 
 ### Identity Match fan-out
 
