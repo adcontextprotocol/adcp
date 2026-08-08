@@ -10972,6 +10972,15 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization before its credentials are used.
       responses:
         "200":
           description: Snapshot refreshed
@@ -11121,6 +11130,13 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+        - schema:
+            type: string
+            description: Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations.
+          required: false
+          description: Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations.
+          name: org
+          in: query
       responses:
         "200":
           description: Auth status
@@ -11180,6 +11196,9 @@ paths:
                     - bearer
                     - basic
                   description: "Auth type (default: bearer)"
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
       responses:
         "200":
           description: Connection result
@@ -11285,6 +11304,9 @@ paths:
                     - basic
                     - body
                   description: "Client-credentials placement: basic (HTTP Basic header, RFC 6749 §2.3.1 preferred) or body (form fields). SDK default is basic."
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
               required:
                 - token_endpoint
                 - client_id
@@ -11358,6 +11380,15 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
       responses:
         "200":
           description: "Result of the token exchange. `ok: true` on 2xx from the AS; `ok: false` with a typed error otherwise (HTTP response itself is still 200 — the error payload carries the rejection kind so UI can branch on it)."
@@ -11460,6 +11491,13 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+        - schema:
+            type: string
+            description: Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations.
+          required: false
+          description: Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations.
+          name: org
+          in: query
       responses:
         "200":
           description: Bundles the agent will be tested against, driven by its declared capabilities
@@ -12105,6 +12143,9 @@ paths:
                 dry_run:
                   type: boolean
                   description: "Dry run mode (default: true)"
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
       responses:
         "200":
           description: Step execution result
@@ -12233,6 +12274,15 @@ paths:
           required: true
           name: storyboardId
           in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
       responses:
         "200":
           description: Storyboard run result with annotated phases
@@ -12434,6 +12484,15 @@ paths:
           required: true
           name: storyboardId
           in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
       responses:
         "200":
           description: Side-by-side comparison results
