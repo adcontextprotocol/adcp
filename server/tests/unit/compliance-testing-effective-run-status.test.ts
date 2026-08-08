@@ -177,6 +177,51 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
     ]);
   });
 
+  it('keeps runner fixture gaps non-failing but coverage-incomplete', () => {
+    const result = makeResult([
+      makeTrack('silent'),
+      {
+        track: 'creative',
+        label: 'Creative',
+        status: 'skip',
+        duration_ms: 1000,
+        skipped_scenarios: [],
+        observations: [],
+        scenarios: [
+          {
+            scenario: 'creative_fate_after_cancellation/sync_creative_with_assignment',
+            overall_passed: true,
+            steps: [
+              {
+                step: 'Runner cannot synthesize the required creative asset',
+                passed: true,
+                skipped: true,
+                skip_reason: 'fixture_unavailable',
+                duration_ms: 0,
+              },
+            ],
+          },
+        ],
+      },
+    ] as any);
+
+    const out = complianceResultToDbInput(
+      result as any,
+      'https://agent.example.com/mcp',
+      'production',
+    );
+
+    expect(out.overall_status).toBe('partial');
+    expect(out.tracks_json).toEqual([
+      expect.objectContaining({ track: 'core', has_coverage_gap_skip: false }),
+      expect.objectContaining({
+        track: 'creative',
+        status: 'skip',
+        has_coverage_gap_skip: true,
+      }),
+    ]);
+  });
+
   it('does not promote when all tracks are skipped (no active tracks)', () => {
     const result = makeResult([makeTrack('skip'), makeTrack('skip')], 'partial');
     const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
