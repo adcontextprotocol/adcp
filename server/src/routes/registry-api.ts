@@ -4518,6 +4518,18 @@ function parseRequestedOrganizationId(value: unknown):
   return { ok: true, organizationId: value };
 }
 
+function parseRequestedOrganizationQuery(query: Record<string, unknown>):
+  | { ok: true; organizationId: string | undefined }
+  | { ok: false } {
+  // Express's simple query parser preserves bracketed keys literally, so
+  // `?org[]=...` would otherwise look like an omitted `org`. Reject alternate
+  // object/array spellings rather than silently falling back to another org.
+  if (Object.keys(query).some(key => key !== "org" && (key.startsWith("org[") || key.startsWith("org.")))) {
+    return { ok: false };
+  }
+  return parseRequestedOrganizationId(query.org);
+}
+
 export function createRegistryApiRouters(config: RegistryApiConfig): { router: Router; v1AgentsRouter: Router } {
   const router = Router();
   const {
@@ -7455,7 +7467,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         has_oauth_client_credentials: false,
       };
 
-      const orgSelection = parseRequestedOrganizationId(req.query.org);
+      const orgSelection = parseRequestedOrganizationQuery(req.query);
       if (!orgSelection.ok) {
         return res.status(400).json({ error: "org must be a non-empty organization ID" });
       }
@@ -7804,7 +7816,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       return res.status(401).json({ error: "Authentication required" });
     }
 
-    const orgSelection = parseRequestedOrganizationId(req.query.org);
+    const orgSelection = parseRequestedOrganizationQuery(req.query);
     if (!orgSelection.ok) {
       return res.status(400).json({ error: "org must be a non-empty organization ID" });
     }

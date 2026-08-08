@@ -602,12 +602,14 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       expect(firstOrg.body).toMatchObject({ has_auth: false, agent_context_id: null });
     });
 
-    it('rejects a malformed org query instead of reading an arbitrary context', async () => {
-      const res = await request(app)
-        .get(`${statusUrl}?org[]=org_a`);
-      expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/org/);
-    });
+    it.each(['org[]=org_a', 'org[0]=org_a', 'org.value=org_a'])(
+      'rejects malformed org query %s instead of reading an arbitrary context',
+      async (query) => {
+        const res = await request(app).get(`${statusUrl}?${query}`);
+        expect(res.status).toBe(400);
+        expect(res.body.error).toMatch(/org/);
+      },
+    );
 
     it('canonicalizes the requested URL before ownership and auth-context lookup', async () => {
       await request(app)
