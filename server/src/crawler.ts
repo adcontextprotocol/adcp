@@ -389,21 +389,19 @@ export class CrawlerService {
       const data = result.raw_data as { authoritative_location: string };
       try {
         const url = new URL(data.authoritative_location);
-        if (url.hostname === AAO_HOST &&
-            url.pathname === `/brands/${domain}/brand.json`) {
-          const hosted = await this.brandDb.getHostedBrandByDomain(domain);
-          if (hosted) {
-            // A valid pointer at the publisher's origin is terminal origin
-            // evidence even when ownership was already verified. Persisting
-            // source_type + last_validated prevents publisher-page reads from
-            // scheduling this same brand crawl every debounce interval.
-            await this.brandDb.updateHostedBrand(hosted.id, {
-              domain_verified: true,
-              origin_validated: true,
-            });
-            if (!hosted.domain_verified) {
-              log.debug({ domain }, 'Brand verified');
-            }
+        const hosted = await this.brandDb.getHostedBrandByDomain(domain);
+        if (hosted) {
+          const pointsToAaoHostedBrand = url.hostname === AAO_HOST &&
+            url.pathname === `/brands/${domain}/brand.json`;
+          // Any valid pointer read from the publisher's origin is terminal
+          // origin evidence, including central hosting on a third-party CDN.
+          // Only the exact AAO-hosted pointer may also promote ownership.
+          await this.brandDb.updateHostedBrand(hosted.id, {
+            ...(pointsToAaoHostedBrand ? { domain_verified: true } : {}),
+            origin_validated: true,
+          });
+          if (pointsToAaoHostedBrand && !hosted.domain_verified) {
+            log.debug({ domain }, 'Brand verified');
           }
         }
       } catch {
