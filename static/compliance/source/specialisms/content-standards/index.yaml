@@ -597,7 +597,7 @@ phases:
         task: get_creative_features
         schema_ref: "creative/get-creative-features-request.json"
         response_schema_ref: "creative/get-creative-features-response.json"
-        doc_ref: "/creative/task-reference/get_creative_features"
+        doc_ref: "/governance/creative/get_creative_features"
         comply_scenario: creative_feature_extraction
         requires_tool: get_creative_features
         stateful: false
