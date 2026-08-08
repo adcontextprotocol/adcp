@@ -115,13 +115,13 @@ Brand agents MUST declare `brand` in `supported_protocols`.
 
 | Task | Requirement | Notes |
 |------|------------|-------|
-| `sync_accounts` | Conditional | Buyer-declared accounts (`require_operator_auth: false`) — buyer declares brand/operator pairs; account-id namespaces may use this only for settings updates unless a future explicit capability declares provisioning |
-| `list_accounts` | Conditional / recommended | Account-id namespaces (`require_operator_auth: true`) MUST expose it when a credential can access multiple accounts and SHOULD return a singleton otherwise. Buyer-declared-account sellers (`require_operator_auth: false`) SHOULD expose it as the cold-start recovery read for stateless buyers. |
+| `sync_accounts` | Conditional | Buyer-declared accounts (`require_operator_auth: false`) use this when the buyer must select billing, terms, sandbox setup, notifications, or other settings before use. It MAY be omitted only for unambiguous lazy provisioning from the natural key when `list_accounts` is exposed. Account-id namespaces may use it only for settings updates unless a future explicit capability declares provisioning. |
+| `list_accounts` | Conditional / recommended | Account-id namespaces (`require_operator_auth: true`) MUST expose it when a credential can access multiple accounts and SHOULD return a singleton otherwise. Buyer-declared-account sellers (`require_operator_auth: false`) SHOULD expose it as the cold-start recovery read and MUST expose it when they lazily provision instead of implementing `sync_accounts`. |
 | `sync_governance` | Conditional | Required when the buyer uses campaign governance |
 | `report_usage` | Conditional | Required when the agent charges for services |
 | `get_account_financials` | Optional | Financial summary per account |
 
-Agents MUST implement at least one of `sync_accounts` or `list_accounts` depending on their account model. An agent MAY implement both. Buyer-declared-account sellers SHOULD implement both: `sync_accounts` establishes the relationship, while `list_accounts` lets a stateless buyer recover the seller's acknowledged `(brand, operator, sandbox)` portfolio without already possessing the natural keys it lost.
+Agents MUST implement at least one of `sync_accounts` or `list_accounts` depending on their account model. An agent MAY implement both. Buyer-declared-account sellers SHOULD implement both: `sync_accounts` establishes the relationship, while `list_accounts` lets a stateless buyer recover the seller's acknowledged `(brand, operator, sandbox)` portfolio without already possessing the natural keys it lost. A buyer-declared seller that exposes only `list_accounts` is conformant only when it lazily provisions on the first natural-key account-scoped request and can determine every required account setting without additional buyer input.
 
 **Reference**: [Accounts Protocol](/docs/accounts/overview)
 
