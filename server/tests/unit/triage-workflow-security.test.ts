@@ -86,7 +86,7 @@ function commentEvent() {
 function manualEvent(args = "") {
   return {
     action: "triage-command",
-    sender: user("dispatch-sender"),
+    sender: user("aao-secretariat[bot]", "Bot"),
     client_payload: {
       slash_command: {
         command: "triage",

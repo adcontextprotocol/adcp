@@ -157,7 +157,6 @@ jobs:
             }
 
             if (eventName === 'repository_dispatch') {
-              requireSender(event);
               requireAction(event.action, new Set(['triage-command']));
               const clientPayload = requireObject(event.client_payload, 'client_payload');
               const slashCommand = requireObject(clientPayload.slash_command, 'slash_command');
