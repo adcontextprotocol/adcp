@@ -662,7 +662,14 @@
 #   unsupported asset type, an unknown text-slot semantic, or no image fixture
 #   satisfying the declared dimensions — the runner MUST stop before transport
 #   and grade the storyboard `not_applicable` with `skip_result.reason:
-#   fixture_unavailable`. The diagnostic detail MUST begin with
+#   fixture_unavailable`. As soon as the referenced format context is captured,
+#   the runner MUST preflight every remaining `$build_assets_from_format`
+#   directive that uses it before executing any intervening side-effecting
+#   step. On this disposition, the runner MUST terminate the storyboard without
+#   executing its remaining phases or emitting `prerequisite_failed` cascades.
+#   This early whole-storyboard preflight prevents a later fixture gap from
+#   leaving behind state such as an active media buy. The diagnostic detail MUST
+#   begin with
 #   `creative_asset_fixture_unavailable:` and name the slot id, asset type, and
 #   any unsatisfied constraint. This is a runner/test-kit coverage gap, not a
 #   grading signal about the agent, and MUST NOT contribute to failed steps.
@@ -1989,8 +1996,10 @@
 #       directive whose valid captured format cannot be satisfied by the
 #       runner's test-kit assets is not an unresolved substitution: it uses the
 #       storyboard-level not_applicable disposition with `skip_result.reason:
-#       fixture_unavailable` at step preflight. This runner-owned coverage gap
-#       MUST NOT count as a failed step.
+#       fixture_unavailable` at the earliest preflight after the referenced
+#       format is captured and before any intervening side-effecting step. The
+#       runner terminates the remaining storyboard without prerequisite
+#       cascades. This runner-owned coverage gap MUST NOT count as a failed step.
 #
 #       Output shape: runner-output-contract.yaml > validation_result, with
 #       check: unresolved_substitution, expected: the unresolved token string,
@@ -2382,9 +2391,12 @@
 # captures the seller's valid format contract. If the format context exists but
 # the runner's test kit cannot synthesize every required slot, the runner MUST
 # apply a storyboard-level `not_applicable` disposition with
-# `skip_result.reason: fixture_unavailable` at step preflight, not the
-# failed-step disposition from point 2. If the format context itself is absent
-# because its producer failed or was skipped, point 2 and the normal
+# `skip_result.reason: fixture_unavailable` at the earliest preflight after the
+# referenced format is captured, not wait until the directive-bearing step.
+# This preflight MUST occur before any intervening side-effecting step. The
+# runner then terminates the remaining storyboard without executing later
+# phases or emitting `prerequisite_failed` cascades. If the format context itself
+# is absent because its producer failed or was skipped, point 2 and the normal
 # prerequisite cascade still apply.
 #
 # Neither path may ship a literal `$context.*` or `{{...}}` token on the wire.
