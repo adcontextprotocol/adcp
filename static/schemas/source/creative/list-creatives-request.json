@@ -24,6 +24,20 @@
           "account"
         ]
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "assignment_projection": { "const": "matching" }
+        },
+        "required": ["assignment_projection"]
+      },
+      "then": {
+        "required": ["filters"],
+        "properties": {
+          "filters": { "required": ["insight_types"] }
+        }
+      }
     }
   ],
   "properties": {
@@ -54,6 +68,19 @@
       "type": "boolean",
       "default": true,
       "description": "Include package assignment information in response"
+    },
+    "assignment_projection": {
+      "type": "string",
+      "enum": ["all", "matching"],
+      "default": "all",
+      "description": "Controls nested assigned_packages projection when assignments are included. all returns up to assignment_limit active assignments per creative. matching returns only assignments matching filters.insight_types and requires that filter. Use matching for compact insight discovery; get_media_buys remains the complete authoritative repair path when assignments_truncated is true."
+    },
+    "assignment_limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 200,
+      "default": 50,
+      "description": "Maximum assigned_packages rows returned per creative. Sellers MUST set assignments.assignments_truncated when additional qualifying rows exist."
     },
     "include_snapshot": {
       "type": "boolean",

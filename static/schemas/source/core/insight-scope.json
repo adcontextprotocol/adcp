@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/insight-scope.json",
+  "title": "Insight Scope",
+  "description": "A publisher or placement scope within an enclosing media buy, package, or package–creative assignment. publisher_domain alone means all delivery for that publisher within the enclosing object; placement_id narrows to one placement in that publisher's namespace.",
+  "type": "object",
+  "properties": {
+    "publisher_domain": {
+      "type": "string",
+      "description": "Domain where the publisher's adagents.json is hosted.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "placement_id": {
+      "type": "string",
+      "description": "Optional placement ID within publisher_domain. Omit to scope the assertion or evaluation to all delivery for the publisher in the enclosing object.",
+      "x-entity": "placement"
+    }
+  },
+  "required": [
+    "publisher_domain"
+  ],
+  "additionalProperties": true
+}

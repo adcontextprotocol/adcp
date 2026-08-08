@@ -94,6 +94,15 @@
       "type": "boolean",
       "description": "When true, return only creatives that have served at least one impression. When false, return only creatives that have never served."
     },
+    "insight_types": {
+      "type": "array",
+      "description": "Return creatives with at least one package assignment carrying any requested current insight type. Values within this field use OR logic; this field composes with other filters using AND logic. Sales-agent-specific: sellers support this filter only when media_buy.relationship_notifications.projection_tasks includes list_creatives. Other agents SHOULD ignore it and apply remaining filters. Buyers needing exact results MUST verify capability support and paginate the outer result set; assignment_projection: matching bounds nested rows.",
+      "items": {
+        "$ref": "/schemas/enums/insight-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "concept_ids": {
       "type": "array",
       "description": "Filter by creative concept IDs. Concepts group related creatives across sizes and formats (e.g., Flashtalking concepts, Celtra campaign folders, CM360 creative groups).",

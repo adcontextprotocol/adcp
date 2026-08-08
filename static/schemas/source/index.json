@@ -514,6 +514,34 @@
           "$ref": "/schemas/core/account-status-changed-webhook.json",
           "description": "Account-level webhook payload that invalidates a list_accounts account status snapshot"
         },
+        "insight": {
+          "$ref": "/schemas/core/insight.json",
+          "description": "Compact durable seller interpretation attached to an authoritative resource snapshot"
+        },
+        "creative-approval-scope": {
+          "$ref": "/schemas/core/creative-approval-scope.json",
+          "description": "Publisher- or placement-scoped creative approval outcome within an assignment"
+        },
+        "insight-bearing": {
+          "$ref": "/schemas/core/insight-bearing.json",
+          "description": "Reusable insight snapshot fields, exact evaluated-type coverage, freshness, and optional scope coverage"
+        },
+        "insight-scope": {
+          "$ref": "/schemas/core/insight-scope.json",
+          "description": "Publisher and placement scope for an insight assertion or evaluation"
+        },
+        "insights-changed-webhook": {
+          "$ref": "/schemas/core/insights-changed-webhook.json",
+          "description": "Account-level invalidation payload for a semantic insight snapshot change"
+        },
+        "warning": {
+          "$ref": "/schemas/core/warning.json",
+          "description": "Structured non-blocking receipt returned only on synchronous mutation success"
+        },
+        "warning-resource": {
+          "$ref": "/schemas/core/warning-resource.json",
+          "description": "Typed identity of the resource affected by an operation warning"
+        },
         "destination": {
           "$ref": "/schemas/core/destination.json",
           "description": "A destination platform where signals can be activated (DSP, sales agent, etc.)"
@@ -1009,6 +1037,14 @@
           "$ref": "/schemas/enums/notification-type.json",
           "description": "Types of delivery notifications (scheduled, final, delayed, adjusted)"
         },
+        "insight-type": {
+          "$ref": "/schemas/enums/insight-type.json",
+          "description": "Closed AdCP 3.2 vocabulary for durable media-buy and creative-assignment insights"
+        },
+        "warning-code": {
+          "$ref": "/schemas/enums/warning-code.json",
+          "description": "Closed AdCP 3.2 vocabulary for synchronous operation warnings"
+        },
         "reporting-frequency": {
           "$ref": "/schemas/enums/reporting-frequency.json",
           "description": "Frequencies for delivery reports (hourly, daily, monthly)"
@@ -1495,6 +1531,12 @@
             "$ref": "/schemas/creative/validate-input-response.json",
             "description": "Response payload for validate_input task with per-target validation results"
           }
+        }
+      },
+      "webhooks": {
+        "creative-assignment-changed": {
+          "$ref": "/schemas/creative/creative-assignment-changed-webhook.json",
+          "description": "Account-level invalidation payload for creative assignment membership or approval changes"
         }
       },
       "asset_types": {

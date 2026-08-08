@@ -21,6 +21,7 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 - Return only specific fields to reduce response size
 - Filter by creative concept (groups of related creatives across sizes/formats)
 - Find DCO creatives and inspect their dynamic content slots
+- Find creatives with seller insights such as package-scoped creative fatigue
 
 ## Request parameters
 
@@ -41,6 +42,8 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `include_assignments` | boolean | No | Include package assignment information (default: true) |
+| `assignment_projection` | string | No | `all` (default) returns active assignments; `matching` returns only assignments matching `filters.insight_types` and requires that filter. |
+| `assignment_limit` | integer | No | Maximum nested assignment rows per creative (default: 50, maximum: 200). |
 | `include_snapshot` | boolean | No | Include a lightweight delivery snapshot — lifetime impressions and last-served date (default: false). For detailed analytics, use [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery). |
 | `include_items` | boolean | No | Include items for multi-asset formats like carousels and native ads (default: false) |
 | `include_variables` | boolean | No | Include dynamic content variable definitions (default: false) |
@@ -49,7 +52,7 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 | `include_webhook_activity` | boolean | No | Include recent webhook fires per creative (default: false). See [Webhook activity](#webhook-activity). |
 | `webhook_activity_limit` | integer | No | Maximum `webhook_activity[]` records per creative when `include_webhook_activity: true` (default: 50, range 1–200). |
 | `account` | [AccountRef](/docs/building/by-layer/L2/accounts-and-agents#account-references) | No | Account reference for pricing. When provided with `include_pricing`, the agent returns `pricing_options` from this account's rate card on each creative. |
-| `fields` | array | No | Specific fields to return (omit for all fields). Includes `"assets"` for local fallback filtering, `"pricing_options"` for sparse selection, and `"rights"` / `"rights_attestation_evaluations"` for rights readback. Selecting evaluations automatically includes `creative_id` and `rights`. |
+| `fields` | array | No | Specific optional fields to return (omit for all fields). Every row still includes the released base envelope: `creative_id`, `name`, `status`, `created_date`, `updated_date`, and exactly one of `format_id` or `format_kind`. Optional selections include `"assignments"`, `"assets"`, `"pricing_options"`, and `"rights"` / `"rights_attestation_evaluations"`; selecting rights evaluations automatically includes `rights`. |
 
 ## Filtering options
 
@@ -74,6 +77,7 @@ The `filters` object supports these optional, composable filters:
 | `media_buy_ids` | string[] | Filter by media buy assignments * |
 | `unassigned` | boolean | Filter for unassigned creatives * |
 | `has_served` | boolean | Filter for creatives that have served at least one impression * |
+| `insight_types` | `InsightType[]` | Filter for creatives with at least one package assignment carrying any requested current insight type. See the [standard insight catalog](/docs/media-buy/media-buys/insights#standard-insight-types). * |
 
 \* Assignment-related filters are specific to sales agents. Standalone creative agents ignore these.
 
@@ -94,7 +98,7 @@ All active filter fields compose with **AND logic**. For example, the following 
 
 Use `asset_types: ["published_post"]` to find existing-published-post reference creatives across sellers without enumerating publisher-specific format options, or `asset_types: ["zip"]` to find HTML5 bundle archives. Values such as `url`, `text`, and `image` are common companion assets, so they often produce broad result sets when used alone.
 
-Agents that do not implement `asset_types` MUST ignore that field and apply all other active filters. They must not reject the request solely because the filter is unsupported. Because unsupported agents deliberately over-return, buyers that require an exact filtered result MUST retain a local fallback: request `assets` (or omit sparse `fields`), traverse every page until `pagination.has_more` is false, and locally inspect the returned top-level asset objects. When a seller returns `query_summary.filters_applied`, buyers can verify that it includes `asset_types`; absence means the local fallback is required.
+Agents that do not implement `asset_types` MUST ignore that field and apply all other active filters. They must not reject the request solely because the filter is unsupported. Because unsupported agents deliberately over-return, buyers that require an exact filtered result MUST retain a local fallback: request `assets` (or omit `fields`), traverse every page until `pagination.has_more` is false, and locally inspect the returned top-level asset objects. When a seller returns `query_summary.filters_applied`, buyers can verify that it includes `asset_types`; absence means the local fallback is required.
 
 <Note>
 **Archived creatives are excluded by default.** To include archived creatives in results, explicitly include `"archived"` in the `statuses` array. Suspended creatives are not archived; include `"suspended"` when you specifically want recoverably offline creatives such as published-post references with expired authorization.
@@ -214,6 +218,31 @@ The response provides creative data with optional enrichment:
 | `items` | array | Items for multi-asset formats (when `include_items=true`) |
 | `pricing_options` | [VendorPricingOption](/docs/creative/specification#pricing)[] | Pricing options for this creative (when `include_pricing=true` and `account` provided). Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Same pattern as `get_signals` and `list_content_standards`. |
 
+### Assignment insights
+
+Creative-library sellers that advertise `list_creatives` in `media_buy.relationship_notifications.projection_tasks` attach evaluated insight state to `assignments.assigned_packages[]` and include `media_buy_id` plus `approval_status` on every row, including unknown rows. These fields mirror `get_media_buys` for the same relationship. A mixed publisher/placement outcome uses `approval_status: "partially_approved"` plus complete `approval_scopes[]`; the assignment webhook remains a compact invalidation and buyers reread these scopes. Each evaluated row includes `insight_types_evaluated`, `insights_as_of`, and `insights[]`; omitted types remain unknown.
+
+```json
+{
+  "include_assignments": true,
+  "filters": {
+    "insight_types": ["creative_fatigue"]
+  },
+  "fields": ["creative_id", "assignments"],
+  "assignment_projection": "matching",
+  "assignment_limit": 50,
+  "pagination": {
+    "max_results": 100
+  }
+}
+```
+
+This request limits optional payload to assignments while retaining each row's released base envelope (`creative_id`, `name`, `status`, dates, and one format identity). `assignment_count` remains the total active relationship count; `returned_assignment_count`, optional `matching_assignment_count`, and `assignments_truncated` describe the bounded nested projection. When truncated, use `get_media_buys` as the complete repair path.
+
+The standard insight shape intentionally contains no insight ID, source envelope, lifecycle status, or sub-version. The responding seller is the source; AdCP defines the broad meaning of the type for the negotiated protocol release. Seller-specific scores, methodology, evaluation windows, and upstream attribution belong in `ext`.
+
+Omitted `insights` means unknown. An empty array is evaluated-clear only for `insight_types_evaluated` and declared coverage. Do not infer clearing from filtered/paginated disappearance; directly reread without `insight_types`. See [Insights, Warnings, and Recommendations](/docs/media-buy/media-buys/insights).
+
 ### Rights attestation readback
 
 Selecting `fields: ["rights_attestation_evaluations"]` automatically includes `creative_id` and `rights`. Every evaluation's `{rights_id, content_digest, reference}` must select exactly one retained constraint and one byte-for-byte equal `attestation_refs` entry. The evaluation array is complete rather than independently truncated: because `rights` has no item ceiling, neither does its evaluation readback. A `verified` result is reusable only when the seller retrieves the byte-identical result from its own local evaluation store keyed by `(evaluated_by, reference_digest)`, for that exact unchanged grant, and only until `valid_until`. The `evaluated_by` string alone is not provenance; buyer-authored and foreign-seller readback fails closed. The result is not a serving authorization and does not replace use, country, time, package, or impression-cap checks. When the seller advertises `media_buy.rights_attestations.requirement: "required"`, every applicable constraint on a serving-eligible creative needs at least one current verified result.
@@ -324,9 +353,9 @@ Hard-purged creatives (`purge_kind: hard`, used for legal erasure under GDPR Art
 
 ### Webhook activity
 
-When `include_webhook_activity: true`, each returned creative carries a `webhook_activity[]` array of the most recent fires scoped to that creative — `creative.status_changed` and `creative.purged` deliveries. This is the buyer's debug surface for "did the publisher fire? did my endpoint receive it? was the retry trail clean?" — the same shape and contract as `webhook_activity[]` on `get_media_buys`. See [Webhook activity log pattern](/docs/protocol/snapshot-and-log#webhook-activity-log-pattern) for the full normative contract (retention, three-state presence, request-field conventions).
+When `include_webhook_activity: true`, each creative carries recent `creative.status_changed`, `creative.purged`, `creative.assignment_changed`, and assignment-level `insights.changed` attempts. This is the buyer's debug surface for delivery and retry behavior. See [Webhook activity log pattern](/docs/protocol/snapshot-and-log#webhook-activity-log-pattern).
 
-**To subscribe** to these fires, register a [`notification_configs[]`](/docs/accounts/tasks/sync_accounts#account-level-webhook-subscriptions) entry on the account via `sync_accounts`. The seller fires per-subscriber against each entry whose `event_types[]` includes the type. `webhook_activity[]` on this read is the buyer-side debug log of what actually fired.
+**To subscribe**, register a [`notification_configs[]`](/docs/accounts/tasks/sync_accounts#account-level-webhook-subscriptions) entry through `sync_accounts`. All insight-capable sellers accept `insights.changed` and may independently advertise `creative.assignment_changed`. Subscriptions are prospective, so establish a complete all-status or known-ID baseline through `get_media_buys` after activation. Dedupe later invalidations and reread `get_media_buys` rather than applying payload state; this bounded reverse projection is useful for discovery but cannot prove complete repair.
 
 Three-state presence applies:
 

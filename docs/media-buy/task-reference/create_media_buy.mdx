@@ -269,6 +269,7 @@ A provider portfolio bidding strategy illustrates the current abstraction bounda
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
 | `revision` | Initial media-buy revision. Use this value as the `revision` token on the next `update_media_buy` call intended to change state. |
 | `packages` | Array of created packages with complete state. Packages MAY include a per-package `creative_deadline` and SHOULD echo canonical selectors supplied on create so read surfaces are lossless. When additional creative coverage is required, each package carries `formats_to_provide[]`: full canonical ProductFormatDeclaration snapshots normalized from the selected product contract. When the request included audience-evidence pins or requirements, each package MUST return matching `audience_evidence_selections` with `decision_use: "package_construction"`. |
+| `warnings` | Structured non-blocking observations. The buy was still created. A continuing condition also appears on `get_media_buys`; see [Insights, Warnings, and Recommendations](/docs/media-buy/media-buys/insights). |
 
 Treat `packages[].formats_to_provide[]` as the stable creative checklist established at booking time. Each full declaration can be matched against a creative agent's live `creative.supported_formats[].format`, even when the product option has no `format_option_id`. After uploads or assignments, call `get_media_buys`: `packages[].formats_pending[]` contains the declarations that still lack creative coverage. The deprecated `format_ids_to_provide` / `format_ids_pending` projections exist only for older 3.x peers.
 
@@ -315,6 +316,8 @@ When `confirmed_at` is `null`, sellers MUST omit `packages[].committed_metrics`.
 | Field | Description |
 |-------|-------------|
 | `errors` | Array of error objects explaining failure |
+
+Terminal and submitted responses never include `warnings`. Each success warning carries typed `affected_resource` identity; codes follow the negotiated AdCP release.
 
 ### Submitted Response
 

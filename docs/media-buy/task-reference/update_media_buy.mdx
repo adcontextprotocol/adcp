@@ -271,6 +271,7 @@ For budget/pacing interaction and bidding inheritance, see [Budget & Pacing Cont
 | `valid_actions` | Flat-vocabulary actions the buyer can perform after this update. Saves a round-trip to `get_media_buys`. Deprecated in favor of `available_actions[]` and removed in 4.0. |
 | `available_actions` | Structured per-buy resolution of actions available after this update, each entry with action, resolved `mode`, optional `sla`, optional `terms_ref`. Authoritative — buyer SDKs SHOULD prefer this over `valid_actions` when both are present. |
 | `affected_packages` | For package-level updates, array of full Package objects showing complete post-update state for each directly modified package. This is a state snapshot, not a sparse delta: sellers MUST NOT return `{ package_id }`-only stubs. Campaign-level updates that do not modify packages may return an empty array. |
+| `warnings` | Structured non-blocking observations. The update was still applied. Continuing conditions appear on the next `get_media_buys` snapshot. |
 
 ### Error Response
 
@@ -278,7 +279,7 @@ For budget/pacing interaction and bidding inheritance, see [Budget & Pacing Cont
 |-------|-------------|
 | `errors` | Array of error objects explaining failure |
 
-**Note**: Responses use discriminated unions - you get either success fields OR errors, never both. Always check for `errors` before accessing success fields.
+**Note**: Responses use discriminated unions. Terminal errors never carry `warnings`; warnings occur only on successful updates. See [Insights, Warnings, and Recommendations](/docs/media-buy/media-buys/insights).
 
 ## Common Scenarios
 

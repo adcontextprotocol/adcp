@@ -276,6 +276,22 @@ Retrieve media buy state: status, valid_actions, creative approvals, pending for
 - Optional `snapshot` per package (impressions, spend, pacing)
 - Optional `history` entries (revision, timestamp, actor, action, summary)
 
+#### Relationship-scoped insights
+
+Before querying insights, read `get_adcp_capabilities.media_buy.supported_insight_types`. Insights may appear at three levels:
+
+- buy: `get_media_buys.media_buys[]` (`budget_constrained`)
+- package: `packages[]` (`creative_diversity_low`, `audience_saturation`, `inventory_shortfall_forecast`, `pacing_risk`, `budget_constrained`)
+- assignment: `creative_approvals[]` and the matching `list_creatives.assignments.assigned_packages[]` (`creative_fatigue`, `creative_quality_opportunity`)
+
+`insights` omitted means unknown. A present array requires `insight_types_evaluated` and `insights_as_of`; empty means clear only for those named types and coverage. `scope` narrows an assertion; `insights_evaluated_scope` declares partial publisher/placement coverage. Creative-library sellers advertise `list_creatives` in `relationship_notifications.projection_tasks`; those sellers include `media_buy_id`, approval state, and any `approval_scopes` on every reverse assignment row. Every seller repairs through `get_media_buys`.
+
+For portfolio discovery, call `list_creatives` with `filters.insight_types`, `include_assignments: true`, `assignment_projection: "matching"`, a bounded `assignment_limit`, `fields: ["creative_id", "assignments"]`, and cursor pagination. The seller still returns the released required creative envelope; `fields` limits optional payload. Check `assignments_truncated`; use `get_media_buys` for complete repair. Key evaluated state by seller + `media_buy_id` + `package_id` + `creative_id` + type + normalized placement scope.
+
+Never clear from filtered disappearance or failure. Reread directly without `insight_types`; clear only a named evaluated type in covered scope from a strictly newer snapshot. Equal-timestamp conflicts are no-ops. Direct assignment deletion retires its keys.
+
+All insight-capable sellers accept `insights.changed` and may independently declare `creative.assignment_changed`; creative-library sellers may independently advertise the bounded `list_creatives` reverse projection. Subscriptions are prospective, so establish a complete `get_media_buys` baseline after activation by enumerating known IDs or requesting every media-buy status and exhausting pagination, without `insight_types`. Verify, dedupe, and reread `get_media_buys`; webhook payloads are invalidations, not state. Timestamp-only reevaluation does not fire, while material in-place creative updates invalidate prior assignment evaluations. Root `warnings[]` on successful create/update are immediate receipts; inventory and pacing warning codes require the matching advertised durable insight type.
+
 ---
 
 ### provide_performance_feedback

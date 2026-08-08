@@ -205,9 +205,24 @@
                 "description": "Total number of active package assignments",
                 "minimum": 0
               },
+              "returned_assignment_count": {
+                "type": "integer",
+                "description": "Number of rows present in assigned_packages for this response.",
+                "minimum": 0,
+                "maximum": 200
+              },
+              "matching_assignment_count": {
+                "type": "integer",
+                "description": "Total active assignments matching filters.insight_types. MUST be present exactly when assignment_projection was matching. May exceed returned_assignment_count.",
+                "minimum": 0
+              },
+              "assignments_truncated": {
+                "type": "boolean",
+                "description": "True exactly when more qualifying assignments exist than were returned under assignment_limit. Qualifying means assignment_count for the all projection and matching_assignment_count for the matching projection. Buyers needing complete state repair through get_media_buys."
+              },
               "assigned_packages": {
                 "type": "array",
-                "description": "List of packages this creative is assigned to",
+                "description": "Bounded package assignment projection. Under assignment_projection: matching, contains only assignments carrying a requested insight type; otherwise contains active assignments up to assignment_limit.",
                 "items": {
                   "type": "object",
                   "properties": {
@@ -216,23 +231,187 @@
                       "description": "Package identifier",
                       "x-entity": "package"
                     },
+                    "media_buy_id": {
+                      "type": "string",
+                      "description": "Media buy containing this package. A seller advertising list_creatives in media_buy.relationship_notifications.projection_tasks MUST include this field on every assignment row, including rows where insights is omitted as unknown, so buyers can key and reread the relationship unambiguously when package IDs are reused across media buys.",
+                      "x-entity": "media_buy"
+                    },
                     "assigned_date": {
                       "type": "string",
                       "format": "date-time",
                       "description": "When this assignment was created"
+                    },
+                    "approval_status": {
+                      "$ref": "/schemas/enums/creative-approval-status.json",
+                      "description": "Aggregate approval state for this creative in this package assignment. This mirrors the same relationship in get_media_buys. Sellers advertising list_creatives as an insight projection task MUST include it; partially_approved requires approval_scopes."
+                    },
+                    "rejection_reason": {
+                      "type": "string",
+                      "description": "Human-readable explanation when approval_status is rejected. Mirrors get_media_buys for the same relationship."
+                    },
+                    "approval_scopes": {
+                      "type": "array",
+                      "description": "Complete, disjoint publisher/placement approval partition when approval_status is partially_approved. A normalized scope appears once. For one publisher, use either one publisher-wide row or placement-specific rows, never both. Omit when one approval_status applies uniformly to the whole assignment. The same scoped outcomes are mirrored on get_media_buys.",
+                      "items": {
+                        "$ref": "/schemas/core/creative-approval-scope.json"
+                      },
+                      "minItems": 2,
+                      "uniqueItems": true,
+                      "x-adcp-validation": {
+                        "verifier_constraints": {
+                          "unique_by_normalized_scope": true,
+                          "forbid_publisher_wide_and_placement_overlap": true
+                        },
+                        "spec": "specs/relationship-scoped-insights.md#placement-and-reverse-projection"
+                      }
+                    },
+                    "insights": {
+                      "type": "array",
+                      "description": "Current seller insights that are true for this creative in this package assignment. The package assignment supplies the default delivery scope; an insight may narrow further with scope. Omitted means unknown or not evaluated. A present empty array means the seller completed the evaluation identified by insights_evaluated_scope at insights_as_of and asserts no current insight in that evaluated scope.",
+                      "items": {
+                        "$ref": "/schemas/core/insight.json"
+                      },
+                      "uniqueItems": true
+                    },
+                    "insight_types_evaluated": {
+                      "type": "array",
+                      "description": "Insight types covered by this assignment snapshot. Required whenever insights is present; omitted types remain unknown.",
+                      "items": {
+                        "$ref": "/schemas/enums/insight-type.json"
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true
+                    },
+                    "insights_as_of": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When the seller last completed the evaluation represented by insights for this relationship. Required whenever insights is present, including an empty array."
+                    },
+                    "insights_evaluated_scope": {
+                      "type": "array",
+                      "description": "Optional publisher or placement scopes covered by this evaluation. Omit when insights covers the whole package–creative assignment. When present, scopes not listed remain unknown; every returned insight.scope entry MUST be contained by this set.",
+                      "items": {
+                        "$ref": "/schemas/core/insight-scope.json"
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true
                     }
                   },
                   "required": [
                     "package_id",
                     "assigned_date"
                   ],
+                  "dependencies": {
+                    "insights": [
+                      "media_buy_id",
+                      "insight_types_evaluated",
+                      "insights_as_of"
+                    ],
+                    "insight_types_evaluated": [
+                      "insights",
+                      "insights_as_of"
+                    ],
+                    "insights_as_of": [
+                      "insights",
+                      "insight_types_evaluated"
+                    ],
+                    "insights_evaluated_scope": [
+                      "insights",
+                      "insight_types_evaluated",
+                      "insights_as_of"
+                    ]
+                  },
+                  "allOf": [
+                    {
+                      "$ref": "/schemas/core/insight-bearing.json"
+                    },
+                    {
+                      "properties": {
+                        "insight_types_evaluated": {
+                          "items": {
+                            "enum": [
+                              "creative_fatigue",
+                              "creative_quality_opportunity"
+                            ]
+                          }
+                        },
+                        "insights": {
+                          "items": {
+                            "properties": {
+                              "type": {
+                                "enum": [
+                                  "creative_fatigue",
+                                  "creative_quality_opportunity"
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "insights_evaluated_scope"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "insights": {
+                            "items": {
+                              "required": [
+                                "scope"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "approval_status": { "const": "partially_approved" }
+                        },
+                        "required": ["approval_status"]
+                      },
+                      "then": {
+                        "required": ["approval_scopes"],
+                        "properties": {
+                          "approval_scopes": {
+                            "allOf": [
+                              { "contains": { "properties": { "approval_status": { "const": "approved" } } } },
+                              { "contains": { "properties": { "approval_status": { "enum": ["pending_review", "rejected"] } } } }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": { "required": ["approval_scopes"] },
+                      "then": { "properties": { "approval_status": { "const": "partially_approved" } } }
+                    }
+                  ],
                   "additionalProperties": true
-                }
+                },
+                "maxItems": 200
               }
             },
             "required": [
               "assignment_count"
             ],
+            "dependencies": {
+              "assigned_packages": ["returned_assignment_count", "assignments_truncated"]
+            },
+            "x-adcp-validation": {
+              "verifier_constraints": {
+                "returned_assignment_count_equals_assigned_packages_length": true,
+                "returned_assignment_count_lte_assignment_count": true,
+                "matching_assignment_count_present_iff_matching_projection": true,
+                "matching_assignment_count_between_returned_and_assignment_count": true,
+                "assignments_truncated_iff_qualifying_count_exceeds_returned_count": true
+              },
+              "spec": "specs/relationship-scoped-insights.md#query-contract"
+            },
             "additionalProperties": true
           },
           "snapshot": {
@@ -316,7 +495,7 @@
           },
           "webhook_activity": {
             "type": "array",
-            "description": "Recent webhook fires scoped to this creative — `creative.status_changed` and `creative.purged` deliveries. Present only when the request set `include_webhook_activity: true`. Each item is a `webhook-activity-record`; the `notification_type` field discriminates between status changes and purges. The `ext.creative_id` slot MAY be populated on records nested inside larger reads where the parent does not already key the array; on `list_creatives` the parent creative_id is unambiguous and `ext.creative_id` MAY be omitted. Retention: 30 days from `completed_at` (MUST). See `snapshot-and-log.mdx § Webhook activity log pattern` for the full normative contract.",
+            "description": "Recent webhook fires scoped to this creative — creative.status_changed, creative.purged, creative.assignment_changed, and assignment-level insights.changed deliveries. Present only when include_webhook_activity is true. Account-anchored records include subscriber_id; the parent creative_id disambiguates the record. Retention: 30 days from completed_at. See snapshot-and-log.mdx § Webhook activity log pattern.",
             "items": {
               "$ref": "/schemas/core/webhook-activity-record.json"
             },

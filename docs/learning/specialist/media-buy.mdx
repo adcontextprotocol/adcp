@@ -44,6 +44,7 @@ See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for
 - Tie broadcast buys to agency billing by attaching `agency_estimate_number` at the buy or package level (package-level overrides buy-level when flights or stations differ)
 - Interpret broadcast delivery reports: `get_media_buy_delivery` returns measurement window data (`live`, `c3`, `c7`) that progresses over days after broadcast — the C7 window's DVR accumulation doesn't close until seven days post-air, and vendor processing adds further delay before final data is available; incomplete data during this period is by design, not underdelivery
 - Use `get_media_buys` to check status, `valid_actions`, and creative approvals before acting
+- Interpret seller insights as current relationship-scoped state: explain why creative fatigue belongs to one package–creative assignment, why the same creative may be fatigued on one seller but not another, and why provider methodology belongs in `ext`
 - Handle pricing negotiation, budget allocation, and multi-agent orchestration
 - Use refinement and package requests for complex buying scenarios
 - Monitor and optimize campaign delivery using protocol tools
@@ -85,6 +86,9 @@ See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for
   </Card>
   <Card title="Media buys overview" icon="layer-group" href="/docs/media-buy/media-buys/index">
     Campaign structure, the `pending_creatives` → `pending_start` → `active` state machine, and the approval lifecycle.
+  </Card>
+  <Card title="Insights" icon="lightbulb" href="/docs/media-buy/media-buys/insights">
+    Seller interpretations such as package-scoped creative fatigue, returned through existing resource reads.
   </Card>
   <Card title="Trusted Match Protocol" icon="microchip" href="/docs/trusted-match">
     How TMP handles impression-time decisions such as cross-publisher frequency capping.
@@ -133,6 +137,154 @@ During the module, Addie will guide you through hands-on exercises:
 7. **Lifecycle management** — Check `valid_actions`, cancel a package, handle `NOT_CANCELLABLE`, use `revision` for concurrency
 8. **Broadcast billing and delivery** — Create a broadcast buy with a buy-level `agency_estimate_number` and one package that overrides it with a station-specific estimate number. Verify both appear on delivery reconciliation. Call `get_media_buy_delivery` and interpret the measurement window fields: explain why `c3` data may be incomplete immediately after broadcast and when the `c7` window closes.
 9. **Multi-agent orchestration and execution** — Manage campaigns across multiple sellers. Trace a cross-publisher suppression scenario: a viewer sees an ad on publisher A, then visits publisher B within the 2-hour recency window — what does Identity Match return and why? Configure frequency parameters (5/week, 2-hour minimum recency) and predict delivery impact. Explain why Context Match and Identity Match are structurally separated.
+10. **Warnings, insights, and invalidations** — Analyze a success warning and the later resource snapshot; distinguish buy/package/assignment insight placement, exact type coverage, assignment approval, and webhook invalidation handling.
+
+For the insight exercise, Addie supplies this compact creative-library fixture:
+
+```json
+{
+  "creative_id": "acme_summer_video",
+  "assignments": {
+    "assignment_count": 3,
+    "returned_assignment_count": 3,
+    "assignments_truncated": false,
+    "assigned_packages": [
+      {
+        "media_buy_id": "mb_a",
+        "package_id": "pkg_social",
+        "assigned_date": "2026-08-01T00:00:00Z",
+        "approval_status": "approved",
+        "insight_types_evaluated": [
+          "creative_fatigue",
+          "creative_quality_opportunity"
+        ],
+        "insights_as_of": "2026-08-04T12:00:00Z",
+        "insights_evaluated_scope": [
+          { "publisher_domain": "publisher-a.example" }
+        ],
+        "insights": [
+          {
+            "type": "creative_fatigue",
+            "scope": [
+              {
+                "publisher_domain": "publisher-a.example",
+                "placement_id": "feed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "media_buy_id": "mb_b",
+        "package_id": "pkg_social",
+        "assigned_date": "2026-08-01T00:00:00Z",
+        "approval_status": "approved",
+        "insight_types_evaluated": ["creative_fatigue"],
+        "insights_as_of": "2026-08-04T12:00:00Z",
+        "insights": []
+      },
+      {
+        "media_buy_id": "mb_c",
+        "package_id": "pkg_social",
+        "assigned_date": "2026-08-01T00:00:00Z",
+        "approval_status": "pending_review"
+      }
+    ]
+  }
+}
+```
+
+The learner must identify the first relationship as evaluated for two creative types only on publisher A, with fatigue asserted only on its feed placement. The second is clear only for fatigue, not for every insight type. The third is unknown but still has stable relationship identity and approval state. Clearing requires a direct, covered, strictly newer snapshot.
+
+Addie then supplies this successful `update_media_buy` receipt:
+
+```json
+{
+  "status": "completed",
+  "media_buy_id": "mb_a",
+  "revision": 2,
+  "warnings": [
+    {
+      "code": "flight_change_creates_pacing_risk",
+      "message": "The shortened flight creates under-delivery risk.",
+      "affected_resource": {
+        "resource_type": "package",
+        "media_buy_id": "mb_a",
+        "package_id": "pkg_social"
+      }
+    }
+  ]
+}
+```
+
+The learner must explain that the update succeeded and the warning is only its immediate receipt. A subsequent unfiltered `get_media_buys` read supplies the durable conclusion:
+
+```json
+{
+  "status": "completed",
+  "media_buys": [
+    {
+      "media_buy_id": "mb_a",
+      "status": "active",
+      "currency": "USD",
+      "total_budget": 10000,
+      "confirmed_at": "2026-08-01T00:00:00Z",
+      "revision": 2,
+      "packages": [
+        {
+          "package_id": "pkg_social",
+          "insight_types_evaluated": ["pacing_risk"],
+          "insights_as_of": "2026-08-04T12:00:00Z",
+          "insights": [{ "type": "pacing_risk" }]
+        }
+      ]
+    }
+  ],
+  "pagination": { "has_more": false }
+}
+```
+
+The learner must reject treating the warning as either an error or durable state.
+
+Finally, after activating the subscriber and establishing a complete `get_media_buys` baseline (known IDs or every status, fully paginated, without `insight_types`), the learner receives these invalidations in either order:
+
+```json
+{
+  "idempotency_key": "whk_01K2INSIGHTS4EXAMPLE8Q7M5",
+  "notification_id": "inschg_1",
+  "notification_type": "insights.changed",
+  "fired_at": "2026-08-04T12:01:00Z",
+  "subscriber_id": "optimization-worker",
+  "account_id": "acc_1",
+  "relationship_kind": "creative_assignment",
+  "media_buy_id": "mb_a",
+  "package_id": "pkg_social",
+  "creative_id": "acme_summer_video",
+  "change_kind": "cleared",
+  "changed_insight_types": ["creative_fatigue"],
+  "observed_at": "2026-08-04T12:00:00Z"
+}
+```
+
+```json
+{
+  "idempotency_key": "whk_01K2ASSIGNMENT4EXAMPLE9R6",
+  "notification_id": "assignchg_1",
+  "notification_type": "creative.assignment_changed",
+  "fired_at": "2026-08-04T12:01:00Z",
+  "subscriber_id": "optimization-worker",
+  "account_id": "acc_1",
+  "media_buy_id": "mb_a",
+  "package_id": "pkg_social",
+  "creative_id": "acme_summer_video",
+  "change_kind": "approval_changed",
+  "observed_at": "2026-08-04T12:00:00Z"
+}
+```
+
+The learner describes the required signature-verification step, dedupes each fire, coalesces them into one unfiltered reread, and reconciles only from the returned snapshot. Cryptographic execution is out of scope for this module; implementers follow the [webhook callback verifier checklist](/docs/building/by-layer/L1/security#webhook-callbacks). A timestamp-only reevaluation must not fire. Assignment removal retires prior keys even when the two invalidations arrive in either order.
+
+For a generative assignment, the learner must explain that this insight describes the stable brief-or-creative × package aggregate. Fatigue for individual live renders belongs in `get_creative_delivery`. A material in-place brief revision invalidates the prior evaluation and fires `insights.changed`; the snapshot is unknown until reevaluated. After replacing the creative, a successful direct unfiltered read confirming the old assignment is absent retires its old insight keys; filtered disappearance does not.
 
 ## Assessment
 
