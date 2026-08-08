@@ -191,16 +191,34 @@ To discover measurement vendors specifically (Adelaide-style attention, Scope3-s
 curl "https://agenticadvertising.org/api/registry/agents?type=measurement"
 ```
 
-This returns every measurement agent enrolled in the registry by an AAO member.
+This returns every measurement agent enrolled in the registry by an AgenticAdvertising.org member organization.
 
-**Per-metric catalog discovery.** Each measurement agent publishes its full per-metric catalog at [`get_adcp_capabilities.measurement.metrics[]`](/docs/protocol/get_adcp_capabilities#measurement) — the canonical, vendor-controlled source of truth. AAO crawls each measurement agent's `get_adcp_capabilities` on a TTL and stores the result; passing `?capabilities=true` folds the catalog into the response next to `creative_capabilities` and `signals_capabilities`.
+**Per-metric catalog discovery.** Each measurement agent publishes its full per-metric catalog at [`get_adcp_capabilities.measurement.metrics[]`](/docs/protocol/get_adcp_capabilities#measurement) — the canonical, vendor-controlled source of truth. AgenticAdvertising.org crawls each measurement agent's `get_adcp_capabilities` on a TTL and stores the result; passing `?capabilities=true` folds the catalog into the response next to `creative_capabilities` and `signals_capabilities`.
+
+##### Trust and external links
+
+The registry caches measurement catalogs; it does not endorse or independently review their links or claims. Read each URL according to its field-level purpose:
+
+| Field | Meaning | What it does not prove |
+|-------|---------|------------------------|
+| `methodology_url` | Vendor-published methodology documentation for the metric. | That AgenticAdvertising.org, an accreditor, or another independent party reviewed the methodology. |
+| `standard_reference` | The industry-standard document the vendor says the metric implements. | That the implementation conforms to the standard or holds accreditation. |
+| `accreditations[].evidence_url` | The vendor-supplied pointer intended to lead to the accreditor's public listing or other public evidence for the named accreditation. | That the accreditation is valid, current, or independently verified by the registry. |
+
+An accreditation entry is a vendor assertion while `verified_by_aao` is `false`. Treat it as independently verified only when a separate, explicit attestation or verification state establishes who verified the claim, what was verified, and when. Enrollment, catalog caching, a plausible accreditor name, and an `evidence_url` alone do not establish that state.
+
+Clients must treat all three fields as untrusted external-link input. Parse the value as a URL, offer clickable links only for HTTPS destinations, show the destination hostname, and use an external-site confirmation when the destination is not already trusted by the user. A new-tab link should set `target="_blank"` with `rel="noopener noreferrer"`; render escaped text and attributes rather than interpolating catalog values through `innerHTML`.
+
+Fetching a link is a separate security decision from rendering it. Browser and server clients should not fetch these URLs merely to display a catalog. A service that deliberately retrieves methodology or evidence content must apply its normal SSRF and privacy controls, including blocking private, loopback, link-local, and metadata-service destinations and revalidating every redirect.
+
+These semantics are stable properties of the named fields, so the response does not repeat them in a top-level `_meta` path list or per-value provenance flag. Such metadata would duplicate the schema contract without turning a vendor-supplied link into verified evidence.
 
 **Filter parameters** (all imply `type=measurement` when present; an explicit non-measurement type returns 400):
 
 | Param | Match | Notes |
 |-------|-------|-------|
 | `metric_id=attention_units` | Exact match on `metrics[].metric_id` | Repeatable; multiple values are AND'd (vendor must carry all named metrics). |
-| `accreditation=MRC` | Exact match on `metrics[].accreditations[].accrediting_body` | Repeatable; multiple values are AND'd (vendor must carry all named accreditations). When combined with `metric_id`, a cross-product AND applies — see combined filter semantics below. Vendor-asserted — `verified_by_aao` is always `false` in the response; renderers should mark these as vendor claims, not AAO endorsements. |
+| `accreditation=MRC` | Exact match on `metrics[].accreditations[].accrediting_body` | Repeatable; multiple values are AND'd (vendor must carry all named accreditations). When combined with `metric_id`, a cross-product AND applies — see combined filter semantics below. Vendor-asserted — `verified_by_aao` is always `false` in the response; renderers should mark these as vendor claims, not AgenticAdvertising.org endorsements. |
 | `q=attention` | Case-insensitive substring on `metric_id` | v1 scope: metric_id only. Max 64 chars; SQL wildcards (`%`, `_`) rejected. Description/standard fuzzy search is a follow-up. |
 
 **Combined filter semantics.** When both `metric_id` and `accreditation` are present, per-metric semantics apply: the same `metrics[]` element must satisfy both constraints simultaneously. A vendor with an `attention_units` metric and a separately MRC-accredited `viewability` metric does **not** match — only a vendor whose `attention_units` metric itself carries MRC accreditation does.
@@ -226,9 +244,9 @@ curl "https://agenticadvertising.org/api/registry/agents?type=measurement&accred
 
 | Use case | Path | Why |
 |----------|------|-----|
-| Discovery / planning ("which vendors offer attention?") | AAO index (`?metric_id=...`) | Pre-aggregated, cached, fast. Cross-vendor in one call. Stale up to the AAO TTL window (typically 24h). |
+| Discovery / planning ("which vendors offer attention?") | Registry index (`?metric_id=...`) | Pre-aggregated, cached, fast. Cross-vendor in one call. Stale up to the registry TTL window (typically 24h). |
 | Settlement / audit ("does Adelaide currently support metric X?") | Direct call to `get_adcp_capabilities` | Live, canonical, no staleness. The buyer is already calling the measurement agent at delivery / reconciliation time; one extra call is cheap and removes index staleness from the audit trail. |
-| Filtering at `get_products` time | AAO index | Buyer is in a fast-path query and the seller's product catalog already needs to know which vendors are valid. |
+| Filtering at `get_products` time | Registry index | Buyer is in a fast-path query and the seller's product catalog already needs to know which vendors are valid. |
 
 #### Creative-agent discovery
 
