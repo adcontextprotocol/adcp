@@ -533,6 +533,7 @@ function isRunnerApplicabilitySkip(step: {
 export function isNonExecutableCoverageGapScenario(scenario: {
   scenario?: unknown;
   steps?: Array<{
+    passed?: boolean;
     skipped?: boolean;
     skip_reason?: string;
     step_id?: unknown;
@@ -541,7 +542,8 @@ export function isNonExecutableCoverageGapScenario(scenario: {
 }): boolean {
   const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
   const scenarioId = typeof scenario.scenario === 'string' ? scenario.scenario : '';
-  if (steps.some(
+  const hasGenuineFailure = steps.some((step) => !step.skipped && step.passed === false);
+  if (!hasGenuineFailure && steps.some(
     (step) => step.skipped && step.skip_reason === 'fixture_unavailable',
   )) return true;
   return steps.length > 0 && steps.every((step) => {

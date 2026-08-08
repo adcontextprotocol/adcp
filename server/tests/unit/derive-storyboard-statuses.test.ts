@@ -85,13 +85,28 @@ describe('deriveStoryboardStatuses', () => {
     expect(isNonExecutableCoverageGapScenario({
       scenario: 'creative_fate_after_cancellation/fixture_preflight',
       steps: [
-        { skipped: false },
+        { passed: true, skipped: false },
         {
           skipped: true,
           skip_reason: 'fixture_unavailable',
         },
       ],
     })).toBe(true);
+  });
+
+  it('keeps fixture-gap UI scenarios executable when a real step also failed', () => {
+    expect(isNonExecutableCoverageGapScenario({
+      scenario: 'creative_fate_after_cancellation/fixture_preflight',
+      steps: [
+        { passed: true },
+        {
+          passed: true,
+          skipped: true,
+          skip_reason: 'fixture_unavailable',
+        },
+        { passed: false },
+      ],
+    })).toBe(false);
   });
 
   it('emits one entry per storyboard the runner produced data for', () => {
