@@ -9147,14 +9147,6 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       }
     });
 
-    // GET /api/public/agent-publishers - Deprecated: listAuthorizedProperties was removed from AdCP SDK
-    this.app.get('/api/public/agent-publishers', async (_req, res) => {
-      return res.status(501).json({
-        error: 'Not Implemented',
-        message: 'The list_authorized_properties task is no longer supported in the current SDK version',
-      });
-    });
-
     // Note: Member profile routes are in routes/member-profiles.ts (mounted in setupRoutes)
 
     // Note: Account management routes are in routes/admin/accounts.ts

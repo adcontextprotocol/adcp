@@ -112,7 +112,7 @@ import { CatalogDatabase } from "../db/catalog-db.js";
 import type { AdAgentsManager } from "../adagents-manager.js";
 import type { HealthChecker } from "../health.js";
 import type { CrawlerService } from "../crawler.js";
-import type { CapabilityDiscovery } from "../capabilities.js";
+import { sanitizeCreativeCapabilities, type CapabilityDiscovery } from "../capabilities.js";
 import { aaoHostedBrandJsonUrl, aaoHostedAdagentsJsonUrl, expectedAdagentsJsonUrl } from "../config/aao.js";
 import { canonicalTargetUri } from "@adcp/sdk/signing";
 import { fetchBrandContext, fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "../services/brandfetch.js";
@@ -144,6 +144,7 @@ import { getDevUser, isDevModeEnabled } from "../middleware/auth.js";
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
 import { resolveCallerOrgId } from "./helpers/resolve-caller-org.js";
 import { canonicalizeAgentUrl, PublisherDatabase } from "../db/publisher-db.js";
+import { buildCreativeCapabilities } from "../creative-agent/task-handlers.js";
 import {
   AuthorizationSnapshotDatabase,
   EvidenceValidationError,
@@ -709,6 +710,27 @@ registry.registerPath({
     200: { description: "API discovery information", content: { "application/json": { schema: z.object({ name: z.string(), version: z.string(), documentation: z.string(), openapi: z.string(), endpoints: z.record(z.string(), z.string()) }) } } },
   },
 });
+
+const PublicAgentProxyErrorResponses = {
+  400: { description: "Missing agent URL", content: { "application/json": { schema: ErrorSchema } } },
+  429: {
+    description: "Rate limit exceeded",
+    content: {
+      "application/json": {
+        schema: z.object({
+          error: z.string(),
+          message: z.string(),
+          retryAfter: z.number().int().optional(),
+        }),
+      },
+    },
+  },
+  502: { description: "Agent discovery failed", content: { "application/json": { schema: ErrorSchema } } },
+  504: {
+    description: "Connection timeout",
+    content: { "application/json": { schema: z.object({ error: z.string(), message: z.string() }) } },
+  },
+} as const;
 
 registry.registerPath({
   method: "get",
@@ -2174,11 +2196,26 @@ registry.registerPath({
   path: "/api/public/agent-formats",
   operationId: "getAgentFormats",
   summary: "Get creative-agent format capabilities",
-  description: "Fetch get_adcp_capabilities creative.supported_formats[] from a creative agent.",
+  description: "Fetch get_adcp_capabilities creative.supported_formats[] from a creative agent, falling back to the deprecated list_creative_formats catalog for 3.1-compatible agents.",
   tags: ["Agent Probing"],
   request: { query: z.object({ url: z.string() }) },
   responses: {
     200: { description: "Canonical creative capabilities", content: { "application/json": { schema: z.object({ success: z.boolean(), formats: z.array(z.unknown()) }) } } },
+    ...PublicAgentProxyErrorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/public/agent-publishers",
+  operationId: "getAgentPublishers",
+  summary: "Get agent publisher properties",
+  description: "Fetch public list_authorized_properties data from a sales agent.",
+  tags: ["Agent Probing"],
+  request: { query: z.object({ url: z.string() }) },
+  responses: {
+    200: { description: "Publisher properties", content: { "application/json": { schema: z.object({ success: z.boolean(), properties: z.array(z.unknown()) }) } } },
+    ...PublicAgentProxyErrorResponses,
   },
 });
 
@@ -2192,6 +2229,7 @@ registry.registerPath({
   request: { query: z.object({ url: z.string() }) },
   responses: {
     200: { description: "Products", content: { "application/json": { schema: z.object({ success: z.boolean(), products: z.array(z.unknown()) }) } } },
+    ...PublicAgentProxyErrorResponses,
   },
 });
 
@@ -5937,6 +5975,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               if (h.stats_json) {
                 enrichedAgent.stats = h.stats_json;
               }
+              // The health snapshot comes from the latest tools/list probe;
+              // the capability catalog can lag on a separate crawl cadence.
+              // Keep the legacy capabilities count fresh for consumers that
+              // have not yet moved to health.tools_count.
+              if (enrichedAgent.capabilities && h.tools_count != null) {
+                enrichedAgent.capabilities.tools_count = h.tools_count;
+              }
             }
           }
 
@@ -9505,7 +9550,105 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  router.get("/public/agent-formats", async (req, res) => {
+  const PUBLIC_AGENT_RESPONSE_BYTES = 1024 * 1024;
+  const PUBLIC_AGENT_OUTPUT_BYTES = 512 * 1024;
+  const PUBLIC_AGENT_TIMEOUT_MS = 10_000;
+  const PUBLIC_AGENT_MAX_ITEMS = 200;
+
+  function publicAgentTransportOptions() {
+    return withSdkSafeTransport({
+      transport: {
+        maxResponseBytes: PUBLIC_AGENT_RESPONSE_BYTES,
+        requestTimeoutMs: PUBLIC_AGENT_TIMEOUT_MS,
+      },
+    });
+  }
+
+  function boundedString(value: unknown, maxLength: number): string | undefined {
+    return typeof value === "string" && value.length > 0
+      ? value.slice(0, maxLength)
+      : undefined;
+  }
+
+  function assertPublicAgentOutputSize(payload: unknown): void {
+    if (Buffer.byteLength(JSON.stringify(payload), "utf8") > PUBLIC_AGENT_OUTPUT_BYTES) {
+      throw new Error("Public agent discovery payload exceeds output limit");
+    }
+  }
+
+  function normalizePublicProperties(rawProperties: unknown[]): Array<Record<string, unknown>> {
+    return rawProperties.slice(0, PUBLIC_AGENT_MAX_ITEMS).flatMap(value => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+      const property = value as Record<string, unknown>;
+      const identifier = boundedString(property.identifier, 512);
+      const domain = boundedString(property.domain, 253);
+      if (!identifier && !domain) return [];
+
+      const tags = Array.isArray(property.tags)
+        ? property.tags
+          .slice(0, 20)
+          .map(tag => boundedString(tag, 64))
+          .filter((tag): tag is string => Boolean(tag))
+        : undefined;
+
+      return [{
+        ...(identifier && { identifier }),
+        ...(domain && { domain }),
+        type: boundedString(property.type, 64) ?? "domain",
+        ...(boundedString(property.country, 64) && { country: boundedString(property.country, 64) }),
+        ...(boundedString(property.description, 2_000) && { description: boundedString(property.description, 2_000) }),
+        ...(tags?.length && { tags }),
+        // Verification is registry-owned. Never trust peer-supplied verified,
+        // verification_url, or verification_error fields on this proxy.
+      }];
+    });
+  }
+
+  function projectLegacyFormatsForPublicDiscovery(legacyFormats: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+    return legacyFormats.slice(0, PUBLIC_AGENT_MAX_ITEMS).flatMap((legacyFormat, index) => {
+      const reviewedProjection = buildCreativeCapabilities([legacyFormat]);
+      if (reviewedProjection.length > 0) return reviewedProjection;
+
+      const formatId = legacyFormat.format_id && typeof legacyFormat.format_id === "object"
+        ? boundedString((legacyFormat.format_id as Record<string, unknown>).id, 256)
+        : undefined;
+      const rawAssets = Array.isArray(legacyFormat.assets) ? legacyFormat.assets : [];
+      const assets = rawAssets.filter((asset): asset is Record<string, unknown> =>
+        Boolean(asset && typeof asset === "object" && !Array.isArray(asset))
+      );
+      const imageAsset = assets.find(asset => asset.asset_type === "image");
+      const requirements = imageAsset?.requirements && typeof imageAsset.requirements === "object"
+        ? imageAsset.requirements as Record<string, unknown>
+        : undefined;
+      const minWidth = requirements?.min_width;
+      const maxWidth = requirements?.max_width;
+      const minHeight = requirements?.min_height;
+      const maxHeight = requirements?.max_height;
+      const hasFixedImageSize = typeof minWidth === "number"
+        && minWidth === maxWidth
+        && typeof minHeight === "number"
+        && minHeight === maxHeight;
+
+      // The legacy `type: display` catalog shape used by 3.1 sellers does
+      // not carry the optional `canonical` annotation. A concrete image
+      // asset is enough to project it safely for this read-only UI.
+      if (!imageAsset) return [];
+      const stableId = (formatId ?? `legacy_${index + 1}`)
+        .replace(/[^a-zA-Z0-9_-]/g, "_")
+        .slice(0, 256);
+      return [{
+        capability_id: `preview_${stableId}`,
+        operations: ["preview"],
+        ...(boundedString(legacyFormat.name, 512) && { description: boundedString(legacyFormat.name, 512) }),
+        format: {
+          format_kind: "image",
+          params: hasFixedImageSize ? { width: minWidth, height: minHeight } : {},
+        },
+      }];
+    });
+  }
+
+  router.get("/public/agent-formats", registryReadRateLimiter, async (req, res) => {
     const { url } = req.query;
 
     if (!url || typeof url !== "string") {
@@ -9518,15 +9661,54 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         name: "Creative capability discovery",
         agent_uri: url,
         protocol: "mcp",
-      }], withSdkSafeTransport({})).agent("creative-capability-discovery");
-      const result = await capabilityClient.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
-      const creative = (result.data as Record<string, unknown> | undefined)?.creative as Record<string, unknown> | undefined;
-      const formats = Array.isArray(creative?.supported_formats) ? creative.supported_formats : [];
+      }], publicAgentTransportOptions()).agent("creative-capability-discovery");
+      let formats: unknown[] = [];
+      let capabilityError: unknown;
 
-      return res.json({
+      try {
+        const result = await capabilityClient.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
+        const creative = (result.data as Record<string, unknown> | undefined)?.creative;
+        formats = creative
+          ? (await sanitizeCreativeCapabilities(creative)).supported_formats
+          : [];
+      } catch (error) {
+        capabilityError = error;
+        logger.debug({ err: error, url }, "Canonical creative capability discovery failed; trying legacy formats");
+      }
+
+      if (formats.length === 0) {
+        try {
+          const legacyResult = await capabilityClient.executeTask(
+            "list_creative_formats",
+            {},
+            undefined,
+            { timeout: PUBLIC_AGENT_TIMEOUT_MS },
+          );
+          if (!legacyResult.success) {
+            throw new Error(legacyResult.error || "Legacy creative format discovery failed");
+          }
+          const legacyData = legacyResult.data as unknown;
+          const legacyFormats = Array.isArray(legacyData)
+            ? legacyData
+            : legacyData && typeof legacyData === "object" && Array.isArray((legacyData as Record<string, unknown>).formats)
+              ? (legacyData as { formats: unknown[] }).formats
+              : [];
+          const projectedFormats = projectLegacyFormatsForPublicDiscovery(
+            legacyFormats.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === "object" && !Array.isArray(entry))),
+          );
+          formats = (await sanitizeCreativeCapabilities({ supported_formats: projectedFormats })).supported_formats;
+        } catch (error) {
+          if (capabilityError) throw error;
+          logger.debug({ err: error, url }, "Legacy creative format discovery failed");
+        }
+      }
+
+      const payload = {
         success: true,
         formats,
-      });
+      };
+      assertPublicAgentOutputSize(payload);
+      return res.json(payload);
     } catch (error) {
       logger.warn({ err: error, url }, "Agent formats fetch failed");
 
@@ -9538,7 +9720,58 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  router.get("/public/agent-products", async (req, res) => {
+  router.get("/public/agent-publishers", registryReadRateLimiter, async (req, res) => {
+    const { url } = req.query;
+
+    if (!url || typeof url !== "string") {
+      return res.status(400).json({ error: "URL is required" });
+    }
+
+    try {
+      const client = new SingleAgentClient({
+        id: "publisher-discovery",
+        name: "publisher-discovery-client",
+        agent_uri: url,
+        protocol: "mcp",
+      }, publicAgentTransportOptions());
+      const result = await client.executeTask(
+        "list_authorized_properties",
+        {},
+        undefined,
+        { timeout: PUBLIC_AGENT_TIMEOUT_MS },
+      );
+      if (!result.success) {
+        throw new Error(result.error || "Publisher discovery failed");
+      }
+      const data = result.data as unknown;
+      const rawProperties = Array.isArray(data)
+        ? data
+        : data && typeof data === "object" && Array.isArray((data as Record<string, unknown>).properties)
+          ? (data as { properties: unknown[] }).properties
+          : data && typeof data === "object" && Array.isArray((data as Record<string, unknown>).publisher_domains)
+            ? (data as { publisher_domains: string[] }).publisher_domains.map(domain => ({
+                identifier: domain,
+                domain,
+                type: "domain",
+              }))
+            : [];
+      const properties = normalizePublicProperties(rawProperties);
+
+      const payload = { success: true, properties };
+      assertPublicAgentOutputSize(payload);
+      return res.json(payload);
+    } catch (error) {
+      logger.warn({ err: error, url }, "Agent publishers fetch failed");
+
+      if (error instanceof Error && error.name === "TimeoutError") {
+        return res.status(504).json({ error: "Connection timeout", message: "Agent did not respond within the timeout period" });
+      }
+
+      return res.status(502).json({ error: "Failed to fetch publishers" });
+    }
+  });
+
+  router.get("/public/agent-products", registryReadRateLimiter, async (req, res) => {
     const { url } = req.query;
 
     if (!url || typeof url !== "string") {
@@ -9551,27 +9784,33 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         name: "products-discovery-client",
         agent_uri: url,
         protocol: "mcp",
-      }, withSdkSafeTransport({}));
+      }, publicAgentTransportOptions());
 
-      const result = await client.getProducts({ buying_mode: 'wholesale' });
-      const products = result.data?.products || [];
+      const result = await client.getProducts(
+        { buying_mode: 'wholesale' },
+        undefined,
+        { timeout: PUBLIC_AGENT_TIMEOUT_MS },
+      );
+      const products = (result.data?.products || []).slice(0, PUBLIC_AGENT_MAX_ITEMS);
 
-      return res.json({
+      const payload = {
         success: true,
         products: products.map((p: any) => ({
-          product_id: p.product_id,
-          name: p.name,
-          description: p.description,
-          property_type: p.property_type,
-          property_name: p.property_name,
-          pricing_model: p.pricing_model,
+          product_id: boundedString(p.product_id, 512),
+          name: boundedString(p.name, 512),
+          description: boundedString(p.description, 2_000),
+          property_type: boundedString(p.property_type, 128),
+          property_name: boundedString(p.property_name, 512),
+          pricing_model: boundedString(p.pricing_model, 128),
           base_rate: p.base_rate,
-          currency: p.currency,
-          format_options: p.format_options,
-          delivery_channels: p.delivery_channels,
-          targeting_capabilities: p.targeting_capabilities,
+          currency: boundedString(p.currency, 16),
+          format_options: Array.isArray(p.format_options) ? p.format_options.slice(0, 50) : undefined,
+          delivery_channels: Array.isArray(p.delivery_channels) ? p.delivery_channels.slice(0, 50) : undefined,
+          targeting_capabilities: Array.isArray(p.targeting_capabilities) ? p.targeting_capabilities.slice(0, 100) : undefined,
         })),
-      });
+      };
+      assertPublicAgentOutputSize(payload);
+      return res.json(payload);
     } catch (error) {
       logger.warn({ err: error, url }, "Agent products fetch failed");
 

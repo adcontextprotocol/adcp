@@ -31,12 +31,21 @@ describe('hosted SDK safe-fetch call sites', () => {
     expect(registryApiSource).toContain(
       '}], withSdkSafeTransport({})).agent("creative-capability-discovery")',
     );
+    expect(registryApiSource).toContain(
+      '}], publicAgentTransportOptions()).agent("creative-capability-discovery")',
+    );
+    expect(registryApiSource).toContain('return withSdkSafeTransport({');
+    expect(registryApiSource).toContain('maxResponseBytes: PUBLIC_AGENT_RESPONSE_BYTES');
+    expect(registryApiSource).toContain('requestTimeoutMs: PUBLIC_AGENT_TIMEOUT_MS');
     expect(httpSource).toContain(
       'new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }))',
     );
     expect(registryApiSource.split(
       '}], withSdkSafeTransport({})).agent("creative-capability-discovery")',
-    )).toHaveLength(3);
+    )).toHaveLength(2);
+    expect(registryApiSource.split(
+      '}], publicAgentTransportOptions()).agent("creative-capability-discovery")',
+    )).toHaveLength(2);
     expect(httpSource.split('}, withSdkSafeTransport({}));')).toHaveLength(2);
   });
 });

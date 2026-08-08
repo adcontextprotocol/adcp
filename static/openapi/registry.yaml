@@ -8229,7 +8229,7 @@ paths:
     get:
       operationId: getAgentFormats
       summary: Get creative-agent format capabilities
-      description: Fetch get_adcp_capabilities creative.supported_formats[] from a creative agent.
+      description: Fetch get_adcp_capabilities creative.supported_formats[] from a creative agent, falling back to the deprecated list_creative_formats catalog for 3.1-compatible agents.
       tags:
         - Agent Probing
       parameters:
@@ -8254,6 +8254,119 @@ paths:
                 required:
                   - success
                   - formats
+        "400":
+          description: Missing agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  retryAfter:
+                    type: integer
+                required:
+                  - error
+                  - message
+        "502":
+          description: Agent discovery failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Connection timeout
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
+  /api/public/agent-publishers:
+    get:
+      operationId: getAgentPublishers
+      summary: Get agent publisher properties
+      description: Fetch public list_authorized_properties data from a sales agent.
+      tags:
+        - Agent Probing
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: url
+          in: query
+      responses:
+        "200":
+          description: Publisher properties
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  properties:
+                    type: array
+                    items: {}
+                required:
+                  - success
+                  - properties
+        "400":
+          description: Missing agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  retryAfter:
+                    type: integer
+                required:
+                  - error
+                  - message
+        "502":
+          description: Agent discovery failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Connection timeout
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
   /api/public/agent-products:
     get:
       operationId: getAgentProducts
@@ -8283,6 +8396,48 @@ paths:
                 required:
                   - success
                   - products
+        "400":
+          description: Missing agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  retryAfter:
+                    type: integer
+                required:
+                  - error
+                  - message
+        "502":
+          description: Agent discovery failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Connection timeout
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
   /api/public/validate-publisher:
     get:
       operationId: validatePublisher
