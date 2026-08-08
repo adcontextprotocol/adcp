@@ -10,7 +10,11 @@ import { once } from "node:events";
 import type { Request, RequestHandler } from "express";
 import { z } from "zod";
 import escapeHtml from "escape-html";
-import { findOwnerOrgForUser } from "../services/agent-ownership.js";
+import {
+  findOwnerOrgForUser,
+  isOrgOwnerOfAgent,
+  resolveOwnerOrgForUser,
+} from "../services/agent-ownership.js";
 import { AdCPClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
 import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex, listAllComplianceStoryboards } from "@adcp/sdk/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
@@ -3682,6 +3686,15 @@ registry.registerPath({
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL", example: "https%3A%2F%2Fvastlint.org%2Fmcp" }),
     }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            organization_id: z.string().optional().openapi({ description: "Selected organization ID. The caller must own the agent in this organization before its credentials are used." }),
+          }),
+        },
+      },
+    },
   },
   responses: {
     200: {
@@ -3750,6 +3763,9 @@ registry.registerPath({
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
     }),
+    query: z.object({
+      org: z.string().optional().openapi({ description: "Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations." }),
+    }),
   },
   responses: {
     200: { description: "Auth status", content: { "application/json": { schema: AgentAuthStatusSchema } } },
@@ -3778,6 +3794,7 @@ registry.registerPath({
           schema: z.object({
             auth_token: z.string().max(4096).optional().openapi({ description: "Bearer or basic auth token" }),
             auth_type: z.enum(["bearer", "basic"]).optional().openapi({ description: "Auth type (default: bearer)" }),
+            organization_id: z.string().optional().openapi({ description: "Selected organization ID. The caller must own the agent in this organization." }),
           }),
         },
       },
@@ -3827,6 +3844,7 @@ registry.registerPath({
             resource: z.union([z.string().max(2048), z.array(z.string().max(2048)).min(1).max(8)]).optional().openapi({ description: 'RFC 8707 resource indicator. Accepts a single URI string or an array of 1–8 URI strings for multi-resource authorization servers (Keycloak strict, AWS Cognito multi-RS).' }),
             audience: z.string().max(2048).optional().openapi({ description: "Audience parameter for audience-validating authorization servers." }),
             auth_method: z.enum(["basic", "body"]).optional().openapi({ description: "Client-credentials placement: basic (HTTP Basic header, RFC 6749 §2.3.1 preferred) or body (form fields). SDK default is basic." }),
+            organization_id: z.string().optional().openapi({ description: "Selected organization ID. The caller must own the agent in this organization." }),
           }),
         },
       },
@@ -3869,6 +3887,15 @@ registry.registerPath({
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
     }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            organization_id: z.string().optional().openapi({ description: "Selected organization ID. The caller must own the agent in this organization." }),
+          }),
+        },
+      },
+    },
   },
   responses: {
     200: {
@@ -3916,6 +3943,9 @@ registry.registerPath({
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+    query: z.object({
+      org: z.string().optional().openapi({ description: "Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations." }),
     }),
   },
   responses: {
@@ -4264,6 +4294,7 @@ registry.registerPath({
           schema: z.object({
             context: z.record(z.string(), z.unknown()).optional().openapi({ description: "Optional context object for the step" }),
             dry_run: z.boolean().optional().openapi({ description: "Dry run mode (default: true)" }),
+            organization_id: z.string().optional().openapi({ description: "Selected organization ID. The caller must own the agent in this organization." }),
           }),
         },
       },
@@ -4365,6 +4396,15 @@ registry.registerPath({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
       storyboardId: z.string(),
     }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            organization_id: z.string().optional().openapi({ description: "Selected organization ID. The caller must own the agent in this organization." }),
+          }),
+        },
+      },
+    },
   },
   responses: {
     200: {
@@ -4420,6 +4460,15 @@ registry.registerPath({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
       storyboardId: z.string(),
     }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            organization_id: z.string().optional().openapi({ description: "Selected organization ID. The caller must own the agent in this organization." }),
+          }),
+        },
+      },
+    },
   },
   responses: {
     200: {
@@ -4452,6 +4501,33 @@ registry.registerPath({
 
 export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   return createRegistryApiRouters(config).router;
+}
+
+function parseRequestedOrganizationId(value: unknown):
+  | { ok: true; organizationId: string | undefined }
+  | { ok: false } {
+  if (value === undefined) return { ok: true, organizationId: undefined };
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 255 ||
+    value !== value.trim()
+  ) {
+    return { ok: false };
+  }
+  return { ok: true, organizationId: value };
+}
+
+function parseRequestedOrganizationQuery(query: Record<string, unknown>):
+  | { ok: true; organizationId: string | undefined }
+  | { ok: false } {
+  // Express's simple query parser preserves bracketed keys literally, so
+  // `?org[]=...` would otherwise look like an omitted `org`. Reject alternate
+  // object/array spellings rather than silently falling back to another org.
+  if (Object.keys(query).some(key => key !== "org" && (key.startsWith("org[") || key.startsWith("org.")))) {
+    return { ok: false };
+  }
+  return parseRequestedOrganizationId(query.org);
 }
 
 export function createRegistryApiRouters(config: RegistryApiConfig): { router: Router; v1AgentsRouter: Router } {
@@ -6830,6 +6906,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     try {
       const canonicalUrl = canonicalizeAgentUrl(agentUrl);
       if (!canonicalUrl) return null;
+      if (!(await isOrgOwnerOfAgent(orgId, userId, canonicalUrl))) {
+        logger.warn({ orgId, agentUrl: canonicalUrl }, "Refusing to create agent context outside owning organization");
+        return null;
+      }
       let context = await agentContextDb.getByOrgAndUrl(orgId, canonicalUrl);
       if (!context) {
         context = await agentContextDb.create({
@@ -7070,16 +7150,24 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(401).json({ error: "Authentication required" });
       }
 
+      const orgSelection = parseRequestedOrganizationId(req.body?.organization_id);
+      if (!orgSelection.ok) {
+        return res.status(400).json({ error: "organization_id must be a non-empty organization ID" });
+      }
+      const ownerOrgId = await resolveOwnerOrgForUser(
+        req.user.id,
+        agentUrl,
+        orgSelection.organizationId,
+      );
+
       // Owner OR AAO admin. Admin escape hatch lets staff fix things for
       // any registered agent (mirrors how admin tools work elsewhere).
       // Dev-admin fallback is gated behind `isDevModeEnabled()` to match
       // `requireAdmin`'s pattern in middleware/auth.ts — in production
       // (no DEV_USER_EMAIL/DEV_USER_ID) this branch never fires.
       const isStaticAdmin = isStaticAdminRequest(req);
-      const [isOwner, isAaoAdmin] = await Promise.all([
-        verifyAgentOwnership(req.user.id, agentUrl),
-        isWebUserAAOAdmin(req.user.id),
-      ]);
+      const isOwner = ownerOrgId !== null;
+      const isAaoAdmin = await isWebUserAAOAdmin(req.user.id);
       const isDevAdmin = isDevModeEnabled() && getDevUser(req)?.isAdmin === true;
       if (!isOwner && !isAaoAdmin && !isDevAdmin && !isStaticAdmin) {
         return res.status(403).json({ error: "You do not have permission to refresh this agent" });
@@ -7118,7 +7206,6 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // route still scopes auth to the caller's own org so an AAO admin
       // refreshing someone else's agent probes anonymously rather than
       // accidentally running with the owner's tokens.
-      const ownerOrgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
       let resolvedAuth: SdkAuth | undefined;
       if (ownerOrgId) {
         const auth = await resolveUserAgentAuth(agentContextDb, ownerOrgId, agentUrl, logger);
@@ -7370,18 +7457,6 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(401).json({ error: "Authentication required" });
       }
 
-      // Verify ownership and get org ID in one query
-      const orgResult = await query(
-        `SELECT mp.workos_organization_id
-         FROM member_profiles mp
-         JOIN organization_memberships om
-           ON om.workos_organization_id = mp.workos_organization_id
-         WHERE mp.agents @> $1::jsonb
-           AND om.workos_user_id = $2
-         LIMIT 1`,
-        [JSON.stringify([{ url: agentUrl }]), req.user.id],
-      );
-
       const noAuthResponse = {
         has_auth: false,
         agent_context_id: null,
@@ -7392,11 +7467,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         has_oauth_client_credentials: false,
       };
 
-      if (orgResult.rows.length === 0) {
+      const orgSelection = parseRequestedOrganizationQuery(req.query);
+      if (!orgSelection.ok) {
+        return res.status(400).json({ error: "org must be a non-empty organization ID" });
+      }
+      const requestedOrgId = orgSelection.organizationId;
+      const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, requestedOrgId);
+      if (!orgId) {
         return res.json(noAuthResponse);
       }
-
-      const orgId = orgResult.rows[0].workos_organization_id;
       const context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
 
       if (!context) {
@@ -7470,23 +7549,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         authTokenToStore = normalized.stored;
       }
 
-      // Verify ownership and get org ID in a single query
-      const orgResult = await query(
-        `SELECT mp.workos_organization_id
-         FROM member_profiles mp
-         JOIN organization_memberships om
-           ON om.workos_organization_id = mp.workos_organization_id
-         WHERE mp.agents @> $1::jsonb
-           AND om.workos_user_id = $2
-         LIMIT 1`,
-        [JSON.stringify([{ url: agentUrl }]), req.user.id],
-      );
-
-      if (orgResult.rows.length === 0) {
+      const orgSelection = parseRequestedOrganizationId(req.body?.organization_id);
+      if (!orgSelection.ok) {
+        return res.status(400).json({ error: "organization_id must be a non-empty organization ID" });
+      }
+      const requestedOrgId = orgSelection.organizationId;
+      const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, requestedOrgId);
+      if (!orgId) {
         return res.status(403).json({ error: "You do not have permission to modify this agent" });
       }
-
-      const orgId = orgResult.rows[0].workos_organization_id;
 
       // Get or create agent context
       let context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
@@ -7566,20 +7637,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(400).json({ error: parsed.error, code: parsed.code, field: parsed.field });
         }
 
-        const orgResult = await query<{ workos_organization_id: string }>(
-          `SELECT mp.workos_organization_id
-           FROM member_profiles mp
-           JOIN organization_memberships om
-             ON om.workos_organization_id = mp.workos_organization_id
-           WHERE mp.agents @> $1::jsonb
-             AND om.workos_user_id = $2
-           LIMIT 1`,
-          [JSON.stringify([{ url: agentUrl }]), req.user.id],
-        );
-        if (orgResult.rows.length === 0) {
+        const orgSelection = parseRequestedOrganizationId(req.body?.organization_id);
+        if (!orgSelection.ok) {
+          return res.status(400).json({ error: "organization_id must be a non-empty organization ID" });
+        }
+        const requestedOrgId = orgSelection.organizationId;
+        const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, requestedOrgId);
+        if (!orgId) {
           return res.status(403).json({ error: "You do not have permission to modify this agent" });
         }
-        const orgId = orgResult.rows[0].workos_organization_id;
 
         let context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
         if (!context) {
@@ -7645,7 +7711,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+        const orgSelection = parseRequestedOrganizationId(req.body?.organization_id);
+        if (!orgSelection.ok) {
+          return res.status(400).json({ error: "organization_id must be a non-empty organization ID" });
+        }
+        const requestedOrgId = orgSelection.organizationId;
+        const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, requestedOrgId);
         if (!orgId) {
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
@@ -7745,7 +7816,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       return res.status(401).json({ error: "Authentication required" });
     }
 
-    const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+    const orgSelection = parseRequestedOrganizationQuery(req.query);
+    if (!orgSelection.ok) {
+      return res.status(400).json({ error: "org must be a non-empty organization ID" });
+    }
+    const requestedOrgId = orgSelection.organizationId;
+    const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, requestedOrgId);
     if (!orgId) {
       return res.status(403).json({ error: "You do not have permission to test this agent" });
     }
@@ -7907,7 +7983,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+        const orgSelection = parseRequestedOrganizationId(req.body?.organization_id);
+        if (!orgSelection.ok) {
+          return res.status(400).json({ error: "organization_id must be a non-empty organization ID" });
+        }
+        const requestedOrgId = orgSelection.organizationId;
+        const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, requestedOrgId);
         if (!orgId) {
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
@@ -8033,7 +8114,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+        const orgSelection = parseRequestedOrganizationId(req.body?.organization_id);
+        if (!orgSelection.ok) {
+          return res.status(400).json({ error: "organization_id must be a non-empty organization ID" });
+        }
+        const requestedOrgId = orgSelection.organizationId;
+        const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, requestedOrgId);
         if (!orgId) {
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
@@ -8216,7 +8302,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+        const orgSelection = parseRequestedOrganizationId(req.body?.organization_id);
+        if (!orgSelection.ok) {
+          return res.status(400).json({ error: "organization_id must be a non-empty organization ID" });
+        }
+        const requestedOrgId = orgSelection.organizationId;
+        const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, requestedOrgId);
         if (!orgId) {
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
