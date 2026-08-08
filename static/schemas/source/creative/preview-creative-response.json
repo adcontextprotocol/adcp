@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/preview-creative-response.json",
   "title": "Preview Creative Response",
-  "description": "Response containing preview links for one or more creatives. Format matches the request: single preview response for single requests, batch results for batch requests.",
+  "description": "Response containing preview links for one or more creatives. Format matches the request: single preview response for single requests, batch results for batch requests, or an async submitted envelope only when the request explicitly set allow_async to true.",
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
@@ -97,7 +97,17 @@
         "response_type",
         "previews"
       ],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": {
+        "properties": {
+          "status": {
+            "const": "submitted"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      }
     },
     {
       "title": "PreviewCreativeBatchResponse",
@@ -242,7 +252,17 @@
         "response_type",
         "results"
       ],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": {
+        "properties": {
+          "status": {
+            "const": "submitted"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      }
     },
     {
       "title": "PreviewCreativeVariantResponse",
@@ -309,6 +329,55 @@
         "response_type",
         "variant_id",
         "previews"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "properties": {
+          "status": {
+            "const": "submitted"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      }
+    },
+    {
+      "title": "PreviewCreativeSubmitted",
+      "type": "object",
+      "description": "Async task envelope returned only when the preview_creative request set allow_async to true and rendering cannot complete inline. The buyer polls get_task_status with task_id; the completed preview response is the task result.",
+      "properties": {
+        "response_type": {
+          "type": "string",
+          "const": "submitted",
+          "description": "Preview-response discriminator for the asynchronous arm."
+        },
+        "status": {
+          "type": "string",
+          "const": "submitted",
+          "description": "Discriminates this opt-in async envelope from synchronous preview responses."
+        },
+        "task_id": {
+          "type": "string",
+          "description": "Task handle used to poll get_task_status for the completed preview response.",
+          "x-entity": "task"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Optional human-readable explanation of why preview rendering was queued. Plain text only; buyers MUST treat this as untrusted agent input."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "response_type",
+        "status",
+        "task_id"
       ],
       "additionalProperties": true
     }
