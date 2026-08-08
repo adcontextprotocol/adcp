@@ -797,9 +797,10 @@ export const AgentComplianceDetailSchema = z
       first_failed_step_title: z.string().nullable(),
       first_failed_step_task: z.string().nullable(),
       first_failure_message: z.string().nullable(),
+      first_failure_validations: z.array(z.any()).openapi({ description: "Validation evidence for the first failure. Populated only for owners and empty for other callers." }),
       last_tested_at: z.string().nullable(),
       last_passed_at: z.string().nullable(),
-    })).optional().openapi({ description: "Owner-scoped per-storyboard diagnostics used by the dashboard. Empty for non-owners." }),
+    })).optional().openapi({ description: "Public per-storyboard verdicts and aggregate step counts. First-failure diagnostic fields are populated only for owners; scalar diagnostics are null and validation evidence is empty for other callers." }),
     notices: z.array(z.any()).optional().openapi({ description: "Run-summary notices from the latest non-dry-run compliance run. Unknown codes/severities are preserved verbatim." }),
     observations: z.array(z.object({
       category: z.string(),
