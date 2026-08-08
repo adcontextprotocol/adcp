@@ -135,4 +135,68 @@ describe('admin certification badge backfill', () => {
     expect(response.body.errors).toHaveLength(50);
     expect(mocks.ensureCertifierCredential).toHaveBeenCalledTimes(50);
   });
+
+  it('bounds inactive-row scanning and resumes from the returned cursor', async () => {
+    const inactive = Array.from({ length: 500 }, (_, index) => ({
+      id: uuid(index + 1),
+      workos_user_id: `inactive_${index}`,
+      credential_id: 'practitioner',
+      tier: 2,
+      certifier_credential_id: null,
+      certifier_public_id: null,
+    }));
+    const eligible = {
+      id: uuid(501),
+      workos_user_id: 'free_after_bound',
+      credential_id: 'basics',
+      tier: 1,
+      certifier_credential_id: null,
+      certifier_public_id: null,
+    };
+    const allRows = [...inactive, eligible];
+    mocks.query.mockImplementation(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('SELECT DISTINCT workos_user_id FROM learner_progress')) return { rows: [] };
+      if (sql.includes('FROM user_credentials uc')) {
+        const cursor = params?.[0];
+        const start = cursor == null
+          ? 0
+          : allRows.findIndex(row => row.id === cursor) + 1;
+        return { rows: allRows.slice(start, start + 50) };
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    });
+    const app = express();
+    app.use(express.json());
+    app.use('/api/admin/certification', createCertificationRouters().adminRouter);
+
+    const first = await request(app)
+      .post('/api/admin/certification/backfill-badges')
+      .send({});
+
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({
+      total: 500,
+      updated: 0,
+      skipped_inactive: 500,
+      has_more: true,
+      next_cursor: uuid(500),
+    });
+    expect(mocks.ensureCertifierCredential).not.toHaveBeenCalled();
+
+    const second = await request(app)
+      .post('/api/admin/certification/backfill-badges')
+      .send({ cursor: first.body.next_cursor });
+
+    expect(second.status).toBe(200);
+    expect(second.body).toMatchObject({
+      total: 1,
+      updated: 1,
+      has_more: false,
+      next_cursor: null,
+    });
+    expect(mocks.ensureCertifierCredential).toHaveBeenCalledWith({
+      userId: 'free_after_bound',
+      credentialId: 'basics',
+    });
+  });
 });

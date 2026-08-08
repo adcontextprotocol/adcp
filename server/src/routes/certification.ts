@@ -1107,12 +1107,17 @@ export function createCertificationRouters() {
 
   // POST /api/admin/certification/backfill-badges — retry Certifier for credentials missing data
   let backfillInProgress = false;
-  adminRouter.post('/backfill-badges', async (_req, res) => {
+  adminRouter.post('/backfill-badges', async (req, res) => {
     if (backfillInProgress) {
       return res.status(409).json({ error: 'Backfill already in progress' });
     }
     backfillInProgress = true;
     try {
+      const requestedCursor = req.body?.cursor;
+      if (requestedCursor != null && !isUuid(requestedCursor)) {
+        return res.status(400).json({ error: 'cursor must be a valid UUID' });
+      }
+
       const { isCertifierConfigured } = await import('../services/certifier-client.js');
 
       if (!isCertifierConfigured()) {
@@ -1146,12 +1151,13 @@ export function createCertificationRouters() {
       let examined = 0;
       let processed = 0;
       const errors: string[] = [];
-      let cursor: string | null = null;
+      let cursor: string | null = requestedCursor ?? null;
+      const MAX_EXAMINED = 500;
 
       // Keyset pagination prevents inactive paid rows (which intentionally
       // retain a null badge URL) from occupying the same LIMIT 50 forever and
       // starving eligible rows later in the result set.
-      while (processed < 50) {
+      while (processed < 50 && examined < MAX_EXAMINED) {
         const page: { rows: BadgeBackfillRow[] } = await query<BadgeBackfillRow>(
           `SELECT uc.id, uc.workos_user_id, uc.credential_id, cc.tier,
                   uc.certifier_credential_id, uc.certifier_public_id
@@ -1198,12 +1204,19 @@ export function createCertificationRouters() {
         if (page.rows.length < 50) break;
       }
 
+      // A cursor lets operators resume after the per-request scan bound. This
+      // prevents a large inactive backlog from creating an unbounded admin
+      // request while still allowing later eligible rows to be reached.
+      const hasMore = processed >= 50 || examined >= MAX_EXAMINED;
+
       res.json({
         total: examined,
         updated,
         skipped_inactive: skippedInactive,
         errors,
         credentialsAwarded,
+        has_more: hasMore,
+        next_cursor: hasMore ? cursor : null,
       });
     } catch (error) {
       logger.error({ error }, 'Failed to backfill badges');
