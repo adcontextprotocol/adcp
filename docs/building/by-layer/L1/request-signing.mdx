@@ -708,10 +708,10 @@ For emergency rotation (key compromise), add the old `kid` to `revoked_kids` in 
 
 ### Conformance vectors
 
-The spec ships **39 test vectors** at `compliance/cache/3.0.0/test-vectors/request-signing/` (source at `static/compliance/source/test-vectors/request-signing/`):
+The spec ships request-signing test vectors at `compliance/cache/3.0.0/test-vectors/request-signing/` (source at `static/compliance/source/test-vectors/request-signing/`):
 
-- **12 positive vectors**: valid signed requests your verifier must accept (non-4xx)
-- **27 negative vectors**: invalid requests your verifier must reject with `401` and the correct error code
+- **Positive vectors**: valid signed requests your verifier must accept (non-4xx)
+- **Negative vectors**: invalid requests your verifier must reject with `401` and the correct error code
 
 ```bash
 # Debug a single vector
