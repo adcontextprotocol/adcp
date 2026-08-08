@@ -313,6 +313,7 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`viewability`**: Viewability data (measurable_impressions, viewable_impressions, viewable_rate, viewed_seconds, standard, vendor). Separates MRC and GroupM standards. `viewed_seconds` is the average in-view duration per measurable impression — reporting-side counterpart to the `viewed_seconds` optimization goal, governed by the same `standard` threshold as `viewable_rate`. The optional `vendor` field carries a `BrandRef` so the row is self-describing — buyer agents reading delivery in isolation can attribute the numbers to a measurement vendor without joining back to `package.committed_metrics` or `package.performance_standards`.
 - **`quartile_data`**: Video quartile completion data (q1-q4); `null` when not applicable (e.g. a non-video buy)
 - **`dooh_metrics`**: DOOH-specific metrics (loop plays, screens, venue breakdown)
+- **`ooh_metrics`**: Classic (static) OOH metrics — panels, posting period, posting records with photo evidence, and modeled `estimated_impressions` with a declared `estimation_basis`; the channel has no play events
 - **`cost_per_click`**: Cost per click (`spend / clicks`)
 - **`cost_per_completed_view`**: Cost per completed view (`spend / completed_views`); CPCV pricing scalar for video/audio inventory
 - **`cpm`**: Cost per thousand impressions (`(spend / impressions) × 1000`); universal pricing scalar across CTV, display, mobile/web video, native, audio, and DOOH
