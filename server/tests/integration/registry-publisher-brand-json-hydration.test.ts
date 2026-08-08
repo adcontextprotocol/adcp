@@ -97,6 +97,7 @@ const PUB_BRAND_ONLY = `${DOMAIN_PREFIX}sasha${DOMAIN_SUFFIX}`;
 const PUB_AAO_HOSTED = `${DOMAIN_PREFIX}aao-hosted${DOMAIN_SUFFIX}`;
 const PUB_COMMUNITY = `${DOMAIN_PREFIX}community-catalog${DOMAIN_SUFFIX}`;
 const COMMUNITY_PLATFORM = 'test-community-publisher';
+const VERIFIED_OWNER_ORG = 'org_test_verified_owner_origin_evidence';
 const TEST_DATABASE_URL = process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test';
 
 describe('Registry publisher endpoint — brand.json hydration', () => {
@@ -122,6 +123,7 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
     await pool.query('DELETE FROM catalog_properties WHERE created_by = $1', [`community_adagents:${COMMUNITY_PLATFORM}`]);
     await pool.query('DELETE FROM hosted_properties WHERE publisher_domain LIKE $1', [DOMAIN_LIKE]);
     await pool.query('DELETE FROM brands WHERE domain LIKE $1', [DOMAIN_LIKE]);
+    await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [VERIFIED_OWNER_ORG]);
     await pool.query(
       'DELETE FROM discovered_properties WHERE publisher_domain LIKE $1',
       [DOMAIN_LIKE]
@@ -284,6 +286,33 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
     // Name is suppressed when there's no real manifest — the
     // domain-literal placeholder is misleading.
     expect(res.body.files.brand_json.name).toBeUndefined();
+  });
+
+  it('re-triggers brand crawl for a verified owner whose manifest lacks origin evidence', async () => {
+    const domain = `verified-owner-${Date.now()}.registry-baseline.example`;
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+       VALUES ($1, $2, NOW(), NOW())`,
+      [VERIFIED_OWNER_ORG, 'Verified Owner Test'],
+    );
+    await brandDb.upsertDiscoveredBrand({
+      domain,
+      brand_name: 'Verified Owner',
+      source_type: 'community',
+      has_brand_manifest: true,
+      brand_manifest: { name: 'Verified Owner' },
+    });
+    await pool.query(
+      `UPDATE brands
+          SET workos_organization_id = $2, domain_verified = TRUE
+        WHERE domain = $1`,
+      [domain, VERIFIED_OWNER_ORG],
+    );
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(domain)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.auto_crawl_triggered).toBe(true);
+    expect(res.body.files.brand_json.status).toBe('checking');
   });
 
   it('reports hosting.mode=none when no adagents.json is configured', async () => {

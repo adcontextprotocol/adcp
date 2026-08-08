@@ -896,8 +896,8 @@ registry.registerPath({
       search: z.string().optional(),
       limit: z.string().optional().openapi({ type: 'integer', example: 100 }),
       offset: z.string().optional().openapi({ type: 'integer', example: 0 }),
-      source: z.enum(['hosted', 'brand_json', 'enriched', 'community']).optional().openapi({
-        description: 'Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed.',
+      source: z.enum(['hosted', 'brand_json', 'enriched', 'community', 'stub']).optional().openapi({
+        description: 'Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed; stub = organization-derived placeholder awaiting stronger evidence.',
       }),
     }),
   },
@@ -914,6 +914,7 @@ registry.registerPath({
               brand_json: z.number().int(),
               community: z.number().int(),
               enriched: z.number().int(),
+              stub: z.number().int(),
               houses: z.number().int(),
               sub_brands: z.number().int(),
               with_manifest: z.number().int(),
@@ -1021,8 +1022,8 @@ function storedBrandJsonVariant(
 function resolvedStoredBrandSource(brand: {
   workos_organization_id?: string;
   domain_verified?: boolean;
-  source_type: 'brand_json' | 'community' | 'enriched';
-}): 'hosted' | 'brand_json' | 'community' | 'enriched' {
+  source_type: 'brand_json' | 'community' | 'enriched' | 'stub';
+}): 'hosted' | 'brand_json' | 'community' | 'enriched' | 'stub' {
   return brand.workos_organization_id && brand.domain_verified === true
     ? 'hosted'
     : brand.source_type;
@@ -1038,6 +1039,7 @@ const RESOLVED_BRAND_SOURCE_PRIORITY: Record<ResolvedBrandResponse["source"], nu
   brand_json: 2,
   community: 3,
   enriched: 4,
+  stub: 5,
 };
 
 function storedBrandResolutionResponse(
@@ -1710,6 +1712,21 @@ const PublisherAdagentsRevalidationResultSchema = z.object({
   manager_domain: z.string().optional(),
 });
 
+const BrandForceCrawlResultSchema = z.object({
+  domain: z.string(),
+  previous_source: z.enum(["hosted", "brand_json", "community", "enriched", "stub"]).nullable(),
+  new_source: z.enum(["hosted", "brand_json", "community", "enriched", "stub"]).nullable(),
+  previous_source_type: z.enum(["brand_json", "community", "enriched", "stub"]).nullable(),
+  new_source_type: z.enum(["brand_json", "community", "enriched", "stub"]).nullable(),
+  promoted: z.boolean().openapi({
+    description: "True when the crawl replaced lower-trust stored evidence with live brand.json evidence.",
+  }),
+  brand_json_found: z.boolean(),
+  live_variant: z.enum(["authoritative_location", "house_redirect", "brand_agent", "house_portfolio", "brand_canonical"]).nullable(),
+  has_manifest: z.boolean(),
+  checked_at: z.string().datetime(),
+});
+
 registry.registerPath({
   method: "post",
   path: "/api/registry/publisher/{domain}/adagents/revalidate",
@@ -1743,6 +1760,40 @@ registry.registerPath({
         },
       },
     },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/brand/{domain}/force-crawl",
+  operationId: "forceBrandCrawl",
+  summary: "Force a synchronous brand.json crawl",
+  description:
+    "Admin-only support endpoint that fetches a domain's live `/.well-known/brand.json`, persists valid origin evidence, and returns the before/after state. A verified owner remains labeled `source: hosted` because that field describes identity provenance; `new_source_type: brand_json` and `promoted: true` confirm that live origin evidence was adopted.\n\n**Rate limits:** 5 minutes per domain, 30 requests per user per hour.",
+  tags: ["Brand Discovery"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      domain: z.string().openapi({ example: "brand.example" }),
+    }),
+  },
+  responses: {
+    200: { description: "Synchronous crawl result", content: { "application/json": { schema: BrandForceCrawlResultSchema } } },
+    400: { description: "Invalid domain format, private IP, or unresolvable domain", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Admin access required", content: { "application/json": { schema: ErrorSchema } } },
+    429: {
+      description: "Rate limit exceeded",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            retry_after: z.number().int(),
+          }),
+        },
+      },
+    },
+    500: { description: "Crawl failed", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -8539,7 +8590,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // but never landed a brand_manifest. We were treating those rows
       // as "already crawled" and refusing to retry — leaving publishers
       // who actually serve a brand.json forever marked as missing one.
-      const brandNeverCrawled = !brandRow || !brandRow.has_brand_manifest;
+      const verifiedOwnerNeedsOriginEvidence = Boolean(
+        brandRow?.workos_organization_id
+        && brandRow.domain_verified === true
+        && brandRow.source_type !== 'brand_json'
+      );
+      const brandNeverCrawled = !brandRow || !brandRow.has_brand_manifest || verifiedOwnerNeedsOriginEvidence;
       // Bypass the per-domain auto-crawl debounce when the brand row is
       // stale-without-manifest for >1h. Without this, a heavily-trafficked
       // publisher whose brand.json went live AFTER our first crawl gets
@@ -8896,6 +8952,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // adagents.json" / "you have a brand.json" — this block exposes
       // that signal so the client doesn't have to derive it from a
       // cocktail of nullable flags.
+      const brandOriginCrawlInFlight = autoCrawlTriggered && verifiedOwnerNeedsOriginEvidence;
+      const brandFileStatus = brandOriginCrawlInFlight
+        ? 'checking'
+        : brandRow?.has_brand_manifest
+          ? 'present'
+          : autoCrawlTriggered
+            ? 'checking'
+            : 'unknown';
       const files = {
         adagents_json: {
           status: cachedSourceType === 'community' && cachedAdagentsManifest
@@ -8919,12 +8983,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           // without a manifest from a prior failed crawl). `unknown`
           // = row exists with no manifest and we didn't re-trigger
           // (debounced).
-          status: brandRow?.has_brand_manifest
-            ? 'present'
-            : autoCrawlTriggered
-              ? 'checking'
-              : 'unknown',
-          name: brandRow?.has_brand_manifest ? brandRow.brand_name : undefined,
+          status: brandFileStatus,
+          name: brandFileStatus === 'present' ? brandRow?.brand_name : undefined,
         } as { status: 'present' | 'unknown' | 'checking'; name?: string },
       };
 
@@ -10870,6 +10930,58 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     } catch (error) {
       logger.error({ error, path: req.path }, "Failed to revalidate publisher adagents.json");
       return res.status(500).json({ error: "Failed to revalidate publisher adagents.json" });
+    }
+  });
+
+  router.post("/registry/brand/:domain/force-crawl", authMiddleware, async (req, res) => {
+    try {
+      if (!req.user && !isStaticAdminRequest(req)) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      if (!(await isRegistryAdminRequest(req))) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const rawDomain = typeof req.params.domain === 'string'
+        ? extractDomain(req.params.domain)
+        : '';
+      if (!rawDomain || !isValidDomain(rawDomain)) {
+        return res.status(400).json({ error: "Invalid domain" });
+      }
+
+      const normalizedDomain = await validateAndRateLimitCrawl(
+        req,
+        res,
+        rawDomain,
+        rawDomain,
+      );
+      if (!normalizedDomain) return;
+
+      const previous = await brandDb.getDiscoveredBrandByDomain(normalizedDomain);
+      const crawlResult = await crawler.scanBrandForDomain(normalizedDomain);
+      const current = await brandDb.getDiscoveredBrandByDomain(normalizedDomain);
+
+      const previousSource = previous ? resolvedStoredBrandSource(previous) : null;
+      const newSource = current ? resolvedStoredBrandSource(current) : null;
+      const promoted = previous?.source_type !== 'brand_json'
+        && current?.source_type === 'brand_json'
+        && crawlResult.valid;
+
+      return res.json({
+        domain: normalizedDomain,
+        previous_source: previousSource,
+        new_source: newSource,
+        previous_source_type: previous?.source_type ?? null,
+        new_source_type: current?.source_type ?? null,
+        promoted,
+        brand_json_found: crawlResult.valid,
+        live_variant: crawlResult.variant,
+        has_manifest: current?.has_brand_manifest ?? false,
+        checked_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error({ error, path: req.path }, "Failed to force brand.json crawl");
+      return res.status(500).json({ error: "Failed to force brand.json crawl" });
     }
   });
 
