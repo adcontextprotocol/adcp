@@ -662,7 +662,7 @@
 #   unsupported asset type, an unknown text-slot semantic, or no image fixture
 #   satisfying the declared dimensions — the runner MUST stop before transport
 #   and grade the storyboard `not_applicable` with `skip_result.reason:
-#   unsatisfied_contract`. The diagnostic detail MUST begin with
+#   fixture_unavailable`. The diagnostic detail MUST begin with
 #   `creative_asset_fixture_unavailable:` and name the slot id, asset type, and
 #   any unsatisfied constraint. This is a runner/test-kit coverage gap, not a
 #   grading signal about the agent, and MUST NOT contribute to failed steps.
@@ -1989,7 +1989,7 @@
 #       directive whose valid captured format cannot be satisfied by the
 #       runner's test-kit assets is not an unresolved substitution: it uses the
 #       storyboard-level not_applicable disposition with `skip_result.reason:
-#       unsatisfied_contract` at step preflight. This runner-owned coverage gap
+#       fixture_unavailable` at step preflight. This runner-owned coverage gap
 #       MUST NOT count as a failed step.
 #
 #       Output shape: runner-output-contract.yaml > validation_result, with
@@ -2382,7 +2382,7 @@
 # captures the seller's valid format contract. If the format context exists but
 # the runner's test kit cannot synthesize every required slot, the runner MUST
 # apply a storyboard-level `not_applicable` disposition with
-# `skip_result.reason: unsatisfied_contract` at step preflight, not the
+# `skip_result.reason: fixture_unavailable` at step preflight, not the
 # failed-step disposition from point 2. If the format context itself is absent
 # because its producer failed or was skipped, point 2 and the normal
 # prerequisite cascade still apply.
