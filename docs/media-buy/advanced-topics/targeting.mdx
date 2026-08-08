@@ -6,7 +6,7 @@ testable: true
 ---
 
 
-AdCP starts with **brief-based targeting** for semantic preferences and uses typed overlays when a buyer needs an exact, auditable constraint. Publishers return products that describe which overlay semantics they can execute.
+AdCP uses briefs for semantic intent and typed overlays for exact, auditable constraints. Publishers return products that describe which overlay semantics they can execute.
 
 ## Core principle: semantic intent in briefs, exact constraints in overlays
 
@@ -20,7 +20,24 @@ Use campaign briefs for audience meaning, strategy, and seller-led discovery. In
 
 Publishers then return products that include the targeting capabilities to reach this audience, with targeting costs built into the media pricing.
 
-Use a typed `targeting_overlay` for controls whose exact wire semantics must survive booking and readback. In particular, numeric demographic predicates such as ages 25–40 belong in `targeting_overlay.demographics`; prose such as “millennial parents interested in sustainable products” remains in the brief. If both are supplied, the prose guides discovery while the overlay is the auditable package constraint.
+Use a typed `targeting_overlay` whenever a requirement has a structured representation and must survive booking and readback. This avoids transmitting the same fact as extra prose and avoids asking the seller to spend tokens inferring a value that code can read deterministically. In particular, numeric demographic predicates such as ages 25–40 and exact country constraints belong in the overlay; prose such as “millennial parents interested in sustainable products” remains in the brief.
+
+An explicit hard requirement does not become optional merely because the buyer put it in prose. Sellers MUST apply unambiguous hard targeting stated only in the brief. A seller that extracts hard targeting from prose SHOULD return its interpretation once at `GetProductsResponse.targeting_resolution.brief_targeting`. This lets the buyer verify what will actually be applied without repeating the same interpretation on every product. Unchanged values already supplied in `targeting_overlay` are not repeated.
+
+```json
+{
+  "targeting_resolution": {
+    "brief_targeting": {
+      "geo_countries": ["US"],
+      "demographics": {
+        "age": { "min": 18, "max": 44, "include_unknown": false }
+      }
+    }
+  }
+}
+```
+
+If both prose and a structured field address the same constraint, buyers SHOULD keep them consistent. Sellers MUST reject contradictory hard requirements with `INVALID_REQUEST`; they do not silently choose one interpretation or turn the conflict into an empty result.
 
 When the buyer wants package-level control over specific selectable signals that the seller offers, use `targeting_overlay.signal_targeting_groups` on the package. Buy-time eligibility comes from the selected product's signal targeting contract: `signal_targeting_allowed`, inline `Product.signal_targeting_options` when present, the seller's `get_signals` feed for wholesale products that omit inline options, and `signal_targeting_rules`. Signals are named targetable dimensions, referenced with `signal_ref`: `scope: "product"` for product-local signal options, `scope: "data_provider"` with `data_provider_domain` for signals defined in a data provider's published adagents.json `signals[]`, or `scope: "signal_source"` with `signal_source_url` for source-native signals that are not published in adagents.json `signals[]`. `signal_ref.scope` is the buy-time resolution path, not provenance, and authoritative enrichment lives on the seller, data provider, or source signal definition. Do not overload `audience_include` or `audience_exclude` for this purpose; those fields are only for first-party audiences registered through `sync_audiences`.
 
@@ -91,7 +108,7 @@ A bucket-backed product publishes its actual intervals rather than pretending th
 }
 ```
 
-That product cannot execute ages 21–35 exactly: `18–24 ∪ 25–34 ∪ 35–44` broadens the request, while `25–34` narrows it. The seller rejects the request and may suggest supported predicates. If the buyer chooses one, it submits that predicate as a new request; the seller never stores a widened or narrowed alternative under the original request.
+That product cannot execute ages 21–35 exactly: `18–24 ∪ 25–34 ∪ 35–44` broadens the request, while `25–34` narrows it. A direct create or update rejects that request. During `get_products`, however, the seller may return a request-scoped configured product whose sparse `targeting_resolution.modifications` replaces the requested interval with 25–34. Selecting that product accepts the disclosed alternative; the resulting package still stores only an equivalent executable predicate.
 
 `unknown_handling` is one of:
 
@@ -155,7 +172,10 @@ Age is a registered restricted-attribute category because some campaign plans pr
 
 ### Exact readback
 
-Whenever demographic targeting was requested or applied, package state includes `demographic_targeting_resolution`. It preserves both predicates and the execution mechanism:
+Whenever demographic targeting was requested or applied, package state includes
+`targeting_resolution.demographics`. Demographics is one dimension inside the
+generic targeting-resolution envelope; it preserves both predicates and the
+execution mechanism:
 
 ```json
 {
@@ -169,27 +189,29 @@ Whenever demographic targeting was requested or applied, package state includes 
       }
     }
   },
-  "demographic_targeting_resolution": {
-    "requested": {
-      "age": {
-        "min": 21,
-        "include_unknown": false,
-        "accepted_bases": ["verified", "declared"],
-        "accepted_verification_methods": ["world_id"]
-      }
-    },
-    "applied": {
-      "age": { "min": 21, "include_unknown": false }
-    },
-    "equivalent": true,
-    "execution": { "type": "continuous_bounds" },
-    "applied_bases": ["verified"],
-    "applied_verification_methods": ["world_id"]
+  "targeting_resolution": {
+    "demographics": {
+      "requested": {
+        "age": {
+          "min": 21,
+          "include_unknown": false,
+          "accepted_bases": ["verified", "declared"],
+          "accepted_verification_methods": ["world_id"]
+        }
+      },
+      "applied": {
+        "age": { "min": 21, "include_unknown": false }
+      },
+      "equivalent": true,
+      "execution": { "type": "continuous_bounds" },
+      "applied_bases": ["verified"],
+      "applied_verification_methods": ["world_id"]
+    }
   }
 }
 ```
 
-`targeting_overlay.demographics` preserves the booked predicate and buyer determination constraints. The resolution's `applied` field contains the canonical predicate actually applied; `equivalent` is always `true` for stored packages, and buyers should still recompute predicate equality from `requested` and `applied`. `applied_bases` and `applied_verification_methods` record the effective configured eligibility paths after intersecting buyer constraints, product capability, and age compliance. They do not assert which path every individual impression used. A seller rejects any non-equivalent or unsupported compilation. The same core `Package` schema carries this readback in synchronous `CreateMediaBuySuccess` responses and terminal async completion artifacts; `get_media_buys` exposes the corresponding `PackageStatus` field. Updates use the normal full-overlay replacement semantics and refresh the resolution atomically.
+`targeting_overlay.demographics` preserves the booked predicate and buyer determination constraints. The demographic resolution's `applied` field contains the canonical predicate actually applied; `equivalent` is always `true` for stored packages, and buyers should still recompute predicate equality from `requested` and `applied`. `applied_bases` and `applied_verification_methods` record the effective configured eligibility paths after intersecting buyer constraints, product capability, and age compliance. They do not assert which path every individual impression used. A seller rejects any non-equivalent or unsupported compilation. The same core `Package` schema carries this readback in synchronous `CreateMediaBuySuccess` responses and terminal async completion artifacts; `get_media_buys` exposes the corresponding `PackageStatus` field. Updates use the normal full-overlay replacement semantics and refresh the resolution atomically.
 
 ## Why Brief-Based Targeting?
 
@@ -372,65 +394,56 @@ When publishers return products, they include targeting information buyers need:
 }
 ```
 
-## Product Filters vs Targeting Overlays
+## Filters, targeting, and coverage
 
-Some targeting dimensions appear in both `get_products` filters and `create_media_buy` targeting overlays. These serve different purposes at different stages:
+`get_products.filters` selects product characteristics such as channel,
+delivery type, creative format, currency, and reporting support. It is not a
+second targeting language. The legacy targeting-like filter fields remain
+schema-valid during migration but are deprecated.
 
-| Filter (`get_products`) | Overlay (`create_media_buy`) | Filter: what it does | Overlay: what it does |
-|---|---|---|---|
-| `countries` | `geo_countries` / `_exclude` | Show products serving these countries | Deliver only in these countries |
-| `regions` | `geo_regions` / `_exclude` | Show products serving these regions | Deliver only in these regions |
-| `metros` | `geo_metros` / `_exclude` | Show products serving these metros | Deliver only in these metros |
-| `postal_areas` | `geo_postal_areas` / `_exclude` | Show products serving these postal codes | Deliver only in these postal codes |
-| `geo_proximity` | `geo_proximity` | Show products with inventory near this point | Deliver only to users near this point |
-| `keywords` | `keyword_targets` / `negative_keywords` | Show products supporting these search terms | Bid on these specific terms |
+`get_products.targeting_overlay` contains real delivery constraints. The
+seller must account for their effective result in availability, price, and
+forecast. Exact acceptance of the structured overlay does not require an echo;
+if the seller offers a different executable constraint, it returns only the
+changed paths in `targeting_resolution.modifications`. Hard targeting inferred
+from prose should be confirmed separately in
+`targeting_resolution.brief_targeting`.
 
-**Filters** tell the sell-side agent what matters to the buyer so it can curate relevant products. Without a proximity filter, a seller might recommend products that don't support geo_proximity — and the buyer wouldn't discover the gap until `create_media_buy`.
+`required_overlay_support` asks whether a product lets the buyer choose a
+dimension later. For example, requesting `geo_metros` support asks for products
+that can be narrowed by metro on packages; it does not ask the seller to return
+one product per metro. The product answers with `overlay_support`.
 
-**Overlays** apply the precise functional constraint at execution time. The overlay is what the seller's ad server enforces.
+Coverage is an implementation detail of the same targeting contract. A
+constraint may be satisfied by the product's inherent inventory scope or by a
+selectable ad-server control. Buyers care about the effective result, not which
+mechanism supplied it.
 
-Value filters (`countries`, `regions`, `metros`, `postal_areas`, `geo_proximity`, `keywords`) narrow by coverage area — "show me inventory in these places." Capability filters (`required_geo_targeting`, `required_features`) narrow by what the seller can enforce — "only sellers that support zip-level targeting." These compose: use both when you need inventory in a specific area from sellers that can target at that granularity.
+Properties, collections, and placements follow the same model as audience and
+geographic targeting. Select a targetable placement with
+`targeting_overlay.placement_selection`; use
+`creative_assignments[].placement_refs` only to route creatives among the
+placements already selected by package targeting.
 
-For buyers: pass filters at discovery time, then apply the same values (or refined versions) as overlays at buy time. Note that overlay schemas are stricter — for example, `keyword_targets` requires `match_type` while the `keywords` filter defaults to `broad`.
+### No raw ad-server key/value targeting
 
-### Example: discovery to buy
+External buyers MUST NOT send arbitrary ad-server keys, values, or expressions
+through a generic targeting map. A capability declaration would prove only
+that a seller recognizes a key; it would not make the key's semantics,
+authorization boundary, privacy behavior, or cross-seller meaning mechanically
+verifiable. Sellers compile AdCP's structured targeting, signal references,
+and configured products into their own ad-server controls internally.
 
-```json
-// Step 1: get_products — signal intent with filters
-{
-  "brief": "Coffee shop promotion in downtown Seattle",
-  "filters": {
-    "geo_proximity": [{
-      "lat": 47.6062,
-      "lng": -122.3321,
-      "label": "Downtown Seattle",
-      "radius": { "value": 5, "unit": "mi" }
-    }],
-    "keywords": [{ "keyword": "coffee" }]
-  }
-}
-```
-
-```json
-// Step 2: create_media_buy — apply precise constraints as overlays
-{
-  "targeting": {
-    "geo_proximity": [{
-      "lat": 47.6062,
-      "lng": -122.3321,
-      "label": "Downtown Seattle",
-      "radius": { "value": 5, "unit": "mi" }
-    }],
-    "keyword_targets": [{ "keyword": "coffee", "match_type": "broad" }]
-  }
-}
-```
-
-Note that `keywords` (filter) becomes `keyword_targets` (overlay), and `match_type` becomes required.
+When a targeting concept is broadly useful, define a typed AdCP field and its
+resolution behavior. Use signals for seller-published targetable options and
+use property, collection, placement, and format selection for inventory. Do
+not use `ext` to expose or accept a generic ad-server targeting control plane.
 
 ## When to Use Targeting Overlays
 
-Targeting overlays in `create_media_buy` and `update_media_buy` are **rare** and should only be used for:
+Targeting overlays are the normal home for exact, auditable delivery constraints
+in discovery, create, and update. Use them whenever the requested value must
+survive seller planning and package readback.
 
 ### Geographic Restrictions
 Use geo fields **only** for:
@@ -486,9 +499,22 @@ Use for **technical requirements**:
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
-  "device_platform": ["ios", "android"]
+  "device_platform": ["ios", "android"],
+  "device_platform_exclude": ["fire_os"]
 }
 ```
+
+Use `device_platform_exclude` when the campaign may run across several
+platforms except for a known incompatible platform. If the same value appears
+in both lists, exclusion wins. Sellers that cannot enforce the exclusion MUST
+reject it rather than silently broadening delivery.
+
+Platform inclusion and exclusion are independently selectable product
+capabilities. A buyer that plans to provide exclusions later requests
+`required_overlay_support.device_platform_exclude`; a matching product returns
+`overlay_support.device_platform_exclude`. Known exclusion values belong in
+`targeting_overlay` during discovery so availability, pricing, and forecast use
+the effective constraint.
 
 **Available platforms** (defined in [`device-platform.json`](https://adcontextprotocol.org/schemas/v3/enums/device-platform.json), based on Sec-CH-UA-Platform standard extended for CTV):
 - Browser: `ios`, `android`, `windows`, `macos`, `linux`, `chromeos`
@@ -831,6 +857,14 @@ For products where inventory and audience planning are inseparable, such as line
 - **Examples**: `["ios"]`, `["ios", "android"]`, `["tvos", "fire_os"]`
 - **Use cases**: App install campaigns (iOS-only app), CTV-specific campaigns
 - **Values**: `ios`, `android`, `windows`, `macos`, `linux`, `chromeos`, `tvos`, `tizen`, `webos`, `fire_os`, `roku_os`
+
+### device_platform_exclude
+- **Description**: Exclude specific operating-system platforms from delivery
+- **Format**: Array using the same identifiers as `device_platform`
+- **Examples**: `["fire_os"]`, `["tizen", "webos"]`
+- **Conflict rule**: Exclusion wins when the same value appears in both platform fields
+- **Discovery**: Require future package-level control with `required_overlay_support.device_platform_exclude`; products disclose it through `overlay_support.device_platform_exclude`
+- **Failure rule**: A seller that cannot enforce the exclusion rejects the request instead of dropping it
 
 ### device_type
 - **Description**: Restrict to specific device form factors

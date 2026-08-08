@@ -122,18 +122,28 @@ The seller responds with the account status — active, pending review, or what 
 
 This is where it gets powerful. Sam wants to find premium sports inventory for Acme Outdoor's Q2 campaign. In the old world, he'd log into four dashboards and compare apples to oranges.
 
-With AdCP, `get_products` sends the same brief to every connected seller. Sam describes what he wants in natural language:
+With AdCP, `get_products` sends the same structured request and brief to every connected seller. Sam keeps semantic intent in prose and exact constraints in fields every seller can process deterministically:
 
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/get-products-request.json",
   "buying_mode": "brief",
-  "brief": "Premium sports video inventory, Q2 2026, targeting 25-45 males interested in outdoor recreation. Budget $50K across CTV and display.",
+  "brief": "Premium sports and outdoor-recreation contexts for Acme Outdoor's Q2 launch. Budget $50K.",
+  "filters": {
+    "channels": ["ctv", "display"],
+    "pricing_currencies": ["USD"]
+  },
+  "targeting_overlay": {
+    "geo_countries": ["US"],
+    "demographics": {
+      "age": { "min": 25, "max": 45, "include_unknown": false }
+    }
+  },
   "brand": { "domain": "acmeoutdoor.com" }
 }
 ```
 
-Every seller responds in the same format — products with pricing, forecasts, targeting options, and creative requirements. Sam compares proposals side by side on one screen instead of four.
+Every seller responds in the same format — products with pricing, forecasts, targeting support, resolution, and creative requirements. Sam can verify exact constraints without asking every seller to infer them from prose.
 
 <Accordion title="What a product response looks like">
 

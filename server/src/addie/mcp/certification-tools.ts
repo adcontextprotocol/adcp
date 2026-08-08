@@ -1312,6 +1312,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   // Track C: Buyer / Brand
   C1: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
+    { label: 'Buyer briefs and targeting-aware product discovery', url: `${DOCS_BASE}/docs/learning/supplements/buyer-briefs-and-get-products` },
     { label: 'Buying Sponsored Intelligence', url: `${DOCS_BASE}/docs/sponsored-intelligence/monetizing-ai` },
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
@@ -1355,6 +1356,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   C4: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
+    { label: 'Buyer briefs and targeting-aware product discovery', url: `${DOCS_BASE}/docs/learning/supplements/buyer-briefs-and-get-products` },
     { label: 'Validate Your Agent (testing workflow)', url: `${DOCS_BASE}/docs/building/verification/validate-your-agent` },
     { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/by-layer/L4/choose-your-sdk` },
     { label: 'Orchestrator design patterns', url: `${DOCS_BASE}/docs/building/implementation/orchestrator-design` },
@@ -2957,6 +2959,8 @@ Tell ${codingTool}: "Build a buyer agent using @adcp/sdk that connects to the pu
 
 The SDK handles protocol details — the learner focuses on orchestration logic.
 
+The targeting-aware discovery portion is a 3.2 schema-preview objective until https://github.com/adcontextprotocol/adcp/issues/6199 lands. Build schema fixtures that decompose one messy request into brief, filters, targeting_overlay, and required_overlay_support; exercise acceptance and rejection of targeting_resolution.modifications; and verify package targeting readback. Do not treat the current public test agent accepting or ignoring these preview fields as validation.
+
 Reference: ${SDKS_URL}
 
 Tell them to come back when it runs against the test agent.`;
@@ -2966,14 +2970,18 @@ Tell them to come back when it runs against the test agent.`;
 
 PRESENT THESE INSTRUCTIONS TO THE LEARNER:
 
-Run your buyer agent against the public test agent and share the output. Use the \`adcp\` CLI:
+Validate in two parts.
+
+1. Run the legacy live buying workflow against the public test agent and share the output. Use the \`adcp\` CLI:
 \`\`\`
 npx @adcp/sdk@latest test-mcp get_products '{"brief":"<your campaign brief>"}'
 \`\`\`
 
 Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products (select a canonical \`format_options[]\` entry) → create_media_buy → get_adcp_capabilities on the chosen creative endpoint → sync_creatives with \`format_kind\` and optional \`format_option_ref\`.
 
-Paste the output from each step. We'll verify your agent handles the complete buying workflow correctly.
+2. Validate the 3.2 targeting-aware objectives with schema fixtures: request decomposition, required future targeting support, disclosed modification acceptance/rejection, and effective package readback. The public agent does not validate those fields until https://github.com/adcontextprotocol/adcp/issues/6199 lands. After that issue is complete, rerun the targeting-aware fixtures live.
+
+Paste the live output and fixture validation results. We'll verify both the current workflow and the 3.2 preview behavior without mistaking ignored fields for success.
 
 Reference: ${VALIDATE_URL}`;
       }

@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-modification.json",
+  "title": "Targeting Modification",
+  "description": "Sparse, buyer-reviewable change from targeting requested in get_products to targeting bound to a returned configured product. Entries are applied in array order to the original targeting_overlay; after every entry, the complete result MUST validate against targeting.json. A seller MUST NOT emit two replace operations for the same path or combine replace and remove_values on the same path. Selecting the configured product_id accepts the ordered result.",
+  "type": "object",
+  "discriminator": { "propertyName": "operation" },
+  "oneOf": [
+    {
+      "title": "Replace targeting value",
+      "type": "object",
+      "properties": {
+        "operation": { "type": "string", "const": "replace" },
+        "path": {
+          "type": "string",
+          "pattern": "^(?:/(?:[^~/]|~[01])*)+$",
+          "description": "RFC 6901 JSON Pointer to one complete targeting value relative to targeting_overlay, for example /demographics/age. Array indexes are forbidden by protocol semantics even if syntactically valid JSON Pointer; target a stable whole dimension instead."
+        },
+        "applied": {
+          "description": "Complete replacement value. It MUST validate against targeting.json at path; the seller then validates the complete effective overlay. This operation may narrow or broaden only as an explicit buyer-visible proposal."
+        },
+        "reason": { "type": "string", "minLength": 1 },
+        "ext": { "$ref": "/schemas/core/ext.json" }
+      },
+      "required": ["operation", "path", "applied", "reason"],
+      "additionalProperties": false
+    },
+    {
+      "title": "Remove targeting set values",
+      "type": "object",
+      "properties": {
+        "operation": { "type": "string", "const": "remove_values" },
+        "path": {
+          "type": "string",
+          "enum": [
+            "/geo_countries",
+            "/geo_countries_exclude",
+            "/geo_regions",
+            "/geo_regions_exclude",
+            "/geo_postal_areas",
+            "/geo_postal_areas_exclude",
+            "/audience_include",
+            "/audience_exclude",
+            "/device_platform",
+            "/device_type",
+            "/device_type_exclude",
+            "/language"
+          ],
+          "description": "Supported targeting field with string-set semantics. Postal-area paths identify their group with selector; direct top-level sets omit selector."
+        },
+        "selector": {
+          "type": "object",
+          "description": "Stable identity of exactly one postal-area group in the requested array. Required only for postal-area paths. Zero or multiple matches make the modification invalid.",
+          "properties": {
+            "country": { "type": "string", "pattern": "^[A-Z]{2}$" },
+            "system": { "type": "string", "minLength": 1 }
+          },
+          "required": ["country", "system"],
+          "additionalProperties": false
+        },
+        "values": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Values removed from the requested set. Values absent from that set are invalid rather than no-ops."
+        },
+        "reason": { "type": "string", "minLength": 1 },
+        "ext": { "$ref": "/schemas/core/ext.json" }
+      },
+      "required": ["operation", "path", "values", "reason"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "path": {
+                "enum": ["/geo_postal_areas", "/geo_postal_areas_exclude"]
+              }
+            },
+            "required": ["path"]
+          },
+          "then": { "required": ["selector"] },
+          "else": { "not": { "required": ["selector"] } }
+        }
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

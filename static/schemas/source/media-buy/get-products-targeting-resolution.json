@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/get-products-targeting-resolution.json",
+  "title": "Get Products Targeting Resolution",
+  "description": "Request-level confirmation of hard targeting the seller inferred from the natural-language brief. This is emitted once per response because brief interpretation is shared by the curated result set; product-specific differences from a structured overlay remain on Product.targeting_resolution.modifications.",
+  "type": "object",
+  "properties": {
+    "brief_targeting": {
+      "$ref": "/schemas/core/targeting.json",
+      "description": "Structured delivery constraints the seller resolved from explicit hard targeting in the brief. This is the seller's literal interpretation, not a counteroffer: products that cannot honor it are omitted. Unchanged structured targeting_overlay values are not repeated."
+    },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["brief_targeting"],
+  "additionalProperties": false
+}

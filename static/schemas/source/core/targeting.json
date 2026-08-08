@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting.json",
   "title": "Targeting Overlay",
-  "description": "Optional targeting overlays for media buys. Most audience strategy remains in the brief and product, while overlays carry buyer intent that must remain exact through execution and readback: geographic restrictions, canonical demographic age selection, age eligibility/verification, device compatibility, language, keyword targeting, and other explicit controls. Sellers apply supported overlays as intersections with the selected product and MUST reject incompatible controls rather than silently dropping or broadening them.",
+  "description": "Concrete delivery constraints used during product discovery and media-buy execution. Targeting includes both audience eligibility and purchased-inventory selection: geography, demographics, placements, properties, collections, device compatibility, language, keywords, and other explicit controls. Sellers resolve requested outcomes against inherent product scope or selectable execution. A fresh create/update request MUST be applied exactly or rejected; get_products may instead return a request-scoped configured product with sparse, buyer-reviewable targeting_resolution modifications.",
   "type": "object",
   "properties": {
     "geo_countries": {
@@ -154,7 +154,7 @@
     },
     "demographics": {
       "$ref": "/schemas/core/demographic-targeting-intent.json",
-      "description": "Canonical demographic audience targeting intent with optional constraints on how age may be determined. AdCP 3.2 standardizes age first. This is distinct from age_restriction: demographics selects an audience, while age_restriction expresses a legal eligibility or verification floor. Sellers MUST compile the predicate exactly using the selected product's demographic_targeting capability and an accepted determination basis or reject it; they MUST NOT silently broaden, narrow, default, drop, or substitute the basis. A buyer choosing a suggested supported predicate submits that predicate as a new request."
+      "description": "Canonical demographic audience targeting intent with optional constraints on how age may be determined. This is distinct from age_restriction: demographics selects an audience, while age_restriction expresses a legal eligibility or verification floor. Fresh create/update targeting MUST compile exactly or be rejected. During get_products, a seller may offer a different configured predicate only through sparse targeting_resolution modifications on a distinguishable product_id; selecting that product accepts the alternative. Sellers never silently broaden, narrow, default, drop, or substitute the basis."
     },
     "frequency_cap": {
       "$ref": "/schemas/core/frequency-cap.json"
@@ -174,6 +174,10 @@
     "collection_list_exclude": {
       "$ref": "/schemas/core/collection-list-ref.json",
       "description": "Reference to a collection list for excluding specific collections (programs, shows) from this product. Matched collections must not carry the buyer's ads. Use for brand safety do-not-air lists. Seller must declare support in get_adcp_capabilities."
+    },
+    "placement_selection": {
+      "$ref": "/schemas/core/placement-selection.json",
+      "description": "Purchased placement selection within the product. This constrains package inventory; it is distinct from creative_assignments[].placement_refs, which only route individual creatives within the purchased set. On create, mode selected supplies the complete selected set and mode default uses the product default. On update, the surrounding targeting_overlay replacement semantics apply."
     },
     "age_restriction": {
       "type": "object",
@@ -205,6 +209,14 @@
     "device_platform": {
       "type": "array",
       "description": "Restrict to specific platforms. Use for technical compatibility (app only works on iOS). Values from Sec-CH-UA-Platform standard, extended for CTV.",
+      "items": {
+        "$ref": "/schemas/enums/device-platform.json"
+      },
+      "minItems": 1
+    },
+    "device_platform_exclude": {
+      "type": "array",
+      "description": "Exclude specific operating-system platforms from delivery. When a platform appears in both device_platform and device_platform_exclude, exclusion wins. Sellers MUST reject a request they cannot enforce rather than silently dropping the exclusion.",
       "items": {
         "$ref": "/schemas/enums/device-platform.json"
       },

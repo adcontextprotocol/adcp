@@ -9,13 +9,32 @@ Common questions from teams building AdCP sales agents and integrations, with di
 
 ## Product Discovery
 
+### Q: Is hard targeting in a brief actually hard, and why use an overlay?
+
+**A:** Yes. Sellers MUST apply explicit hard requirements even when they appear
+only in brief prose. Buyers should nevertheless put every fact with an AdCP
+representation in its structured field. `targeting_overlay` uses fewer tokens,
+is deterministic code rather than seller inference, and preserves exact
+semantics through forecasting, purchase, and readback.
+
+When a seller extracts hard targeting from the brief, it SHOULD confirm the
+structured interpretation once in
+`GetProductsResponse.targeting_resolution.brief_targeting`. This is especially
+useful for requests such as “US only, ages 18–44.” Absence of Product targeting
+resolution confirms an unchanged structured overlay for that product; absence
+of response-level confirmation does not confirm what was extracted from prose.
+Sellers do not repeat unchanged overlay values, which avoids echoing large
+inputs such as hundreds of postal codes.
+
 ### Q: Does `get_products` require specific parameters like budget, dates, and objectives?
 
-**A:** Currently, `get_products` only has three parameters: `brief` (natural language string), `brand`, and `filters` (structured filters). Campaign details like budget, dates, and objectives should be included in the natural language `brief`.
+**A:** Use `brief` for objectives and semantic intent, `filters` for product
+characteristics, `targeting_overlay` for exact delivery constraints, and
+`required_overlay_support` for targeting dimensions that will be selected
+later. Dates and budget guidance may still be expressed in the brief or
+supported structured filter fields.
 
-**Future:** Structured parameters for budget, dates, objectives, and targeting are being considered to reduce conversational back-and-forth. Track the roadmap for updates.
-
-**Current Workaround:** Include these details in your brief:
+**Example:**
 ```json
 {
   "brand": {
@@ -27,7 +46,11 @@ Common questions from teams building AdCP sales agents and integrations, with di
 
 ### Q: How do I request specific audience targeting in `get_products`?
 
-**A:** All targeting requests currently go in the natural language `brief`. There's no structured targeting filter yet.
+**A:** Put semantic audience intent in `brief`, but put exact delivery
+constraints in `targeting_overlay`. Use `required_overlay_support` for a
+dimension whose concrete values will be selected on packages later. Filters
+select product characteristics and the legacy targeting-like filter fields are
+deprecated.
 
 **Example:**
 ```json
@@ -35,15 +58,32 @@ Common questions from teams building AdCP sales agents and integrations, with di
   "brand": {
     "domain": "energydrink.com"
   },
-  "brief": "Target sports fans, ages 18-34, in major US cities for energy drink campaign"
+  "brief": "Reach sports fans for an energy drink campaign",
+  "targeting_overlay": {
+    "demographics": {
+      "age": { "min": 18, "max": 34, "include_unknown": false }
+    },
+    "geo_countries": ["US"]
+  },
+  "required_overlay_support": {
+    "geo_metros": { "systems": ["nielsen_dma"] }
+  }
 }
 ```
 
-The publisher's AI interprets this and returns relevant products. Future versions may add structured targeting filters.
+The seller interprets the brief and must also account for any structured overlay
+in availability, pricing, and forecasts. If it cannot execute the overlay
+exactly, it either omits the product or returns sparse
+`targeting_resolution.modifications`; selecting that request-scoped product
+accepts the disclosed changes.
 
 ### Q: What does `buying_mode: "wholesale"` mean? We don't expose a wholesale product feed.
 
 **A:** In wholesale mode, buyers are requesting baseline products available without publisher curation or proposal generation.
+
+This does not make filters wholesale-only. Filters are hard product constraints
+in `brief`, `wholesale`, and `refine`; wholesale only changes the curation,
+response-timing, and feed-versioning behavior.
 
 **If you don't offer a wholesale product feed**, return an error:
 ```json

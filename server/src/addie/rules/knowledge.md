@@ -8,9 +8,9 @@ When asked about AdCP's current version, release status, maturity, or stability 
 When someone asks how we know a seller agent's response is good, how brief interpretation quality is measured, or how to trust seller agents — this is the foundational design answer:
 
 **How buyer-seller evaluation works:**
-- A buyer agent sends a brief or request to one or more seller agents via get_products
-- Each seller agent returns products, proposals, or packages
-- The buyer agent evaluates every response against the brief: Are these products relevant? Do they match the requested channels, formats, budget, and KPIs?
+- A buyer agent sends structured constraints and, when useful, a brief to one or more seller agents via get_products
+- Each seller agent returns products and, when appropriate, proposals
+- The buyer agent evaluates every response against the complete request and disclosed resolution: Are the products relevant? Do filters, targeting, future support, price, forecast, and brief interpretation match what the buyer asked for?
 - If a seller returns irrelevant products, the buyer simply does not buy them. No rubric or conformance score is needed — the buyer agent can see the response and decide.
 
 This is a foundational design property of AdCP. You do not need to search_docs to verify it before explaining it.
@@ -23,17 +23,30 @@ If asked: "How do we know a seller agent's response is good?"
 Answer: The buyer agent evaluates it on every request. That's the whole model. You don't take the response for granted — you evaluate whether it matches what you asked for.
 
 If asked: "What if different sellers interpret the same brief differently?"
-Answer: That's expected. Sellers have different inventory. The buyer agent compares responses and picks what fits. A seller that interprets briefs well wins more business. The market handles this.
+Answer: Different interpretations of semantic intent are expected, and buyers compare the resulting offers. Explicit hard requirements are different: sellers must apply them. Buyers should put any exact constraint with an AdCP representation in `targeting_overlay`, and sellers should confirm hard targeting inferred from prose in `targeting_resolution.brief_targeting`.
 
 If asked: "Shouldn't we standardize how briefs are interpreted?"
-Answer: No. Standardizing interpretation would reduce seller differentiation. Pre-published conformance scores or badges add false confidence. What matters is this response to this brief, evaluated right now by the buyer agent.
+Answer: Standardize facts that already have protocol fields; do not standardize semantic judgment. Exact geography, demographic predicates, placements, properties, and collections belong in structured targeting. Goals such as "reach outdoor enthusiasts" remain seller-interpreted. What matters is whether the current offer satisfies both the structured constraints and the brief.
+
+**Structured-first targeting rule:**
+- Use `filters` for hard offer constraints—metadata, dates, budget,
+  availability, commercial fit, and reporting capabilities—that decide which
+  products may be returned. Their exclusion semantics are identical in
+  `brief`, `wholesale`, and `refine` modes.
+- Use `targeting_overlay` for exact delivery constraints known now.
+- Use `required_overlay_support` for dimensions whose values will be chosen on packages later.
+- Use the brief for goals, context, semantic intent, preferences, and requirements without a structured representation.
+- Hard prose remains binding. Response-level `targeting_resolution.brief_targeting` is the seller's recommended single machine-readable confirmation of what it inferred.
+- Sparse `targeting_resolution.modifications` are proposed differences from a structured overlay. Selecting the configured product accepts the disclosed resolution.
+- No targeting-resolution echo confirms only an unchanged structured overlay; it does not confirm prose interpretation.
+- Targeting-aware discovery is release-gated, not controlled by a separate feature flag. Use it only when `get_adcp_capabilities.adcp.supported_versions` and the echoed `adcp_version` establish a 3.2 contract. With a 3.1-or-earlier or major-only seller, omit the 3.2 fields and use retained legacy filters or explicit brief prose; never treat ignored unknown fields as acceptance.
 
 **Tone matters — distinguish learning from proposing:**
 If someone is genuinely asking how evaluation works (they don't have the mental model yet), teach them. Walk through the flow. Be helpful, not dismissive.
 If someone is proposing new protocol infrastructure to solve something the model already handles, explain why the model handles it and push back on the proposal. The content is the same but the tone is different.
 
 **Where the real risk lives:**
-The dangerous scenario is NOT "the seller returned irrelevant products" — the buyer can see that and walk away. The dangerous scenario is "the seller returned products that looked right, the buyer purchased them, and the seller did not deliver what was described." That is a delivery verification and measurement problem, not a brief interpretation problem.
+The dangerous scenario is NOT merely "the seller returned irrelevant products" — the buyer can see that and walk away. The dangerous scenarios are an undisclosed targeting reinterpretation or delivery that does not match the accepted configured offer. Structured targeting, targeting resolution, package readback, and delivery verification address those risks at different stages.
 
 **What IS useful for sellers:**
 Publisher-side testing tools (test_rfp_response, test_io_execution) help sellers validate their own agents before going live — not as buyer-facing conformance gates.

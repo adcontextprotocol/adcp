@@ -509,10 +509,11 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 | `language` | boolean | Language targeting (ISO 639-1 codes) |
 | `keyword_targets` | object | Keyword targeting with `supported_match_types` array (`broad`, `phrase`, `exact`). Presence indicates support. |
 | `negative_keywords` | object | Negative keyword targeting with `supported_match_types` array. Presence indicates support. |
-| `collection_list` | boolean | Collection list inclusion targeting. Presence indicates support for `targeting_overlay.collection_list`. |
-| `collection_list_exclude` | boolean | Collection list exclusion targeting. Presence indicates support for `targeting_overlay.collection_list_exclude`. |
-| `property_list` | boolean | Property list inclusion targeting. Presence indicates support for `targeting_overlay.property_list`. |
-| `property_list_exclude` | boolean | Property list exclusion targeting (brand-safety blocklists). Presence indicates support for `targeting_overlay.property_list_exclude`. |
+| `collection_list` | boolean | Collection list inclusion targeting. `true` is a seller-wide rollup; inspect each product's `overlay_support`. |
+| `collection_list_exclude` | boolean | Collection list exclusion targeting. `true` is a seller-wide rollup; inspect each product's `overlay_support`. |
+| `property_list` | boolean | Property list inclusion targeting. `true` is a seller-wide rollup; inspect each product's `overlay_support`. |
+| `property_list_exclude` | boolean | Property list exclusion targeting. `true` is a seller-wide rollup; inspect each product's `overlay_support`. |
+| `placement_selection` | boolean | Placement selection targeting. `true` is a seller-wide rollup; inspect each product's targetable placements and `overlay_support`. |
 | `geo_proximity` | object | Proximity targeting from arbitrary coordinates (see below) |
 
 Device platform and device type targeting are implied by `media_buy` support. Audience include/exclude targeting is implied by the presence of the `audience_targeting` capabilities object.
@@ -953,10 +954,11 @@ Agents that declare `supported: true` MUST apply the same account/caller authori
 - `media_buy.execution.targeting.geo_postal_areas.ZA` contains `postal_code` → Buyer can send normal South African postal codes, seller MUST honor them
 - `media_buy.execution.targeting.geo_metros.nielsen_dma: true` → Buyer can send DMA codes, seller MUST honor them
 - `media_buy.execution.targeting.demographics.supported: true` → At least one product supports canonical demographic targeting; this rollup does not authorize the field on every product, so buyers MUST inspect `Product.demographic_targeting`
-- `media_buy.execution.targeting.collection_list: true` → Buyer can send `targeting_overlay.collection_list`, seller MUST honor it
-- `media_buy.execution.targeting.collection_list_exclude: true` → Buyer can send `targeting_overlay.collection_list_exclude`, seller MUST honor it
-- `media_buy.execution.targeting.property_list: true` → Buyer can send `targeting_overlay.property_list`, seller MUST honor it
-- `media_buy.execution.targeting.property_list_exclude: true` → Buyer can send `targeting_overlay.property_list_exclude` (brand-safety blocklists), seller MUST honor them
+- `media_buy.execution.targeting.collection_list: true` → At least one product supports collection inclusion; inspect that product's `overlay_support.collection_list` before selecting values later
+- `media_buy.execution.targeting.collection_list_exclude: true` → At least one product supports collection exclusion; inspect that product's `overlay_support.collection_list_exclude`
+- `media_buy.execution.targeting.property_list: true` → At least one product supports property inclusion; inspect that product's `overlay_support.property_list`
+- `media_buy.execution.targeting.property_list_exclude: true` → At least one product supports property exclusion; inspect that product's `overlay_support.property_list_exclude`
+- `media_buy.execution.targeting.placement_selection: true` → At least one product supports purchased-placement selection; inspect that product's targetable placements and `overlay_support.placement_selection`
 - `media_buy.content_standards` object present → Seller MUST apply content standards when provided
 - `media_buy.audience_targeting` object present → Seller MUST support `sync_audiences` and audience targeting overlays
 - `media_buy.conversion_tracking` object present → Seller MUST support `sync_event_sources` and `log_event`
@@ -1086,7 +1088,9 @@ const sellers = await findCompatibleSellers(
 
 ### Use Capabilities to Build Targeting
 
-Capabilities tell you what you CAN specify in create_media_buy targeting. Use `required_geo_targeting` to filter products to sellers that support specific geo targeting levels and systems:
+Seller capabilities are a routing rollup. Use `required_overlay_support` to
+request the product-scoped targeting surface that must be selectable later, and
+`targeting_overlay` for concrete constraints that must affect discovery:
 
 ```javascript
 // First, check capabilities
@@ -1102,16 +1106,10 @@ const postalSupport = mediaBuy.execution?.targeting?.geo_postal_areas;
 // Filter products to sellers with specific geo targeting capabilities
 const products = await client.getProducts({
   brief: "Premium video inventory in US for ZIP-targeted campaign",
-  filters: {
-    channels: ['olv', 'ctv'],
-    countries: ['US'],
-    // Require seller supports ZIP targeting (capability filter - no actual ZIPs needed)
-    // level = granularity, system = classification taxonomy
-    required_geo_targeting: [
-      { level: 'postal_area', country: 'US', system: 'zip' }
-    ],
-    // Only include if seller supports this AXE (legacy — new integrations use TMP)
-    required_axe_integrations: ['https://axe.example.com']
+  filters: { channels: ['olv', 'ctv'] },
+  targeting_overlay: { geo_countries: ['US'] },
+  required_overlay_support: {
+    geo_postal_areas: { US: ['zip'] }
   }
 });
 
@@ -1123,7 +1121,8 @@ const buy = await client.createMediaBuy({
     product_id: products.products[0].product_id,
     pricing_option_id: products.products[0].pricing_options[0].id,
     budget: 10000,
-    // Targeting overlay refines delivery within product coverage
+    // The configured product already represents US targeting. Add the ZIP
+    // selection the buyer deferred during discovery.
     targeting_overlay: {
       geo_countries: ['US'],
       // Only specify ZIP targeting if seller supports it
