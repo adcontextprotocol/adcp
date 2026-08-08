@@ -9195,7 +9195,7 @@ describe('update_media_buy budget validation', () => {
     expect(rejected.message).toContain('positive, finite committed budgets');
   });
 
-  it('rejects total_budget combined with package patches without mutation', async () => {
+  it('rejects total_budget when amount does not equal the explicit package sum', async () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
@@ -9215,12 +9215,13 @@ describe('update_media_buy budget validation', () => {
     });
     const packageId = (created.packages as Array<Record<string, unknown>>)[0].package_id;
 
+    // total_budget (40000) does not equal the resulting package sum (99999) → assertion failure
     const { result: rejected } = await simulateCallTool(server, 'update_media_buy', {
       account,
       media_buy_id: created.media_buy_id,
       revision: created.revision,
       total_budget: { amount: 40000, currency: 'USD' },
-      packages: [{ package_id: packageId, budget: 40000 }],
+      packages: [{ package_id: packageId, budget: 99999 }],
     });
     expect(rejected.code).toBe('VALIDATION_ERROR');
 
