@@ -31,6 +31,10 @@ import {
   getRelationshipBySlackId,
 } from '../../db/relationship-db.js';
 import { recordEvent } from '../../db/person-events-db.js';
+import {
+  canManageOrganizationBilling,
+} from '../../billing/billing-authorization.js';
+import { getWorkos } from '../../auth/workos-client.js';
 
 const logger = createLogger('addie-billing-tools');
 const orgDb = new OrganizationDatabase();
@@ -207,9 +211,9 @@ on file (set via the dashboard or invite-acceptance flow).`,
   },
   {
     name: 'get_billing_portal',
-    description: `Get a link to the Stripe Customer Portal where the member can view invoices, download receipts, update payment methods, and manage their subscription.
-Use this when a member asks about receipts, invoices, billing history, payment methods, or subscription management.
-The member must be signed in.`,
+    description: `Get a link to the Stripe Customer Portal where an organization owner or admin can view invoices, download receipts, update payment methods, and manage the subscription.
+Use this when an owner or admin asks about receipts, invoices, billing history, payment methods, or subscription management.
+The user must be signed in and have an active owner or admin role in the selected organization.`,
     input_schema: {
       type: 'object' as const,
       properties: {},
@@ -600,7 +604,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     }
   });
 
-  // Get billing portal link for existing members
+  // Get billing portal link for active organization billing managers
   handlers.set('get_billing_portal', async (_input) => {
     const orgId = memberContext?.organization?.workos_organization_id;
     if (!orgId) {
@@ -611,6 +615,29 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     }
 
     try {
+      const workosUserId = memberContext?.workos_user?.workos_user_id;
+      if (!workosUserId) {
+        return JSON.stringify({
+          success: false,
+          error: 'You need to be signed in with a linked account to access billing.',
+        });
+      }
+
+      // MemberContext is cached for conversational continuity. Financial
+      // authorization is not: resolve the current active role for this exact
+      // org immediately before reading the billing account or calling Stripe.
+      // Load the canonical resolver only on this privileged path: it imports
+      // auth middleware for the dev-user bypass, whose WorkOS constructor must
+      // not run while unrelated billing tools are being initialized.
+      const { resolveUserOrgMembership } = await import('../../utils/resolve-user-org-membership.js');
+      const membership = await resolveUserOrgMembership(getWorkos(), workosUserId, orgId);
+      if (!canManageOrganizationBilling(membership, orgId)) {
+        return JSON.stringify({
+          success: false,
+          error: 'Only organization owners and admins can manage billing.',
+        });
+      }
+
       const org = await orgDb.getOrganization(orgId);
       const stripeCustomerId = org?.stripe_customer_id;
 
