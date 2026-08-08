@@ -320,7 +320,7 @@ When a creative is destroyed via [`creative.purged`](https://adcontextprotocol.o
 
 The `status` field on a tombstone is **frozen at its pre-purge value** (in the example above, `"approved"` is what the creative was right before purge — not a current claim). Buyers MUST treat the creative as gone: assignments, serving operations, and delivery reads no longer apply. The presence of the `purge` block is the unambiguous signal.
 
-Hard-purged creatives (`purge_kind: hard`, used for legal erasure under GDPR Article 17 / CCPA / equivalent) retain no tombstone; the [`creative.purged`](https://adcontextprotocol.org/schemas/v3/creative/creative-purged-webhook.json) webhook is the only signal. See [snapshot-and-log § Rule 4 carve-out](/docs/protocol/snapshot-and-log#account-level-adopters-3-1) for the rationale.
+Hard-purged creatives (`purge_kind: hard`, used for legal erasure under GDPR Article 17 / CCPA / equivalent) retain no tombstone; the [`creative.purged`](https://adcontextprotocol.org/schemas/v3/creative/creative-purged-webhook.json) webhook is the only signal. See the [snapshot-and-log conforming-pairs catalog](/docs/protocol/snapshot-and-log#current-conforming-pairs) for the recovery exclusion.
 
 ### Webhook activity
 
