@@ -5419,7 +5419,7 @@ export class HTTPServer {
 
 
     // GET /api/admin/audit-logs - Get audit log entries
-    this.app.get('/api/admin/audit-logs', requireAuth, requireAdmin, async (req, res) => {
+    this.app.get('/api/admin/audit-logs', ...requireGlobalAdmin, async (req, res) => {
       try {
         const {
           organization_id,

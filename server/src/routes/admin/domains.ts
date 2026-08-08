@@ -13,7 +13,12 @@ import {
   unlinkDomainAndReselectPrimary,
 } from "../../db/organization-domains-db.js";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin, requireGlobalAdmin } from "../../middleware/auth.js";
+import {
+  requireAuth,
+  requireAdmin,
+  requireGlobalAdmin,
+  refuseAnyApiKeyOnGlobalAdmin,
+} from "../../middleware/auth.js";
 import { SlackDatabase } from "../../db/slack-db.js";
 import { enrichOrganization } from "../../services/enrichment.js";
 import { trackBackground } from "../../services/brand-enrichment.js";
@@ -1630,6 +1635,7 @@ export function setupDomainRoutes(
                 error: "still_pending",
                 message: "WorkOS could not find the DNS TXT verification record yet.",
                 state: initialState,
+                workos_domain_id: entry.id,
                 dns_record_name: recordName,
                 verification_token: entry.verificationToken ?? null,
               });
@@ -1643,6 +1649,7 @@ export function setupDomainRoutes(
             error: "still_pending",
             message: "WorkOS has not confirmed the DNS record yet.",
             state: verifiedState,
+            workos_domain_id: entry.id,
           });
         }
 
@@ -1674,8 +1681,218 @@ export function setupDomainRoutes(
     }
   );
 
+  // POST /api/admin/organizations/:orgId/domains/:domain/override-verification
+  // High-trust recovery path for a WorkOS challenge that remains pending after
+  // an administrator has independently confirmed the DNS record. Unlike the
+  // tenant-scoped add/re-check routes, this bypasses WorkOS ownership proof and
+  // therefore must remain restricted to global administrators.
+  apiRouter.post(
+    "/organizations/:orgId/domains/:domain/override-verification",
+    ...requireGlobalAdmin,
+    async (req, res) => {
+      const { orgId } = req.params;
+      if (!workos) {
+        return res.status(503).json({ error: "WorkOS not configured" });
+      }
+
+      let normalizedDomain: string;
+      try {
+        normalizedDomain = canonicalizeBrandDomain(req.params.domain);
+        assertClaimableBrandDomain(normalizedDomain);
+      } catch (error) {
+        logger.warn({ error, rawDomain: req.params.domain }, "Manual domain override rejected invalid domain");
+        return res.status(400).json({
+          error: "invalid_domain",
+          message: "The domain is malformed or cannot be claimed.",
+        });
+      }
+
+      const attestation = typeof req.body?.verification_attestation === "string"
+        ? req.body.verification_attestation.trim()
+        : "";
+      if (!attestation) {
+        return res.status(400).json({
+          error: "verification_attestation_required",
+          message: "An attestation note is required to manually mark a pending WorkOS domain verified.",
+        });
+      }
+      if (attestation.length > 2000) {
+        return res.status(400).json({
+          error: "verification_attestation_too_long",
+          message: "The attestation note must be 2,000 characters or fewer.",
+        });
+      }
+
+      const pool = getPool();
+      const actorId = req.user?.authWorkosUserId ?? req.user?.id;
+      if (!actorId) {
+        return res.status(500).json({ error: "Unable to identify the acting administrator" });
+      }
+
+      try {
+        const orgResult = await pool.query(
+          `SELECT name, is_personal FROM organizations WHERE workos_organization_id = $1`,
+          [orgId],
+        );
+        if (orgResult.rows.length === 0) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+        if (orgResult.rows[0].is_personal) {
+          return res.status(400).json({
+            error: "Invalid operation",
+            message: "Domains cannot be verified for individual (personal) organizations",
+          });
+        }
+
+        const workosOrg = await workos.organizations.getOrganization(orgId);
+        const existingDomain = workosOrg.domains.find(
+          d => d.domain.toLowerCase() === normalizedDomain,
+        );
+        if (!existingDomain) {
+          return res.status(404).json({
+            error: "no_challenge",
+            message: "No WorkOS domain challenge exists for this organization and domain.",
+          });
+        }
+
+        const beforeState = String(existingDomain.state);
+        const alreadyVerified = beforeState === "verified" || beforeState === "legacy_verified";
+        const wantsPrimary = req.body?.is_primary === true;
+        const auditDetails = {
+          domain: normalizedDomain,
+          workos_domain_id: existingDomain.id,
+          before_state: beforeState,
+          requested_after_state: "verified",
+          verification_attestation: attestation,
+          acting_workos_user_id: actorId,
+          admin_email: req.user?.email ?? null,
+        };
+        const writeAudit = async (
+          action: string,
+          outcome: "attempted" | "succeeded" | "failed",
+          error?: unknown,
+        ) => {
+          await pool.query(
+            `INSERT INTO registry_audit_log (
+               workos_organization_id, workos_user_id, action,
+               resource_type, resource_id, details
+             ) VALUES ($1, $2, $3, 'organization_domain', $4, $5)`,
+            [
+              orgId,
+              actorId,
+              action,
+              normalizedDomain,
+              JSON.stringify({
+                ...auditDetails,
+                outcome,
+                after_state: outcome === "succeeded" ? "verified" : beforeState,
+                error: error instanceof Error ? error.message : (error ? String(error) : null),
+              }),
+            ],
+          );
+        };
+
+        const syncLocalVerifiedState = async () => {
+          await upsertWorkosDomain({
+            orgId,
+            domain: normalizedDomain,
+            verified: true,
+            isPrimary: wantsPrimary,
+          });
+          if (wantsPrimary) {
+            await setPrimaryDomain({ orgId, domain: normalizedDomain });
+          }
+          const linkResult = await linkContactsByDomain(normalizedDomain, orgId, actorId);
+          invalidateMemberContextCache();
+          return linkResult;
+        };
+
+        if (alreadyVerified) {
+          const linkResult = await syncLocalVerifiedState();
+          await writeAudit("domain_verification_override_reconciled", "succeeded");
+          return res.json({
+            success: true,
+            domain: normalizedDomain,
+            state: beforeState,
+            already_verified: true,
+            contacts_linked: linkResult.contactsLinked,
+          });
+        }
+
+        await writeAudit("domain_verification_override_attempted", "attempted");
+
+        const updatedDomains = workosOrg.domains.map(d => {
+          const state = String(d.state);
+          return {
+            domain: d.domain,
+            state: d.domain.toLowerCase() === normalizedDomain
+              ? DomainDataState.Verified
+              : (state === "verified" || state === "legacy_verified"
+                ? DomainDataState.Verified
+                : DomainDataState.Pending),
+          };
+        });
+
+        try {
+          await workos.organizations.updateOrganization({
+            organization: orgId,
+            domainData: updatedDomains,
+          });
+        } catch (workosError) {
+          try {
+            await writeAudit("domain_verification_override_failed", "failed", workosError);
+          } catch (auditError) {
+            logger.error(
+              { err: auditError, workosError, orgId, domain: normalizedDomain },
+              "Manual domain override failed and failure audit could not be recorded",
+            );
+          }
+          logger.error({ err: workosError, orgId, domain: normalizedDomain }, "Manual domain override failed in WorkOS");
+          return res.status(502).json({
+            error: "workos_error",
+            message: "Failed to override domain verification in WorkOS.",
+          });
+        }
+
+        try {
+          await writeAudit("domain_verification_override_succeeded", "succeeded");
+        } catch (auditError) {
+          logger.error(
+            { err: auditError, orgId, domain: normalizedDomain },
+            "Manual domain override succeeded but its completion audit failed",
+          );
+          return res.status(500).json({
+            error: "audit_log_failed",
+            message: "WorkOS accepted the override, but its completion audit could not be recorded. Escalate before retrying.",
+          });
+        }
+
+        const linkResult = await syncLocalVerifiedState();
+
+        logger.warn(
+          { orgId, domain: normalizedDomain, actor: actorId, workosDomainId: existingDomain.id },
+          "Global administrator manually overrode WorkOS domain verification",
+        );
+        return res.json({
+          success: true,
+          domain: normalizedDomain,
+          state: "verified",
+          already_verified: false,
+          contacts_linked: linkResult.contactsLinked,
+        });
+      } catch (error) {
+        logger.error({ err: error, orgId, domain: normalizedDomain }, "Manual domain verification override failed");
+        return res.status(500).json({
+          error: "internal_error",
+          message: "Unable to complete the manual domain verification override.",
+        });
+      }
+    },
+  );
+
   // POST /api/admin/organizations/:orgId/domains - Add a domain to an organization
-  // Writes to WorkOS first, then local DB is updated via webhook (or immediately for consistency)
+  // Adds a pending WorkOS challenge. Only WorkOS verification or the dedicated
+  // global-admin override route may transition a domain to verified.
   apiRouter.post(
     "/organizations/:orgId/domains",
     requireAuth,
@@ -1693,14 +1910,15 @@ export function setupDomainRoutes(
           return res.status(500).json({ error: "WorkOS not configured" });
         }
 
-        const normalizedDomain = domain.toLowerCase().trim().replace(/^www\./, '');
-
-        // Validate domain format
-        const domainRegex = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z]{2,})+$/;
-        if (!domainRegex.test(normalizedDomain)) {
+        let normalizedDomain: string;
+        try {
+          normalizedDomain = canonicalizeBrandDomain(domain);
+          assertClaimableBrandDomain(normalizedDomain);
+        } catch (error) {
+          logger.warn({ error, rawDomain: domain }, "Organization domain add rejected invalid domain");
           return res.status(400).json({
-            error: "Invalid domain format",
-            message: `"${normalizedDomain}" is not a valid domain. Expected format: "example.com" or "sub.example.com"`,
+            error: "invalid_domain",
+            message: "The domain is malformed or cannot be claimed.",
           });
         }
 
@@ -1739,6 +1957,9 @@ export function setupDomainRoutes(
           if (existingOrg.workos_organization_id !== orgId) {
             // Allow admins to reassign domains from personal orgs to corporate orgs
             if (existingOrg.is_personal) {
+              // This mutates a second organization, so tenant-scoped admin
+              // keys may not use the platform WorkOS credential to perform it.
+              if (refuseAnyApiKeyOnGlobalAdmin(req, res)) return;
               logger.info(
                 { orgId, domain: normalizedDomain, fromOrg: existingOrg.workos_organization_id, fromOrgName: existingOrg.org_name },
                 "Reassigning domain from personal org to corporate org"
@@ -1774,7 +1995,7 @@ export function setupDomainRoutes(
               });
             }
           }
-          // Domain already belongs to this org - but need to verify it if not already
+          // Domain already belongs to this org - sync its current WorkOS challenge state.
           // Skip this check if we just reassigned from a personal org (domain was deleted)
           if (!reassigningFromPersonalOrgId) {
             if (existingOrg.verified) {
@@ -1784,10 +2005,11 @@ export function setupDomainRoutes(
                 domain: normalizedDomain,
               });
             }
-            // Domain exists but not verified - continue to verify it
-            logger.info({ orgId, domain: normalizedDomain }, "Domain exists but not verified, proceeding to verify");
+            logger.info({ orgId, domain: normalizedDomain }, "Domain exists but is not yet verified in WorkOS");
           }
         }
+
+        let workosVerified = false;
 
         // Add to WorkOS first - this is the source of truth
         try {
@@ -1797,28 +2019,20 @@ export function setupDomainRoutes(
           const existingDomain = workosOrg.domains.find(d => d.domain.toLowerCase() === normalizedDomain);
 
           if (existingDomain) {
-            // Domain already exists - just verify it if not already verified
-            if (existingDomain.state !== 'verified') {
-              const updatedDomains = workosOrg.domains.map(d => ({
-                domain: d.domain,
-                state: d.domain.toLowerCase() === normalizedDomain ? DomainDataState.Verified : (d.state === 'verified' ? DomainDataState.Verified : DomainDataState.Pending)
-              }));
-              await workos.organizations.updateOrganization({
-                organization: orgId,
-                domainData: updatedDomains,
-              });
-            }
-            // If already verified, no WorkOS update needed
+            const existingDomainState = String(existingDomain.state);
+            workosVerified = existingDomainState === "verified" || existingDomainState === "legacy_verified";
           } else {
-            // Domain doesn't exist - add it
+            // A new domain starts pending. WorkOS owns the verification transition.
             const existingDomains = workosOrg.domains.map(d => ({
               domain: d.domain,
-              state: d.state === 'verified' ? DomainDataState.Verified : DomainDataState.Pending
+              state: d.state === "verified" || String(d.state) === "legacy_verified"
+                ? DomainDataState.Verified
+                : DomainDataState.Pending,
             }));
 
             await workos.organizations.updateOrganization({
               organization: orgId,
-              domainData: [...existingDomains, { domain: normalizedDomain, state: DomainDataState.Verified }],
+              domainData: [...existingDomains, { domain: normalizedDomain, state: DomainDataState.Pending }],
             });
           }
         } catch (workosErr) {
@@ -1847,16 +2061,16 @@ export function setupDomainRoutes(
         const wantsPrimary = is_primary === true;
 
         // Insert/update local DB immediately (webhook will also do this, but
-        // for immediate consistency). Admin tool already pushed this domain
-        // to WorkOS above, so source='workos' reflects upstream truth.
+        // for immediate consistency). source='workos' reflects upstream truth;
+        // pending challenges remain unverified locally until WorkOS confirms.
         await upsertWorkosDomain({
           orgId,
           domain: normalizedDomain,
-          verified: true,
-          isPrimary: wantsPrimary,
+          verified: workosVerified,
+          isPrimary: wantsPrimary && workosVerified,
         });
 
-        if (wantsPrimary) {
+        if (wantsPrimary && workosVerified) {
           // Atomic-flip across the org's rows and sync email_domain. No
           // requireSource — admin override.
           await setPrimaryDomain({ orgId, domain: normalizedDomain });
@@ -1871,14 +2085,15 @@ export function setupDomainRoutes(
           );
         }
 
-        logger.info({ orgId, domain: normalizedDomain, isPrimary: is_primary }, "Added domain to organization via WorkOS");
+        logger.info(
+          { orgId, domain: normalizedDomain, isPrimary: is_primary, verified: workosVerified },
+          "Added domain to organization via WorkOS",
+        );
 
         // Link any existing unmapped email contacts with this domain to the org
-        const linkResult = await linkContactsByDomain(
-          normalizedDomain,
-          orgId,
-          req.user?.id
-        );
+        const linkResult = workosVerified
+          ? await linkContactsByDomain(normalizedDomain, orgId, req.user?.id)
+          : { contactsLinked: 0 };
 
         if (linkResult.contactsLinked > 0) {
           logger.info(
@@ -1890,7 +2105,8 @@ export function setupDomainRoutes(
         res.json({
           success: true,
           domain: normalizedDomain,
-          is_primary: is_primary || false,
+          verified: workosVerified,
+          is_primary: wantsPrimary && workosVerified,
           synced_to_workos: true,
           contacts_linked: linkResult.contactsLinked,
         });
