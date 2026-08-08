@@ -9,18 +9,19 @@ const errorSchema = JSON.parse(fs.readFileSync(
   'utf8',
 ));
 
-describe('error.retry_after integer migration contract', () => {
-  it('accepts only whole seconds within the settled bounds', () => {
+describe('error.retry_after integer emission and compatible decoding contract', () => {
+  it('preserves the released number wire type and bounds', () => {
     const retryAfter = errorSchema.properties.retry_after;
-    assert.equal(retryAfter.type, 'integer');
+    assert.equal(retryAfter.type, 'number');
     assert.equal(retryAfter.minimum, 1);
     assert.equal(retryAfter.maximum, 3600);
   });
 
-  it('pins ceiling-before-clamp migration semantics in the schema', () => {
+  it('requires integer emission while pinning legacy fractional decoding', () => {
     const description = errorSchema.properties.retry_after.description;
-    assert.match(description, /round up/i);
+    assert.match(description, /producers MUST emit an integer/i);
+    assert.match(description, /backward compatibility/i);
+    assert.match(description, /consumers receiving one MUST round up/i);
     assert.match(description, /before clamping/i);
-    assert.match(description, /legacy finite fractional/i);
   });
 });
