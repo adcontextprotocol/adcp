@@ -39,5 +39,25 @@
     "role",
     "asset"
   ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "const": "other"
+          }
+        },
+        "required": [
+          "role"
+        ]
+      },
+      "then": {
+        "required": [
+          "role_label"
+        ]
+      }
+    }
+  ],
   "additionalProperties": true
 }
