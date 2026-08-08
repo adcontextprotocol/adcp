@@ -1185,6 +1185,7 @@
 #                are matched as deep subsets),
 #                "status_code", "http_status", "http_status_in",
 #                "error_code", "on_401_require_header", "resource_equals_agent_url",
+#                "oauth_metadata_graph",
 #                "any_of", "refs_resolve", "a2a_submitted_artifact",
 #                "field_less_than" / "field_equals_context" (compare a field on this
 #                step's response against a value captured by a prior step — see
@@ -1323,6 +1324,36 @@
 #   MUST reject the storyboard before execution begins.
 #   For fields that are required by the response schema, pair this check with a separate
 #   `check: field_present` to avoid silently accepting absent fields that are required.
+#
+# OAuth discovery graph — use `check: oauth_metadata_graph`:
+#   Applies only to a `protected_resource_metadata` runner task. Starting from
+#   the RFC 9728 document returned by that task, the runner validates the full
+#   public OAuth discovery graph described by `test-kits/oauth-setup-runner.yaml`:
+#   the protected-resource identifier, a non-empty `authorization_servers`
+#   array, every referenced RFC 8414 document, resource equality under the
+#   shared `resource_equals_agent_url` rule (scheme and host lowercased,
+#   default ports elided, path case-sensitive), exact issuer string equality
+#   after JSON decoding (without URL normalization),
+#   conditional RFC 8414 required fields, HTTPS URL constraints, and passive
+#   reachability of advertised authorization, token, and JWKS endpoints.
+#
+#   The check follows EVERY authorization server named in a graph that is within
+#   the runner contract's fixed limits; an oversized graph fails with
+#   `oauth_graph_limit_exceeded` before unbounded traversal. A valid,
+#   explicitly named authorization server on another origin is conformant;
+#   origin equality with the protected resource MUST NOT be imposed. Every URL
+#   is independently subject to the runner contract's SSRF, redirect, size, and
+#   timeout policy before it is fetched.
+#
+#   `registration_endpoint` is syntax-checked when advertised, but this check
+#   MUST NOT submit an RFC 7591 registration request. Active registration has
+#   credential-lifecycle and cleanup semantics and belongs to a separately
+#   capability-gated future grade.
+#
+#   Failure output MUST use one of the stable diagnostic codes in the test-kit
+#   contract and include the offending URL/issuer/field when available. The
+#   deterministic fixtures at `test-vectors/oauth-setup/vectors.json` are the
+#   conformance corpus for runner implementations of this check.
 #
 # Error-shape validation — use `check: error_code`:
 #   The `error_code` check is shape-agnostic. The runner resolves the code from

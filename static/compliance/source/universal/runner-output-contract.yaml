@@ -26,7 +26,7 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "2.6.0"
+version: "2.7.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
@@ -56,6 +56,7 @@ authored_check_kinds:
   - error_code
   - on_401_require_header
   - resource_equals_agent_url
+  - oauth_metadata_graph
   - any_of
   - refs_resolve
   - a2a_submitted_artifact
@@ -156,7 +157,8 @@ validation_result:
                               # field_value_or_absent | field_contains |
                               # status_code | http_status | http_status_in |
                               # error_code | on_401_require_header |
-                              # resource_equals_agent_url | any_of | refs_resolve |
+                              # resource_equals_agent_url | oauth_metadata_graph |
+                              # any_of | refs_resolve |
                               # a2a_submitted_artifact | field_less_than |
                               # field_equals_context | upstream_traffic |
                               # canonical_format_satisfaction |
@@ -263,6 +265,11 @@ validation_result:
                               #                          local_satisfied mirrors the expected
                               #                          local package/product satisfaction
                               #                          verdict.
+                              #   oauth_metadata_graph → exact object:
+                              #                          { profile: "adcp/oauth-metadata-graph/v1",
+                              #                          require_authorization_servers: true,
+                              #                          follow_all_authorization_servers: true,
+                              #                          probe_advertised_endpoints: true }.
                               #   cross_response_field_equal
                               #                       → object { path } — the JSON path
                               #                          asserted equal across every
@@ -336,6 +343,11 @@ validation_result:
                               #                          package/product satisfaction verdict,
                               #                          and rejection summarizes format-related
                               #                          rejection evidence when the task failed.
+                              #   oauth_metadata_graph → object { code, url?, issuer?,
+                              #                          field?, http_status?, detail? }
+                              #                          naming the first deterministic graph
+                              #                          failure. `code` comes from the canonical
+                              #                          list in test-kits/oauth-setup-runner.yaml.
                               #   cross_response_field_equal
                               #                       → object { observed_values: [...] } —
                               #                          the values observed at `path` on
