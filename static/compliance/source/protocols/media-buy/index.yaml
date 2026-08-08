@@ -33,6 +33,7 @@ requires_scenarios:
   - media_buy_seller/dependency_impairment_audience
   - media_buy_seller/dependency_impairment_cardinality
   - media_buy_seller/seller_optimized_budget
+  - media_buy_seller/total_budget_redistribution
   - media_buy_seller/bidding_policy_placement
   - media_buy_seller/bidding_cost_binding
   - media_buy_seller/package_automatic_bidding

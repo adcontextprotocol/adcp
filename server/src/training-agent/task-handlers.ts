@@ -2567,6 +2567,38 @@ function projectedPackageBudgetTotal(mb: MediaBuyState, req: UpdateMediaBuyArgs)
   return nextExisting + added;
 }
 
+function proportionalFixedPackageBudgets(
+  mb: MediaBuyState,
+  requestedTotal: number,
+): { budgets?: Map<string, number>; error?: TaskError } {
+  const activePackages = mb.packages.filter(pkg => !pkg.canceled);
+  const currentTotal = activePackages.reduce((sum, pkg) => sum + pkg.budget, 0);
+  if (
+    activePackages.length === 0
+    || !Number.isFinite(currentTotal)
+    || currentTotal <= 0
+    || activePackages.some(pkg => !Number.isFinite(pkg.budget) || pkg.budget < 0)
+  ) {
+    return {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Cannot proportionally update total_budget without positive, finite committed budgets on active packages.',
+      },
+    };
+  }
+
+  const budgets = new Map<string, number>();
+  let allocated = 0;
+  activePackages.forEach((pkg, index) => {
+    const amount = index === activePackages.length - 1
+      ? requestedTotal - allocated
+      : requestedTotal * (pkg.budget / currentTotal);
+    budgets.set(pkg.packageId, amount);
+    allocated += amount;
+  });
+  return { budgets };
+}
+
 interface MediaBuyAggregateUpdate {
   total_budget?: { amount: number; currency: string };
   budget_allocation?: Record<string, unknown>;
@@ -9655,6 +9687,16 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     return { errors: [{ code, message }] };
   }
 
+  if (req.total_budget !== undefined && (req.packages !== undefined || req.new_packages !== undefined)) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'total_budget is mutually exclusive with packages and new_packages.',
+      }] as TaskError[],
+      ...(req.context !== undefined && { context: req.context }),
+    };
+  }
+
   const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
   overlaySeededProducts(session, productMap);
 
@@ -9706,9 +9748,16 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   }
   const resultingAllocation = aggregateUpdate.budget_allocation ?? mb.budgetAllocation;
   const sellerOptimized = resultingAllocation?.mode === 'seller_optimized';
+  const fixedRedistribution = aggregateUpdate.total_budget && !sellerOptimized
+    ? proportionalFixedPackageBudgets(mb, aggregateUpdate.total_budget.amount)
+    : undefined;
+  if (fixedRedistribution?.error) {
+    return { errors: [fixedRedistribution.error] };
+  }
   if (
     aggregateUpdate.total_budget
     && !sellerOptimized
+    && (req.packages !== undefined || req.new_packages !== undefined)
     && aggregateUpdate.total_budget.amount !== projectedPackageBudgetTotal(mb, req)
   ) {
     return {
@@ -10016,6 +10065,23 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     || req.new_packages?.length,
   );
   if (aggregateUpdate.total_budget) {
+    if (fixedRedistribution?.budgets) {
+      for (const pkg of mb.packages) {
+        const nextBudget = fixedRedistribution.budgets.get(pkg.packageId);
+        if (nextBudget === undefined) continue;
+        const oldBudget = pkg.budget;
+        pkg.budget = nextBudget;
+        affectedPackageIds.add(pkg.packageId);
+        mb.history.push({
+          revision: mb.revision,
+          timestamp: now,
+          actor: 'buyer',
+          action: 'budget_updated',
+          summary: `Package ${pkg.packageId} budget proportionally changed from ${oldBudget} to ${nextBudget}`,
+          packageId: pkg.packageId,
+        });
+      }
+    }
     mb.totalBudget = aggregateUpdate.total_budget.amount;
   } else if (
     !sellerOptimized
