@@ -232,6 +232,16 @@ describe('deriveStoryboardStatuses', () => {
   it('treats an unavailable runner fixture and any legacy cascade as untested', () => {
     const result = makeResult([
       {
+        scenario: 'creative_fate_after_cancellation/get_products_brief',
+        passed: true,
+        steps: [
+          {
+            passed: true,
+            step: 'Capture the seller format contract',
+          },
+        ],
+      },
+      {
         scenario: 'creative_fate_after_cancellation/sync_creative_with_assignment',
         passed: true,
         steps: [

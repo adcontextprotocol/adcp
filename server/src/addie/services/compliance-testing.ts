@@ -654,6 +654,7 @@ export function deriveStoryboardStatuses(
     stepLessPhasesPassed: number;
     stepLessPhasesTotal: number;
     controllerSkipped: number;
+    fixtureUnavailable: boolean;
     failureCount: number;
     skippedCount: number;
     firstFailure: FirstFailure | null;
@@ -719,6 +720,7 @@ export function deriveStoryboardStatuses(
           stepLessPhasesPassed: 0,
           stepLessPhasesTotal: 0,
           controllerSkipped: 0,
+          fixtureUnavailable: false,
           failureCount: 0,
           skippedCount: 0,
           firstFailure: null,
@@ -743,6 +745,9 @@ export function deriveStoryboardStatuses(
       let phaseSawNeutralApplicabilitySkip = false;
       for (const step of s.steps) {
         if (step.skipped) {
+          if (step.skip_reason === 'fixture_unavailable') {
+            agg.fixtureUnavailable = true;
+          }
           if (isBranchSkip(step)) {
             continue;
           }
@@ -789,6 +794,19 @@ export function deriveStoryboardStatuses(
       if (hasExplicitIds) {
         entries.push({ storyboard_id: sbId, status: 'untested', steps_passed: 0, steps_total: 0 });
       }
+      continue;
+    }
+
+    // Fixture availability is a whole-storyboard preflight disposition. The
+    // producer step that captured the format may already have passed, but that
+    // partial execution is not evidence that the seller behavior was tested.
+    if (agg.fixtureUnavailable) {
+      entries.push({
+        storyboard_id: sbId,
+        status: 'untested',
+        steps_passed: 0,
+        steps_total: 0,
+      });
       continue;
     }
 
