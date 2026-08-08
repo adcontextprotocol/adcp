@@ -8952,6 +8952,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // adagents.json" / "you have a brand.json" — this block exposes
       // that signal so the client doesn't have to derive it from a
       // cocktail of nullable flags.
+      const brandOriginCrawlInFlight = autoCrawlTriggered && verifiedOwnerNeedsOriginEvidence;
+      const brandFileStatus = brandOriginCrawlInFlight
+        ? 'checking'
+        : brandRow?.has_brand_manifest
+          ? 'present'
+          : autoCrawlTriggered
+            ? 'checking'
+            : 'unknown';
       const files = {
         adagents_json: {
           status: cachedSourceType === 'community' && cachedAdagentsManifest
@@ -8975,12 +8983,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           // without a manifest from a prior failed crawl). `unknown`
           // = row exists with no manifest and we didn't re-trigger
           // (debounced).
-          status: brandRow?.has_brand_manifest
-            ? 'present'
-            : autoCrawlTriggered
-              ? 'checking'
-              : 'unknown',
-          name: brandRow?.has_brand_manifest ? brandRow.brand_name : undefined,
+          status: brandFileStatus,
+          name: brandFileStatus === 'present' ? brandRow?.brand_name : undefined,
         } as { status: 'present' | 'unknown' | 'checking'; name?: string },
       };
 
