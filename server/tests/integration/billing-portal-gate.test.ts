@@ -4,8 +4,8 @@
  * Stripe portal session (Sabarish opened it four times before realizing
  * the portal can't initiate a subscription).
  *
- * Confirms the gate refuses NULL but allows past_due / canceled / etc., where
- * the portal IS the right tool to recover the subscription.
+ * Confirms the gate refuses NULL, limits billing management to active
+ * owner/admin roles, and allows recoverable subscription statuses.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
@@ -137,6 +137,16 @@ describe('POST /api/organizations/:orgId/billing/portal — subscription_status 
 
   beforeEach(async () => {
     await cleanup(pool);
+    mockListMemberships.mockReset();
+    mockListMemberships.mockResolvedValue({
+      data: [{
+        id: 'om_test',
+        userId: TEST_USER_ID,
+        organizationId: TEST_ORG,
+        role: { slug: 'owner' },
+        status: 'active',
+      }],
+    });
     mockCreatePortalSession.mockClear();
     mockCreatePortalSession.mockResolvedValue('https://billing.stripe.com/p/session/x');
   });
@@ -149,6 +159,71 @@ describe('POST /api/organizations/:orgId/billing/portal — subscription_status 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('No subscription on file');
     expect(res.body.membership_url).toBe('/dashboard/membership');
+    expect(mockCreatePortalSession).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['ordinary member', { organizationId: TEST_ORG, role: 'member', status: 'active' }],
+    ['inactive owner', { organizationId: TEST_ORG, role: 'owner', status: 'inactive' }],
+    ['owner from another organization', { organizationId: 'org_other', role: 'owner', status: 'active' }],
+  ])('denies %s before any Stripe call', async (_label, membership) => {
+    await seedOrg(pool, { subscriptionStatus: 'active' });
+    mockListMemberships.mockResolvedValue({
+      data: [{
+        id: 'om_denied',
+        userId: TEST_USER_ID,
+        organizationId: membership.organizationId,
+        role: { slug: membership.role },
+        status: membership.status,
+      }],
+    });
+
+    const res = await request(app).post(`/api/organizations/${TEST_ORG}/billing/portal`).send({});
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('Access denied');
+    expect(mockCreatePortalSession).not.toHaveBeenCalled();
+  });
+
+  it.each(['owner', 'admin'])('allows an active %s to manage billing', async (role) => {
+    await seedOrg(pool, { subscriptionStatus: 'active' });
+    mockListMemberships.mockResolvedValue({
+      data: [{
+        id: `om_${role}`,
+        userId: TEST_USER_ID,
+        organizationId: TEST_ORG,
+        role: { slug: role },
+        status: 'active',
+      }],
+    });
+
+    const res = await request(app).post(`/api/organizations/${TEST_ORG}/billing/portal`).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.portal_url).toBe('https://billing.stripe.com/p/session/x');
+    expect(mockCreatePortalSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('denies when an owner is demoted before the Stripe operation', async () => {
+    await seedOrg(pool, { subscriptionStatus: 'active' });
+    const membership = (role: string) => ({
+      data: [{
+        id: `om_${role}`,
+        userId: TEST_USER_ID,
+        organizationId: TEST_ORG,
+        role: { slug: role },
+        status: 'active',
+      }],
+    });
+    mockListMemberships
+      .mockReset()
+      .mockResolvedValueOnce(membership('owner'))
+      .mockResolvedValueOnce(membership('member'));
+
+    const res = await request(app).post(`/api/organizations/${TEST_ORG}/billing/portal`).send({});
+
+    expect(res.status).toBe(403);
+    expect(mockListMemberships).toHaveBeenCalledTimes(2);
     expect(mockCreatePortalSession).not.toHaveBeenCalled();
   });
 

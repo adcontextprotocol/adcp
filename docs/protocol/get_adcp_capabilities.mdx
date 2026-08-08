@@ -293,6 +293,20 @@ Optional specialization claims. Each entry corresponds to a narrow storyboard at
 
 See the full [Compliance Catalog](/docs/building/verification/compliance-catalog) for every specialism and the [enum schema](https://adcontextprotocol.org/schemas/v3/enums/specialism.json) for the authoritative list.
 
+### oauth
+
+Introduced in AdCP 3.2. Declares OAuth support for the agent's inbound transport. This is separate from `account.authorization_endpoint`, which is specifically an operator credential-acquisition URL.
+
+```json
+{
+  "oauth": {
+    "supported": true
+  }
+}
+```
+
+Setting `oauth.supported: true` opts the agent into the universal `oauth_setup` storyboard. The agent must publish RFC 9728 protected-resource metadata for its endpoint and valid RFC 8414 metadata for every authorization server named there. Agents that authenticate only with static Bearer keys, HTTP Basic, mTLS, or RFC 9421 omit the block or set `supported: false`.
+
 ### Capability slot gaps
 
 SDK helpers such as `definePlatform` can project a platform implementation into narrower capability slots. Treat those slots as commitments: only declare a slot when the agent can execute the corresponding task path end to end.

@@ -530,6 +530,33 @@ function isRunnerApplicabilitySkip(step: {
   }
 }
 
+export function isNonExecutableCoverageGapScenario(scenario: {
+  scenario?: unknown;
+  steps?: Array<{
+    passed?: boolean;
+    skipped?: boolean;
+    skip_reason?: string;
+    step_id?: unknown;
+    requirement?: unknown;
+  }>;
+}): boolean {
+  const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
+  const scenarioId = typeof scenario.scenario === 'string' ? scenario.scenario : '';
+  const hasGenuineFailure = steps.some((step) => !step.skipped && step.passed === false);
+  if (!hasGenuineFailure && steps.some(
+    (step) => step.skipped && step.skip_reason === 'fixture_unavailable',
+  )) return true;
+  return steps.length > 0 && steps.every((step) => {
+    if (!step?.skipped) return false;
+    return step.skip_reason === 'peer_branch_taken' ||
+      step.skip_reason === 'peer_substituted' ||
+      step.skip_reason === 'missing_test_controller' ||
+      step.skip_reason === 'fixture_unavailable' ||
+      (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller') ||
+      isRunnerApplicabilitySkip(step, scenarioId);
+  });
+}
+
 function skipReasonIsCoverageGap(
   reason: string | undefined,
   step?: {
@@ -568,6 +595,14 @@ function trackHasCoverageGapSkip(track: TrackResult): boolean {
   return false;
 }
 
+function trackHasFixtureUnavailableSkip(track: TrackResult): boolean {
+  return track.scenarios.some((scenario) =>
+    (scenario.steps ?? []).some((step) =>
+      step.skipped && step.skip_reason === 'fixture_unavailable'
+    )
+  );
+}
+
 /**
  * Derive the effective overall status and track counters from a ComplianceResult.
  *
@@ -589,9 +624,30 @@ function effectiveRunStatus(result: ComplianceResult): {
   // e.g. a signals-only agent skipping controller-gated media-buy pagination
   // storyboards with `missing_test_controller` — are expected and must not
   // degrade an otherwise all-pass run (#5429, regression of #5328).
-  const hasCoverageGapSkip = result.tracks
-    .filter((t: TrackResult) => t.status === 'skip')
+  const hasFixtureUnavailable = result.tracks.some(trackHasFixtureUnavailableSkip);
+  const hasCoverageGapSkip = hasFixtureUnavailable || result.tracks
+    .filter((track: TrackResult) => track.status === 'skip')
     .some(trackHasCoverageGapSkip);
+  const hasGenuineFailure = activeTracks.some((track: TrackResult) => track.status === 'fail') ||
+    result.overall_status === 'failing' ||
+    result.overall_status === 'auth_required' ||
+    result.overall_status === 'unreachable';
+  if (hasGenuineFailure) {
+    return {
+      overall_status: mapOverallStatus(result.overall_status),
+      tracks_passed: result.summary.tracks_passed,
+      tracks_failed: result.summary.tracks_failed,
+      tracks_partial: result.summary.tracks_partial,
+    };
+  }
+  if (hasFixtureUnavailable) {
+    return {
+      overall_status: 'partial',
+      tracks_passed: result.summary.tracks_passed,
+      tracks_failed: result.summary.tracks_failed,
+      tracks_partial: result.summary.tracks_partial,
+    };
+  }
   if (
     !hasCoverageGapSkip &&
     activeTracks.length > 0 &&
@@ -654,6 +710,7 @@ export function deriveStoryboardStatuses(
     stepLessPhasesPassed: number;
     stepLessPhasesTotal: number;
     controllerSkipped: number;
+    fixtureUnavailable: boolean;
     failureCount: number;
     skippedCount: number;
     firstFailure: FirstFailure | null;
@@ -685,7 +742,10 @@ export function deriveStoryboardStatuses(
     },
     scenario: string,
   ): boolean => {
-    if (step.skip_reason === 'not_applicable') return true;
+    if (
+      step.skip_reason === 'not_applicable' ||
+      step.skip_reason === 'fixture_unavailable'
+    ) return true;
 
     // `@adcp/sdk` emits a single synthetic `missing_tool` phase when a
     // storyboard's `required_tools` gate is unmet. That means the storyboard is
@@ -716,6 +776,7 @@ export function deriveStoryboardStatuses(
           stepLessPhasesPassed: 0,
           stepLessPhasesTotal: 0,
           controllerSkipped: 0,
+          fixtureUnavailable: false,
           failureCount: 0,
           skippedCount: 0,
           firstFailure: null,
@@ -740,6 +801,9 @@ export function deriveStoryboardStatuses(
       let phaseSawNeutralApplicabilitySkip = false;
       for (const step of s.steps) {
         if (step.skipped) {
+          if (step.skip_reason === 'fixture_unavailable') {
+            agg.fixtureUnavailable = true;
+          }
           if (isBranchSkip(step)) {
             continue;
           }
@@ -786,6 +850,19 @@ export function deriveStoryboardStatuses(
       if (hasExplicitIds) {
         entries.push({ storyboard_id: sbId, status: 'untested', steps_passed: 0, steps_total: 0 });
       }
+      continue;
+    }
+
+    // Fixture availability is a whole-storyboard preflight disposition. The
+    // producer step that captured the format may already have passed, but that
+    // partial execution is not evidence that the seller behavior was tested.
+    if (agg.fixtureUnavailable) {
+      entries.push({
+        storyboard_id: sbId,
+        status: 'untested',
+        steps_passed: 0,
+        steps_total: 0,
+      });
       continue;
     }
 

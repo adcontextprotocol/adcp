@@ -1,8 +1,9 @@
 /**
  * Network health API routes.
  *
- * Org-scoped endpoints comparing brand.json declarations against crawl reality.
- * All API routes require authentication; write operations require admin.
+ * Platform-admin endpoints comparing brand.json declarations against crawl
+ * reality across organizations. Tenant-issued API keys must not reach this
+ * cross-organization surface.
  *
  * API:
  *   GET  /api/network-health                     — summary across all orgs (admin)
@@ -12,8 +13,8 @@
  *   GET  /api/network-health/:orgId/alerts       — alert rule config (webhook redacted)
  *   GET  /api/network-health/:orgId/alerts/history    — alert history
  *   GET  /api/network-health/:orgId/alerts/unresolved — unresolved alerts
- *   POST /api/network-health/:orgId/alerts       — configure alert thresholds (admin)
- *   POST /api/network-health/alerts/:alertId/resolve — resolve an alert (admin)
+ *   POST /api/network-health/:orgId/alerts       — configure alert thresholds
+ *   POST /api/network-health/:orgId/alerts/:alertId/resolve — resolve an alert
  *
  * Admin page:
  *   GET  /admin/network-health                   — dashboard
@@ -22,9 +23,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { createLogger } from '../logger.js';
-import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { requireGlobalAdmin } from '../middleware/auth.js';
 import * as db from '../db/network-health-db.js';
 import { isUuid } from '../utils/uuid.js';
+import { serveHtmlWithConfig } from '../utils/html-config.js';
 
 const logger = createLogger('network-health');
 
@@ -40,16 +42,28 @@ const alertRuleSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
+/** Register the platform-admin dashboard page on the shared admin router. */
+export function registerNetworkHealthAdminPage(pageRouter: Router): void {
+  pageRouter.get('/network-health', ...requireGlobalAdmin, (req, res) => {
+    serveHtmlWithConfig(req, res, 'admin-network-health.html').catch((error) => {
+      logger.error({ error }, 'Error serving network health page');
+      res.status(500).send('Internal server error');
+    });
+  });
+}
+
 export function createNetworkHealthApiRouter(): Router {
   const apiRouter = Router();
 
-  // All API routes require authentication
-  apiRouter.use(requireAuth);
+  // This dashboard intentionally spans organizations. Keep the authorization
+  // boundary at router scope so new endpoints cannot accidentally inherit only
+  // authentication or tenant-admin access.
+  apiRouter.use(...requireGlobalAdmin);
 
   // ── Read API ───────────────────────────────────────────────────
 
-  // Summary across all tracked orgs (admin only)
-  apiRouter.get('/', requireAdmin, async (_req, res) => {
+  // Summary across all tracked orgs
+  apiRouter.get('/', async (_req, res) => {
     try {
       const summaries = await db.getNetworkSummaries();
       res.json({ networks: summaries });
@@ -143,10 +157,10 @@ export function createNetworkHealthApiRouter(): Router {
     }
   });
 
-  // ── Write API (admin only) ────────────────────────────────────
+  // ── Write API ─────────────────────────────────────────────────
 
   // Configure alert thresholds
-  apiRouter.post('/:orgId/alerts', requireAdmin, async (req, res) => {
+  apiRouter.post('/:orgId/alerts', async (req, res) => {
     try {
       const parsed = alertRuleSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -170,14 +184,19 @@ export function createNetworkHealthApiRouter(): Router {
     }
   });
 
-  // Resolve an alert (must be before /:orgId routes to avoid capture)
-  apiRouter.post('/:orgId/alerts/:alertId/resolve', requireAdmin, async (req, res) => {
+  // Resolve an alert within the organization named by the route.
+  apiRouter.post('/:orgId/alerts/:alertId/resolve', async (req, res) => {
     try {
       const { alertId } = req.params;
       if (!isUuid(alertId)) {
         return res.status(400).json({ error: 'Invalid alert ID format' });
       }
-      await db.resolveAlert(alertId);
+      const resolved = await db.resolveAlert(req.params.orgId, alertId);
+      if (!resolved) {
+        // Use the same response for a missing alert and an alert owned by a
+        // different organization so the route does not disclose ownership.
+        return res.status(404).json({ error: 'Alert not found' });
+      }
       res.json({ ok: true });
     } catch (error) {
       logger.error({ error }, 'Error resolving alert');
