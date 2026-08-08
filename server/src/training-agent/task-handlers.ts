@@ -2577,7 +2577,7 @@ function proportionalFixedPackageBudgets(
     activePackages.length === 0
     || !Number.isFinite(currentTotal)
     || currentTotal <= 0
-    || activePackages.some(pkg => !Number.isFinite(pkg.budget) || pkg.budget < 0)
+    || activePackages.some(pkg => !Number.isFinite(pkg.budget) || pkg.budget <= 0)
   ) {
     return {
       error: {
