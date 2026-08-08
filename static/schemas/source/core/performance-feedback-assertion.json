@@ -31,7 +31,7 @@
     "performance_index": {
       "type": "number",
       "minimum": 0,
-      "description": "Normalized decision signal where 1.0 equals the named baseline, values below 1.0 underperform it, and values above 1.0 outperform it. For higher-is-better ratio metrics use observed divided by baseline; for lower-is-better ratio metrics such as cost per acquisition use baseline divided by observed."
+      "description": "Normalized decision signal where 1.0 equals the named baseline, values below 1.0 underperform it, and values above 1.0 outperform it. Compact-contract producers (baseline present) MUST use observed divided by baseline for higher-is-better ratio metrics and baseline divided by observed for lower-is-better ratio metrics such as cost per acquisition."
     },
     "baseline": {
       "$ref": "/schemas/enums/performance-baseline.json",

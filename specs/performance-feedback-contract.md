@@ -73,7 +73,7 @@ optimizer-ready output.
 
 ```json
 {
-  "idempotency_key": "measurement-study-42-july-final",
+  "idempotency_key": "f7a3e291-4c58-4d6b-9012-a3e9b27c5f08",
   "media_buy_id": "mb_123",
   "package_id": "pkg_streaming_video",
   "measurement_period": {
@@ -129,10 +129,10 @@ Compact-contract producers populate one enum:
 - `market_benchmark`
 - `other`
 
-`performance_index = 1.0` means equality with this baseline. For ratio metrics,
-higher-is-better measures use observed divided by baseline; lower-is-better
-measures such as CPA use baseline divided by observed. In both cases values
-above 1.0 mean better performance. The raw baseline value need not be disclosed.
+`performance_index = 1.0` means equality with this baseline. Compact-contract producers (baseline present) MUST use observed divided by
+baseline for higher-is-better ratio metrics and baseline divided by observed
+for lower-is-better ratio metrics such as CPA. In both cases values above 1.0
+mean better performance. The raw baseline value need not be disclosed.
 
 `baseline` remains schema-optional during 3.x compatibility because the task
 already accepts requests without it. Sellers declaring the new capability may

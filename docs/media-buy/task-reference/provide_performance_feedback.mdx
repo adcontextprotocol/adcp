@@ -61,7 +61,7 @@ Measurement agents do not receive seller credentials. In the first experimental 
 
 | Field                | Meaning                                                                                                         |
 | -------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `idempotency_key`    | Unique key for this logical assertion. Reuse it only when retrying the identical request.                       |
+| `idempotency_key`    | Unique key for this logical assertion. MUST be unique per receiving agent to prevent cross-agent correlation; use a fresh UUID v4 for each new assertion. Retries use the same key and payload. |
 | `media_buy_id`       | Receiver-scoped buy identifier: orchestrator-issued on the provider hop, seller-issued on the seller hop.       |
 | `measurement_period` | Period summarized by the assertion.                                                                             |
 | `performance_index`  | Normalized decision signal: `1.0` equals the named baseline, lower underperforms it, and higher outperforms it. |
@@ -110,7 +110,7 @@ The nested `metric.vendor` identifies who defines the metric. It can differ from
 | `market_benchmark` | External market or category benchmark.                              |
 | `other`            | Another producer-defined baseline described in the linked evidence. |
 
-The producer does not need to disclose the raw baseline value. For ratio-compatible metrics, higher-is-better measures SHOULD use `observed / baseline`; lower-is-better measures such as CPA SHOULD use `baseline / observed`. In both cases values above `1.0` mean better performance.
+The producer does not need to disclose the raw baseline value. For ratio-compatible metrics, compact-contract producers (baseline present) MUST use `observed / baseline` for higher-is-better measures and `baseline / observed` for lower-is-better measures such as CPA. In both cases values above `1.0` mean better performance.
 
 ### Producer and methodology
 

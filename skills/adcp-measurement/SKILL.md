@@ -72,7 +72,7 @@ Submit one assertion per task call:
 
 ```json
 {
-  "idempotency_key": "measurement-study-42-july-final",
+  "idempotency_key": "f7a3e291-4c58-4d6b-9012-a3e9b27c5f08",
   "media_buy_id": "mb_123",
   "package_id": "pkg_video",
   "measurement_period": {
@@ -97,7 +97,7 @@ Submit one assertion per task call:
 
 Rules:
 
-- `1.0` equals the named baseline. For higher-is-better ratios use observed/baseline; for lower-is-better ratios such as CPA use baseline/observed.
+- `1.0` equals the named baseline. Compact-contract producers (baseline present) MUST use observed/baseline for higher-is-better ratios and baseline/observed for lower-is-better ratios such as CPA.
 - `producer` must match authenticated provider identity at the orchestrator gateway.
 - `study_ref` is correlation only; it never asks a seller to construct experiment arms.
 - Keep raw logs, model coefficients, identity paths, and full study datasets outside the feedback payload.
