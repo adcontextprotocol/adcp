@@ -54,6 +54,7 @@ import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
+import { hasActiveSlackLink } from "./utils/slack-linkage.js";
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
@@ -61,7 +62,7 @@ import { formatPerspectiveUrlAsMarkdownDestination, normalizePerspectiveExternal
 import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
-import { sendNewsletterConfirmation } from "./notifications/email.js";
+import { sendNewsletterConfirmation, SLACK_INVITE_URL } from "./notifications/email.js";
 import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
 import { getAssetData as getPerspectiveAssetData } from "./db/perspective-asset-db.js";
 import { generatePerspectiveCard, compositePerspectiveCard } from "./services/perspective-cards.js";
@@ -2374,6 +2375,13 @@ export class HTTPServer {
       if (req.user) {
         await enrichUserWithMembership(req.user as any);
         await enrichUserWithAdmin(req.user as any);
+        let isLinkedToSlack = false;
+        try {
+          const slackMapping = await new SlackDatabase().getByWorkosUserId(req.user.id);
+          isLinkedToSlack = hasActiveSlackLink(slackMapping);
+        } catch (err) {
+          logger.warn({ err, userId: req.user.id }, 'Unable to resolve Slack linkage for public config');
+        }
         user = {
           id: req.user.id,
           email: req.user.email,
@@ -2381,11 +2389,13 @@ export class HTTPServer {
           lastName: req.user.lastName,
           isAdmin: !!(req.user as any).isAdmin,
           isMember: !!(req.user as any).isMember,
+          isLinkedToSlack,
         };
       }
 
       res.json({
         authEnabled: AUTH_ENABLED,
+        slackInviteUrl: SLACK_INVITE_URL,
         user,
       });
     });
