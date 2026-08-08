@@ -1,0 +1,172 @@
+id: media_buy_seller/get_products_rejected
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Seller returns a structured business rejection for a declined brief"
+category: media_buy_seller
+summary: "Forces get_products into the rejected arm and verifies its required fields, transport-success semantics, and mutual exclusion from success, partial-result, and error fields."
+track: media_buy
+required_tools:
+  - get_products
+  - comply_test_controller
+
+narrative: |
+  A seller can understand a well-formed brief and deliberately decline to offer
+  products for commercial or seller-policy reasons. A simple absence of
+  matching or available inventory remains a completed empty result. Rejection is a
+  structured business outcome: status='rejected', a sanitized reason, and
+  optional suggestions that tell the buyer how it may revise the brief.
+
+  The rejection is not an empty successful search and not a technical error.
+  It carries no products[], proposals[], errors[], or envelope-level adcp_error,
+  and transport success markers remain successful. A completed search where
+  nothing matched still returns status='completed' with products: []. A service
+  or upstream failure uses the error channel and its recovery classification.
+
+  Because buyers cannot reliably trigger seller-controlled merchandising rules,
+  the runner first registers a one-shot force_get_products_arm directive for the
+  caller's sandbox account. The next brief-mode request consumes that directive
+  and returns the canonical GetProductsRejected payload.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_briefs
+    - supports_test_controller
+  examples:
+    - "Publishers with seller-controlled merchandising rules"
+    - "Retail media networks with minimum commercial terms"
+
+caller:
+  role: compliance_runner
+  example: "AdCP Verified runner"
+
+prerequisites:
+  description: |
+    Seller exposes comply_test_controller in sandbox mode and supports
+    force_get_products_arm with arm='rejected'.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+phases:
+  - id: force_rejected_discovery
+    title: "Register a one-shot rejected response"
+    steps:
+      - id: force_get_products_rejected
+        title: "Force the next get_products call into the rejected arm"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        comply_scenario: get_products_rejected
+        stateful: true
+        expected: |
+          Register a one-shot directive for this account and principal:
+          - success: true
+          - forced.arm: rejected
+          - forced.reason echoes the sanitized buyer-facing reason
+        sample_request:
+          adcp_version: "3.2-beta.0"
+          adcp_major_version: 3
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "force_get_products_arm"
+          params:
+            arm: "rejected"
+            reason: "The requested budget is below the minimum for this inventory."
+            suggestions:
+              - "Increase the campaign budget."
+              - "Consider display inventory for this flight."
+          context:
+            correlation_id: "get_products_rejected--force"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Controller accepts the directive"
+          - check: field_value
+            path: "forced.arm"
+            value: "rejected"
+            description: "Controller echoes the rejected arm"
+          - check: field_value
+            path: "forced.reason"
+            value: "The requested budget is below the minimum for this inventory."
+            description: "Controller echoes the deterministic sanitized reason"
+
+  - id: rejected_discovery_response
+    title: "get_products returns the structured business rejection"
+    steps:
+      - id: get_products_rejected
+        title: "Call get_products and observe the rejected outcome"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-rejected.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        expect_error: false
+        expected: |
+          Return GetProductsRejected with transport success preserved:
+          - status: rejected
+          - reason: sanitized buyer-facing market explanation
+          - suggestions[]: actionable alternatives
+          - no products[], proposals[], errors[], or adcp_error
+        sample_request:
+          adcp_version: "3.2-beta.0"
+          adcp_major_version: 3
+          buying_mode: "brief"
+          brief: "Premium video inventory for a regional product launch with a limited test budget."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "get_products_rejected--request"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-rejected.json"
+          - check: field_value
+            path: "status"
+            value: "rejected"
+            description: "Task-level discriminator identifies a business rejection"
+          - check: field_value
+            path: "reason"
+            value: "The requested budget is below the minimum for this inventory."
+            description: "Seller emits the registered sanitized reason"
+          - check: field_value
+            path: "suggestions[0]"
+            value: "Increase the campaign budget."
+            description: "Seller emits an actionable recovery suggestion"
+          - check: field_absent
+            path: "products"
+            description: "A rejection is not an empty or populated product result"
+          - check: field_absent
+            path: "proposals"
+            description: "A rejection carries no proposal success artifact"
+          - check: field_absent
+            path: "incomplete"
+            description: "A rejection is not a usable partial result"
+          - check: field_absent
+            path: "filter_diagnostics"
+            description: "A rejection is not structured-filter observability"
+          - check: field_absent
+            path: "refinement_applied"
+            description: "A rejected refinement does not claim that requested changes were applied"
+          - check: field_absent
+            path: "cache_scope"
+            description: "A rejection carries no product-cache result metadata"
+          - check: field_absent
+            path: "errors"
+            description: "A structured business rejection does not also use payload errors[]"
+          - check: field_absent
+            path: "adcp_error"
+            description: "Transport envelope carries no fatal error for a business rejection"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "get_products_rejected--request"
+            description: "Context correlation_id is echoed unchanged"
