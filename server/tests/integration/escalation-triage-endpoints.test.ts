@@ -22,18 +22,23 @@ vi.mock('../../src/addie/jobs/github-filer.js', () => ({
   fileGitHubIssue: mocks.fileGitHubIssue,
 }));
 
-vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
-  requireAuth: (req: { user?: unknown }, _res: unknown, next: () => void) => {
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
+  const mockedRequireAuth = (req: { user?: unknown }, _res: unknown, next: () => void) => {
     (req as { user: unknown }).user = {
       id: 'user_test_admin',
       email: 'triage-tester@test.com',
       is_admin: true,
     };
     next();
-  },
-  requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
-}));
+  };
+  const passThrough = (_req: unknown, _res: unknown, next: () => void) => next();
+  return {
+    ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
+    requireAuth: mockedRequireAuth,
+    requireAdmin: passThrough,
+    requireGlobalAdmin: [mockedRequireAuth, passThrough, passThrough],
+  };
+});
 
 vi.mock('../../src/middleware/csrf.js', () => ({
   csrfProtection: (_req: unknown, _res: unknown, next: () => void) => next(),

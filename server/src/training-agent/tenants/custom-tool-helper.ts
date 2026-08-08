@@ -156,10 +156,10 @@ async function releaseClaim(claim: IdempotencyClaim | null): Promise<void> {
 export function customToolFor(
   name: string,
   description: string,
-  inputSchema: Record<string, z.ZodTypeAny>,
+  inputSchema: Record<string, z.ZodTypeAny> | z.ZodTypeAny,
   handler: LegacyHandler,
   options: CustomToolOptions = {},
-): AdcpCustomToolConfig<Record<string, z.ZodTypeAny>, undefined> {
+): AdcpCustomToolConfig<any, undefined> {
   return {
     description,
     inputSchema,

@@ -11,6 +11,8 @@ import type { TrainingContext, ToolArgs, AccountRef, PropertyListState } from '.
 import { getSession, sessionKeyFromArgs, MAX_PROPERTY_LISTS_PER_SESSION } from './state.js';
 import { ACCOUNT_REF_SCHEMA } from './account-handlers.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
+import { validateWebhookUrl } from './webhook-fetch.js';
+import { emitPropertyListChangedWebhook } from './webhooks.js';
 
 const MAX_PROPERTIES_PER_LIST = 10_000;
 
@@ -87,6 +89,7 @@ export const PROPERTY_TOOLS = [
         base_properties: { type: 'array', description: 'Complete replacement for the base properties list' },
         filters: { type: 'object', description: 'Complete replacement for the filters' },
         brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Update brand reference (campaign metadata)' },
+        webhook_url: { type: 'string', description: 'Update the webhook URL for list change notifications (set to empty string to remove)' },
       },
       required: ['list_id'],
     },
@@ -302,13 +305,23 @@ export async function handleUpdatePropertyList(
   args: ToolArgs,
   ctx: TrainingContext,
 ) {
-  const req = args as { list_id: string; name?: string; description?: string; base_properties?: unknown[]; filters?: unknown; brand?: unknown };
+  const req = args as { list_id: string; name?: string; description?: string; base_properties?: unknown[]; filters?: unknown; brand?: unknown; webhook_url?: string; idempotency_key?: string };
   const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   const state = session.propertyLists.get(req.list_id);
   if (!state) {
     return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: 'Property list not found', field: 'list_id' }] };
   }
+
+  if (req.webhook_url !== undefined && req.webhook_url !== '') {
+    const webhookError = await validateWebhookUrl(req.webhook_url);
+    if (webhookError) return { errors: [webhookError] };
+  }
+
+  const priorDomains = new Set(extractDomains(state.baseProperties));
+  const resolvedContentChanged = req.base_properties !== undefined
+    || req.filters !== undefined
+    || req.brand !== undefined;
 
   if (req.name) {
     state.name = req.name;
@@ -334,8 +347,34 @@ export async function handleUpdatePropertyList(
     state.brand = req.brand;
   }
 
+  if (req.webhook_url !== undefined) {
+    state.webhookUrl = req.webhook_url === '' ? undefined : req.webhook_url;
+  }
+
   state.propertyCount = state.baseProperties.length;
   state.updatedAt = new Date().toISOString();
+
+  if (resolvedContentChanged && state.webhookUrl) {
+    const nextDomains = new Set(extractDomains(state.baseProperties));
+    const changeSummary: {
+      properties_added?: number;
+      properties_removed?: number;
+      total_properties: number;
+    } = { total_properties: nextDomains.size };
+    if (req.base_properties !== undefined) {
+      changeSummary.properties_added = [...nextDomains].filter(domain => !priorDomains.has(domain)).length;
+      changeSummary.properties_removed = [...priorDomains].filter(domain => !nextDomains.has(domain)).length;
+    }
+    emitPropertyListChangedWebhook({
+      url: state.webhookUrl,
+      listId: state.listId,
+      listName: state.name,
+      operationId: `property_list_changed:${state.listId}:${req.idempotency_key ?? state.updatedAt}`,
+      resolvedAt: state.updatedAt,
+      cacheValidUntil: new Date(Date.now() + state.cacheDurationHours * 3600_000).toISOString(),
+      changeSummary,
+    });
+  }
 
   return {
     list: toListResponse(state),

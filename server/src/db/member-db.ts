@@ -11,6 +11,14 @@ import {
   type BrandConfig,
   type DataProviderConfig,
 } from '../types.js';
+import { validateMemberProfileUrlFields } from '../utils/member-profile-url.js';
+
+function assertValidMemberProfileUrls(input: Record<string, unknown>): void {
+  const invalidField = validateMemberProfileUrlFields(input);
+  if (invalidField) {
+    throw new TypeError(`${invalidField} must be an HTTPS URL without credentials`);
+  }
+}
 
 /**
  * Escape LIKE pattern wildcards to prevent SQL injection
@@ -55,6 +63,7 @@ export class MemberDatabase {
    * Create a new member profile
    */
   async createProfile(input: CreateMemberProfileInput): Promise<MemberProfile> {
+    assertValidMemberProfileUrls(input as unknown as Record<string, unknown>);
     const agents = input.agents || [];
     const publishers = input.publishers || [];
     const data_providers = input.data_providers || [];
@@ -130,12 +139,26 @@ export class MemberDatabase {
    * return `member: null` for legitimate members.
    */
   async getProfileByDomain(domain: string): Promise<MemberProfile | null> {
+    const exactDomain = await query<{ workos_organization_id: string }>(
+      `SELECT workos_organization_id
+         FROM organization_domains
+        WHERE LOWER(domain) = LOWER($1)
+          AND verified = true
+        LIMIT 1`,
+      [domain],
+    );
+    if (exactDomain.rows[0]) {
+      return this.getProfileByOrgId(exactDomain.rows[0].workos_organization_id);
+    }
+
     const result = await query<MemberProfile>(
       `SELECT mp.*
          FROM member_profiles mp
          JOIN organization_domains od
            ON od.workos_organization_id = mp.workos_organization_id
-        WHERE LOWER(od.domain) = LOWER($1)
+        WHERE od.verified = true
+          AND LOWER($1) LIKE '%.' || LOWER(od.domain)
+        ORDER BY LENGTH(od.domain) DESC
         LIMIT 1`,
       [domain]
     );
@@ -162,6 +185,7 @@ export class MemberDatabase {
     id: string,
     updates: UpdateMemberProfileInput
   ): Promise<MemberProfile | null> {
+    assertValidMemberProfileUrls(updates as unknown as Record<string, unknown>);
     // Build SET clause dynamically using explicit column mapping
     const COLUMN_MAP: Record<keyof UpdateMemberProfileInput, string> = {
       display_name: 'display_name',

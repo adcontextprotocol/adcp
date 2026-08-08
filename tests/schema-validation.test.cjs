@@ -393,6 +393,222 @@ async function runTests() {
     return true;
   });
 
+  await test('governed commitment annotations match the cross-role capability task enum', () => {
+    const annotatedTasks = schemas
+      .filter(([schemaPath, schema]) => schemaPath.endsWith('-request.json') && schema['x-governed-commitment'])
+      .map(([schemaPath, schema]) => {
+        if (schema['x-mutates-state'] !== true) {
+          throw new Error(`${path.basename(schemaPath)} is governed but does not mutate state`);
+        }
+        const annotation = schema['x-governed-commitment'];
+        if (!['always', 'conditional'].includes(annotation.scope)) {
+          throw new Error(`${path.basename(schemaPath)} has invalid governed commitment scope`);
+        }
+        if (annotation.scope === 'conditional' && (!annotation.triggers?.length || !annotation.exemptions?.length)) {
+          throw new Error(`${path.basename(schemaPath)} conditional governance needs triggers and exemptions`);
+        }
+        return path.basename(schemaPath, '-request.json').replaceAll('-', '_');
+      })
+      .sort();
+    const capabilities = loadSchema(path.join(SCHEMA_BASE_DIR, 'protocol/get-adcp-capabilities-response.json'));
+    const taskBranches = capabilities.properties.adcp.properties.governance_enforcement
+      .properties.tasks.items.oneOf;
+    const declaredTasks = taskBranches.flatMap(branch => {
+      const task = branch.properties.task;
+      return task.const ? [task.const] : task.enum;
+    }).sort();
+
+    if (JSON.stringify(annotatedTasks) !== JSON.stringify(declaredTasks)) {
+      return `x-governed-commitment tasks (${annotatedTasks.join(', ')}) do not match capability enum (${declaredTasks.join(', ')})`;
+    }
+    const enforcementSchema = capabilities.properties.adcp.properties.governance_enforcement;
+    const validateEnforcement = new Ajv({ strict: false }).compile(enforcementSchema);
+    if (!validateEnforcement({ tasks: [{ task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] }] })) {
+      return 'valid media-buy online enforcement claim was rejected';
+    }
+    if (validateEnforcement({ tasks: [{ task: 'create_media_buy', modes: ['online_execution_check'] }] })) {
+      return 'online execution must imply signed_context';
+    }
+    if (validateEnforcement({ tasks: [{ task: 'activate_signal', modes: ['signed_context', 'online_execution_check'] }] })) {
+      return 'non-media tasks must not claim online execution without a prepared-result contract';
+    }
+    return true;
+  });
+
+  await test('governance checks separate intent negotiation from execution authorization', async () => {
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+    const validateRequest = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/check-governance-request.json'))
+    );
+    const validateResponse = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/check-governance-response.json'))
+    );
+    const validateOutcome = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/report-plan-outcome-request.json'))
+    );
+    const validatePlannedDelivery = testAjv.getSchema('/schemas/core/planned-delivery.json');
+    if (!validatePlannedDelivery) {
+      return 'planned-delivery schema was not loaded with the governance request';
+    }
+
+    const intent = {
+      caller: 'https://buyer.example',
+      plan_id: 'plan_123',
+      target_agent: 'https://seller.example',
+      tool: 'create_media_buy',
+      payload: { total_budget: 1000 }
+    };
+    const execution = {
+      caller: 'https://seller.example',
+      governance_context: 'signed.context.token',
+      planned_delivery: {
+        media_buy_id: 'mb_123',
+        start_time: '2026-08-10T00:00:00Z',
+        end_time: '2026-08-20T00:00:00Z',
+        total_budget: 1000,
+        currency: 'USD'
+      }
+    };
+    if (!validateRequest(intent) || !validateRequest(execution)) {
+      return `valid governance request rejected: ${testAjv.errorsText(validateRequest.errors)}`;
+    }
+    const purchaseBeforeId = {
+      caller: 'https://seller.example',
+      governance_context: 'signed.context.token',
+      phase: 'purchase',
+      planned_delivery: { total_budget: 1000, currency: 'USD' }
+    };
+    if (!validateRequest(purchaseBeforeId)) {
+      return `purchase prepare without media_buy_id rejected: ${testAjv.errorsText(validateRequest.errors)}`;
+    }
+    if (validateRequest({ ...purchaseBeforeId, phase: 'modification' })) {
+      return 'modification execution must require planned_delivery.media_buy_id';
+    }
+    if (validateRequest({ ...execution, ...intent })) {
+      return 'a request must not mix intent and execution fields';
+    }
+    if (validateRequest({ ...execution, proposed_commitment: { amount: 1000, currency: 'USD' } })) {
+      return 'proposed_commitment must be intent-only';
+    }
+    for (const tool of ['acquire_rights', 'update_rights', 'activate_signal', 'build_creative']) {
+      const indirectIntent = {
+        caller: 'https://buyer.example',
+        plan_id: 'plan_123',
+        target_agent: 'https://service.example',
+        tool,
+        payload: { pricing_option_id: 'standard_monthly' }
+      };
+      if (validateRequest(indirectIntent)) {
+        return `${tool} intent must require proposed_commitment`;
+      }
+      if (!validateRequest({ ...indirectIntent, proposed_commitment: { amount: 0, currency: 'USD' } })) {
+        return `explicit zero-cost ${tool} intent rejected: ${testAjv.errorsText(validateRequest.errors)}`;
+      }
+    }
+    if (validateRequest({
+      caller: 'https://seller.example',
+      governance_context: 'signed.context.token',
+      planned_delivery: { total_budget: 1000 }
+    })) {
+      return 'planned_delivery.total_budget must require currency';
+    }
+    if (!validatePlannedDelivery({ total_budget: 1000 })) {
+      return 'stable core planned_delivery must continue to allow total_budget without currency';
+    }
+
+    const approved = {
+      check_id: 'check_1',
+      check_type: 'intent',
+      verdict: 'approved',
+      explanation: 'Allowed',
+      expires_at: '2026-08-04T12:00:00Z',
+      governance_context: 'signed.context.token'
+    };
+    const conditions = {
+      check_id: 'check_2',
+      check_type: 'intent',
+      verdict: 'conditions',
+      explanation: 'Reduce spend',
+      consultation_context: 'consult_123',
+      conditions: [{ field: 'payload.total_budget', reason: 'Above authority' }]
+    };
+    if (!validateResponse(approved) || !validateResponse(conditions)) {
+      return `valid governance response rejected: ${testAjv.errorsText(validateResponse.errors)}`;
+    }
+    const legacyConditions = {
+      check_id: 'legacy_check',
+      plan_id: 'legacy_plan',
+      verdict: 'conditions',
+      explanation: 'Legacy conditional response',
+      expires_at: '2026-08-04T12:00:00Z',
+      governance_context: 'legacy.context.token',
+      conditions: [{ field: 'payload.total_budget', reason: 'Reduce spend' }]
+    };
+    if (!validateResponse(legacyConditions)) {
+      return `legacy 3.x governance response rejected: ${testAjv.errorsText(validateResponse.errors)}`;
+    }
+    if (validateResponse({ ...conditions, governance_context: 'signed.context.token' })) {
+      return 'conditions must not carry authorization context';
+    }
+    if (validateResponse({ ...conditions, check_type: 'execution' })) {
+      return 'execution checks must not return conditions';
+    }
+    if (validateResponse({ check_id: 'check_3', check_type: 'intent', verdict: 'approved', explanation: 'Allowed' })) {
+      return 'approved must carry expires_at and governance_context';
+    }
+    if (validateResponse({ ...approved, conditions: [{ field: 'payload.total_budget', reason: 'Adjust' }] })) {
+      return 'approved must not carry unresolved conditions';
+    }
+    const denied = {
+      check_id: 'check_4',
+      check_type: 'execution',
+      verdict: 'denied',
+      explanation: 'Blocked',
+      findings: [{ category_id: 'budget', severity: 'critical', explanation: 'Above authority' }]
+    };
+    if (!validateResponse(denied) || validateResponse({ ...denied, expires_at: '2026-08-04T12:00:00Z' })) {
+      return 'denied must validate without, and reject, authorization expiry';
+    }
+
+    const legacyDelivery = {
+      plan_id: 'plan_123',
+      idempotency_key: 'delivery-vector-0001',
+      outcome: 'delivery',
+      delivery: { reporting_period: { start: '2026-08-01T00:00:00Z', end: '2026-08-02T00:00:00Z' } }
+    };
+    if (!validateOutcome(legacyDelivery)) {
+      return `legacy plan-owner delivery snapshot rejected: ${testAjv.errorsText(validateOutcome.errors)}`;
+    }
+    if (!validateOutcome({
+      ...legacyDelivery,
+      check_id: 'check_1',
+      governance_context: 'signed.context.token'
+    })) {
+      return `exact-tuple delivery snapshot rejected: ${testAjv.errorsText(validateOutcome.errors)}`;
+    }
+    if (validateOutcome({ ...legacyDelivery, check_id: 'check_1' })
+      || validateOutcome({ ...legacyDelivery, governance_context: 'signed.context.token' })) {
+      return 'delivery snapshots must provide check_id and governance_context together or omit both';
+    }
+    if (validateOutcome({
+      plan_id: 'plan_123',
+      check_id: 'check_1',
+      idempotency_key: 'completed-vector-0001',
+      outcome: 'completed',
+      seller_response: {}
+    })) {
+      return 'completed outcomes must require governance_context with check_id';
+    }
+    return true;
+  });
+
   // Test 5: Validate enum schemas
   await test('All enum schemas have proper enum values', () => {
     const enumSchemas = schemas.filter(([path]) => path.includes('/enums/'));
@@ -439,10 +655,10 @@ async function runTests() {
     if (productEntry) {
       const [, productSchema] = productEntry;
       const anyOf = productSchema.anyOf || [];
-      const hasV1Branch = anyOf.some((branch) => (branch.required || []).includes('format_ids'));
-      const hasV2Branch = anyOf.some((branch) => (branch.required || []).includes('format_options'));
-      if (!hasV1Branch || !hasV2Branch) {
-        return `product.json: must have an anyOf with v1 branch (required: ["format_ids"]) and v2 branch (required: ["format_options"]); found v1=${hasV1Branch}, v2=${hasV2Branch}`;
+      const hasNamedFormatBranch = anyOf.some((branch) => (branch.required || []).includes('format_ids'));
+      const hasCanonicalFormatBranch = anyOf.some((branch) => (branch.required || []).includes('format_options'));
+      if (!hasNamedFormatBranch || !hasCanonicalFormatBranch) {
+        return `product.json: must have an anyOf with a named-format branch (required: ["format_ids"]) and canonical-format branch (required: ["format_options"]); found named-format=${hasNamedFormatBranch}, canonical-format=${hasCanonicalFormatBranch}`;
       }
       // No-not invariant: branches MUST NOT carry `not` clauses excluding the other branch — that would
       // be the old oneOf behavior. anyOf with no negative constraints lets dual-emission products validate.
@@ -452,15 +668,64 @@ async function runTests() {
       }
     }
 
-    // creative-asset.json: assert v1 (format_id) OR v2 (format_kind) is required via oneOf
+    // creative-asset.json: assert named format (format_id) OR canonical format (format_kind) is required via oneOf
     const creativeAssetEntry = coreSchemas.find(([p]) => path.basename(p) === 'creative-asset.json');
     if (creativeAssetEntry) {
       const [, creativeAssetSchema] = creativeAssetEntry;
       const oneOf = creativeAssetSchema.oneOf || [];
-      const hasV1Branch = oneOf.some((branch) => (branch.required || []).includes('format_id'));
-      const hasV2Branch = oneOf.some((branch) => (branch.required || []).includes('format_kind'));
-      if (!hasV1Branch || !hasV2Branch) {
-        return `creative-asset.json: must have a oneOf with v1 branch (required: ["format_id"]) and v2 branch (required: ["format_kind"]); found v1=${hasV1Branch}, v2=${hasV2Branch}`;
+      const hasNamedFormatBranch = oneOf.some((branch) => (branch.required || []).includes('format_id'));
+      const hasCanonicalFormatBranch = oneOf.some((branch) => (branch.required || []).includes('format_kind'));
+      if (!hasNamedFormatBranch || !hasCanonicalFormatBranch) {
+        return `creative-asset.json: must have a oneOf with a named-format branch (required: ["format_id"]) and canonical-format branch (required: ["format_kind"]); found named-format=${hasNamedFormatBranch}, canonical-format=${hasCanonicalFormatBranch}`;
+      }
+    }
+
+    return true;
+  });
+
+  await test('list_creatives accepts exactly one legacy or canonical creative identity', async () => {
+    const responseSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'creative/list-creatives-response.json'));
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+    const validate = await testAjv.compileAsync(responseSchema);
+    const baseResponse = {
+      status: 'completed',
+      query_summary: { total_matching: 1, returned: 1 },
+      pagination: { has_more: false },
+      creatives: [
+        {
+          creative_id: 'creative_1',
+          name: 'Canonical image',
+          status: 'approved',
+          created_date: '2026-07-27T00:00:00Z',
+          updated_date: '2026-07-27T00:00:00Z'
+        }
+      ]
+    };
+    const creative = baseResponse.creatives[0];
+    const legacyIdentity = {
+      format_id: {
+        agent_url: 'https://creative.example',
+        id: 'display_image'
+      }
+    };
+    const canonicalIdentity = { format_kind: 'image' };
+
+    for (const identity of [legacyIdentity, canonicalIdentity]) {
+      if (!validate({ ...baseResponse, creatives: [{ ...creative, ...identity }] })) {
+        return `valid creative identity was rejected: ${testAjv.errorsText(validate.errors)}`;
+      }
+    }
+
+    for (const identity of [{}, { ...legacyIdentity, ...canonicalIdentity }]) {
+      if (validate({ ...baseResponse, creatives: [{ ...creative, ...identity }] })) {
+        return 'creative identity must contain exactly one of format_id or format_kind';
       }
     }
 
@@ -1666,6 +1931,238 @@ async function runTests() {
       if (validate(malformed)) {
         return `${schemaFile}: url with raw spaces must still be rejected`;
       }
+    }
+    return true;
+  });
+
+  await test('build_creative accepts canonical capability selectors and rejects mixed legacy selectors', async () => {
+    const requestSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/build-creative-request.json'));
+    const testAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(testAjv);
+    const validate = await testAjv.compileAsync(requestSchema);
+
+    const canonical = {
+      idempotency_key: '8c4ec74d-8f7f-4d06-a4f3-bbe463631d9a',
+      target_capability_id: 'streamhaus_vertical_video',
+      message: 'Create a concise vertical video.'
+    };
+    if (!validate(canonical)) {
+      return `canonical selector rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const mixed = {
+      ...canonical,
+      target_format_id: { agent_url: 'https://legacy-creative.example/mcp', id: 'vertical_video' }
+    };
+    if (validate(mixed)) {
+      return 'request mixing target_capability_id and target_format_id must be rejected';
+    }
+
+    const noTarget = {
+      idempotency_key: 'd1c52370-3cd7-4fd2-a637-76620b1d5f87',
+      message: 'This request has no output route.'
+    };
+    if (validate(noTarget)) {
+      return 'non-refinement build without a target selector must be rejected';
+    }
+
+    const refinement = {
+      idempotency_key: 'd4751ca7-5e64-4b74-b421-19e853b8a341',
+      refine_from_build_variant_id: 'variant_parent_1',
+      message: 'Make the headline shorter.'
+    };
+    if (!validate(refinement)) {
+      return `refinement with inherited target rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    if (validate({ ...refinement, target_capability_id: 'streamhaus_vertical_video' })) {
+      return 'refinement must reject a conflicting explicit target selector';
+    }
+    if (validate({ ...refinement, transformer_id: 'different_transformer' })) {
+      return 'refinement must reject a conflicting explicit transformer selector';
+    }
+
+    const legacy = {
+      idempotency_key: '41f9eb33-bd37-4d46-bc76-a6de1e29f3bc',
+      target_format_id: { agent_url: 'https://legacy-creative.example/mcp', id: 'vertical_video' },
+      message: 'Legacy compatibility build.'
+    };
+    if (!validate(legacy)) {
+      return `deprecated selector compatibility rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    return true;
+  });
+
+  await test('preview_creative routes canonical preview capabilities without mixing legacy selectors', async () => {
+    const requestSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'creative/preview-creative-request.json'));
+    const testAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(testAjv);
+    const validate = await testAjv.compileAsync(requestSchema);
+    const manifest = {
+      format_kind: 'image',
+      assets: {
+        image_main: { asset_type: 'image', url: 'https://cdn.acme.example/banner.png', width: 300, height: 250 }
+      }
+    };
+
+    const canonical = {
+      request_type: 'single',
+      creative_manifest: manifest,
+      target_capability_id: 'image_preview'
+    };
+    if (!validate(canonical)) {
+      return `canonical preview selector rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const legacy = {
+      request_type: 'single',
+      creative_manifest: manifest,
+      format_id: { agent_url: 'https://legacy-creative.example/mcp', id: 'display_300x250' }
+    };
+    if (!validate(legacy)) {
+      return `legacy preview route rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    if (validate({ ...canonical, format_id: legacy.format_id })) {
+      return 'preview request mixing target_capability_id and format_id must be rejected';
+    }
+
+    const libraryCreative = {
+      request_type: 'single',
+      creative_id: 'stored_image_creative',
+      target_capability_id: 'image_preview'
+    };
+    if (!validate(libraryCreative)) {
+      return `single library creative preview rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (validate({ ...canonical, creative_id: 'conflicting_library_creative' })) {
+      return 'single preview must select exactly one of creative_manifest or creative_id';
+    }
+
+    const batch = {
+      request_type: 'batch',
+      target_capability_id: 'default_preview',
+      requests: [
+        { creative_manifest: manifest },
+        { creative_id: 'stored_square_creative', target_capability_id: 'square_preview' }
+      ]
+    };
+    if (!validate(batch)) {
+      return `canonical batch preview selectors rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (validate({
+      request_type: 'batch',
+      requests: [{ creative_manifest: manifest, creative_id: 'conflicting_library_creative' }]
+    })) {
+      return 'batch preview items must select exactly one of creative_manifest or creative_id';
+    }
+    if (validate({
+      request_type: 'batch',
+      target_capability_id: 'default_preview',
+      requests: [{ creative_manifest: manifest, format_id: legacy.format_id }]
+    })) {
+      return 'batch preview must not mix a canonical default with a legacy item route';
+    }
+    return true;
+  });
+
+  await test('validate_input accepts agent-local capability targets and echoes them in results', async () => {
+    const testAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(testAjv);
+    const validateRequest = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'creative/validate-input-request.json')));
+    const request = {
+      manifest: { format_kind: 'image', assets: {} },
+      targets: [{ kind: 'capability', id: 'publisher_image_validator' }]
+    };
+    if (!validateRequest(request)) {
+      return `capability validation target rejected: ${validateRequest.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (validateRequest({ ...request, targets: [{ kind: 'capability', id: 'invalid capability id' }] })) {
+      return 'malformed capability validation target must be rejected';
+    }
+
+    const resultAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(resultAjv);
+    const validateResult = await resultAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'creative/validate-input-result.json')));
+    if (!validateResult({ target: { kind: 'capability', id: 'publisher_image_validator' }, result_kind: 'validated_pass' })) {
+      return `capability validation result rejected: ${validateResult.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (validateResult({ target: { kind: 'capability', id: 'invalid capability id' }, result_kind: 'validated_pass' })) {
+      return 'malformed capability validation result target must be rejected';
+    }
+    return true;
+  });
+
+  await test('creative capability catalogs preserve 3.x compatibility while supporting canonical routes', async () => {
+    const schema = loadSchema(path.join(SCHEMA_BASE_DIR, 'protocol/get-adcp-capabilities-response.json'));
+    const testAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(testAjv);
+    const validate = await testAjv.compileAsync(schema);
+    const base = {
+      status: 'completed',
+      adcp: { major_versions: [3], idempotency: { supported: false } },
+      supported_protocols: ['creative']
+    };
+
+    if (!validate({ ...base, creative: { supports_generation: true } })) {
+      return `legacy build flag without supported_formats rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (!validate({ ...base, creative: { has_creative_library: true, supported_formats: [] } })) {
+      return `stateful library without build operations rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (!validate({
+      ...base,
+      creative: {
+        supports_generation: true,
+        supported_formats: [{
+          capability_id: 'image_preview',
+          operations: ['preview'],
+          format: { format_kind: 'image', params: {} }
+        }]
+      }
+    })) {
+      return `legacy build flag with preview-only catalog rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    if (!validate({
+      ...base,
+      creative: { supported_formats: [{ format: { format_kind: 'image', params: {} } }] }
+    })) return `legacy catalog entry without capability metadata rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+
+    const canonical = {
+      ...base,
+      creative: {
+        supports_generation: true,
+        supported_formats: [{
+          capability_id: 'image_builder',
+          operations: ['build'],
+          format: { format_kind: 'image', params: {} }
+        }]
+      }
+    };
+    if (!validate(canonical)) {
+      return `creative operation catalog rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    if (!validate({ ...base, creative: { supports_compliance: true } })) {
+      return `non-operation creative capability unexpectedly requires supported_formats: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    return true;
+  });
+
+  await test('canonical transformer outputs reference creative capability IDs', async () => {
+    const transformerSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/transformer.json'));
+    const testAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(testAjv);
+    const validate = await testAjv.compileAsync(transformerSchema);
+    const transformer = {
+      transformer_id: 'vertical_video_builder',
+      name: 'Vertical video builder',
+      output_capability_ids: ['streamhaus_vertical_video'],
+      params: []
+    };
+    if (!validate(transformer)) {
+      return validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ');
     }
     return true;
   });

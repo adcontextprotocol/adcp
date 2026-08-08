@@ -9,6 +9,14 @@ description: "A complete guide to migrating AdCP integrations from v2.x to v3.0,
 
 This page covers every breaking change when upgrading from AdCP 2.x to 3.0, with effort estimates and links to detailed migration pages. For new features see [What's new in v3](/docs/reference/whats-new-in-v3); for release-candidate deltas see [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades); for SDK versions that support 3.0 see [Schemas and SDKs](/docs/building/schemas-and-sdks#adcp-3-0-support).
 
+<Info>
+**Upgrading from 3.0 to 3.1?** Use the [3.0 to 3.1 migration guide](/docs/reference/migration/3-0-to-3-1). This page is for the breaking v2.x to 3.0 upgrade.
+</Info>
+
+<Info>
+**Preparing for 3.2?** See [Migrating secured asset access](/docs/reference/migration/asset-access) to replace inline provider credentials with signed URLs or pre-authorized workload identity.
+</Info>
+
 <Warning>
 **v2 is unsupported as of 3.0 GA and fully deprecated on August 1, 2026 (UTC).** See the [v2 sunset page](/docs/reference/v2-sunset) for the full timeline, AAO registry policy, and why v2 is not safe for interoperable production.
 </Warning>
@@ -51,18 +59,18 @@ Each row is a breaking change. **Effort** indicates the typical work involved:
 | Products | `buying_mode` required on every `get_products` request | New requirement | [get_products reference](/docs/media-buy/task-reference/get_products) |
 | Media buy status | `pending_activation` → `pending_start` | Rename | [Media buys](/docs/media-buy/media-buys) |
 | Media buy status | `pending_creatives` added (no creatives assigned yet) | New requirement | [Media buys](/docs/media-buy/media-buys) |
-| Task status | Legacy `task_status` and `response_status` fields MUST NOT be emitted alongside v3 `status` — remove both | Remove | [Task lifecycle](/docs/building/implementation/task-lifecycle) |
+| Task status | Legacy `task_status` and `response_status` fields MUST NOT be emitted alongside v3 `status` — remove both | Remove | [Task lifecycle](/docs/building/by-layer/L3/task-lifecycle) |
 | Capabilities | `compliance_testing` capability block on `get_adcp_capabilities` | Additive | [Capability discovery](/docs/protocol/get_adcp_capabilities#compliance_testing) |
-| Idempotency | `idempotency_key` required on all mutating requests (UUID v4) | New requirement | [Security § Idempotency](/docs/building/implementation/security) |
-| Request signing | RFC 9421 Ed25519 signing profile (optional in 3.0, mandatory under AdCP Verified) | Additive | [Security § Request signing](/docs/building/implementation/security) |
-| Webhook signing | Unified on RFC 9421 profile, baseline-required for sellers; HMAC fallback deprecated (removed in 4.0) | New requirement | [Webhooks](/docs/building/implementation/webhooks) |
-| Webhook idempotency | `idempotency_key` required on every webhook payload | New requirement | [Webhooks § Reliability](/docs/building/implementation/webhooks) |
+| Idempotency | `idempotency_key` required on all mutating requests (UUID v4) | New requirement | [Security § Idempotency](/docs/building/by-layer/L1/security) |
+| Request signing | RFC 9421 Ed25519 signing profile (optional in 3.0, mandatory under AdCP Verified) | Additive | [Security § Request signing](/docs/building/by-layer/L1/security) |
+| Webhook signing | Unified on RFC 9421 profile, baseline-required for sellers; HMAC fallback deprecated (removed in 4.0) | New requirement | [Webhooks](/docs/building/by-layer/L3/webhooks) |
+| Webhook idempotency | `idempotency_key` required on every webhook payload | New requirement | [Webhooks § Reliability](/docs/building/by-layer/L3/webhooks) |
 | Governance | `governance_context` is a signed JWS verified via governance agent JWKS | Restructure | [Governance](/docs/governance/campaign) |
 | IO approval | `MediaBuy.pending_approval` removed — approval is a task-layer object | Restructure | [Media buy lifecycle](/docs/media-buy/media-buys) |
 | Regulatory invariants | GDPR Art 22 / EU AI Act Annex III enforced via schema `if/then` | New requirement | [Governance § Annex III obligations](/docs/governance/annex-iii-obligations) |
 
 <Warning>
-`buying_mode` on `get_products` is checked by storyboard testing. Sellers must handle all three buying modes (`browse`, `brief`, `refine`). See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for details.
+`buying_mode` on `get_products` is checked by storyboard testing. `brief` is the baseline mode; sellers that declare `wholesale` or `refine` in capabilities must handle those mode semantics. See the [v3 readiness checklist](/docs/reference/migration/v3-readiness) for details.
 </Warning>
 
 ## New in v3 — required vs optional
@@ -88,7 +96,7 @@ During migration, sellers can accept both v2 and v3 traffic and buyers can route
 2. **Branch by seller** — Route v3-capable sellers through your v3 integration and v2-only sellers through your existing v2 code.
 3. **Migrate incrementally** — Start with the rename changes (pricing fields, channel updates), then tackle structural changes (creative assignments, optimization goals), then adopt new capabilities (accounts, governance) as needed.
 
-## Deep-dive pages
+## Breaking migrations (v2 → v3.0)
 
 <CardGroup cols={2}>
   <Card title="Channels" icon="tv" href="/docs/reference/migration/channels">
@@ -120,5 +128,29 @@ During migration, sellers can accept both v2 and v3 traffic and buyers can route
   </Card>
   <Card title="Attribution" icon="link" href="/docs/reference/migration/attribution">
     Integer days to structured `Duration` objects
+  </Card>
+</CardGroup>
+
+## 3.2 migration guides
+
+<CardGroup cols={2}>
+  <Card title="Secured asset access" icon="key" href="/docs/reference/migration/asset-access">
+    Replace inline provider credentials with signed URLs or pre-authorized workload identity
+  </Card>
+</CardGroup>
+
+## 3.1 badge prep guides
+
+You can stay on 3.0 without breaking compatibility. To claim the 3.1 badge, complete this short prep checklist.
+
+<CardGroup cols={2}>
+  <Card title="3.1 badge checklist" icon="rocket" href="/docs/reference/migration/3-0-to-3-1">
+    Additive prep for buyers, sellers, agents, SDKs, and compliance workflows
+  </Card>
+  <Card title="Creative transformers" icon="wand-magic-sparkles" href="/docs/reference/migration/creative-transformers">
+    Move build capability discovery and pricing from formats to transformers
+  </Card>
+  <Card title="Media buy status" icon="circle-check" href="/docs/reference/migration/media-buy-status">
+    Split body-level buy status from envelope task status on success responses
   </Card>
 </CardGroup>

@@ -1,0 +1,566 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.1/enums/error-code.json",
+  "title": "Error Code",
+  "description": "Standard error code vocabulary for AdCP. Codes are machine-readable so agents can apply autonomous recovery strategies based on the recovery classification. Sellers MAY return codes not listed here for platform-specific errors — the error.json code field accepts any string. Agents MUST handle unknown codes by falling back to the recovery classification.",
+  "type": "string",
+  "enum": [
+    "INVALID_REQUEST",
+    "AUTH_REQUIRED",
+    "AUTH_MISSING",
+    "AUTH_INVALID",
+    "AUTHORIZATION_REQUIRED",
+    "RATE_LIMITED",
+    "SERVICE_UNAVAILABLE",
+    "CONFIGURATION_ERROR",
+    "POLICY_VIOLATION",
+    "PRODUCT_NOT_FOUND",
+    "PRODUCT_UNAVAILABLE",
+    "PROPOSAL_EXPIRED",
+    "BUDGET_TOO_LOW",
+    "CREATIVE_REJECTED",
+    "CREATIVE_VALUE_NOT_ALLOWED",
+    "UNSUPPORTED_FEATURE",
+    "UNPRICEABLE_OUTPUT",
+    "UNSUPPORTED_GRANULARITY",
+    "UNSUPPORTED_PROVISIONING",
+    "AUDIENCE_TOO_SMALL",
+    "ACCOUNT_NOT_FOUND",
+    "ACCOUNT_SETUP_REQUIRED",
+    "ACCOUNT_AMBIGUOUS",
+    "ACCOUNT_PAYMENT_REQUIRED",
+    "ACCOUNT_SUSPENDED",
+    "COMPLIANCE_UNSATISFIED",
+    "GOVERNANCE_DENIED",
+    "BUDGET_EXHAUSTED",
+    "BUDGET_EXCEEDED",
+    "BUDGET_CAP_REACHED",
+    "CONFLICT",
+    "IDEMPOTENCY_CONFLICT",
+    "IDEMPOTENCY_EXPIRED",
+    "IDEMPOTENCY_IN_FLIGHT",
+    "CREATIVE_DEADLINE_EXCEEDED",
+    "CREATIVE_INACCESSIBLE",
+    "INVALID_STATE",
+    "MEDIA_BUY_NOT_FOUND",
+    "NOT_CANCELLABLE",
+    "PACKAGE_NOT_FOUND",
+    "CREATIVE_NOT_FOUND",
+    "SIGNAL_NOT_FOUND",
+    "SIGNAL_TARGETING_INCOMPATIBLE",
+    "SESSION_NOT_FOUND",
+    "PLAN_NOT_FOUND",
+    "REFERENCE_NOT_FOUND",
+    "SESSION_TERMINATED",
+    "VALIDATION_ERROR",
+    "PRODUCT_EXPIRED",
+    "PROPOSAL_NOT_COMMITTED",
+    "PROPOSAL_NOT_FOUND",
+    "MULTI_FINALIZE_UNSUPPORTED",
+    "IO_REQUIRED",
+    "TERMS_REJECTED",
+    "REQUOTE_REQUIRED",
+    "VERSION_UNSUPPORTED",
+    "CAMPAIGN_SUSPENDED",
+    "GOVERNANCE_UNAVAILABLE",
+    "PERMISSION_DENIED",
+    "SCOPE_INSUFFICIENT",
+    "READ_ONLY_SCOPE",
+    "FIELD_NOT_PERMITTED",
+    "PROVENANCE_REQUIRED",
+    "PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING",
+    "PROVENANCE_DISCLOSURE_MISSING",
+    "PROVENANCE_EMBEDDED_MISSING",
+    "PROVENANCE_VERIFIER_NOT_ACCEPTED",
+    "PROVENANCE_CLAIM_CONTRADICTED",
+    "EVALUATOR_AGENT_NOT_ACCEPTED",
+    "BILLING_NOT_SUPPORTED",
+    "BILLING_NOT_PERMITTED_FOR_AGENT",
+    "BILLING_OUT_OF_BAND",
+    "PAYMENT_TERMS_NOT_SUPPORTED",
+    "BRAND_REQUIRED",
+    "AGENT_SUSPENDED",
+    "AGENT_BLOCKED",
+    "CREDENTIAL_IN_ARGS",
+    "ACTION_NOT_ALLOWED",
+    "PRIVATE_FIELD_IN_PUBLIC_PLACEMENT",
+    "FORMAT_PROJECTION_FAILED",
+    "FORMAT_DECLARATION_DIVERGENT",
+    "FORMAT_DECLARATION_V1_AMBIGUOUS",
+    "FORMAT_OPTION_UNRESOLVED",
+    "FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE",
+    "FORMAT_NOT_SUPPORTED",
+    "PIXEL_TRACKER_LOSSY_DOWNGRADE",
+    "PIXEL_TRACKER_UPGRADE_INFERRED",
+    "STALE_RESPONSE",
+    "FEED_FETCH_FAILED",
+    "INVALID_FEED_FORMAT",
+    "ITEM_VALIDATION_FAILED",
+    "CATALOG_LIMIT_EXCEEDED"
+  ],
+  "enumDescriptions": {
+    "INVALID_REQUEST": "Request is malformed, missing required fields, or violates schema constraints. Recovery: correctable (check request parameters and fix).",
+    "AUTH_REQUIRED": "**Deprecated** — use `AUTH_MISSING` (no credentials presented) or `AUTH_INVALID` (credentials presented and rejected). Retained as a backward-compatible alias during the 3.x deprecation window. Recovery: correctable.",
+    "AUTH_MISSING": "No credentials were presented. Sellers MUST return this code when no `Authorization` header was included in the request. Recovery: correctable (provide credentials via the auth header and retry).",
+    "AUTH_INVALID": "Credentials were presented but rejected — revoked, malformed signature, or a key no longer in the seller's keystore. Sellers MUST return this code when an `Authorization` header was present but verification failed. Recovery: terminal. Exception: agents with a valid OAuth 2.1 refresh grant MAY treat this as correctable when the rejection reason is token expiry — silently refresh and retry once; if the refresh fails or the seller explicitly signals revocation, escalate to human.",
+    "AUTHORIZATION_REQUIRED": "The caller is authenticated, but the referenced object requires an additional downstream platform connection, identity, creator, or post authorization before the seller can complete the requested action. Typical use: `sync_creatives` with a `published_post` reference where the seller can resolve the post but the owning identity has not authorized paid serving, or authorization has expired/revoked and can be restored. Distinct from `AUTH_MISSING` / `AUTH_INVALID` (caller credentials) and from `PERMISSION_DENIED` (seller policy denies the caller). Sellers SHOULD include recovery details conforming to `error-details/authorization-required.json`, especially `error.details.missing_connections[]` when the caller needs to complete one of several platform connections. Legacy recovery hints such as `authorization_url`, `authorization_instructions`, or `reference_authorization` remain valid when safe to disclose. Recovery: correctable (complete or restore the required authorization, then retry).",
+    "RATE_LIMITED": "Request rate exceeded. Retry after the retry_after interval. Recovery: transient.",
+    "SERVICE_UNAVAILABLE": "Seller service is temporarily unavailable. Retry with exponential backoff. Recovery: transient.",
+    "CONFIGURATION_ERROR": "The seller's deployment is misconfigured in a way that prevents handling the request — the buyer cannot fix it, retrying will not help, and reporting to the seller's operator is the only remediation. Examples: account declared with `mode: 'mock'` but no `mock_upstream_url` populated; platform declared with `mode: 'live'` or `mode: 'sandbox'` but no `upstream_url` declared; required environment variable unset on the seller process. Distinct from `INVALID_REQUEST` (buyer-fixable; the request itself is malformed), `SERVICE_UNAVAILABLE` (transient; retry-with-backoff may succeed), `UNSUPPORTED_FEATURE` (capability mismatch — the seller does not implement the requested specialism), `ACCOUNT_SETUP_REQUIRED` (buyer-side onboarding incomplete; this code is seller-side deployment incomplete), and `GOVERNANCE_UNAVAILABLE` (governance-agent-scoped; transient). Wire placement. The deployment cannot produce a success artifact, so sellers MUST flip transport-level failure markers (HTTP 5xx, MCP `isError: true`, A2A `failed`) and populate both layers per the two-layer model in `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`. The code itself is the discriminator; no `error.details` shape is defined for this code (mirroring the minimal-disclosure precedent of `AGENT_SUSPENDED` / `AGENT_BLOCKED`). Sellers SHOULD populate `error.message` with operator-actionable detail (which metadata key is missing, which env var is unset) and MUST NOT include credentials, connection strings, or stack traces — the message is wire-visible to the buyer. Recovery: terminal — the buyer MUST surface to the seller's operator and MUST NOT auto-retry (retries cannot resolve a misconfigured deployment until the operator intervenes).",
+    "POLICY_VIOLATION": "Request violates the seller's content or advertising policies. Recovery: correctable (review policy requirements in the error details).",
+    "PRODUCT_NOT_FOUND": "One or more referenced product IDs are unknown or expired. Recovery: correctable (remove invalid IDs and retry, or re-discover with get_products).",
+    "PRODUCT_UNAVAILABLE": "The requested product is sold out or no longer available. Recovery: correctable (choose a different product).",
+    "PROPOSAL_EXPIRED": "A referenced proposal ID has passed its expires_at timestamp. Recovery: correctable (re-discover with get_products to get a fresh proposal).",
+    "BUDGET_TOO_LOW": "Budget is below the seller's minimum. Recovery: correctable (increase budget or check capabilities.media_buy.limits).",
+    "CREATIVE_REJECTED": "Creative failed content policy review. For deadline violations, see CREATIVE_DEADLINE_EXCEEDED. Recovery: correctable (revise the creative per the seller's advertising_policies).",
+    "CREATIVE_VALUE_NOT_ALLOWED": "A submitted text-asset value is not in the format's declared `allowed_values` list. Distinct from `CREATIVE_REJECTED` (generic content-policy failure) by being a closed-set constraint violation that the buyer can resolve mechanically without policy interpretation — the seller has published the complete list of acceptable values on the format, and any value outside that list is rejected by definition. The seller MUST set `error.field` to the offending asset's path within the manifest (e.g., `creatives[0].creative_manifest.assets[0].value` or the field name declared by the format) and SHOULD include the format's `allowed_values` array in `error.details.allowed_values` so the buyer agent can re-prompt its LLM with constrained sampling. Recovery: correctable (select a value from `allowed_values` and resubmit).",
+    "UNSUPPORTED_FEATURE": "A requested feature or field is not supported by this seller. Recovery: correctable (check get_adcp_capabilities and remove unsupported fields).",
+    "UNPRICEABLE_OUTPUT": "A creative transformer build targets an output format that no pricing option covers — no transformer.pricing_options entry has a matching applies_to_output_format_ids and none is unscoped. The build is rejected rather than billed at a guessed rate (no silent fallback). Recovery: correctable (target an output the transformer prices, or have the seller add a pricing option for it).",
+    "UNSUPPORTED_GRANULARITY": "The requested `time_granularity` on `get_media_buy_delivery` is not in the product's declared `reporting_capabilities.windowed_pull_granularities`. Distinct from `UNSUPPORTED_FEATURE` (generic capability mismatch) by being narrowly about reporting-window granularity — the buyer asked for hourly pull-recovery on a product that only honors daily pulls, for example. Sellers MAY echo the declared set in `error.details.supported_granularities` when the caller is authorized to read the product's reporting capabilities — the same set is already available via `get_adcp_capabilities`, so the echo is a convenience, not load-bearing. Sellers MUST NOT echo a granularity set the caller could not otherwise read (per-product capability views vary by buyer entitlement). The `error.field` SHOULD point at `time_granularity`. Buyers that need higher-frequency recovery than the seller's pull set supports MUST rely on the webhook channel as primary at that frequency — the seller's `available_reporting_frequencies` may legitimately exceed `windowed_pull_granularities` (e.g., a stream-tap webhook on Kafka with warehouse pulls only at daily). Recovery: correctable (re-issue at a granularity in the declared set, or omit `time_granularity` to fall back to cumulative date-range pulls).",
+    "UNSUPPORTED_PROVISIONING": "The seller does not support the `sync_accounts` mode the entry requested. Returned per-entry in the `sync_accounts` response when (a) an entry keyed by the natural-key trio (`brand` + `operator` + `billing`) is sent to a seller that does not provision accounts via AdCP — typical for account-id namespaces where accounts are pre-provisioned out of band or discovered via `list_accounts`; or (b) an entry keyed by `account` (AccountRef) is sent to a seller that has not implemented the settings-update mode. Distinct from `UNSUPPORTED_FEATURE` (generic capability mismatch) by being narrowly about which of the two `sync_accounts` modes the seller implements. The two modes are mutually exclusive per-entry — the seller MUST NOT silently downgrade or upgrade between them. Sellers MAY declare which modes they implement via `get_adcp_capabilities` (forward-looking — capability declaration shape is open). Recovery: correctable (re-issue with the entry shape the seller supports; for account-id namespaces that expose settings updates, that means `account: {account_id: ...}` entries; for sellers that only provision via natural key that means the flat `brand+operator+billing` shape). The `error.field` SHOULD point at the entry index where the unsupported shape was found.",
+    "AUDIENCE_TOO_SMALL": "Audience segment is below the minimum required size for targeting. Recovery: correctable (broaden targeting or upload more audience members).",
+    "ACCOUNT_NOT_FOUND": "The account reference could not be resolved. Recovery: terminal (verify account via list_accounts or contact seller).",
+    "ACCOUNT_SETUP_REQUIRED": "Natural key resolved but the account needs setup before use. Recovery: correctable (check details.setup for URL or instructions).",
+    "ACCOUNT_AMBIGUOUS": "Natural key resolves to multiple accounts. Recovery: correctable (pass explicit account_id or a more specific natural key).",
+    "ACCOUNT_PAYMENT_REQUIRED": "Account has an outstanding balance requiring payment before new buys. Recovery: terminal (buyer must resolve billing).",
+    "ACCOUNT_SUSPENDED": "Account has been suspended. Recovery: terminal (contact seller to resolve suspension).",
+    "COMPLIANCE_UNSATISFIED": "A required disclosure from the brief's compliance section cannot be satisfied by the target format — either the required position or the required persistence mode is not in the format's disclosure_capabilities. Recovery: correctable (choose a format that supports the required disclosure positions and persistence modes, or remove the disclosure requirement).",
+    "GOVERNANCE_DENIED": "A registered governance agent denied the transaction. Sellers MUST place the denial in the task's structured rejection arm when one exists (e.g., `acquire_rights` → `AcquireRightsRejected`, `creative_approval` → `CreativeRejected`); otherwise in `errors[]` + `adcp_error`. Buyers MUST dispatch on the response's discriminated `status` first and fall back to `errors[].code` / `adcp_error.code` only when no rejection arm exists for that task. The buyer may restructure the buy (e.g., reduce budget, split into smaller transactions), escalate to human spending authority, or contact the governance agent for details. Recovery: correctable.\n\nWire placement (full guidance). Governance denial is a structured business outcome, not a system error — the governance call SUCCEEDED and the agent returned a denial verdict. Two cases:\n\n1. Task response defines a structured rejection arm. The arm IS the canonical denial shape. The seller populates `reason` (human-readable, propagating governance findings) and `suggestions` (optional) and does NOT additionally emit `GOVERNANCE_DENIED` in `errors[]` or `adcp_error`. The rejection arms enforce this at the schema layer: e.g., `AcquireRightsRejected` and `CreativeRejected` both declare `not: { required: [errors] }`, so dual-emission is already a schema violation. The code does not appear on the wire when the rejection arm is used. Transport-level success markers MUST NOT be flipped (HTTP 200, MCP `isError: false`, A2A `succeeded`) — the task ran successfully and produced a structured response.\n\n2. Task response has no rejection arm (e.g., `create_media_buy` returns Success / Error / Submitted arms only). The seller populates `errors[].code: GOVERNANCE_DENIED` in the payload AND `adcp_error.code: GOVERNANCE_DENIED` on the envelope per the two-layer model in `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`. Transport-level failure markers DO flip in this case (HTTP 4xx, MCP `isError: true`, A2A `failed`) — the task could not produce a success artifact.\n\nThe rule generalizes to any current or future task whose response defines a discriminated rejection arm. In either placement, sellers SHOULD propagate governance findings verbatim — buyers' recovery decisions depend on what specifically was rejected. `GOVERNANCE_DENIED` is reserved for verdicts received from a reachable governance agent; if the governance call itself failed (timeout, network, config error), use `GOVERNANCE_UNAVAILABLE` instead.",
+    "BUDGET_EXHAUSTED": "Account or campaign budget has been fully spent. Distinct from BUDGET_TOO_LOW (rejected at submission). Recovery: terminal (buyer must add funds or increase budget cap).",
+    "BUDGET_EXCEEDED": "Operation would exceed the allocated budget for the media buy or package. Distinct from BUDGET_EXHAUSTED (already spent) and BUDGET_TOO_LOW (below minimum). Recovery: correctable (reduce requested amount or increase budget allocation).",
+    "BUDGET_CAP_REACHED": "build_creative stopped producing early because the next leaf would exceed the request's max_spend ceiling. Normally a SUCCESSFUL partial build (BuildCreativeVariantSuccess with budget_status: 'capped' and an advisory BUDGET_CAP_REACHED entry — every returned leaf is real and billed); returned as a terminal error only when even the first leaf would exceed the cap (no partial possible). Distinct from BUDGET_EXCEEDED (would exceed a media-buy/package allocation — a rejection) and BUDGET_EXHAUSTED (already spent). Recovery: correctable (raise max_spend, or reduce max_creatives/max_variants).",
+    "CREATIVE_DEADLINE_EXCEEDED": "Creative change submitted after the package's creative_deadline. Distinct from CREATIVE_REJECTED (content policy failure). Recovery: correctable (check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller).",
+    "CREATIVE_INACCESSIBLE": "A creative governance agent (get_creative_features) could not retrieve the submitted creative_manifest assets for evaluation — an asset URL was unreachable, returned an error, or required credentials the agent does not hold. Distinct from CREATIVE_NOT_FOUND (a creative_id absent from the agent's library, not an asset-fetch failure) and CREATIVE_REJECTED (assets retrieved but failed policy). Recovery: correctable (verify the asset URLs are reachable without agent-side credentials, then re-submit).",
+    "CONFLICT": "Concurrent modification detected. The resource was modified by another request between read and write. Recovery: transient (re-read the resource and retry with current state).",
+    "IDEMPOTENCY_CONFLICT": "An earlier request with the same idempotency_key was processed with a different canonical payload within the seller's replay window. Distinct from CONFLICT (concurrent write) — this indicates the client reused a key across semantically different requests. Recovery: correctable (use a fresh UUID v4 for the new request, or resend the exact original payload to get the cached response).",
+    "IDEMPOTENCY_EXPIRED": "The idempotency_key was seen previously but its cached response has been evicted because it is past the seller's declared replay_ttl_seconds. Distinct from IDEMPOTENCY_CONFLICT (different payload within window) — this indicates the retry arrived too late for at-most-once guarantees. Recovery: correctable (perform a natural-key reconciliation — e.g., call get_media_buys for the relevant account/status scope and match returned media_buys[].context.internal_campaign_id — to determine whether the original request succeeded, then either accept that result or generate a fresh idempotency_key for a new attempt). If the buyer has any evidence the prior call succeeded (partial response received before crash, entry in the buyer's own DB, a webhook fired), the buyer MUST do the natural-key reconciliation BEFORE minting a new key — minting a new key in that situation is exactly how double-creation happens.",
+    "IDEMPOTENCY_IN_FLIGHT": "A prior request with the same `idempotency_key` is still being processed and has not yet produced a cached response. The second request arrived before the first completed. Sellers MAY return this code instead of blocking the second caller until the first finishes — useful when the first call invokes a slow downstream system (SSP, ad server, payment provider). Distinct from IDEMPOTENCY_CONFLICT (different canonical payload — a client bug) and from CONFLICT (concurrent modification of a different resource) — IDEMPOTENCY_IN_FLIGHT is the seller telling the buyer 'your retry was correct but your previous attempt is still running, come back shortly.' Sellers SHOULD populate `error.details.retry_after` (seconds, integer) with a wait hint based on the first request's elapsed time and expected completion. Buyers MUST treat this as transient and MUST NOT mint a fresh `idempotency_key` — minting a new key turns a safe retry into a double-execution race. Recovery: transient (wait `retry_after` seconds and retry with the same `idempotency_key`; the second attempt will either replay the now-cached response or, if still in flight, return IDEMPOTENCY_IN_FLIGHT again).",
+    "INVALID_STATE": "Operation is not permitted for the resource's current status (e.g., updating a completed or canceled media buy, or modifying a canceled package). Recovery: correctable (check current status via get_media_buys and adjust request).",
+    "MEDIA_BUY_NOT_FOUND": "Referenced media buy does not exist or is not accessible to the requesting agent. Recovery: correctable (verify media_buy_id; when recovering across legacy sellers or missing echoed IDs, reconcile via get_media_buys and the opaque request/response context correlation handle, such as context.internal_campaign_id, rather than deprecated top-level buyer_ref).",
+    "NOT_CANCELLABLE": "The media buy or package cannot be canceled in its current state. The seller may have contractual or operational constraints that prevent cancellation. Recovery: correctable (check the seller's cancellation policy or contact the seller).",
+    "PACKAGE_NOT_FOUND": "Referenced package does not exist within the specified media buy. Recovery: correctable (verify package_id within the media buy; when recovering across legacy sellers or missing echoed product_id, reconcile via get_media_buys and the package-level context correlation handle, such as context.buyer_ref, rather than deprecated top-level buyer_ref).",
+    "CREATIVE_NOT_FOUND": "Referenced creative does not exist in the agent's creative library. Recovery: correctable (verify creative_id via list_creatives, or sync_creatives to register it). Sellers MUST return this code uniformly for any creative_id not owned by the calling account — never distinguish 'exists in another tenant' from 'does not exist', which would enable cross-tenant enumeration.",
+    "SIGNAL_NOT_FOUND": "Referenced signal does not exist in the agent's catalog. Recovery: correctable (verify signal_ref via get_signals, or confirm the signal is available from this agent). Sellers MUST return this code uniformly for any signal_ref not accessible to the calling account — never distinguish 'exists but unauthorized' from 'does not exist', which would enable cross-tenant enumeration.",
+    "SIGNAL_TARGETING_INCOMPATIBLE": "A creative carrying a signal_condition (from build_creative signal_conditions fan-out, #5240) was assigned to a package whose signal targeting is incompatible — e.g. a sun creative routed to a rain-targeted package. The trafficking-compatibility invariant: a creative built FOR one signal condition MUST NOT serve into a package targeting an incompatible condition. Enforced reject-at-trafficking on the sales side (create_media_buy / sync_creatives), NOT at build_creative (per #5280, signal pointers are advisory at the build layer; enforcement lives at the trafficking boundary). Compatibility is matched on shared signal_ref identity: when both sides carry signal_agent_segment_id, compare the opaque handle exactly; when both carry only categorical {signal_id,value}, compare signal_ref + value-set semantics; equal categorical labels from DIFFERENT providers are NOT compatible absent an explicit equivalence mechanism; when one side has a segment handle and the other only a categorical value, the seller MAY accept only if it can resolve both to the same provider-issued segment, else reject/warn. For value_type:numeric the comparison is range-overlap (WG-open: range-overlap vs exact-match — see RFC #5240 open decisions). error.field SHOULD point at the offending assignment path (e.g. packages[N].creative_assignments[M] or creatives[N]); error.details SHOULD carry the creative's signal_condition and the package's incompatible signal targeting so the buyer can re-route. Distinct from SIGNAL_NOT_FOUND (signal unknown/inaccessible) by being a compatibility mismatch between a known creative condition and a known package condition. Recovery: correctable (assign the creative to a package whose signal targeting matches its signal_condition, or rebuild for the package's condition).",
+    "REFERENCE_NOT_FOUND": "Generic fallback for a referenced identifier, grant, session, or other resource that does not exist or is not accessible by the caller. Use when no resource-specific not-found code applies (e.g., property lists, content standards, rights grants, SI offerings, proposals, catalogs, event sources, collection lists, brands, individual properties). Typed parameters that lack a dedicated standard code MUST also use REFERENCE_NOT_FOUND rather than minting a custom *_NOT_FOUND code. See 'Uniform response for inaccessible references' in error-handling.mdx for the full MUST list. Recovery: correctable. Summary of the uniform-response MUST: sellers MUST return the same response for 'exists but the caller lacks access' as for 'does not exist' across every observable channel — error.code/message/field/details (message MUST be generic; error.field MUST be identical across both cases on typed parameters); HTTP status, A2A task.status.state, and MCP isError; response headers (ETag, Cache-Control, per-type rate-limit buckets, CDN tags); side effects (webhook/audit writes, background-job enqueues, per-type quota counters, DB-shard routing); and observability (logs, APM spans, third-party error telemetry like Sentry/Datadog). Sellers MUST perform the same resolution-and-authorization work on both paths (resolve-then-authorize; on true-miss still run an authorization decision of equivalent shape against an empty principal set so authorizer latency is not a side channel). Cache population MUST NOT be gated on authorization. Polymorphism is evaluated against the tool-schema's declared parameter shape before any lookup, and a tool's declared shape MUST be identical across all callers.",
+    "SESSION_NOT_FOUND": "SI session ID is invalid, expired, or does not exist. Recovery: correctable (initiate a new session via si_initiate_session).",
+    "PLAN_NOT_FOUND": "Referenced governance plan does not exist or is not accessible to the requesting agent. Recovery: correctable (verify plan_id via sync_plans, or register the plan first). Sellers MUST return this code uniformly for any plan_id not accessible to the calling account — never distinguish 'exists but unauthorized' from 'does not exist', which would enable cross-tenant enumeration of governance plans.",
+    "SESSION_TERMINATED": "SI session has already been terminated and cannot accept further messages. Recovery: correctable (initiate a new session via si_initiate_session).",
+    "VALIDATION_ERROR": "Request contains invalid field values or violates business rules beyond schema validation. Recovery: correctable (review error details and fix field values).",
+    "PRODUCT_EXPIRED": "One or more referenced products have passed their expires_at timestamp and are no longer available for purchase. Recovery: correctable (re-discover with get_products to find current inventory).",
+    "PROPOSAL_NOT_COMMITTED": "The referenced proposal has proposal_status 'draft' and cannot be used to create a media buy. Recovery: correctable (finalize the proposal first using get_products with buying_mode 'refine' and action 'finalize').",
+    "PROPOSAL_NOT_FOUND": "The referenced proposal_id is not recognized by the seller — never finalized, belongs to a different tenant, or evicted from the seller's session cache before consumption. Distinct from `PROPOSAL_EXPIRED` (a known proposal whose `expires_at` window has passed) and `PROPOSAL_NOT_COMMITTED` (a known proposal still in `draft`). Recovery: correctable (re-issue `get_products` with `buying_mode: 'refine'` + `action: 'finalize'` to obtain a current proposal_id, then retry create_media_buy).",
+    "MULTI_FINALIZE_UNSUPPORTED": "Returned by sellers that cannot guarantee atomic commit across multiple proposals in a single `get_products` call (multiple `action: 'finalize'` entries in `refine[]` targeting different `proposal_id` values). The buyer's intent — atomic multi-proposal finalize — is structurally well-formed and per spec atomic, but this seller's downstream stack cannot satisfy the atomicity guarantee (e.g., the proposals route to two different ad servers with no 2PC). More specific than `INVALID_REQUEST` so buyers can distinguish 'this seller doesn't support multi-finalize' from 'the request itself is malformed'. Recovery: correctable (sequence the finalize calls one-`proposal_id`-per-call; there is no capability flag for multi-finalize support, so a successful first-attempt is the only positive discovery signal). See [refinement guide § Finalize is exclusive](/docs/media-buy/product-discovery/refinement#finalize-is-exclusive-within-refine).",
+    "IO_REQUIRED": "The committed proposal requires a signed insertion order but no io_acceptance was provided. Recovery: correctable (review the proposal's insertion_order, accept terms, and include io_acceptance on create_media_buy).",
+    "TERMS_REJECTED": "Buyer-proposed measurement_terms were rejected by the seller. The error details SHOULD identify which specific term was rejected and the seller's acceptable range or supported vendors. Recovery: correctable (adjust the proposed terms and retry, or omit measurement_terms to accept the product's defaults).",
+    "REQUOTE_REQUIRED": "An update_media_buy request changes the parameter envelope (budget, flight dates, volume, targeting) the original quote was priced against. The pricing_option remains locked; the seller is declining the requested shape at that price. Distinct from TERMS_REJECTED (measurement) and POLICY_VIOLATION (content). Sellers SHOULD populate error.details.envelope_field with the field path(s) that breached the envelope (e.g., 'packages[0].budget', 'end_time') so the buyer's agent can decide whether to adjust the update, rediscover products, add packages where supported, or create a separate media buy. AdCP 3.1 does not define an amendment-quote artifact that can be attached to update_media_buy.",
+    "VERSION_UNSUPPORTED": "The declared adcp_version (release-precision) or adcp_major_version (deprecated) is not supported by this seller. The error details SHOULD follow `error-details/version-unsupported.json` — `supported_versions` (release-precision strings) is authoritative for retry; `supported_majors` is deprecated. Recovery: correctable (re-pin to a release in supported_versions and retry; or call get_adcp_capabilities without a version pin to discover supported_versions).",
+    "CAMPAIGN_SUSPENDED": "Campaign governance has been suspended pending human review; the governance agent MUST reject `check_governance` and `report_plan_outcome` calls on the affected plan until the escalation is resolved. Distinct from `ACCOUNT_SUSPENDED` (account-wide) — this is scoped to a single plan/campaign. Recovery: transient (wait for the escalation to resolve; contact the plan operator if the suspension persists).",
+    "GOVERNANCE_UNAVAILABLE": "A registered governance agent is unreachable. Sellers MUST place this code in `errors[]` + `adcp_error` (never a structured rejection arm) and flip transport-level failure markers (HTTP 5xx, MCP `isError: true`, A2A `failed`). Distinct from `GOVERNANCE_DENIED` (agent reachable and explicitly denied — see that code's wire-placement guidance). Recovery: transient (retry with backoff; if the agent remains unreachable, the buyer MUST contact the plan's governance operator — the seller MUST NOT proceed with the media buy without a valid decision).\n\nWire placement (full guidance). Governance unavailability is a system error — the governance call FAILED (timeout, network, config error) and the seller could not get a verdict at all. Always populate both layers per the two-layer model in `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`. Do NOT use a structured rejection arm for unavailability even when the task offers one — the buyer's recovery semantics differ (retry-with-backoff for unavailability vs. restructure-or-escalate for denial), and conflating them masks the system-error signal.",
+    "PERMISSION_DENIED": "The authenticated caller is not authorized for the requested action under the seller's own policies, or a required signed credential (e.g., a `governance_context` token on a spend-commit) is missing, fails verification, or was issued for a different plan, seller, or phase. Distinct from `AUTH_MISSING` (no credentials presented), `AUTH_INVALID` (credentials presented but rejected), `GOVERNANCE_DENIED` (governance agent denied), `AGENT_SUSPENDED` (agent's relationship temporarily paused), and `AGENT_BLOCKED` (agent's relationship permanently denied). When the gate that fired is specifically a non-status per-agent provisioning constraint — e.g., the agent is provisioned for sandbox traffic only and the request was against a non-sandbox account — `error.details` SHOULD conform to `error-details/agent-permission-denied.json` (`scope: \"agent\"` plus `reason: \"sandbox_only\"`) so callers can dispatch without parsing prose. Sellers MUST emit `scope: \"agent\"` only when buyer-agent identity has been established via signed-request derivation or a credential-to-agent mapping in the seller's onboarding record; in all other cases (including bearer credentials not mapped to a specific agent record) sellers MUST return `PERMISSION_DENIED` and MUST omit `error.details.scope` — emitting the per-agent scope without established identity is a cross-tenant onboarding oracle, and the omit MUST be enforced across every observable channel (response shape, HTTP/A2A/MCP status, headers, side effects, observability, latency parity) per the channel-coverage rules in error-handling.mdx Per-Agent Authorization Gate, mirroring the `*_NOT_FOUND` uniform-response rule and `BILLING_NOT_PERMITTED_FOR_AGENT`. The `suspended` and `blocked` per-agent states are NOT carried on this code — sellers MUST emit `AGENT_SUSPENDED` / `AGENT_BLOCKED` instead, each of which is its own discriminator. Recovery: correctable (call `check_governance` to mint a valid token, or contact the seller to resolve the underlying permission); when `details.reason` is present the rejection is terminal-pending-onboarding — the agent MUST surface to a human at the buyer rather than auto-retrying, since the agent cannot unilaterally extend its sandbox-only provisioning.",
+    "SCOPE_INSUFFICIENT": "The authenticated caller is not authorized for the invoked task — the task is not in the caller's `allowed_tasks` for this account (discoverable via the `authorization` object on sync_accounts / list_accounts responses). Distinct from `PERMISSION_DENIED` (generic authz failure, often credential-shaped) by being narrowly about task-level scope. Sellers SHOULD populate `error.details.introspection_hint` pointing at where the caller can re-read its scope (strawman: `{ task: 'list_accounts', account: {...} }`). Recovery: correctable in the sense that the request can be re-sent after the scope is broadened, but the agent cannot broaden its own scope — this requires operator intervention, and agents SHOULD surface rather than auto-retry.",
+    "READ_ONLY_SCOPE": "The caller's scope is read-only; the invoked task would mutate state and was rejected. Distinct from `SCOPE_INSUFFICIENT` (task not in scope at all) — the task is in some scopes this seller supports, just not this caller's. Recovery: correctable but not agent-autonomous — use a non-mutating alternative, or surface to the operator to request a scope that permits mutation.",
+    "FIELD_NOT_PERMITTED": "A request field is not in the caller's `field_scopes` allowlist for this task. Sellers declaring `field_scopes` on the account's `authorization` object MUST reject any request that sets a non-allowlisted field with this code. Distinct from `VALIDATION_ERROR` (schema/business-rule violation) - the field is valid, just not writable by this caller. `error.field` MUST identify the exact offending field path (e.g., `packages[0].budget`); when multiple fields are disallowed, sellers SHOULD return one error per field, or MAY enumerate them in `error.details.fields`. Recovery: correctable and agent-autonomous - agent may drop the disallowed field(s) and retry.",
+    "PROVENANCE_REQUIRED": "Seller's `creative_policy.provenance_required` is true and the submitted creative has no `provenance` object on the manifest, on the creative-asset, or on any individual asset. Distinct from `CREATIVE_REJECTED` (generic content-policy failure) by being narrowly about provenance presence. Recovery: correctable (attach a provenance object - at minimum `digital_source_type` - and resubmit). `error.field` MUST point at the path where provenance was expected (e.g., `creatives[0].creative_manifest`).",
+    "PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING": "Seller's `creative_policy.provenance_requirements.require_digital_source_type` is true and the submitted creative's resolved provenance (after inheritance) has no `digital_source_type` value, or has it set to null. Distinct from `PROVENANCE_REQUIRED` (no provenance object at all) - provenance is present, just missing this specific field. Recovery: correctable (set `provenance.digital_source_type` to a value from the `digital-source-type` enum and resubmit). `error.field` MUST point at the resolved provenance path that was inspected (e.g., `creatives[0].creative_manifest.provenance.digital_source_type`).",
+    "PROVENANCE_DISCLOSURE_MISSING": "Seller's `creative_policy.provenance_requirements.require_disclosure_metadata` is true and the submitted creative's resolved provenance has no `disclosure.required` boolean, or `disclosure.required` is true with no `disclosure.jurisdictions` entries. Recovery: correctable (set `provenance.disclosure.required` and, when true, populate `disclosure.jurisdictions`). `error.field` MUST point at `provenance.disclosure` (e.g., `creatives[0].creative_manifest.provenance.disclosure`).",
+    "PROVENANCE_EMBEDDED_MISSING": "Seller's `creative_policy.provenance_requirements.require_embedded_provenance` is true and the submitted creative's resolved provenance has no `embedded_provenance` array, or has it as an empty array. Used in pipelines where sidecar `c2pa.manifest_url` is stripped by intermediaries and the seller requires content-stream-resilient provenance. Recovery: correctable (attach at least one `embedded_provenance` entry from a supported provider and resubmit, optionally with a `verify_agent` pointer matching one of the seller's `creative_policy.accepted_verifiers`). `error.field` MUST point at `provenance.embedded_provenance` on the resolved manifest.",
+    "PROVENANCE_VERIFIER_NOT_ACCEPTED": "Buyer attached a `verify_agent.agent_url` on `embedded_provenance[]` or `watermarks[]` that does not match (canonicalized per /docs/reference/url-canonicalization: lowercase scheme and host, strip default port, normalize path dot-segments) any entry in the seller's `creative_policy.accepted_verifiers[].agent_url`. The seller does not call buyer-asserted endpoints outside its allowlist; this is the cross-check that closes the buyer-controlled-URL trust gap. `error.field` MUST point at the offending `verify_agent.agent_url` path; `error.details` SHOULD include a reference to the product whose `creative_policy.accepted_verifiers` the buyer should consult (the buyer already has this from `get_products`). Recovery: correctable (replace `verify_agent.agent_url` with one from the seller's published `accepted_verifiers`, drop the `verify_agent` entirely if the embedding is self-verifiable, or re-embed evidence using a verifier the seller accepts).",
+    "PROVENANCE_CLAIM_CONTRADICTED": "Seller invoked a governance agent from `creative_policy.accepted_verifiers` via `get_creative_features` and the verifier's result contradicts the buyer's provenance claim - e.g., buyer claims `digital_source_type: digital_capture` but the AI-detection feature returns `ai_generated: true` above the seller's confidence threshold. Distinct from the `PROVENANCE_*_MISSING` family (structural absence) by being an active refutation. `error.details` SHOULD be limited to the audit-safe allowlist `{ agent_url, feature_id, claimed_value, observed_value, confidence }`; sellers MUST NOT forward arbitrary verifier extension fields, `detail_url`, or any verifier response shape that may carry cross-tenant or PII data. When the seller calls a different on-list agent than the buyer nominated (the seller is the verifier-of-record), `error.details.agent_url` is the agent the seller actually called and `error.details.substituted_for` SHOULD carry the buyer's nominated `agent_url` so the buyer can reconcile. Recovery: correctable - buyer revises the provenance claim to match reality (or replaces the creative); auto-retry without correction will not pass.",
+    "EVALUATOR_AGENT_NOT_ACCEPTED": "Buyer attached an evaluator agent pointer on `build_creative` — `evaluator.feature_agent.agent_url` or the `evaluator` agent-form `agent_url` — that does not match (canonicalized per /docs/reference/url-canonicalization: lowercase scheme and host, strip default port, normalize path dot-segments) any entry in the seller's `creative_policy.accepted_verifiers[].agent_url`. The producing agent does not call buyer-asserted endpoints outside its allowlist; this mirrors `PROVENANCE_VERIFIER_NOT_ACCEPTED` for the gate/rank evaluator path — the buyer represents which on-list agent it used, the seller is the agent-of-record and calls only allowlisted agents. `error.field` MUST point at the offending `agent_url` path; `error.details` SHOULD include a reference to the product whose `creative_policy.accepted_verifiers` the buyer should consult. Recovery: correctable (replace the agent_url with one from the seller's published `accepted_verifiers`, or drop the evaluator agent pointer to fall back to seller-default ranking).",
+    "BILLING_NOT_SUPPORTED": "The seller declines the requested `billing` value either at the seller-wide capability level (`supported_billing` does not include the value) or at the per-account-relationship level (e.g., the seller accepts `operator` billing in general but has no direct billing relationship with the operator on this specific account). The default reject code for billing-value mismatches; `error.details` SHOULD conform to `error-details/billing-not-supported.json` (`scope` ∈ `{\"capability\", \"account\"}` plus optional `supported_billing` echo for the `\"capability\"` scope) so callers can dispatch without parsing prose. Distinct from `BILLING_NOT_PERMITTED_FOR_AGENT`, which is narrowly scoped to the calling buyer agent's commercial relationship with the seller (passthrough-only vs agent-billable) rather than to the seller's capability or per-account state. Sellers MUST emit `BILLING_NOT_PERMITTED_FOR_AGENT` only when agent identity has been established via signed-request derivation or a credential-to-agent mapping in the seller's onboarding record; in all other cases (unauthenticated callers and bearer credentials not mapped to a specific agent record) sellers MUST return `BILLING_NOT_SUPPORTED` and MUST omit `error.details.scope` — emitting the per-agent code or the `\"account\"`-scope hint without established identity is a cross-tenant onboarding oracle (same uniform-response shape required by the `*_NOT_FOUND` family). Recovery: correctable (check `get_adcp_capabilities` for `supported_billing` and resubmit with a value the seller supports, or omit `billing` to accept the seller's default).",
+    "BILLING_NOT_PERMITTED_FOR_AGENT": "The seller's `supported_billing` capability accepts the requested model, but the calling buyer agent's commercial relationship with the seller does not — e.g., the agent is onboarded as passthrough-only (no payments relationship — only the operator can be invoiced) and `billing: 'agent'` or `billing: 'advertiser'` is rejected even though the seller supports both at the capability level. Distinct from `BILLING_NOT_SUPPORTED` (seller-wide capability) by being narrowly per-buyer-agent: the gate is the seller's onboarding record for this caller, not the seller's global wire capability. Sellers MUST emit this code only after agent identity has been established via signed-request derivation or a credential-to-agent mapping in the seller's onboarding record; callers without established identity MUST receive `BILLING_NOT_SUPPORTED` instead, to prevent the distinct code from acting as an onboarding oracle. The recovery shape is deliberately minimal — `error.details` MUST conform to `error-details/billing-not-permitted-for-agent.json` (`rejected_billing` plus an optional single `suggested_billing` retry value, typically `operator`) and MUST NOT carry the agent's full permitted-billing subset, rate cards, payment terms, credit limit, billing entity, or any other per-agent commercial state. Recovery: correctable (retry with `error.details.suggested_billing` when present; when absent, surface to a human at the buyer — the agent cannot unilaterally extend its commercial relationship and MUST NOT auto-retry, since payments-relationship onboarding with the seller is offline).",
+    "BILLING_OUT_OF_BAND": "A creative-agent billing-loop operation (`report_usage` is the canonical case) received a well-formed record that the agent will not bill on because this account bills via a non-AdCP channel — flat license, SaaS contract, bundled enterprise agreement, or any other out-of-band arrangement. The agent returns `accepted: 0` with the offending record(s) listed in `errors[]` carrying this code; the request itself is valid and silent acceptance would break buyer-side reconciliation. Distinct from `BILLING_NOT_SUPPORTED` (the seller declines a specific `billing` value on a media-buy account where AdCP billing is otherwise in scope) and `BILLING_NOT_PERMITTED_FOR_AGENT` (per-buyer-agent commercial gate on an otherwise-billable surface) by signaling that the entire billing surface is offline for this account, not that a specific value or caller is rejected. Buyers SHOULD pre-filter by reading `capabilities.creative.bills_through_adcp` from `get_adcp_capabilities` before issuing `report_usage`; agents that have not yet declared the capability remain in the probe-to-discover mode. The error is returned per-record (in the `report_usage` response `errors[]` array with `field` pointing at `usage[N]` or a specific record subpath), not at the envelope level. The code itself is the discriminator; no `error.details` shape is defined for this code (mirroring `CONFIGURATION_ERROR`'s discriminator-by-code pattern). Recovery: terminal — auto-retry will not change the outcome; the buyer SHOULD flag the account in its routing table so reconciliation falls back to the ad server's native billing export (or whatever offline channel the agent uses) rather than expecting AdCP-side cost truth.",
+    "PAYMENT_TERMS_NOT_SUPPORTED": "The seller does not accept the requested `payment_terms` value for this account. Payment terms are never silently remapped — sellers either accept or reject. Distinct from `BILLING_NOT_SUPPORTED` (the `billing` enum) by being narrowly about the `payment_terms` enum on the same account. Recovery: correctable (omit `payment_terms` to accept the seller's default, retry with a different value the seller supports, or negotiate offline).",
+    "BRAND_REQUIRED": "A billable operation was attempted without a brand reference. Every billable operation requires either a seller-assigned `account_id` or a natural key including `brand`. Recovery: correctable (include `brand` — `domain` plus optional `brand_id` — on the request).",
+    "AGENT_SUSPENDED": "The calling buyer agent's commercial relationship with the seller is temporarily paused — the agent is onboarded but currently suspended. Sibling to `ACCOUNT_SUSPENDED` (account-wide) and `CAMPAIGN_SUSPENDED` (per-plan) but scoped to the agent-relationship axis (orthogonal to any specific account on that agent). The code itself is the discriminator — it does NOT carry an `error.details` payload (mirroring `BILLING_NOT_PERMITTED_FOR_AGENT`'s discriminator-by-code pattern), and MUST NOT carry per-agent commercial state (rate cards, payment terms, credit limit, billing entity, contact channels) since full disclosure of per-agent state in a single probe is a per-agent oracle. Cross-tenant onboarding oracle clamp + channel-coverage requirements (response shape, HTTP/A2A/MCP status, headers, side effects, observability, latency parity, retry-counter side channel) are normative in error-handling.mdx Per-Agent Authorization Gate; this description does not restate them to avoid drift. Recovery: terminal (re-onboarding may resolve the suspension; the agent MUST surface to a human at the buyer rather than auto-retrying — the agent cannot unilaterally lift a suspension, and re-attempts only reinforce the gate).",
+    "AGENT_BLOCKED": "The calling buyer agent's commercial relationship with the seller is permanently denied — the agent is blocked. Sibling to `AGENT_SUSPENDED` on the agent-relationship axis but with no recovery path (a suspension may lift via re-onboarding; a block does not). The code itself is the discriminator — same posture as `AGENT_SUSPENDED`: no `error.details` payload, no per-agent commercial state, cross-tenant onboarding oracle clamp + channel-coverage requirements normative in error-handling.mdx Per-Agent Authorization Gate. Recovery: terminal (no autonomous recovery — the agent MUST surface to a human at the buyer; relationships are reinstated only through offline operator action with the seller, not via any seller-callable AdCP task).",
+    "CREDENTIAL_IN_ARGS": "The seller detected authentication material or caller-supplied trust material placed in request args (top-level, in `context`, in `ext`, or any other nested location in the task payload) instead of arriving on the relevant transport authentication or trust channel. This includes buyer-principal credentials that should arrive on the inbound transport (`Authorization: Bearer` per RFC 6750 §2 for HTTP, RFC 9421 signature headers for signed requests, MCP/A2A authentication framing per RFC 9728 §3), and evaluator-call credentials or JWK/JWKS/JWKS-URI trust material smuggled into evaluator-related payload fields instead of being established through the creative agent's outbound transport authentication to the evaluator. Distinct from `AUTH_REQUIRED` (no credentials presented or presented credentials rejected on the transport channel) and `PERMISSION_DENIED` (authenticated caller not authorized for the action). Distinct from the receiver-side credentials carried in `push_notification_config.authentication.credentials`, which configure the seller's webhook callback authentication and are not buyer-principal or evaluator-call credentials — those are an explicit carve-out and MUST NOT trigger this code. Sellers SHOULD reject credential-in-args under AdCP 3.1; the requirement upgrades to MUST 90 days after the 3.1 publication date. Recovery: terminal — the agent MUST NOT auto-retry. Auto-retry against this code re-logs the credential on each attempt across the seller's request logs, observability stack, and any LLM-context surfaces in the buyer-side recovery loop, exactly the prompt-injection exfiltration surface that motivated the rule. Wire placement. Sellers MUST flip transport-level failure markers (HTTP 4xx, MCP `isError: true`, A2A `failed`) and populate both layers per the two-layer model in `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`. The code itself is the discriminator; no `error.details` shape is defined, and `error.field` MUST NOT echo the offending credential value or any prefix of it (e.g., `\"Bearer ey...\"`) — the path that triggered detection is sufficient (e.g., `request.access_token`, `request.context.credentials`, `request.ext.api_key`, `request.evaluator.ext.api_key`). `error.message` MUST be generic and MUST NOT contain credential material. Sellers MUST drop the smuggled credential from logs, audit rows, and observability spans before persisting the rejection — the rejection itself is otherwise an exfiltration surface.",
+    "ACTION_NOT_ALLOWED": "The requested mutation maps to an action that is not currently available on this media buy. Sellers MUST populate `error.details` with `attempted_action` (the `media_buy_valid_action` value the request maps to), `reason` (an `action-not-allowed-reason` value: `wrong_status`, `not_supported_on_product`, `not_supported_on_buy`, or `mode_mismatch`), and `currently_available_actions` (echo of the buy's resolved `available_actions[]` so the buyer SDK can offer recovery without a separate get_media_buys round-trip). Recovery: correctable when `reason` is `wrong_status` (wait for or transition to an allowed status) or `mode_mismatch` (re-issue through the appropriate flow). Terminal-for-this-buy when `reason` is `not_supported_on_product` or `not_supported_on_buy` — buyers select a different product or renegotiate buy terms.",
+    "PRIVATE_FIELD_IN_PUBLIC_PLACEMENT": "Fatal producer-side error raised when a public placement object (`Product.placements[]` in `get_products` or `placements[]` in adagents.json) exposes seller-private operational fields such as `visibility`, `source`, `origin`, or `delivery_mappings`. This is a private-data leak, not an ordinary syntactic mismatch. Consumers that detect it MUST fail closed for that placement and surface this code so monitoring can alarm on the leak specifically instead of burying it under generic schema validation. `error.field` SHOULD point at the offending placement path and `error.details` SHOULD carry `{ placement_id, leaked_fields: [<field names>] }` without echoing private field values. Recovery: correctable but seller-side — remove private operational fields from the public placement surface and keep delivery mappings in seller-internal systems.",
+    "FORMAT_PROJECTION_FAILED": "Non-fatal advisory raised when a legacy named format on a product cannot be projected to a canonical-formats `ProductFormatDeclaration` via the resolution order in `v1-canonical-mapping.json` (explicit `canonical` field → format_id_glob → structural match → fail-closed). The product is still valid on the legacy named-format path; only the 3.1+ `format_options` projection failed. Primarily a **consumer-SDK concern** — the seller didn't fail; the consumer-side SDK couldn't project on their behalf. `error.field` MUST point at the offending product (e.g., `products[3].format_ids[0]`); `error.details` SHOULD carry `{ format_id, product_id, resolution_failure: \"no_explicit_canonical\" | \"no_registry_match\" | \"no_structural_match\" }` so buyer SDKs can route remediation (suggest the seller add an explicit `canonical` field, or file a registry PR).\n\n**Surface placement (normative).** SDKs that detect this on consumption MUST augment the response's `errors[]` array with an entry carrying `source: \"sdk\"`, `sdk_id: \"<package>@<version>\"`, `code: \"FORMAT_PROJECTION_FAILED\"`, and the field+details described above. This is the single mandated surface — logger-only is insufficient and a separate lint-output channel is NOT acceptable (AdCP is a multi-hop agent network; warnings need to propagate across hops or each hop has to re-detect locally). Sellers MAY emit this code on their own response when they self-detect a non-projectable format on emit; producer-emitted entries omit `source` (or set `source: \"producer\"`). The response stays 200/success regardless of who emits; this is non-fatal.\n\n**Multi-hop deduplication.** Each hop that detects the same condition SHOULD deduplicate by `(code, field)` rather than re-emit. The existing entry's `sdk_id` identifies which earlier processor saw it first; downstream SDKs SHOULD NOT add a second entry for the same `(code, field)` pair unless they have materially different `error.details` (e.g., a different `resolution_failure` reason from a different registry version).\n\nRecovery: correctable (seller-side action — add explicit `canonical` field on the legacy format file, contribute a v1-canonical-mapping registry entry, or author a 3.1+ `ProductFormatDeclaration` with `v1_format_ref` linking back). See canonical-formats.mdx 'Dual emission and v2↔v1 projection' for the full rules.",
+    "FORMAT_DECLARATION_DIVERGENT": "Non-fatal advisory raised when a product carries BOTH `format_ids` (v1) AND `format_options` (v2) and the two disagree (different canonical, different dimensions, different orientation) after projection. The producer's contract is that both shapes MUST refer to the same underlying declaration; divergence is a producer bug.\n\nEither side MAY emit this code: a SELLER may self-detect on emit (own producer bug; rare), or more commonly a consumer-SDK detects on consumption. SDKs MUST prefer `format_options` (the richer surface) when both are present and MUST surface the divergent product so it's observable rather than silently picked-one-and-dropped-other. Hard-failing the entire `get_products` response is discouraged — it punishes downstream buyers for the producer bug.\n\n**Surface placement (normative).** Same single-surface mandate as `FORMAT_PROJECTION_FAILED`: SDKs that detect this on consumption MUST augment the response's `errors[]` array with an entry carrying `source: \"sdk\"`, `sdk_id: \"<package>@<version>\"`, `code: \"FORMAT_DECLARATION_DIVERGENT\"`, and the field+details described below. Logger-only is insufficient; lint-output channels are NOT acceptable as the surface (the multi-hop agent network needs warnings to propagate across SDK boundaries via the wire response).\n\n`error.field` MUST point at the offending product; `error.details` SHOULD carry `{ product_id, format_ids, format_options_summary, divergence_reason }` so buyer SDKs can flag the producer for follow-up.\n\n**Multi-hop deduplication.** Each hop that detects the same divergence SHOULD deduplicate by `(code, field)` rather than re-emit; the existing entry's `sdk_id` identifies which earlier processor saw it first.\n\nRecovery: correctable but seller-side — buyer can't fix divergent declarations, only flag them.",
+    "FORMAT_DECLARATION_V1_AMBIGUOUS": "Non-fatal advisory raised when an SDK detects that a product's v2 declaration cannot be unambiguously projected back to a single v1 named format because the v1-canonical-mapping registry has only family-level structural entries for this canonical (no invertible `format_id_glob` literal). The family is known (e.g., 'this is a video_vast'); the specific v1 named format isn't pickable mechanically. Distinct from `FORMAT_PROJECTION_FAILED` (registry-coverage gap, correctable by adding a registry entry) — ambiguity is structural: the family is defined but a specific format can't be picked without seller assertion.\n\nSurface placement: same single-mandate as `FORMAT_PROJECTION_FAILED` and `FORMAT_DECLARATION_DIVERGENT` — SDKs MUST augment the response's `errors[]` array with an entry carrying `source: \"sdk\"`, `sdk_id`, `code: \"FORMAT_DECLARATION_V1_AMBIGUOUS\"`, `field` pointing at the offending declaration, and `error.details` SHOULD carry `{ format_kind, registry_matches: [<list of structural entries that matched at family level>], product_id }` so adopters can see why the inversion was ambiguous.\n\n**SDKs MUST NOT synthesize a v1_format_ref** in this case (or any other case). v1↔v2 explicit pairing is seller-asserted only — SDKs encountering family-only registry matches MUST treat the v2 declaration as v1-unreachable and surface this code rather than invent a plausible v1 format_id. The seller's path: author `v1_format_ref` on the v2 declaration to disambiguate (the authoritative pairing per `v1-canonical-mapping.json` resolution step 1), or accept that v1-only buyers won't see this product. Recovery: correctable but seller-side — buyer can't disambiguate without the seller's assertion.",
+    "FORMAT_OPTION_UNRESOLVED": "Non-fatal advisory raised when a placement in `adagents.json` (or any consumer of `placement-definition.json`) carries `format_options[].format_option_id` referencing a `format_option_id` that does NOT exist in the file's top-level `formats[]`. The reference is broken — the publisher's catalog claims the placement accepts a format option that isn't declared.\n\n**Resolution scope is same-file only.** Cross-file `format_option_id` lookup is not supported by design (closes off format_option_id squatting across publisher boundaries — a malicious file cannot reference another publisher's format_option_id and claim its narrowing). Buyer SDKs MUST fail closed for the placement (drop the format from the placement's accepted format set) and MUST surface this code rather than silently dropping or guessing what the publisher meant.\n\nSurface placement: same single-mandate as the other FORMAT_* codes — SDKs that detect on consumption MUST augment the response's `errors[]` with `source: \"sdk\"`, `sdk_id`, `code: \"FORMAT_OPTION_UNRESOLVED\"`, `field` pointing at the offending placement (e.g., `placements[2].format_options[1].format_option_id`), and `error.details` SHOULD carry `{ placement_id, format_option_id, declared_format_options: [<list of format_option_ids actually in formats[]>] }` so the publisher can fix.\n\nRecovery: correctable but publisher-side — buyer can't fix; publisher either declares the missing format option in `formats[]` or removes the reference from the placement.",
+    "FORMAT_NOT_SUPPORTED": "A requested creative build target is not supported by this creative agent. Returned by `build_creative` when `target_format_id.id` (or `target_format_ids[N].id` in a multi-format request) is neither an advertised `creative.supported_formats[].capability_id` nor a legacy named format the agent still accepts during the 3.x migration window. Sellers SHOULD set `error.field` to `target_format_id` for single-format requests or `target_format_ids[N]` for multi-format requests, and MAY include supported capability IDs (plain string `capability_id` values, not `FormatID` objects) in `error.details.supported_capability_ids` when safe to disclose. `supported_capability_ids` is intentionally distinct from the generic `details.accepted_values` closed-set hint: the capability set is per creative agent and per caller context, not an ecosystem-wide enum. Recovery: correctable (read `get_adcp_capabilities.creative.supported_formats[]` and retry with an advertised capability_id or supported legacy format).",
+    "FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE": "Non-fatal advisory raised when a v2 declaration carries `params.sizes[]` with N entries but only M v1_format_ref entries (M < N). The seller has asserted some v1 named formats but not enough to cover all declared sizes — v1-only buyers see partial coverage. Emitted **alongside** the partial v1 emission (NOT in place of it): the product still appears on the v1 wire under the M sizes the seller covered; this code tells v1-aware downstream agents that N-M sizes were dropped from the projection.\n\nSurface placement: SDKs that detect on emission OR consumption MUST augment the response's `errors[]` with `source: \"sdk\"` (or `\"producer\"` if the seller self-detects on emit), `sdk_id`, `code: \"FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE\"`, `field` pointing at the offending declaration, and `error.details` SHOULD carry `{ product_id, declared_sizes: [{w,h}, …], covered_sizes: [{w,h}, …], dropped_sizes: [{w,h}, …] }` so buyer agents see which sizes were lost.\n\n**SDKs MAY (non-normative) fan out automatically** by catalog lookup — for each entry in `sizes[]` lacking a corresponding `v1_format_ref`, the SDK consults the AAO catalog for the per-size v1 named format (e.g., for `{width: 728, height: 90}` look up `display_728x90_image`) and emits it under `format_ids[]`. This is opt-in (requires catalog access); when SDKs fan out, they SHOULD still emit this code as a transparency advisory so downstream consumers know the v1 emit was synthesized rather than seller-asserted.\n\nRecovery: warning — non-fatal, no retry. Seller fix: add `v1_format_ref[]` entries for the missing sizes.",
+    "PIXEL_TRACKER_LOSSY_DOWNGRADE": "Non-fatal advisory raised when a 3.1 buyer SDK downgrades a `pixel_tracker` asset to the v1 `{asset_type: url, url_type: tracker_pixel}` shape for a 3.0.x seller that doesn't recognize the new asset type. The URL is still emitted on the wire and the seller will fire it as a tracker pixel; what's lost is the event/method discrimination.\n\nDowngrade rules (normative):\n- `event: impression` + `method: img` → no loss; emit as `{asset_type: url, url_type: tracker_pixel, url, asset_id: impression_tracker}`\n- `event: viewable_mrc_50` / `viewable_mrc_100` / `viewable_video_50` / `audible_video_complete` → emit with `asset_id: viewability_tracker`; advisory `lost_event: <variant>` (specific viewability variant collapses to a single v1 slot)\n- `event: click` → emit with `asset_id: click_tracker`; no meaningful loss\n- `event: custom, custom_event_name: X` → emit with `asset_id: impression_tracker` (default tracker_pixel fires on impression); advisory `lost_event: \"custom\"`, `lost_custom_event_name: X` (custom event timing collapses to impression timing)\n- `method: js` → emit unchanged shape (url, url_type:tracker_pixel); advisory `lost_method: \"js\"` (v1 seller will fire as HTTP GET; the URL is hit and any counter-based measurement increments, but the response body won't execute as JS — measurement that depends on JS execution, e.g., OMID-style verification, viewability observers, cross-domain cookie setters, won't work. Simple counter pixels still work.)\n\nSurface: SDK that performs the downgrade MUST augment the response's `errors[]` with `source: \"sdk\"`, `sdk_id`, `code: \"PIXEL_TRACKER_LOSSY_DOWNGRADE\"`, `field` pointing at the affected manifest asset path, and `error.details` SHOULD carry `{ asset_id, original_event, original_method, original_custom_event_name (if present), downgrade_target: \"url+tracker_pixel\", lost_fields: [<list>] }`. One advisory per downgraded asset; SDKs SHOULD NOT collapse multiple downgrades into a single advisory entry — per-asset details let the buyer's measurement-plan owner decide whether each loss is tolerable.\n\nRecovery: warning — non-fatal, no retry. Buyer-side decision: accept the loss (most simple counter pixels survive), or fail the buy and route to a 3.1-capable seller. Seller-side fix: upgrade to 3.1 and accept `pixel_tracker` natively.",
+    "PIXEL_TRACKER_UPGRADE_INFERRED": "Non-fatal advisory raised when a 3.1 buyer SDK upgrades a v1 `{asset_type: url, url_type: tracker_pixel}` to a `pixel_tracker` asset by INFERRING the event and method from the v1 asset_id and conventional defaults. The inference is structural — the SDK doesn't have explicit event/method values, only the v1 asset_id hint and `url_type: tracker_pixel` (which implies `method: img` by default).\n\nInference rules (normative):\n- `asset_id: impression_tracker` → `event: impression, method: img`\n- `asset_id: viewability_tracker` → `event: viewable_mrc_50, method: img` (50% is the most common default; specific viewability variant cannot be recovered from v1 shape)\n- `asset_id: click_tracker` → `event: click, method: img`\n- `asset_id: <other>` → `event: custom, custom_event_name: <original asset_id>, method: img`\n\nSurface: SDK MUST augment the response's `errors[]` with `code: \"PIXEL_TRACKER_UPGRADE_INFERRED\"`, `field` pointing at the upgraded asset path, and `error.details` SHOULD carry `{ asset_id, inferred_event, inferred_method, inference_basis: \"asset_id_convention\" | \"default\" }`. Buyer agents reading the response can re-prompt the seller for explicit values if precise measurement matters.\n\nRecovery: warning — non-fatal, no retry. Seller-side: upgrade emit path to ship pixel_tracker shape directly when 3.1-capable; until then, conventional asset_id values give the SDK enough signal to upgrade without losing critical semantics.",
+    "STALE_RESPONSE": "Non-fatal advisory raised when the seller's live fetch to an upstream or sub-agent failed (timeout, connection error, downstream 5xx) and the response payload was satisfied from a cached prior result that is past the seller's freshness target for this surface. Emitted **alongside** a populated success payload — the caller's request still completes from a usable cache hit; this code tells downstream consumers that the data is older than the seller would normally serve.\n\nDistinct from `SERVICE_UNAVAILABLE` (seller's own service is down, no payload — transient, retry-with-backoff) by signalling **graceful degradation**: the seller's own service is fine, but one of its dependencies is currently unreachable and the seller chose to honor the request from cache rather than return empty. Sellers MUST emit `STALE_RESPONSE` ONLY when the response payload is non-empty AND derived from a cache entry whose `cache_age_seconds` exceeds the surface's freshness target. When no cached entry exists (or the cache hit is within freshness target), sellers MUST NOT emit this code — return the empty-or-fresh response with whatever upstream-failure code applies (e.g., `SERVICE_UNAVAILABLE`).\n\n**Wire placement (normative).** Transport-level success markers stay flipped to success (HTTP 200, MCP `isError: false`, A2A `succeeded`) — the task ran successfully and produced a response, even if from cache. The advisory rides in `errors[]` on the payload and MUST NOT be promoted to `adcp_error` on the envelope (envelope-level errors are reserved for the empty-payload failure case per the two-layer model in `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`). `error.field` SHOULD point at the affected payload path (e.g., `formats` for `list_creative_formats`, `products` for `get_products`). `error.details` SHOULD conform to `error-details/stale-response.json` — `served_from_cache` (required, always `true`), `cache_age_seconds` (required), and optionally `freshness_target_seconds`, `upstream` (the dependency that failed), and `original_error` (the underlying failure code/message).\n\n**Multiple stale upstreams.** When N sub-agents are stale (e.g., a `list_creative_formats` registry aggregating from multiple creative agents), the seller SHOULD emit **one `STALE_RESPONSE` entry per affected upstream** rather than aggregating — the per-upstream shape mirrors the existing precedent set by `PIXEL_TRACKER_LOSSY_DOWNGRADE` (one advisory per downgraded asset) and lets buyer agents reason about which sub-population of the payload is stale. Each entry's `error.field` SHOULD narrow to the affected slice (e.g., `formats` for formats sourced from the stale upstream).\n\nRecovery: transient — buyers MUST treat as non-fatal (the response is usable), MAY immediately retry later for fresh data, and SHOULD surface staleness to operators or end users when relevant. `cache_age_seconds` is the informational knob for the buyer's own \"is this stale enough to bother retrying\" policy.",
+    "FEED_FETCH_FAILED": "Platform could not fetch the catalog feed URL during sync_catalogs. Recovery: correctable (check URL accessibility, authentication, and that the content matches the declared feed_format).",
+    "INVALID_FEED_FORMAT": "Catalog feed content does not match the declared feed_format. Recovery: correctable (verify the feed content matches the declared format, e.g. XML for google_merchant_center).",
+    "ITEM_VALIDATION_FAILED": "One or more catalog items failed schema validation during sync_catalogs. Recovery: correctable (check item_issues for per-item rejection reasons and fix the offending items).",
+    "CATALOG_LIMIT_EXCEEDED": "The account has reached its maximum catalog count. Recovery: correctable (remove unused catalogs, or contact the seller to raise the limit)."
+  },
+  "enumMetadata": {
+    "$comment": "Structured recovery classification and remediation hints for each error code. SDKs MUST consume this block instead of parsing 'Recovery: X' from enumDescriptions prose. Each entry is { recovery, suggestion }. recovery is one of: correctable (caller can fix and retry), transient (retry with backoff), terminal (no autonomous recovery - operator intervention required). enumDescriptions is retained for human readability and will continue to carry the canonical narrative; the recovery classification embedded in that prose is normative and MUST match the value here.",
+    "INVALID_REQUEST": {
+      "recovery": "correctable",
+      "suggestion": "check request parameters and fix"
+    },
+    "AUTH_REQUIRED": {
+      "recovery": "correctable",
+      "suggestion": "provide credentials when missing; do NOT auto-retry rejected credentials — escalate for rotation"
+    },
+    "AUTH_MISSING": {
+      "recovery": "correctable",
+      "suggestion": "provide credentials via the auth header and retry"
+    },
+    "AUTH_INVALID": {
+      "recovery": "terminal",
+      "suggestion": "do NOT auto-retry — credentials were rejected; rotate keys, refresh OAuth tokens once if applicable, otherwise escalate to a human"
+    },
+    "AUTHORIZATION_REQUIRED": {
+      "recovery": "correctable",
+      "suggestion": "complete or restore the required downstream platform connection, identity, creator, or post authorization; use error.details.missing_connections, authorization_url, authorization_instructions, or reference_authorization when present"
+    },
+    "RATE_LIMITED": {
+      "recovery": "transient",
+      "suggestion": "retry after the retry_after interval"
+    },
+    "SERVICE_UNAVAILABLE": {
+      "recovery": "transient",
+      "suggestion": "retry with exponential backoff"
+    },
+    "CONFIGURATION_ERROR": {
+      "recovery": "terminal",
+      "suggestion": "surface to a human at the seller — the buyer cannot resolve a seller-side deployment misconfiguration and MUST NOT auto-retry"
+    },
+    "POLICY_VIOLATION": {
+      "recovery": "correctable",
+      "suggestion": "review policy requirements in the error details"
+    },
+    "PRODUCT_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "remove invalid IDs and retry, or re-discover with get_products"
+    },
+    "PRODUCT_UNAVAILABLE": {
+      "recovery": "correctable",
+      "suggestion": "choose a different product"
+    },
+    "PROPOSAL_EXPIRED": {
+      "recovery": "correctable",
+      "suggestion": "re-discover with get_products to get a fresh proposal"
+    },
+    "BUDGET_TOO_LOW": {
+      "recovery": "correctable",
+      "suggestion": "increase budget or check capabilities.media_buy.limits"
+    },
+    "CREATIVE_REJECTED": {
+      "recovery": "correctable",
+      "suggestion": "revise the creative per the seller's advertising_policies"
+    },
+    "CREATIVE_VALUE_NOT_ALLOWED": {
+      "recovery": "correctable",
+      "suggestion": "pick a value from error.details.allowed_values (or re-fetch the format) and resubmit"
+    },
+    "UNSUPPORTED_FEATURE": {
+      "recovery": "correctable",
+      "suggestion": "check get_adcp_capabilities and remove unsupported fields"
+    },
+    "UNPRICEABLE_OUTPUT": {
+      "recovery": "correctable",
+      "suggestion": "target an output format the transformer prices, or have the seller add a pricing option covering it"
+    },
+    "UNSUPPORTED_GRANULARITY": {
+      "recovery": "correctable",
+      "suggestion": "pick a granularity from the product's reporting_capabilities.windowed_pull_granularities (via get_adcp_capabilities) and resubmit, or omit time_granularity to fall back to cumulative date-range pulls"
+    },
+    "UNSUPPORTED_PROVISIONING": {
+      "recovery": "correctable",
+      "suggestion": "re-issue with the entry shape the seller supports — `account: {account_id: ...}` for settings-update sellers with account-id namespaces, or `brand+operator+billing` for provisioning sellers; check seller documentation or capability declaration for which modes are implemented"
+    },
+    "AUDIENCE_TOO_SMALL": {
+      "recovery": "correctable",
+      "suggestion": "broaden targeting or upload more audience members"
+    },
+    "ACCOUNT_NOT_FOUND": {
+      "recovery": "terminal",
+      "suggestion": "verify account via list_accounts or contact seller"
+    },
+    "ACCOUNT_SETUP_REQUIRED": {
+      "recovery": "correctable",
+      "suggestion": "check details.setup for URL or instructions"
+    },
+    "ACCOUNT_AMBIGUOUS": {
+      "recovery": "correctable",
+      "suggestion": "pass explicit account_id or a more specific natural key"
+    },
+    "ACCOUNT_PAYMENT_REQUIRED": {
+      "recovery": "terminal",
+      "suggestion": "buyer must resolve billing"
+    },
+    "ACCOUNT_SUSPENDED": {
+      "recovery": "terminal",
+      "suggestion": "contact seller to resolve suspension"
+    },
+    "COMPLIANCE_UNSATISFIED": {
+      "recovery": "correctable",
+      "suggestion": "choose a format that supports the required disclosure positions and persistence modes, or remove the disclosure requirement"
+    },
+    "GOVERNANCE_DENIED": {
+      "recovery": "correctable",
+      "suggestion": "restructure the buy, escalate to human spending authority, or contact the governance agent for details"
+    },
+    "BUDGET_EXHAUSTED": {
+      "recovery": "terminal",
+      "suggestion": "buyer must add funds or increase budget cap"
+    },
+    "BUDGET_EXCEEDED": {
+      "recovery": "correctable",
+      "suggestion": "reduce requested amount or increase budget allocation"
+    },
+    "BUDGET_CAP_REACHED": {
+      "recovery": "correctable",
+      "suggestion": "raise max_spend, or reduce max_creatives/max_variants, to produce the remaining items"
+    },
+    "CONFLICT": {
+      "recovery": "transient",
+      "suggestion": "re-read the resource and retry with current state"
+    },
+    "IDEMPOTENCY_CONFLICT": {
+      "recovery": "correctable",
+      "suggestion": "use a fresh UUID v4 for the new request, or resend the exact original payload to get the cached response"
+    },
+    "IDEMPOTENCY_EXPIRED": {
+      "recovery": "correctable",
+      "suggestion": "perform a natural-key check to determine whether the original request succeeded; if no evidence of success, generate a fresh idempotency_key for a new attempt"
+    },
+    "IDEMPOTENCY_IN_FLIGHT": {
+      "recovery": "transient",
+      "suggestion": "wait error.details.retry_after seconds and retry with the SAME idempotency_key — MUST NOT mint a fresh key (turns a safe retry into a double-execution race)"
+    },
+    "CREATIVE_DEADLINE_EXCEEDED": {
+      "recovery": "correctable",
+      "suggestion": "check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller"
+    },
+    "CREATIVE_INACCESSIBLE": {
+      "recovery": "correctable",
+      "suggestion": "verify the asset URLs in creative_manifest are reachable without agent-side credentials, then re-submit"
+    },
+    "INVALID_STATE": {
+      "recovery": "correctable",
+      "suggestion": "check current status via get_media_buys and adjust request"
+    },
+    "MEDIA_BUY_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "verify media_buy_id; for legacy correlation use get_media_buys plus context, such as context.internal_campaign_id"
+    },
+    "NOT_CANCELLABLE": {
+      "recovery": "correctable",
+      "suggestion": "check the seller's cancellation policy or contact the seller"
+    },
+    "PACKAGE_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "verify package_id; for legacy package correlation use get_media_buys plus package context, such as context.buyer_ref"
+    },
+    "CREATIVE_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "verify creative_id via list_creatives, or sync_creatives to register it"
+    },
+    "SIGNAL_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "verify signal_id via get_signals, or confirm the signal is available from this agent"
+    },
+    "SIGNAL_TARGETING_INCOMPATIBLE": {
+      "recovery": "correctable",
+      "suggestion": "assign the creative to a package whose signal targeting matches the creative's signal_condition, or rebuild the creative for the package's condition; match on shared signal_ref identity (compare signal_agent_segment_id exactly when both carry it, else categorical signal_ref + value)"
+    },
+    "REFERENCE_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "verify the referenced identifier exists and is accessible to the caller"
+    },
+    "SESSION_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "initiate a new session via si_initiate_session"
+    },
+    "PLAN_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "verify plan_id via sync_plans, or register the plan first"
+    },
+    "SESSION_TERMINATED": {
+      "recovery": "correctable",
+      "suggestion": "initiate a new session via si_initiate_session"
+    },
+    "VALIDATION_ERROR": {
+      "recovery": "correctable",
+      "suggestion": "review error details and fix field values"
+    },
+    "PRODUCT_EXPIRED": {
+      "recovery": "correctable",
+      "suggestion": "re-discover with get_products to find current inventory"
+    },
+    "PROPOSAL_NOT_COMMITTED": {
+      "recovery": "correctable",
+      "suggestion": "finalize the proposal first using get_products with buying_mode 'refine' and action 'finalize'"
+    },
+    "PROPOSAL_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "re-issue get_products with buying_mode 'refine' and action 'finalize' to obtain a current proposal_id, then retry"
+    },
+    "MULTI_FINALIZE_UNSUPPORTED": {
+      "recovery": "correctable",
+      "suggestion": "sequence single-proposal finalize calls — one finalize entry per get_products call"
+    },
+    "IO_REQUIRED": {
+      "recovery": "correctable",
+      "suggestion": "review the proposal's insertion_order, accept terms, and include io_acceptance on create_media_buy"
+    },
+    "TERMS_REJECTED": {
+      "recovery": "correctable",
+      "suggestion": "adjust the proposed terms and retry, or omit measurement_terms to accept the product's defaults"
+    },
+    "REQUOTE_REQUIRED": {
+      "recovery": "correctable",
+      "suggestion": "adjust the update to stay within the current quote envelope, rediscover products/terms, add packages when available, or create a separate media buy; 3.1 does not define an amendment-quote artifact for update_media_buy"
+    },
+    "VERSION_UNSUPPORTED": {
+      "recovery": "correctable",
+      "suggestion": "re-pin to a release in supported_versions and retry, or call get_adcp_capabilities without a version pin to discover supported_versions"
+    },
+    "CAMPAIGN_SUSPENDED": {
+      "recovery": "transient",
+      "suggestion": "wait for the escalation to resolve; contact the plan operator if the suspension persists"
+    },
+    "GOVERNANCE_UNAVAILABLE": {
+      "recovery": "transient",
+      "suggestion": "retry with backoff; if the agent remains unreachable, the buyer MUST contact the plan's governance operator"
+    },
+    "PERMISSION_DENIED": {
+      "recovery": "correctable",
+      "suggestion": "call check_governance to mint a valid token, or contact the seller to resolve the underlying permission; when error.details.scope is 'agent' with reason 'sandbox_only' the rejection is terminal-pending-onboarding — surface to a human rather than auto-retrying. For suspended/blocked agent relationships, sellers emit AGENT_SUSPENDED / AGENT_BLOCKED instead (those codes carry recovery: terminal directly)."
+    },
+    "SCOPE_INSUFFICIENT": {
+      "recovery": "correctable",
+      "suggestion": "the agent cannot broaden its own scope - surface to the operator rather than auto-retry"
+    },
+    "READ_ONLY_SCOPE": {
+      "recovery": "correctable",
+      "suggestion": "use a non-mutating alternative, or surface to the operator to request a scope that permits mutation"
+    },
+    "FIELD_NOT_PERMITTED": {
+      "recovery": "correctable",
+      "suggestion": "drop the disallowed field(s) and retry"
+    },
+    "PROVENANCE_REQUIRED": {
+      "recovery": "correctable",
+      "suggestion": "attach a provenance object - at minimum digital_source_type - and resubmit"
+    },
+    "PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING": {
+      "recovery": "correctable",
+      "suggestion": "set provenance.digital_source_type to a value from the digital-source-type enum and resubmit"
+    },
+    "PROVENANCE_DISCLOSURE_MISSING": {
+      "recovery": "correctable",
+      "suggestion": "set provenance.disclosure.required and, when true, populate disclosure.jurisdictions"
+    },
+    "PROVENANCE_EMBEDDED_MISSING": {
+      "recovery": "correctable",
+      "suggestion": "attach at least one embedded_provenance entry from a supported provider and resubmit"
+    },
+    "PROVENANCE_VERIFIER_NOT_ACCEPTED": {
+      "recovery": "correctable",
+      "suggestion": "replace verify_agent.agent_url with one from the seller's published accepted_verifiers, drop verify_agent if the embedding is self-verifiable, or re-embed with a verifier the seller accepts"
+    },
+    "PROVENANCE_CLAIM_CONTRADICTED": {
+      "recovery": "correctable",
+      "suggestion": "revise the provenance claim to match the verifier's observation or replace the creative; auto-retry without correction will not pass"
+    },
+    "EVALUATOR_AGENT_NOT_ACCEPTED": {
+      "recovery": "correctable",
+      "suggestion": "replace the evaluator agent_url (evaluator.feature_agent.agent_url or the evaluator agent-form agent_url) with one from the seller's published accepted_verifiers, or drop the evaluator agent pointer to fall back to seller-default ranking"
+    },
+    "BILLING_NOT_SUPPORTED": {
+      "recovery": "correctable",
+      "suggestion": "check get_adcp_capabilities for supported_billing and resubmit with a supported value, or omit billing to accept the seller's default"
+    },
+    "BILLING_NOT_PERMITTED_FOR_AGENT": {
+      "recovery": "correctable",
+      "suggestion": "retry with error.details.suggested_billing (typically 'operator') when present; when absent, surface to a human at the buyer — the agent cannot unilaterally extend its commercial relationship and MUST NOT auto-retry"
+    },
+    "BILLING_OUT_OF_BAND": {
+      "recovery": "terminal",
+      "suggestion": "do not retry — billing for this account runs through a non-AdCP channel. Pre-filter via capabilities.creative.bills_through_adcp before sending report_usage; flag the account in the buyer's routing table and fall back to the ad server's native billing export for cost reconciliation"
+    },
+    "PAYMENT_TERMS_NOT_SUPPORTED": {
+      "recovery": "correctable",
+      "suggestion": "omit payment_terms to accept the seller's default, retry with a different supported value, or negotiate offline"
+    },
+    "BRAND_REQUIRED": {
+      "recovery": "correctable",
+      "suggestion": "include brand (domain plus optional brand_id) on the request"
+    },
+    "AGENT_SUSPENDED": {
+      "recovery": "terminal",
+      "suggestion": "surface to a human at the buyer — the agent cannot unilaterally lift a suspension; re-onboarding with the seller offline may resolve"
+    },
+    "AGENT_BLOCKED": {
+      "recovery": "terminal",
+      "suggestion": "surface to a human at the buyer — the relationship is permanently denied and is reinstated only through offline operator action with the seller, not via any seller-callable AdCP task"
+    },
+    "CREDENTIAL_IN_ARGS": {
+      "recovery": "terminal",
+      "suggestion": "do NOT auto-retry — auto-retry re-logs the credential on each attempt. Move authentication material or caller-supplied trust material out of request args (top-level, `context`, `ext`, any nested location) onto the relevant transport authentication/trust channel or account provisioning path (Authorization: Bearer, RFC 9421 signature/JWKS, mTLS, MCP/A2A authentication framing); rotate any leaked credential, then resubmit"
+    },
+    "ACTION_NOT_ALLOWED": {
+      "recovery": "correctable",
+      "suggestion": "branch on error.details.reason: for wrong_status, wait for or transition to a status listed under the action's allowed_statuses; for mode_mismatch, this is a flow switch (not a retry against update_media_buy) — follow the mode named in available_actions[<action>].mode (await the seller's webhook for requires_approval); for not_supported_on_product or not_supported_on_buy, do not retry — the action is unavailable on this buy and buyer must select a different product or renegotiate"
+    },
+    "PRIVATE_FIELD_IN_PUBLIC_PLACEMENT": {
+      "recovery": "correctable",
+      "suggestion": "seller-side fix needed: remove private operational fields (`visibility`, `source`, `origin`, `delivery_mappings`, or similar) from public placement objects. Consumers MUST fail closed for the affected placement and alert operators; do not echo private field values in logs or error details"
+    },
+    "FORMAT_PROJECTION_FAILED": {
+      "recovery": "correctable",
+      "suggestion": "advisory — seller-side fix needed: ask the seller to add an explicit `canonical` field on the legacy format declaration, or contribute a registry entry (format_id_glob or structural match) to v1-canonical-mapping.json. Do not auto-retry; the product is still valid on the legacy named-format path"
+    },
+    "FORMAT_DECLARATION_DIVERGENT": {
+      "recovery": "correctable",
+      "suggestion": "advisory — seller-side fix needed: producer is emitting disagreeing format_ids and format_options for the same product. Buyer SDK SHOULD prefer format_options and surface the divergent product to operators; do not auto-retry"
+    },
+    "FORMAT_DECLARATION_V1_AMBIGUOUS": {
+      "recovery": "correctable",
+      "suggestion": "advisory — seller-side fix needed: the v2 declaration's canonical has only family-level structural registry entries (no invertible literal). Seller MUST author v1_format_ref on the v2 declaration to disambiguate; SDKs MUST NOT synthesize. Do not auto-retry"
+    },
+    "FORMAT_OPTION_UNRESOLVED": {
+      "recovery": "correctable",
+      "suggestion": "advisory — publisher-side fix needed: a placement's `format_options[].format_option_id` references a `format_option_id` that does not exist in this file's top-level `formats[]`. Buyer SDK MUST fail closed for that placement (drop the format from the placement's accepted set) and surface this code. Publisher fix: either declare the missing format option in `formats[]` or remove the reference from the placement. Do not auto-retry"
+    },
+    "FORMAT_NOT_SUPPORTED": {
+      "recovery": "correctable",
+      "suggestion": "retry build_creative with target_format_id.id or target_format_ids[N].id from get_adcp_capabilities.creative.supported_formats[].capability_id, or a legacy named format the agent still advertises during the migration window"
+    },
+    "FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE": {
+      "recovery": "correctable",
+      "suggestion": "advisory — emitted alongside the partial v1 emission, NOT in place of it: the v2 declaration carries `params.sizes[]` with N entries but only M v1_format_ref entries (M < N), so v1 buyers see partial size coverage on the product. Seller-side fix: add v1_format_ref entries for the missing sizes. SDK MAY (non-normative) fan out automatically by catalog lookup. Non-fatal — do not auto-retry"
+    },
+    "PIXEL_TRACKER_LOSSY_DOWNGRADE": {
+      "recovery": "correctable",
+      "suggestion": "advisory — emitted alongside the v1 downgrade emission: SDK collapsed a pixel_tracker asset to v1 `{asset_type: url, url_type: tracker_pixel}` for a seller that doesn't support pixel_tracker natively. The URL still fires; what's lost is in `error.details.lost_fields` (event variant, method:js execution context, or custom event timing). Buyer decision: accept the loss (most counter pixels survive), or fail the buy and route to a 3.1-capable seller. Non-fatal — do not auto-retry"
+    },
+    "PIXEL_TRACKER_UPGRADE_INFERRED": {
+      "recovery": "correctable",
+      "suggestion": "advisory — emitted when a 3.1 SDK upgrades a v1 url+tracker_pixel asset to pixel_tracker by inferring event and method from asset_id conventions. The inference may not match the buyer's original intent; check `error.details.inferred_event` / `inferred_method` and re-prompt the seller for explicit values if precise measurement matters. Non-fatal — do not auto-retry"
+    },
+    "STALE_RESPONSE": {
+      "recovery": "transient",
+      "suggestion": "advisory — emitted alongside a populated payload that was served from cache past the seller's freshness target because an upstream or sub-agent was unreachable. The response is usable; treat as non-fatal. Inspect `error.details.cache_age_seconds` to decide whether to immediately retry for fresh data or accept the cached value; the seller's own service is healthy, so retry is safe (it does not amplify the upstream failure)"
+    },
+    "FEED_FETCH_FAILED": {
+      "recovery": "correctable",
+      "suggestion": "check URL accessibility, authentication, and that content matches the declared feed_format"
+    },
+    "INVALID_FEED_FORMAT": {
+      "recovery": "correctable",
+      "suggestion": "verify the feed content matches the declared format"
+    },
+    "ITEM_VALIDATION_FAILED": {
+      "recovery": "correctable",
+      "suggestion": "check item_issues for per-item rejection reasons and fix the offending items"
+    },
+    "CATALOG_LIMIT_EXCEEDED": {
+      "recovery": "correctable",
+      "suggestion": "remove unused catalogs, or contact the seller to raise the limit"
+    }
+  }
+}

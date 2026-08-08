@@ -305,16 +305,35 @@
                         "type": "string",
                         "$comment": "x-entity deliberately omitted — audit log findings mirror check_governance findings and can reference either a governance_registry_policy or a governance_inline_policy (see #2685)."
                       },
+                      "source_plan_id": {
+                        "type": "string",
+                        "description": "Plan whose policy triggered this finding when the audit entry aggregates findings across plans.",
+                        "x-entity": "governance_plan"
+                      },
                       "severity": {
                         "$ref": "/schemas/enums/escalation-severity.json"
                       },
                       "explanation": {
                         "type": "string"
                       },
+                      "details": {
+                        "type": "object",
+                        "description": "Structured finding details retained exactly as emitted by check_governance.",
+                        "additionalProperties": true
+                      },
                       "confidence": {
                         "type": "number",
                         "minimum": 0,
                         "maximum": 1
+                      },
+                      "uncertainty_reason": {
+                        "type": "string",
+                        "description": "Reason the finding carries less than full confidence, retained exactly as emitted by check_governance."
+                      },
+                      "attestation_reference_digest": {
+                        "type": "string",
+                        "pattern": "^sha256:[a-f0-9]{64}$",
+                        "description": "reference_digest of the runtime attestation evaluation this finding relied on."
                       }
                     },
                     "required": [
@@ -331,7 +350,22 @@
                 },
                 "committed_budget": {
                   "type": "number",
-                  "description": "Budget committed (present for completed outcome entries)."
+                  "description": "Governance-authorized budget reserved (present for completed outcome entries)."
+                },
+                "reported_committed_budget": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Caller-reported seller amount retained for reconciliation. Never ledger authority."
+                },
+                "seller_reference": {
+                  "type": "string",
+                  "description": "Seller resource identifier retained on an outcome entry."
+                },
+                "delivery": {
+                  "type": "object",
+                  "deprecated": true,
+                  "description": "Deprecated buyer delivery snapshot retained as audit evidence on a delivery outcome.",
+                  "additionalProperties": true
                 },
                 "governance_context": {
                   "type": "string",
@@ -341,6 +375,30 @@
                   "type": "string",
                   "pattern": "^[A-Za-z0-9_-]{43}$",
                   "description": "Audit-layer binding to the plan revision this attestation was evaluated over — base64url_no_pad(SHA-256(JCS(plan_payload))) per Plan binding and audit in the campaign-governance specification. Present on check entries. Auditors and buyer-side compliance verify by recomputing over the retained plan revision and byte-comparing the decoded 32-byte digests."
+                },
+                "runtime_attestations": {
+                  "type": "array",
+                  "description": "Portable attestation presentations and their evaluator-of-record results retained as ordered pairs for this check entry. Auditors recompute each evaluation.reference_digest from JCS(reference), then recompute runtime_attestation_binding_digest from the ordered evaluations and attestation-bound findings.",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "reference": {
+                        "$ref": "/schemas/core/attestation-reference.json"
+                      },
+                      "evaluation": {
+                        "$ref": "/schemas/core/attestation-evaluation.json"
+                      }
+                    },
+                    "required": ["reference", "evaluation"],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1,
+                  "maxItems": 10
+                },
+                "runtime_attestation_binding_digest": {
+                  "type": "string",
+                  "pattern": "^sha256:[a-f0-9]{64}$",
+                  "description": "Binding digest copied from the check response and signed governance_context. Auditors recompute it from this entry's ordered runtime_attestations[].evaluation values plus findings carrying attestation_reference_digest after verifying each paired reference digest."
                 },
                 "purchase_type": {
                   "$ref": "/schemas/enums/purchase-type.json",
@@ -355,6 +413,16 @@
                 "id",
                 "type",
                 "timestamp"
+              ],
+              "allOf": [
+                {
+                  "if": {
+                    "required": ["runtime_attestations"]
+                  },
+                  "then": {
+                    "required": ["runtime_attestation_binding_digest"]
+                  }
+                }
               ],
               "additionalProperties": false
             }

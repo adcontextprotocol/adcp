@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.5/core/missing-metric.json",
+  "title": "Missing Metric",
+  "description": "One metric the binding reporting contract declared but that is not populated in a delivery report. Symmetric with `committed_metrics` and discriminated by `scope`.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "scope"
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "standard"
+        },
+        "metric_id": {
+          "$ref": "/schemas/3.1.5/enums/available-metric.json"
+        },
+        "qualifier": {
+          "type": "object",
+          "description": "Mirrors the qualifier on `committed_metrics` so the missing entry preserves the contract distinction (e.g., flagging MRC viewability as missing when only GroupM was reported, vendor-attested completion as missing when only seller-attested was reported, or deterministic_purchase attribution as missing when only probabilistic was reported). MUST match the qualifier on the corresponding `committed_metrics` entry the missing flag refers to.",
+          "properties": {
+            "viewability_standard": {
+              "$ref": "/schemas/3.1.5/enums/viewability-standard.json"
+            },
+            "completion_source": {
+              "$ref": "/schemas/3.1.5/enums/completion-source.json"
+            },
+            "attribution_methodology": {
+              "$ref": "/schemas/3.1.5/enums/attribution-methodology.json"
+            },
+            "attribution_window": {
+              "$ref": "/schemas/3.1.5/core/duration.json"
+            },
+            "lift_dimension": {
+              "$ref": "/schemas/3.1.5/enums/lift-dimension.json"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "scope",
+        "metric_id"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "vendor"
+        },
+        "vendor": {
+          "$ref": "/schemas/3.1.5/core/brand-ref.json"
+        },
+        "metric_id": {
+          "$ref": "/schemas/3.1.5/core/vendor-metric-id.json"
+        }
+      },
+      "required": [
+        "scope",
+        "vendor",
+        "metric_id"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

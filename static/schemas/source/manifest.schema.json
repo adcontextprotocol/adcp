@@ -32,7 +32,7 @@
         "properties": {
           "protocol": {
             "type": "string",
-            "description": "The protocol surface this tool belongs to. Derived from the source directory: media-buy, signals, governance, account, creative, brand, content-standards, property, collection, sponsored-intelligence, protocol, compliance, tmp.",
+            "description": "The protocol surface this tool belongs to. Derived from the source directory: media-buy, signals, governance, account, creative, brand, content-standards, property, collection, sponsored-intelligence, protocol, compliance, trusted-match.",
             "enum": [
               "media-buy",
               "signals",
@@ -46,7 +46,7 @@
               "sponsored-intelligence",
               "protocol",
               "compliance",
-              "tmp",
+              "trusted-match",
               "a2ui"
             ]
           },

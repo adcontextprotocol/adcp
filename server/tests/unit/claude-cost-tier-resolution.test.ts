@@ -50,21 +50,32 @@ describe('resolveUserTierFromDb', () => {
     expect(queryMock).not.toHaveBeenCalled();
   });
 
-  it('returns member_paid when the WorkOS user has an active, non-canceled subscription', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: false, has_active_subscription: true }] });
+  it('returns member_paid when the WorkOS user has an entitlement-preserving, non-canceled subscription', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: false, has_entitled_subscription: true }] });
     const tier = await resolveUserTierFromDb('user_01H2ABC');
     expect(tier).toBe('member_paid');
     expect(queryMock).toHaveBeenCalledOnce();
-    // The probe must filter on both active status AND not-canceled —
-    // otherwise a canceled org would still read as paid until grace
-    // period ends.
+    // The probe must use the shared entitlement-preserving statuses
+    // and still exclude canceled rows.
     const sql = queryMock.mock.calls[0][0] as string;
-    expect(sql).toContain("subscription_status = 'active'");
+    expect(sql).toContain('subscription_status = ANY($2::text[])');
     expect(sql).toContain('subscription_canceled_at IS NULL');
+    expect(queryMock.mock.calls[0][1]).toEqual([
+      'user_01H2ABC',
+      ['active', 'past_due', 'trialing'],
+    ]);
+  });
+
+  it('treats past_due as member_paid during the Stripe dunning window', async () => {
+    // The mocked row is the DB's answer after applying the SQL status
+    // predicate; the parameter assertion pins past_due in that predicate.
+    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: false, has_entitled_subscription: true }] });
+    await expect(resolveUserTierFromDb('user_past_due')).resolves.toBe('member_paid');
+    expect(queryMock.mock.calls[0][1][1]).toContain('past_due');
   });
 
   it('returns aao_team when the WorkOS user belongs to the AAO admin team or org', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: true, has_active_subscription: false }] });
+    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: true, has_entitled_subscription: false }] });
     const tier = await resolveUserTierFromDb('user_aao_staff');
     expect(tier).toBe('aao_team');
     expect(queryMock).toHaveBeenCalledOnce();
@@ -75,12 +86,12 @@ describe('resolveUserTierFromDb', () => {
   });
 
   it('prefers aao_team over member_paid when both signals are true', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: true, has_active_subscription: true }] });
+    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: true, has_entitled_subscription: true }] });
     expect(await resolveUserTierFromDb('user_aao_paid')).toBe('aao_team');
   });
 
   it('returns member_free when the WorkOS user has no active subscription or AAO team membership', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: false, has_active_subscription: false }] });
+    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: false, has_entitled_subscription: false }] });
     const tier = await resolveUserTierFromDb('user_01H2ABC');
     expect(tier).toBe('member_free');
   });
@@ -98,7 +109,7 @@ describe('resolveUserTierFromDb', () => {
   it('memoizes results so repeated probes for the same user hit the DB once', async () => {
     // 60s in-process cache. A chat burst should not produce N DB
     // probes for the same user — one probe, cached tier, replayed.
-    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: false, has_active_subscription: true }] });
+    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: false, has_entitled_subscription: true }] });
     expect(await resolveUserTierFromDb('user_01H2ABC')).toBe('member_paid');
     expect(await resolveUserTierFromDb('user_01H2ABC')).toBe('member_paid');
     expect(await resolveUserTierFromDb('user_01H2ABC')).toBe('member_paid');
@@ -110,15 +121,15 @@ describe('resolveUserTierFromDb', () => {
     // member_paid for a full 60s. The first call fails → returns
     // member_free without caching; the second call retries.
     queryMock.mockRejectedValueOnce(new Error('Connection refused'));
-    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: false, has_active_subscription: true }] });
+    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: false, has_entitled_subscription: true }] });
     expect(await resolveUserTierFromDb('user_01H2ABC')).toBe('member_free');
     expect(await resolveUserTierFromDb('user_01H2ABC')).toBe('member_paid');
     expect(queryMock).toHaveBeenCalledTimes(2);
   });
 
   it('memoizes per-user, not globally — different users get independent probes', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: false, has_active_subscription: true }] });
-    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: false, has_active_subscription: false }] });
+    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: false, has_entitled_subscription: true }] });
+    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: false, has_entitled_subscription: false }] });
     expect(await resolveUserTierFromDb('user_alice')).toBe('member_paid');
     expect(await resolveUserTierFromDb('user_bob')).toBe('member_free');
     expect(queryMock).toHaveBeenCalledTimes(2);
@@ -131,7 +142,7 @@ describe('resolveUserTierFromDb', () => {
 
 describe('buildSlackCostScope', () => {
   it('prefers the mapped WorkOS user id when memberContext carries one', async () => {
-    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: false, has_active_subscription: true }] });
+    queryMock.mockResolvedValueOnce({ rows: [{ is_aao_team: false, has_entitled_subscription: true }] });
     const scope = await buildSlackCostScope(
       { workos_user: { workos_user_id: 'user_01H2ABC' } },
       'U_slack',

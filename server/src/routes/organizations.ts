@@ -45,6 +45,7 @@ import {
 import { getOrgAdminEmails } from "../utils/org-admins.js";
 import { emailPrefsDb } from "../db/email-preferences-db.js";
 import { performCreateOrganization } from "../services/organization-bootstrap.js";
+import { collectWorkOSPages } from "../services/workos-pagination.js";
 
 const logger = createLogger("organization-routes");
 
@@ -1136,12 +1137,20 @@ export function createOrganizationsRouter(): Router {
       const user = req.user!;
       const { orgId } = req.params;
 
-      // Verify user is member of this organization
+      // Domain verification changes organization-wide identity and automatic
+      // membership behavior. Keep it aligned with the canonical domain
+      // add/verify routes: owners and admins only.
       const membership = await resolveUserOrgMembership(workos, user.id, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
+        });
+      }
+      if (membership.role !== 'owner' && membership.role !== 'admin') {
+        return res.status(403).json({
+          error: 'Insufficient permissions',
+          message: 'Only owners and admins can verify organization domains',
         });
       }
 
@@ -2326,9 +2335,13 @@ export function createOrganizationsRouter(): Router {
       );
 
       // Get pending invitations for this organization
-      const invitations = await workos!.userManagement.listInvitations({
-        organizationId: orgId,
-      });
+      const invitations = await collectWorkOSPages((after) =>
+        workos!.userManagement.listInvitations({
+          organizationId: orgId,
+          limit: 100,
+          after,
+        })
+      );
 
       // Fetch seat types for pending invitations
       const invSeatResult = await query<{ email: string; seat_type: string }>(
@@ -2337,7 +2350,7 @@ export function createOrganizationsRouter(): Router {
       );
       const invSeatMap = new Map(invSeatResult.rows.map(r => [r.email.toLowerCase(), r.seat_type]));
 
-      const pendingInvitations = invitations.data
+      const pendingInvitations = invitations
         .filter(inv => inv.state === 'pending')
         .map(inv => ({
           id: inv.id,

@@ -1,6 +1,0 @@
----
----
-
-The publisher home page (`/publisher/<domain>`) is rebuilt around the buy-side verifier audience — the dominant traffic — instead of publisher reassurance. One hero with five state variants (healthy / aao_hosted / self_redirected / setup_needed / invalid / checking) replaces the prior five stacked panels. Verification chrome (last validated timestamp + expected/resolved URLs) leads as copy-paste-friendly metadata. `?return=` becomes a first-class hero CTA when the visitor arrived from a partner storefront. `adagents.json` and `brand.json` render as co-equal cards. Source provenance is rendered as a three-tier trust ladder (publisher-attested / brand-attested / counterparty-attested) instead of a flat color-coded chip salad. Per-agent rollup fields stay inline on the row.
-
-Backend: `/api/registry/publisher` now reports `hosting.mode = "self_redirected"` when the publisher's `authoritative_location` resolves to a third-party HTTPS origin (a CDN, partner CMS, or sibling host) — the prior behavior mislabeled this as `self`, hiding the TLS-chain shift from verifiers. New optional fields `hosting.resolved_url` and `hosting.last_validated` surface where the canonical document actually lives and when AAO last fetched it. The schema additions are backward compatible — old SDK consumers continue to read `self`/`self_invalid`/`aao_hosted`/`none`.

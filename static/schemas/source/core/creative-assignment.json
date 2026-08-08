@@ -26,6 +26,7 @@
     },
     "placement_ids": {
       "type": "array",
+      "deprecated": true,
       "description": "Legacy shorthand array of placement IDs where this creative should run within the already-purchased package inventory. New senders SHOULD use `placement_refs` because placement IDs are publisher-scoped and strings are ambiguous in multi-publisher products. This field does not narrow the purchased package inventory by itself; use product refinement or seller-supported package targeting to buy only one placement. When omitted, the creative runs on all buyer-targetable placements in the package. Receivers MAY interpret string IDs relative to the seller agent's own publisher domain in legacy single-publisher contexts. If `placement_refs` is also present, receivers MUST ignore this field.",
       "items": {
         "type": "string"

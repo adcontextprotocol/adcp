@@ -299,6 +299,43 @@ describe('hosted-property origin verifier', () => {
     }
   });
 
+  it('treats temporary DNS resolver failures as transient even with a collapsed top-level message', async () => {
+    const hosted = await propertyDb.createHostedProperty({
+      publisher_domain: PUB,
+      adagents_json: { authorized_agents: [{ url: AGENT }], properties: [] },
+      is_public: true,
+      source_type: 'community',
+    });
+    await syncHostedPropertyToFederatedIndex(hosted);
+
+    const ok = vi.fn().mockResolvedValue({
+      status: 200,
+      body: JSON.stringify({ authoritative_location: aaoHostedAdagentsJsonUrl(PUB) }),
+    });
+    await verifyHostedPropertyOrigin({ hosted: (await propertyDb.getHostedPropertyByDomain(PUB))!, fetchImpl: ok });
+
+    const before = await propertyDb.getHostedPropertyByDomain(PUB);
+    expect(before?.origin_verified_at).toBeTruthy();
+
+    const transientDns = Object.assign(new Error('Could not resolve hostname'), {
+      cause: { code: 'EAI_AGAIN', codes: ['EAI_AGAIN', 'ENOTFOUND'], hostname: PUB },
+    });
+    const fetchImpl = vi.fn().mockRejectedValue(transientDns);
+    const outcome = await verifyHostedPropertyOrigin({
+      hosted: before!,
+      fetchImpl,
+    });
+    expect(outcome.verified).toBe(false);
+    if (!outcome.verified) expect(outcome.reason).toBe('transient');
+
+    const after = await propertyDb.getHostedPropertyByDomain(PUB);
+    expect(after?.origin_verified_at?.getTime()).toBe(before?.origin_verified_at?.getTime());
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(PUB)}`);
+    expect(res.body.authorized_agents[0].source).toBe('adagents_json');
+    expect(res.body.hosting.origin_verified_at).toBeTruthy();
+  });
+
   it('classifies DNS NXDOMAIN as permanent unresolvable, demotes if previously verified', async () => {
     const hosted = await propertyDb.createHostedProperty({
       publisher_domain: PUB,
@@ -354,9 +391,9 @@ describe('hosted-property origin verifier', () => {
     expect(res.body).toHaveProperty('verified');
     expect(res.body).toHaveProperty('reason');
     expect(res.body).toHaveProperty('checked_at');
-    // The endpoint should have stamped checked_at OR returned 'transient'
-    // (we can't actually reach the publisher origin in tests).
-    expect(['fetch_failed', 'non_200_response', 'transient', 'invalid_json', 'authoritative_location_mismatch', 'no_authoritative_location']).toContain(res.body.reason);
+    // The endpoint should have stamped checked_at and returned one of the
+    // structured failure reasons from the real safeFetch path.
+    expect(['fetch_failed', 'non_200_response', 'transient', 'unresolvable', 'invalid_json', 'authoritative_location_mismatch', 'no_authoritative_location']).toContain(res.body.reason);
   });
 
   it('POST /api/properties/hosted/:domain/verify-origin returns 404 when no hosted property exists', async () => {

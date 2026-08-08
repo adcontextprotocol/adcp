@@ -7,6 +7,7 @@ import {
   createInvoicePaymentSucceededEvent,
   createInvoicePaymentFailedEvent,
   createChargeRefundedEvent,
+  createSubscriptionUpdatedEvent,
 } from '../fixtures/stripe-webhooks.js';
 import type { Pool } from 'pg';
 
@@ -62,6 +63,9 @@ describe('Revenue Tracking Integration Tests', () => {
   let pool: Pool;
   const TEST_ORG_ID = 'org_test_revenue';
   const TEST_CUSTOMER_ID = 'cus_test_revenue';
+  const TEST_TIER_ORG_ID = 'org_test_webhook_tier_preserve';
+  const TEST_TIER_CUSTOMER_ID = 'cus_test_webhook_tier_preserve';
+  const TEST_TIER_SUBSCRIPTION_ID = 'sub_test_webhook_tier_preserve';
 
   // Helper function to send webhook with proper headers
   const sendWebhook = (event: any) => {
@@ -87,6 +91,25 @@ describe('Revenue Tracking Integration Tests', () => {
        ON CONFLICT (workos_organization_id) DO NOTHING`,
       [TEST_ORG_ID, 'Test Revenue Org', TEST_CUSTOMER_ID]
     );
+    await pool.query(
+      `INSERT INTO organizations (
+         workos_organization_id, name, stripe_customer_id, stripe_subscription_id, is_personal,
+         subscription_status, subscription_price_lookup_key, subscription_amount,
+         subscription_interval, membership_tier, created_at, updated_at
+       )
+       VALUES ($1, $2, $3, $4, false, 'active', 'aao_membership_builder_2500', 250000,
+               'year', 'individual_academic', NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE SET
+         stripe_customer_id = EXCLUDED.stripe_customer_id,
+         stripe_subscription_id = EXCLUDED.stripe_subscription_id,
+         is_personal = EXCLUDED.is_personal,
+         subscription_status = EXCLUDED.subscription_status,
+         subscription_price_lookup_key = EXCLUDED.subscription_price_lookup_key,
+         subscription_amount = EXCLUDED.subscription_amount,
+         subscription_interval = EXCLUDED.subscription_interval,
+         membership_tier = EXCLUDED.membership_tier`,
+      [TEST_TIER_ORG_ID, 'Webhook Tier Preserve Org', TEST_TIER_CUSTOMER_ID, TEST_TIER_SUBSCRIPTION_ID]
+    );
 
     server = new HTTPServer();
     await server.start(0); // Use port 0 for random port
@@ -97,6 +120,8 @@ describe('Revenue Tracking Integration Tests', () => {
     // Clean up test data
     await pool.query('DELETE FROM revenue_events WHERE workos_organization_id = $1', [TEST_ORG_ID]);
     await pool.query('DELETE FROM subscription_line_items WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query('DELETE FROM subscription_line_items WHERE workos_organization_id = $1', [TEST_TIER_ORG_ID]);
+    await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_TIER_ORG_ID]);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_ORG_ID]);
 
     await server?.stop();
@@ -107,6 +132,20 @@ describe('Revenue Tracking Integration Tests', () => {
     // Clear revenue data before each test
     await pool.query('DELETE FROM revenue_events WHERE workos_organization_id = $1', [TEST_ORG_ID]);
     await pool.query('DELETE FROM subscription_line_items WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query(
+      `UPDATE organizations
+          SET stripe_customer_id = $2,
+              stripe_subscription_id = $3,
+              is_personal = false,
+              subscription_status = 'active',
+              subscription_canceled_at = NULL,
+              subscription_price_lookup_key = 'aao_membership_builder_2500',
+              subscription_amount = 250000,
+              subscription_interval = 'year',
+              membership_tier = 'individual_academic'
+        WHERE workos_organization_id = $1`,
+      [TEST_TIER_ORG_ID, TEST_TIER_CUSTOMER_ID, TEST_TIER_SUBSCRIPTION_ID],
+    );
   });
 
   describe('invoice.payment_succeeded webhook', () => {
@@ -209,6 +248,33 @@ describe('Revenue Tracking Integration Tests', () => {
       expect(revenueResult.rows).toHaveLength(2);
       expect(revenueResult.rows[0].revenue_type).toBe('subscription_initial');
       expect(revenueResult.rows[1].revenue_type).toBe('subscription_recurring');
+    });
+  });
+
+  describe('customer.subscription.updated webhook', () => {
+    it('writes the resolved current tier when the webhook payload cannot resolve one', async () => {
+      const event = createSubscriptionUpdatedEvent({
+        customerId: TEST_TIER_CUSTOMER_ID,
+        subscriptionId: TEST_TIER_SUBSCRIPTION_ID,
+        status: 'active',
+        lookupKey: null,
+        unitAmount: 0,
+        interval: 'year',
+      });
+
+      await sendWebhook(event).expect(200);
+
+      const orgResult = await pool.query<{
+        membership_tier: string | null;
+        subscription_price_lookup_key: string | null;
+      }>(
+        `SELECT membership_tier, subscription_price_lookup_key
+           FROM organizations WHERE workos_organization_id = $1`,
+        [TEST_TIER_ORG_ID],
+      );
+
+      expect(orgResult.rows[0].membership_tier).toBe('company_standard');
+      expect(orgResult.rows[0].subscription_price_lookup_key).toBeNull();
     });
   });
 

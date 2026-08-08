@@ -171,7 +171,9 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
           "governance_context": "gc_mb_seller_456",
           "purchase_type": "media_buy",
           "outcome": "completed",
-          "committed_budget": 150000
+          "committed_budget": 150000,
+          "reported_committed_budget": 150000,
+          "seller_reference": "mb_seller_456"
         },
         {
           "id": "out_del_001",
@@ -181,6 +183,11 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
           "governance_context": "gc_mb_seller_456",
           "purchase_type": "media_buy",
           "outcome": "delivery",
+          "delivery": {
+            "media_buy_id": "mb_seller_456",
+            "impressions": 4200000,
+            "spend": 137500
+          },
           "outcome_status": "accepted"
         }
       ]
@@ -257,17 +264,22 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].entries[].explanation` | string | Human-readable explanation of the governance decision (present for `check` entries). |
 | `plans[].entries[].policies_evaluated` | array | Registry policy IDs evaluated during this check. |
 | `plans[].entries[].categories_evaluated` | array | Governance categories evaluated (e.g., `budget_authority`, `regulatory_compliance`). **Agent-internal labels**, not a protocol-level enum — each string is defined by the governance agent's policy model. Since one governance agent per account composes all specialist review (legal, brand safety, category-specialist reviewers) behind its single endpoint, `categories_evaluated` and `findings[].details` are how internal decomposition surfaces for audit. Consumers MUST treat values as opaque labels: pattern-matching against a fixed list is not safe across agents. |
-| `plans[].entries[].findings` | array | Findings from this check, including category, severity, policy ID, explanation, and confidence. |
+| `plans[].entries[].findings` | array | Findings from this check, mirroring the complete `check_governance` finding shape so binding-digest inputs round-trip without loss, including `source_plan_id`, `details`, and `uncertainty_reason` when present. |
 | `plans[].entries[].governance_context` | string | Opaque governance context identifying the governed action this entry belongs to. |
 | `plans[].entries[].plan_hash` | string | Audit-layer binding to the plan revision this attestation was evaluated over — `base64url_no_pad(SHA-256(JCS(plan_payload)))` per [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit). Present on `check` entries. Auditors and buyer-side compliance tooling verify by recomputing over the retained plan revision and byte-comparing the decoded 32-byte digests. |
+| `plans[].entries[].runtime_attestations` | array | Ordered `{ reference, evaluation }` pairs retained for a runtime-attestation check. Recompute each `evaluation.reference_digest` from RFC 8785 JCS of its paired `reference` before recomputing the binding digest. |
+| `plans[].entries[].runtime_attestation_binding_digest` | string | Digest copied from the check response and signed governance context. Recompute it from ordered `runtime_attestations[].evaluation` values and findings carrying `attestation_reference_digest`. |
 | `plans[].entries[].purchase_type` | enum | `media_buy`, `rights_license`, `signal_activation`, or `creative_services`. Present when the entry is associated with a specific governed action. |
 | `plans[].entries[].outcome` | enum | Outcome type (present for `outcome` entries). |
-| `plans[].entries[].committed_budget` | number | Budget committed (present for `completed` outcome entries). |
+| `plans[].entries[].committed_budget` | number | Governance-authorized budget reserved for the action (present for `completed` outcome entries). This is the ledger-authoritative amount, not a caller assertion. |
+| `plans[].entries[].reported_committed_budget` | number | Caller-reported seller amount retained for reconciliation. Never ledger authority. |
+| `plans[].entries[].seller_reference` | string | Seller resource identifier retained with the outcome, such as a media-buy ID. |
+| `plans[].entries[].delivery` | object | Deprecated buyer-reported delivery snapshot retained as audit evidence on a `delivery` outcome. Seller-originated delivery monitoring uses `check_governance` with `phase: "delivery"`. |
 | `plans[].entries[].outcome_status` | string | Outcome status (present for `outcome` entries). |
 
 ## Authorization
 
-The request schema does not carry an envelope `account` field — tenant identity is resolved from the submitted IDs. The governance agent MUST verify that the authenticated principal is authorized for every `plan_ids` member, every plan expanded from `portfolio_plan_ids`, and every governed action addressed by `governance_contexts`. When any element fails the authorization check the governance agent MUST fail closed with a generic `PLAN_NOT_FOUND` response — the error body MUST NOT distinguish "unauthorized" from "not found" or name the offending ID. See [Agent and Account Isolation](/docs/building/implementation/security#agent-and-account-isolation) for the pattern and existence-leak guardrails.
+The request schema does not carry an envelope `account` field — tenant identity is resolved from the submitted IDs. The governance agent MUST verify that the authenticated principal is authorized for every `plan_ids` member, every plan expanded from `portfolio_plan_ids`, and every governed action addressed by `governance_contexts`. When any element fails the authorization check the governance agent MUST fail closed with a generic `PLAN_NOT_FOUND` response — the error body MUST NOT distinguish "unauthorized" from "not found" or name the offending ID. See [Agent and Account Isolation](/docs/building/by-layer/L1/security#agent-and-account-isolation) for the pattern and existence-leak guardrails.
 
 ## Error codes
 

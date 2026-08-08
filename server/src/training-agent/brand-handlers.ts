@@ -7,8 +7,34 @@
  */
 
 import type { TrainingContext, ToolArgs } from './types.js';
+import { createHash } from 'node:crypto';
+import { canonicalize } from '@adcp/sdk';
 import { getSandboxBrands } from '@adcp/sdk/testing';
-import { getSession, sessionKeyFromArgs, findSessionMatching } from './state.js';
+import { getSession, sessionKeyFromArgs } from './state.js';
+import { verifyGovernedServiceAuthorization } from './governance-verify.js';
+import { resolveGovernanceAgentsForAccount } from './account-handlers.js';
+import { getCanonicalBase } from './canonical-base.js';
+
+async function governedCommitmentRejection(
+  governanceContext: string,
+  authenticatedCaller: string | undefined,
+  task: string,
+  expectedAudience: string,
+  payload: Record<string, unknown>,
+  amount: number,
+  currency: string,
+): Promise<string | undefined> {
+  const result = await verifyGovernedServiceAuthorization({
+    token: governanceContext,
+    expectedIssuer: `${getCanonicalBase()}/governance`,
+    expectedTask: task,
+    expectedAudience,
+    payload,
+    actualCommitment: { amount, currency },
+    authenticatedCaller,
+  });
+  return result.ok ? undefined : result.message ?? 'The signed governance authorization is invalid.';
+}
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -121,6 +147,92 @@ interface TalentEntry {
   exclusion_reasons?: Record<string, string | { reason: string; suggestions?: string[] }>;
 }
 
+interface RightsConstraint {
+  rights_id: string;
+  rights_agent: { url: string; id: string };
+  rights_holder: { domain: string; brand_id: string };
+  valid_from: string;
+  valid_until: string;
+  uses: string[];
+  countries: string[];
+  impression_cap?: number;
+  right_type: string;
+  approval_status: 'approved';
+  grant_status: 'active' | 'paused';
+  restrictions: string[];
+  disclosure: { required: boolean; text: string };
+  creative_approval_required: boolean;
+  content_digest: string;
+  attestation_refs: Array<{
+    issuer: { type: 'brand'; brand: { domain: string; brand_id: string } };
+    claim_type: 'https://adcontextprotocol.org/claims/rights/grant';
+    subject: {
+      type: 'resource';
+      resource_type: 'https://adcontextprotocol.org/claims/subjects/rights-grant';
+      namespace: string;
+      id: string;
+      content_digest: string;
+    };
+    locator: { type: 'issuer_credential_id'; credential_id: string; resolver_id: 'sandbox-primary' };
+  }>;
+}
+
+function buildRightsConstraint(input: {
+  rightsId: string;
+  talent: TalentEntry;
+  offering: RightsOffering;
+  validFrom: string;
+  validUntil: string;
+  uses: string[];
+  countries: string[];
+  impressionCap?: number;
+  grantStatus?: 'active' | 'paused';
+  restrictions: string[];
+  disclosure: { required: boolean; text: string };
+  creativeApprovalRequired: boolean;
+}): RightsConstraint {
+  const agentUrl = 'https://rights.lotientertainment.com/mcp';
+  const rightsHolder = { domain: input.talent.house.domain, brand_id: input.talent.brand_id };
+  const projection = {
+    rights_id: input.rightsId,
+    rights_agent: { url: agentUrl, id: 'loti_entertainment' },
+    rights_holder: rightsHolder,
+    valid_from: input.validFrom,
+    valid_until: input.validUntil,
+    uses: input.uses,
+    countries: input.countries,
+    ...(input.impressionCap ? { impression_cap: input.impressionCap } : {}),
+    right_type: input.offering.right_type,
+    approval_status: 'approved' as const,
+    grant_status: input.grantStatus ?? 'active',
+    restrictions: input.restrictions,
+    disclosure: input.disclosure,
+    creative_approval_required: input.creativeApprovalRequired,
+  };
+  const contentDigest = `sha256:${createHash('sha256').update(canonicalize(projection)).digest('hex')}`;
+
+  return {
+    ...projection,
+    content_digest: contentDigest,
+    attestation_refs: [{
+      issuer: { type: 'brand', brand: rightsHolder },
+      claim_type: 'https://adcontextprotocol.org/claims/rights/grant',
+      subject: {
+        type: 'resource',
+        resource_type: 'https://adcontextprotocol.org/claims/subjects/rights-grant',
+        namespace: agentUrl,
+        id: input.rightsId,
+        content_digest: contentDigest,
+      },
+      locator: {
+        type: 'issuer_credential_id',
+        credential_id: `cred_${input.rightsId}_${input.validUntil.slice(0, 10)}`,
+        resolver_id: 'sandbox-primary',
+      },
+    }],
+  };
+}
+
 /** Advertiser brand — brand identity without talent rights */
 interface BrandEntry {
   brand_id: string;
@@ -188,7 +300,7 @@ const TALENT: TalentEntry[] = [
         right_type: 'talent',
         available_uses: ['likeness', 'voice', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
         countries: ['NL', 'BE', 'DE'],
-        exclusivity_status: { available: true, existing_exclusives: ['sportswear (NL) — through 2026-12-31'] },
+        exclusivity_status: { available: true, existing_exclusives: ['sportswear (NL) — through 2099-12-31'] },
         pricing_options: [
           {
             pricing_option_id: 'cpm_endorsement',
@@ -221,8 +333,8 @@ const TALENT: TalentEntry[] = [
       pending_approval: ['alcohol', 'gambling', 'pharmaceutical'],
       rejected: {
         sportswear: {
-          reason: 'Active exclusivity with another brand for sportswear in NL through 2026-12-31',
-          suggestions: ['Available for sportswear in BE and DE markets', 'Available in NL after 2027-01-01'],
+          reason: 'Active exclusivity with another brand for sportswear in NL through 2099-12-31',
+          suggestions: ['Available for sportswear in BE and DE markets', 'Available in NL after 2100-01-01'],
         },
       },
     },
@@ -319,7 +431,7 @@ const TALENT: TalentEntry[] = [
         right_type: 'talent',
         available_uses: ['likeness', 'name', 'endorsement', 'commercial', 'ai_generated_image'],
         countries: ['NL', 'BE', 'DE', 'FR'],
-        exclusivity_status: { available: true, existing_exclusives: ['cycling equipment (EU) — through 2027-03-31'] },
+        exclusivity_status: { available: true, existing_exclusives: ['cycling equipment (EU) — through 2099-03-31'] },
         pricing_options: [
           {
             pricing_option_id: 'cpm_likeness',
@@ -355,8 +467,8 @@ const TALENT: TalentEntry[] = [
         dairy: 'This conflicts with our talent lifestyle guidelines',
         fast_food: 'This conflicts with our talent lifestyle guidelines',
         cycling_equipment: {
-          reason: 'Active exclusivity with another brand for cycling equipment in EU through 2027-03-31',
-          suggestions: ['Available for cycling equipment outside EU', 'Available in EU after 2027-04-01'],
+          reason: 'Active exclusivity with another brand for cycling equipment in EU through 2099-03-31',
+          suggestions: ['Available for cycling equipment outside EU', 'Available in EU after 2099-04-01'],
         },
       },
     },
@@ -404,7 +516,7 @@ const TALENT: TalentEntry[] = [
         countries: ['JP', 'KR', 'US'],
         exclusivity_status: {
           available: false,
-          existing_exclusives: ['cosmetics (JP) — through 2027-06-30'],
+          existing_exclusives: ['cosmetics (JP) — through 2099-06-30'],
         },
         pricing_options: [
           {
@@ -438,8 +550,8 @@ const TALENT: TalentEntry[] = [
       pending_approval: ['fashion', 'technology', 'entertainment'],
       rejected: {
         cosmetics: {
-          reason: 'Active exclusivity with another brand for cosmetics in JP through 2027-06-30',
-          suggestions: ['Available for cosmetics outside JP', 'Available in JP after 2027-07-01'],
+          reason: 'Active exclusivity with another brand for cosmetics in JP through 2099-06-30',
+          suggestions: ['Available for cosmetics outside JP', 'Available in JP after 2099-07-01'],
         },
       },
     },
@@ -568,9 +680,10 @@ export const BRAND_TOOLS = [
         },
         account: { type: 'object', description: 'Account reference (seller + operator/brand + sandbox flag)' },
         brand: { type: 'object', description: 'Brand identity the campaign is being produced for — session-keying and governance-plan lookup read this' },
+        governance_context: { type: 'string', maxLength: 4096, description: 'Opaque approved intent context for this rights commitment.' },
         revocation_webhook: { type: 'object', description: 'Webhook endpoint the brand agent calls when a previously-granted license is revoked.' },
       },
-      required: ['rights_id', 'pricing_option_id', 'buyer', 'campaign'],
+      required: ['account', 'rights_id', 'pricing_option_id', 'buyer', 'campaign'],
     },
   },
   {
@@ -585,8 +698,13 @@ export const BRAND_TOOLS = [
         end_date: { type: 'string', description: 'New end date (must be >= current end date)' },
         impression_cap: { type: 'number', description: 'New impression cap (must be >= current)' },
         paused: { type: 'boolean', description: 'Pause or resume the grant' },
+        governance_context: { type: 'string', maxLength: 4096, description: 'Opaque approved intent context for a commitment-increasing rights update.' },
+        push_notification_config: {
+          type: 'object',
+          description: 'Webhook for async update notifications if the update requires approval.',
+        },
       },
-      required: ['rights_id'],
+      required: ['account', 'rights_id'],
     },
   },
   {
@@ -670,10 +788,7 @@ export function handleGetBrandIdentity(
 
   const talent = BRAND_MAP.get(brandId);
   if (!talent) {
-    const code = ctx.storyboardCompat?.version === '3.0'
-      ? 'BRAND_NOT_FOUND'
-      : 'REFERENCE_NOT_FOUND';
-    return { errors: [{ code, message: `No brand with id '${brandId}'`, field: 'brand_id' }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No brand with id '${brandId}'`, field: 'brand_id' }] };
   }
 
   const requested = fields ?? [...ALL_FIELDS];
@@ -886,6 +1001,9 @@ export function handleGetRights(
 }
 
 interface AcquireRightsArgs {
+  account?: import('./types.js').AccountRef;
+  brand?: import('./types.js').BrandRef;
+  governance_context?: string;
   rights_id: string;
   pricing_option_id: string;
   buyer?: { domain: string; brand_id?: string };
@@ -896,6 +1014,14 @@ interface AcquireRightsArgs {
     estimated_impressions?: number;
     start_date?: string;
     end_date?: string;
+  };
+}
+
+function defaultRightsWindow() {
+  const year = new Date(Date.now()).getUTCFullYear() + 1;
+  return {
+    startDate: `${year}-04-01`,
+    endDate: `${year}-06-30`,
   };
 }
 
@@ -911,6 +1037,9 @@ export async function handleAcquireRights(
 
   if (!buyer) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'buyer is required' }] };
+  }
+  if (ctx.tenantId === 'brand' && !req.account) {
+    return { errors: [{ code: 'ACCOUNT_REQUIRED', message: 'account is required to determine whether governance applies.' }] };
   }
 
   let talent: TalentEntry | undefined;
@@ -938,8 +1067,15 @@ export async function handleAcquireRights(
   }
 
   if (campaign.end_date) {
+    // end_date is inclusive through the end of that UTC day — the success path
+    // sets valid_until to 23:59:59Z. Reject only once that whole day is past, so
+    // a campaign ending today (new Date('YYYY-MM-DD') parses to 00:00:00Z) stays
+    // licensable rather than going spuriously "expired" the instant midnight UTC
+    // ticks over.
     const endMs = new Date(campaign.end_date).getTime();
-    if (!Number.isNaN(endMs) && endMs < Date.now()) {
+    const now = new Date(Date.now());
+    const startOfTodayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    if (!Number.isNaN(endMs) && endMs < startOfTodayMs) {
       return {
         errors: [{
           code: 'INVALID_REQUEST',
@@ -956,14 +1092,47 @@ export async function handleAcquireRights(
   // are spending events and MUST be governed under the same plan as media
   // buys. Without this check, the brand_rights/governance_denied storyboard
   // gets a success response instead of GOVERNANCE_DENIED.
-  let session = await getSession(sessionKeyFromArgs(req as { account?: import('./types.js').AccountRef; brand?: import('./types.js').BrandRef }, ctx.mode, ctx.userId, ctx.moduleId));
-  // Framework-dispatch strips `account`, dropping the session to
-  // open:default while sync_plans wrote under open:<brand.domain>.
-  // Fall back to any session carrying governance plans so
-  // brand_rights/governance_denied still propagates the denial.
-  if (session.governancePlans.size === 0) {
-    const fallback = await findSessionMatching(s => s.governancePlans.size > 0);
-    if (fallback) session = fallback;
+  const priceModel = pricingOption.model;
+  const basePrice = pricingOption.price;
+  const estimatedImpressions = campaign.estimated_impressions ?? 1_000_000;
+  const estimatedCommitment = priceModel === 'cpm'
+    ? (basePrice / 1000) * estimatedImpressions
+    : basePrice;
+  const accountSessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = await getSession(accountSessionKey);
+  const registeredGovernanceAgents = resolveGovernanceAgentsForAccount(
+    accountSessionKey,
+    ctx.principal,
+    req.account,
+  );
+  const governanceContext = req.governance_context;
+  if (governanceContext) {
+    const rejection = await governedCommitmentRejection(
+      governanceContext,
+      ctx.authenticatedAgentUrl,
+      'acquire_rights',
+      `${getCanonicalBase()}/brand`,
+      req as unknown as Record<string, unknown>,
+      estimatedCommitment,
+      pricingOption.currency,
+    );
+    if (rejection) {
+      return {
+        rights_id: rightsId,
+        status: 'completed',
+        rights_status: 'rejected',
+        brand_id: talent.brand_id,
+        reason: rejection,
+      };
+    }
+  } else if (session.governancePlans.size > 0 || registeredGovernanceAgents.length > 0) {
+    return {
+      rights_id: rightsId,
+      status: 'completed',
+      rights_status: 'rejected',
+      brand_id: talent.brand_id,
+      reason: 'Rights acquisition requires governance approval. Call check_governance first.',
+    };
   }
   if (session.governancePlans.size > 0) {
     // Estimate total commitment: flat-rate pricing uses `price` as the fixed
@@ -974,12 +1143,6 @@ export async function handleAcquireRights(
     // remaining can't license a $3.50-CPM rights grant unless the campaign
     // is explicitly tiny; the default projection says $3500 > $50 and the
     // plan denies.
-    const priceModel = pricingOption.model;
-    const basePrice = pricingOption.price;
-    const estimatedImpressions = (campaign as unknown as { estimated_impressions?: number }).estimated_impressions ?? 1_000_000;
-    const estimatedCommitment = priceModel === 'cpm'
-      ? (basePrice / 1000) * estimatedImpressions
-      : basePrice;
     for (const plan of session.governancePlans.values()) {
       const remaining = plan.budget.total - plan.committedBudget;
       const typeAlloc = plan.budget.allocations?.rights_license;
@@ -995,7 +1158,7 @@ export async function handleAcquireRights(
         // discriminated-union arm for this case (status: rejected + reason).
         return {
           rights_id: rightsId,
-          status: 'rejected',
+          status: 'completed',
           rights_status: 'rejected',
           brand_id: talent.brand_id,
           reason: msg,
@@ -1012,7 +1175,7 @@ export async function handleAcquireRights(
       const isStructured = typeof rule === 'object';
       return {
         rights_id: rightsId,
-        status: 'rejected',
+        status: 'completed',
         rights_status: 'rejected',
         brand_id: talent.brand_id,
         reason: isStructured ? rule.reason : rule,
@@ -1027,7 +1190,7 @@ export async function handleAcquireRights(
       const talentName = getTalentName(talent);
       return {
         rights_id: rightsId,
-        status: 'pending_approval',
+        status: 'completed',
         rights_status: 'pending_approval',
         brand_id: talent.brand_id,
         detail: `${talentName}'s management requires review for ${keyword} category campaigns. Request submitted for talent approval.`,
@@ -1038,11 +1201,20 @@ export async function handleAcquireRights(
   }
 
   const talentName = getTalentName(talent);
-  const startDate = campaign.start_date || '2026-04-01';
-  const endDate = campaign.end_date || '2026-06-30';
+  const defaultWindow = defaultRightsWindow();
+  const startDate = campaign.start_date || defaultWindow.startDate;
+  const endDate = campaign.end_date || defaultWindow.endDate;
 
   const generationCredentials: GenerationCredential[] = [];
   const campaignUses = campaign.uses || pricingOption.uses;
+  const restrictions = [
+    'All generated creatives must be submitted for approval before distribution',
+    'No modification of talent likeness beyond approved AI generation parameters',
+  ];
+  const disclosure = {
+    required: true,
+    text: `Features AI-generated likeness of ${talentName}, used under license from Loti Entertainment`,
+  };
 
   if (campaignUses.includes('likeness')) {
     generationCredentials.push({
@@ -1064,7 +1236,7 @@ export async function handleAcquireRights(
 
   return {
     rights_id: rightsId,
-    status: 'acquired',
+    status: 'completed',
     rights_status: 'acquired',
     brand_id: talent.brand_id,
     terms: {
@@ -1083,25 +1255,21 @@ export async function handleAcquireRights(
       },
     },
     generation_credentials: generationCredentials,
-    restrictions: [
-      'All generated creatives must be submitted for approval before distribution',
-      'No modification of talent likeness beyond approved AI generation parameters',
-    ],
-    disclosure: {
-      required: true,
-      text: `Features AI-generated likeness of ${talentName}, used under license from Loti Entertainment`,
-    },
-    rights_constraint: {
-      rights_id: rightsId,
-      rights_agent: { url: 'https://rights.lotientertainment.com/mcp', id: 'loti_entertainment' },
-      valid_from: `${startDate}T00:00:00Z`,
-      valid_until: `${endDate}T23:59:59Z`,
+    restrictions,
+    disclosure,
+    rights_constraint: buildRightsConstraint({
+      rightsId,
+      talent,
+      offering,
+      validFrom: `${startDate}T00:00:00Z`,
+      validUntil: `${endDate}T23:59:59Z`,
       uses: campaignUses,
       countries: campaign.countries || offering.countries,
-      ...(pricingOption.impression_cap ? { impression_cap: pricingOption.impression_cap } : {}),
-      approval_status: 'approved',
-      verification_url: `https://sandbox.lotientertainment.com/rights/${rightsId}/verify`,
-    },
+      impressionCap: pricingOption.impression_cap,
+      restrictions,
+      disclosure,
+      creativeApprovalRequired: true,
+    }),
     approval_webhook: {
       url: `https://sandbox.lotientertainment.com/rights/${rightsId}/approve`,
       authentication: {
@@ -1114,11 +1282,23 @@ export async function handleAcquireRights(
   };
 }
 
-export function handleUpdateRights(
+export async function handleUpdateRights(
   args: ToolArgs,
-  _ctx: TrainingContext,
+  ctx: TrainingContext,
 ) {
-  const req = args as { rights_id: string; end_date?: string; impression_cap?: number; paused?: boolean };
+  const req = args as {
+    account?: import('./types.js').AccountRef;
+    brand?: import('./types.js').BrandRef;
+    rights_id: string;
+    end_date?: string;
+    impression_cap?: number;
+    paused?: boolean;
+    governance_context?: string;
+    push_notification_config?: unknown;
+  };
+  if (ctx.tenantId === 'brand' && !req.account) {
+    return { errors: [{ code: 'ACCOUNT_REQUIRED', message: 'account is required to determine whether governance applies.' }] };
+  }
   const rightsId = req.rights_id;
   const endDate = req.end_date;
   const impressionCap = req.impression_cap;
@@ -1139,8 +1319,9 @@ export function handleUpdateRights(
     return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No active grant with id '${rightsId}'` }] };
   }
 
-  const currentEndDate = '2026-06-30';
-  const currentStartDate = '2026-04-01';
+  const defaultWindow = defaultRightsWindow();
+  const currentEndDate = defaultWindow.endDate;
+  const currentStartDate = defaultWindow.startDate;
   if (endDate && endDate < currentEndDate) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'New end_date must be >= current end_date' }] };
   }
@@ -1153,13 +1334,53 @@ export function handleUpdateRights(
   const pricingOption = offering.pricing_options[0];
   const effectiveEndDate = endDate || currentEndDate;
   const effectiveImpressionCap = impressionCap ?? pricingOption.impression_cap;
+  const increasesObligation = paused === false
+    || Boolean(endDate && endDate > currentEndDate)
+    || Boolean(impressionCap !== undefined && impressionCap > (pricingOption.impression_cap ?? 0));
+  const accountSessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = await getSession(accountSessionKey);
+  const registeredGovernanceAgents = resolveGovernanceAgentsForAccount(
+    accountSessionKey,
+    ctx.principal,
+    req.account,
+  );
+  if (req.governance_context) {
+    const rejection = await governedCommitmentRejection(
+      req.governance_context,
+      ctx.authenticatedAgentUrl,
+      'update_rights',
+      `${getCanonicalBase()}/brand`,
+      req as unknown as Record<string, unknown>,
+      increasesObligation ? pricingOption.price : 0,
+      pricingOption.currency,
+    );
+    if (rejection) return { errors: [{ code: 'GOVERNANCE_DENIED', message: rejection }] };
+  } else if (
+    increasesObligation
+    && (session.governancePlans.size > 0 || registeredGovernanceAgents.length > 0)
+  ) {
+    return {
+      errors: [{
+        code: 'GOVERNANCE_DENIED',
+        message: 'This rights update increases or resumes the obligation. Call check_governance first.',
+      }],
+    };
+  }
 
   const talentName = getTalentName(talent);
   const campaignUses = pricingOption.uses;
+  const restrictions = [
+    'All generated creatives must be submitted for approval before distribution',
+    'No modification of talent likeness beyond approved AI generation parameters',
+  ];
+  const disclosure = {
+    required: true,
+    text: `Features AI-generated likeness of ${talentName}, used under license from Loti Entertainment`,
+  };
 
   const generationCredentials: GenerationCredential[] = [];
 
-  if (campaignUses.includes('likeness')) {
+  if (paused !== true && campaignUses.includes('likeness')) {
     generationCredentials.push({
       provider: 'midjourney',
       rights_key: `rk_mj_sandbox_${talent.brand_id}_${Date.now().toString(36)}`,
@@ -1168,7 +1389,7 @@ export function handleUpdateRights(
     });
   }
 
-  if (campaignUses.includes('voice') && talent.voice_synthesis) {
+  if (paused !== true && campaignUses.includes('voice') && talent.voice_synthesis) {
     generationCredentials.push({
       provider: 'elevenlabs',
       rights_key: `rk_el_sandbox_${talent.brand_id}_${Date.now().toString(36)}`,
@@ -1195,17 +1416,20 @@ export function handleUpdateRights(
       },
     },
     generation_credentials: generationCredentials,
-    rights_constraint: {
-      rights_id: rightsId,
-      rights_agent: { url: 'https://rights.lotientertainment.com/mcp', id: 'loti_entertainment' },
-      valid_from: `${currentStartDate}T00:00:00Z`,
-      valid_until: `${effectiveEndDate}T23:59:59Z`,
+    rights_constraint: buildRightsConstraint({
+      rightsId,
+      talent,
+      offering,
+      validFrom: `${currentStartDate}T00:00:00Z`,
+      validUntil: `${effectiveEndDate}T23:59:59Z`,
       uses: campaignUses,
       countries: offering.countries,
-      ...(effectiveImpressionCap ? { impression_cap: effectiveImpressionCap } : {}),
-      approval_status: 'approved',
-      verification_url: `https://sandbox.lotientertainment.com/rights/${rightsId}/verify`,
-    },
+      impressionCap: effectiveImpressionCap,
+      grantStatus: paused === true ? 'paused' : 'active',
+      restrictions,
+      disclosure,
+      creativeApprovalRequired: true,
+    }),
     implementation_date: new Date().toISOString(),
     ...(paused !== undefined && { paused }),
     sandbox: true,

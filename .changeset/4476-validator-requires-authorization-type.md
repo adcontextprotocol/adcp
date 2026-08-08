@@ -1,4 +1,0 @@
----
----
-
-Validator: `AdAgentsManager.validateAgent` now requires every `authorized_agents[]` entry to declare `authorization_type` plus the matching non-empty selector (`property_ids`, `property_tags`, `properties` for `inline_properties`, `publisher_properties`, `signal_ids`, or `signal_tags`) — that's the v3 schema's oneOf invariant. Before this change, files that omitted `authorization_type` (e.g. wonderstruck.org's bare `{url, authorized_for}` entries) returned `valid: true` while downstream resolvers correctly read them as unauthorized — the publisher saw "valid" while the buyer saw "agent not authorized." Per-entry error messages name the missing field and list the valid selector enums. Quick Start example on `/adagents` and the `authorized_agents` reference in `docs/governance/property/adagents.mdx` updated to reflect the requirement. Closes #4476.

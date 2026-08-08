@@ -15,6 +15,7 @@ import { createLogger } from '../../logger.js';
 const logger = createLogger('community-articles');
 import { query } from '../../db/client.js';
 import { getChannelBySlackId } from '../../db/notification-channels-db.js';
+import { escapeSlackText } from '../../utils/slack-escape.js';
 
 /**
  * Check if a Slack channel is a managed notification channel
@@ -231,7 +232,7 @@ export async function sendCommunityReplies(
   for (const article of pendingReplies) {
     // Build reply message
     const replyText = article.addie_notes
-      ? `Thanks for sharing! ${article.addie_notes}`
+      ? `Thanks for sharing! ${escapeSlackText(article.addie_notes, 1_000)}`
       : `Thanks for sharing this article on ${article.title}!`;
 
     try {

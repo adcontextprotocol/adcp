@@ -2,9 +2,10 @@ import { describe, it, expect, beforeAll } from "vitest";
 import express from "express";
 import request from "supertest";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import semver from "semver";
-import { mountSchemasRoutes } from "../../src/schemas-middleware.js";
+import { mountProtocolRoutes, mountSchemasRoutes } from "../../src/schemas-middleware.js";
 
 /**
  * End-to-end tests for /schemas routing: version alias rewriting, bare-directory
@@ -17,7 +18,8 @@ describe("/schemas HTTP routing", () => {
   let app: express.Express;
   let versions: string[] = [];
   let latestStableMajor2: string | undefined;
-  let latestMajor3: string | undefined;
+  let latestStableMajor3: string | undefined;
+  let latestPrereleaseMajor3: string | undefined;
 
   beforeAll(() => {
     versions = fs
@@ -29,16 +31,19 @@ describe("/schemas HTTP routing", () => {
       throw new Error(`No schema versions found under ${schemasPath}. Run \`npm run build:schemas\` first.`);
     }
 
-    // Sort with semver semantics so the test's notion of "latest in 3.x"
-    // matches the alias-rewrite middleware (which uses semver.rcompare and
-    // therefore prefers stable releases over prereleases at the same X.Y.Z).
+    // Sort with semver semantics, then split stable from prerelease. Major and
+    // minor aliases must resolve only to stable releases; prerelease directories
+    // remain directly accessible by exact version.
     const semverDesc = (a: string, b: string) => semver.rcompare(a, b);
 
     latestStableMajor2 = versions
       .filter((v) => v.startsWith("2.") && !v.includes("-"))
       .sort(semverDesc)[0];
-    latestMajor3 = versions
-      .filter((v) => v.startsWith("3."))
+    latestStableMajor3 = versions
+      .filter((v) => v.startsWith("3.") && !v.includes("-") && !["3.1.3", "3.2.0"].includes(v))
+      .sort(semverDesc)[0];
+    latestPrereleaseMajor3 = versions
+      .filter((v) => v.startsWith("3.") && v.includes("-"))
       .sort(semverDesc)[0];
 
     app = express();
@@ -55,8 +60,8 @@ describe("/schemas HTTP routing", () => {
     });
 
     it("serves files from a concrete prerelease version", async () => {
-      if (!latestMajor3) return;
-      const res = await request(app).get(`/schemas/${latestMajor3}/adagents.json`);
+      if (!latestPrereleaseMajor3) return;
+      const res = await request(app).get(`/schemas/${latestPrereleaseMajor3}/adagents.json`);
       expect(res.status).toBe(200);
       expect(res.headers["cache-control"]).toContain("immutable");
     });
@@ -69,14 +74,66 @@ describe("/schemas HTTP routing", () => {
     });
 
     it("redirects a bare prerelease directory to index.json under /schemas", async () => {
-      if (!latestMajor3) return;
-      const res = await request(app).get(`/schemas/${latestMajor3}/`);
+      if (!latestPrereleaseMajor3) return;
+      const res = await request(app).get(`/schemas/${latestPrereleaseMajor3}/`);
       expect(res.status).toBe(302);
-      expect(res.headers["location"]).toBe(`/schemas/${latestMajor3}/index.json`);
+      expect(res.headers["location"]).toBe(`/schemas/${latestPrereleaseMajor3}/index.json`);
     });
   });
 
   describe("version aliases (the bug we just fixed)", () => {
+    it("skips withdrawn releases while preserving their exact immutable paths", async () => {
+      const tempSchemasPath = fs.mkdtempSync(path.join(os.tmpdir(), "schema-routing-withdrawn-"));
+
+      try {
+        for (const version of ["3.1.2", "3.1.3", "3.2.0"]) {
+          fs.mkdirSync(path.join(tempSchemasPath, version), { recursive: true });
+          fs.writeFileSync(
+            path.join(tempSchemasPath, version, "index.json"),
+            JSON.stringify({ version }),
+          );
+          fs.writeFileSync(
+            path.join(tempSchemasPath, version, "product.json"),
+            JSON.stringify({ version }),
+          );
+        }
+
+        const tempApp = express();
+        mountSchemasRoutes(tempApp, tempSchemasPath);
+
+        const alias = await request(tempApp).get("/schemas/v3.1/product.json");
+        expect(alias.status).toBe(200);
+        expect(alias.body.version).toBe("3.1.2");
+
+        const exact = await request(tempApp).get("/schemas/3.1.3/product.json");
+        expect(exact.status).toBe(200);
+        expect(exact.body.version).toBe("3.1.3");
+        expect(exact.headers["cache-control"]).toContain("immutable");
+
+        const discovery = await request(tempApp).get("/schemas/");
+        expect(discovery.body.latest_stable).toBe("3.1.2");
+        expect(discovery.body.aliases).toContainEqual({
+          alias: "v3.1",
+          resolves_to: "3.1.2",
+          path: "/schemas/v3.1/",
+        });
+        expect(discovery.body.versions).toContainEqual(expect.objectContaining({
+          version: "3.1.3",
+          stability: "withdrawn",
+          deprecated: true,
+          withdrawn: true,
+        }));
+        expect(discovery.body.versions).toContainEqual(expect.objectContaining({
+          version: "3.2.0",
+          stability: "unpublished",
+          deprecated: false,
+          published: false,
+        }));
+      } finally {
+        fs.rmSync(tempSchemasPath, { recursive: true, force: true });
+      }
+    });
+
     it("serves /schemas/v2/adagents.json via alias rewrite", async () => {
       if (!latestStableMajor2) return;
       const res = await request(app).get("/schemas/v2/adagents.json");
@@ -91,7 +148,7 @@ describe("/schemas HTTP routing", () => {
     });
 
     it("serves /schemas/v3/adagents.json via alias rewrite", async () => {
-      if (!latestMajor3) return;
+      if (!latestStableMajor3) return;
       const res = await request(app).get("/schemas/v3/adagents.json");
       expect(res.status).toBe(200);
     });
@@ -104,14 +161,72 @@ describe("/schemas HTTP routing", () => {
     });
 
     it("redirects /schemas/v3/ to the resolved index.json", async () => {
-      if (!latestMajor3) return;
+      if (!latestStableMajor3) return;
       const res = await request(app).get("/schemas/v3/");
       expect(res.status).toBe(302);
-      expect(res.headers["location"]).toBe(`/schemas/${latestMajor3}/index.json`);
+      expect(res.headers["location"]).toBe(`/schemas/${latestStableMajor3}/index.json`);
     });
 
     it("returns 404 for an alias with no matching major version", async () => {
       const res = await request(app).get("/schemas/v99/adagents.json");
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("missing pinned version fallback (docs-only version bumps)", () => {
+    // A docs snapshot can be cut at a version whose schema content was
+    // unchanged from the last published release on the same line (e.g. a
+    // 3.0.19 docs snapshot built against the existing 3.0.18 schemas), so no
+    // matching schema directory is ever produced. The snapshot's link rewrite
+    // still pins schema URLs to /schemas/<docs-version>/..., which must resolve
+    // rather than 404.
+    let missingPatch: string | undefined;
+    let resolvedTarget: string | undefined;
+
+    beforeAll(() => {
+      // Synthesize a "one patch above the latest published 3.0.x" version that
+      // is guaranteed not to have a directory, and compute what it should
+      // resolve to (the latest published 3.0.x).
+      const latest30 = versions
+        .filter((v) => v.startsWith("3.0.") && !v.includes("-"))
+        .sort((a, b) => semver.rcompare(a, b))[0];
+      if (latest30) {
+        resolvedTarget = latest30;
+        const p = semver.parse(latest30)!;
+        missingPatch = `${p.major}.${p.minor}.${p.patch + 1}`;
+        // Guard: the synthesized version must genuinely be absent.
+        if (versions.includes(missingPatch)) missingPatch = undefined;
+      }
+    });
+
+    it("serves a missing pinned patch from the nearest published release on the same line", async () => {
+      if (!missingPatch) return;
+      const res = await request(app).get(
+        `/schemas/${missingPatch}/media-buy/get-media-buy-delivery-request.json`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers["content-type"]).toMatch(/application\/json/);
+    });
+
+    it("marks resolved-fallback responses no-cache (the target can change as patches land)", async () => {
+      if (!missingPatch) return;
+      const res = await request(app).get(
+        `/schemas/${missingPatch}/media-buy/get-media-buy-delivery-request.json`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers["cache-control"] ?? "").not.toContain("immutable");
+      expect(res.headers["cache-control"] ?? "").toContain("no-cache");
+    });
+
+    it("redirects a missing bare pinned directory to the resolved index.json", async () => {
+      if (!missingPatch || !resolvedTarget) return;
+      const res = await request(app).get(`/schemas/${missingPatch}/`);
+      expect(res.status).toBe(302);
+      expect(res.headers["location"]).toBe(`/schemas/${resolvedTarget}/index.json`);
+    });
+
+    it("still 404s a pinned version with no published release in its major line", async () => {
+      const res = await request(app).get("/schemas/99.9.9/adagents.json");
       expect(res.status).toBe(404);
     });
   });
@@ -158,6 +273,109 @@ describe("/schemas HTTP routing", () => {
     });
   });
 
+  describe("legacy Trusted Match schema namespace", () => {
+    it("serves legacy /tmp/ schema URLs from /latest/ via the canonical trusted-match files", async () => {
+      const tempSchemasPath = fs.mkdtempSync(path.join(os.tmpdir(), "schema-routing-"));
+
+      try {
+        fs.mkdirSync(path.join(tempSchemasPath, "latest", "trusted-match"), {
+          recursive: true,
+        });
+        fs.writeFileSync(
+          path.join(tempSchemasPath, "latest", "trusted-match", "context-match-request.json"),
+          JSON.stringify({
+            $id: "/schemas/latest/trusted-match/context-match-request.json",
+          }),
+        );
+
+        const tempApp = express();
+        mountSchemasRoutes(tempApp, tempSchemasPath);
+
+        const res = await request(tempApp).get(
+          "/schemas/latest/tmp/context-match-request.json",
+        );
+        expect(res.status).toBe(200);
+        expect(res.body.$id).toBe("/schemas/latest/trusted-match/context-match-request.json");
+        expect(res.headers["cache-control"] ?? "").toContain("no-cache");
+      } finally {
+        fs.rmSync(tempSchemasPath, { recursive: true, force: true });
+      }
+    });
+
+    it("keeps exact pinned /tmp/ schema artifacts authoritative when present", async () => {
+      const res = await request(app).get("/schemas/3.1.0/tmp/context-match-request.json");
+      expect(res.status).toBe(200);
+      expect(res.body.$id).toBe("/schemas/3.1.0/tmp/context-match-request.json");
+      expect(res.headers["cache-control"] ?? "").toContain("immutable");
+    });
+
+    it("keeps resolved pinned /tmp/ schema artifacts authoritative when present", async () => {
+      const tempSchemasPath = fs.mkdtempSync(path.join(os.tmpdir(), "schema-routing-"));
+
+      try {
+        fs.mkdirSync(path.join(tempSchemasPath, "3.1.0", "tmp"), {
+          recursive: true,
+        });
+        fs.writeFileSync(
+          path.join(tempSchemasPath, "3.1.0", "tmp", "offer.json"),
+          JSON.stringify({
+            $id: "/schemas/3.1.0/tmp/offer.json",
+          }),
+        );
+
+        const tempApp = express();
+        mountSchemasRoutes(tempApp, tempSchemasPath);
+
+        const res = await request(tempApp).get("/schemas/3.1.1/tmp/offer.json");
+        expect(res.status).toBe(200);
+        expect(res.body.$id).toBe("/schemas/3.1.0/tmp/offer.json");
+        expect(res.headers["cache-control"] ?? "").toContain("no-cache");
+      } finally {
+        fs.rmSync(tempSchemasPath, { recursive: true, force: true });
+      }
+    });
+
+    it("falls back an exact pinned /tmp/ URL when the release only has trusted-match files", async () => {
+      const tempSchemasPath = fs.mkdtempSync(path.join(os.tmpdir(), "schema-routing-"));
+      const version = "9.9.9";
+
+      try {
+        fs.mkdirSync(path.join(tempSchemasPath, version, "trusted-match"), {
+          recursive: true,
+        });
+        fs.writeFileSync(
+          path.join(tempSchemasPath, version, "trusted-match", "context-match-request.json"),
+          JSON.stringify({
+            $id: `/schemas/${version}/trusted-match/context-match-request.json`,
+          }),
+        );
+
+        const tempApp = express();
+        mountSchemasRoutes(tempApp, tempSchemasPath);
+
+        const res = await request(tempApp).get(
+          `/schemas/${version}/tmp/context-match-request.json`,
+        );
+        expect(res.status).toBe(200);
+        expect(res.body.$id).toBe(
+          `/schemas/${version}/trusted-match/context-match-request.json`,
+        );
+        expect(res.headers["cache-control"] ?? "").toContain("immutable");
+      } finally {
+        fs.rmSync(tempSchemasPath, { recursive: true, force: true });
+      }
+    });
+
+    it.each([
+      "/schemas/latest/tmp/../../../../etc/passwd",
+      "/schemas/latest/tmp/%2e%2e/%2e%2e/%2e%2e/%2e%2e/etc/passwd",
+      "/schemas/latest/core/tmp/context-match-request.json",
+    ])("does not rewrite malformed legacy /tmp/ path %s", async (url) => {
+      const res = await request(app).get(url);
+      expect(res.status).toBe(404);
+    });
+  });
+
   describe("discovery endpoint", () => {
     it("lists versions and aliases at /schemas/", async () => {
       const res = await request(app).get("/schemas/");
@@ -165,6 +383,51 @@ describe("/schemas HTTP routing", () => {
       expect(Array.isArray(res.body.versions)).toBe(true);
       expect(Array.isArray(res.body.aliases)).toBe(true);
       expect(res.body.latest).toMatchObject({ path: "/schemas/latest/" });
+      expect(res.body.latest_stable).toBe(latestStableMajor3);
+      expect(res.body.aliases.find((a: { alias: string }) => a.alias === "v3")).toMatchObject({
+        resolves_to: latestStableMajor3,
+      });
     });
+  });
+});
+
+describe("/protocol discovery release overrides", () => {
+  it("selects the supported release while retaining withdrawn and unpublished artifacts", async () => {
+    const protocolPath = fs.mkdtempSync(path.join(os.tmpdir(), "protocol-routing-overrides-"));
+
+    try {
+      for (const version of ["3.1.2", "3.1.3", "3.2.0"]) {
+        fs.writeFileSync(path.join(protocolPath, `${version}.tgz`), version);
+        fs.writeFileSync(path.join(protocolPath, `${version}.tgz.sha256`), `${version}-checksum`);
+      }
+      fs.writeFileSync(path.join(protocolPath, "latest.tgz"), "latest");
+      fs.writeFileSync(path.join(protocolPath, "latest.tgz.sha256"), "latest-checksum");
+
+      const app = express();
+      mountProtocolRoutes(app, protocolPath);
+
+      const discovery = await request(app).get("/protocol/");
+      expect(discovery.status).toBe(200);
+      expect(discovery.body.latest.published_version).toBe("3.1.2");
+      expect(discovery.body.versions).toContainEqual(expect.objectContaining({
+        version: "3.1.3",
+        stability: "withdrawn",
+        deprecated: true,
+        withdrawn: true,
+      }));
+      expect(discovery.body.versions).toContainEqual(expect.objectContaining({
+        version: "3.2.0",
+        stability: "unpublished",
+        deprecated: false,
+        published: false,
+      }));
+
+      const exact = await request(app).get("/protocol/3.1.3.tgz");
+      expect(exact.status).toBe(200);
+      expect(exact.body.toString()).toBe("3.1.3");
+      expect(exact.headers["cache-control"]).toContain("immutable");
+    } finally {
+      fs.rmSync(protocolPath, { recursive: true, force: true });
+    }
   });
 });

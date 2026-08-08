@@ -60,6 +60,15 @@ export const AddieModelConfig = {
   chat: process.env.ADDIE_ANTHROPIC_MODEL || ModelConfig.primary,
 
   /**
+   * Model for active certification sessions. Kept separate so curriculum
+   * adherence can be A/B tested without changing general Addie traffic.
+   * Override: ADDIE_CERTIFICATION_MODEL (falls back to chat/Sonnet)
+   */
+  certification: process.env.ADDIE_CERTIFICATION_MODEL
+    || process.env.ADDIE_ANTHROPIC_MODEL
+    || ModelConfig.primary,
+
+  /**
    * Model for anonymous web chat.
    *
    * Defaults to Sonnet (`primary`). Anonymous traffic exposes Addie's worst

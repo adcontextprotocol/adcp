@@ -101,6 +101,11 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
   // on its own.
   app.use('/api/training-agent', createTrainingAgentRouter({
     ...(isThreeZeroCompatRun && { storyboardCompat: { version: '3.0' as const } }),
+    // The matrix intentionally drives every storyboard through one embedded
+    // server in a few seconds. Feature work can legitimately add MCP calls;
+    // production throttling is outside this exhaustive functional matrix and
+    // must not turn it into an order-dependent request-count test.
+    disableRateLimit: true,
   }));
   return await new Promise((resolve, reject) => {
     const srv = http.createServer(app);
@@ -238,41 +243,36 @@ function skipThreeZeroSignedVectorsExcept(allowed: string[]): string[] {
     .filter(id => !allowedSet.has(id));
 }
 
-function normalizeThreeZeroCompatFlightDates(value: unknown): void {
+const THREE_ZERO_STALE_STORYBOARD_DATE_RE = /\b(?:2026|2027)-(?=\d{2}-\d{2}(?:T|\b))/g;
+const THREE_ZERO_STALE_DATE_WINDOW_KEYS = new Set([
+  'start_time',
+  'end_time',
+  'start',
+  'end',
+  'start_date',
+  'end_date',
+  'valid_from',
+  'valid_until',
+  'expires_at',
+]);
+
+function normalizeThreeZeroStaleStoryboardDates(value: unknown): void {
   if (!value || typeof value !== 'object') return;
   if (Array.isArray(value)) {
-    for (const item of value) normalizeThreeZeroCompatFlightDates(item);
+    for (let i = 0; i < value.length; i += 1) {
+      normalizeThreeZeroStaleStoryboardDates(value[i]);
+    }
     return;
   }
 
   const obj = value as Record<string, unknown>;
-  if (
-    obj.start_time === '2026-05-01T00:00:00Z'
-    && obj.end_time === '2026-05-31T23:59:59Z'
-  ) {
-    obj.start_time = 'asap';
-    obj.end_time = '2099-05-31T23:59:59Z';
+  for (const [key, child] of Object.entries(obj)) {
+    if (typeof child === 'string' && THREE_ZERO_STALE_DATE_WINDOW_KEYS.has(key)) {
+      obj[key] = child.replace(THREE_ZERO_STALE_STORYBOARD_DATE_RE, '2099-');
+    } else {
+      normalizeThreeZeroStaleStoryboardDates(child);
+    }
   }
-  for (const child of Object.values(obj)) normalizeThreeZeroCompatFlightDates(child);
-}
-
-function normalizeThreeZeroIdempotencyDates(value: unknown): void {
-  if (!value || typeof value !== 'object') return;
-  if (Array.isArray(value)) {
-    for (const item of value) normalizeThreeZeroIdempotencyDates(item);
-    return;
-  }
-
-  const obj = value as Record<string, unknown>;
-  if (obj.start_time === '2026-06-01T00:00:00Z') {
-    obj.start_time = '2099-06-01T00:00:00Z';
-  }
-  if (obj.end_time === '2026-06-30T23:59:59Z') {
-    obj.end_time = '2099-06-30T23:59:59Z';
-  } else if (obj.end_time === '2026-09-30T23:59:59Z') {
-    obj.end_time = '2099-09-30T23:59:59Z';
-  }
-  for (const child of Object.values(obj)) normalizeThreeZeroIdempotencyDates(child);
 }
 
 function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
@@ -297,9 +297,8 @@ function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
 
   if (!isThreeZeroCompatRun) return patched;
   patched = structuredClone(patched) as Storyboard;
-  normalizeThreeZeroCompatFlightDates(patched);
+  normalizeThreeZeroStaleStoryboardDates(patched);
   if (sb.id === 'idempotency') {
-    normalizeThreeZeroIdempotencyDates(patched);
     return patched;
   }
   if (sb.id === 'media_buy_seller/pending_creatives_to_start') {
@@ -327,6 +326,46 @@ function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
       for (const step of phase.steps ?? []) {
         if (step.id === 'acquire_rights') {
           step.validations = (step.validations ?? []).filter(validation => validation.check !== 'response_schema');
+        }
+      }
+    }
+    return patched;
+  }
+
+  if (sb.id === 'signal_marketplace/governance_denied') {
+    patched.context = {
+      ...((patched.context ?? {}) as Record<string, unknown>),
+      governance_agent_url: 'https://test-agent.adcontextprotocol.org',
+    };
+    patched.phases = (patched.phases ?? []).filter(phase => phase.id !== 'governance_plan_setup');
+    for (const phase of patched.phases ?? []) {
+      for (const step of phase.steps ?? []) {
+        if (step.id !== 'activate_signal_denied') continue;
+        step.title = 'activate_signal — missing governance approval';
+        step.expected = [
+          'Signal agent rejects with:',
+          '- code: PERMISSION_DENIED',
+          '- findings explaining that check_governance must run first',
+        ].join('\n');
+        step.sample_response = {
+          status: 'failed',
+          errors: [{
+            code: 'PERMISSION_DENIED',
+            message: 'Signal activation requires governance approval. Call check_governance first — a governance agent is registered for this account.',
+            details: {
+              findings: [{
+                category_id: 'governance_context',
+                severity: 'critical',
+                explanation: 'Signal activation requires governance approval. Call check_governance first — a governance agent is registered for this account.',
+              }],
+            },
+          }],
+        };
+        for (const validation of step.validations ?? []) {
+          if (validation.check === 'error_code') {
+            validation.value = 'PERMISSION_DENIED';
+            validation.description = 'Error code is PERMISSION_DENIED';
+          }
         }
       }
     }

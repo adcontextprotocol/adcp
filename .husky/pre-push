@@ -14,22 +14,29 @@ case "$BRANCH_NAME" in
   *)
     CHANGESET_BASE="${ADCP_CHANGESET_BASE:-origin/main}"
     if git rev-parse --verify --quiet "$CHANGESET_BASE" >/dev/null; then
-      echo "🔍 Checking for changeset since $CHANGESET_BASE..."
-      if ! git diff --name-only --diff-filter=ACMR "$CHANGESET_BASE"...HEAD -- .changeset |
+      echo "🔍 Checking changeset policy since $CHANGESET_BASE..."
+      node scripts/check-changeset-protocol-scope.cjs "$CHANGESET_BASE" || exit 1
+
+      if node scripts/check-changeset-protocol-scope.cjs "$CHANGESET_BASE" --is-status-exempt-maintenance; then
+        echo "⏭  Changeset policy maintenance — skipping local changeset presence check"
+      elif ! node scripts/check-changeset-protocol-scope.cjs "$CHANGESET_BASE" --has-protocol-scoped-changes; then
+        echo "⏭  No protocol release-surface changes — skipping local changeset presence check"
+      elif ! git diff --name-only --diff-filter=ACMR "$CHANGESET_BASE"...HEAD -- .changeset |
         grep -Eq '^\.changeset/[^/]+\.md$'; then
-        echo "Missing changeset. Add one with 'npx changeset --empty' before pushing."
+        echo "Missing protocol changeset. Add one with 'npx changeset' before pushing."
         echo "Run the full CI-equivalent check with:"
         echo "  npx --yes @changesets/cli@^2.31.0 status --since=$CHANGESET_BASE"
         exit 1
+      else
+        echo "✅ Protocol changeset present"
       fi
-      echo "✅ Changeset present"
     else
       echo "⏭  $CHANGESET_BASE not found — skipping local changeset check"
     fi
     ;;
 esac
 
-# Only run Mintlify broken-links when docs actually changed on this branch.
+# Only run docs validation when docs actually changed on this branch.
 # CI (.github/workflows/broken-links.yml) is the authoritative check; this is a
 # fast local pre-flight. A11y is skipped locally — add to CI if we want it gated.
 UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "")
@@ -54,47 +61,8 @@ if echo "$CHANGED" | grep -Eq "$DOC_PATHS"; then
   echo "🔍 Docs changed — checking schema link convention..."
   npm run lint:schema-links --silent || exit 1
 
-  echo "🔍 Docs changed — running Mintlify broken-links check..."
-
-  # Use the local devDependency, not a re-resolved npx download.
-  # Move sibling dirs that contain non-MDX markdown Mintlify chokes on. mv +
-  # restore (not rm + checkout) so a failed restore can't be swept into the
-  # next `git add -A`. See #3633.
-  MOVED=""
-  for d in dist/docs dist/addie/rules .addie-repos .context; do
-    if [ -d "$d" ]; then
-      tmp="/tmp/.prepush-$(echo "$d" | tr '/' '_')-$$"
-      mv "$d" "$tmp"
-      MOVED="$MOVED $d:$tmp"
-    fi
-  done
-
-  # Restore moved dirs on ANY exit path (success, broken-links failure,
-  # SIGINT, kernel kill). Without the trap, an interrupted script left the
-  # temp dir orphaned in /tmp and broke the next run — or worse, the next
-  # `mv` re-landed it inside `dist/docs/` instead of as `dist/docs`. See
-  # `.gitignore` for the .prepush-*/ ignore that scoops up stragglers.
-  restore_moved() {
-    for pair in $MOVED; do
-      src=$(echo "$pair" | cut -d: -f2)
-      dst=$(echo "$pair" | cut -d: -f1)
-      # Only restore if source exists AND destination doesn't (don't overwrite).
-      if [ -d "$src" ] && [ ! -e "$dst" ]; then
-        mv "$src" "$dst"
-      fi
-    done
-  }
-  trap restore_moved EXIT INT TERM
-
-  npx --no-install mintlify broken-links
-  EXIT=$?
-
-  restore_moved
-  trap - EXIT INT TERM
-
-  if [ $EXIT -ne 0 ]; then
-    exit 1
-  fi
+  echo "🔍 Docs changed — validating Mintlify navigation..."
+  node tests/docs-nav-validation.test.cjs || exit 1
   echo "✅ Docs validation passed"
 else
   echo "⏭  No docs changes — skipping Mintlify checks"

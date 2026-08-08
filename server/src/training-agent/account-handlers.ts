@@ -12,7 +12,22 @@ import { getAgentUrl } from './config.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import { getCommercialRelationship } from './commercial-relationships.js';
 import { isPerAccountBillingRestricted } from './account-billing-relationships.js';
-import { assertPublicTarget, SsrfRefusedError } from './webhook-fetch.js';
+import {
+  assertPublicTarget,
+  isWebhookTestOrDevelopment,
+  SsrfRefusedError,
+} from './webhook-fetch.js';
+import {
+  accountWebhookProofTuple,
+  normalizeAccountWebhookUrl,
+  proveAccountWebhookControl,
+} from './webhook-challenge.js';
+
+// One account may legitimately use the protocol's full 16-subscriber fan-out.
+// Larger multi-account activations must be split by account so a single call
+// cannot amplify into thousands of signed outbound requests.
+export const MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC = 16;
+const ACCOUNT_WEBHOOK_PROOF_SYNC_DEADLINE_MS = 30_000;
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -50,7 +65,7 @@ interface AccountState {
   syncedAt: string;
 }
 
-interface GovernanceAgentEntry {
+export interface GovernanceAgentEntry {
   url: string;
 }
 
@@ -299,7 +314,15 @@ function durableAccountIdentityError(ctx: TrainingContext): { errors: Array<{ co
   return null;
 }
 
-async function normalizeNotificationConfigs(input: SyncAccountInput): Promise<NotificationConfigState[] | { error: Record<string, unknown> } | undefined> {
+async function normalizeNotificationConfigs(
+  input: SyncAccountInput,
+  options: {
+    accountId: string;
+    existing: NotificationConfigState[];
+    dryRun: boolean;
+    proofDeadlineMs: number;
+  },
+): Promise<NotificationConfigState[] | { error: Record<string, unknown> } | undefined> {
   if (input.notification_configs === undefined) return undefined;
   if (!Array.isArray(input.notification_configs)) {
     return { error: validationFailure(input, 'notification_configs', 'notification_configs must be an array') };
@@ -333,7 +356,7 @@ async function normalizeNotificationConfigs(input: SyncAccountInput): Promise<No
       return { error: validationFailure(input, `${field}.url`, 'url must be a valid URL') };
     }
     const isLocalWebhook = ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
-    if (parsed.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && isLocalWebhook)) {
+    if (parsed.protocol !== 'https:' && !(isWebhookTestOrDevelopment(process.env.NODE_ENV) && isLocalWebhook)) {
       return { error: validationFailure(input, `${field}.url`, 'url must use HTTPS') };
     }
     if (parsed.username || parsed.password) {
@@ -382,9 +405,12 @@ async function normalizeNotificationConfigs(input: SyncAccountInput): Promise<No
       }
     }
 
-    out.push({
+    const normalizedConfig: NotificationConfigState = {
       subscriberId: config.subscriber_id,
-      url: config.url,
+      url: normalizeAccountWebhookUrl(config.url),
+      // Preserve caller order in the persisted/echoed representation. Proof
+      // tuple construction canonicalizes independently, so ordering does not
+      // weaken substitution resistance.
       eventTypes: [...config.event_types],
       authentication: config.authentication?.schemes?.length
         ? {
@@ -393,7 +419,47 @@ async function normalizeNotificationConfigs(input: SyncAccountInput): Promise<No
           }
         : undefined,
       active: config.active !== false,
-    });
+    };
+
+    if (normalizedConfig.active && !options.dryRun) {
+      const challengeConfig = {
+        accountId: options.accountId,
+        subscriberId: normalizedConfig.subscriberId,
+        url: normalizedConfig.url,
+        eventTypes: normalizedConfig.eventTypes,
+        authentication: normalizedConfig.authentication,
+      };
+      const existing = options.existing.find(
+        candidate => candidate.subscriberId === normalizedConfig.subscriberId,
+      );
+      const canReuseProof = existing?.active === true
+        && accountWebhookProofTuple(options.accountId, challengeConfig)
+          === accountWebhookProofTuple(options.accountId, {
+            accountId: options.accountId,
+            subscriberId: existing.subscriberId,
+            url: existing.url,
+            eventTypes: existing.eventTypes,
+            authentication: existing.authentication,
+          });
+      if (!canReuseProof) {
+        const remainingMs = options.proofDeadlineMs - Date.now();
+        const proof = remainingMs > 0
+          ? await proveAccountWebhookControl(challengeConfig, { timeoutMs: remainingMs })
+          : { ok: false as const };
+        if (!proof.ok) {
+          return {
+            error: validationFailure(
+              input,
+              `${field}.url`,
+              'webhook endpoint proof of control failed',
+            ),
+          };
+        }
+        normalizedConfig.url = proof.normalizedUrl;
+      }
+    }
+
+    out.push(normalizedConfig);
   }
   return out;
 }
@@ -451,6 +517,23 @@ export function resolveAccountIdForRef(
   const account = findAccountByRef(getAccountMap(sessionKey, principal), ref)
     ?? (ref.account_id ? findAccountByIdAcrossSessions(ref.account_id, principal) : undefined);
   return account?.accountId;
+}
+
+export function resolveGovernanceAgentsForAccount(
+  sessionKey: string,
+  principal: string | undefined,
+  ref: AccountRef | undefined,
+): GovernanceAgentEntry[] {
+  if (!ref) return [];
+  for (const accounts of accountMapsForPrincipal(sessionKey, principal)) {
+    const account = findAccountByRef(accounts, ref);
+    if (account) return [...account.governanceAgents];
+  }
+  if (ref.account_id) {
+    const account = findAccountByIdAcrossSessions(ref.account_id, principal);
+    if (account) return [...account.governanceAgents];
+  }
+  return [];
 }
 
 export function seedAccountFixture(
@@ -673,7 +756,10 @@ export const ACCOUNT_TOOLS = [
                       },
                       required: ['schemes', 'credentials'],
                     },
-                    active: { type: 'boolean' },
+                    active: {
+                      type: 'boolean',
+                      description: 'Defaults to true. Active registrations require a successful signed proof-of-control challenge; false persists the registration without firing or challenging it. The training sandbox accepts at most 16 active entries across all accounts in one non-dry-run call; split larger multi-account replacements by account.',
+                    },
                   },
                   required: ['subscriber_id', 'url', 'event_types'],
                 },
@@ -769,10 +855,25 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
     };
   }
 
+  const proofCandidateCount = req.accounts.reduce((count, input) => {
+    if (!Array.isArray(input?.notification_configs)) return count;
+    return count + input.notification_configs.filter(config => config?.active !== false).length;
+  }, 0);
+  if (!req.dry_run && proofCandidateCount > MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC) {
+    return {
+      errors: [{
+        code: 'LIMIT_EXCEEDED',
+        message: `At most ${MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC} active webhook registrations may be submitted per sync_accounts call; split larger activations across calls.`,
+        recovery: 'correctable',
+      }],
+    };
+  }
+
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const accounts = getAccountMap(sessionKey, ctx.principal);
   const agentUrl = getAgentUrl();
   const now = new Date().toISOString();
+  const proofDeadlineMs = Date.now() + ACCOUNT_WEBHOOK_PROOF_SYNC_DEADLINE_MS;
   const results: Record<string, unknown>[] = [];
 
   for (const input of req.accounts) {
@@ -829,7 +930,12 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         continue;
       }
 
-      const notificationConfigs = await normalizeNotificationConfigs(input);
+      const notificationConfigs = await normalizeNotificationConfigs(input, {
+        accountId: existing.accountId,
+        existing: existing.notificationConfigs,
+        dryRun: req.dry_run === true,
+        proofDeadlineMs,
+      });
       if (notificationConfigs && 'error' in notificationConfigs) {
         results.push(notificationConfigs.error);
         continue;
@@ -991,7 +1097,13 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
     const key = accountKey(input.brand, input.operator);
     const existing = accounts.get(key);
     const isSandbox = input.sandbox === true;
-    const notificationConfigs = await normalizeNotificationConfigs(input);
+    const accountId = existing?.accountId || `acc_${input.brand.domain.replace(/\./g, '_')}_${randomUUID().slice(0, 8)}`;
+    const notificationConfigs = await normalizeNotificationConfigs(input, {
+      accountId,
+      existing: existing?.notificationConfigs ?? [],
+      dryRun: req.dry_run === true,
+      proofDeadlineMs,
+    });
     if (notificationConfigs && 'error' in notificationConfigs) {
       results.push(notificationConfigs.error);
       continue;
@@ -1017,7 +1129,6 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       continue;
     }
 
-    const accountId = existing?.accountId || `acc_${input.brand.domain.replace(/\./g, '_')}_${randomUUID().slice(0, 8)}`;
     const action = existing ? 'updated' : 'created';
 
     // Sandbox accounts are active immediately; non-sandbox may need approval

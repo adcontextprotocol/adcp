@@ -7,7 +7,7 @@
 import { Router } from "express";
 import { validate as uuidValidate } from "uuid";
 import { createLogger } from "../logger.js";
-import { requireAuth, requireAdmin } from "../middleware/auth.js";
+import { requireGlobalAdmin } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { AddieDatabase } from "../db/addie-db.js";
 import { query } from "../db/client.js";
@@ -57,6 +57,7 @@ import {
   getInsightByWeek,
 } from "../db/conversation-insights-db.js";
 import { runConversationInsightsJob } from "../addie/jobs/conversation-insights.js";
+import { guardEscalationResolution } from "../services/escalation-resolution-guard.js";
 
 const logger = createLogger("addie-admin-routes");
 const addieDb = new AddieDatabase();
@@ -120,12 +121,18 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   const pageRouter = Router();
   const apiRouter = Router();
 
+  // Every route in this module reads or mutates cross-organization Addie
+  // state. Apply the global-admin chain at the router boundary so
+  // tenant-scoped WorkOS API keys are refused for current and future routes.
+  pageRouter.use(...requireGlobalAdmin);
+  apiRouter.use(...requireGlobalAdmin);
+
   // =========================================================================
   // ADMIN PAGE ROUTES (mounted at /admin/addie)
   // =========================================================================
 
   // Main Addie dashboard
-  pageRouter.get("/", requireAuth, requireAdmin, (req, res) => {
+  pageRouter.get("/", (req, res) => {
     serveHtmlWithConfig(req, res, "admin-addie.html").catch((err) => {
       logger.error({ err }, "Error serving Addie admin page");
       res.status(500).send("Internal server error");
@@ -137,7 +144,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   // =========================================================================
 
   // GET /api/admin/addie/knowledge - List all knowledge documents
-  apiRouter.get("/knowledge", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/knowledge", async (req, res) => {
     try {
       const { category, active_only, source_type, status, limit, offset } = req.query;
 
@@ -164,7 +171,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // GET /api/admin/addie/knowledge/categories - Get category list with counts
-  apiRouter.get("/knowledge/categories", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/knowledge/categories", async (req, res) => {
     try {
       const categories = await addieDb.getKnowledgeCategories();
       res.json({ categories });
@@ -178,7 +185,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // GET /api/admin/addie/knowledge/search - Search knowledge documents
-  apiRouter.get("/knowledge/search", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/knowledge/search", async (req, res) => {
     try {
       const { q, category, limit } = req.query;
 
@@ -206,7 +213,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // GET /api/admin/addie/knowledge/:id - Get a specific knowledge document
-  apiRouter.get("/knowledge/:id", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/knowledge/:id", async (req, res) => {
     try {
       const numericId = parseNumericId(req.params.id);
       if (!numericId) {
@@ -230,7 +237,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // POST /api/admin/addie/knowledge - Create a new knowledge document
-  apiRouter.post("/knowledge", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post("/knowledge", async (req, res) => {
     try {
       const { title, category, content, source_url } = req.body;
 
@@ -264,7 +271,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // PUT /api/admin/addie/knowledge/:id - Update a knowledge document
-  apiRouter.put("/knowledge/:id", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.put("/knowledge/:id", async (req, res) => {
     try {
       const numericId = parseNumericId(req.params.id);
       if (!numericId) {
@@ -295,7 +302,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // PUT /api/admin/addie/knowledge/:id/active - Toggle active status
-  apiRouter.put("/knowledge/:id/active", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.put("/knowledge/:id/active", async (req, res) => {
     try {
       const numericId = parseNumericId(req.params.id);
       if (!numericId) {
@@ -325,7 +332,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // DELETE /api/admin/addie/knowledge/:id - Delete a knowledge document
-  apiRouter.delete("/knowledge/:id", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.delete("/knowledge/:id", async (req, res) => {
     try {
       const numericId = parseNumericId(req.params.id);
       if (!numericId) {
@@ -353,7 +360,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   // =========================================================================
 
   // GET /api/admin/addie/interactions - List interactions (audit log)
-  apiRouter.get("/interactions", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/interactions", async (req, res) => {
     try {
       const { flagged_only, unreviewed_only, user_id, limit, offset } = req.query;
 
@@ -379,7 +386,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // GET /api/admin/addie/interactions/stats - Get interaction statistics
-  apiRouter.get("/interactions/stats", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/interactions/stats", async (req, res) => {
     try {
       const { days } = req.query;
 
@@ -398,7 +405,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // PUT /api/admin/addie/interactions/:id/review - Mark an interaction as reviewed
-  apiRouter.put("/interactions/:id/review", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.put("/interactions/:id/review", async (req, res) => {
     try {
       const { id } = req.params;
 
@@ -421,7 +428,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   // =========================================================================
 
   // GET /api/admin/addie/threads - List all threads (unified view across channels)
-  apiRouter.get("/threads", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/threads", async (req, res) => {
     try {
       const threadService = getThreadService();
       const {
@@ -474,7 +481,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // GET /api/admin/addie/threads/stats - Get unified thread statistics
-  apiRouter.get("/threads/stats", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/threads/stats", async (req, res) => {
     try {
       const threadService = getThreadService();
       const { timeframe } = req.query;
@@ -505,7 +512,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   // GET /api/admin/addie/threads/performance - Get tool performance metrics
   // NOTE: Must be defined BEFORE /threads/:id to avoid matching "performance" as an ID
   // Accepts days param (can be fractional, e.g., 0.125 for 3 hours)
-  apiRouter.get("/threads/performance", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/threads/performance", async (req, res) => {
     try {
       const threadService = getThreadService();
       const { days } = req.query;
@@ -535,7 +542,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
 
   // GET /api/admin/addie/threads/tools - Get list of available tool names for filtering
   // NOTE: Must be defined BEFORE /threads/:id to avoid matching "tools" as an ID
-  apiRouter.get("/threads/tools", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/threads/tools", async (req, res) => {
     try {
       const threadService = getThreadService();
       const tools = await threadService.getAvailableTools();
@@ -550,7 +557,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // GET /api/admin/addie/threads/:id - Get a single thread with messages
-  apiRouter.get("/threads/:id", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/threads/:id", async (req, res) => {
     try {
       const threadService = getThreadService();
       const { id } = req.params;
@@ -608,7 +615,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // PUT /api/admin/addie/threads/:id/review - Mark a thread as reviewed
-  apiRouter.put("/threads/:id/review", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.put("/threads/:id/review", async (req, res) => {
     try {
       const threadService = getThreadService();
       const { id } = req.params;
@@ -632,7 +639,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // PUT /api/admin/addie/threads/:id/flag - Flag a thread
-  apiRouter.put("/threads/:id/flag", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.put("/threads/:id/flag", async (req, res) => {
     try {
       const threadService = getThreadService();
       const { id } = req.params;
@@ -660,7 +667,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // PUT /api/admin/addie/threads/:id/unflag - Unflag a thread
-  apiRouter.put("/threads/:id/unflag", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.put("/threads/:id/unflag", async (req, res) => {
     try {
       const threadService = getThreadService();
       const { id } = req.params;
@@ -683,7 +690,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // PUT /api/admin/addie/threads/messages/:messageId/feedback - Add feedback to a message
-  apiRouter.put("/threads/messages/:messageId/feedback", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.put("/threads/messages/:messageId/feedback", async (req, res) => {
     try {
       const threadService = getThreadService();
       const { messageId } = req.params;
@@ -697,7 +704,17 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         return res.status(400).json({ error: "Rating must be a number between 1 and 5" });
       }
 
-      const updated = await threadService.addMessageFeedback(messageId, {
+      const threadResult = await query<{ thread_id: string }>(
+        `SELECT thread_id FROM addie_thread_messages WHERE message_id = $1`,
+        [messageId]
+      );
+      const threadId = threadResult.rows[0]?.thread_id;
+      if (!threadId) {
+        logger.warn({ messageId }, "No message found to add feedback to");
+        return res.status(404).json({ error: "Message not found" });
+      }
+
+      const updated = await threadService.addMessageFeedback(threadId, messageId, {
         rating,
         rating_category,
         rating_notes,
@@ -713,21 +730,15 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       }
 
       // Also mark the thread as reviewed when admin provides feedback
-      const threadResult = await query<{ thread_id: string }>(
-        `SELECT thread_id FROM addie_thread_messages WHERE message_id = $1`,
-        [messageId]
-      );
-      if (threadResult.rows[0]) {
-        try {
-          await threadService.reviewThread(
-            threadResult.rows[0].thread_id,
-            req.user?.id || "admin",
-            rating_notes || undefined
-          );
-        } catch (reviewError) {
-          // Log but don't fail - feedback was saved successfully
-          logger.warn({ err: reviewError, threadId: threadResult.rows[0].thread_id }, "Failed to mark thread as reviewed after feedback");
-        }
+      try {
+        await threadService.reviewThread(
+          threadId,
+          req.user?.id || "admin",
+          rating_notes || undefined
+        );
+      } catch (reviewError) {
+        // Log but don't fail - feedback was saved successfully
+        logger.warn({ err: reviewError, threadId }, "Failed to mark thread as reviewed after feedback");
       }
 
       logger.info({ messageId, rating, ratingSource: 'admin' }, "Added feedback to message");
@@ -742,7 +753,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // PUT /api/admin/addie/threads/messages/:messageId/outcome - Set outcome on a message
-  apiRouter.put("/threads/messages/:messageId/outcome", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.put("/threads/messages/:messageId/outcome", async (req, res) => {
     try {
       const threadService = getThreadService();
       const { messageId } = req.params;
@@ -771,7 +782,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // PUT /api/admin/addie/threads/messages/:messageId/flag - Flag a message
-  apiRouter.put("/threads/messages/:messageId/flag", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.put("/threads/messages/:messageId/flag", async (req, res) => {
     try {
       const threadService = getThreadService();
       const { messageId } = req.params;
@@ -799,7 +810,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // POST /api/admin/addie/threads/:id/diagnose - Get Claude's analysis of a thread
-  apiRouter.post("/threads/:id/diagnose", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post("/threads/:id/diagnose", async (req, res) => {
     try {
       // Verify API key is configured
       const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -917,7 +928,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // GET /api/admin/addie/feedback/summary - Get aggregated feedback stats for dashboard
-  apiRouter.get("/feedback/summary", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/feedback/summary", async (req, res) => {
     try {
       const { days = '30' } = req.query;
       // Validate and clamp days to reasonable range (1-365)
@@ -1024,7 +1035,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // =========================================================================
 
   // GET /api/admin/addie/conversations - List all web conversations
-  apiRouter.get("/conversations", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/conversations", async (req, res) => {
     try {
       const { limit, offset } = req.query;
 
@@ -1048,7 +1059,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
 
   // GET /api/admin/addie/conversations/stats - Get conversation statistics
   // NOTE: Must be defined BEFORE /conversations/:id to avoid matching "stats" as an ID
-  apiRouter.get("/conversations/stats", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/conversations/stats", async (req, res) => {
     try {
       const stats = await addieDb.getWebConversationStats();
       res.json(stats);
@@ -1062,7 +1073,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // GET /api/admin/addie/conversations/:id - Get a single conversation with messages
-  apiRouter.get("/conversations/:id", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/conversations/:id", async (req, res) => {
     try {
       const { id } = req.params;
 
@@ -1089,7 +1100,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // GET /api/admin/addie/listings/unpublished-backlog
   // Orgs with an active membership whose directory listing is missing or not
   // public. Use for cleanup of the pre-autopublish backlog.
-  apiRouter.get("/listings/unpublished-backlog", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/listings/unpublished-backlog", async (req, res) => {
     try {
       const { limit, offset } = req.query;
       const lim = clampLimit(limit, 25);
@@ -1156,7 +1167,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // =========================================================================
 
   // GET /api/admin/addie/config/current - Get current config version info
-  apiRouter.get("/config/current", requireAuth, requireAdmin, async (_req, res) => {
+  apiRouter.get("/config/current", async (_req, res) => {
     try {
       const configVersion = await addieDb.getCurrentConfigVersion();
       res.json({ config_version: configVersion });
@@ -1170,7 +1181,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // GET /api/admin/addie/config/history - Get config version history
-  apiRouter.get("/config/history", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/config/history", async (req, res) => {
     try {
       const history = await addieDb.getConfigVersionHistory(clampLimit(req.query.limit, 20, 100));
       res.json({ versions: history });
@@ -1188,7 +1199,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // =========================================================================
 
   // GET /api/admin/addie/system-prompt - Get the compiled system prompt (from MD files)
-  apiRouter.get("/system-prompt", requireAuth, requireAdmin, (_req, res) => {
+  apiRouter.get("/system-prompt", (_req, res) => {
     try {
       // Same shape as claude-client.ts assembly minus the tool reference,
       // which is autogenerated and lives in code rather than rule files.
@@ -1208,7 +1219,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // =========================================================================
 
   // PUT /api/admin/addie/interactions/:id/rate - Rate an interaction
-  apiRouter.put("/interactions/:id/rate", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.put("/interactions/:id/rate", async (req, res) => {
     try {
       const { id } = req.params;
       const { rating, notes, outcome, user_sentiment, intent_category } = req.body;
@@ -1240,7 +1251,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // =========================================================================
 
   // GET /api/admin/addie/resources - List curated resources
-  apiRouter.get("/resources", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/resources", async (req, res) => {
     try {
       const { status, limit, offset } = req.query;
 
@@ -1264,7 +1275,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // GET /api/admin/addie/resources/stats - Get curated resource statistics
-  apiRouter.get("/resources/stats", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/resources/stats", async (req, res) => {
     try {
       const stats = await addieDb.getCuratedResourceStats();
       res.json(stats);
@@ -1278,7 +1289,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // GET /api/admin/addie/resources/:id - Get a specific resource
-  apiRouter.get("/resources/:id", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/resources/:id", async (req, res) => {
     try {
       const numericId = parseNumericId(req.params.id);
       if (!numericId) {
@@ -1302,7 +1313,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // PUT /api/admin/addie/resources/:id - Update resource (mainly for editing addie_notes)
-  apiRouter.put("/resources/:id", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.put("/resources/:id", async (req, res) => {
     try {
       const numericId = parseNumericId(req.params.id);
       if (!numericId) {
@@ -1333,7 +1344,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // POST /api/admin/addie/resources/:id/refetch - Re-fetch and regenerate analysis
-  apiRouter.post("/resources/:id/refetch", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post("/resources/:id/refetch", async (req, res) => {
     try {
       const numericId = parseNumericId(req.params.id);
       if (!numericId) {
@@ -1355,7 +1366,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // DELETE /api/admin/addie/resources/:id - Delete a resource
-  apiRouter.delete("/resources/:id", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.delete("/resources/:id", async (req, res) => {
     try {
       const numericId = parseNumericId(req.params.id);
       if (!numericId) {
@@ -1385,7 +1396,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // =========================================================================
 
   // GET /api/admin/addie/home/preview - Preview Addie Home for any user
-  apiRouter.get("/home/preview", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/home/preview", async (req, res) => {
     try {
       const { user_id, email, slack_user_id, format } = req.query;
 
@@ -1482,7 +1493,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
    *
    * Body: { message: string, source?: 'channel' | 'dm' | 'mention', isThread?: boolean }
    */
-  apiRouter.post("/test-router", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post("/test-router", async (req, res) => {
     try {
       const { message, source = 'channel', isThread = false } = req.body;
 
@@ -1575,7 +1586,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // =========================================================================
 
   // POST /api/admin/addie/backfill/slack - Trigger Slack history backfill
-  apiRouter.post("/backfill/slack", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post("/backfill/slack", async (req, res) => {
     try {
       const {
         days_back,
@@ -1660,7 +1671,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // GET /api/admin/addie/backfill/slack/status - Get current Slack index status
-  apiRouter.get("/backfill/slack/status", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/backfill/slack/status", async (req, res) => {
     try {
       // Get count of indexed messages
       const totalCount = await addieDb.getSlackMessageCount();
@@ -1714,7 +1725,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // =========================================================================
 
   // GET /api/admin/addie/escalations - List escalations with optional filters
-  apiRouter.get("/escalations", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/escalations", async (req, res) => {
     try {
       const { status, category, limit, offset } = req.query;
 
@@ -1767,7 +1778,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
 
   // GET /api/admin/addie/escalations/suggestions - List triage suggestions.
   // `pending_only` defaults to true; pass ?pending_only=false to include reviewed rows.
-  apiRouter.get("/escalations/suggestions", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/escalations/suggestions", async (req, res) => {
     try {
       const { confidence, bucket, pending_only, limit, offset } = req.query;
       const [suggestions, stats] = await Promise.all([
@@ -1798,7 +1809,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // POST /api/admin/addie/escalations/suggestions/run - Trigger an on-demand triage run.
-  apiRouter.post("/escalations/suggestions/run", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post("/escalations/suggestions/run", async (req, res) => {
     try {
       const { minAgeDays, limit, staleOpsDays } = req.body ?? {};
       // Clamp caller-supplied knobs to protect the outbound probe budget.
@@ -1828,8 +1839,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // Applies the suggested status to the escalation and marks the suggestion accepted.
   apiRouter.post(
     "/escalations/suggestions/:id/accept",
-    requireAuth,
-    requireAdmin,
     async (req, res) => {
       try {
         const id = parseNumericId(req.params.id);
@@ -1855,6 +1864,20 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
             return res.status(400).json({
               error: "Bad request",
               message: "file_as_issue suggestion missing proposed_github_issue draft",
+            });
+          }
+
+          const escalation = await getEscalation(suggestion.escalation_id);
+          if (!escalation) {
+            return res.status(404).json({ error: "Escalation not found" });
+          }
+          const guard = await guardEscalationResolution({ escalation, status: 'resolved' });
+          if (!guard.ok) {
+            return res.status(409).json({
+              error: "registry_state_not_resolved",
+              message:
+                "This escalation looks like registry/domain propagation work, but local registry state still has blockers. File a GitHub issue without resolving only after human review, or repair/reconcile the listed state before accepting this suggestion.",
+              blockers: guard.blockers,
             });
           }
 
@@ -1901,6 +1924,22 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
           });
         }
 
+        if (suggestion.suggested_status === 'resolved') {
+          const escalation = await getEscalation(suggestion.escalation_id);
+          if (!escalation) {
+            return res.status(404).json({ error: "Escalation not found" });
+          }
+          const guard = await guardEscalationResolution({ escalation, status: 'resolved' });
+          if (!guard.ok) {
+            return res.status(409).json({
+              error: "registry_state_not_resolved",
+              message:
+                "This escalation looks like registry/domain propagation work, but local registry state still has blockers. Resolve as wont_do if invalid, or repair/reconcile the listed state before accepting this suggestion.",
+              blockers: guard.blockers,
+            });
+          }
+        }
+
         const notes = `Triage suggestion #${id}: ${suggestion.reasoning}`;
         const updatedEsc = await updateEscalationStatus(
           suggestion.escalation_id,
@@ -1922,8 +1961,6 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // POST /api/admin/addie/escalations/suggestions/:id/reject
   apiRouter.post(
     "/escalations/suggestions/:id/reject",
-    requireAuth,
-    requireAdmin,
     async (req, res) => {
       try {
         const id = parseNumericId(req.params.id);
@@ -1946,7 +1983,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   );
 
   // GET /api/admin/addie/escalations/:id - Get single escalation with thread context
-  apiRouter.get("/escalations/:id", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/escalations/:id", async (req, res) => {
     try {
       const id = parseNumericId(req.params.id);
       if (!id) {
@@ -1987,7 +2024,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // PATCH /api/admin/addie/escalations/:id - Update escalation status
-  apiRouter.patch("/escalations/:id", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.patch("/escalations/:id", async (req, res) => {
     try {
       const id = parseNumericId(req.params.id);
       if (!id) {
@@ -2014,6 +2051,16 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       const escalation = await getEscalation(id);
       if (!escalation) {
         return res.status(404).json({ error: "Not found", message: "Escalation not found" });
+      }
+
+      const guard = await guardEscalationResolution({ escalation, status });
+      if (!guard.ok) {
+        return res.status(409).json({
+          error: "registry_state_not_resolved",
+          message:
+            "This escalation looks like registry/domain propagation work, but local registry state still has blockers. Resolve as wont_do if the request is invalid, or repair/reconcile the listed state before marking resolved.",
+          blockers: guard.blockers,
+        });
       }
 
       const updated = await updateEscalationStatus(id, status, resolvedBy, notes);
@@ -2072,7 +2119,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // =========================================================================
 
   // GET /api/admin/addie/images/stats - Dashboard stats
-  apiRouter.get("/images/stats", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/images/stats", async (req, res) => {
     try {
       const stats = await imageDb.getSearchStats();
       res.json(stats);
@@ -2083,7 +2130,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // GET /api/admin/addie/images - List all images
-  apiRouter.get("/images", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/images", async (req, res) => {
     try {
       const { category, approved, limit, offset } = req.query;
       const images = await imageDb.listImages({
@@ -2100,7 +2147,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // POST /api/admin/addie/images - Create a new image
-  apiRouter.post("/images", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post("/images", async (req, res) => {
     try {
       const { filename, alt_text, topics, category, characters, description, image_url, approved } = req.body;
       if (!filename || !alt_text || !image_url) {
@@ -2124,7 +2171,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // PUT /api/admin/addie/images/:id - Update an image
-  apiRouter.put("/images/:id", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.put("/images/:id", async (req, res) => {
     try {
       const numericId = parseNumericId(req.params.id);
       if (!numericId) {
@@ -2142,7 +2189,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // DELETE /api/admin/addie/images/:id - Delete an image
-  apiRouter.delete("/images/:id", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.delete("/images/:id", async (req, res) => {
     try {
       const numericId = parseNumericId(req.params.id);
       if (!numericId) {
@@ -2160,7 +2207,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // GET /api/admin/addie/images/searches - List search events
-  apiRouter.get("/images/searches", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/images/searches", async (req, res) => {
     try {
       const { limit, offset, zero_results_only } = req.query;
       const searches = await imageDb.listSearches({
@@ -2176,7 +2223,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // GET /api/admin/addie/images/misses - Top zero-result queries
-  apiRouter.get("/images/misses", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/images/misses", async (req, res) => {
     try {
       const misses = await imageDb.getTopMisses(clampLimit(req.query.limit, 20, 100));
       res.json({ misses });
@@ -2191,7 +2238,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // =========================================================================
 
   // GET /api/admin/addie/conversation-insights - List past insights
-  apiRouter.get("/conversation-insights", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/conversation-insights", async (req, res) => {
     try {
       const insights = await listInsights(clampLimit(req.query.limit, 12, 52));
       res.json({ insights });
@@ -2202,7 +2249,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // GET /api/admin/addie/conversation-insights/:weekStart - Get specific week
-  apiRouter.get("/conversation-insights/:weekStart", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get("/conversation-insights/:weekStart", async (req, res) => {
     try {
       const weekStart = req.params.weekStart;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
@@ -2220,7 +2267,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   });
 
   // POST /api/admin/addie/conversation-insights/run - Manually trigger
-  apiRouter.post("/conversation-insights/run", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post("/conversation-insights/run", async (req, res) => {
     try {
       const result = await runConversationInsightsJob({ force: true });
       res.json(result);

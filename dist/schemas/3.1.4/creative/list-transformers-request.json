@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.4/creative/list-transformers-request.json",
+  "title": "List Transformers Request (Creative Agent)",
+  "description": "Request parameters for discovering account-scoped creative transformers offered by this creative agent. Brief-filterable and paginated. Transformers are the creative analog of media-buy products: agent-offered, account-scoped, selectable units of build capability. Use `expand_params` to additionally return account-scoped option VALUES (e.g. the buyer's configured voices) for named enumerable params.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/3.1.4/core/version-envelope.json" },
+    {
+      "if": {
+        "properties": { "include_pricing": { "const": true } },
+        "required": ["include_pricing"]
+      },
+      "then": { "required": ["account"] }
+    }
+  ],
+  "properties": {
+    "transformer_ids": {
+      "type": "array",
+      "description": "Return only these specific transformer IDs.",
+      "items": { "type": "string", "x-entity": "transformer" },
+      "minItems": 1
+    },
+    "input_format_ids": {
+      "type": "array",
+      "description": "Filter to transformers that accept any of these formats as input.",
+      "items": { "$ref": "/schemas/3.1.4/core/format-id.json" },
+      "minItems": 1
+    },
+    "output_format_ids": {
+      "type": "array",
+      "description": "Filter to transformers that can produce any of these output formats.",
+      "items": { "$ref": "/schemas/3.1.4/core/format-id.json" },
+      "minItems": 1
+    },
+    "name_search": {
+      "type": "string",
+      "description": "Search transformers by name (case-insensitive partial match)."
+    },
+    "brief": {
+      "type": "string",
+      "description": "Natural-language brief used to rank and filter transformers (and their enumerable option values when expanded) — e.g. 'warm female Spanish-language voiceover'. Curates to intent rather than returning the full set, the way get_products curates inventory."
+    },
+    "expand_params": {
+      "type": "array",
+      "description": "Param `field` names for which to return the FIRST page of account-scoped option VALUES inline on each transformer's `params[].options[]`. Omit to return param descriptors without enumerated values (the lean default). When a param's options are truncated, its `params[].options_cursor` is set — fetch the next page via `expand_pagination` (below).",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "expand_pagination": {
+      "type": "array",
+      "description": "Fetch the NEXT page of a specific param's account-scoped options, using the `options_cursor` a prior response returned for that `(transformer, param)`. Scoped per `(transformer_id, field)` so multiple params can be paged independently. Use this instead of `expand_params` once you hold a cursor.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "transformer_id": { "type": "string", "x-entity": "transformer", "description": "The transformer whose param options to page." },
+          "field": { "type": "string", "description": "The param `field` to page." },
+          "options_cursor": { "type": "string", "description": "Opaque cursor from that param's prior `params[].options_cursor`." }
+        },
+        "required": ["transformer_id", "field", "options_cursor"],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "include_pricing": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include `pricing_options` on each transformer. Requires `account`."
+    },
+    "account": {
+      "$ref": "/schemas/3.1.4/core/account-ref.json",
+      "description": "Account reference. Transformers are account-scoped — the returned set, the enumerable option values, and (with include_pricing) the rate card are all resolved for this credential."
+    },
+    "pagination": { "$ref": "/schemas/3.1.4/core/pagination-request.json" },
+    "context": { "$ref": "/schemas/3.1.4/core/context.json" },
+    "ext": { "$ref": "/schemas/3.1.4/core/ext.json" }
+  },
+  "additionalProperties": true
+}

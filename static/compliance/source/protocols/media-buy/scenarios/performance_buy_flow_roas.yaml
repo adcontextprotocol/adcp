@@ -110,9 +110,18 @@ fixtures:
     - product_id: "performance_roas_native_q2"
       delivery_type: "non_guaranteed"
       channels: ["display", "native"]
-      format_ids:
-        - id: "native_feed_1x1"
-        - id: "display_300x250"
+      format_options:
+        - format_option_id: "native_feed_1x1"
+          format_kind: "native_in_feed"
+          params:
+            main_image_sizes:
+              - width: 1080
+                height: 1080
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
   pricing_options:
     - product_id: "performance_roas_native_q2"
       pricing_option_id: "auction_cpm"
@@ -364,7 +373,7 @@ phases:
           events:
             - event_type: "purchase"
               event_id: "evt_perf_buy_flow_roas_001"
-              event_time: "2026-06-05T14:30:00Z"
+              event_time: "2099-06-05T14:30:00Z"
               user_match:
                 hashed_email: "a000000000000000000000000000000000000000000000000000000000000020"
               custom_data:

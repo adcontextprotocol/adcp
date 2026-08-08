@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildFormats } from '../../src/shared/formats.js';
-import { handleListCreativeFormats, handlePreviewCreative, buildReferenceFormats, createCreativeAgentServer } from '../../src/creative-agent/task-handlers.js';
+import { handleListCreativeFormats, handlePreviewCreative, buildReferenceFormats, buildCreativeCapabilities, createCreativeAgentServer } from '../../src/creative-agent/task-handlers.js';
 import { renderPreview } from '../../src/creative-agent/preview-renderer.js';
 import { storePreview, getPreview, cleanExpiredPreviews } from '../../src/creative-agent/preview-store.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { sanitizeCreativeCapabilities } from '../../src/capabilities.js';
 
 const TEST_BASE_URL = 'http://localhost:3000';
 const TEST_AGENT_URL = `${TEST_BASE_URL}/api/creative-agent`;
@@ -23,6 +24,55 @@ describe('training agent formats', () => {
     }
   });
 
+  it('publishes reviewed canonical mappings for deployed legacy IDs', () => {
+    const formats = buildReferenceFormats(TEST_AGENT_URL);
+    const byId = new Map(
+      formats.map(format => [(format.format_id as { id: string }).id, format as Record<string, unknown>])
+    );
+
+    for (const [id, width] of [
+      ['display_320x50_html', 320],
+      ['display_300x50_html', 300],
+    ] as const) {
+      const format = byId.get(id)!;
+      expect(format.canonical).toEqual({ kind: 'html5' });
+      expect(format.renders).toEqual([
+        {
+          dimensions: {
+            height: 50,
+            responsive: { height: false, width: false },
+            width,
+          },
+          role: 'primary',
+        },
+      ]);
+      const htmlAsset = (format.assets as Array<Record<string, unknown>>).find(
+        asset => asset.asset_id === 'html_creative'
+      )!;
+      expect(htmlAsset.requirements).toMatchObject({ width, height: 50 });
+    }
+
+    expect(byId.get('display_static')).toMatchObject({
+      accepts_parameters: ['dimensions'],
+      canonical: { kind: 'image' },
+    });
+    expect(byId.get('video_hosted')).toMatchObject({
+      accepts_parameters: ['duration'],
+      canonical: { kind: 'video_hosted' },
+    });
+    expect(byId.get('audio_30s')).toMatchObject({
+      canonical: { kind: 'audio_hosted' },
+    });
+    const audioAsset = (byId.get('audio_30s')!.assets as Array<Record<string, unknown>>).find(
+      asset => asset.asset_id === 'audio_file'
+    )!;
+    expect(audioAsset.requirements).toMatchObject({
+      min_duration_ms: 30_000,
+      max_duration_ms: 30_000,
+    });
+  });
+
+
   it('all format IDs are unique', () => {
     const formats = buildFormats(TEST_TRAINING_URL);
     const ids = formats.map(f => (f.format_id as { id: string }).id);
@@ -40,13 +90,12 @@ describe('training agent formats', () => {
     }
   });
 });
-
 // ── Reference formats (creative agent) ──────────────────────────────
 
 describe('reference formats', () => {
   it('loads reference formats and rewrites agent_url', () => {
     const formats = buildReferenceFormats(TEST_AGENT_URL);
-    expect(formats.length).toBe(57);
+    expect(formats.length).toBe(76);
     for (const f of formats) {
       const fid = f.format_id as { agent_url: string; id: string };
       expect(fid.agent_url).toBe(TEST_AGENT_URL);
@@ -86,6 +135,93 @@ describe('reference formats', () => {
     expect(ids).toContain('format_card_standard');
   });
 
+  it('publishes pixel density on the parameterized legacy display template', () => {
+    const formats = buildReferenceFormats(TEST_AGENT_URL);
+    const displayImage = formats.find(f => (f.format_id as { id: string }).id === 'display_image');
+    expect(displayImage?.accepts_parameters).toEqual(['dimensions', 'pixel_ratio']);
+    expect(displayImage?.renders).toEqual([{ role: 'primary', parameters_from_format_id: true }]);
+  });
+
+  it('publishes legacy 2x-only formats with lossless canonical projections', () => {
+    const formats = buildReferenceFormats(TEST_AGENT_URL);
+    const retinaFormats = formats.filter(f =>
+      ((f.format_id as { id: string }).id).endsWith('_image_2x'),
+    );
+    expect(retinaFormats).toHaveLength(7);
+
+    for (const format of retinaFormats) {
+      const id = (format.format_id as { id: string }).id;
+      const match = id.match(/^display_(\d+)x(\d+)_image_2x$/);
+      expect(match, id).not.toBeNull();
+      const logicalWidth = Number(match![1]);
+      const logicalHeight = Number(match![2]);
+      const images = (format.assets as any[]).filter(asset => asset.asset_type === 'image');
+      const projection = format.canonical_parameters as any;
+
+      expect((format.canonical as any).kind, id).toBe('image');
+      expect((format.renders as any[])[0].dimensions, id).toMatchObject({
+        width: logicalWidth,
+        height: logicalHeight,
+      });
+      expect(images.map(image => image.requirements), id).toMatchObject([
+        { width: logicalWidth * 2, height: logicalHeight * 2 },
+      ]);
+      expect(projection, id).toEqual({
+        format_kind: 'image',
+        params: {
+          width: logicalWidth,
+          height: logicalHeight,
+          pixel_ratios: [2],
+        },
+      });
+    }
+  });
+
+  it('publishes separate paired 1x/2x formats for GAM-style requirements', () => {
+    const formats = buildReferenceFormats(TEST_AGENT_URL);
+    const pairedFormats = formats.filter(f =>
+      ((f.format_id as { id: string }).id).endsWith('_image_1x_2x'),
+    );
+    expect(pairedFormats).toHaveLength(7);
+
+    for (const format of pairedFormats) {
+      const id = (format.format_id as { id: string }).id;
+      const match = id.match(/^display_(\d+)x(\d+)_image_1x_2x$/);
+      expect(match, id).not.toBeNull();
+      const logicalWidth = Number(match![1]);
+      const logicalHeight = Number(match![2]);
+      const images = (format.assets as any[]).filter(asset => asset.asset_type === 'image');
+      const projection = format.canonical_parameters as any;
+
+      expect((format.canonical as any).kind, id).toBe('image');
+      expect((format.renders as any[])[0].dimensions, id).toMatchObject({
+        width: logicalWidth,
+        height: logicalHeight,
+      });
+      expect(images.map(image => image.requirements), id).toMatchObject([
+        { width: logicalWidth, height: logicalHeight },
+        { width: logicalWidth * 2, height: logicalHeight * 2 },
+      ]);
+      expect(projection, id).toEqual({
+        format_kind: 'image',
+        params: {
+          width: logicalWidth,
+          height: logicalHeight,
+          pixel_ratios: [1, 2],
+          slots: [{
+            asset_group_id: 'image_main',
+            asset_type: 'image',
+            required: true,
+            min: 2,
+            max: 2,
+            pixel_ratios: [1, 2],
+            required_pixel_ratios: [1, 2],
+          }],
+        },
+      });
+    }
+  });
+
   it('all format IDs are unique', () => {
     const formats = buildReferenceFormats(TEST_AGENT_URL);
     const ids = formats.map(f => (f.format_id as { id: string }).id);
@@ -102,6 +238,40 @@ describe('reference formats', () => {
       expect(typeof f.description).toBe('string');
     }
   });
+
+  it('projects reviewed mappings into canonical preview capabilities', () => {
+    const formats = buildReferenceFormats(TEST_AGENT_URL);
+    const capabilities = buildCreativeCapabilities(formats);
+    const canonicalFormats = formats.filter(format =>
+      Boolean((format.canonical as { kind?: string } | undefined)?.kind)
+    );
+    expect(capabilities).toHaveLength(canonicalFormats.length);
+    expect(capabilities[0]).toMatchObject({
+      capability_id: expect.stringMatching(/^preview_[a-zA-Z0-9_-]+$/),
+      operations: ['preview'],
+      format: { format_kind: expect.any(String), params: expect.any(Object) },
+    });
+    expect(capabilities.every(capability => capability.format_id === undefined)).toBe(true);
+
+    const byId = new Map(capabilities.map(capability => [capability.capability_id, capability]));
+    expect(byId.get('preview_video_vast_30s')).toMatchObject({
+      format: { format_kind: 'video_vast', params: { duration_ms_exact: 30000 } },
+    });
+    expect(byId.get('preview_video_standard_15s')).toMatchObject({
+      format: {
+        format_kind: 'video_hosted',
+        params: {
+          duration_ms_exact: 15000,
+          containers: ['mp4', 'mov', 'webm'],
+        },
+      },
+    });
+  });
+
+  it('emits a schema-valid canonical capability catalog', async () => {
+    const supportedFormats = buildCreativeCapabilities(buildReferenceFormats(TEST_AGENT_URL));
+    await expect(sanitizeCreativeCapabilities({ supported_formats: supportedFormats })).resolves.toBeDefined();
+  });
 });
 
 // ── list_creative_formats handler ───────────────────────────────────
@@ -112,7 +282,7 @@ describe('handleListCreativeFormats', () => {
   it('returns all formats when no filters provided', () => {
     const result = handleListCreativeFormats({}, formats);
     const returned = result.formats as unknown[];
-    expect(returned.length).toBe(57);
+    expect(returned.length).toBe(76);
   });
 
   it('response structure matches schema: { formats: [...] }', () => {
@@ -221,6 +391,130 @@ describe('handlePreviewCreative', () => {
     expect((renders[0].preview_url as string)).toContain('/preview/');
   });
 
+  it('requires a selector when a canonical manifest matches multiple renderers', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: { asset_type: 'image', url: 'https://example.com/canonical-ad.jpg' },
+        },
+      },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('matches multiple preview capabilities'),
+    })]);
+  });
+
+  it('does not silently pick the first renderer when dimensions remain ambiguous', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://example.com/leaderboard.jpg',
+            width: 728,
+            height: 90,
+          },
+        },
+      },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('matches multiple preview capabilities'),
+    })]);
+  });
+
+  it('routes an advertised target_capability_id to its exact renderer', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_display_300x250_image',
+      creative_manifest: { format_kind: 'image', assets: {} },
+    }, formats, TEST_BASE_URL);
+
+    const renders = ((result.previews as any[])[0].renders as any[]);
+    expect(renders[0].dimensions).toEqual({ width: 300, height: 250 });
+  });
+
+  it('fails closed for an unknown canonical preview selector', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_not_declared',
+      creative_manifest: { format_kind: 'image', assets: {} },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('Unknown preview capability_id'),
+    })]);
+  });
+
+  it('rejects mixed canonical and deprecated routing', () => {
+    const manifest = { format_kind: 'image', assets: {} };
+    const single = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: manifest,
+      target_capability_id: 'preview_display_300x250_image',
+      format_id: { id: 'display_300x250_image' },
+    }, formats, TEST_BASE_URL);
+    expect(single.errors).toEqual([expect.objectContaining({ code: 'validation_error' })]);
+
+    const batch = handlePreviewCreative({
+      request_type: 'batch',
+      requests: [{
+        creative_manifest: manifest,
+        target_capability_id: 'preview_display_300x250_image',
+      }, {
+        creative_manifest: manifest,
+        format_id: { id: 'display_300x250_image' },
+      }],
+    }, formats, TEST_BASE_URL);
+    expect(batch.errors).toEqual([expect.objectContaining({ code: 'validation_error' })]);
+  });
+
+  it('returns CREATIVE_NOT_FOUND for a library identifier absent from the reference agent', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      creative_id: 'missing_library_creative',
+      target_capability_id: 'preview_display_300x250_image',
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'CREATIVE_NOT_FOUND',
+      message: expect.stringContaining('missing_library_creative'),
+    })]);
+  });
+
+  it('fails closed when no advertised canonical preview capability matches', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: { format_kind: 'custom', assets: {} },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('No advertised preview capability matches'),
+    })]);
+  });
+
+  it('rejects a capability whose canonical kind does not match the manifest', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_display_300x250_image',
+      creative_manifest: { format_kind: 'video_hosted', assets: {} },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('not "video_hosted"'),
+    })]);
+  });
+
   it('returns html output when requested', () => {
     const result = handlePreviewCreative({
       request_type: 'single',
@@ -286,6 +580,53 @@ describe('handlePreviewCreative', () => {
     expect(renders[0].dimensions).toEqual({ width: 300, height: 250 });
   });
 
+  it('renders a parameterized 2x image at logical dimensions', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: {
+        format_id: {
+          agent_url: TEST_AGENT_URL,
+          id: 'display_image',
+          width: 300,
+          height: 250,
+          pixel_ratio: 2,
+        },
+        assets: {
+          banner_image: {
+            asset_type: 'image',
+            url: 'https://example.com/ad-2x.jpg',
+            width: 600,
+            height: 500,
+            pixel_ratio: 2,
+          },
+        },
+      },
+    }, formats, TEST_BASE_URL);
+
+    const renders = ((result.previews as any[])[0].renders as any[]);
+    expect(renders[0].dimensions).toEqual({ width: 300, height: 250 });
+  });
+
+  it('renders a concrete legacy 2x catalog format at logical dimensions', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_image_2x' },
+        assets: {
+          banner_image: {
+            asset_type: 'image',
+            url: 'https://example.com/ad-2x.jpg',
+            width: 600,
+            height: 500,
+          },
+        },
+      },
+    }, formats, TEST_BASE_URL);
+
+    const renders = ((result.previews as any[])[0].renders as any[]);
+    expect(renders[0].dimensions).toEqual({ width: 300, height: 250 });
+  });
+
   it('handles batch requests', () => {
     const result = handlePreviewCreative({
       request_type: 'batch',
@@ -316,12 +657,112 @@ describe('handlePreviewCreative', () => {
     expect(results[1].creative_id).toBe('cr_video');
   });
 
+  it('applies batch defaults while preserving per-item overrides', () => {
+    const result = handlePreviewCreative({
+      request_type: 'batch',
+      target_capability_id: 'preview_display_300x250_image',
+      output_format: 'html',
+      quality: 'draft',
+      requests: [
+        {
+          creative_manifest: {
+            creative_id: 'cr_default',
+            format_kind: 'image',
+            assets: {},
+          },
+        },
+        {
+          target_capability_id: 'preview_display_728x90_image',
+          output_format: 'url',
+          inputs: [{ name: 'Item override input' }],
+          creative_manifest: {
+            creative_id: 'cr_override',
+            format_kind: 'image',
+            assets: {},
+          },
+        },
+      ],
+    }, formats, TEST_BASE_URL);
+
+    const results = result.results as Array<{
+      success: boolean;
+      response: { previews: Array<{ input: { name: string }; renders: Array<Record<string, unknown>> }> };
+    }>;
+    expect(results.map(item => item.success)).toEqual([true, true]);
+
+    const defaultPreview = results[0].response.previews[0];
+    expect(defaultPreview.input.name).toBe('Default preview');
+    expect(defaultPreview.renders[0]).toMatchObject({
+      output_format: 'html',
+      dimensions: { width: 300, height: 250 },
+    });
+    expect(defaultPreview.renders[0].preview_url).toBeUndefined();
+
+    const overridePreview = results[1].response.previews[0];
+    expect(overridePreview.input.name).toBe('Item override input');
+    expect(overridePreview.renders[0]).toMatchObject({
+      output_format: 'url',
+      dimensions: { width: 728, height: 90 },
+    });
+    expect(overridePreview.renders[0].preview_html).toBeUndefined();
+  });
+
+  it('returns FORMAT_NOT_SUPPORTED per item for unknown and ambiguous batch routes', () => {
+    const result = handlePreviewCreative({
+      request_type: 'batch',
+      requests: [
+        {
+          target_capability_id: 'preview_not_declared',
+          creative_manifest: { creative_id: 'cr_unknown', format_kind: 'image', assets: {} },
+        },
+        {
+          creative_manifest: { creative_id: 'cr_ambiguous', format_kind: 'image', assets: {} },
+        },
+        {
+          creative_manifest: { creative_id: 'cr_zero', format_kind: 'custom', assets: {} },
+        },
+      ],
+    }, formats, TEST_BASE_URL);
+
+    const results = result.results as Array<{ success: boolean; errors: Array<{ code: string }> }>;
+    expect(results).toHaveLength(3);
+    expect(results.every(item => item.success === false)).toBe(true);
+    expect(results.map(item => item.errors[0].code)).toEqual([
+      'FORMAT_NOT_SUPPORTED',
+      'FORMAT_NOT_SUPPORTED',
+      'FORMAT_NOT_SUPPORTED',
+    ]);
+  });
+
   it('batch returns error for empty requests', () => {
     const result = handlePreviewCreative({
       request_type: 'batch',
       requests: [],
     }, formats, TEST_BASE_URL);
     expect(result.errors).toBeTruthy();
+  });
+
+  it('accepts 50 batch items and rejects 51', () => {
+    const item = {
+      creative_manifest: {
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_image' },
+        assets: {},
+      },
+    };
+    const accepted = handlePreviewCreative({
+      request_type: 'batch',
+      requests: Array.from({ length: 50 }, () => item),
+    }, formats, TEST_BASE_URL);
+    expect(accepted.results).toHaveLength(50);
+
+    const rejected = handlePreviewCreative({
+      request_type: 'batch',
+      requests: Array.from({ length: 51 }, () => item),
+    }, formats, TEST_BASE_URL);
+    expect(rejected.errors).toEqual([expect.objectContaining({
+      code: 'validation_error',
+      message: expect.stringContaining('50'),
+    })]);
   });
 
   it('rejects variant mode', () => {
@@ -512,6 +953,21 @@ describe('MCP tool responses include structuredContent', () => {
     await server.close();
   });
 
+  it('get_adcp_capabilities returns canonical supported_formats', async () => {
+    const response = await client.callTool({ name: 'get_adcp_capabilities', arguments: {} });
+    const structured = response.structuredContent as Record<string, any>;
+    const canonicalFormatCount = buildReferenceFormats(TEST_AGENT_URL).filter(format =>
+      Boolean((format.canonical as { kind?: string } | undefined)?.kind)
+    ).length;
+    expect(structured.creative.supported_formats).toHaveLength(canonicalFormatCount);
+    expect(structured.creative.supported_formats[0]).toMatchObject({ operations: ['preview'] });
+    expect(structured).toMatchObject({
+      adcp_version: '3.2',
+      adcp: { major_versions: [3], supported_versions: ['3.2'] },
+      supported_protocols: ['creative'],
+    });
+  });
+
   it('list_creative_formats returns structuredContent with formats array', async () => {
     const result = await client.callTool({
       name: 'list_creative_formats',
@@ -523,7 +979,7 @@ describe('MCP tool responses include structuredContent', () => {
     const structured = result.structuredContent as { formats: unknown[] };
     expect(structured.formats).toBeDefined();
     expect(Array.isArray(structured.formats)).toBe(true);
-    expect(structured.formats.length).toBe(3);
+    expect(structured.formats.length).toBe(4);
   });
 
   it('list_creative_formats structuredContent matches content text', async () => {
@@ -577,14 +1033,14 @@ describe('MCP tool responses include structuredContent', () => {
     expect(JSON.parse(content[0].text)).toEqual(structured);
   });
 
-  it('list_creative_formats structuredContent has 54 formats with proposal cards', async () => {
+  it('list_creative_formats structuredContent includes all 76 reference and UI formats', async () => {
     const result = await client.callTool({
       name: 'list_creative_formats',
       arguments: {},
     });
 
     const structured = result.structuredContent as { formats: unknown[] };
-    expect(structured.formats.length).toBe(57);
+    expect(structured.formats.length).toBe(76);
   });
 
   it('preview_creative batch mode returns structuredContent', async () => {

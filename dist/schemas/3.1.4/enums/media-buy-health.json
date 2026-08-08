@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.4/enums/media-buy-health.json",
+  "title": "Media Buy Health",
+  "description": "Aggregate health of a media buy based on upstream dependency state. Orthogonal to media-buy-status — a buy can be paused-and-impaired, pending-and-impaired, or active-and-impaired. Always set; defaults to 'ok' when no open impairments exist.",
+  "type": "string",
+  "enum": ["ok", "impaired"],
+  "enumDescriptions": {
+    "ok": "No open impairments. All upstream dependencies referenced by this buy's targeting and creatives are in serviceable states.",
+    "impaired": "One or more upstream dependencies have entered an offline state that affects delivery for at least one package on this buy. See impairments[] for detail. Sellers MUST flip to 'impaired' on the next sync/poll response after the underlying resource transitions offline, and MUST flip back to 'ok' when all impairments clear."
+  }
+}

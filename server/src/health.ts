@@ -8,6 +8,7 @@ import { safeFetch } from "./utils/url-security.js";
 import { logger } from "./logger.js";
 import { promises as dnsPromises } from "node:dns";
 import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
+import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 
 export interface ClassifiedProbeError {
   kind: ProbeErrorKind;
@@ -146,6 +147,30 @@ async function isHostUnreachableDns(url: string, timeoutMs = 1500): Promise<bool
   }
 }
 
+function healthProbeHeaders(auth?: SdkAuth): Record<string, string> {
+  const headers: Record<string, string> = { 'User-Agent': AAO_UA_HEALTH_CHECK };
+  const authFields = agentConfigAuthFields(auth);
+  if (authFields.auth_token) {
+    headers['Authorization'] = `Bearer ${authFields.auth_token}`;
+  } else if (authFields.headers?.Authorization) {
+    headers['Authorization'] = authFields.headers.Authorization;
+  } else if (authFields.oauth_tokens?.access_token) {
+    headers['Authorization'] = `Bearer ${authFields.oauth_tokens.access_token}`;
+  }
+  return headers;
+}
+
+function shouldSendHealthFallbackAuth(agent: Agent): boolean {
+  if (!agent.health_check_url) return false;
+  try {
+    const healthUrl = new URL(agent.health_check_url);
+    const agentUrl = new URL(agent.url);
+    return healthUrl.protocol === 'https:' && healthUrl.origin === agentUrl.origin;
+  } catch {
+    return false;
+  }
+}
+
 export class HealthChecker {
   private healthCache: Cache<AgentHealth>;
   private statsCache: Cache<AgentStats>;
@@ -157,10 +182,13 @@ export class HealthChecker {
     this.formatsService = new FormatsService();
   }
 
-  async checkHealth(agent: Agent, auth?: SdkAuth): Promise<AgentHealth> {
+  async checkHealth(agent: Agent, auth?: SdkAuth, forceRefresh = false): Promise<AgentHealth> {
     // Skip cache when auth is provided — manual owner-triggered refresh
     // wants fresh data. Periodic crawls (no auth) keep the cache.
-    if (!auth) {
+    // `forceRefresh` covers the same intent for a manual refresh of an
+    // agent with no saved auth, which would otherwise still read the
+    // stale unauthed cache entry.
+    if (!auth && !forceRefresh) {
       const cached = this.healthCache.get(agent.url);
       if (cached) return cached;
     }
@@ -204,7 +232,7 @@ export class HealthChecker {
         agent_uri: agent.url,
         protocol: "mcp",
         ...agentConfigAuthFields(auth),
-      }], { userAgent: AAO_UA_HEALTH_CHECK });
+      }], withSdkSafeTransport({ userAgent: AAO_UA_HEALTH_CHECK }));
       const client = multiClient.agent("health-check");
 
       const agentInfo = await client.getAgentInfo();
@@ -230,7 +258,7 @@ export class HealthChecker {
           raw: classified.raw,
         };
       }
-      const fallback = await this.tryHealthCheckFallback(agent, startTime, classified);
+      const fallback = await this.tryHealthCheckFallback(agent, startTime, classified, auth);
       if (fallback) return fallback;
       return {
         online: false,
@@ -256,12 +284,13 @@ export class HealthChecker {
     agent: Agent,
     startTime: number,
     classified: ClassifiedProbeError,
+    auth?: SdkAuth,
   ): Promise<AgentHealth | null> {
     if (!agent.health_check_url) return null;
     try {
       const response = await safeFetch(agent.health_check_url, {
         method: "GET",
-        headers: { 'User-Agent': AAO_UA_HEALTH_CHECK },
+        headers: healthProbeHeaders(shouldSendHealthFallbackAuth(agent) ? auth : undefined),
         signal: AbortSignal.timeout(5000),
         maxRedirects: 0,
       });
@@ -289,15 +318,7 @@ export class HealthChecker {
     try {
       // Check for A2A agent card at /.well-known/agent.json
       const agentCardUrl = `${agent.url.replace(/\/$/, "")}/.well-known/agent.json`;
-      const headers: Record<string, string> = { 'User-Agent': AAO_UA_HEALTH_CHECK };
-      const authFields = agentConfigAuthFields(auth);
-      if (authFields.auth_token) {
-        headers['Authorization'] = `Bearer ${authFields.auth_token}`;
-      } else if (authFields.headers?.Authorization) {
-        headers['Authorization'] = authFields.headers.Authorization;
-      } else if (authFields.oauth_tokens?.access_token) {
-        headers['Authorization'] = `Bearer ${authFields.oauth_tokens.access_token}`;
-      }
+      const headers = healthProbeHeaders(auth);
       const response = await fetch(agentCardUrl, {
         headers,
         signal: AbortSignal.timeout(5000),
@@ -336,18 +357,18 @@ export class HealthChecker {
     }
   }
 
-  async getStats(agent: Agent, auth?: SdkAuth): Promise<AgentStats> {
-    if (!auth) {
+  async getStats(agent: Agent, auth?: SdkAuth, forceRefresh = false): Promise<AgentStats> {
+    if (!auth && !forceRefresh) {
       const cached = this.statsCache.get(agent.url);
       if (cached) return cached;
     }
 
-    const stats = await this.fetchStats(agent, auth);
+    const stats = await this.fetchStats(agent, auth, forceRefresh);
     if (!auth) this.statsCache.set(agent.url, stats);
     return stats;
   }
 
-  private async fetchStats(agent: Agent, auth?: SdkAuth): Promise<AgentStats> {
+  private async fetchStats(agent: Agent, auth?: SdkAuth, forceRefresh = false): Promise<AgentStats> {
     const stats: AgentStats = {};
 
     try {
@@ -364,7 +385,7 @@ export class HealthChecker {
       } else if (agent.type === "creative") {
         // For creative agents, get format count from FormatsService
         try {
-          const formatsProfile = await this.formatsService.getFormatsForAgent(agent, auth);
+          const formatsProfile = await this.formatsService.getFormatsForAgent(agent, auth, forceRefresh);
           if (formatsProfile.formats && formatsProfile.formats.length > 0) {
             stats.creative_formats = formatsProfile.formats.length;
           }

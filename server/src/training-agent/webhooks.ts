@@ -23,7 +23,7 @@ import {
 import type { SignerKey, SigningProvider } from '@adcp/sdk/signing';
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import { createLogger } from '../logger.js';
-import { createWebhookFetch } from './webhook-fetch.js';
+import { createTrainingWebhookFetch } from './webhook-fetch.js';
 import { getWebhookSigningProvider } from '../security/gcp-kms-signer.js';
 import {
   WEBHOOK_SIGNING_KID,
@@ -36,17 +36,20 @@ const logger = createLogger('training-agent-webhooks');
  *  completion webhook when the caller supplies `push_notification_config.url`.
  *  Keep in sync with `static/schemas/source/core/mcp-webhook-payload.json`. */
 export type WebhookTaskType =
-  | 'create_media_buy' | 'update_media_buy' | 'sync_creatives' | 'activate_signal'
+  | 'create_media_buy' | 'update_media_buy' | 'sync_creatives' | 'build_creative'
+  | 'get_products' | 'activate_signal'
   | 'get_signals' | 'create_property_list' | 'update_property_list' | 'get_property_list'
   | 'list_property_lists' | 'delete_property_list' | 'sync_accounts'
   | 'get_account_financials' | 'get_creative_delivery' | 'sync_event_sources'
   | 'sync_audiences' | 'sync_catalogs' | 'log_event' | 'get_brand_identity'
-  | 'get_rights' | 'acquire_rights';
+  | 'get_rights' | 'acquire_rights' | 'update_rights';
 
 export const TOOL_TO_TASK_TYPE = {
+  get_products: 'get_products',
   create_media_buy: 'create_media_buy',
   update_media_buy: 'update_media_buy',
   sync_creatives: 'sync_creatives',
+  build_creative: 'build_creative',
   activate_signal: 'activate_signal',
   get_signals: 'get_signals',
   create_property_list: 'create_property_list',
@@ -64,6 +67,7 @@ export const TOOL_TO_TASK_TYPE = {
   get_brand_identity: 'get_brand_identity',
   get_rights: 'get_rights',
   acquire_rights: 'acquire_rights',
+  update_rights: 'update_rights',
 } as const satisfies Record<string, WebhookTaskType>;
 
 type WebhookEmittingTool = keyof typeof TOOL_TO_TASK_TYPE;
@@ -77,10 +81,12 @@ type WebhookEmittingTool = keyof typeof TOOL_TO_TASK_TYPE;
  *  `TOOL_TO_TASK_TYPE` — adding a tool there without a protocol here fails tsc. */
 type WebhookProtocol = 'media-buy' | 'signals' | 'governance' | 'creative' | 'brand' | 'sponsored-intelligence';
 
-const TOOL_TO_PROTOCOL: Readonly<Record<WebhookEmittingTool, WebhookProtocol>> = {
+export const TOOL_TO_PROTOCOL: Readonly<Record<WebhookEmittingTool, WebhookProtocol>> = {
+  get_products: 'media-buy',
   create_media_buy: 'media-buy',
   update_media_buy: 'media-buy',
   sync_creatives: 'media-buy',
+  build_creative: 'creative',
   get_creative_delivery: 'media-buy',
   sync_event_sources: 'media-buy',
   sync_audiences: 'media-buy',
@@ -98,6 +104,7 @@ const TOOL_TO_PROTOCOL: Readonly<Record<WebhookEmittingTool, WebhookProtocol>> =
   get_brand_identity: 'brand',
   get_rights: 'brand',
   acquire_rights: 'brand',
+  update_rights: 'brand',
 };
 
 function extractWebhookUrl(args: Record<string, unknown>): string | undefined {
@@ -224,6 +231,47 @@ export async function emitAccountNotificationWebhook(opts: {
   });
 }
 
+export interface PropertyListChangedWebhookParams {
+  url: string;
+  listId: string;
+  listName: string;
+  operationId: string;
+  resolvedAt: string;
+  cacheValidUntil: string;
+  changeSummary: {
+    properties_added?: number;
+    properties_removed?: number;
+    total_properties: number;
+  };
+}
+
+/** Emit an RFC 9421-only property-list change notification.
+ *
+ * Property-list registration exposes only `webhook_url`, not an
+ * authentication-mode selector. The deprecated body `signature` remains a
+ * required literal marker through 3.x for schema compatibility; it has no
+ * authentication semantics. */
+export function emitPropertyListChangedWebhook(opts: PropertyListChangedWebhookParams): void {
+  const payload: Record<string, unknown> = {
+    event: 'property_list_changed',
+    list_id: opts.listId,
+    list_name: opts.listName,
+    change_summary: opts.changeSummary,
+    resolved_at: opts.resolvedAt,
+    cache_valid_until: opts.cacheValidUntil,
+    signature: 'rfc9421',
+  };
+
+  void getWebhookEmitter().emit({
+    url: opts.url,
+    payload,
+    operation_id: opts.operationId,
+  }).catch(err => logger.warn(
+    { err, listId: opts.listId, url: opts.url },
+    'Property-list change webhook emission failed',
+  ));
+}
+
 const ENV_KEY = 'WEBHOOK_SIGNING_KEY_JWK';
 const KMS_WEBHOOK_ENV = 'GCP_KMS_WEBHOOK_KEY_VERSION';
 
@@ -244,14 +292,14 @@ function generateEphemeralKey(): { signer: SignerKey; publicJwk: AdcpJsonWebKey 
     ...privateJwkRaw as AdcpJsonWebKey,
     kid,
     alg: 'EdDSA',
-    adcp_use: 'webhook-signing',
+    adcp_use: 'request-signing',
     key_ops: ['sign'],
   };
   const pubJwk: AdcpJsonWebKey = {
     ...publicJwkRaw as AdcpJsonWebKey,
     kid,
     alg: 'EdDSA',
-    adcp_use: 'webhook-signing',
+    adcp_use: 'request-signing',
     key_ops: ['verify'],
     use: 'sig',
   };
@@ -266,13 +314,20 @@ function loadConfiguredKey(raw: string): { signer: SignerKey; publicJwk: AdcpJso
   if (!jwk.kid || !jwk.kty || !jwk.d || !jwk.x) {
     throw new Error(`${ENV_KEY} must be a full private JWK with kid, kty, x, d fields`);
   }
+  if (jwk.adcp_use !== undefined && jwk.adcp_use !== 'request-signing' && jwk.adcp_use !== 'webhook-signing') {
+    throw new Error(`${ENV_KEY} adcp_use must be request-signing or webhook-signing`);
+  }
+  // Preserve the declared purpose for stable configured kids. Missing purpose
+  // means a pre-migration key; retain the historical webhook-only authority
+  // rather than silently expanding it to signed requests.
+  const keyPurpose = jwk.adcp_use ?? 'webhook-signing';
   const signer: SignerKey = {
     keyid: jwk.kid,
     alg: 'ed25519',
     privateKey: {
       ...jwk,
       alg: 'EdDSA',
-      adcp_use: 'webhook-signing',
+      adcp_use: keyPurpose,
       key_ops: ['sign'],
     },
   };
@@ -281,7 +336,7 @@ function loadConfiguredKey(raw: string): { signer: SignerKey; publicJwk: AdcpJso
   const pubJwk: AdcpJsonWebKey = {
     ...publicOnly,
     alg: 'EdDSA',
-    adcp_use: 'webhook-signing',
+    adcp_use: keyPurpose,
     key_ops: ['verify'],
     use: 'sig',
   };
@@ -370,18 +425,20 @@ export function getWebhookSigningMaterial():
     : { signerKey: m.signerKey };
 }
 
+/** Return the only training-agent webhook emitter.
+ *
+ * Completion and property-list change notifications route through this
+ * emitter. Storage-time URL validation is not sufficient: this fetch policy
+ * repeats validation at delivery time and pins the public address at connect
+ * time. */
 export function getWebhookEmitter(): WebhookEmitter {
   if (emitter) return emitter;
   const m = ensureMaterial();
-  // Production (`NODE_ENV=production`, i.e. fly.io) refuses webhook delivery
-  // to private/loopback/metadata addresses. Dev and CI need loopback for
-  // conformance storyboards using `http://127.0.0.1:<port>` receivers.
-  const allowPrivateIp = process.env.NODE_ENV !== 'production';
   emitter = createWebhookEmitter({
     ...(m.kind === 'kms' ? { signerProvider: m.signerProvider } : { signerKey: m.signerKey }),
     idempotencyKeyStore: memoryWebhookKeyStore(),
     userAgent: 'adcp-training-agent/1.0',
-    fetch: createWebhookFetch({ allowPrivateIp }),
+    fetch: createTrainingWebhookFetch(),
   });
   return emitter;
 }

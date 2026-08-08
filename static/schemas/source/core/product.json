@@ -39,7 +39,8 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Legacy named-format path: array of supported creative format IDs (structured format_id objects with agent_url and id). Products MUST carry `format_ids`, `format_options`, or BOTH; at least one is required. Named formats predate 3.1 and remain supported through the deprecation calendar (2027-Q4 floor / 2029-Q1 ceiling).\n\n**Dual emission**: A product MAY carry both `format_ids` and `format_options` simultaneously during the migration window. This is the recommended seller pattern — author once, SDK projects to both wire shapes via the [canonical mapping registry](/schemas/registries/v1-canonical-mapping.json), every buyer reads what it knows. When both are present, the two MUST refer to the SAME underlying format declaration (the `format_options[i]` narrows the canonical that the named format in `format_ids[i]` resolves to via the registry / explicit `canonical` field). SDKs that derive both shapes from one source guarantee this invariant; SDKs that don't MUST treat divergence as a build error and refuse to emit. **Buyer rule**: when both are present, prefer `format_options`; treat `format_ids` as fallback for legacy-format buyers. **Non-projectable formats**: when a named format has no clean 3.1+ format-option projection (no registry entry, no explicit `canonical` declaration on the named format, no structural match), SDKs MUST NOT emit `format_options` for that product — only `format_ids` ships, and the product remains legacy-format-only until the seller adds an explicit `canonical` field or files a registry entry.",
+      "deprecated": true,
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format compatibility path. Products MUST carry `format_ids`, `format_options`, or both during the 3.x migration window. New products MUST author canonical `format_options[]`; sellers MAY additionally project those declarations to `format_ids` for legacy buyers. When both fields are present they MUST describe the same underlying formats, and buyers MUST prefer `format_options`. Do not author a new product from `format_ids` alone.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }
@@ -47,9 +48,19 @@
     "format_options": {
       "type": "array",
       "minItems": 1,
-      "description": "3.1+ format-option path: one or more inline format declarations the product accepts. Each element narrows a canonical format with parameters, slots, and platform_extensions. The 90% case is a single-element array (one canonical narrowed for the product). Multi-element use cases: a product that accepts EITHER a third-party-hosted creative (for example, externally served `html5`) OR an internal `display_tag`; a video product that accepts a hosted `video_hosted` upload OR a `video_vast` tag. Buyers pick which option they're shipping at `sync_creatives` time by aligning their manifest to the matching declaration's `format_kind` and slots.\n\nProducts MUST carry `format_ids`, `format_options`, or BOTH; at least one is required. See `format_ids` description for the dual-emission contract (same underlying declaration when both are present; SDK derives one from the other; buyers prefer `format_options` when both are present).\n\nWhen `placements[]` also declare `format_ids` or `format_options`, product-level formats are the upper bound for the sellable product. Placement-level formats narrow the product-wide accepted set for that placement; they MUST NOT introduce a format the product does not accept. Buyers compute the effective accepted set for a placement as the intersection of product-level and placement-level declarations. For format options, match publisher-declared options by `{ publisher_domain, format_option_id }`, match product-local options by `format_option_id` when `publisher_domain` is omitted, and otherwise match declarations with the same `format_kind` whose placement parameters narrow the product declaration. If a placement has no format declaration, it inherits the product-level formats.",
+      "description": "Canonical format-option path: one or more inline format declarations the product accepts. Each element narrows a canonical format with parameters, slots, platform_extensions, and optional locale_policy. New 3.2 products MUST carry format_options; a seller MAY additionally project the same declarations to deprecated format_ids for older 3.x peers. A declaration carrying locale_policy is canonical-only because legacy format_ids cannot preserve locale eligibility; no product or placement format_id may project to an effective locale-constrained option.\n\nWhen placements are published, product-level format_options are the union of formats deliverable somewhere in the product and the upper bound for every placement. A placement's effective accepted set is the intersection of every applicable layer: (1) the product format_options; (2) the product placement's inline format_options, when present; and (3) for kind publisher_ref, the named publisher's adagents.json catalog narrowing. Resolve layer 3 by locating the matching placements[] entry: use its format_options when present, resolving bare format_option_id references against that same file's top-level formats[]; otherwise use top-level formats[] applicable to the placement's property_ids/property_tags. An omitted optional layer is unconstrained, but an unresolved publisher placement or format-option reference MUST fail closed. A publisher-referenced placement without inline product format_options therefore does NOT inherit the full product union when the publisher catalog supplies narrower placement or property-scoped acceptance.\n\nMatch publisher-declared options by {publisher_domain, format_option_id}, match product-local options by format_option_id when publisher_domain is omitted, and otherwise match declarations with the same format_kind whose narrower parameters satisfy the broader declaration. A product- or placement-level declaration MUST NOT introduce a format outside the product upper bound. Locale policy follows the same intersection. If the product locale policy is absent, a placement may introduce any concrete policy as a narrowing of an unconstrained option; when both are present, every placement range must be contained by a product range under RFC 4647 Basic Filtering. Locale eligibility is checked independently for every placement where an assignment may serve.\n\nFor a product or package containing multiple included placements, a single creative intended for every placement MUST lie in the intersection of every selected placement's effective set. Distinct per-placement creatives MAY use the union, but the selected creative set MUST cover every included placement; uncovered inventory MUST be rejected or refined, never silently omitted. If a product spans multiple publishers but omits placements[], there is no public routing key for per-placement creatives: its format_options MUST therefore be the common intersection accepted across every selected publisher/property scope. A seller that needs a union of publisher-specific formats MUST publish placements[] with publisher-scoped identities and narrowing. Commercial terms such as price, floor, availability, and deal eligibility are product facts, not format parameters.",
       "items": {
         "$ref": "/schemas/core/product-format-declaration.json"
+      },
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "locale_policy_legacy_projection": "no_product_or_placement_format_id_may_project_to_a_locale_constrained_option",
+          "placement_locale_policy": "product_policy_absent_allows_any_narrowing_else_ranges_must_be_contained",
+          "assignment_locale_eligibility": "validate_every_effective_placement_format_option_in_delivery_scope",
+          "locale_policy_capability_gate": "creative.localization_and_creative.has_creative_library_must_be_advertised",
+          "locale_policy_assignment_lifecycle": "snapshot_effective_policy_at_acceptance"
+        },
+        "spec": "docs/media-buy/product-discovery/media-products.mdx#creative-locale-constraints"
       }
     },
     "placements": {
@@ -117,6 +128,7 @@
     },
     "outcome_measurement": {
       "$ref": "/schemas/core/outcome-measurement.json",
+      "deprecated": true,
       "description": "**Deprecated as of this minor.** Outcome capabilities (incremental sales lift, brand lift, foot traffic, etc.) are now declared via `reporting_capabilities.available_metrics` (the same path used for impressions, conversions, ROAS) with `qualifier.attribution_methodology` and `qualifier.attribution_window` carrying the methodology and window on commit. New implementations SHOULD use the unified pattern; this field is retained for one-minor backwards compatibility and removed at the next major. See `outcome-measurement.json` description for migration guidance."
     },
     "delivery_measurement": {
@@ -133,6 +145,7 @@
         },
         "provider": {
           "type": "string",
+          "deprecated": true,
           "description": "**Deprecated as of this minor.** Free-form measurement provider description (e.g., 'Google Ad Manager with IAS viewability', 'Nielsen DAR', 'Geopath for DOOH impressions'). New implementations SHOULD use the structured `vendors` field instead. Retained for one-minor backwards compatibility; removed at the next major. When both `vendors` and `provider` are present, consumers MUST use `vendors` for vendor identity and treat `provider` as informational text."
         },
         "notes": {
@@ -213,6 +226,26 @@
       "type": "boolean",
       "default": false,
       "description": "Whether this product has a package-level signal_targeting_groups surface. When false (default), signals are bundled into the product terms and cannot be selected or explicitly echoed as package signal groups. When true, eligible signals from inline signal_targeting_options or from get_signals may be buyer-selected or seller-applied according to signal_targeting_rules and are represented through packages[].targeting_overlay.signal_targeting_groups. Editability is controlled by signal_targeting_rules; fixed/default-only products still set this to true when applied signal groups are echoed."
+    },
+    "demographic_targeting": {
+      "$ref": "/schemas/core/demographic-targeting-capability.json",
+      "description": "Exact demographic execution available for this product. Buyers MUST use this product-scoped declaration, not the seller-wide get_adcp_capabilities rollup, to preflight a demographic predicate."
+    },
+    "audience_evidence": {
+      "type": "array",
+      "description": "Immutable population-level evidence explaining why this inventory may suit an audience. This supports discovery, comparison, and planning only. It does not imply exact demographic targeting, user-level signal membership, or legal-age verification. Sellers MUST publish each distinct snapshot with a new snapshot_id and content_digest.",
+      "items": {
+        "$ref": "/schemas/core/audience-evidence.json"
+      },
+      "minItems": 1
+    },
+    "audience_evidence_selections": {
+      "type": "array",
+      "description": "Exact evidence snapshots that satisfied required eligibility or affected seller ranking for this get_products result. When audience_evidence_requirements was supplied and evidence influenced inclusion or rank, sellers MUST return the relevant selections; an absent-evidence match under evidence_presence when_available has no selection. Product selections use decision_use recommendation or eligibility.",
+      "items": {
+        "$ref": "/schemas/core/audience-evidence-selection.json"
+      },
+      "minItems": 1
     },
     "catalog_types": {
       "type": "array",
@@ -604,12 +637,13 @@
   ],
   "anyOf": [
     {
-      "title": "Legacy Product (named-format reference)",
-      "description": "Product references one or more named formats by structured format_id ({ agent_url, id }). This is the legacy named-format path; it remains supported through 4.x.",
+      "title": "Named-format product",
+      "deprecated": true,
+      "description": "Deprecated 3.x compatibility branch. Product references one or more named formats by structured format_id ({ agent_url, id }). New 3.2 products use format_options.",
       "required": ["format_ids"]
     },
     {
-      "title": "3.1+ Product (format-option declarations)",
+      "title": "Canonical-format product",
       "description": "Product carries one or more inline ProductFormatDeclarations, each narrowing a canonical format. This is the 3.1+ format-option path introduced by RFC #3305. A single-element `format_options` array is the 90% case; multi-element arrays declare that the product accepts any of the listed format options.",
       "required": ["format_options"]
     }

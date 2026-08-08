@@ -65,15 +65,15 @@ describe('Registry Feed Integration Tests', () => {
 
     it('writes multiple events in a transaction', async () => {
       const inputs: WriteEventInput[] = [
-        { event_type: 'agent.discovered', entity_type: 'agent', entity_id: 'url-1', actor: 'test' },
-        { event_type: 'agent.discovered', entity_type: 'agent', entity_id: 'url-2', actor: 'test' },
-        { event_type: 'authorization.granted', entity_type: 'authorization', entity_id: 'a:b', actor: 'test' },
+        { event_type: 'test.multi_agent_discovered', entity_type: 'agent', entity_id: 'url-1', actor: 'test' },
+        { event_type: 'test.multi_agent_discovered', entity_type: 'agent', entity_id: 'url-2', actor: 'test' },
+        { event_type: 'test.multi_authorization_granted', entity_type: 'authorization', entity_id: 'a:b', actor: 'test' },
       ];
 
       const ids = await eventsDb.writeEvents(inputs);
       expect(ids).toHaveLength(3);
 
-      const feed = await eventsDb.queryFeed(null, null);
+      const feed = await eventsDb.queryFeed(null, ['test.multi_*']);
       if ('error' in feed) throw new Error(feed.message);
       const ours = feed.events.filter(e => e.actor === 'test');
       expect(ours).toHaveLength(3);

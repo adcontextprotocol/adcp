@@ -3,6 +3,8 @@ import {
   splitMrkdwnIntoSections,
   truncateNotificationText,
   decideStreamAppend,
+  planStreamStopFailureFallback,
+  STREAM_DELIVERY_UNCERTAIN_NOTICE,
   SLACK_SECTION_MRKDWN_LIMIT,
   SLACK_SECTION_HARD_LIMIT,
   SLACK_MAX_SECTION_BLOCKS,
@@ -219,6 +221,17 @@ describe('decideStreamAppend', () => {
     const delta = 'sentence one. sentence two.\n\nparagraph two starts here and continues.';
     const d = decideStreamAppend(50, delta, CAP);
     expect(d.appendPart + d.carryPart).toBe(delta);
+  });
+});
+
+describe('planStreamStopFailureFallback', () => {
+  it('uses full-response fallback when no text was streamed', () => {
+    expect(planStreamStopFailureFallback(0)).toBe('full-response');
+  });
+
+  it('uses a delivery notice when text already streamed successfully', () => {
+    expect(planStreamStopFailureFallback(1)).toBe('delivery-notice');
+    expect(STREAM_DELIVERY_UNCERTAIN_NOTICE).toContain('Some of the response may be missing');
   });
 });
 

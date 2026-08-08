@@ -1,0 +1,63 @@
+---
+title: Schemas & SDKs
+sidebarTitle: Schemas & SDKs
+description: "Quick-start reference for AdCP schemas and client SDKs: installation, schema URLs, version discovery, and where to go next."
+"og:title": "AdCP — Schemas & SDKs"
+---
+
+This page orients you to the two foundational resources for building with AdCP: the JSON schemas that define every request and response, and the SDKs that turn those schemas into typed code.
+
+## SDKs
+
+AdCP ships official SDKs for TypeScript, Python, and Go. Each SDK absorbs the protocol layers (wire format, signing, auth, lifecycle semantics) so you write business logic only.
+
+<CardGroup cols={3}>
+  <Card title="TypeScript" icon="js" href="https://www.npmjs.com/package/@adcp/sdk">
+    `npm install @adcp/sdk`
+  </Card>
+  <Card title="Python" icon="python" href="https://pypi.org/project/adcp/">
+    `pip install adcp`
+  </Card>
+  <Card title="Go" icon="golang" href="https://github.com/adcontextprotocol/adcp-go">
+    `go get github.com/adcontextprotocol/adcp-go`
+  </Card>
+</CardGroup>
+
+For the full coverage matrix (which layers each SDK ships today), version pinning guidance, and package export details, see [Choose your SDK](/dist/docs/3.1.3/building/by-layer/L4/choose-your-sdk).
+
+For the layered model behind the SDKs — what L0 through L4 each contain and why SDKs matter more in AdCP than in simpler protocols — see the [SDK stack reference](/dist/docs/3.1.3/building/cross-cutting/sdk-stack).
+
+## Schema URLs
+
+AdCP schemas are published at `https://adcontextprotocol.org/schemas/` under the current major-version alias:
+
+| Pattern | Example | Use |
+|---|---|---|
+| **Current major** | `https://adcontextprotocol.org/schemas/3.1.3/media-buy/create-media-buy-request.json` | Pin validators to the AdCP 3.x schema family |
+
+Schemas cover every task's request and response, shared enums, governance objects, creative formats, and signal definitions. Use the current major-version URL in production and CI so links stay stable across major releases.
+
+For how wire-level `adcp_protocol_version` relates to schema bundle versions, and why those are different things, see [Versioning & governance](/dist/docs/3.1.3/reference/versioning).
+
+## Authorization in adagents.json
+
+Publishers declare their agent endpoints and authorization scopes in `adagents.json`. The schema supports six authorization types — `property_ids`, `property_tags`, `inline_properties`, `publisher_properties`, `signal_ids`, and `signal_tags` — each scoping which inventory the agent is authorized to act on.
+
+For the full authorization type reference and worked examples, see [Authorization Patterns](/dist/docs/3.1.3/governance/property/adagents#authorization-patterns) in the governance docs.
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="Choose your SDK" icon="box" href="/dist/docs/3.1.3/building/by-layer/L4/choose-your-sdk">
+    Coverage matrix, install commands, and version pinning for each language.
+  </Card>
+  <Card title="Build an agent" icon="hammer" href="/dist/docs/3.1.3/building/by-layer/L4/build-an-agent">
+    Skill files and step-by-step guide for building a seller agent.
+  </Card>
+  <Card title="Build a caller" icon="phone" href="/dist/docs/3.1.3/building/by-layer/L4/build-a-caller">
+    Buyer-side reference for discovering capabilities and handling responses.
+  </Card>
+  <Card title="Validate your agent" icon="check" href="/dist/docs/3.1.3/building/verification/validate-your-agent">
+    Run the compliance suite to verify your implementation.
+  </Card>
+</CardGroup>

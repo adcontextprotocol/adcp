@@ -92,4 +92,21 @@ describe('db client checkout and health checks', () => {
 
     await db.closeDatabase();
   });
+
+  it('opens dedicated session work outside the application pool', async () => {
+    const pg = mockPg();
+
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    const client = await db.getDedicatedClient();
+
+    expect(pg.poolConnect).not.toHaveBeenCalled();
+    expect(pg.clientInstances).toHaveLength(1);
+    expect(pg.clientConnect).toHaveBeenCalledTimes(1);
+
+    await client.end();
+    expect(pg.clientEnd).toHaveBeenCalledTimes(1);
+    await db.closeDatabase();
+  });
 });

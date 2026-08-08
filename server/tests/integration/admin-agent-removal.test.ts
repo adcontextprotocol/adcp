@@ -1,9 +1,9 @@
 /**
- * Integration tests for admin cross-org agent removal.
+ * Integration tests for admin cross-org agent management.
  *
- * Covers the DELETE /api/admin/accounts/:orgId/agents/:url endpoint —
- * the path that resolves rogue / disputed agent entries the owning org
- * cannot or will not self-serve clean up (see escalation #340).
+ * Covers the GET/POST/DELETE /api/admin/accounts/:orgId/agents endpoints:
+ * audited repair paths for registering or removing agent entries when the
+ * owning org cannot self-serve cleanly.
  */
 import {
   describe,
@@ -14,6 +14,14 @@ import {
   beforeEach,
   vi,
 } from 'vitest';
+
+vi.hoisted(() => {
+  process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
+  process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
+  process.env.WORKOS_COOKIE_PASSWORD =
+    process.env.WORKOS_COOKIE_PASSWORD ??
+    'test-cookie-password-at-least-32-chars-long';
+});
 
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<typeof import('../../src/middleware/auth.js')>(
@@ -57,8 +65,9 @@ import { MemberDatabase } from '../../src/db/member-db.js';
 import { setupAdminAgentsRoutes } from '../../src/routes/admin/agents.js';
 
 const TEST_PREFIX = 'org_admin_agent_remove';
+const TEST_DOMAIN_SUFFIX = 'admin-agent.test';
 
-describe('Admin cross-org agent removal (DELETE /api/admin/accounts/:orgId/agents/:url)', () => {
+describe('Admin cross-org agent management (/api/admin/accounts/:orgId/agents)', () => {
   let pool: Pool;
   let app: express.Application;
   let memberDb: MemberDatabase;
@@ -83,6 +92,14 @@ describe('Admin cross-org agent removal (DELETE /api/admin/accounts/:orgId/agent
 
   afterAll(async () => {
     await pool.query(
+      `DELETE FROM agent_registry_metadata WHERE agent_url LIKE $1`,
+      [`%${TEST_DOMAIN_SUFFIX}%`],
+    );
+    await pool.query(
+      `DELETE FROM organization_domains WHERE workos_organization_id LIKE $1 OR domain LIKE $2`,
+      [`${TEST_PREFIX}%`, `%${TEST_DOMAIN_SUFFIX}`],
+    );
+    await pool.query(
       `DELETE FROM registry_audit_log WHERE workos_organization_id LIKE $1`,
       [`${TEST_PREFIX}%`],
     );
@@ -103,6 +120,14 @@ describe('Admin cross-org agent removal (DELETE /api/admin/accounts/:orgId/agent
     };
     mod.__setAdmin(true);
 
+    await pool.query(
+      `DELETE FROM agent_registry_metadata WHERE agent_url LIKE $1`,
+      [`%${TEST_DOMAIN_SUFFIX}%`],
+    );
+    await pool.query(
+      `DELETE FROM organization_domains WHERE workos_organization_id LIKE $1 OR domain LIKE $2`,
+      [`${TEST_PREFIX}%`, `%${TEST_DOMAIN_SUFFIX}`],
+    );
     await pool.query(
       `DELETE FROM registry_audit_log WHERE workos_organization_id LIKE $1`,
       [`${TEST_PREFIX}%`],
@@ -136,6 +161,241 @@ describe('Admin cross-org agent removal (DELETE /api/admin/accounts/:orgId/agent
       agents: agents as any,
     });
   }
+
+  async function seedVerifiedDomain(orgId: string, domain: string) {
+    await pool.query(
+      `INSERT INTO organization_domains
+         (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+       VALUES ($1, $2, true, false, 'test', NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET
+         workos_organization_id = EXCLUDED.workos_organization_id,
+         verified = true,
+         source = 'test',
+         updated_at = NOW()`,
+      [orgId, domain],
+    );
+  }
+
+  it('POST registers a canonicalized agent, seeds metadata, and writes an audit row', async () => {
+    const orgId = `${TEST_PREFIX}_post_create`;
+    const domain = `create.${TEST_DOMAIN_SUFFIX}`;
+    const agentUrl = `https://sales.${domain}/mcp/`;
+    const canonicalUrl = `https://sales.${domain}/mcp`;
+    await seedOrgWithAgents(orgId, 'repair-post-create', []);
+    await seedVerifiedDomain(orgId, domain);
+
+    const res = await request(app)
+      .post(`/api/admin/accounts/${orgId}/agents`)
+      .send({
+        url: agentUrl,
+        type: 'sales',
+        name: 'Endpoint Sales Agent',
+        health_check_url: `https://user:secret@sales.${domain}/health?token=hidden#frag`,
+        reason: 'escalation 5709: customer DNS ownership established',
+        escalation_id: '5709',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({
+      org_id: orgId,
+      escalation_id: '5709',
+      was_update: false,
+      agents_count: 1,
+      agent: {
+        url: canonicalUrl,
+        type: 'sales',
+        visibility: 'members_only',
+        name: 'Endpoint Sales Agent',
+      },
+    });
+
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    expect(profile?.agents).toEqual([
+      expect.objectContaining({ url: canonicalUrl, type: 'sales', visibility: 'members_only' }),
+    ]);
+
+    const metadata = await pool.query(
+      `SELECT agent_url FROM agent_registry_metadata WHERE agent_url = $1`,
+      [canonicalUrl],
+    );
+    expect(metadata.rowCount).toBe(1);
+
+    const audit = await pool.query(
+      `SELECT action, resource_type, resource_id, details, workos_user_id
+       FROM registry_audit_log
+       WHERE workos_organization_id = $1 AND resource_id = $2`,
+      [orgId, canonicalUrl],
+    );
+    expect(audit.rowCount).toBe(1);
+    expect(audit.rows[0]).toMatchObject({
+      action: 'admin_add_agent',
+      resource_type: 'agent',
+      resource_id: canonicalUrl,
+      workos_user_id: 'admin_api_key',
+    });
+    expect(audit.rows[0].details).toMatchObject({
+      reason: 'escalation 5709: customer DNS ownership established',
+      escalation_id: '5709',
+      was_update: false,
+      admin_email: 'admin-api-key@internal',
+      upserted_agent: { url: canonicalUrl, type: 'sales', visibility: 'members_only' },
+    });
+    expect(audit.rows[0].details.requested_agent.health_check_url).toBe(
+      `https://sales.${domain}/health`,
+    );
+    expect(JSON.stringify(audit.rows[0].details)).not.toContain('secret');
+    expect(JSON.stringify(audit.rows[0].details)).not.toContain('token=hidden');
+  });
+
+  it('POST upserts an existing canonical agent instead of duplicating it', async () => {
+    const orgId = `${TEST_PREFIX}_post_update`;
+    const domain = `update.${TEST_DOMAIN_SUFFIX}`;
+    const canonicalUrl = `https://sales.${domain}/mcp`;
+    await seedOrgWithAgents(orgId, 'repair-post-update', [
+      { url: canonicalUrl, type: 'sales', visibility: 'members_only', name: 'Old name' },
+    ]);
+    await seedVerifiedDomain(orgId, domain);
+
+    const res = await request(app)
+      .post(`/api/admin/accounts/${orgId}/agents`)
+      .send({
+        url: `HTTPS://SALES.${domain.toUpperCase()}/mcp/`,
+        type: 'creative',
+        name: 'Updated agent',
+        visibility: 'private',
+        reason: 'correcting previously inserted agent metadata',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      was_update: true,
+      agents_count: 1,
+      agent: {
+        url: canonicalUrl,
+        type: 'creative',
+        visibility: 'private',
+        name: 'Updated agent',
+      },
+    });
+
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    expect(profile?.agents).toHaveLength(1);
+    expect(profile?.agents?.[0]).toMatchObject({
+      url: canonicalUrl,
+      type: 'creative',
+      visibility: 'private',
+      name: 'Updated agent',
+    });
+  });
+
+  it('POST preserves existing visibility when an update omits visibility', async () => {
+    const orgId = `${TEST_PREFIX}_post_preserve_visibility`;
+    const domain = `preserve.${TEST_DOMAIN_SUFFIX}`;
+    const canonicalUrl = `https://sales.${domain}/mcp`;
+    await seedOrgWithAgents(orgId, 'repair-post-preserve-visibility', [
+      { url: canonicalUrl, type: 'sales', visibility: 'private', name: 'Old name' },
+    ]);
+    await seedVerifiedDomain(orgId, domain);
+
+    const res = await request(app)
+      .post(`/api/admin/accounts/${orgId}/agents`)
+      .send({
+        url: canonicalUrl,
+        type: 'creative',
+        name: 'Updated private agent',
+        reason: 'update metadata without changing visibility',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.agent).toMatchObject({
+      url: canonicalUrl,
+      type: 'creative',
+      visibility: 'private',
+      name: 'Updated private agent',
+    });
+
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    expect(profile?.agents?.[0]).toMatchObject({ visibility: 'private' });
+  });
+
+  it('POST rejects agents outside the org verified domain set', async () => {
+    const orgId = `${TEST_PREFIX}_post_wrong_host`;
+    await seedOrgWithAgents(orgId, 'repair-post-wrong-host', []);
+    await seedVerifiedDomain(orgId, `owned.${TEST_DOMAIN_SUFFIX}`);
+
+    const res = await request(app)
+      .post(`/api/admin/accounts/${orgId}/agents`)
+      .send({
+        url: 'https://sales.someone-else.example/mcp',
+        type: 'sales',
+        reason: 'should reject wrong host',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('unverified_hostname');
+
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    expect(profile?.agents).toEqual([]);
+    const audit = await pool.query(
+      `SELECT 1 FROM registry_audit_log WHERE workos_organization_id = $1`,
+      [orgId],
+    );
+    expect(audit.rowCount).toBe(0);
+  });
+
+  it('POST rejects public visibility because repair does not update brand.json', async () => {
+    const orgId = `${TEST_PREFIX}_post_public_reject`;
+    const domain = `downgrade.${TEST_DOMAIN_SUFFIX}`;
+    await seedOrgWithAgents(orgId, 'repair-post-public-reject', []);
+    await seedVerifiedDomain(orgId, domain);
+
+    const res = await request(app)
+      .post(`/api/admin/accounts/${orgId}/agents`)
+      .send({
+        url: `https://sales.${domain}/mcp`,
+        type: 'sales',
+        visibility: 'public',
+        reason: 'register as repair but do not bypass tier visibility',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('public_visibility_not_supported');
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    expect(profile?.agents).toEqual([]);
+  });
+
+  it('POST requires reason and a declared non-unknown type', async () => {
+    const orgId = `${TEST_PREFIX}_post_validations`;
+    const domain = `validations.${TEST_DOMAIN_SUFFIX}`;
+    await seedOrgWithAgents(orgId, 'repair-post-validations', []);
+    await seedVerifiedDomain(orgId, domain);
+
+    const noReason = await request(app)
+      .post(`/api/admin/accounts/${orgId}/agents`)
+      .send({ url: `https://sales.${domain}/mcp`, type: 'sales' });
+    expect(noReason.status).toBe(400);
+    expect(noReason.body.error).toBe('reason_required');
+
+    const unknownType = await request(app)
+      .post(`/api/admin/accounts/${orgId}/agents`)
+      .send({
+        url: `https://sales.${domain}/mcp`,
+        type: 'unknown',
+        reason: 'unknown type should not be accepted',
+      });
+    expect(unknownType.status).toBe(400);
+    expect(unknownType.body.error).toBe('type_required');
+
+    const queryString = await request(app)
+      .post(`/api/admin/accounts/${orgId}/agents`)
+      .send({
+        url: `https://sales.${domain}/mcp?x=1`,
+        type: 'sales',
+        reason: 'query strings should not be accepted',
+      });
+    expect(queryString.status).toBe(400);
+    expect(queryString.body.error).toBe('invalid_url');
+  });
 
   it('removes the targeted agent from the org JSONB and writes an audit row', async () => {
     const orgId = `${TEST_PREFIX}_basic`;

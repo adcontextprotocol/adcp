@@ -35,7 +35,7 @@ Four protocol domains handle core advertising operations. The [Trusted Match Pro
 
 **Media Buy** covers inventory discovery (`get_products`), campaign creation (`create_media_buy`), and delivery reporting (`get_media_buy_delivery`). Publishers return structured media products with pricing, targeting options, and delivery forecasts. Buyers can request proposals — structured media plans that encode publisher expertise. See [Media Buy](/docs/media-buy).
 
-**Creative** handles format discovery (`list_creative_formats`), AI-powered creative generation (`build_creative`), catalog synchronization (`sync_catalogs`), and creative delivery tracking. Creative agents resolve brand identity from the Brand Protocol to generate on-brand assets. See [Creative](/docs/creative).
+**Creative** handles canonical capability discovery (`get_adcp_capabilities`), AI-powered creative generation (`build_creative`), catalog synchronization (`sync_catalogs`), and creative delivery tracking. Creative agents resolve brand identity from the Brand Protocol to generate on-brand assets. See [Creative](/docs/creative).
 
 **Signals** enables audience and targeting data discovery (`get_signals`) and activation (`activate_signal`). Data providers publish signal definitions that buyers can discover with natural language queries, then activate on decisioning platforms. See [Signals](/docs/signals/overview).
 
@@ -111,7 +111,7 @@ AdCP is a multi-instance protocol. A single buyer's workflow with an agent may b
 
 ### Normative requirements
 
-State keyed by a `(brand, account)` tuple MUST survive across agent process instances. This includes but is not limited to accounts, catalogs, creatives, audiences, event sources, governance configuration, active campaigns, proposals, insertion-order approval records, signal activations, sponsored-intelligence sessions, async task records, and idempotency-key cache entries. Implementations MUST NOT use in-process memory as the primary store for any `(brand, account)`-scoped state that a subsequent call can read back. In-process storage does not satisfy this requirement. For the canonical (non-exhaustive) catalog of state domains, see [Account state](/docs/building/integration/account-state).
+State keyed by a `(brand, account)` tuple MUST survive across agent process instances. This includes but is not limited to accounts, catalogs, creatives, audiences, event sources, governance configuration, active campaigns, proposals, insertion-order approval records, signal activations, sponsored-intelligence sessions, async task records, and idempotency-key cache entries. Implementations MUST NOT use in-process memory as the primary store for any `(brand, account)`-scoped state that a subsequent call can read back. In-process storage does not satisfy this requirement. For the canonical (non-exhaustive) catalog of state domains, see [Account state](/docs/building/by-layer/L2/account-state).
 
 **Acceptable storage:** Postgres, Redis, DynamoDB, or any shared store that persists across process restarts and is reachable from every replica. **Not acceptable:** module-level variables, per-process Maps or dicts, single-node file storage, or sticky-session routing that masks the absence of shared state.
 
@@ -119,4 +119,4 @@ Within a single `(brand, account)` context, implementations MUST support read-yo
 
 **Sandbox exemption.** Sandbox accounts are allowed to carry ephemeral state that does not persist across process restarts (see [Sandbox mode](/docs/media-buy/advanced-topics/sandbox)). Within a single sandbox session, read-your-writes across replicas still applies.
 
-Implementations may prove this invariant by architecture (managed serverless + shared datastore), by multi-instance compliance testing, or by their own verification; the protocol cares about the invariant, not the methodology. See [Validate your agent — Verifying cross-instance state](/docs/building/validate-your-agent#verifying-cross-instance-state).
+Implementations may prove this invariant by architecture (managed serverless + shared datastore), by multi-instance compliance testing, or by their own verification; the protocol cares about the invariant, not the methodology. See [Validate your agent — Verifying cross-instance state](/docs/building/verification/validate-your-agent#verifying-cross-instance-state).

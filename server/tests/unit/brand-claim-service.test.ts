@@ -112,6 +112,9 @@ describe('issueDomainChallenge', () => {
     if (result.ok) {
       expect(result.workos_domain_id).toBe('dom_123');
       expect(result.verification_token).toBe('tok_abc');
+      expect(result.dns_record_name).toBe(`_workos-challenge.${DOMAIN}`);
+      expect(result.dns_record_type).toBe('TXT');
+      expect(result.dns_record_value).toBe('tok_abc');
       expect(result.already_verified).toBe(false);
     }
     expect(workos.organizationDomains.createOrganizationDomain).not.toHaveBeenCalled();
@@ -151,6 +154,8 @@ describe('issueDomainChallenge', () => {
       expect(result.workos_domain_id).toBe('dom_fresh');
       expect(result.verification_token).toBe('tok_fresh');
       expect(result.verification_prefix).toBe('_workos-challenge');
+      expect(result.dns_record_name).toBe(`_workos-challenge.${DOMAIN}`);
+      expect(result.dns_record_value).toBe('tok_fresh');
     }
     expect(deleteFn).toHaveBeenCalledWith('dom_broken');
     expect(createFn).toHaveBeenCalledTimes(1);
@@ -211,6 +216,8 @@ describe('issueDomainChallenge', () => {
       expect(result.workos_domain_id).toBe('dom_no_prefix');
       expect(result.verification_token).toBe('tok_present');
       expect(result.verification_prefix).toBeNull();
+      expect(result.dns_record_name).toBe(DOMAIN);
+      expect(result.dns_record_value).toBe('tok_present');
     }
     expect(deleteFn).not.toHaveBeenCalled();
     expect(createFn).not.toHaveBeenCalled();
@@ -240,6 +247,8 @@ describe('issueDomainChallenge', () => {
       expect(result.workos_domain_id).toBe('dom_new_no_prefix');
       expect(result.verification_token).toBe('tok_new');
       expect(result.verification_prefix).toBeNull();
+      expect(result.dns_record_name).toBe(DOMAIN);
+      expect(result.dns_record_value).toBe('tok_new');
     }
     expect(createFn).toHaveBeenCalledTimes(1);
   });

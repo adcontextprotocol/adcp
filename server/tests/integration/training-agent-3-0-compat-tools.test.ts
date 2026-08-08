@@ -20,7 +20,7 @@ const { stopSessionCleanup } = await import('../../src/training-agent/state.js')
 
 const COMPAT_CTX = { mode: 'open' as const, storyboardCompat: { version: '3.0' as const } };
 const AUTH = 'Bearer compat-tools-token';
-const CURRENT_ADCP_VERSION = '3.1-rc.14';
+const CURRENT_ADCP_VERSION = '3.1-rc.15';
 
 async function simulateListTools(server: ReturnType<typeof createTrainingAgentServer>): Promise<string[]> {
   const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
@@ -169,7 +169,7 @@ describe('training-agent 3.0 compat tool visibility', () => {
     }
   });
 
-  it('serves validate_input on current tenant routes only on a 3.1 envelope', async () => {
+  it('serves validate_input on current tenant routes only on the current envelope', async () => {
     const { baseUrl, close } = await bootRouter();
     try {
       await expect(listTenantTools(baseUrl, 'sales')).resolves.toContain('validate_input');

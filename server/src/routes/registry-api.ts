@@ -6,11 +6,12 @@
  */
 
 import { Router } from "express";
+import { once } from "node:events";
 import type { Request, RequestHandler } from "express";
 import { z } from "zod";
 import escapeHtml from "escape-html";
 import { findOwnerOrgForUser } from "../services/agent-ownership.js";
-import { CreativeAgentClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
+import { AdCPClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
 import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex, listAllComplianceStoryboards } from "@adcp/sdk/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
@@ -19,7 +20,8 @@ import { query } from "../db/client.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
-import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
+import { AsyncSemaphore, SemaphoreOverloadedError } from "../utils/async-semaphore.js";
+import { bulkResolveRateLimiter, brandBulkDomainRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
 import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
 import {
   hostedComplianceTarget,
@@ -89,6 +91,13 @@ import {
   CommunityMirrorListResponseSchema,
   CommunityMirrorGetResponseSchema,
   CommunityMirrorPublishResponseSchema,
+  CommunityMirrorProposalSubmissionResponseSchema,
+  CommunityMirrorProposalListResponseSchema,
+  CommunityMirrorProposalGetResponseSchema,
+  CommunityMirrorProposalReviewRequestSchema,
+  CommunityMirrorProposalRejectRequestSchema,
+  CommunityMirrorProposalApprovalResponseSchema,
+  CommunityMirrorProposalDecisionResponseSchema,
   CommunityMirrorDeleteResponseSchema,
   CommunityMirrorPublishErrorSchema,
   AdagentsAuthorizedAgentSchema,
@@ -96,7 +105,7 @@ import {
 } from "../schemas/registry.js";
 
 import type { BrandManager } from "../brand-manager.js";
-import type { BrandDatabase } from "../db/brand-db.js";
+import { resolveBrandFromJson, type BrandDatabase } from "../db/brand-db.js";
 import type { PropertyDatabase } from "../db/property-db.js";
 import { CatalogDatabase } from "../db/catalog-db.js";
 import type { AdAgentsManager } from "../adagents-manager.js";
@@ -116,11 +125,16 @@ import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js"
 import { VERIFICATION_MODES, isVerificationMode } from "../services/adcp-taxonomy.js";
 import { AgentSnapshotDatabase } from "../db/agent-snapshot-db.js";
 import { resolveUserAgentAuth } from "./helpers/resolve-user-agent-auth.js";
-import { adaptAuthForSdk, type SdkAuth } from "../services/sdk-auth-adapter.js";
+import {
+  adaptAuthForSdk,
+  authForSdkDiscoveryProbe,
+  type SdkAuth,
+} from "../services/sdk-auth-adapter.js";
 import { parseOAuthClientCredentialsInput } from "./helpers/oauth-client-credentials-input.js";
 import { isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
 import { AgentContextDatabase, validateAuthTokenChars } from "../db/agent-context-db.js";
 import { normalizeBasicAuthForStorage } from "../utils/basic-auth-credentials.js";
+import { sdkSafeFetch, withSdkSafeTransport } from "../utils/sdk-safe-fetch.js";
 import { getRequestLog, getRequestCount, logOutboundRequest } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
@@ -147,15 +161,83 @@ type PublisherBrandSummary = {
   industries?: string[];
 };
 
+const BRAND_LOGO_URL_MAX_LENGTH = 2048;
+const BRAND_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+function normalizeBrandLogoUrl(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0 || value.length > BRAND_LOGO_URL_MAX_LENGTH) {
+    return null;
+  }
+
+  // Reject markup-significant characters instead of relying on URL parsing to
+  // percent-encode them. Branding is rendered on multiple public surfaces, so
+  // keeping the stored value attribute-safe is useful defense in depth.
+  if (["\"", "'", "<", ">", "`", "\\"].some(char => value.includes(char))) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password || !parsed.hostname) {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function isValidBrandColor(value: unknown): value is string {
+  return typeof value === "string" && BRAND_COLOR_PATTERN.test(value);
+}
+
+type BrandManifestBrandingError = "invalid_brand_data" | "unsafe_logo" | "unsafe_color";
+
+function validateBrandManifestBranding(
+  domain: string,
+  brandJson: Record<string, unknown>,
+): BrandManifestBrandingError | null {
+  try {
+    const resolvedBrand = resolveBrandFromJson(domain, brandJson, false);
+    if (resolvedBrand.logos?.some(logo => normalizeBrandLogoUrl(logo.url) === null)) {
+      return "unsafe_logo";
+    }
+    if (resolvedBrand.brand_color !== undefined && !isValidBrandColor(resolvedBrand.brand_color)) {
+      return "unsafe_color";
+    }
+    return null;
+  } catch {
+    return "invalid_brand_data";
+  }
+}
+
 type PublisherFormatSummary = {
   format_option_id?: string;
   display_name: string;
   format_kind: string;
+  sample_render_url?: string;
   params?: Record<string, unknown>;
   applies_to_property_ids?: string[];
   applies_to_property_tags?: string[];
   seller_preference?: string;
   experimental?: boolean;
+};
+
+type PublisherPlacementSummary = {
+  placement_id: string;
+  name: string;
+  description?: string;
+  property_ids?: string[];
+  property_tags?: string[];
+  collection_ids?: string[];
+  channels?: string[];
+  tags?: string[];
+  format_options?: Array<{
+    format_option_id?: string;
+    format_kind: string;
+    params?: Record<string, unknown>;
+  }>;
+  source: 'adagents_json' | 'community';
 };
 
 function recordOrNull(value: unknown): Record<string, unknown> | null {
@@ -166,6 +248,17 @@ function recordOrNull(value: unknown): Record<string, unknown> | null {
 
 function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function httpsUrlOrUndefined(value: unknown): string | undefined {
+  const raw = stringOrUndefined(value);
+  if (!raw) return undefined;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function stringArray(value: unknown, cap = 8): string[] {
@@ -301,6 +394,7 @@ function summarizeFormats(
         format_option_id: optionId,
         display_name: displayName,
         format_kind: formatKind,
+        sample_render_url: httpsUrlOrUndefined(format.sample_render_url),
         params,
         applies_to_property_ids: appliesToPropertyIds,
         applies_to_property_tags: appliesToPropertyTags,
@@ -310,6 +404,55 @@ function summarizeFormats(
     })
     .filter((format): format is PublisherFormatSummary => !!format)
     .slice(0, 100);
+}
+
+function summarizePlacements(
+  manifest: Record<string, unknown> | null | undefined,
+  source: 'adagents_json' | 'community',
+): PublisherPlacementSummary[] {
+  const rawPlacements = Array.isArray(manifest?.placements) ? manifest.placements : [];
+  const rawFormats = Array.isArray(manifest?.formats) ? manifest.formats : [];
+  const formatsById = new Map<string, Record<string, unknown>>();
+  for (const raw of rawFormats) {
+    const format = recordOrNull(raw);
+    const id = format && stringOrUndefined(format.format_option_id);
+    if (format && id) formatsById.set(id, format);
+  }
+
+  return rawPlacements.flatMap(raw => {
+    const placement = recordOrNull(raw);
+    const placementId = placement && stringOrUndefined(placement.placement_id);
+    const name = placement && stringOrUndefined(placement.name);
+    if (!placement || !placementId || !name) return [];
+
+    const rawOptions = Array.isArray(placement.format_options) ? placement.format_options : [];
+    const formatOptions = rawOptions.flatMap(rawOption => {
+      const option = recordOrNull(rawOption);
+      if (!option) return [];
+      const optionId = stringOrUndefined(option.format_option_id);
+      const resolved = optionId && !stringOrUndefined(option.format_kind)
+        ? formatsById.get(optionId)
+        : option;
+      if (!resolved) return [];
+      const formatKind = stringOrUndefined(resolved.format_kind);
+      const params = recordOrNull(resolved.params);
+      if (!formatKind || !params) return [];
+      return [{ format_option_id: optionId ?? stringOrUndefined(resolved.format_option_id), format_kind: formatKind, params }];
+    });
+
+    return [{
+      placement_id: placementId,
+      name,
+      description: stringOrUndefined(placement.description),
+      property_ids: stringArray(placement.property_ids, 500),
+      property_tags: stringArray(placement.property_tags, 500),
+      collection_ids: stringArray(placement.collection_ids, 500),
+      channels: stringArray(placement.channels, 100),
+      tags: stringArray(placement.tags, 100),
+      format_options: formatOptions.length ? formatOptions : undefined,
+      source,
+    }];
+  }).slice(0, 500);
 }
 import { AAO_UA_COMPLIANCE } from "../config/user-agents.js";
 
@@ -321,7 +464,7 @@ const badgeEligibilityMetadata = (eligibleVersions: readonly string[]) => ({
   badge_eligible_adcp_versions: [...eligibleVersions],
 });
 const INVALID_COMPLIANCE_TARGET_MESSAGE =
-  "Invalid compliance_target. Use 3.0, 3.1-rc, 3.1-beta, or an exact bundled version.";
+  "Invalid compliance_target. Use 3.1, 3.0, 3.1-rc, 3.1-beta, or an exact bundled version.";
 
 class InvalidComplianceTargetError extends Error {}
 
@@ -380,6 +523,7 @@ type StoryboardStatusLike = {
   first_failed_step_title?: string | null;
   first_failed_step_task?: string | null;
   first_failure_message?: string | null;
+  first_failure_validations_jsonb?: unknown;
   last_tested_at?: Date | string | null;
   last_passed_at?: Date | string | null;
 };
@@ -387,6 +531,11 @@ type StoryboardStatusLike = {
 function serializeDate(value: Date | string | null | undefined): string | null {
   if (!value) return null;
   return value instanceof Date ? value.toISOString() : value;
+}
+
+function normalizeValidationList(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  return value === null || value === undefined ? [] : [value];
 }
 
 function serializeStoryboardRunStatus(
@@ -405,6 +554,9 @@ function serializeStoryboardRunStatus(
     first_failed_step_title: includeDiagnostics ? s.first_failed_step_title ?? null : null,
     first_failed_step_task: includeDiagnostics ? s.first_failed_step_task ?? null : null,
     first_failure_message: includeDiagnostics ? s.first_failure_message ?? null : null,
+    first_failure_validations: includeDiagnostics
+      ? normalizeValidationList(s.first_failure_validations_jsonb)
+      : [],
   };
 }
 
@@ -458,6 +610,18 @@ function extractDomain(raw: string): string {
 }
 
 const VALID_DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+const BRAND_BULK_RESOLVE_MAX_DOMAINS = 25;
+const BRAND_BULK_PROCESS_CONCURRENCY = 10;
+// Four full requests may wait behind the in-flight batch. Past that the work
+// is queued longer than a caller will wait for it, so shed instead of growing.
+const BRAND_BULK_QUEUE_LIMIT = BRAND_BULK_RESOLVE_MAX_DOMAINS * 4;
+
+// Shared by every router instance in this process so simultaneous bulk
+// requests cannot multiply their per-request fan-out into unbounded work.
+const brandBulkResolveSemaphore = new AsyncSemaphore(
+  BRAND_BULK_PROCESS_CONCURRENCY,
+  BRAND_BULK_QUEUE_LIMIT,
+);
 
 function isValidDomain(domain: string): boolean {
   return domain.length <= 253 && VALID_DOMAIN_RE.test(domain);
@@ -485,6 +649,27 @@ export interface RegistryApiConfig {
   };
   requireAuth?: RequestHandler;
   optionalAuth?: RequestHandler;
+}
+
+function serializeBrandValidation(
+  validation: Awaited<ReturnType<RegistryApiConfig['brandManager']['validateDomain']>>
+) {
+  const truncate = (value: string) => value.length > 500 ? `${value.slice(0, 497)}...` : value;
+  return {
+    valid: validation.valid,
+    url: validation.url,
+    status_code: validation.status_code,
+    errors: validation.errors.slice(0, 20).map((issue) => ({
+      field: truncate(issue.field),
+      message: truncate(issue.message),
+      severity: issue.severity,
+    })),
+    warnings: validation.warnings.slice(0, 20).map((warning) => ({
+      field: truncate(warning.field),
+      message: truncate(warning.message),
+      ...(warning.suggestion ? { suggestion: truncate(warning.suggestion) } : {}),
+    })),
+  };
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -529,18 +714,29 @@ registry.registerPath({
   path: "/api/brands/resolve",
   operationId: "resolveBrand",
   summary: "Resolve brand",
-  description:
-    "Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest.",
+  description: [
+    "Resolve a domain to its canonical brand identity. Follows brand.json redirects and returns the resolved brand with its house, architecture type, and optional manifest. The domain must be a bare DNS hostname.",
+    "",
+    "A domain is authoritative for its own identity, so `source` tells you who published the record and `relationship_trust` tells you whether a brand-to-house relationship was confirmed by both sides. Only `mutual` and `inline` are reciprocated; treat everything else as a claim.",
+    "Record selection is deterministic: `hosted` > `brand_json` > `community` > `enriched`. `source` reports provenance only and must not be used as a substitute for `relationship_trust`.",
+    "The v3 hierarchy is one level deep. There is no ordered-chain endpoint: third-party verifiers use the reciprocated `house_domain` edge returned here. `claimed_house_domain` is unilateral and never extends trust.",
+    "",
+    "**Rate limit:** 60 requests per minute per IP address.",
+  ].join("\n"),
   tags: ["Brand Resolution"],
   request: {
     query: z.object({
       domain: z.string().openapi({ example: "acmecorp.com" }),
-      fresh: z.enum(["true", "false"]).optional(),
+      fresh: z.enum(["true", "false"]).optional().openapi({
+        description: "Bypass the resolution cache and refetch from the origin. When a fresh fetch fails and a stored record is returned instead, `live_brand_json` carries that fetch's diagnostics.",
+      }),
     }),
   },
   responses: {
     200: { description: "Brand resolved successfully", content: { "application/json": { schema: ResolvedBrandSchema } } },
+    400: { description: "Invalid or missing domain", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Brand not found", content: { "application/json": { schema: z.object({ error: z.string(), domain: z.string(), file_status: z.number().optional().openapi({ description: "HTTP status code from brand.json fetch (e.g. 404 vs 200 with invalid data)" }) }) } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -549,15 +745,21 @@ registry.registerPath({
   path: "/api/brands/resolve/bulk",
   operationId: "resolveBrandsBulk",
   summary: "Bulk resolve brands",
-  description:
-    "Resolve up to 100 domains to their canonical brand identities in a single request.\n\n**Rate limit:** 20 requests per minute per IP address.",
+  description: [
+    `Resolve up to ${BRAND_BULK_RESOLVE_MAX_DOMAINS} domains to their canonical brand identities in a single request. Unresolvable domains map to \`null\`.`,
+    "",
+    "**Rate limits:** 20 requests and 100 unique domain resolutions per minute per IP address. Request bodies are capped at 16 KB.",
+  ].join("\n"),
   tags: ["Brand Resolution"],
   request: {
-    body: { content: { "application/json": { schema: z.object({ domains: z.array(z.string()).max(100) }) } } },
+    body: { content: { "application/json": { schema: z.object({ domains: z.array(z.string()).max(BRAND_BULK_RESOLVE_MAX_DOMAINS) }) } } },
   },
   responses: {
     200: { description: "Bulk resolution results", content: { "application/json": { schema: z.object({ results: z.record(z.string(), ResolvedBrandSchema.nullable()) }) } } },
+    400: { description: "Invalid domain list", content: { "application/json": { schema: ErrorSchema } } },
+    413: { description: "Request body over 16 KB", content: { "application/json": { schema: ErrorSchema } } },
     429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
+    503: { description: "Too much resolution work is already queued", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -566,7 +768,7 @@ registry.registerPath({
   path: "/api/brands/brand-json",
   operationId: "getBrandJson",
   summary: "Get brand.json",
-  description: "Fetch the raw brand.json file for a domain.",
+  description: "Fetch the raw brand.json file for a bare DNS hostname.\n\n**Rate limit:** 60 requests per minute per IP address.",
   tags: ["Brand Resolution"],
   request: {
     query: z.object({
@@ -575,8 +777,43 @@ registry.registerPath({
     }),
   },
   responses: {
-    200: { description: "Raw brand.json data", content: { "application/json": { schema: z.object({ domain: z.string(), url: z.string(), variant: z.string().optional(), data: z.record(z.string(), z.unknown()), warnings: z.array(z.string()).optional() }) } } },
+    200: {
+      description: "Raw brand.json data",
+      content: {
+        "application/json": {
+          schema: z.object({
+            domain: z.string(),
+            url: z.string(),
+            variant: z.string().optional(),
+            data: z.record(z.string(), z.unknown()),
+            warnings: z.array(z.object({
+              field: z.string(),
+              message: z.string(),
+              suggestion: z.string().optional(),
+            })).optional(),
+            promoted_from_schema: z.string().optional(),
+            live_brand_json: z.object({
+              valid: z.boolean(),
+              url: z.string(),
+              status_code: z.number().int().optional(),
+              errors: z.array(z.object({
+                field: z.string(),
+                message: z.string(),
+                severity: z.literal("error"),
+              })),
+              warnings: z.array(z.object({
+                field: z.string(),
+                message: z.string(),
+                suggestion: z.string().optional(),
+              })),
+            }).optional(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid or missing domain", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Brand not found", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -736,6 +973,98 @@ function stripLegacyBrandContext(manifest: unknown): Record<string, unknown> | u
   return publicManifest;
 }
 
+function storedBrandJsonVariant(
+  manifest: Record<string, unknown> | undefined,
+): 'house_portfolio' | 'brand_canonical' | undefined {
+  if (!manifest) return undefined;
+  if (
+    manifest.house &&
+    typeof manifest.house === 'object' &&
+    !Array.isArray(manifest.house) &&
+    (Array.isArray(manifest.brands) || Array.isArray(manifest.brand_refs))
+  ) {
+    return 'house_portfolio';
+  }
+  if (typeof manifest.id === 'string' && Array.isArray(manifest.names)) {
+    return 'brand_canonical';
+  }
+  return undefined;
+}
+
+/**
+ * `hosted` means a verified owner registered the row. Same definition as the
+ * registry listing's `OWNER_HOSTED_SQL` — keep the two in step.
+ */
+function resolvedStoredBrandSource(brand: {
+  workos_organization_id?: string;
+  domain_verified?: boolean;
+  source_type: 'brand_json' | 'community' | 'enriched';
+}): 'hosted' | 'brand_json' | 'community' | 'enriched' {
+  return brand.workos_organization_id && brand.domain_verified === true
+    ? 'hosted'
+    : brand.source_type;
+}
+
+type ResolvedBrandResponse = z.infer<typeof ResolvedBrandSchema>;
+type StoredBrandResolutionRecord = NonNullable<
+  Awaited<ReturnType<BrandDatabase["getDiscoveredBrandByDomain"]>>
+>;
+
+const RESOLVED_BRAND_SOURCE_PRIORITY: Record<ResolvedBrandResponse["source"], number> = {
+  hosted: 1,
+  brand_json: 2,
+  community: 3,
+  enriched: 4,
+};
+
+function storedBrandResolutionResponse(
+  brand: StoredBrandResolutionRecord,
+  liveValidation?: ReturnType<typeof serializeBrandValidation>,
+): ResolvedBrandResponse {
+  return {
+    canonical_id: brand.canonical_domain || brand.domain,
+    canonical_domain: brand.canonical_domain || brand.domain,
+    brand_name: brand.brand_name || brand.domain,
+    ...(brand.brand_names?.length ? { names: brand.brand_names } : {}),
+    ...(brand.keller_type ? { keller_type: brand.keller_type } : {}),
+    ...(brand.parent_brand ? { parent_brand: brand.parent_brand } : {}),
+    ...(brand.brand_agent_url ? { brand_agent_url: brand.brand_agent_url } : {}),
+    source: resolvedStoredBrandSource(brand),
+    brand_manifest: stripLegacyBrandContext(brand.brand_manifest),
+    ...(liveValidation ? { live_brand_json: liveValidation } : {}),
+  };
+}
+
+/**
+ * Select the actual response candidate, not just its label. Default reads use
+ * the durable stored candidate on a source-priority tie so every pod returns
+ * the same document. `fresh=true` lets a successful live read win a tie, while
+ * a strictly higher-provenance stored record (for example `hosted`) still wins.
+ */
+function selectResolvedBrandResponse(
+  live: ResolvedBrandResponse,
+  stored: StoredBrandResolutionRecord | null,
+  fresh: boolean,
+): ResolvedBrandResponse {
+  // A private or orphaned row is not a public resolution candidate. In
+  // particular, it must never replace a valid live-origin response merely
+  // because its provenance would otherwise rank higher.
+  if (!stored || stored.manifest_orphaned || stored.is_public === false) return live;
+  const storedCandidate = storedBrandResolutionResponse(stored);
+  const storedPriority = RESOLVED_BRAND_SOURCE_PRIORITY[storedCandidate.source];
+  const livePriority = RESOLVED_BRAND_SOURCE_PRIORITY[live.source];
+  if (storedPriority > livePriority || (storedPriority === livePriority && fresh)) {
+    return live;
+  }
+
+  // Identity provenance and persisted identity fields come from the selected
+  // stored winner. Relationship trust, verification timestamps, and promotion
+  // diagnostics are computed by the live resolver for the requested domain;
+  // retain them instead of collapsing a verified edge to "unknown" merely
+  // because a higher-provenance stored identity exists.
+  return { ...live, ...storedCandidate };
+}
+
 registry.registerPath({
   method: "get",
   path: "/api/brands/enrich",
@@ -842,7 +1171,7 @@ registry.registerPath({
   operationId: "saveProperty",
   summary: "Save property",
   description:
-    "Save or update a hosted property in the registry. Requires authentication. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.",
+    "Save or update a hosted property in the registry. Requires authentication. For existing properties, creates a revision-tracked edit. For new properties, creates the property directly. Cannot edit authoritative properties managed via adagents.json.\n\nThis is an identity-only write surface: the stored document always carries `authorized_agents: []`. Sales authorization lives solely in the publisher's own origin `adagents.json`; the community registry cannot mint or carry it. Any `authorized_agents` sent in the request body is ignored.",
   tags: ["Property Resolution"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -851,7 +1180,11 @@ registry.registerPath({
         "application/json": {
           schema: z.object({
             publisher_domain: z.string().openapi({ example: "examplepub.com" }),
-            authorized_agents: z.array(z.object({ url: z.string(), authorized_for: z.string().optional() })).openapi({ example: [{ url: "https://agent.example.com" }] }),
+            authorized_agents: z.array(z.object({ url: z.string(), authorized_for: z.string().optional() })).optional().openapi({
+              description:
+                "Ignored. Community-registry rows never assert sales authorization — the owner's origin adagents.json is the sole authorization source — so any value here is dropped and the stored document carries authorized_agents:[].",
+              example: [],
+            }),
             properties: z.array(z.object({ type: z.string(), name: z.string() })).optional().openapi({ example: [{ type: "website", name: "Example Publisher" }] }),
             contact: z.object({ name: z.string().optional(), email: z.string().optional() }).optional(),
           }),
@@ -882,11 +1215,46 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
+  path: "/api/properties/hosted/{domain}/claim",
+  operationId: "claimHostedPropertyDomain",
+  summary: "Claim a domain for bind-on-verify",
+  description:
+    "Issue a pending domain claim for the caller's organization and return a claim-specific `authoritative_location` URL (`…/adagents.json?adcp_claim=<token>`). The caller places that single pointer at their own origin `/.well-known/adagents.json`; a subsequent verify-origin reads the token and binds the domain to the caller's org. The token is the per-account artifact that proves WHICH account owns the domain — a plain domain-keyed pointer proves only that the origin endorses AAO hosting, not who the owner is.\n\nThe community write surface stays open; this does not gate writes — it establishes ownership on successful verification. Refused with 409 only when the domain is already verified and locked to a different owner.",
+  tags: ["Property Resolution"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      domain: z.string().openapi({ example: "examplepub.com" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Claim issued",
+      content: {
+        "application/json": {
+          schema: z.object({
+            success: z.literal(true),
+            domain: z.string(),
+            authoritative_location: z.string(),
+            instructions: z.string(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid domain", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Caller is not a member of any organization", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Domain already verified and locked to another owner", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
   path: "/api/properties/hosted/{domain}/verify-origin",
   operationId: "verifyHostedPropertyOrigin",
   summary: "Verify AAO-hosted publisher origin",
   description:
-    "Trigger origin verification for an AAO-hosted publisher: fetches the publisher's own `/.well-known/adagents.json` and checks for an `authoritative_location` field pointing at the AAO-hosted URL. On success, promotes `agent_publisher_authorizations` rows from `source='aao_hosted'` to `source='adagents_json'` for the manifest's authorized agents — buyers reading the registry then see them as origin-attested.\n\nRequires authentication and either AAO admin OR org-membership matching the hosted property's owner. Fail-closed on NULL ownership.\n\nFailure classification:\n- `not_found`: publisher origin returned 404 (permanent — demotes if previously verified).\n- `invalid_json` / `no_authoritative_location` / `authoritative_location_mismatch`: publisher origin returned a parseable response that doesn't satisfy the spec stub pattern (permanent — demotes).\n- `unresolvable`: DNS NXDOMAIN, private IP, or non-http scheme (permanent — demotes).\n- `transient`: 5xx / 429 / 3xx / network timeout (leaves persisted state alone, stamps `origin_last_checked_at`).",
+    "Trigger origin verification for an AAO-hosted publisher: fetches the publisher's own `/.well-known/adagents.json` and checks for an `authoritative_location` field pointing at the AAO-hosted URL. On success, promotes `agent_publisher_authorizations` rows from `source='aao_hosted'` to `source='adagents_json'` for the manifest's authorized agents — buyers reading the registry then see them as origin-attested.\n\nBind-on-verify: when the pointer carries an `adcp_claim` token (see the claim endpoint), a successful verification binds the domain to that claim's organization and returns `bound_org_id`. Binding is driven by which token the origin pointer carries, never by who triggers verification, so any authenticated caller may trigger it and a squatter cannot bind a domain they don't control. An existing verified owner is never overwritten.\n\nFailure classification:\n- `not_found`: publisher origin returned 404 (permanent — demotes if previously verified).\n- `invalid_json` / `no_authoritative_location` / `authoritative_location_mismatch`: publisher origin returned a parseable response that doesn't satisfy the spec stub pattern (permanent — demotes).\n- `unresolvable`: DNS NXDOMAIN, private IP, or non-http scheme (permanent — demotes).\n- `transient`: 5xx / 429 / 3xx / network timeout (leaves persisted state alone, stamps `origin_last_checked_at`).",
   tags: ["Property Resolution"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -912,13 +1280,13 @@ registry.registerPath({
             ]),
             checked_at: z.string(),
             detail: z.string().optional(),
+            bound_org_id: z.string().optional(),
           }),
         },
       },
     },
     400: { description: "Invalid domain", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
-    403: { description: "Caller does not own this hosted property (and is not an AAO admin)", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "No hosted property for this domain", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -984,7 +1352,7 @@ registry.registerPath({
   summary: "List agents",
   description:
     "List all agents in the registry. Optionally enrich with health checks, capabilities, and property summaries via query parameters. " +
-    "Measurement-vendor filters (`metric_id`, `accreditation`, `q`) imply `type=measurement` when `type` is unset; an explicit `type` other than `measurement` returns 400.",
+    "Measurement-vendor filters (`metric_id`, `accreditation`, `q`) imply `type=measurement`. Canonical creative-capability filters (`format_kind`, `publisher_domain`, `format_option_id`, `capability_id`, `creative_operation`) match any endpoint exposing that creative surface, including mixed sales/creative agents; add an explicit `type` only to narrow by primary registry classification.",
   tags: ["Agent Discovery"],
   request: {
     query: z.object({
@@ -994,16 +1362,38 @@ registry.registerPath({
       properties: z.enum(["true"]).optional(),
       compliance: z.enum(["true"]).optional(),
       metric_id: z.union([z.string(), z.array(z.string())]).optional().openapi({
-        description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable (each value is OR'd within the param, AND'd with other filters). Implies `type=measurement`.",
+        description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable; multiple values are AND'd (vendor must carry all named metrics). When combined with `accreditation`, a cross-product AND applies — each (metric_id, accreditation) pair must be covered by the same metrics element. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`.",
         example: "attention_units",
       }),
       accreditation: z.union([z.string(), z.array(z.string())]).optional().openapi({
-        description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response).",
+        description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable; multiple values are AND'd. When combined with `metric_id`, a cross-product AND applies — see `metric_id` description. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response).",
         example: "MRC",
       }),
       q: z.string().max(64).optional().openapi({
         description: "Measurement-vendor filter: case-insensitive substring match against `measurement.metrics[].metric_id`. v1 scope: metric_id only (description/standard search is a follow-up). Max 64 chars; SQL wildcard characters are escaped. Implies `type=measurement`.",
         example: "attention",
+      }),
+      format_kind: z.union([z.string(), z.array(z.string())]).optional().openapi({
+        description: "Canonical creative-capability filter: exact match on creative.supported_formats[].format.format_kind. Repeatable with OR semantics. Matches standalone creative agents and mixed-role endpoints.",
+        example: "video_hosted",
+      }),
+      publisher_domain: z.string().optional().openapi({
+        description: "Canonical creative-capability filter: exact publisher_domain on the same supported-format entry. Pair with format_option_id to find endpoints claiming an exact publisher format.",
+        example: "shorts.streamhaus.example",
+      }),
+      format_option_id: z.string().optional().openapi({
+        description: "Canonical creative-capability filter: exact publisher format_option_id on the same supported-format entry.",
+        example: "spotlight_video",
+      }),
+      capability_id: z.string().optional().openapi({
+        description: "Canonical creative-capability filter: exact endpoint-local creative.supported_formats[].capability_id.",
+      }),
+      creative_operation: z.union([
+        z.enum(["build", "validate", "preview"]),
+        z.array(z.enum(["build", "validate", "preview"])),
+      ]).optional().openapi({
+        description: "Canonical creative-capability filter: required supported operation on the same format entry. Repeatable with OR semantics.",
+        example: "build",
       }),
       verification_mode: z.array(z.enum(["spec", "live"])).optional().openapi({
         description:
@@ -1262,6 +1652,7 @@ registry.registerPath({
   request: {
     query: z.object({
       domain: z.string().openapi({ example: "voxmedia.com" }),
+      include: z.literal("placements").optional().openapi({ description: "Set to placements to include eligibility-oriented placement summaries with resolved canonical format options." }),
     }),
   },
   responses: {
@@ -1502,6 +1893,105 @@ registry.registerPath({
 // Community Mirrors
 registry.registerPath({
   method: "get",
+  path: "/api/registry/mirror-proposals",
+  operationId: "listCommunityMirrorProposals",
+  summary: "List community mirror proposals",
+  description:
+    "List the caller's own community-mirror proposals. Registry moderators and AgenticAdvertising.org administrators see the review queue and may filter by status; their default is `pending`.",
+  tags: ["Community Mirrors"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    query: z.object({
+      status: z.enum(["pending", "approved", "rejected"]).optional(),
+      review_queue: z.enum(["true", "false"]).optional().openapi({
+        description: "Set to `true` for the cross-organization moderator queue; non-moderators receive 403.",
+      }),
+      limit: z.number().int().max(50).optional(),
+      offset: z.number().int().optional(),
+    }),
+  },
+  responses: {
+    200: { description: "Community mirror proposal list", content: { "application/json": { schema: CommunityMirrorProposalListResponseSchema } } },
+    400: { description: "Invalid status", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Moderator access required for the review queue", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
+    500: { description: "Failed to list proposals", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/mirror-proposals/{id}",
+  operationId: "getCommunityMirrorProposal",
+  summary: "Get community mirror proposal",
+  description:
+    "Fetch a proposal owned by the caller. Registry moderators and AgenticAdvertising.org administrators may fetch any proposal.",
+  tags: ["Community Mirrors"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: { params: z.object({ id: z.string().uuid() }) },
+  responses: {
+    200: { description: "Community mirror proposal", content: { "application/json": { schema: CommunityMirrorProposalGetResponseSchema } } },
+    400: { description: "Invalid proposal identifier", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Proposal not found or not visible to the caller", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
+    500: { description: "Failed to read proposal", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/mirror-proposals/{id}/approve",
+  operationId: "approveCommunityMirrorProposal",
+  summary: "Approve community mirror proposal",
+  description:
+    "Approve and atomically publish a pending proposal. Requires a registry moderator or AgenticAdvertising.org administrator.",
+  tags: ["Community Mirrors"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: { required: true, content: { "application/json": { schema: CommunityMirrorProposalReviewRequestSchema } } },
+  },
+  responses: {
+    200: { description: "Proposal approved and mirror published", content: { "application/json": { schema: CommunityMirrorProposalApprovalResponseSchema } } },
+    400: { description: "Invalid identifier, review body, or stale schema conformance", content: { "application/json": { schema: CommunityMirrorPublishErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Reviewer role required", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Proposal not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Proposal changed after review, its base mirror is stale, or it was already reviewed", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
+    500: { description: "Failed to approve proposal", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/mirror-proposals/{id}/reject",
+  operationId: "rejectCommunityMirrorProposal",
+  summary: "Reject community mirror proposal",
+  description:
+    "Reject a pending proposal with reviewer notes. Requires a registry moderator or AgenticAdvertising.org administrator.",
+  tags: ["Community Mirrors"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+    body: { required: true, content: { "application/json": { schema: CommunityMirrorProposalRejectRequestSchema } } },
+  },
+  responses: {
+    200: { description: "Proposal rejected", content: { "application/json": { schema: CommunityMirrorProposalDecisionResponseSchema } } },
+    400: { description: "Invalid identifier or review body", content: { "application/json": { schema: CommunityMirrorPublishErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Reviewer role required", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Proposal not found", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Proposal changed after review or was already reviewed", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
+    500: { description: "Failed to reject proposal", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
   path: "/api/registry/mirrors",
   operationId: "listCommunityMirrors",
   summary: "List community mirrors",
@@ -1554,9 +2044,9 @@ registry.registerPath({
   method: "put",
   path: "/api/registry/mirrors/{platform}",
   operationId: "publishCommunityMirror",
-  summary: "Publish community mirror",
+  summary: "Publish or propose community mirror",
   description:
-    "Publish or update a catalog-only adagents.json community mirror. Requires a registry moderator or AgenticAdvertising.org admin. The service validates the assembled document against adagents.json, forces `authorized_agents: []`, regenerates `$schema` and `last_updated`, and updates derived publisher-domain catalog rows.",
+    "Submit a catalog-only adagents.json community mirror. Registry moderators and AgenticAdvertising.org administrators publish immediately; other authenticated organization callers create or refresh a pending proposal and receive HTTP 202. Contributor proposals are limited to 1 MiB and 2,000 catalog items. The service validates the assembled document against adagents.json, forces `authorized_agents: []`, and regenerates `$schema` and `last_updated`.",
   tags: ["Community Mirrors"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -1577,9 +2067,11 @@ registry.registerPath({
   },
   responses: {
     200: { description: "Community mirror published", content: { "application/json": { schema: CommunityMirrorPublishResponseSchema } } },
+    202: { description: "Community mirror proposal accepted for review", content: { "application/json": { schema: CommunityMirrorProposalSubmissionResponseSchema } } },
     400: { description: "Invalid platform, request body, or adagents.json conformance failure", content: { "application/json": { schema: CommunityMirrorPublishErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
-    403: { description: "Only registry moderators or AgenticAdvertising.org admins can manage community mirrors", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Organization context required for community proposals", content: { "application/json": { schema: ErrorSchema } } },
+    413: { description: "Proposal body or catalog item count exceeds the contributor limit", content: { "application/json": { schema: ErrorSchema } } },
     429: { description: "Rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
     500: { description: "Failed to publish community mirror", content: { "application/json": { schema: ErrorSchema } } },
   },
@@ -1680,12 +2172,12 @@ registry.registerPath({
   method: "get",
   path: "/api/public/agent-formats",
   operationId: "getAgentFormats",
-  summary: "Get agent formats",
-  description: "Fetch creative formats from a creative agent.",
+  summary: "Get creative-agent format capabilities",
+  description: "Fetch get_adcp_capabilities creative.supported_formats[] from a creative agent.",
   tags: ["Agent Probing"],
   request: { query: z.object({ url: z.string() }) },
   responses: {
-    200: { description: "Creative formats", content: { "application/json": { schema: z.object({ success: z.boolean(), formats: z.array(z.unknown()) }) } } },
+    200: { description: "Canonical creative capabilities", content: { "application/json": { schema: z.object({ success: z.boolean(), formats: z.array(z.unknown()) }) } } },
   },
 });
 
@@ -1903,13 +2395,244 @@ registry.registerPath({
 });
 
 // Change Feed & Sync
+const RegistryFeedFreshnessSchema = z.object({
+  generated_at: z.string().datetime().openapi({
+    description: "Server timestamp when this feed page was generated.",
+  }),
+  latest_event_created_at: z.string().datetime().nullable().openapi({
+    description: "Newest event creation timestamp currently visible in the feed for the requested type filter. Null when no matching event exists inside retention.",
+  }),
+  lag_seconds: z.number().int().nonnegative().nullable().openapi({
+    description: "Seconds between generated_at and latest_event_created_at. Null when no matching event exists.",
+  }),
+  retention_days: z.number().int().positive().openapi({
+    description: "Number of days the registry retains feed cursors and events.",
+  }),
+});
+
+// --- Feed event payloads, typed per event family ---------------------------
+// The change feed carries one `payload` shape per event family. Typing them
+// (rather than an opaque object) lets consumers route on `publisher_domain` /
+// `agent_url` without hand-casting. Fields that appear on only some members of
+// a family (e.g. `*.merged` carries `alias_rid`/`canonical_rid` in place of
+// `identifiers`) are optional on the family schema.
+
+const ComplianceTrackStatusSchema = z.enum(["pass", "fail", "partial", "skip", "silent", "warning", "unknown", "skipped"]);
+
+const ComplianceStoryboardStatusSchema = z
+  .object({
+    storyboard_id: z.string(),
+    status: z.string(),
+    steps_passed: z.number().int().nonnegative().optional(),
+    steps_total: z.number().int().nonnegative().optional(),
+  })
+  .passthrough();
+
+const ChangedFieldsSchema = z.array(z.string()).min(1);
+
+const AgentEventPayloadSchema = z
+  .object({
+    agent_url: z.string().openapi({ description: "Canonical agent URL; the routing key for agent.* events (agents span many publishers)." }),
+    name: z.string().optional(),
+    type: z.string().optional(),
+    channels: z.array(z.string()).optional(),
+    property_types: z.array(z.string()).optional(),
+    markets: z.array(z.string()).optional(),
+    categories: z.array(z.string()).optional(),
+    category_taxonomy: z.string().nullable().optional(),
+    tags: z.array(z.string()).optional(),
+    delivery_types: z.array(z.string()).optional(),
+    format_ids: z.array(z.string()).optional().openapi({ description: "Deprecated 3.x named-format profile projection." }),
+    format_kinds: z.array(z.string()).optional(),
+    property_count: z.number().int().optional(),
+    publisher_count: z.number().int().optional(),
+    has_tmp: z.boolean().optional(),
+    updated_at: z.string().optional(),
+    changed_fields: ChangedFieldsSchema.optional(),
+    inventory_profile: z.record(z.string(), z.unknown()).optional().openapi({ description: "On agent.profile_updated: the agent's refreshed inventory profile." }),
+    compliance_summary: z.record(z.string(), z.unknown()).optional(),
+    previous_status: z.string().optional().openapi({ description: "On agent.compliance_changed: prior compliance/verification status." }),
+    current_status: z.string().optional().openapi({ description: "On agent.compliance_changed: new compliance/verification status." }),
+    headline: z.string().nullable().optional().openapi({ description: "On agent.compliance_changed: human-readable summary of the compliance transition." }),
+    tracks: z.record(z.string(), ComplianceTrackStatusSchema).optional().openapi({ description: "On agent.compliance_changed: map of compliance track id to track status." }),
+    storyboards_passing: z.number().int().nonnegative().optional(),
+    storyboards_total: z.number().int().nonnegative().optional(),
+    storyboards: z.array(ComplianceStoryboardStatusSchema).optional(),
+    role: z.string().optional().openapi({ description: "On agent.verification_earned/lost: verified role affected by the badge transition." }),
+    verified_specialisms: z.array(z.string()).optional().openapi({ description: "On agent.verification_earned: specialisms covered by the earned badge." }),
+    reason: z.string().optional().openapi({ description: "On agent.verification_lost: reason the badge was revoked." }),
+    adcp_version: z.string().optional().openapi({ description: "On agent.verification_earned/lost: AdCP version the badge applies to, when known." }),
+  })
+  .passthrough()
+  .openapi("AgentEventPayload");
+
+const PropertyEventPayloadSchema = z
+  .object({
+    property_rid: z.string().optional(),
+    publisher_domain: z.string().optional().openapi({ description: "Publisher domain that owns the property; the routing key for property.* events." }),
+    identifiers: z.array(PropertyIdentifierSchema).optional(),
+    classification: z.string().optional(),
+    source: z.enum(["authoritative", "enriched", "contributed"]).optional(),
+    property: z.record(z.string(), z.unknown()).optional().openapi({ description: "Optional full post-change property object when available." }),
+    changed_fields: ChangedFieldsSchema.optional(),
+    last_resolved_at: z.string().optional().openapi({ description: "On property.stale: last successful resolution timestamp." }),
+    reactivated_at: z.string().optional().openapi({ description: "On property.reactivated: reactivation timestamp when available." }),
+    reason: z.string().optional().openapi({ description: "On property.stale: reason the property aged out of active resolution." }),
+    alias_rid: z.string().optional().openapi({ description: "On property.merged: the RID merged away." }),
+    canonical_rid: z.string().optional().openapi({ description: "On property.merged: the surviving RID." }),
+    evidence: z.string().optional(),
+  })
+  .passthrough()
+  .openapi("PropertyEventPayload");
+
+const CollectionEventPayloadSchema = z
+  .object({
+    collection_rid: z.string().optional(),
+    publisher_domain: z.string().optional().openapi({ description: "Publisher domain that owns the collection; the routing key for collection.* events." }),
+    collection_id: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
+    kind: z.string().nullable().optional(),
+    source: z.string().optional(),
+    status: z.string().optional(),
+    identifiers: z
+      .array(z.object({ publisher_domain: z.string(), type: z.string(), value: z.string() }))
+      .optional()
+      .openapi({ description: "Distribution identifiers; the per-identifier publisher_domain (e.g. youtube.com) is the distribution surface, distinct from the owning publisher_domain above." }),
+    collection: z.record(z.string(), z.unknown()).optional(),
+    changed_fields: ChangedFieldsSchema.optional(),
+    alias_rid: z.string().optional().openapi({ description: "On collection.merged: the RID merged away." }),
+    canonical_rid: z.string().optional().openapi({ description: "On collection.merged: the surviving RID." }),
+    evidence: z.string().optional(),
+  })
+  .passthrough()
+  .openapi("CollectionEventPayload");
+
+const AuthorizationEventPayloadSchema = z
+  .object({
+    id: z.string().uuid().optional().openapi({ description: "Registry authorization row id when the event is backed by a materialized effective authorization row." }),
+    agent_url: z.string(),
+    agent_url_canonical: z.string().optional().openapi({ description: "Registry-canonicalized form of agent_url for equality checks." }),
+    publisher_domain: z.string().openapi({ description: "Publisher domain the authorization applies to; the routing key for authorization.* events." }),
+    authorization_type: z.string().optional().openapi({ description: "Present on authorization.granted; authorization.revoked carries only agent_url + publisher_domain." }),
+    authorized_for: z.string().nullable().optional(),
+    property_ids: z.array(z.string()).optional(),
+    property_tags: z.array(z.string()).optional(),
+    properties: z.array(z.record(z.string(), z.unknown())).optional(),
+    publisher_properties: z.array(z.record(z.string(), z.unknown())).optional(),
+    property_rid: z.string().nullable().optional().openapi({ description: "Catalog property_rid for materialized per-property authorization rows. Null for publisher-wide rows." }),
+    property_id_slug: z.string().nullable().optional().openapi({ description: "Publisher-local property id for materialized per-property authorization rows." }),
+    placement_ids: z.array(z.string()).optional(),
+    placement_tags: z.array(z.string()).optional(),
+    collections: z
+      .array(z.object({ publisher_domain: z.string(), collection_ids: z.array(z.string()).min(1) }).passthrough())
+      .optional(),
+    countries: z.array(z.string()).optional(),
+    delegation_type: z.string().optional(),
+    exclusive: z.boolean().optional(),
+    effective_from: z.string().optional(),
+    effective_until: z.string().optional(),
+    signing_keys: z.array(z.record(z.string(), z.unknown())).optional(),
+    evidence: z.string().optional(),
+    disputed: z.boolean().optional(),
+    created_by: z.string().nullable().optional(),
+    expires_at: z.string().nullable().optional(),
+    created_at: z.string().nullable().optional(),
+    updated_at: z.string().nullable().optional(),
+    override_applied: z.boolean().optional(),
+    override_reason: z.string().nullable().optional(),
+  })
+  .passthrough()
+  .openapi("AuthorizationEventPayload");
+
+const PublisherEventPayloadSchema = z
+  .object({
+    publisher_domain: z.string().optional().openapi({ description: "Publisher domain whose adagents.json was discovered/changed; the routing key for publisher.* events." }),
+    domain: z.string().optional().openapi({ description: "Legacy alias for publisher_domain retained for early feed examples." }),
+    properties_added: z.number().int().nonnegative().optional(),
+    properties_removed: z.number().int().nonnegative().optional(),
+    agents_added: z.array(z.string()).optional(),
+    agents_removed: z.array(z.string()).optional(),
+    agent_count: z.number().int().optional(),
+    property_count: z.number().int().optional(),
+    collection_count: z.number().int().optional(),
+    format_count: z.number().int().nonnegative().optional().openapi({ description: "Number of top-level formats[] declarations after the revision." }),
+    placement_count: z.number().int().nonnegative().optional().openapi({ description: "Number of top-level placements[] declarations after the revision." }),
+    changed_fields: z.array(z.string()).min(1).optional().openapi({ description: "Semantic top-level adagents.json fields changed by this revision, including formats or placements. Present on newly emitted 3.2 change events." }),
+    discovery_method: z.string().optional(),
+    manager_domain: z.string().nullable().optional(),
+    source: z.string().optional(),
+  })
+  .passthrough()
+  .openapi("PublisherEventPayload");
+
+registry.register(
+  "BrandEventPayload",
+  z.object({
+    domain: z.string().optional().openapi({
+      description: "Brand domain; brand.* events are identified by entity_id (the brand) and carry hierarchy context here.",
+    }),
+    chain: z
+      .array(z.record(z.string(), z.unknown()))
+      .optional()
+      .openapi({ description: "On brand.resolved/hierarchy_updated: the resolved brand chain (root → leaf)." }),
+    ancestor_domains: z.array(z.string()).optional(),
+    domains: z.array(z.string()).optional(),
+  }),
+);
+
+// One arm per event_type, discriminated on `event_type`. Each arm ties the
+// literal type to its family payload so consumers narrow `payload` by switching
+// on `event_type`.
+const feedEventArm = <T extends string>(eventType: T, payload: z.ZodTypeAny) =>
+  z.object({
+    event_id: z.string().uuid(),
+    event_type: z.literal(eventType),
+    entity_type: z.string(),
+    entity_id: z.string(),
+    payload,
+    actor: z.string(),
+    created_at: z.string().datetime(),
+  });
+
+const RegistryFeedEventSchema = z
+  .discriminatedUnion("event_type", [
+    feedEventArm("agent.discovered", AgentEventPayloadSchema),
+    feedEventArm("agent.removed", AgentEventPayloadSchema),
+    feedEventArm("agent.profile_updated", AgentEventPayloadSchema),
+    feedEventArm("agent.compliance_changed", AgentEventPayloadSchema),
+    feedEventArm("agent.verification_earned", AgentEventPayloadSchema),
+    feedEventArm("agent.verification_lost", AgentEventPayloadSchema),
+    feedEventArm("property.created", PropertyEventPayloadSchema),
+    feedEventArm("property.updated", PropertyEventPayloadSchema),
+    feedEventArm("property.merged", PropertyEventPayloadSchema),
+    feedEventArm("property.stale", PropertyEventPayloadSchema),
+    feedEventArm("property.reactivated", PropertyEventPayloadSchema),
+    feedEventArm("collection.created", CollectionEventPayloadSchema),
+    feedEventArm("collection.updated", CollectionEventPayloadSchema),
+    feedEventArm("collection.merged", CollectionEventPayloadSchema),
+    feedEventArm("collection.removed", CollectionEventPayloadSchema),
+    feedEventArm("authorization.granted", AuthorizationEventPayloadSchema),
+    feedEventArm("authorization.revoked", AuthorizationEventPayloadSchema),
+    feedEventArm("authorization.modified", AuthorizationEventPayloadSchema),
+    feedEventArm("publisher.adagents_changed", PublisherEventPayloadSchema),
+    feedEventArm("publisher.adagents_discovered", PublisherEventPayloadSchema),
+  ])
+  .openapi("RegistryFeedEvent");
+
+const RegistryFeedPageSchema = z.object({
+  events: z.array(RegistryFeedEventSchema),
+  cursor: z.string().uuid().nullable().openapi({ description: "Pass as cursor in the next request to continue polling" }),
+  has_more: z.boolean(),
+  freshness: RegistryFeedFreshnessSchema,
+});
+
 registry.registerPath({
   method: "get",
   path: "/api/registry/feed",
   operationId: "getRegistryFeed",
   summary: "Registry change feed",
   description:
-    "Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days.\n\nType filtering supports glob patterns: `property.*` matches `property.created`, `property.updated`, etc.",
+    "Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days. The `freshness` object reports when the response was generated, the newest matching event currently visible to the feed, and the resulting feed lag. `publisher.adagents_changed` covers semantic changes in every top-level catalog field, including formats-only and placements-only revisions; new 3.2 events identify them in `payload.changed_fields`.\n\nType filtering supports glob patterns: `property.*` matches `property.created`, `property.updated`, etc.",
   tags: ["Change Feed"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -1924,19 +2647,7 @@ registry.registerPath({
       description: "Feed page",
       content: {
         "application/json": {
-          schema: z.object({
-            events: z.array(z.object({
-              event_id: z.string().uuid(),
-              event_type: z.string().openapi({ example: "property.created" }),
-              entity_type: z.string().openapi({ example: "property" }),
-              entity_id: z.string(),
-              payload: z.record(z.string(), z.unknown()),
-              actor: z.string(),
-              created_at: z.string().datetime(),
-            })),
-            cursor: z.string().uuid().nullable().openapi({ description: "Pass as cursor in the next request to continue polling" }),
-            has_more: z.boolean(),
-          }),
+          schema: RegistryFeedPageSchema,
         },
       },
     },
@@ -1953,6 +2664,40 @@ registry.registerPath({
         },
       },
     },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/feed/stream",
+  operationId: "streamRegistryFeed",
+  summary: "Registry change feed stream",
+  description:
+    "Subscribe to registry feed pages over Server-Sent Events. This is a push-friendly transport for the same cursor contract as `/api/registry/feed`: clients still persist `cursor`, apply only feed events, and recover from `cursor_expired` by re-bootstrapping. The stream emits `feed` events containing a full feed page, `heartbeat` events while caught up, and `error` before closing when the cursor expires or the server cannot query the feed.",
+  tags: ["Change Feed"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    query: z.object({
+      cursor: z.string().uuid().optional().openapi({ description: "Resume after this event ID" }),
+      types: z.string().optional().openapi({ description: "Comma-separated event type filters with glob support (e.g. property.*)", example: "authorization.*,publisher.adagents_changed" }),
+      limit: z.coerce.number().int().min(1).max(10000).optional().openapi({ description: "Max events per SSE feed page (default 100, max 10,000)" }),
+      poll_interval_seconds: z.coerce.number().int().min(5).max(60).optional().openapi({ description: "Server-side interval while caught up (default 15 seconds). Backlog pages are sent without waiting." }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "SSE stream. `event: feed` data validates as a registry feed page.",
+      content: {
+        "text/event-stream": {
+          schema: z.string().openapi({
+            description: "Server-Sent Events stream. `feed` events carry JSON matching the RegistryFeedPage schema; `heartbeat` events carry `{ generated_at, cursor }`.",
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid cursor format, type filter, limit, or poll interval", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    410: { description: "Initial cursor expired", content: { "application/json": { schema: z.object({ error: z.literal("cursor_expired"), message: z.string() }) } } },
   },
 });
 
@@ -2123,7 +2868,7 @@ registry.registerPath({
               categories: z.array(z.string()),
               tags: z.array(z.string()),
               delivery_types: z.array(z.string()),
-              format_ids: z.array(z.unknown()).openapi({ description: "Creative format identifiers supported by this agent" }),
+              format_kinds: z.array(z.string()).openapi({ description: "Canonical format kinds present in this agent's indexed inventory profile" }),
               property_count: z.number().int(),
               publisher_count: z.number().int(),
               has_tmp: z.boolean(),
@@ -2866,7 +3611,7 @@ registry.registerPath({
               ran: z.boolean().openapi({ description: "True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed." }),
               run_id: z.string().optional().openapi({ description: "Compliance run id written by this refresh. Use with /compliance/diagnostics?run_id=... to inspect failing-step wire evidence." }),
               test_session_id: z.string().optional().openapi({ description: "Fresh test session id used for the compliance run. Useful when matching seller-side logs to the refresh." }),
-              requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.0, 3.1-rc, or 3.1-beta. Present when `ran` is true." }),
+              requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta. Present when `ran` is true." }),
               adcp_version: z.string().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the run, e.g. 3.0.12 or 3.1.0-beta.7. Present when `ran` is true." }),
               badge_eligible: z.boolean().optional().openapi({ description: "True when this run can update public badge state." }),
               badge_eligible_adcp_versions: z.array(z.string()).optional().openapi({ description: "Public badge versions this run can issue, e.g. ['3.0']." }),
@@ -2989,7 +3734,7 @@ registry.registerPath({
             client_id: z.string().max(2048).openapi({ description: "OAuth client ID. May be a `$ENV:VAR_NAME` reference." }),
             client_secret: z.string().max(8192).openapi({ description: "OAuth client secret. May be a `$ENV:VAR_NAME` reference. Stored encrypted at rest." }),
             scope: z.string().max(1024).optional().openapi({ description: "Space-separated OAuth scope values." }),
-            resource: z.string().max(2048).optional().openapi({ description: "RFC 8707 resource indicator." }),
+            resource: z.union([z.string().max(2048), z.array(z.string().max(2048)).min(1).max(8)]).optional().openapi({ description: 'RFC 8707 resource indicator. Accepts a single URI string or an array of 1–8 URI strings for multi-resource authorization servers (Keycloak strict, AWS Cognito multi-RS).' }),
             audience: z.string().max(2048).optional().openapi({ description: "Audience parameter for audience-validating authorization servers." }),
             auth_method: z.enum(["basic", "body"]).optional().openapi({ description: "Client-credentials placement: basic (HTTP Basic header, RFC 6749 §2.3.1 preferred) or body (form fields). SDK default is basic." }),
           }),
@@ -3163,7 +3908,7 @@ registry.registerPath({
   request: {
     query: z.object({
       category: z.string().optional().openapi({ description: "Filter by storyboard category" }),
-      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.0, 3.1-rc, or 3.1-beta" }),
+      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta" }),
     }),
   },
   responses: {
@@ -3197,7 +3942,7 @@ registry.registerPath({
       id: z.string().openapi({ description: "Storyboard ID" }),
     }),
     query: z.object({
-      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.0, 3.1-rc, or 3.1-beta" }),
+      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta" }),
     }),
   },
   responses: {
@@ -3267,9 +4012,21 @@ registry.registerPath({
           schema: z.object({
             domain: z.string().openapi({ example: "acmecorp.com" }),
             brand_name: z.string(),
-            brand_json: z.record(z.string(), z.any()).optional().openapi({ description: "Optional full brand.json draft to host in the registry" }),
-            logo_url: z.string().optional(),
-            brand_color: z.string().optional(),
+            brand_json: z.record(z.string(), z.any()).optional().openapi({
+              description: "Optional full brand.json draft to host in the registry. Every recognized logo URL must be an absolute HTTPS URL of at most 2048 characters without userinfo credentials, backslashes, or markup-significant characters. The primary brand color must use #RRGGBB format.",
+            }),
+            logo_url: z.string()
+              .url()
+              .max(BRAND_LOGO_URL_MAX_LENGTH)
+              .refine(value => normalizeBrandLogoUrl(value) !== null, "Logo URL must be an absolute HTTPS URL without credentials")
+              .optional()
+              .openapi({
+                description: "Absolute HTTPS URL for the brand logo. Userinfo credentials, backslashes, and markup-significant characters are not allowed.",
+                example: "https://cdn.example.com/brand/logo.svg",
+              }),
+            brand_color: z.string()
+              .regex(BRAND_COLOR_PATTERN, "Brand color must use #RRGGBB format")
+              .optional(),
           }),
         },
       },
@@ -3455,7 +4212,7 @@ registry.registerPath({
       storyboardId: z.string(),
     }),
     query: z.object({
-      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.0, 3.1-rc, or 3.1-beta" }),
+      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta" }),
     }),
   },
   responses: {
@@ -3488,6 +4245,7 @@ const StoryboardRunStatusResponseSchema = z.object({
   first_failed_step_title: z.string().nullable(),
   first_failed_step_task: z.string().nullable(),
   first_failure_message: z.string().nullable(),
+  first_failure_validations: z.array(z.any()),
 });
 
 const StoryboardRunDiagnosticResponseSchema = z.object({
@@ -3738,17 +4496,22 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  router.get("/brands/resolve", async (req, res) => {
+  router.get("/brands/resolve", registryReadRateLimiter, async (req, res) => {
     try {
-      const domain = req.query.domain as string;
+      const domain = typeof req.query.domain === 'string'
+        ? req.query.domain.trim().toLowerCase()
+        : '';
       const fresh = req.query.fresh === "true";
-      if (!domain) {
-        return res.status(400).json({ error: "domain parameter required" });
+      if (!isValidDomain(domain)) {
+        return res.status(400).json({ error: "Invalid domain format" });
       }
 
-      const resolved = await brandManager.resolveBrand(domain, { skipCache: fresh });
+      const resolution = await brandManager.resolveBrandWithDiagnostics(domain, { skipCache: fresh });
+      const resolved = resolution.brand;
+      const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
+      // Report why this request fell back, from this request's own attempt.
+      const liveValidation = fresh && !resolved ? resolution.last_attempt : undefined;
       if (!resolved) {
-        const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
         // Hide orphaned manifests and explicitly non-public rows. The manifest
         // is preserved server-side for adoption-at-claim-time but must not
         // surface on public read paths until the next claim is applied.
@@ -3756,19 +4519,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           registryRequestsDb
             .markResolved("brand", domain, discovered.canonical_domain || discovered.domain)
             .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-          return res.json({
-            canonical_id: discovered.canonical_domain || discovered.domain,
-            canonical_domain: discovered.canonical_domain || discovered.domain,
-            brand_name: discovered.brand_name,
-            source: discovered.source_type,
-            brand_manifest: stripLegacyBrandContext(discovered.brand_manifest),
-          });
+          return res.json(storedBrandResolutionResponse(
+            discovered,
+            liveValidation ? serializeBrandValidation(liveValidation) : undefined,
+          ));
         }
         registryRequestsDb
           .trackRequest("brand", domain)
           .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
 
-        const validation = await brandManager.validateDomain(domain);
+        const validation = liveValidation ?? await brandManager.validateDomain(domain);
         return res.status(404).json({
           error: "Brand not found",
           domain,
@@ -3776,10 +4536,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         });
       }
 
+      const selected = selectResolvedBrandResponse(resolved, discovered, fresh);
       registryRequestsDb
-        .markResolved("brand", domain, resolved.canonical_domain)
+        .markResolved("brand", domain, selected.canonical_domain)
         .catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-      return res.json(resolved);
+      return res.json(selected);
     } catch (error) {
       logger.error({ error }, "Failed to resolve brand");
       return res.status(500).json({ error: "Failed to resolve brand" });
@@ -3847,18 +4608,20 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     return enriched;
   }
 
-  router.get("/brands/brand-json", async (req, res) => {
+  router.get("/brands/brand-json", registryReadRateLimiter, async (req, res) => {
     try {
       const domain = ((req.query.domain as string) || "").toLowerCase();
       const fresh = req.query.fresh === "true";
-      const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
-      if (!domain || !domainPattern.test(domain)) {
+      if (!isValidDomain(domain)) {
         return res.status(400).json({ error: "Invalid domain format" });
       }
+
+      let liveValidation: Awaited<ReturnType<typeof brandManager.validateDomain>> | undefined;
 
       // If fresh=true, fetch live from external domain and update DB cache
       if (fresh) {
         const result = await brandManager.validateDomain(domain, { skipCache: true });
+        liveValidation = result;
         if (result.valid && result.raw_data) {
           const enrichedData = await enrichBrandDataWithVerification(result.raw_data);
           return res.json({
@@ -3867,6 +4630,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             variant: result.variant,
             data: enrichedData,
             warnings: result.warnings,
+            promoted_from_schema: result.promoted_from_schema,
           });
         }
         // Live fetch failed — fall through to DB cache
@@ -3879,12 +4643,22 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         const data = { name: brand.brand_name || domain, ...manifest };
         const enrichedData = await enrichBrandDataWithVerification(data);
 
-        const variant = brand.source_type === "brand_json" ? "house_portfolio" : undefined;
+        const variant = brand.source_type === "brand_json"
+          ? storedBrandJsonVariant(manifest)
+          : undefined;
         const url = brand.source_type === "brand_json"
           ? `https://${domain}/.well-known/brand.json`
           : `https://agenticadvertising.org/brands/${domain}/brand.json`;
 
-        return res.json({ domain, url, variant, data: enrichedData });
+        return res.json({
+          domain,
+          url,
+          variant,
+          data: enrichedData,
+          ...(liveValidation ? {
+            live_brand_json: serializeBrandValidation(liveValidation),
+          } : {}),
+        });
       }
 
       // Nothing in DB — try live fetch as last resort
@@ -3897,6 +4671,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           variant: result.variant,
           data: enrichedData,
           warnings: result.warnings,
+          promoted_from_schema: result.promoted_from_schema,
         });
       }
 
@@ -3997,48 +4772,49 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  router.post("/brands/resolve/bulk", bulkResolveRateLimiter, async (req, res) => {
+  router.post("/brands/resolve/bulk", bulkResolveRateLimiter, brandBulkDomainRateLimiter, async (req, res) => {
     try {
       const { domains } = req.body;
 
       if (!Array.isArray(domains) || domains.length === 0) {
         return res.status(400).json({ error: "domains array required" });
       }
-      if (domains.length > 100) {
-        return res.status(400).json({ error: "Maximum 100 domains per request" });
+      if (domains.length > BRAND_BULK_RESOLVE_MAX_DOMAINS) {
+        return res.status(400).json({ error: `Maximum ${BRAND_BULK_RESOLVE_MAX_DOMAINS} domains per request` });
       }
-      if (!domains.every((d: unknown) => typeof d === "string" && d.length > 0)) {
-        return res.status(400).json({ error: "All domains must be non-empty strings" });
+      if (!domains.every((d: unknown) =>
+        typeof d === "string" && isValidDomain(d.trim().toLowerCase())
+      )) {
+        return res.status(400).json({ error: "All domains must be bare multi-label DNS hostnames" });
       }
 
-      const CONCURRENCY = 10;
       const results: Record<string, unknown> = {};
-      const uniqueDomains = [...new Set(domains.map((d: string) => d.toLowerCase()))];
+      const uniqueDomains = [...new Set(domains.map((d: string) => d.trim().toLowerCase()))];
 
-      for (let i = 0; i < uniqueDomains.length; i += CONCURRENCY) {
-        const batch = uniqueDomains.slice(i, i + CONCURRENCY);
+      for (let i = 0; i < uniqueDomains.length; i += BRAND_BULK_PROCESS_CONCURRENCY) {
+        const batch = uniqueDomains.slice(i, i + BRAND_BULK_PROCESS_CONCURRENCY);
         const settled = await Promise.allSettled(
           batch.map(async (domain) => {
-            const resolved = await brandManager.resolveBrand(domain);
+            const resolved = await brandBulkResolveSemaphore.run(
+              () => brandManager.resolveBrand(domain),
+            );
+            const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
             if (resolved) {
-              registryRequestsDb.markResolved("brand", domain, resolved.canonical_domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
-              return { domain, result: resolved };
+              const selected = selectResolvedBrandResponse(resolved, discovered, false);
+              registryRequestsDb.markResolved("brand", domain, selected.canonical_domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
+              return {
+                domain,
+                result: selected,
+              };
             }
 
-            const discovered = await brandDb.getDiscoveredBrandByDomain(domain);
             // Hide orphaned manifests and explicitly non-public rows; same
             // rationale as the single-resolve route above.
             if (discovered && !discovered.manifest_orphaned && discovered.is_public !== false) {
               registryRequestsDb.markResolved("brand", domain, discovered.canonical_domain || discovered.domain).catch((err) => logger.debug({ err }, "Registry request tracking failed"));
               return {
                 domain,
-                result: {
-                  canonical_id: discovered.canonical_domain || discovered.domain,
-                  canonical_domain: discovered.canonical_domain || discovered.domain,
-                  brand_name: discovered.brand_name,
-                  source: discovered.source_type,
-                  brand_manifest: stripLegacyBrandContext(discovered.brand_manifest),
-                },
+                result: storedBrandResolutionResponse(discovered),
               };
             }
 
@@ -4050,12 +4826,24 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         for (const outcome of settled) {
           if (outcome.status === "fulfilled") {
             results[outcome.value.domain] = outcome.value.result;
+          } else if (outcome.reason instanceof SemaphoreOverloadedError) {
+            // Shedding one domain means the process is saturated; say so rather
+            // than returning a partial map that reads as unresolvable domains.
+            throw outcome.reason;
           }
         }
       }
 
       return res.json({ results });
     } catch (error) {
+      if (error instanceof SemaphoreOverloadedError) {
+        logger.warn({ ip: req.ip }, "Brand bulk resolve shed load");
+        res.setHeader("Retry-After", "5");
+        return res.status(503).json({
+          error: "Brand resolution is busy",
+          message: "Too much resolution work is already queued. Retry shortly.",
+        });
+      }
       logger.error({ error }, "Failed to bulk resolve brands");
       return res.status(500).json({ error: "Failed to bulk resolve brands" });
     }
@@ -4402,14 +5190,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.post("/properties/save", ...saveMiddleware, async (req, res) => {
     try {
-      const { authorized_agents, properties, contact } = req.body;
+      const { properties, contact } = req.body;
       const rawDomain = req.body.publisher_domain as string;
 
       if (!rawDomain || typeof rawDomain !== "string") {
         return res.status(400).json({ error: "publisher_domain is required" });
-      }
-      if (!Array.isArray(authorized_agents)) {
-        return res.status(400).json({ error: "authorized_agents array is required" });
       }
 
       const publisher_domain = extractDomain(rawDomain);
@@ -4418,9 +5203,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(400).json({ error: "Invalid domain format" });
       }
 
+      // Identity, not authorization: a community-registry row never asserts
+      // sales authorization. The owner's origin adagents.json is the sole
+      // authorization source, so caller-supplied authorized_agents is dropped
+      // and the stored document always carries authorized_agents:[] — matching
+      // the community-mirror write path (community-mirrors.ts) and the
+      // adagents.json spec, where an empty array asserts "no sales authorization".
       const adagentsJson: Record<string, unknown> = {
         $schema: "https://adcontextprotocol.org/schemas/latest/adagents.json",
-        authorized_agents,
+        authorized_agents: [],
         properties: properties || [],
       };
       if (contact) {
@@ -4443,6 +5234,19 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             error: "Cannot edit property pending review",
             domain: publisher_domain,
           });
+        }
+
+        // Owner lock: once a domain is origin-verified and bound to an owner
+        // (bind-on-verify), only that owner may edit the record. Unverified
+        // community rows remain openly editable (the contribute-back path).
+        if (existing.origin_verified_at && existing.workos_organization_id) {
+          const callerOrgId = await resolveCallerOrgId(req);
+          if (existing.workos_organization_id !== callerOrgId) {
+            return res.status(403).json({
+              error: "Domain is locked to its verified owner; only the owner can edit this record",
+              domain: publisher_domain,
+            });
+          }
         }
 
         const { property, revision_number } = await propertyDb.editCommunityProperty(publisher_domain, {
@@ -4489,6 +5293,47 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
+  // ── Domain claim (bind-on-verify) ──────────────────────────────
+
+  // Issue a pending claim for the caller's org. Returns the claim-specific
+  // `authoritative_location` URL the caller pastes at their own origin; a later
+  // verify-origin reads the token and binds ownership. The token is the
+  // per-account artifact that proves WHICH account owns the domain — a plain
+  // domain-keyed pointer proves only that the origin endorses AAO hosting.
+  router.post("/properties/hosted/:domain/claim", ...saveMiddleware, async (req, res) => {
+    try {
+      const domain = (req.params.domain || '').toLowerCase();
+      if (!isValidDomain(domain)) {
+        return res.status(400).json({ error: 'Invalid domain' });
+      }
+      const callerOrgId = await resolveCallerOrgId(req);
+      if (!callerOrgId) {
+        return res.status(403).json({ error: 'Claiming a domain requires membership in an organization' });
+      }
+      const { token, lockedToOrgId } = await propertyDb.issueDomainClaim(domain, callerOrgId);
+      if (!token) {
+        return res.status(409).json({
+          error: 'Domain is already verified and locked to another owner',
+          domain,
+          locked_to_org_id: lockedToOrgId,
+        });
+      }
+      const authoritativeLocation = `${aaoHostedAdagentsJsonUrl(domain)}?adcp_claim=${token}`;
+      return res.json({
+        success: true,
+        domain,
+        authoritative_location: authoritativeLocation,
+        instructions:
+          `Place a JSON document at https://${domain}/.well-known/adagents.json with ` +
+          `{"authoritative_location": "${authoritativeLocation}"}, then call verify-origin. ` +
+          `Origin verification binds this domain to your organization.`,
+      });
+    } catch (error) {
+      logger.error({ error }, 'Failed to issue domain claim');
+      return res.status(500).json({ error: 'Failed to issue domain claim' });
+    }
+  });
+
   // ── Origin verification (AAO-hosted publishers) ────────────────
 
   router.post("/properties/hosted/:domain/verify-origin", ...saveMiddleware, async (req, res) => {
@@ -4501,29 +5346,27 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       if (!hosted) {
         return res.status(404).json({ error: 'No hosted property for this domain' });
       }
-      // Org-ownership check fails CLOSED on NULL ownership. The
-      // upstream `/api/properties/save` create path can leave the row
-      // with no `workos_organization_id` (community-edit pattern), and
-      // a "fail open if NULL" check would let any authenticated caller
-      // trigger verification on a squatted/unclaimed row — promoting
-      // source labels for a domain they don't actually own. Require
-      // either an explicit org match OR admin. The broader squatting
-      // risk in the create path is a separate fix (needs DNS / well-
-      // known domain-ownership challenge before write).
-      const callerOrgId = await resolveCallerOrgId(req);
-      const isAdmin = (req.user as { isAdmin?: boolean })?.isAdmin === true;
-      if (!isAdmin) {
-        if (!hosted.workos_organization_id) {
-          return res.status(403).json({
-            error: 'Hosted property has no claimed owner — origin verification requires a claimed owner or an admin trigger',
-            domain,
-          });
-        }
-        if (hosted.workos_organization_id !== callerOrgId) {
-          return res.status(403).json({ error: 'Not authorized to verify this domain' });
+      // Bind-on-verify: ownership is established by the `adcp_claim` token
+      // carried in the publisher's origin pointer, NOT by the caller. Any
+      // authenticated caller may trigger verification; the outcome binds the
+      // claim's org (or no-ops). A squatter cannot make the real origin point
+      // at their token, so they can never bind a domain they don't control.
+      const outcome = await verifyHostedPropertyOrigin({ hosted });
+      if (outcome.verified && outcome.bound_org_id) {
+        // Binding flips the row public (is_public=true, review_status=approved).
+        // Re-read and mirror that state change into the federated index so
+        // /api/registry/publisher reflects it immediately, rather than waiting
+        // for the next save. No-op when the row carries no properties.
+        const bound = await propertyDb.getHostedPropertyByDomain(domain);
+        if (bound) await syncHostedPropertyToFederatedIndex(bound);
+        // Disclose bound_org_id only to the org that bound it. Binding is
+        // token-driven, so a third party may trigger verification — but it
+        // shouldn't learn which org just bound the domain.
+        const callerOrgId = await resolveCallerOrgId(req);
+        if (outcome.bound_org_id !== callerOrgId) {
+          outcome.bound_org_id = undefined;
         }
       }
-      const outcome = await verifyHostedPropertyOrigin({ hosted });
       return res.json(outcome);
     } catch (error) {
       logger.error({ error }, 'Origin verification failed');
@@ -4855,10 +5698,49 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string" && x.length > 0);
         return [];
       };
-      const metricIds = toArray(req.query.metric_id);
-      const accreditations = toArray(req.query.accreditation);
+      // Deduplicate before limit checks so repeated values don't inflate counts.
+      const metricIds = [...new Set(toArray(req.query.metric_id))];
+      const accreditations = [...new Set(toArray(req.query.accreditation))];
       const qParam = typeof req.query.q === "string" ? req.query.q : undefined;
       const hasMeasurementFilter = metricIds.length > 0 || accreditations.length > 0 || (qParam !== undefined && qParam.length > 0);
+      const formatKinds = toArray(req.query.format_kind);
+      const creativeOperations = toArray(req.query.creative_operation);
+      const publisherDomain = typeof req.query.publisher_domain === "string" ? req.query.publisher_domain : undefined;
+      const formatOptionId = typeof req.query.format_option_id === "string" ? req.query.format_option_id : undefined;
+      const capabilityId = typeof req.query.capability_id === "string" ? req.query.capability_id : undefined;
+      const hasCreativeFilter = formatKinds.length > 0 || creativeOperations.length > 0 || Boolean(publisherDomain || formatOptionId || capabilityId);
+
+      if (hasMeasurementFilter && hasCreativeFilter) {
+        return res.status(400).json({
+          error: "measurement and creative capability filters cannot be combined",
+        });
+      }
+
+      // Per-filter and cross-product limits. No route rate-limiter exists on this
+      // endpoint, so we bound the M×N @> predicate count here to prevent
+      // inadvertent (or adversarial) query cost spikes and to stay well below
+      // PostgreSQL's 65 535 bind-parameter ceiling.
+      const METRIC_ID_LIMIT = 20;
+      const ACCREDITATION_LIMIT = 20;
+      const FILTER_PAIR_LIMIT = 100;
+      if (metricIds.length > METRIC_ID_LIMIT) {
+        return res.status(400).json({
+          error: `metric_id: too many values (${metricIds.length}); maximum is ${METRIC_ID_LIMIT}`,
+        });
+      }
+      if (accreditations.length > ACCREDITATION_LIMIT) {
+        return res.status(400).json({
+          error: `accreditation: too many values (${accreditations.length}); maximum is ${ACCREDITATION_LIMIT}`,
+        });
+      }
+      if (metricIds.length > 0 && accreditations.length > 0) {
+        const pairCount = metricIds.length * accreditations.length;
+        if (pairCount > FILTER_PAIR_LIMIT) {
+          return res.status(400).json({
+            error: `metric_id × accreditation cross-product (${metricIds.length} × ${accreditations.length} = ${pairCount}) exceeds the ${FILTER_PAIR_LIMIT}-pair limit`,
+          });
+        }
+      }
 
       if (hasMeasurementFilter) {
         if (type && type !== "measurement") {
@@ -4867,6 +5749,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           });
         }
         type = "measurement" as AgentType;
+      }
+
+      if (hasCreativeFilter) {
+        const invalidOperations = creativeOperations.filter((operation) => !["build", "validate", "preview"].includes(operation));
+        if (invalidOperations.length > 0) {
+          return res.status(400).json({
+            error: `Invalid creative_operation value(s): ${invalidOperations.join(", ")}`,
+            valid_values: ["build", "validate", "preview"],
+          });
+        }
       }
 
       // Length cap on q. Wildcards (% _) get rejected outright rather than
@@ -4924,6 +5816,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           metric_ids: metricIds,
           accreditations,
           q: qFilter,
+        });
+        federatedAgents = federatedAgents.filter((fa) => matchingUrls.has(fa.url));
+      }
+      if (hasCreativeFilter) {
+        const matchingUrls = await agentSnapshotDb.filterCreativeAgents({
+          format_kinds: formatKinds,
+          publisher_domain: publisherDomain,
+          format_option_id: formatOptionId,
+          capability_id: capabilityId,
+          operations: creativeOperations,
         });
         federatedAgents = federatedAgents.filter((fa) => matchingUrls.has(fa.url));
       }
@@ -5829,11 +6731,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
    */
   async function ensureAgentContextId(orgId: string, agentUrl: string, userId: string): Promise<string | null> {
     try {
-      let context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
+      const canonicalUrl = canonicalizeAgentUrl(agentUrl);
+      if (!canonicalUrl) return null;
+      let context = await agentContextDb.getByOrgAndUrl(orgId, canonicalUrl);
       if (!context) {
         context = await agentContextDb.create({
           organization_id: orgId,
-          agent_url: agentUrl,
+          agent_url: canonicalUrl,
           created_by: userId,
         });
       }
@@ -6060,10 +6964,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.post("/registry/agents/:encodedUrl/refresh", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -6125,7 +7030,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       let probeResult: Awaited<ReturnType<typeof crawler.refreshSingleAgent>>;
       try {
-        probeResult = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
+        probeResult = await crawler.refreshSingleAgent(agentUrl, {
+          auth: resolvedAuth,
+          ...(ownerOrgId ? { ownerOrgId } : {}),
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Probe failed';
         if (/Monitoring paused/i.test(message)) {
@@ -6231,6 +7139,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
                   declaredSpecialisms,
                   runId: run.id,
                   adcpVersions: runBadgeEligibleVersions,
+                  supportedVersions: complyResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
                 });
               } catch (badgeError) {
                 logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after manual refresh');
@@ -6354,10 +7263,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.get("/registry/agents/:encodedUrl/auth-status", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
@@ -6422,10 +7332,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.put("/registry/agents/:encodedUrl/connect", brandCreationRateLimiter, ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
@@ -6507,7 +7418,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         try {
           const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
           const resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `connect:${agentUrl}` });
-          refreshed = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
+          refreshed = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth, ownerOrgId: orgId });
         } catch (refreshErr) {
           logger.warn(
             { err: refreshErr, agentUrl },
@@ -6542,10 +7453,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     ...complianceWriteMiddleware,
     async (req, res) => {
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateAgentUrlParam(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
           return res.status(400).json({ error: "Invalid agent URL" });
         }
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required" });
         }
@@ -6591,7 +7503,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         try {
           const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
           const resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `connect-cc:${agentUrl}` });
-          refreshed = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
+          refreshed = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth, ownerOrgId: orgId });
         } catch (refreshErr) {
           logger.warn(
             { err: refreshErr, agentUrl },
@@ -6627,10 +7539,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     ...complianceWriteMiddleware,
     async (req, res) => {
       try {
-        const agentUrl = decodeURIComponent(req.params.encodedUrl);
-        if (!validateAgentUrlParam(agentUrl)) {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
           return res.status(400).json({ error: "Invalid agent URL" });
         }
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
         if (!req.user) {
           return res.status(401).json({ error: "Authentication required" });
         }
@@ -6647,7 +7560,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
         const start = Date.now();
         try {
-          await exchangeClientCredentials(creds);
+          await exchangeClientCredentials(creds, { fetch: sdkSafeFetch });
           return res.json({ ok: true, latency_ms: Date.now() - start });
         } catch (err) {
           if (err instanceof ClientCredentialsExchangeError) {
@@ -6725,10 +7638,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
   });
 
   router.get("/registry/agents/:encodedUrl/applicable-storyboards", storyboardEvalRateLimiter, ...complianceWriteMiddleware, async (req, res) => {
-    const agentUrl = decodeURIComponent(req.params.encodedUrl);
-    if (!validateAgentUrlParam(agentUrl)) {
+    const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+    if (!validateAgentUrlParam(rawAgentUrl)) {
       return res.status(400).json({ error: "Invalid agent URL" });
     }
+    const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
     if (!req.user) {
       return res.status(401).json({ error: "Authentication required" });
@@ -6742,12 +7656,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     try {
       const auth = await resolveUserAgentAuth(agentContextDb, orgId, agentUrl, logger);
       const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `test-agent:${agentUrl}` });
+      const probeAuth = authForSdkDiscoveryProbe(sdkAuth);
 
       let profile;
       try {
         const caps = await testCapabilityDiscovery(
           agentUrl,
-          { ...(sdkAuth && { auth: sdkAuth }) },
+          withSdkSafeTransport({ ...(probeAuth && { auth: probeAuth }) }),
         );
         profile = caps.profile;
 
@@ -6918,9 +7833,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         }
 
         let authProbeTask: string | undefined;
-        if (sdkAuth?.type === 'bearer' || sdkAuth?.type === 'basic') {
+        if (sdkAuth) {
           try {
-            const caps = await testCapabilityDiscovery(agentUrl, withHostedTestOptions({ auth: sdkAuth }, runTarget));
+            const caps = await testCapabilityDiscovery(
+              agentUrl,
+              withSdkSafeTransport(withHostedTestOptions({ auth: sdkAuth }, runTarget)),
+            );
             authProbeTask = hostedAuthProbeTaskForProfile(caps.profile);
           } catch (err) {
             logger.warn({ err, agentUrl }, "Could not infer hosted auth probe task for storyboard step; using default");
@@ -6935,10 +7853,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(400).json({ error: "context too large" });
         }
 
-        const result = await runStoryboardStep(agentUrl, storyboard, req.params.stepId, withHostedStoryboardRunOptions({
-          ...(sdkAuth && { auth: sdkAuth }),
-          ...(context && { context }),
-        }, runTarget, authProbeTask));
+        const result = await runStoryboardStep(
+          agentUrl,
+          storyboard,
+          req.params.stepId,
+          withSdkSafeTransport(withHostedStoryboardRunOptions({
+            ...(sdkAuth && { auth: sdkAuth }),
+            ...(context && { context }),
+          }, runTarget, authProbeTask)),
+        );
 
         if (!result.passed && isOAuthRequiredErrorMessage(result.error)) {
           const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
@@ -7083,6 +8006,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               agentUrl,
               declaredSpecialisms,
               adcpVersions: runBadgeEligibleVersions,
+              supportedVersions: complyResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
             });
           } catch (badgeError) {
             logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after storyboard-run');
@@ -7106,14 +8030,33 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           steps_total: 0,
         };
         const serializedStoryboardStatus = serializeStoryboardRunStatus(storyboardStatus);
-        const isControllerCoverageGapScenario = (scenario: { steps?: any[] }): boolean => {
+        const isRunnerApplicabilitySkip = (scenarioId: string, step: {
+          skip_reason?: string;
+          step_id?: unknown;
+          requirement?: unknown;
+        }): boolean => {
+          switch (step.skip_reason) {
+            case 'capability_unsupported':
+              return true;
+            case 'missing_test_kit_contract':
+              return scenarioId === 'idempotency/rate_limit_replay_invariant' &&
+                step.step_id === 'expect_rate_limit_not_replayed';
+            case 'requirement_unmet':
+              return step.requirement === 'webhook_receiver';
+            default:
+              return false;
+          }
+        };
+        const isControllerCoverageGapScenario = (scenario: { scenario?: unknown; steps?: any[] }): boolean => {
           const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
+          const scenarioId = typeof scenario.scenario === 'string' ? scenario.scenario : '';
           return steps.length > 0 && steps.every((step) => {
             if (!step?.skipped) return false;
             return step.skip_reason === 'peer_branch_taken' ||
               step.skip_reason === 'peer_substituted' ||
               step.skip_reason === 'missing_test_controller' ||
-              (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller');
+              (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller') ||
+              isRunnerApplicabilitySkip(scenarioId, step);
           });
         };
         const uiDiagnostics = (dbInput.step_diagnostics ?? []).map((diagnostic) => ({
@@ -7483,6 +8426,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     const rawDomain = req.query.domain as string;
     if (!rawDomain) {
       return res.status(400).json({ error: "Missing required query param: domain" });
+    }
+    const include = typeof req.query.include === 'string' ? req.query.include : undefined;
+    if (include !== undefined && include !== 'placements') {
+      return res.status(400).json({ error: "Invalid include value; expected placements" });
     }
 
     try {
@@ -7973,6 +8920,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         properties: projectedProperties,
         brand: summarizeBrandManifest(brandManifest, files.brand_json.name),
         formats: summarizeFormats(cachedAdagentsManifest, projectedProperties),
+        ...(include === 'placements' && cachedAdagentsManifest
+          ? { placements: summarizePlacements(cachedAdagentsManifest, cachedSourceType === 'community' ? 'community' : 'adagents_json') }
+          : {}),
         authorized_agents: authorizations.map(a => {
           if (skipRollup) {
             return {
@@ -8506,7 +9456,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         name: "discovery-client",
         agent_uri: url,
         protocol: "mcp",
-      });
+      }, withSdkSafeTransport({}));
 
       const agentInfo = await client.getAgentInfo();
       const tools = agentInfo.tools || [];
@@ -8526,7 +9476,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       try {
         if (agentInfo.protocol === "mcp") {
           const a2aUrl = new URL("/.well-known/agent.json", url).toString();
-          const a2aResponse = await fetch(a2aUrl, {
+          const a2aResponse = await sdkSafeFetch(a2aUrl, {
             headers: { Accept: "application/json" },
             signal: AbortSignal.timeout(3000),
           });
@@ -8542,9 +9492,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       if (agentType === "creative") {
         try {
-          const creativeClient = new CreativeAgentClient({ agentUrl: url });
-          const formats = await creativeClient.listFormats();
-          stats.format_count = formats.length;
+          const capabilityClient = new AdCPClient([{
+            id: "creative-capability-discovery",
+            name: "Creative capability discovery",
+            agent_uri: url,
+            protocol: "mcp",
+          }], withSdkSafeTransport({})).agent("creative-capability-discovery");
+          const result = await capabilityClient.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
+          const creative = (result.data as Record<string, unknown> | undefined)?.creative as Record<string, unknown> | undefined;
+          stats.format_count = Array.isArray(creative?.supported_formats) ? creative.supported_formats.length : 0;
         } catch (statsError) {
           logger.debug({ err: statsError, url }, "Failed to fetch creative formats");
           stats.format_count = 0;
@@ -8583,23 +9539,19 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
 
     try {
-      const creativeClient = new CreativeAgentClient({ agentUrl: url });
-      const formats = await creativeClient.listFormats();
+      const capabilityClient = new AdCPClient([{
+        id: "creative-capability-discovery",
+        name: "Creative capability discovery",
+        agent_uri: url,
+        protocol: "mcp",
+      }], withSdkSafeTransport({})).agent("creative-capability-discovery");
+      const result = await capabilityClient.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
+      const creative = (result.data as Record<string, unknown> | undefined)?.creative as Record<string, unknown> | undefined;
+      const formats = Array.isArray(creative?.supported_formats) ? creative.supported_formats : [];
 
       return res.json({
         success: true,
-        formats: formats.map((format) => {
-          return {
-            format_id: format.format_id,
-            name: format.name,
-            description: format.description,
-            example_url: format.example_url,
-            renders: format.renders,
-            assets: format.assets,
-            output_format_ids: format.output_format_ids,
-            agent_url: format.agent_url,
-          };
-        }),
+        formats,
       });
     } catch (error) {
       logger.warn({ err: error, url }, "Agent formats fetch failed");
@@ -8625,7 +9577,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         name: "products-discovery-client",
         agent_uri: url,
         protocol: "mcp",
-      });
+      }, withSdkSafeTransport({}));
 
       const result = await client.getProducts({ buying_mode: 'wholesale' });
       const products = result.data?.products || [];
@@ -8641,7 +9593,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           pricing_model: p.pricing_model,
           base_rate: p.base_rate,
           currency: p.currency,
-          format_ids: p.format_ids,
+          format_options: p.format_options,
           delivery_channels: p.delivery_channels,
           targeting_capabilities: p.targeting_capabilities,
         })),
@@ -8720,11 +9672,32 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       return res.status(400).json({ error: "brand_json exceeds maximum size (100KB)" });
     }
 
+    const normalizedLogoUrl = logo_url === undefined ? undefined : normalizeBrandLogoUrl(logo_url);
+    if (logo_url !== undefined && normalizedLogoUrl === null) {
+      return res.status(400).json({ error: "logo_url must be an absolute HTTPS URL without credentials" });
+    }
+    if (brand_color !== undefined && !isValidBrandColor(brand_color)) {
+      return res.status(400).json({ error: "brand_color must use #RRGGBB format" });
+    }
+
     const domain = extractDomain(rawDomain).replace(/^www\./, "");
 
     const domainPattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
     if (!domainPattern.test(domain)) {
       return res.status(400).json({ error: "Invalid domain format" });
+    }
+
+    if (brand_json !== undefined) {
+      const brandingError = validateBrandManifestBranding(domain, brand_json as Record<string, unknown>);
+      if (brandingError === "unsafe_logo") {
+        return res.status(400).json({ error: "brand_json logo URLs must be absolute HTTPS URLs without credentials" });
+      }
+      if (brandingError === "unsafe_color") {
+        return res.status(400).json({ error: "brand_json primary brand color must use #RRGGBB format" });
+      }
+      if (brandingError === "invalid_brand_data") {
+        return res.status(400).json({ error: "brand_json contains invalid brand data" });
+      }
     }
 
     try {
@@ -8772,9 +9745,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         // Otherwise build a minimal entry from the request params.
         let brandJson: Record<string, unknown>;
         const manifest = discovered?.brand_manifest as Record<string, unknown> | undefined;
+        const canAdoptDiscoveredManifest = !!(
+          manifest
+          && discovered!.review_status !== 'pending'
+          && typeof manifest.house === 'object'
+          && manifest.house !== null
+          && validateBrandManifestBranding(domain, manifest) === null
+        );
         if (brand_json) {
           brandJson = brand_json as Record<string, unknown>;
-        } else if (manifest && discovered!.review_status !== 'pending' && typeof manifest.house === 'object' && manifest.house !== null) {
+        } else if (canAdoptDiscoveredManifest) {
           brandJson = manifest;
         } else {
           const brandId = brand_name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
@@ -8783,7 +9763,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             keller_type: 'master',
             names: [{ en: brand_name }],
           };
-          if (logo_url) brandEntry.logos = [{ url: logo_url }];
+          if (normalizedLogoUrl) brandEntry.logos = [{ url: normalizedLogoUrl }];
           if (brand_color) brandEntry.colors = { primary: brand_color };
           brandJson = {
             house: { domain, name: brand_name },
@@ -9065,34 +10045,131 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
   if (config.eventsDb) {
     if (!authMiddleware) throw new Error('requireAuth middleware is required when eventsDb is provided');
     const eventsDb = config.eventsDb;
+    const VALID_FEED_TYPE = /^[a-z][a-z0-9_.]*(\*)?$/;
+    const MAX_ACTIVE_FEED_STREAMS = 100;
+    const MAX_BACKLOG_PAGES_PER_TICK = 10;
+    const BACKLOG_YIELD_MS = 100;
+    let activeFeedStreams = 0;
 
-    router.get("/registry/feed", authMiddleware, async (req, res) => {
-      try {
-        const cursor = (req.query.cursor as string) || null;
-        const typesParam = req.query.types as string | undefined;
-        const types = typesParam ? typesParam.split(',').map(t => t.trim()).filter(Boolean) : null;
-        const rawLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+    function getSingleQueryParam(value: unknown, name: string): { value?: string; error?: string } {
+      if (value == null) return {};
+      if (Array.isArray(value)) {
+        return { error: `${name} must be provided only once` };
+      }
+      if (typeof value !== "string") {
+        return { error: `${name} must be a string` };
+      }
+      return { value };
+    }
 
-        // Validate cursor format (should be a UUID if provided)
-        if (cursor && !isUuid(cursor)) {
-          return res.status(400).json({ error: "Invalid cursor format. Must be a UUID." });
-        }
+    function parseIntegerQueryParam(
+      value: unknown,
+      name: string,
+      min: number,
+      max: number,
+    ): { value?: number; error?: string } {
+      const single = getSingleQueryParam(value, name);
+      if (single.error) return { error: single.error };
+      if (single.value == null || single.value === "") return {};
+      if (!/^\d+$/.test(single.value)) {
+        return { error: `${name} must be an integer` };
+      }
+      const parsed = Number(single.value);
+      if (!Number.isSafeInteger(parsed)) {
+        return { error: `${name} must be a safe integer` };
+      }
+      if (parsed < min || parsed > max) {
+        return { error: `${name} must be between ${min} and ${max}` };
+      }
+      return { value: parsed };
+    }
 
-        if (rawLimit !== undefined && isNaN(rawLimit)) {
-          return res.status(400).json({ error: "limit must be a number" });
-        }
+    function parseRegistryFeedQuery(req: Request, options: { parsePollInterval?: boolean } = {}): {
+      cursor: string | null;
+      types: string[] | null;
+      limit?: number;
+      pollIntervalMs: number;
+      error?: string;
+    } {
+      const cursorParam = getSingleQueryParam(req.query.cursor, "cursor");
+      if (cursorParam.error) {
+        return { cursor: null, types: null, pollIntervalMs: 15_000, error: cursorParam.error };
+      }
+      const typesParamResult = getSingleQueryParam(req.query.types, "types");
+      if (typesParamResult.error) {
+        return { cursor: null, types: null, pollIntervalMs: 15_000, error: typesParamResult.error };
+      }
+      const cursor = cursorParam.value || null;
+      const typesParam = typesParamResult.value;
+      const types = typesParam ? typesParam.split(',').map(t => t.trim()).filter(Boolean) : null;
+      const limit = parseIntegerQueryParam(req.query.limit, "limit", 1, 10_000);
+      if (limit.error) {
+        return { cursor, types, pollIntervalMs: 15_000, error: limit.error };
+      }
+      const pollInterval: { value?: number; error?: string } = options.parsePollInterval
+        ? parseIntegerQueryParam(req.query.poll_interval_seconds, "poll_interval_seconds", 5, 60)
+        : {};
+      if (pollInterval.error) {
+        return { cursor, types, limit: limit.value, pollIntervalMs: 15_000, error: pollInterval.error };
+      }
 
-        // Validate type filter values — only allow safe glob patterns
-        const VALID_TYPE = /^[a-z][a-z0-9_.]*(\*)?$/;
-        if (types) {
-          for (const t of types) {
-            if (!VALID_TYPE.test(t)) {
-              return res.status(400).json({ error: `Invalid type filter: ${t}` });
-            }
+      if (cursor && !isUuid(cursor)) {
+        return { cursor, types, limit: limit.value, pollIntervalMs: 15_000, error: "Invalid cursor format. Must be a UUID." };
+      }
+
+      if (types) {
+        for (const t of types) {
+          if (!VALID_FEED_TYPE.test(t)) {
+            return { cursor, types, limit: limit.value, pollIntervalMs: 15_000, error: `Invalid type filter: ${t}` };
           }
         }
+      }
 
-        const result = await eventsDb.queryFeed(cursor, types, rawLimit);
+      return {
+        cursor,
+        types,
+        limit: limit.value,
+        pollIntervalMs: (pollInterval.value ?? 15) * 1000,
+      };
+    }
+
+    async function writeSse(
+      res: import("express").Response,
+      event: string,
+      data: unknown,
+      isClosed: () => boolean,
+    ): Promise<void> {
+      if (isClosed() || res.writableEnded) return;
+      const ok = res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      if (!ok && !isClosed() && !res.writableEnded) {
+        await Promise.race([once(res, "drain"), once(res, "close")]);
+      }
+    }
+
+    function waitForSseInterval(res: import("express").Response, ms: number, isClosed: () => boolean): Promise<void> {
+      return new Promise(resolve => {
+        if (isClosed()) return resolve();
+        const onClose = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        const timeout = setTimeout(() => {
+          res.removeListener("close", onClose);
+          resolve();
+        }, ms);
+        timeout.unref?.();
+        res.once("close", onClose);
+      });
+    }
+
+    router.get("/registry/feed", authMiddleware, registryReadRateLimiter, async (req, res) => {
+      try {
+        const parsed = parseRegistryFeedQuery(req);
+        if (parsed.error) {
+          return res.status(400).json({ error: parsed.error });
+        }
+
+        const result = await eventsDb.queryFeed(parsed.cursor, parsed.types, parsed.limit);
 
         if ('error' in result) {
           return res.status(410).json(result);
@@ -9102,6 +10179,85 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       } catch (error) {
         logger.error({ error }, "Failed to query registry feed");
         return res.status(500).json({ error: "Failed to query registry feed" });
+      }
+    });
+
+    router.get("/registry/feed/stream", authMiddleware, registryReadRateLimiter, async (req, res) => {
+      const parsed = parseRegistryFeedQuery(req, { parsePollInterval: true });
+      if (parsed.error) {
+        return res.status(400).json({ error: parsed.error });
+      }
+      if (activeFeedStreams >= MAX_ACTIVE_FEED_STREAMS) {
+        return res.status(429).json({ error: "Too many active registry feed streams" });
+      }
+      activeFeedStreams++;
+
+      let cursor = parsed.cursor;
+      let closed = false;
+      let streamStarted = false;
+      res.on("close", () => {
+        closed = true;
+      });
+
+      try {
+        const initial = await eventsDb.queryFeed(cursor, parsed.types, parsed.limit);
+        if ('error' in initial) {
+          return res.status(410).json(initial);
+        }
+        if (closed) return;
+
+        res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("Connection", "keep-alive");
+        res.setHeader("X-Accel-Buffering", "no");
+        res.flushHeaders?.();
+        streamStarted = true;
+
+        let pending: import('../db/catalog-events-db.js').FeedResult | null = initial;
+        let backlogPages = 0;
+
+        while (!closed) {
+          const result = pending ?? await eventsDb.queryFeed(cursor, parsed.types, parsed.limit);
+          pending = null;
+
+          if ('error' in result) {
+            await writeSse(res, "error", result, () => closed);
+            break;
+          }
+
+          if (result.events.length > 0) {
+            await writeSse(res, "feed", result, () => closed);
+            cursor = result.cursor;
+          } else {
+            await writeSse(res, "heartbeat", {
+              generated_at: result.freshness.generated_at,
+              cursor: result.cursor,
+              freshness: result.freshness,
+            }, () => closed);
+          }
+
+          if (result.has_more) {
+            backlogPages++;
+            if (backlogPages >= MAX_BACKLOG_PAGES_PER_TICK) {
+              backlogPages = 0;
+              await waitForSseInterval(res, BACKLOG_YIELD_MS, () => closed);
+            }
+            continue;
+          }
+          backlogPages = 0;
+          await waitForSseInterval(res, parsed.pollIntervalMs, () => closed);
+        }
+      } catch (error) {
+        logger.error({ error }, "Failed to stream registry feed");
+        if (!closed && !res.headersSent) {
+          return res.status(500).json({ error: "Failed to query registry feed" });
+        }
+        if (!closed) {
+          await writeSse(res, "error", { error: "feed_stream_error", message: "Failed to query registry feed" }, () => closed);
+        }
+      } finally {
+        activeFeedStreams--;
+        if (streamStarted && !closed && !res.writableEnded) res.end();
       }
     });
   }
@@ -9333,8 +10489,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         };
 
         const response = await profilesDb.search(searchQuery);
+        const results = response.results.map(result => {
+          const { format_ids: _deprecatedFormatIds, ...rest } = result;
+          return { ...rest, format_kinds: result.format_kinds ?? [] };
+        });
 
-        return res.json(response);
+        return res.json({ ...response, results });
       } catch (error: any) {
         if (error?.message?.includes('Invalid cursor')) {
           return res.status(400).json({ error: "Invalid cursor format" });

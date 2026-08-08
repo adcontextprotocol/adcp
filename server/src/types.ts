@@ -93,10 +93,22 @@ export interface AgentCapabilities {
     can_list_properties: boolean;
   };
   creative_capabilities?: {
-    formats_supported: string[];
+    supported_formats: Array<{
+      capability_id?: string;
+      format: {
+        format_kind: string;
+        publisher_domain?: string;
+        format_option_id?: string;
+        params?: Record<string, unknown>;
+        [key: string]: unknown;
+      };
+      operations: Array<'build' | 'validate' | 'preview'>;
+      [key: string]: unknown;
+    }>;
     can_generate: boolean;
     can_validate: boolean;
     can_preview: boolean;
+    [key: string]: unknown;
   };
   signals_capabilities?: {
     audience_types: string[];
@@ -597,10 +609,19 @@ export interface ResolvedBrand {
   keller_type?: KellerType;
   parent_brand?: string;
   house_domain?: string;
+  /** Unilateral parent claim from a canonical document; not trust-extending. */
+  claimed_house_domain?: string;
   house_name?: string;
+  relationship_trust?: 'inline' | 'mutual' | 'leaf_only' | 'house_only' | 'standalone' | 'unverifiable';
+  /** When the mutual-assertion edge was last confirmed by both sides. */
+  relationship_verified_at?: string;
+  /** House declaration time, or this consumer's first observation when omitted. */
+  relationship_declared_at?: string;
+  promoted_from_schema?: string;
+  migration_warnings?: Array<{ field: string; message: string; suggestion?: string }>;
   brand_agent_url?: string;
   brand_manifest?: Record<string, unknown>;
-  source: 'brand_json' | 'community' | 'enriched';
+  source: 'hosted' | 'brand_json' | 'community' | 'enriched';
 }
 
 /**
@@ -632,6 +653,17 @@ export interface HostedProperty {
    * UI render "checked recently, not yet verified" vs "never checked."
    */
   origin_last_checked_at?: Date | null;
+  /**
+   * Pending domain-claim token. An account claims the domain and pastes a
+   * pointer carrying this token at their origin; verify-origin matches it to
+   * bind the owner. NULL when there is no pending claim.
+   */
+  claim_token?: string | null;
+  /**
+   * Org that requested the pending claim. Becomes `workos_organization_id` on
+   * successful origin verification. NULL when there is no pending claim.
+   */
+  claimant_org_id?: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -1141,6 +1173,7 @@ export interface FederatedAgent {
   name?: string;
   type?: AgentType;
   protocol?: 'mcp' | 'a2a';
+  health_check_url?: string;
   member?: {
     slug: string;
     display_name: string;

@@ -41,7 +41,7 @@ The Accounts Protocol applies across all vendor protocols. An orchestrator estab
 | Governance | Content standards billing |
 | Creative | Creative service billing |
 
-The account reference may be a seller-assigned `account_id` (seller-owned namespaces, usually `require_operator_auth: true`) or a natural key — `brand` + `operator` (buyer-declared accounts, `require_operator_auth: false`). For buyer-declared accounts, the natural-key `AccountRef` MUST remain valid on subsequent calls even if the seller also echoes an internal `account_id`. For sandbox, account-id namespaces use pre-existing test accounts discovered via `list_accounts` or supplied out-of-band, while buyer-declared accounts declare sandbox via `sync_accounts` with `sandbox: true`. See [Account references](/docs/building/integration/accounts-and-agents#account-references) for details.
+The account reference may be a seller-assigned `account_id` (seller-owned namespaces, usually `require_operator_auth: true`) or a natural key — `brand` + `operator` (buyer-declared accounts, `require_operator_auth: false`). For buyer-declared accounts, the natural-key `AccountRef` MUST remain valid on subsequent calls even if the seller also echoes an internal `account_id`. For sandbox, account-id namespaces use pre-existing test accounts discovered via `list_accounts` or supplied out-of-band, while buyer-declared accounts declare sandbox via `sync_accounts` with `sandbox: true`. See [Account references](/docs/building/by-layer/L2/accounts-and-agents#account-references) for details.
 
 ## Account Status Lifecycle
 
@@ -140,7 +140,7 @@ Vendor agents that support scope introspection attach an `authorization` object 
 | Field | Description |
 |-------|-------------|
 | `allowed_tasks` | Canonical snake_case task names the caller may invoke against this account. Absence of a task MUST be read as "not permitted" — invoking an absent task returns `SCOPE_INSUFFICIENT`. |
-| `field_scopes` | Optional per-task allowlist of request fields the caller may set. Keys are task names; values are field paths. When a task appears here, any field outside the allowlist returns `FIELD_NOT_PERMITTED`. Implicit framing fields — typed entity references (`account`, `media_buy_id`, `package_id`, `creative_id`, `signal_id`, `format_id`, `proposal_id`, `plan_id`, `session_id`), concurrency/idempotency (`revision`, `idempotency_key`), buyer-side correlation (`buyer_ref`, `po_number`), mode flags (`dry_run`), pagination (`pagination`, `cursor`, `max_results`), and envelope fields (`context`, `ext`, `adcp_major_version`, `push_notification_config`) — are always permitted and do not need to appear in the allowlist. The list is non-exhaustive: any other typed entity-id parameter or query-shaping field on a read task SHOULD be treated as framing. |
+| `field_scopes` | Optional per-task allowlist of request fields the caller may set. Keys are task names; values are field paths. When a task appears here, any field outside the allowlist returns `FIELD_NOT_PERMITTED`. Implicit framing fields — typed entity references (`account`, `media_buy_id`, `package_id`, `creative_id`, `signal_id`, `capability_id`, `format_option_ref`, deprecated `format_id`, `proposal_id`, `plan_id`, `session_id`), concurrency/idempotency (`revision`, `idempotency_key`), buyer-side correlation (`buyer_ref`, `po_number`), mode flags (`dry_run`), pagination (`pagination`, `cursor`, `max_results`), and envelope fields (`context`, `ext`, `adcp_major_version`, `push_notification_config`) — are always permitted and do not need to appear in the allowlist. The list is non-exhaustive: any other typed entity-id parameter or query-shaping field on a read task SHOULD be treated as framing. |
 | `scope_name` | Optional named scope identifier. Only `attestation_verifier` is standardized (media-buy-specific, binds to the **AAO Verified (Live)** qualifier); agent-defined names MUST use the `custom:` prefix so typos of the standard value fail schema validation rather than pass through. |
 | `read_only` | Convenience flag. When true, mutations return `READ_ONLY_SCOPE` regardless of whether the task is in `allowed_tasks`. Omission is equivalent to `false`. Callers MUST NOT infer read-only from `allowed_tasks` alone. |
 
@@ -182,7 +182,7 @@ A single `SCOPE_INSUFFICIENT` response is observationally indistinguishable betw
 
 `FIELD_NOT_PERMITTED` does not follow this pattern. The agent-autonomous recovery path — strip the disallowed field and resubmit — supersedes the retry consideration. Buyers MUST NOT retry the identical failing request for `FIELD_NOT_PERMITTED`; they SHOULD correct and resubmit immediately.
 
-See [Authorization (RBAC)](/docs/building/implementation/error-handling#authorization-rbac) for the normative retry exception clause on these codes.
+See [Authorization (RBAC)](/docs/building/by-layer/L3/error-handling#authorization-rbac) for the normative retry exception clause on these codes.
 
 ### Standard named scope: `attestation_verifier`
 
@@ -216,7 +216,7 @@ Illustrative examples (not standardized — each agent names its own):
 
 - **Signals agent**: `custom:activation_only` — `allowed_tasks: [get_signals, activate_signal, get_adcp_capabilities]`, no catalog management, no cross-account metadata.
 - **Governance agent**: `custom:audit_viewer` — `allowed_tasks: [get_plan_audit_logs, get_adcp_capabilities]`, `read_only: true`. Useful for regulators or external auditors granted read access to governance trails.
-- **Creative agent**: `custom:library_reader` — `allowed_tasks: [list_creatives, list_creative_formats]`, `read_only: true`. Lets a non-uploading buyer (e.g., a measurement partner) discover what's in the library without mutating it.
+- **Creative agent**: `custom:library_reader` — `allowed_tasks: [get_adcp_capabilities, list_creatives]`, `read_only: true`. Lets a non-uploading buyer (e.g., a measurement partner) discover capabilities and library contents without mutating them.
 - **Brand agent (rights)**: `custom:rights_viewer` — `allowed_tasks: [get_rights, get_brand_identity]`, `read_only: true`. Discovery without clearance privilege.
 
 The presence/absence semantics, identity binding, refresh cadence, and consistency requirements above apply uniformly across all vendor protocols — a signals agent populating `custom:activation_only` takes on the same 300s refresh obligation a media-buy seller does populating `attestation_verifier`.
@@ -246,6 +246,7 @@ The introspection model — "the caller asks the authorization-enforcing party w
      or receive account_id out-of-band (seller-defined)
    Buyer-declared account (require_operator_auth: false):
      sync_accounts({ accounts: [{ brand, operator, billing, billing_entity? }] }) → status, billing terms
+     list_accounts() → recover acknowledged brand/operator accounts after a cold start (SHOULD be exposed)
 
 6. Execute
    Protocol tasks use the account reference to apply correct rates and terms
@@ -258,7 +259,7 @@ The introspection model — "the caller asks the authorization-enforcing party w
 
 ## Parties
 
-The Accounts Protocol operates with four party types. See [Accounts and agents](/docs/building/integration/accounts-and-agents) for full details on billing hierarchy, trust models, and authorized operators.
+The Accounts Protocol operates with four party types. See [Accounts and agents](/docs/building/by-layer/L2/accounts-and-agents) for full details on billing hierarchy, trust models, and authorized operators.
 
 | Party | Role | Identified by |
 |-----------|------|---------------|
@@ -269,12 +270,12 @@ The Accounts Protocol operates with four party types. See [Accounts and agents](
 
 ## Tasks
 
-**Account discovery (normative).** Every agent accepting accounts MUST expose at least one of `list_accounts` (upstream-managed account-id namespaces) or `sync_accounts` (buyer-declared accounts, `require_operator_auth: false`). A seller-defined account-id namespace MAY omit both account-discovery tasks only when account IDs are supplied out-of-band and no account settings are managed through AdCP. An agent MAY implement both; for account-id namespaces, `sync_accounts` is settings-update only in 3.0.x unless a future explicit capability declares account-id provisioning. See [Required tasks by protocol](/docs/protocol/required-tasks#any-agent-accepting-accounts).
+**Account discovery (normative).** Every agent accepting accounts MUST expose at least one of `list_accounts` (upstream-managed account-id namespaces) or `sync_accounts` (buyer-declared accounts, `require_operator_auth: false`). A seller-defined account-id namespace MAY omit both account-discovery tasks only when account IDs are supplied out-of-band and no account settings are managed through AdCP. Buyer-declared-account sellers SHOULD expose `list_accounts` in addition to `sync_accounts`: a stateless buyer cannot recover its acknowledged portfolio by re-running `sync_accounts` when the lost state is the set of `(brand, operator, sandbox)` natural keys needed to construct that request. For account-id namespaces, `sync_accounts` is settings-update only in 3.0.x unless a future explicit capability declares account-id provisioning. See [Required tasks by protocol](/docs/protocol/required-tasks#any-agent-accepting-accounts).
 
 | Task | Purpose |
 |------|--------|
 | [`sync_accounts`](/docs/accounts/tasks/sync_accounts) | Declare brand/operator pairs and billing; provision accounts (buyer-declared accounts, `require_operator_auth: false`); optionally update settings for existing accounts when the seller exposes settings-update mode |
-| [`list_accounts`](/docs/accounts/tasks/list_accounts) | Discover existing accounts (upstream-managed account-id namespaces); poll status on pending accounts |
+| [`list_accounts`](/docs/accounts/tasks/list_accounts) | Discover existing accounts in upstream-managed namespaces; recover acknowledged buyer-declared accounts after a cold start; poll status on pending accounts |
 | [`get_account_financials`](/docs/accounts/tasks/get_account_financials) | Query spend, credit, and invoice status for operator-billed accounts |
 | [`sync_governance`](/docs/accounts/tasks/sync_governance) | Sync governance agent endpoints to accounts for seller-side validation |
 | [`report_usage`](/docs/accounts/tasks/report_usage) | Inform vendor agents how their services were consumed after delivery |

@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.5/core/committed-metric.json",
+  "title": "Committed Metric",
+  "description": "One metric in a package's binding reporting contract. Each entry uses `scope` as the discriminator and identifies a standard or vendor-defined metric that the seller has committed to populate in delivery reports.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "scope"
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "standard",
+          "description": "Standard metric from the closed `available-metric.json` enum."
+        },
+        "metric_id": {
+          "$ref": "/schemas/3.1.5/enums/available-metric.json",
+          "description": "Identifier for the standard metric."
+        },
+        "qualifier": {
+          "type": "object",
+          "description": "Disambiguates metrics whose definition varies by qualifier. Today carries five keys — `viewability_standard` (MRC vs GroupM viewability), `completion_source` (seller- vs vendor-attested completion), `attribution_methodology` (how attribution was computed for outcome metrics), `attribution_window` (the time window over which outcomes were attributed), and `lift_dimension` (which dimension of brand_lift this row represents — awareness, consideration, etc.). Required when the underlying `metric_id` has multiple incompatible measurement paths AND the seller commits to a specific one. Symmetric on `missing_metrics`. Reserved for additive qualifiers in future minors — schema is closed (`additionalProperties: false`); new keys ship explicitly. **Heterogeneous value types**: qualifier values can be either string enums (`viewability_standard`, `completion_source`, `attribution_methodology`, `lift_dimension`) or structured objects (`attribution_window` is a duration `{interval, unit}`). Consumers MUST dispatch on key name to know value shape; structured-value qualifiers join on canonical (key-sorted) deep equality so `{interval: 14, unit: 'days'}` and `{unit: 'days', interval: 14}` resolve to the same partition. Rate-style metrics (`new_to_brand_rate`, `engagement_rate`, etc.) inherit the methodology of their numerator — when a rate carries `attribution_methodology` qualifier, it applies to the underlying conversions/events being rated.",
+          "properties": {
+            "viewability_standard": {
+              "$ref": "/schemas/3.1.5/enums/viewability-standard.json",
+              "description": "Viewability standard the seller commits to for this metric. MUST be set when `metric_id` ∈ {`viewable_impressions`, `viewable_rate`, `measurable_impressions`} and the seller commits to a specific standard; absence means the contract leaves the standard unspecified and reconciliation falls back to whatever standard the delivery report carries on its `viewability.standard` field."
+            },
+            "completion_source": {
+              "$ref": "/schemas/3.1.5/enums/completion-source.json",
+              "description": "Source of `completion_rate` attestation. MUST be set when `metric_id` is `completion_rate` and the seller commits to a specific source — `seller_attested` when the player/ad server's own completion event is the contract, `vendor_attested` when a third-party measurement vendor (anchored on the matching `performance_standard.vendor` BrandRef) is the contract. Absence means the contract leaves the source unspecified and reconciliation falls back to whatever the delivery report happens to carry."
+            },
+            "attribution_methodology": {
+              "$ref": "/schemas/3.1.5/enums/attribution-methodology.json",
+              "description": "How attribution between ad exposure and outcome events was computed. SHOULD be set when `metric_id` is an outcome metric (`conversions`, `conversion_value`, `roas`, `cost_per_acquisition`, `incremental_sales_lift`, `brand_lift`, `foot_traffic`, `conversion_lift`, `brand_search_lift`, `units_sold`, `new_to_brand_rate`, `new_to_brand_units`, `leads`) and the seller commits to a specific methodology. `deterministic_purchase` is the retail-media default; `modeled` covers MMM and clean-room outputs; `probabilistic` and `panel_based` cover their respective methodologies. Two outcome rows with the same `metric_id` and different `attribution_methodology` are not interchangeable and must not be summed."
+            },
+            "attribution_window": {
+              "$ref": "/schemas/3.1.5/core/duration.json",
+              "description": "Time window over which outcome attribution is computed. **Object-valued, not string** — MUST be a structured duration object like `{interval: 14, unit: 'days'}`, NEVER a shorthand string like `'14d'`. SHOULD be set when `metric_id` is an outcome metric and the seller commits to a specific window. Common windows: `{interval: 7, unit: 'days'}`, `{interval: 14, unit: 'days'}`, `{interval: 30, unit: 'days'}`, `{interval: 90, unit: 'days'}`. Two outcome rows with the same `metric_id` and `attribution_methodology` but different `attribution_window` represent the same metric measured over different periods — the join on `(metric_id, qualifier)` keeps them as separate rows so buyers don't accidentally aggregate across windows."
+            },
+            "lift_dimension": {
+              "$ref": "/schemas/3.1.5/enums/lift-dimension.json",
+              "description": "Which dimension of `brand_lift` this row represents — awareness, consideration, favorability, purchase intent, or ad recall. MUST be set when `metric_id` is `brand_lift` and the seller commits to (or is reporting) a specific dimension. Brand-lift vendors (Kantar, Upwave, Cint, DoubleVerify) report each dimension separately with its own sample size and confidence interval; combining them into a single number is a category error. Two `brand_lift` rows under different `lift_dimension` are different surveyed outcomes and must not be summed."
+            }
+          },
+          "additionalProperties": false
+        },
+        "committed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this metric became part of the contract. Day-1 commitments use `create_media_buy.confirmed_at`; mid-flight additions use the time the amendment was accepted."
+        }
+      },
+      "required": ["scope", "metric_id", "committed_at"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "vendor",
+          "description": "Vendor-defined metric, identified by the tuple `(vendor, metric_id)`."
+        },
+        "vendor": {
+          "$ref": "/schemas/3.1.5/core/brand-ref.json",
+          "description": "Vendor that defines and computes this metric. The vendor's `brand.json` `agents[type='measurement']` is the canonical anchor."
+        },
+        "metric_id": {
+          "$ref": "/schemas/3.1.5/core/vendor-metric-id.json",
+          "description": "Identifier for the metric within the vendor's vocabulary."
+        },
+        "committed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this vendor metric became part of the contract."
+        }
+      },
+      "required": ["scope", "vendor", "metric_id", "committed_at"],
+      "additionalProperties": false
+    }
+  ]
+}

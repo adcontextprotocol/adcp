@@ -574,7 +574,7 @@ describe('buildNotificationEmail (HTML escaping)', () => {
     });
 
     // Raw injected sequences MUST NOT appear unescaped in the HTML body.
-    expect(email.html).not.toMatch(/<script>/);
+    expect(email.html).not.toMatch(/<script>/i);
     expect(email.html).not.toContain('house"injected".com');
     expect(email.html).not.toContain('evil"\'<x>');
     // Escaped versions MUST be present.

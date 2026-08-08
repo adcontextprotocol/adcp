@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.1/enums/creative-selection-strategy.json",
+  "title": "Creative Selection Strategy",
+  "description": "How a creative agent samples which catalog items / signal conditions to produce creatives for when max_creatives is below the eligible count (#5262). Selection ordering surfaces on the existing rank/recommended fields of build_creative's creatives[].variants[]. This is a curated set, not an open extension point — new strategies are added per the enum-membership criterion in spec-guidelines.md. Part of the experimental signal-fanout surface (x-status: experimental; feature id `creative.signal_fanout`).",
+  "x-status": "experimental",
+  "type": "string",
+  "enum": [
+    "audience_relevance",
+    "contextual_fit",
+    "performance",
+    "proximity",
+    "inventory_priority",
+    "random"
+  ],
+  "enumDescriptions": {
+    "audience_relevance": "Rank by relevance to the buyer's audience signal(s) — the user-side axis. Drawn from the SAME signal_ref pointers in signal_conditions / package targeting, not a parallel signals[] array.",
+    "contextual_fit": "Rank by fit to the content/context the creative renders against — the content-side counterpart to audience_relevance (user-side). Uses the same signal_ref mechanism with a context signal rather than an audience signal. Mirrors the Trusted Match Protocol Context Match / Identity Match split.",
+    "performance": "Rank by the catalog item's historical delivery performance (e.g. CTR, completion, conversion) where the agent has that signal.",
+    "proximity": "Rank by proximity to a location input. Reuse the existing geo targeting shape (see docs/media-buy/advanced-topics/targeting.mdx) rather than a parallel one; the exact geo-input binding is still being settled, which the experimental status of this surface keeps revisable.",
+    "inventory_priority": "Rank by seller-side catalog metadata (margin, overstock, promotional priority). No buyer input.",
+    "random": "Status-quo fallback: agent samples without a ranking preference. Default when selection_strategy is omitted."
+  }
+}

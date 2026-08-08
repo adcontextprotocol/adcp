@@ -1,6 +1,7 @@
 {
   "name": "Signature-Input sig-param string value sent unquoted (keyid=foo instead of keyid=\"foo\")",
   "spec_reference": "#verifier-checklist-requests step 1 (RFC 9421 §2.3 sig-params; RFC 8941 §3.3 string values MUST be double-quoted)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

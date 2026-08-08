@@ -1,0 +1,127 @@
+---
+title: "Support recovery runbooks"
+sidebarTitle: "Support recovery"
+description: "Operational runbooks for escalation SLA follow-up, certification completion recovery, domain verification, and registry crawl recovery."
+"og:title": "AdCP - Support recovery runbooks"
+---
+
+# Support recovery runbooks
+
+These runbooks cover support cases that should not sit silently in Addie, certification, or registry queues.
+
+## Escalation SLA follow-up
+
+Addie support requests are visible in the admin escalation dashboard and in the requester's dashboard. The SLA enforcement job runs hourly.
+
+Admin follow-up rules:
+
+- Urgent open requests are re-surfaced to the configured private escalation Slack channel after 4 hours.
+- Other open requests are re-surfaced after 24 hours.
+- Acknowledged or in-progress requests are re-surfaced after 24 hours without an update.
+- Requesters receive a visible dashboard update after 24 hours and can add details or close the request themselves.
+
+Operator checklist:
+
+1. Open `/admin/escalations`.
+2. Filter to active requests and look for "Needs pickup" or "Needs update".
+3. Acknowledge or move the request to in progress when a human owns it.
+4. Add requester-visible notes when the requester needs status.
+5. Resolve the request when fixed, and notify the user when appropriate.
+
+If Slack notifications are missing, configure the escalation channel in `/admin/settings`.
+
+## Certification completion recovery
+
+The certification recovery job runs every 6 hours. It looks for passed attempts that did not finish module or credential reconciliation.
+
+Automatic behavior:
+
+- Reconcile the passed attempt to `learner_progress`.
+- Re-run credential eligibility and awarding.
+- File a deduplicated escalation if automatic repair cannot award the credential.
+
+Manual repair:
+
+1. Open `/admin/certification`.
+2. In "Attempts needing attention", click "Reconcile credentials" for passed attempts.
+3. If the attempt still has warnings, open the learner detail panel.
+4. Use "Admin completion repair" only when there is a teaching checkpoint for the learner, module, and Addie thread.
+5. Run "Issue missing badges" when the local credential exists but Certifier badge fields are missing.
+6. Record the escalation ID or reason in the note field.
+
+Do not create a duplicate manual credential unless the learner record already proves the module completion. Repair the learner record first, then issue or backfill the credential.
+
+## Domain verification recovery
+
+Use admin domain verification recovery when a member has published the WorkOS DNS TXT record but the self-service verify path is blocked, rate-limited, or the webhook did not update local state.
+
+This is an internal support workflow. Use authenticated admin domain tooling or the private ops runbook; public docs should not expose admin endpoint paths, bearer-token examples, or WorkOS challenge-token handling.
+
+Outcomes:
+
+- `success: true`: WorkOS confirmed DNS and local `organization_domains` was reconciled.
+- `still_pending`: WorkOS still cannot see the TXT record. Ask the member to confirm the record name and token.
+- `no_challenge`: issue a new domain challenge from the member domain settings or admin domain tooling.
+
+DNS propagation normally takes minutes, but stale provider caches can last longer. Do not keep retrying every few seconds; fix the DNS record and retry after propagation.
+
+## Registry and heartbeat recovery
+
+Use these triggers after a member fixes `adagents.json`, `brand.json`, authorization, or endpoint health.
+
+Publisher and brand crawl requests require an authenticated member or admin request and a JSON `domain` body:
+
+```bash
+curl -X POST "https://agenticadvertising.org/api/registry/crawl-request" \
+  -H "Content-Type: application/json" \
+  -b "$SESSION_COOKIE" \
+  --data '{"domain":"example.publisher"}'
+```
+
+Expected accepted response:
+
+```json
+{ "message": "Crawl request accepted", "domain": "example.publisher" }
+```
+
+For brand manifests, use the same body shape:
+
+```bash
+curl -X POST "https://agenticadvertising.org/api/registry/brand-crawl-request" \
+  -H "Content-Type: application/json" \
+  -b "$SESSION_COOKIE" \
+  --data '{"domain":"example.brand"}'
+```
+
+Expected accepted response:
+
+```json
+{ "message": "Brand crawl request accepted", "domain": "example.brand" }
+```
+
+Agent refresh and heartbeat requeue use an encoded agent URL. The caller must own the agent or be an AAO admin.
+
+```bash
+AGENT_URL="https://seller.example/adcp"
+ENCODED_URL="$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$AGENT_URL")"
+
+curl -X POST "https://agenticadvertising.org/api/registry/agents/$ENCODED_URL/refresh" \
+  -b "$SESSION_COOKIE"
+```
+
+Refresh returns the latest probe result or a `409`, `429`, or `502` error if monitoring is paused, rate-limited, or the probe fails.
+
+Queue heartbeat without synchronous probing when the agent should be checked by the normal monitor:
+
+```bash
+curl -X POST "https://agenticadvertising.org/api/registry/agents/$ENCODED_URL/monitoring/requeue" \
+  -b "$SESSION_COOKIE"
+```
+
+Expected response:
+
+```json
+{ "requeued": true }
+```
+
+Use refresh for a specific agent after endpoint or capability fixes. Use crawl request for publisher authorization changes.

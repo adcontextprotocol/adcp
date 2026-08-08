@@ -25,6 +25,7 @@
 
 import type { OAuthClientCredentials } from '../db/agent-context-db.js';
 import { createLogger } from '../logger.js';
+import { oauthSafeFetch } from '../utils/oauth-safe-fetch.js';
 
 const logger = createLogger('oauth-client-credentials-exchange');
 
@@ -83,7 +84,10 @@ export async function exchangeClientCredentials(
   const form = new URLSearchParams();
   form.set('grant_type', 'client_credentials');
   if (creds.scope) form.set('scope', creds.scope);
-  if (creds.resource) form.set('resource', creds.resource);
+  if (creds.resource) {
+    const resources = Array.isArray(creds.resource) ? creds.resource : [creds.resource];
+    for (const r of resources) form.append('resource', r);
+  }
   if (creds.audience) form.set('audience', creds.audience);
 
   const headers: Record<string, string> = {
@@ -100,7 +104,7 @@ export async function exchangeClientCredentials(
     headers['Authorization'] = `Basic ${encoded}`;
   }
 
-  const fetchImpl = options.fetchImpl ?? fetch;
+  const fetchImpl = options.fetchImpl ?? oauthSafeFetch;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), EXCHANGE_TIMEOUT_MS);
 

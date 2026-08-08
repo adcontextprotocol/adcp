@@ -511,7 +511,7 @@ export async function notifySeatWarning(data: {
     ctaUrl = `${APP_URL}/team?org=${data.orgId}`;
   } else {
     text = `*${safeOrgName}* is using *${data.usage} of ${data.limit}* ${label} seats. Need more? Upgrade your plan.`;
-    ctaUrl = `${APP_URL}/membership`;
+    ctaUrl = `${APP_URL}/dashboard/membership`;
   }
 
   const message: SlackBlockMessage = {

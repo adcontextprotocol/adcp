@@ -16,10 +16,16 @@
       "pattern": "https://adcontextprotocol.org/docs/"
     },
     {
+      "pattern": "^https://docs\\.adcontextprotocol\\.org(?:/|$)"
+    },
+    {
       "pattern": "^https://github.com/adcontextprotocol/adcp$"
     },
     {
       "pattern": "^https://agenticadvertising.org"
+    },
+    {
+      "pattern": "^https://docs.adcontextprotocol.org"
     }
   ],
   "timeout": "30s",

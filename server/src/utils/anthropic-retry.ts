@@ -63,6 +63,44 @@ const DEFAULT_CONFIG: Required<RetryConfig> = {
   jitter: true,
 };
 
+function getAnthropicErrorType(errorBody: unknown): string | undefined {
+  if (typeof errorBody !== 'object' || errorBody === null) {
+    return undefined;
+  }
+
+  const body = errorBody as { type?: unknown; error?: { type?: unknown } };
+  if (body.type === 'error' && typeof body.error?.type === 'string') {
+    return body.error.type;
+  }
+
+  if (typeof body.type === 'string') {
+    return body.type;
+  }
+
+  if (typeof body.error?.type === 'string') {
+    return body.error.type;
+  }
+
+  return undefined;
+}
+
+function getAnthropicErrorTypeFromMessage(message: string): string | undefined {
+  const jsonStart = message.indexOf('{');
+  if (jsonStart === -1) return undefined;
+
+  try {
+    return getAnthropicErrorType(JSON.parse(message.slice(jsonStart)));
+  } catch {
+    return undefined;
+  }
+}
+
+function isRetryableAnthropicErrorType(errorType: string | undefined): boolean {
+  return errorType === 'overloaded_error' ||
+    errorType === 'api_error' ||
+    errorType === 'rate_limit_error';
+}
+
 /**
  * Check if an error is a retryable Anthropic API error
  *
@@ -92,16 +130,20 @@ export function isRetryableError(error: unknown): boolean {
     // Check error body for retryable error types.
     // Streaming errors deliver errors in the SSE stream body (HTTP 200),
     // so error.status is undefined — we must check the error body.
-    const errorBody = error.error as { type?: string; error?: { type?: string } } | undefined;
-    const errorType = errorBody?.type ?? errorBody?.error?.type;
-    if (errorType === 'overloaded_error' || errorType === 'api_error') {
+    const errorType = getAnthropicErrorType(error.error);
+    if (isRetryableAnthropicErrorType(errorType)) {
       return true;
     }
   }
 
   // Check error message for overloaded indication
-  if (error instanceof Error && error.message.includes('overloaded_error')) {
-    return true;
+  if (error instanceof Error) {
+    if (error.message.includes('overloaded_error')) {
+      return true;
+    }
+    if (isRetryableAnthropicErrorType(getAnthropicErrorTypeFromMessage(error.message))) {
+      return true;
+    }
   }
 
   return false;

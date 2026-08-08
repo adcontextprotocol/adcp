@@ -13,6 +13,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildSubscriptionUpdate,
+  resolveMembershipTierForSubscriptionWrite,
   tierFromLookupKey,
   tierFromProductMetadata,
 } from '../../../src/db/organization-db.js';
@@ -207,5 +208,34 @@ describe('buildSubscriptionUpdate tier resolution', () => {
     // inferMembershipTier(25000, 'year', false) → company_standard
     // (annual >= 0, < 700000 = company_icl threshold)
     expect(result.membership_tier).toBe('company_standard');
+  });
+});
+
+describe('resolveMembershipTierForSubscriptionWrite', () => {
+  it('preserves the existing tier when an entitled update cannot resolve one', () => {
+    const tier = resolveMembershipTierForSubscriptionWrite(
+      { subscription_status: 'active', membership_tier: null },
+      'company_standard',
+    );
+
+    expect(tier).toBe('company_standard');
+  });
+
+  it('writes resolved tiers for entitled updates', () => {
+    const tier = resolveMembershipTierForSubscriptionWrite(
+      { subscription_status: 'active', membership_tier: 'company_icl' },
+      'company_standard',
+    );
+
+    expect(tier).toBe('company_icl');
+  });
+
+  it('clears the tier when the subscription is no longer entitled', () => {
+    const tier = resolveMembershipTierForSubscriptionWrite(
+      { subscription_status: 'canceled', membership_tier: null },
+      'company_standard',
+    );
+
+    expect(tier).toBeNull();
   });
 });

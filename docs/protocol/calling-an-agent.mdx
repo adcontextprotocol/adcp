@@ -27,7 +27,7 @@ Every mutating tool requires an `idempotency_key` (UUID).
 - **Same key on retry** → server replays the **same response**, byte-for-byte. Use this for transport-level retries (timeout, 5xx, dropped connection).
 - **Fresh key** → **new operation**, regardless of body. Generating a new UUID because the previous attempt failed is the most common way naïve callers create duplicate media buys.
 - **Same key, different canonical body** → `IDEMPOTENCY_CONFLICT`. Sellers MUST reject (rule 5 in [security.mdx#idempotency](/docs/building/by-layer/L1/security#idempotency)) — do not silently apply the second body, do not silently replay the first response.
-- **Same key while first request still running** → `IDEMPOTENCY_IN_FLIGHT` (rule 9 in [security.mdx#idempotency](/docs/building/by-layer/L1/security#idempotency)). The seller MAY return this code with `error.details.retry_after` instead of blocking. Wait and retry with the **same key** — minting a fresh key on this code turns a safe retry into a double-execution race.
+- **Same key while first request still running** → `IDEMPOTENCY_IN_FLIGHT` (rule 9 in [security.mdx#idempotency](/docs/building/by-layer/L1/security#idempotency)). The seller MAY return this code with top-level `error.retry_after` instead of blocking. Wait and retry with the **same key** — minting a fresh key on this code turns a safe retry into a double-execution race.
 
 For async flows, the replayed response carries the **same `task_id`** so polling continues against the same task instead of forking.
 
@@ -151,7 +151,7 @@ Every validation failure produces an envelope shaped like:
 | 2-3 `additionalProperties` errors at the same pointer | You merged `oneOf` variants | Drop to one variant. Don't keep "extra" fields "for completeness". |
 | `keyword: 'required'`, `pointer: '/idempotency_key'` | Mutating tool, no UUID | Generate fresh UUID per logical operation. Reuse on retries. |
 | `keyword: 'type'` or `additionalProperties` at `/budget` | Sent `{amount, currency}` | `budget` is a number. Currency is implied by `pricing_option_id`. |
-| `additionalProperties` at `/format_id` (string passed) | Sent `"format_id": "video_..."` | `format_id` is `{agent_url, id}` — always an object. |
+| `enum` at `/format_kind` | Sent a non-canonical format kind | Choose a registered canonical kind or use a valid `custom` declaration. |
 | `keyword: 'enum'` at `/destinations/*/type` | Made-up destination type | Use `'platform'` (with `platform`) or `'agent'` (with `agent_url`). |
 | Response carries `status: 'submitted'` and `task_id` | Async — work is queued, NOT done | Poll with legacy `tasks/get`, or `get_task_status` when the seller advertises the alias. |
 
@@ -162,7 +162,7 @@ Every validation failure produces an envelope shaped like:
 
 Both transports share idempotency, error shape, schema enforcement, and handler semantics. If a call works on one, the equivalent call works on the other.
 
-A common trap: **A2A `Task.state: 'completed'` is not the same as AdCP completion.** A2A task state describes the transport call lifecycle; AdCP-level completion is in the artifact's payload (`structuredContent.status` or `data.status`). A `completed` A2A task can still carry a `submitted` AdCP response.
+A common trap: **A2A `Task.status.state: 'completed'` is not the same as AdCP completion.** A2A task state describes the transport call lifecycle; AdCP-level completion is in the artifact's payload (`structuredContent.status` or `data.status`). A `completed` A2A task can still carry a `submitted` AdCP response. It also carries structured business outcomes that are not transport failures, such as `GetProductsRejected`: A2A remains `completed`, while the artifact payload contains `status: "rejected"`, `reason`, and optional `suggestions[]`.
 
 ## Related
 

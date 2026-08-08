@@ -811,6 +811,45 @@
       animation: slideUp 0.3s ease;
     }
 
+    .certification-status,
+    .reply-recovery {
+      margin-top: var(--space-3);
+      padding: var(--space-3);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-bg-subtle);
+    }
+
+    .certification-status__title,
+    .reply-recovery__title {
+      color: var(--color-text-heading);
+      font-weight: 600;
+      margin-bottom: var(--space-1);
+    }
+
+    .certification-status__detail,
+    .reply-recovery__detail {
+      color: var(--color-text-secondary);
+      font-size: 13px;
+    }
+
+    .reply-recovery__action {
+      margin-top: var(--space-3);
+      padding: var(--space-2) var(--space-3);
+      border: 0;
+      border-radius: var(--radius-md);
+      background: var(--color-brand);
+      color: white;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 600;
+    }
+
+    .reply-recovery__action:disabled {
+      cursor: wait;
+      opacity: 0.6;
+    }
+
     @keyframes slideUp {
       from { opacity: 0; transform: translate(-50%, 20px); }
       to { opacity: 1; transform: translate(-50%, 0); }
@@ -2888,6 +2927,69 @@
   <footer style="display:none"></footer>
 
   <script src="/nav.js"></script>
+  <script src="/external-url.js"></script>
+  <script>
+    window.siBranding = (() => {
+      'use strict';
+
+      const BRAND_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+      const BRAND_LOGO_URL_MAX_LENGTH = 2048;
+
+      function nonEmptyText(value) {
+        return typeof value === 'string' && value.trim() ? value : '';
+      }
+
+      function safeLogoUrl(value) {
+        if (typeof value !== 'string' || value.length === 0 || value.length > BRAND_LOGO_URL_MAX_LENGTH) {
+          return null;
+        }
+        if (['"', "'", '<', '>', '`', '\\'].some(char => value.includes(char))) {
+          return null;
+        }
+
+        try {
+          const parsed = new URL(value);
+          if (parsed.protocol !== 'https:' || parsed.username || parsed.password || !parsed.hostname) {
+            return null;
+          }
+          return parsed.toString();
+        } catch {
+          return null;
+        }
+      }
+
+      function safeBrandColor(value) {
+        return typeof value === 'string' && BRAND_COLOR_PATTERN.test(value) ? value : null;
+      }
+
+      function renderHeader(elements, brand, fallbackName) {
+        const name = nonEmptyText(brand?.name) || nonEmptyText(fallbackName) || 'Brand agent';
+        const tagline = nonEmptyText(brand?.tagline);
+        const color = safeBrandColor(brand?.brand_color);
+        const logoUrl = safeLogoUrl(brand?.logo_url);
+
+        elements.title.textContent = name;
+        elements.tagline.textContent = tagline;
+        if (color) {
+          elements.header.style.setProperty('--si-brand-color', color);
+        } else {
+          elements.header.style.removeProperty('--si-brand-color');
+        }
+
+        elements.icon.replaceChildren();
+        if (logoUrl) {
+          const image = document.createElement('img');
+          image.src = logoUrl;
+          image.alt = name;
+          elements.icon.appendChild(image);
+        } else {
+          elements.icon.textContent = name.trim().charAt(0).toUpperCase() || 'B';
+        }
+      }
+
+      return Object.freeze({ renderHeader, safeLogoUrl, safeBrandColor });
+    })();
+  </script>
   <script>
     (function() {
       'use strict';
@@ -2932,6 +3034,12 @@
       const siModalMessages = document.getElementById('siModalMessages');
       const siModalInput = document.getElementById('siModalInput');
       const siModalSend = document.getElementById('siModalSend');
+      const siBrandHeaderElements = {
+        header: siModalHeader,
+        icon: siModalIconEmoji,
+        title: siModalTitle,
+        tagline: siModalTagline,
+      };
 
       // Dark mode toggle
       const darkModeToggle = document.getElementById('darkModeToggle');
@@ -3030,6 +3138,7 @@
 
       // SI (Sponsored Intelligence) Modal State
       let siSessionId = null;
+      let siSessionCapability = null;
       let siBrandName = null;
       let siBrandInfo = null;
       let siIsLoading = false;
@@ -3068,7 +3177,20 @@
         if (nativeAuthToken) {
           headers['Authorization'] = `Bearer ${nativeAuthToken}`;
         }
+        if (
+          siSessionCapability &&
+          siSessionId &&
+          url.startsWith(`/api/si/sessions/${encodeURIComponent(siSessionId)}`)
+        ) {
+          headers['X-SI-Session-Capability'] = siSessionCapability;
+        }
         return fetch(url, { ...options, headers, credentials: 'include' });
+      }
+
+      function getSelectedOrganizationId() {
+        const urlOrg = new URLSearchParams(window.location.search).get('org');
+        if (urlOrg) return urlOrg;
+        return localStorage.getItem('selectedOrgId') || null;
       }
 
       // Check for impersonation and authentication
@@ -3386,8 +3508,8 @@
         historyList.innerHTML = allItems.map(item => {
           if (item.type === 'si_session') {
             // Branded SI session item
-            const brandColor = item.brand_color || '#667eea';
-            const logoUrl = item.brand_logo_url;
+            const brandColor = window.siBranding.safeBrandColor(item.brand_color) || 'var(--color-brand)';
+            const logoUrl = window.siBranding.safeLogoUrl(item.brand_logo_url);
             const initial = (item.brand_name || 'B').charAt(0).toUpperCase();
             return `
               <div class="history-item si-branded"
@@ -3395,7 +3517,7 @@
                    data-brand-name="${escapeHtml(item.brand_name)}"
                    style="--si-item-color: ${brandColor}">
                 <div class="si-brand-avatar">
-                  ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(item.brand_name)}">` : initial}
+                  ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(item.brand_name)}">` : escapeHtml(initial)}
                 </div>
                 <div class="history-item-content">
                   <div class="history-item-title">
@@ -3539,7 +3661,7 @@
 
       // Switch to a different conversation
       async function switchToConversation(newConversationId, channel = 'web') {
-        if (newConversationId === conversationId && channel === currentChannel) return;
+        if (newConversationId === conversationId && channel === currentChannel) return true;
         clearAttachments();
 
         conversationId = newConversationId;
@@ -3585,6 +3707,15 @@
               lastAssistantContent = msg.content || '';
             }
           });
+          if (data.recoverable_turn) {
+            showReplyRecovery({
+              message: data.recoverable_turn.message,
+              attachments: [],
+              messageSource: data.recoverable_turn.message_source || 'typed',
+              clientRequestId: data.recoverable_turn.client_request_id,
+              certification: null,
+            });
+          }
 
           // Handle read-only mode for Slack/video threads
           if (data.read_only) {
@@ -3592,15 +3723,16 @@
           } else {
             setReadOnlyMode(false);
           }
+          closeMobileSidebar();
+          return true;
         } catch (error) {
           console.error('Failed to load conversation:', error);
           removeActiveTab(newConversationId);
           switchToHome();
           showError('Failed to load conversation');
+          closeMobileSidebar();
+          return false;
         }
-
-        // Close sidebar on mobile
-        closeMobileSidebar();
       }
 
       // Set read-only mode for the chat input
@@ -3670,7 +3802,9 @@
         addieHomeContent.innerHTML = '';
 
         try {
-          const response = await authFetch('/api/me/addie-home?format=html');
+          const selectedOrgId = getSelectedOrganizationId();
+          const orgParam = selectedOrgId ? `&org=${encodeURIComponent(selectedOrgId)}` : '';
+          const response = await authFetch(`/api/me/addie-home?format=html${orgParam}`);
           if (!response.ok) {
             throw new Error('Failed to load home content');
           }
@@ -4774,16 +4908,97 @@
       // Reset to null after each send so subsequent typed messages get 'typed'.
       let pendingMessageSource = null;
 
+      function appendCertificationStatus(contentDiv, certification) {
+        if (!certification) return;
+
+        const panel = document.createElement('div');
+        panel.className = 'certification-status';
+        const title = document.createElement('div');
+        title.className = 'certification-status__title';
+        const detail = document.createElement('div');
+        detail.className = 'certification-status__detail';
+
+        if (certification.status === 'completed') {
+          title.textContent = `${certification.title || certification.module_id} complete`;
+          if (certification.credential?.state === 'processing') {
+            detail.textContent = 'Your digital credential is being issued. We’ll show the share link when it is ready.';
+          } else if (certification.credential?.state === 'action_required') {
+            detail.textContent = certification.credential?.action === 'provide_name'
+              ? 'Your completion is saved. Tell Addie the name you want on your credential to finish issuance.'
+              : 'Your completion is saved, but credential issuance needs support review. The certification team can reconcile it without repeating your assessment.';
+          } else if (certification.credential?.state === 'issued') {
+            detail.textContent = 'Your completion and credential are confirmed.';
+          } else {
+            detail.textContent = 'Your completion is confirmed.';
+          }
+        } else if (certification.status === 'evidence_complete') {
+          title.textContent = 'Evidence checkpoint saved';
+          detail.textContent = 'Your demonstrations are saved. Addie will validate the remaining completion requirements.';
+        } else {
+          title.textContent = 'Progress saved';
+          const checkpoint = certification.checkpoint;
+          detail.textContent = checkpoint
+            ? `${checkpoint.demonstrations_verified.length} of ${checkpoint.required_demonstrations} demonstrations verified.`
+            : 'You can safely continue from this conversation.';
+        }
+
+        panel.append(title, detail);
+        const credentialUrl = certification.credential?.url;
+        if (certification.credential?.state === 'issued' && credentialUrl
+            && /^(https:\/\/|\/)/i.test(credentialUrl)) {
+          const link = document.createElement('a');
+          link.href = credentialUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = 'View credential';
+          link.style.display = 'block';
+          link.style.marginTop = '8px';
+          panel.appendChild(link);
+        }
+        contentDiv.appendChild(panel);
+      }
+
+      function showReplyRecovery(options) {
+        const messageDiv = addMessage('', 'assistant');
+        const contentDiv = messageDiv.querySelector('.message-content');
+        const panel = document.createElement('div');
+        panel.className = 'reply-recovery';
+
+        const title = document.createElement('div');
+        title.className = 'reply-recovery__title';
+        title.textContent = 'Reply interrupted — your progress is safe';
+        const detail = document.createElement('div');
+        detail.className = 'reply-recovery__detail';
+        detail.textContent = options.certification
+          ? 'Addie saved the completed work and can continue without repeating it.'
+          : 'Addie can continue this turn without adding your message twice.';
+        const retryButton = document.createElement('button');
+        retryButton.type = 'button';
+        retryButton.className = 'reply-recovery__action';
+        retryButton.textContent = 'Continue reply';
+        retryButton.addEventListener('click', async () => {
+          retryButton.disabled = true;
+          await sendMessage({ ...options, retry: true });
+          if (messageDiv.parentNode) messageDiv.remove();
+        });
+
+        panel.append(title, detail, retryButton);
+        contentDiv.appendChild(panel);
+        appendCertificationStatus(contentDiv, options.certification);
+      }
+
       // Send message with streaming
-      async function sendMessage() {
-        const message = chatInput.value.trim();
-        const attachmentsToSend = pendingAttachments.slice();
+      async function sendMessage(sendOptions = {}) {
+        const retrying = sendOptions.retry === true;
+        const message = retrying ? sendOptions.message : chatInput.value.trim();
+        const attachmentsToSend = retrying ? (sendOptions.attachments || []) : pendingAttachments.slice();
         if ((!message && attachmentsToSend.length === 0) || isLoading || !isReady || isReadOnly) {
-          pendingMessageSource = null;
+          if (!retrying) pendingMessageSource = null;
           return;
         }
 
-        const messageSource = pendingMessageSource || 'typed';
+        const messageSource = retrying ? sendOptions.messageSource : (pendingMessageSource || 'typed');
+        const clientRequestId = sendOptions.clientRequestId || crypto.randomUUID();
         pendingMessageSource = null;
 
         isLoading = true;
@@ -4797,15 +5012,15 @@
         // Request notification permission on first message
         requestNotificationPermission();
 
-        // Add user message
-        addMessage(message, 'user', null, attachmentsToSend);
-
-        // Clear input
-        chatInput.value = '';
-        pendingAttachments = [];
-        renderAttachmentTray();
-        updateSendButton();
-        autoResize();
+        if (!retrying) {
+          // The retry reuses the visible and persisted user turn.
+          addMessage(message, 'user', null, attachmentsToSend);
+          chatInput.value = '';
+          pendingAttachments = [];
+          renderAttachmentTray();
+          updateSendButton();
+          autoResize();
+        }
 
         // Track if this is a new conversation
         const isNewConversation = !conversationId;
@@ -4827,18 +5042,27 @@
               message,
               conversation_id: conversationId,
               message_source: messageSource,
+              organization_id: getSelectedOrganizationId(),
               attachments: buildAttachmentPayload(attachmentsToSend),
+              client_request_id: clientRequestId,
+              retry: retrying,
             }),
           });
 
           if (!response.ok) {
             // Surface server error messages (e.g., rate limit "daily limit reached")
             let errorMsg = 'Failed to send message';
+            let errorCode = '';
             try {
               const errorData = await response.json();
               if (errorData.message) errorMsg = errorData.message;
+              if (errorData.error) errorCode = errorData.error;
             } catch (e) { /* ignore parse errors */ }
-            throw new Error(errorMsg);
+            const httpError = new Error(errorMsg);
+            httpError.httpStatus = response.status;
+            httpError.serverCode = errorCode;
+            httpError.recoverable = errorCode === 'turn_in_progress';
+            throw httpError;
           }
 
           // Show remaining message count for anonymous users (when running low)
@@ -4860,6 +5084,7 @@
           let newConversationId = null;
           let sawDone = false;
           let streamFailure = null;
+          let pendingCertification = null;
 
           // Helper to process SSE lines (uses closure for currentEventType)
           const processLines = (lines) => {
@@ -4902,10 +5127,11 @@
                   sawDone = true;
                   messageId = data.message_id;
                   conversationId = data.conversation_id;
+                  pendingCertification = data.certification || null;
 
                   // Store SI session data - will open modal after stream is completely done
                   if (data.si_session && data.si_session.session_id) {
-                    console.log('SI session detected, will open modal after stream completes:', data.si_session);
+                    console.log('SI session detected, will open modal after stream completes:', data.si_session.session_id);
                     pendingSiSession = data.si_session;
                   }
 
@@ -4916,7 +5142,10 @@
                   }
                 } else if (currentEventType === 'stream_error') {
                   streamFailure = data.reason || 'Reply interrupted';
-                  throw new Error(streamFailure);
+                  const streamError = new Error(streamFailure);
+                  streamError.recoverable = data.recoverable === true;
+                  streamError.certification = data.certification || null;
+                  throw streamError;
                 } else if (currentEventType === 'error') {
                   throw new Error(data.error || 'Unknown error');
                 }
@@ -4950,18 +5179,22 @@
           }
 
           if (!sawDone) {
-            throw new Error(streamFailure || 'Reply did not complete');
+            const incompleteError = new Error(streamFailure || 'Reply did not complete');
+            incompleteError.recoverable = Boolean(conversationId);
+            incompleteError.certification = pendingCertification;
+            throw incompleteError;
           }
 
           // Finalize the message with feedback UI
           finalizeStreamingMessage(messageDiv, contentDiv, fullContent, messageId);
+          appendCertificationStatus(contentDiv, pendingCertification);
           if (messageId) lastAssistantMessageId = messageId;
           lastAssistantContent = fullContent;
 
           // Open SI modal if a brand agent session was created
           // This must happen AFTER the stream is completely done to avoid race conditions
           if (pendingSiSession) {
-            console.log('Stream complete, opening SI modal:', pendingSiSession);
+            console.log('Stream complete, opening SI modal:', pendingSiSession.session_id);
             // Small delay to ensure DOM is fully settled
             setTimeout(async () => {
               try {
@@ -5002,12 +5235,30 @@
           scheduleLoadThreads();
 
         } catch (error) {
-          console.error('Error sending message:', error);
-          // Remove the streaming message and show error
+          // Network EOFs do not carry an SSE error event, but once the server
+          // assigned a conversation the same client request can be continued.
+          if (!error.recoverable && !error.httpStatus && conversationId && clientRequestId) {
+            error.recoverable = true;
+          }
+          if (error.recoverable) {
+            console.warn('Addie reply interrupted; offering a safe continuation:', error.message);
+          } else {
+            console.error('Error sending message:', error);
+          }
           if (messageDiv.parentNode) {
             messageDiv.remove();
           }
-          showError('Failed to send message. Please try again.');
+          if (error.recoverable) {
+            showReplyRecovery({
+              message,
+              attachments: attachmentsToSend,
+              messageSource,
+              clientRequestId,
+              certification: error.certification,
+            });
+          } else {
+            showError(error.message || 'Failed to send message. Please try again.');
+          }
 
           // Clear loading state on error
           if (conversationId) {
@@ -5069,7 +5320,7 @@
         }
       });
 
-      sendButton.addEventListener('click', sendMessage);
+      sendButton.addEventListener('click', () => sendMessage());
 
       // Suggested prompts
       suggestedPrompts.addEventListener('click', (e) => {
@@ -5143,24 +5394,11 @@
 
           // Set up modal state
           siSessionId = sessionId;
+          siSessionCapability = null;
           siBrandName = brandName;
           siBrandInfo = data.brand || null;
 
-          // Update modal header
-          siModalTitle.textContent = data.brand?.name || brandName;
-          siModalTagline.textContent = data.brand?.tagline || '';
-
-          // Apply brand color if available
-          if (data.brand?.brand_color) {
-            siModalHeader.style.setProperty('--si-brand-color', data.brand.brand_color);
-          }
-
-          // Update icon
-          if (data.brand?.logo_url) {
-            siModalIconEmoji.innerHTML = `<img src="${data.brand.logo_url}" alt="${data.brand.name}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit;">`;
-          } else {
-            siModalIconEmoji.textContent = (brandName || 'B').charAt(0).toUpperCase();
-          }
+          window.siBranding.renderHeader(siBrandHeaderElements, data.brand, brandName);
 
           // Clear and populate messages
           siModalMessages.innerHTML = '';
@@ -5186,23 +5424,49 @@
       }
 
       // Check for prompt in query string (e.g., ?prompt=Try%20AdCP)
-      // Also handles certification deep links: ?topic=certification&module=A1
+      // Also handles certification deep links and exact conversation resume.
       function checkQueryPrompt() {
         const params = new URLSearchParams(window.location.search);
         let prompt = params.get('prompt');
+        let resumeConversationId = null;
+        let resumeModuleId = null;
 
         // Synthesize prompt from certification deep link params
         if (!prompt && params.get('topic') === 'certification') {
           const moduleId = params.get('module');
           const action = params.get('action');
+          const requestedConversationId = params.get('conversation');
           if (action === 'assess') {
             prompt = 'I\'d like to assess my AdCP knowledge level. Run a placement assessment to figure out which certification modules I can skip and where I should focus.';
+          } else if (action === 'resume' && moduleId && /^[a-z0-9-]{1,16}$/i.test(moduleId)
+              && requestedConversationId && /^[0-9a-f-]{36}$/i.test(requestedConversationId)) {
+            resumeConversationId = requestedConversationId;
+            resumeModuleId = moduleId;
+          } else if (action === 'resume' && moduleId) {
+            prompt = `Continue module ${moduleId} from my saved checkpoint`;
           } else if (moduleId) {
             prompt = `Start module ${moduleId}`;
           }
         }
 
-        if (prompt && prompt.trim()) {
+        if (resumeConversationId) {
+          const waitForResume = setInterval(async () => {
+            if (isReady && isAuthenticated) {
+              clearInterval(waitForResume);
+              addActiveTab(resumeConversationId, `Certification ${resumeModuleId}`, 'web');
+              const resumed = await switchToConversation(resumeConversationId, 'web');
+              if (resumed) {
+                await authFetch(`/api/me/certification/modules/${encodeURIComponent(resumeModuleId)}/resumed`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ conversation_id: resumeConversationId }),
+                });
+                window.history.replaceState({}, '', window.location.pathname);
+              }
+            }
+          }, 100);
+          setTimeout(() => clearInterval(waitForResume), 10000);
+        } else if (prompt && prompt.trim()) {
           // Wait for Addie to be ready before sending
           const waitForReady = setInterval(() => {
             if (isReady) {
@@ -5226,11 +5490,11 @@
       // Open SI modal with brand info and initial response
       async function siOpenModal(sessionData) {
         siSessionId = sessionData.session_id;
+        siSessionCapability = sessionData.anonymous_access_token || null;
         siBrandName = sessionData.brand_name;
 
-        // Update modal header
-        siModalTitle.textContent = siBrandName || 'Brand Agent';
-        siModalTagline.textContent = '';
+        // Update modal header and clear any styling left by the previous brand.
+        window.siBranding.renderHeader(siBrandHeaderElements, null, siBrandName);
 
         // Clear previous messages
         siModalMessages.innerHTML = '';
@@ -5245,20 +5509,7 @@
             // Apply brand styling
             if (data.brand) {
               siBrandInfo = data.brand;
-              siModalTitle.textContent = data.brand.name || siBrandName;
-              if (data.brand.tagline) {
-                siModalTagline.textContent = data.brand.tagline;
-              }
-              // Apply brand color if available
-              if (data.brand.brand_color) {
-                siModalHeader.style.setProperty('--si-brand-color', data.brand.brand_color);
-              }
-              // Update icon with logo or first letter
-              if (data.brand.logo_url) {
-                siModalIconEmoji.innerHTML = `<img src="${data.brand.logo_url}" alt="${data.brand.name}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit;">`;
-              } else {
-                siModalIconEmoji.textContent = (data.brand.name || siBrandName || 'B').charAt(0).toUpperCase();
-              }
+              window.siBranding.renderHeader(siBrandHeaderElements, data.brand, siBrandName);
             }
 
             // Load messages from API (includes UI elements and surfaces)
@@ -5313,6 +5564,7 @@
 
         // Reset state
         siSessionId = null;
+        siSessionCapability = null;
         siBrandName = null;
         siBrandInfo = null;
         siIsLoading = false;
@@ -5388,7 +5640,8 @@
               } else if (data.action === 'checkout' || data.action === 'acp_checkout') {
                 siHandleCheckout(data);
               } else if (data.url) {
-                window.open(data.url, '_blank');
+                const safeUrl = safeExternalHttpUrl(data.url);
+                if (safeUrl) window.open(safeUrl, '_blank', 'noopener,noreferrer');
               } else if (data.action) {
                 // Generic action - send to SI agent
                 siSendAction(data.action, data.payload);
@@ -5398,22 +5651,24 @@
           } else if (type === 'link') {
             const link = document.createElement('a');
             link.className = 'si-ui-link';
-            link.href = data.url || '#';
+            link.href = safeExternalHttpUrl(data.url) || '#';
             link.target = '_blank';
+            link.rel = 'noopener noreferrer';
             link.textContent = data.text || data.label || data.url;
             container.appendChild(link);
           } else if (type === 'image') {
             const imageDiv = document.createElement('div');
             imageDiv.className = 'si-image';
+            const imageUrl = safeExternalHttpUrl(data.url || data.image_url);
             imageDiv.innerHTML = `
-              <img src="${escapeHtml(data.url || data.image_url)}" alt="${escapeHtml(data.alt || '')}">
+              ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(data.alt || '')}">` : ''}
               ${data.caption ? `<div class="si-image-caption">${escapeHtml(data.caption)}</div>` : ''}
             `;
             container.appendChild(imageDiv);
           } else if (type === 'product_card') {
             const card = document.createElement('div');
             card.className = 'si-product-card';
-            const imageUrl = data.image || data.image_url;
+            const imageUrl = safeExternalHttpUrl(data.image || data.image_url);
             const hasAction = data.cta && data.cta.action;
             card.innerHTML = `
               ${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(data.title || '')}" class="si-product-image">` : ''}
@@ -5456,7 +5711,7 @@
             for (const item of items) {
               const itemDiv = document.createElement('div');
               itemDiv.className = 'si-carousel-item';
-              const itemImageUrl = item.image || item.image_url;
+              const itemImageUrl = safeExternalHttpUrl(item.image || item.image_url);
               itemDiv.innerHTML = `
                 ${itemImageUrl ? `<img src="${escapeHtml(itemImageUrl)}" alt="${escapeHtml(item.title || '')}" class="si-carousel-item-image">` : '<div class="si-carousel-item-image"></div>'}
                 <div class="si-carousel-item-content">
@@ -5469,7 +5724,8 @@
                 if (item.action) {
                   siSendAction(item.action, { item });
                 } else if (item.url) {
-                  window.open(item.url, '_blank');
+                  const safeUrl = safeExternalHttpUrl(item.url);
+                  if (safeUrl) window.open(safeUrl, '_blank', 'noopener,noreferrer');
                 } else {
                   // Default: select this item
                   siSendAction('select_item', { item });
@@ -5676,8 +5932,11 @@
       function siRenderA2UILink(props, dataModel, itemContext) {
         const link = document.createElement('a');
         link.className = 'si-ui-link';
-        link.href = siResolveBoundValue(props.url, dataModel, itemContext) || '#';
-        if (props.external !== false) link.target = '_blank';
+        link.href = safeExternalHttpUrl(siResolveBoundValue(props.url, dataModel, itemContext)) || '#';
+        if (props.external !== false) {
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+        }
         link.textContent = siResolveBoundValue(props.label, dataModel, itemContext) || link.href;
         return link;
       }
@@ -5687,7 +5946,7 @@
         container.className = 'si-image';
 
         const img = document.createElement('img');
-        img.src = siResolveBoundValue(props.url, dataModel, itemContext) || '';
+        img.src = safeExternalHttpUrl(siResolveBoundValue(props.url, dataModel, itemContext)) || '';
         img.alt = siResolveBoundValue(props.alt, dataModel, itemContext) || '';
         container.appendChild(img);
 
@@ -5706,7 +5965,7 @@
         const card = document.createElement('div');
         card.className = 'si-product-card';
 
-        const imageUrl = siResolveBoundValue(props.image, dataModel, itemContext);
+        const imageUrl = safeExternalHttpUrl(siResolveBoundValue(props.image, dataModel, itemContext));
         const title = siResolveBoundValue(props.title, dataModel, itemContext);
         const price = siResolveBoundValue(props.price, dataModel, itemContext);
         const description = siResolveBoundValue(props.description, dataModel, itemContext);
@@ -5833,7 +6092,7 @@
 
         const title = siResolveBoundValue(props.title, dataModel, itemContext);
         const subtitle = siResolveBoundValue(props.subtitle, dataModel, itemContext);
-        const image = siResolveBoundValue(props.image, dataModel, itemContext);
+        const image = safeExternalHttpUrl(siResolveBoundValue(props.image, dataModel, itemContext));
 
         card.innerHTML = `
           ${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(title || '')}" class="si-product-image">` : ''}
@@ -6020,16 +6279,9 @@
         let hasHandoff = false;
 
         try {
-          // Get auth headers
-          const headers = { 'Content-Type': 'application/json' };
-          const token = localStorage.getItem('jwt');
-          if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-          }
-
-          const response = await fetch(`/api/si/sessions/${siSessionId}/messages/stream`, {
+          const response = await authFetch(`/api/si/sessions/${siSessionId}/messages/stream`, {
             method: 'POST',
-            headers,
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message })
           });
 
@@ -6271,6 +6523,10 @@
 
       videoCallBtn.addEventListener('click', startVideoCall);
       videoEndBtn.addEventListener('click', endVideoCall);
+
+      if (window.__ENABLE_SI_CHAT_TEST_HOOKS__) {
+        window.__siChatTestHooks = Object.freeze({ openSession: siOpenModal });
+      }
 
       // Initialize
       extractNativeToken(); // Check for native app auth token in URL hash

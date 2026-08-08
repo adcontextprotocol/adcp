@@ -518,6 +518,13 @@ describe('createMemberToolHandlers', () => {
       expect(result).toContain('Test Issue');
       expect(result).toContain('This is a test issue body');
       expect(result).toContain('bug');
+
+      const href = result.match(/\[Create Issue on GitHub\]\(([^)]+)\)/)?.[1];
+      expect(href).toBeDefined();
+      const url = new URL(href!);
+      expect(url.searchParams.get('title')).toBe('Test Issue');
+      expect(url.searchParams.get('body')).toBe('This is a test issue body');
+      expect(url.searchParams.get('labels')).toBe('bug');
     });
 
     it('uses default repo when not specified', async () => {
@@ -532,35 +539,47 @@ describe('createMemberToolHandlers', () => {
       expect(result).toContain('adcontextprotocol/adcp');
     });
 
-    it('warns when URL is very long', async () => {
+    it('omits the body from the pre-filled URL when the encoded URL exceeds 2,000 chars', async () => {
       const handlers = createMemberToolHandlers(null);
       const handler = handlers.get('draft_github_issue')!;
 
-      // Create a body that will exceed warning threshold (6000 chars)
-      const longBody = 'x'.repeat(6000);
+      // URL encoding makes the final URL longer than the raw issue body.
+      const longBody = 'multi word body\n'.repeat(150);
 
       const result = await handler({
         title: 'Test Issue',
         body: longBody,
       });
 
-      expect(result).toContain('quite long');
+      expect(result).toContain('too long for a reliable pre-filled link');
+      expect(result).toContain('Open GitHub with the title pre-filled');
+      expect(result).toContain('Copy the body from the preview below');
+      expect(result).toContain(longBody);
+      const href = result.match(/\[Open GitHub with the title pre-filled\]\(([^)]+)\)/)?.[1];
+      expect(href).toBeDefined();
+      expect(new URL(href!).searchParams.get('body')).toBeNull();
     });
 
-    it('provides manual instructions when URL exceeds max length', async () => {
+    it('uses the body-prefilled link at 2,000 chars and falls back at 2,001', async () => {
       const handlers = createMemberToolHandlers(null);
       const handler = handlers.get('draft_github_issue')!;
+      const title = 'Boundary';
+      const urlForBody = (body: string) => {
+        const params = new URLSearchParams({ title, body });
+        return `https://github.com/adcontextprotocol/adcp/issues/new?${params.toString()}`;
+      };
+      const emptyUrlLength = urlForBody('').length;
+      const bodyAtLimit = 'x'.repeat(2000 - emptyUrlLength);
 
-      // Create a body that will exceed max (8000 chars)
-      const veryLongBody = 'x'.repeat(8000);
+      expect(urlForBody(bodyAtLimit)).toHaveLength(2000);
+      expect(urlForBody(`${bodyAtLimit}x`)).toHaveLength(2001);
 
-      const result = await handler({
-        title: 'Test Issue',
-        body: veryLongBody,
-      });
+      const atLimit = await handler({ title, body: bodyAtLimit });
+      const overLimit = await handler({ title, body: `${bodyAtLimit}x` });
 
-      expect(result).toContain('too long for a pre-filled URL');
-      expect(result).toContain('create the issue manually');
+      expect(atLimit).toContain('[Create Issue on GitHub]');
+      expect(overLimit).not.toContain('[Create Issue on GitHub]');
+      expect(overLimit).toContain('[Open GitHub with the title pre-filled]');
     });
 
     it('accepts adcp-client as a valid repo', async () => {
@@ -945,6 +964,7 @@ describe('createMemberToolHandlers', () => {
         declaredSpecialisms: ['sales-catalog-driven'],
         runId: 'run_123',
         adcpVersions: ['3.0'],
+        supportedVersions: ['3.0'],
       }));
     });
 

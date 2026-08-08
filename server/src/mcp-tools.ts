@@ -26,6 +26,9 @@ import { notifyRegistryCreate, notifyRegistryEdit } from "./notifications/regist
 import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review.js";
 import type { MCPAuthContext } from "./mcp/auth.js";
 import { createLogger } from "./logger.js";
+import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
+import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
+import { serializeInlineScriptJson } from './utils/inline-script-json.js';
 
 const logger = createLogger('mcp-tools');
 
@@ -201,9 +204,24 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "get_creative_capabilities_for_agent",
+    description:
+      "Query an endpoint's canonical creative build, validation, and preview capabilities through get_adcp_capabilities",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        agent_url: {
+          type: "string",
+          description: "Agent URL to query",
+        },
+      },
+      required: ["agent_url"],
+    },
+  },
+  {
     name: "list_creative_formats_for_agent",
     description:
-      "Query an agent for supported creative formats (proxy tool that calls list_creative_formats on the agent)",
+      "Deprecated 3.x compatibility proxy for list_creative_formats. New workflows use get_creative_capabilities_for_agent.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -474,17 +492,6 @@ export const TOOL_DEFINITIONS = [
         publisher_domain: {
           type: "string",
           description: "Publisher domain (e.g., 'example-news.com')",
-        },
-        authorized_agents: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              url: { type: "string" },
-              authorized_for: { type: "string" },
-            },
-          },
-          description: "Authorized agents for this property",
         },
         properties: {
           type: "array",
@@ -907,7 +914,7 @@ export class MCPToolHandler {
             name: "Query",
             agent_uri: agentUrl,
             protocol: "mcp",
-          }]);
+          }], withSdkSafeTransport({}));
           const client = multiClient.agent("query");
 
           const result = await client.executeTask("get_products", params);
@@ -956,9 +963,11 @@ export class MCPToolHandler {
         }
       }
 
+      case "get_creative_capabilities_for_agent":
       case "list_creative_formats_for_agent": {
         const agentUrl = args?.agent_url as string;
         const params = (args?.params || {}) as Record<string, unknown>;
+        const canonical = name === "get_creative_capabilities_for_agent";
 
         try {
           const { AdCPClient } = await import("@adcp/sdk");
@@ -967,18 +976,20 @@ export class MCPToolHandler {
             name: "Query",
             agent_uri: agentUrl,
             protocol: "mcp",
-          }]);
+          }], withSdkSafeTransport({}));
           const client = multiClient.agent("query");
 
-          const result = await client.executeTask("list_creative_formats", params);
+          const result = canonical
+            ? await client.getAdcpCapabilities({})
+            : await client.executeTask("list_creative_formats", params);
 
-          if (!result.success) {
+          if ('success' in result && !result.success) {
             return {
               content: [
                 {
                   type: "resource",
                   resource: {
-                    uri: `adcp://formats/${agentUrl}`,
+                    uri: `adcp://${canonical ? 'capabilities' : 'formats'}/${agentUrl}`,
                     mimeType: "application/json",
                     text: JSON.stringify({ error: result.error || "Failed to list formats" }),
                   },
@@ -992,7 +1003,7 @@ export class MCPToolHandler {
               {
                 type: "resource",
                 resource: {
-                  uri: `adcp://formats/${agentUrl}`,
+                  uri: `adcp://${canonical ? 'capabilities' : 'formats'}/${agentUrl}`,
                   mimeType: "application/json",
                   text: JSON.stringify(result.data),
                 },
@@ -1006,7 +1017,7 @@ export class MCPToolHandler {
               {
                 type: "resource",
                 resource: {
-                  uri: `adcp://formats/${agentUrl}`,
+                  uri: `adcp://${canonical ? 'capabilities' : 'formats'}/${agentUrl}`,
                   mimeType: "application/json",
                   text: JSON.stringify({ error: message }),
                 },
@@ -1026,7 +1037,7 @@ export class MCPToolHandler {
             name: "Query",
             agent_uri: agentUrl,
             protocol: "mcp",
-          }]);
+          }], withSdkSafeTransport({}));
           const client = multiClient.agent("query");
 
           const result = await client.executeTask("list_authorized_properties", {});
@@ -1794,35 +1805,15 @@ export class MCPToolHandler {
           };
         }
 
-        const authorizedAgents = args?.authorized_agents as Array<{ url: string; authorized_for?: string }> || [];
         const propertyItems = args?.properties as Array<{ type: string; name: string }> || [];
         const formats = args?.formats as Array<Record<string, unknown>> | undefined;
         const placements = args?.placements as Array<Record<string, unknown>> | undefined;
         const contact = args?.contact as { name?: string; email?: string } | undefined;
 
-        // Validate agent URLs
-        for (const agent of authorizedAgents) {
-          try {
-            const parsed = new URL(agent.url);
-            if (parsed.protocol !== 'https:') {
-              return {
-                content: [{ type: "text", text: JSON.stringify({ error: `Agent URL must use HTTPS: ${agent.url}` }) }],
-                isError: true,
-              };
-            }
-          } catch {
-            return {
-              content: [{ type: "text", text: JSON.stringify({ error: `Invalid agent URL: ${agent.url}` }) }],
-              isError: true,
-            };
-          }
-        }
-
-        const adagentsJson: Record<string, unknown> = {
+        const adagentsJson = scrubCommunityAuthorizedAgents({
           $schema: 'https://adcontextprotocol.org/schemas/latest/adagents.json',
-          authorized_agents: authorizedAgents,
           properties: propertyItems,
-        };
+        });
         if (contact) {
           adagentsJson.contact = contact;
         }
@@ -2148,7 +2139,7 @@ export class MCPToolHandler {
     }
 
     // Inject the surface data into the shell
-    const surfaceScript = `window.__SI_SURFACE__ = ${JSON.stringify(surface)};`;
+    const surfaceScript = `window.__SI_SURFACE__ = ${serializeInlineScriptJson(surface)};`;
     const injectedHtml = shellHtml.replace(
       /\/\/ This will be replaced by server-side injection[\s\S]*?\/\/ window\.__SI_SURFACE__ = .*$/m,
       surfaceScript

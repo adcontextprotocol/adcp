@@ -111,12 +111,73 @@ function env() {
         contentType: 'application/json; charset=utf-8',
         cacheControl: 'public, max-age=31536000, immutable',
       }),
+      object('schemas/3.1.0/index.json', '{"version":"3.1.0"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/3.1.0/foo.json', '{"version":"3.1.0"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/3.1.2/index.json', '{"version":"3.1.2"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/3.1.2/foo.json', '{"version":"3.1.2"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/3.1.3/index.json', '{"version":"3.1.3"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/3.1.3/foo.json', '{"version":"3.1.3"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/3.2.0/index.json', '{"version":"3.2.0"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/3.2.0/foo.json', '{"version":"3.2.0"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/3.1.0/tmp/context-match-request.json', '{"namespace":"legacy-tmp"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/3.1.0/trusted-match/context-match-request.json', '{"namespace":"trusted-match"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/index.json', '{"latest_stable":"3.1.0"}', { contentType: 'application/json; charset=utf-8' }),
+      object('schemas/latest.json', '{"latest_stable":"3.1.0"}', { contentType: 'application/json; charset=utf-8' }),
       object('schemas/latest/foo.json', '{"version":"latest"}', { contentType: 'application/json; charset=utf-8' }),
+      object('schemas/latest/trusted-match/context-match-request.json', '{"namespace":"latest-trusted-match"}', {
+        contentType: 'application/json; charset=utf-8',
+      }),
       object('compliance/3.0.12/index.json', '{"version":"3.0.12"}', {
         contentType: 'application/json; charset=utf-8',
         cacheControl: 'public, max-age=31536000, immutable',
       }),
       object('compliance/3.1.0-beta.3/index.json', '{"version":"3.1.0-beta.3"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('compliance/3.1.0/index.json', '{"version":"3.1.0"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('compliance/3.1.2/index.json', '{"version":"3.1.2"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('compliance/3.1.3/index.json', '{"version":"3.1.3"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('compliance/3.2.0/index.json', '{"version":"3.2.0"}', {
         contentType: 'application/json; charset=utf-8',
         cacheControl: 'public, max-age=31536000, immutable',
       }),
@@ -135,6 +196,27 @@ function env() {
       object('protocol/3.0.12.tgz.crt', 'pinned-certificate', {
         contentType: 'application/x-pem-file',
         cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('protocol/3.1.2.tgz', 'supported-tarball', {
+        contentType: 'application/gzip',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('protocol/3.1.2.tgz.sha256', 'supported-checksum', {
+        contentType: 'text/plain; charset=utf-8',
+      }),
+      object('protocol/3.1.3.tgz', 'withdrawn-tarball', {
+        contentType: 'application/gzip',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('protocol/3.1.3.tgz.sha256', 'withdrawn-checksum', {
+        contentType: 'text/plain; charset=utf-8',
+      }),
+      object('protocol/3.2.0.tgz', 'unpublished-tarball', {
+        contentType: 'application/gzip',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('protocol/3.2.0.tgz.sha256', 'unpublished-checksum', {
+        contentType: 'text/plain; charset=utf-8',
       }),
       object('protocol/latest.tgz', 'latest-tarball', {
         contentType: 'application/gzip',
@@ -156,6 +238,7 @@ function paginatedEnv() {
       object('schemas/3.0.2/a.json', 'old'),
       object('schemas/3.0.3/a.json', 'old'),
       object('schemas/3.1.0-beta.3/foo.json', '{"version":"3.1.0-beta.3"}'),
+      object('schemas/3.1.0/foo.json', '{"version":"3.1.0"}'),
     ], { pageSize: 2 }),
   };
 }
@@ -186,7 +269,7 @@ describe('artifact CDN Worker', () => {
     const response = await fetchPath('/schemas/v3/foo.json');
 
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { version: '3.1.0-beta.3' });
+    assert.deepEqual(await response.json(), { version: '3.1.2' });
     assert.equal(response.headers.get('cache-control'), 'public, no-cache, must-revalidate');
     assert.equal(response.headers.get('access-control-allow-origin'), '*');
   });
@@ -201,7 +284,7 @@ describe('artifact CDN Worker', () => {
     );
 
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { version: '3.1.0-beta.3' });
+    assert.deepEqual(await response.json(), { version: '3.1.0' });
   });
 
   it('rewrites minor aliases to the latest patch in that minor', async () => {
@@ -212,6 +295,17 @@ describe('artifact CDN Worker', () => {
     assert.equal(response.headers.get('cache-control'), 'public, no-cache, must-revalidate');
   });
 
+  it('skips withdrawn releases for aliases while preserving exact access', async () => {
+    const alias = await fetchPath('/schemas/v3.1/foo.json');
+    const exact = await fetchPath('/schemas/3.1.3/foo.json');
+
+    assert.equal(alias.status, 200);
+    assert.deepEqual(await alias.json(), { version: '3.1.2' });
+    assert.equal(exact.status, 200);
+    assert.deepEqual(await exact.json(), { version: '3.1.3' });
+    assert.equal(exact.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  });
+
   it('preserves the v1 to latest compatibility alias', async () => {
     const response = await fetchPath('/schemas/v1/foo.json');
 
@@ -219,11 +313,159 @@ describe('artifact CDN Worker', () => {
     assert.deepEqual(await response.json(), { version: 'latest' });
   });
 
+  it('serves root schema discovery files as revalidated mutable artifacts', async () => {
+    const index = await fetchPath('/schemas/index.json');
+    const latest = await fetchPath('/schemas/latest.json');
+
+    assert.equal(index.status, 200);
+    assert.deepEqual(await index.json(), { latest_stable: '3.1.0' });
+    assert.equal(index.headers.get('cache-control'), 'public, no-cache, must-revalidate');
+
+    assert.equal(latest.status, 200);
+    assert.deepEqual(await latest.json(), { latest_stable: '3.1.0' });
+    assert.equal(latest.headers.get('cache-control'), 'public, no-cache, must-revalidate');
+  });
+
   it('keeps pinned semver paths immutable', async () => {
     const response = await fetchPath('/schemas/3.0.12/foo.json');
+    const index = await fetchPath('/schemas/3.0.12/index.json');
 
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    assert.equal(index.status, 200);
+    assert.equal(index.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  });
+
+  it('serves legacy /tmp/ schema paths when existing release artifacts still have them', async () => {
+    const response = await fetchPath('/schemas/3.1.0/tmp/context-match-request.json');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { namespace: 'legacy-tmp' });
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  });
+
+  it('falls back legacy /tmp/ schema paths to canonical trusted-match artifacts', async () => {
+    const response = await fetchPath('/schemas/latest/tmp/context-match-request.json');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { namespace: 'latest-trusted-match' });
+    assert.equal(response.headers.get('cache-control'), 'public, no-cache, must-revalidate');
+  });
+
+  it('falls back exact pinned /tmp/ schema paths when only trusted-match artifacts exist', async () => {
+    const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+    const testEnv = env();
+    clearVersionCacheForTests();
+    testEnv.ARTIFACTS.entries.set(
+      'schemas/9.9.9/trusted-match/context-match-request.json',
+      new MockR2Object(
+        'schemas/9.9.9/trusted-match/context-match-request.json',
+        '{"namespace":"future-trusted-match"}',
+        { contentType: 'application/json; charset=utf-8' },
+      ),
+    );
+
+    const response = await handleRequest(
+      new Request('https://artifacts.example/schemas/9.9.9/tmp/context-match-request.json'),
+      testEnv,
+      {},
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { namespace: 'future-trusted-match' });
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    assert.equal(testEnv.ARTIFACTS.getCalls.get('schemas/9.9.9/tmp/context-match-request.json'), 1);
+    assert.equal(
+      testEnv.ARTIFACTS.getCalls.get('schemas/9.9.9/trusted-match/context-match-request.json'),
+      1,
+    );
+  });
+
+  it('does not rewrite malformed legacy /tmp/ schema paths', async () => {
+    const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+    const testEnv = env();
+    clearVersionCacheForTests();
+    testEnv.ARTIFACTS.entries.set(
+      'schemas/latest/core/trusted-match/context-match-request.json',
+      new MockR2Object(
+        'schemas/latest/core/trusted-match/context-match-request.json',
+        '{"namespace":"wrong-segment"}',
+        { contentType: 'application/json; charset=utf-8' },
+      ),
+    );
+
+    const encodedTraversal = await handleRequest(
+      new Request('https://artifacts.example/schemas/latest/tmp/%2e%2e/%2e%2e/etc/passwd'),
+      testEnv,
+      {},
+    );
+    const midPathTmp = await handleRequest(
+      new Request('https://artifacts.example/schemas/latest/core/tmp/context-match-request.json'),
+      testEnv,
+      {},
+    );
+
+    assert.equal(encodedTraversal.status, 404);
+    assert.equal(midPathTmp.status, 404);
+    assert.equal(
+      testEnv.ARTIFACTS.getCalls.get('schemas/latest/core/trusted-match/context-match-request.json') ?? 0,
+      0,
+    );
+  });
+
+  it('resolves a pinned docs-only version bump to the nearest published release', async () => {
+    const response = await fetchPath('/schemas/3.0.19/foo.json');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { version: '3.0.12' });
+    assert.equal(response.headers.get('cache-control'), 'public, no-cache, must-revalidate');
+    assert.equal(response.headers.get('access-control-allow-origin'), '*');
+  });
+
+  it('redirects a bare pinned-fallback version directory to the resolved index.json', async () => {
+    const response = await fetchPath('/schemas/3.0.19/');
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get('location'), '/schemas/3.0.12/index.json');
+  });
+
+  it('never resolves a stable pin to a prerelease on the same line', async () => {
+    // 3.2.x has no stable release published; a stable 3.2.5 pin must fall
+    // back to the highest selectable stable in the major (3.1.2), not a
+    // prerelease or the withdrawn 3.1.3 release.
+    const response = await fetchPath('/schemas/3.2.5/foo.json');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { version: '3.1.2' });
+    assert.equal(response.headers.get('cache-control'), 'public, no-cache, must-revalidate');
+  });
+
+  it('does not edge-cache resolved pinned fallbacks', async () => {
+    const { clearVersionCacheForTests, handleRequest } = await loadWorker();
+    const testEnv = env();
+    const edgeCache = new MockEdgeCache();
+    const ctx = { waitUntil: () => assert.fail('resolved fallbacks should not write to edge cache') };
+    clearVersionCacheForTests();
+
+    await withMockEdgeCache(edgeCache, async () => {
+      const response = await handleRequest(
+        new Request('https://artifacts.example/schemas/3.0.19/foo.json'),
+        testEnv,
+        ctx,
+      );
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { version: '3.0.12' });
+    });
+
+    assert.equal(edgeCache.matches, 0);
+    assert.equal(edgeCache.puts, 0);
+  });
+
+  it('404s a pinned version with no resolvable release in its major', async () => {
+    const response = await fetchPath('/schemas/4.0.0/foo.json');
+
+    assert.equal(response.status, 404);
+    assert.equal(await response.text(), 'Not Found');
   });
 
   it('uses edge cache for immutable versioned schema objects', async () => {
@@ -271,11 +513,11 @@ describe('artifact CDN Worker', () => {
 
       assert.equal(first.status, 200);
       assert.equal(second.status, 200);
-      assert.deepEqual(await first.json(), { version: '3.1.0-beta.3' });
-      assert.deepEqual(await second.json(), { version: '3.1.0-beta.3' });
+      assert.deepEqual(await first.json(), { version: '3.1.2' });
+      assert.deepEqual(await second.json(), { version: '3.1.2' });
     });
 
-    assert.equal(testEnv.ARTIFACTS.getCalls.get('schemas/3.1.0-beta.3/foo.json'), 2);
+    assert.equal(testEnv.ARTIFACTS.getCalls.get('schemas/3.1.2/foo.json'), 2);
     assert.equal(edgeCache.matches, 0);
     assert.equal(edgeCache.puts, 0);
   });
@@ -284,7 +526,7 @@ describe('artifact CDN Worker', () => {
     const response = await fetchPath('/schemas/v3/');
 
     assert.equal(response.status, 302);
-    assert.equal(response.headers.get('location'), '/schemas/3.1.0-beta.3/index.json');
+    assert.equal(response.headers.get('location'), '/schemas/3.1.2/index.json');
   });
 
   it('redirects bare version paths before serving index.json', async () => {
@@ -299,16 +541,88 @@ describe('artifact CDN Worker', () => {
     const body = await response.json();
 
     assert.equal(response.status, 200);
-    assert.deepEqual(body.versions.map((entry) => entry.version), ['3.1.0-beta.3', '3.0.12']);
-    assert.deepEqual(body.aliases, [
-      { alias: 'v3', resolves_to: '3.1.0-beta.3', path: '/schemas/v3/' },
-      { alias: 'v3.0', resolves_to: '3.0.12', path: '/schemas/v3.0/' },
-      { alias: 'v3.1', resolves_to: '3.1.0-beta.3', path: '/schemas/v3.1/' },
+    assert.deepEqual(body.versions, [
+      {
+        version: '3.2.0',
+        stability: 'unpublished',
+        prerelease: false,
+        deprecated: false,
+        published: false,
+        path: '/schemas/3.2.0/',
+      },
+      {
+        version: '3.1.3',
+        stability: 'withdrawn',
+        prerelease: false,
+        deprecated: true,
+        withdrawn: true,
+        path: '/schemas/3.1.3/',
+      },
+      {
+        version: '3.1.2',
+        stability: 'stable',
+        prerelease: false,
+        deprecated: false,
+        path: '/schemas/3.1.2/',
+      },
+      {
+        version: '3.1.0',
+        stability: 'stable',
+        prerelease: false,
+        deprecated: false,
+        path: '/schemas/3.1.0/',
+      },
+      {
+        version: '3.1.0-beta.3',
+        stability: 'beta',
+        prerelease: true,
+        deprecated: true,
+        superseded_by: '3.1.0',
+        path: '/schemas/3.1.0-beta.3/',
+      },
+      {
+        version: '3.0.12',
+        stability: 'stable',
+        prerelease: false,
+        deprecated: false,
+        path: '/schemas/3.0.12/',
+      },
     ]);
+    assert.deepEqual(body.aliases, [
+      { alias: 'v3', resolves_to: '3.1.2', path: '/schemas/v3/' },
+      { alias: 'v3.0', resolves_to: '3.0.12', path: '/schemas/v3.0/' },
+      { alias: 'v3.1', resolves_to: '3.1.2', path: '/schemas/v3.1/' },
+    ]);
+    assert.equal(body.latest_stable, '3.1.2');
     assert.deepEqual(body.latest, {
       path: '/schemas/latest/',
       note: 'Development version, may differ from released versions',
     });
+  });
+
+  it('applies release overrides consistently to compliance aliases', async () => {
+    const alias = await fetchPath('/compliance/v3.1/');
+    const discovery = await fetchPath('/compliance/');
+    const body = await discovery.json();
+
+    assert.equal(alias.status, 302);
+    assert.equal(alias.headers.get('location'), '/compliance/3.1.2/index.json');
+    assert.equal(body.latest_stable, '3.1.2');
+    assert.deepEqual(
+      body.aliases.find((entry) => entry.alias === 'v3'),
+      { alias: 'v3', resolves_to: '3.1.2', path: '/compliance/v3/' },
+    );
+    assert.deepEqual(
+      body.versions.find((entry) => entry.version === '3.2.0'),
+      {
+        version: '3.2.0',
+        stability: 'unpublished',
+        prerelease: false,
+        deprecated: false,
+        published: false,
+        path: '/compliance/3.2.0/',
+      },
+    );
   });
 
   it('serves protocol files without alias rewriting', async () => {
@@ -395,6 +709,27 @@ describe('artifact CDN Worker', () => {
     assert.equal(response.status, 200);
     assert.deepEqual(body.versions, [
       {
+        version: '3.2.0',
+        stability: 'unpublished',
+        deprecated: false,
+        published: false,
+        tarball: '/protocol/3.2.0.tgz',
+        checksum: '/protocol/3.2.0.tgz.sha256',
+      },
+      {
+        version: '3.1.3',
+        stability: 'withdrawn',
+        deprecated: true,
+        withdrawn: true,
+        tarball: '/protocol/3.1.3.tgz',
+        checksum: '/protocol/3.1.3.tgz.sha256',
+      },
+      {
+        version: '3.1.2',
+        tarball: '/protocol/3.1.2.tgz',
+        checksum: '/protocol/3.1.2.tgz.sha256',
+      },
+      {
         version: '3.0.12',
         tarball: '/protocol/3.0.12.tgz',
         checksum: '/protocol/3.0.12.tgz.sha256',
@@ -403,7 +738,7 @@ describe('artifact CDN Worker', () => {
       },
     ]);
     assert.equal(body.latest.tarball, '/protocol/latest.tgz');
-    assert.equal(body.latest.published_version, '3.0.12');
+    assert.equal(body.latest.published_version, '3.1.2');
   });
 
   it('serves protocol discovery at the bare protocol path', async () => {

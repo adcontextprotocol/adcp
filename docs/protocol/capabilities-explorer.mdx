@@ -28,10 +28,11 @@ The 14 domains below are the entire top-level surface of `get_adcp_capabilities`
 
 Version negotiation, idempotency contract, build identifier.
 
-- **`supported_versions`** — release-precision strings (e.g. `"3.0"`, `"3.1-beta"`). Authoritative for buyer-side release pinning.
+- **`supported_versions`** — release-precision strings (e.g. `"3.0"`, `"3.1"`). Authoritative for buyer-side release pinning.
 - **`major_versions`** — DEPRECATED in favor of `supported_versions`; sellers MUST keep emitting through 3.x.
 - **`build_version`** — full semver build identifier; advisory metadata for buyer-side incident triage.
 - **`idempotency`** — discriminated union (`IdempotencySupported` / `IdempotencyUnsupported`) declaring replay semantics. **A declaration here is a commitment** — sellers that declare `supported: true` are probed by the conformance runner.
+- **`capability_changes`** — freshness metadata and optional `capabilities.changed` invalidation webhooks for cached capability documents.
 
 [Propose an extension to `adcp`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+adcp+capability:+%3Cflag%3E&body=Schema+location:+%60.adcp%60%0AExisting+keys:+supported_versions,+major_versions,+build_version,+idempotency%0A%0A%23%23+Proposal%0A%0A...%0A%0A%23%23+Why+this+belongs+under+%60adcp%60+and+not+a+new+top-level+key%0A%0A...&labels=rfc,capabilities)
 
@@ -146,13 +147,13 @@ For creative agents.
 
 ### `request_signing` — RFC 9421 HTTP Signatures for incoming requests
 
-Optional in 3.0; capability-advertised so counterparties can opt into signing selectively.
+Signing remains optional through 3.2 and capability-advertised so counterparties can opt in selectively. A 3.2 agent that advertises support must use the body-bound profile.
 
 - **`supported`** — boolean.
 - **`required_for`** — array of operations where signing is required.
 - **`supported_for`** — array of operations where signing is supported.
 - **`warn_for`** — array of operations where unsigned requests produce warnings.
-- **`covers_content_digest`** — whether signatures cover the request body digest.
+- **`covers_content_digest`** — MUST be `required` for a 3.2 signing profile. The legacy `either` and `forbidden` values are accepted only when negotiating with a 3.0/3.1 endpoint.
 
 [Propose an extension to `request_signing`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+request_signing+capability:+%3Cflag%3E&body=Schema+location:+%60.request_signing%60&labels=rfc,capabilities,security)
 

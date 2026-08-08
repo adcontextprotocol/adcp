@@ -411,6 +411,16 @@ export async function setSlackDmThread(personId: string, channelId: string, thre
   );
 }
 
+/** Clear permanent Slack DM coordinates after Slack marks the channel unwritable. */
+export async function clearSlackDmThread(personId: string, channelId: string): Promise<void> {
+  await query(
+    `UPDATE person_relationships
+     SET slack_dm_channel_id = NULL, slack_dm_thread_ts = NULL, updated_at = NOW()
+     WHERE id = $1 AND slack_dm_channel_id = $2`,
+    [personId, channelId]
+  );
+}
+
 /** Mark a person as opted out of all proactive outreach. */
 export async function setOptedOut(personId: string, optedOut: boolean): Promise<void> {
   await query(
@@ -532,9 +542,12 @@ export async function evaluateStageTransitions(personId: string): Promise<void> 
     const wgResult = await query<{ wg_count: number }>(
       `SELECT COUNT(DISTINCT wg.id) as wg_count
        FROM working_groups wg
-       WHERE EXISTS(
+       WHERE wg.status = 'active'
+       AND EXISTS(
          SELECT 1 FROM working_group_memberships wgm
-         WHERE wgm.working_group_id = wg.id AND wgm.workos_user_id = $1
+         WHERE wgm.working_group_id = wg.id
+           AND wgm.workos_user_id = $1
+           AND wgm.status = 'active'
        )`,
       [person.workos_user_id]
     );
@@ -546,12 +559,19 @@ export async function evaluateStageTransitions(personId: string): Promise<void> 
 
     const leaderResult = await query<{ is_leader: boolean; council_count: number }>(
       `SELECT
-        EXISTS(SELECT 1 FROM working_group_leaders WHERE user_id = $1) as is_leader,
+        EXISTS(
+          SELECT 1 FROM working_group_leaders wgl
+          JOIN working_groups leader_wg ON leader_wg.id = wgl.working_group_id
+          WHERE wgl.user_id = $1 AND leader_wg.status = 'active'
+        ) as is_leader,
         (SELECT COUNT(DISTINCT wg.id) FROM working_groups wg
          WHERE wg.committee_type = 'council'
+         AND wg.status = 'active'
          AND EXISTS(
            SELECT 1 FROM working_group_memberships wgm
-           WHERE wgm.working_group_id = wg.id AND wgm.workos_user_id = $1
+           WHERE wgm.working_group_id = wg.id
+             AND wgm.workos_user_id = $1
+             AND wgm.status = 'active'
          )) as council_count`,
       [person.workos_user_id]
     );

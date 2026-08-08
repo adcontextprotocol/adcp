@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -10,7 +10,10 @@ import {
   clearTaskStore,
 } from '../../src/training-agent/task-handlers.js';
 import { clearSessions } from '../../src/training-agent/state.js';
-import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
+import {
+  clearAccountStore,
+  MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC,
+} from '../../src/training-agent/account-handlers.js';
 import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
@@ -95,6 +98,10 @@ describe('sync_accounts', () => {
     clearIdempotencyCache();
     invalidateCache();
     server = createTrainingAgentServer(DEFAULT_CTX);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('sandbox account is active immediately', async () => {
@@ -660,7 +667,8 @@ describe('sync_accounts', () => {
         notification_configs: [{
           subscriber_id: 'buyer-primary',
           url: 'https://buyer.example.com/webhooks/creative',
-          event_types: ['creative.status_changed'],
+          event_types: ['creative.status_changed', 'creative.purged'],
+          active: false,
         }],
       }],
     });
@@ -671,8 +679,8 @@ describe('sync_accounts', () => {
     expect(acct.notification_configs).toEqual([{
       subscriber_id: 'buyer-primary',
       url: 'https://buyer.example.com/webhooks/creative',
-      event_types: ['creative.status_changed'],
-      active: true,
+      event_types: ['creative.status_changed', 'creative.purged'],
+      active: false,
     }]);
   });
 
@@ -728,7 +736,7 @@ describe('sync_accounts', () => {
             schemes: ['Bearer'],
             credentials: 'AbCdEf0123456789AbCdEf0123456789',
           },
-          active: true,
+          active: false,
         }],
       }],
     });
@@ -739,7 +747,7 @@ describe('sync_accounts', () => {
       url: 'https://buyer.example.com/webhooks/creative',
       event_types: ['creative.status_changed'],
       authentication: { schemes: ['Bearer'] },
-      active: true,
+      active: false,
     }]);
   });
 
@@ -754,7 +762,7 @@ describe('sync_accounts', () => {
           subscriber_id: 'buyer-primary',
           url: 'https://buyer.example.com/webhooks/creative',
           event_types: ['creative.status_changed'],
-          active: true,
+          active: false,
         }],
       }],
     });
@@ -766,8 +774,113 @@ describe('sync_accounts', () => {
       subscriber_id: 'buyer-primary',
       url: 'https://buyer.example.com/webhooks/creative',
       event_types: ['creative.status_changed'],
-      active: true,
+      active: false,
     }]);
+  });
+
+  it('rejects active notification configs when endpoint proof of control fails', async () => {
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'operator',
+        sandbox: true,
+        notification_configs: [{
+          subscriber_id: 'buyer-primary',
+          url: 'http://127.0.0.1:1/webhooks/creative',
+          event_types: ['creative.status_changed'],
+          active: true,
+        }],
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.action).toBe('failed');
+    expect(acct.status).toBe('rejected');
+    expect(acct.errors).toEqual([expect.objectContaining({
+      code: 'VALIDATION_ERROR',
+      field: 'notification_configs[0].url',
+      message: 'webhook endpoint proof of control failed',
+    })]);
+  });
+
+  it('rejects an amplified activation batch before sending any challenges', async () => {
+    const accounts = Array.from(
+      { length: MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC + 1 },
+      (_, index) => ({
+        brand: { domain: `proof-budget-${index}.example` },
+        operator: 'agency-one.example',
+        billing: 'operator',
+        sandbox: true,
+        notification_configs: [{
+          subscriber_id: `subscriber-${index}`,
+          url: `https://receiver-${index}.example/webhook`,
+          event_types: ['creative.status_changed'],
+          active: true,
+        }],
+      }),
+    );
+
+    const { result } = await simulateCallTool(server, 'sync_accounts', { accounts });
+    expect(result).toMatchObject({
+      code: 'LIMIT_EXCEEDED',
+      recovery: 'correctable',
+      message: expect.stringContaining(
+        `At most ${MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC}`,
+      ),
+    });
+  });
+
+  it('rejects loopback notification configs in an unknown runtime', async () => {
+    vi.stubEnv('NODE_ENV', 'staging');
+
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'operator',
+        sandbox: true,
+        notification_configs: [{
+          subscriber_id: 'buyer-primary',
+          url: 'http://127.0.0.1:9999/webhook',
+          event_types: ['creative.status_changed'],
+          active: false,
+        }],
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.action).toBe('failed');
+    expect(acct.errors).toEqual([expect.objectContaining({
+      code: 'VALIDATION_ERROR',
+      field: 'notification_configs[0].url',
+      message: 'url must use HTTPS',
+    })]);
+  });
+
+  it('allows loopback notification configs in explicit development mode', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'operator',
+        sandbox: true,
+        notification_configs: [{
+          subscriber_id: 'buyer-primary',
+          url: 'http://127.0.0.1:9999/webhook',
+          event_types: ['creative.status_changed'],
+          active: false,
+        }],
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.action).toBe('created');
+    expect(acct.notification_configs).toEqual([expect.objectContaining({
+      url: 'http://127.0.0.1:9999/webhook',
+    })]);
   });
 });
 

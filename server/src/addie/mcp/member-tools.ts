@@ -14,6 +14,7 @@ import { createCipheriv, createDecipheriv, randomBytes, randomUUID, scryptSync }
 import { createLogger } from '../../logger.js';
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
+import { validateMemberProfileUrlFields } from '../../utils/member-profile-url.js';
 import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-client-credentials-input.js';
 import {
   verifyAgentHostname,
@@ -48,6 +49,7 @@ import {
   selectComplianceTargetForAgent,
   selectComplianceTargetForAgentSelection,
   type ComplyOptions,
+  type CapabilityResolutionErrorInfo,
   type ComplianceTargetSelection,
   type ComplianceTrack,
 } from '../services/compliance-testing.js';
@@ -80,7 +82,10 @@ import {
 } from '../../services/hosted-compliance-version.js';
 import { AgentContextDatabase, validateAuthTokenChars, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
+import { resolveUserAgentAuth } from '../../routes/helpers/resolve-user-agent-auth.js';
 import { isOAuthRequiredErrorMessage } from '../../routes/helpers/oauth-error-detection.js';
+import { agentConfigAuthFields, type SdkAuth } from '../../services/sdk-auth-adapter.js';
+import { withSdkSafeTransport } from '../../utils/sdk-safe-fetch.js';
 import {
   findExistingProposalOrFeed,
   createFeedProposal,
@@ -133,6 +138,14 @@ import { getWorkos } from '../../auth/workos-client.js';
 import { resolveUserRole } from '../../utils/resolve-user-role.js';
 import { recordAgentTestRun } from '../../db/agent-test-db.js';
 import { canonicalizeAgentUrl } from '../../db/publisher-db.js';
+import {
+  guardPersonalWorkspaceDomainSelection,
+  type PersonalWorkspaceDomainSelectionResult,
+} from '../../services/org-selection-guard.js';
+import {
+  recordCertificationExperienceEvent,
+  upsertCertificationContribution,
+} from '../../services/certification-experience.js';
 
 const logger = createLogger('addie-member-tools');
 const complianceTarget = hostedComplianceTarget();
@@ -148,7 +161,7 @@ function targetFromInput(input: Record<string, unknown>): ReturnType<typeof host
       ? hostedComplianceTarget(requested.trim())
       : complianceTarget;
   } catch {
-    throw new ToolError('Invalid compliance_target. Use 3.0, 3.1-rc, 3.1-beta, or an exact bundled version.');
+    throw new ToolError('Invalid compliance_target. Use 3.1, 3.0, 3.1-rc, 3.1-beta, or an exact bundled version.');
   }
 }
 
@@ -248,9 +261,9 @@ async function explicitTargetSupportErrorFromAgent(
   if (!hasExplicitComplianceTarget(input) || !requiresAdvertisedHostedComplianceSupport(target)) return undefined;
 
   try {
-    const caps = await testCapabilityDiscovery(agentUrl, {
+    const caps = await testCapabilityDiscovery(agentUrl, withSdkSafeTransport({
       ...(auth && { auth }),
-    });
+    }));
     const oauthError = capabilityDiscoveryOAuthError(caps);
     if (oauthError) return explicitTargetOAuthRequiredMessage(agentUrl, organizationId);
 
@@ -391,6 +404,7 @@ interface ResolvedAgentAuth {
   authType: 'bearer' | 'basic';
   source: 'explicit' | 'saved' | 'oauth' | 'public' | 'none';
   resolvedUrl: string;
+  sdkAuth?: SdkAuth;
 }
 
 /**
@@ -466,15 +480,25 @@ export async function resolveAgentAuth(
       logger.debug({ error, agentUrl: resolvedUrl }, 'Could not lookup saved auth token');
     }
 
-    // Check OAuth tokens
+    // Preserve refresh-capable OAuth and client-credentials shapes for the
+    // SDK. Static auth was already handled above, so this branch represents
+    // OAuth-backed credentials (or no credentials).
     try {
-      const oauthTokens = await agentContextDb.getOAuthTokensByOrgAndUrl(organizationId, resolvedUrl);
-      if (oauthTokens?.access_token) {
-        const isExpired = oauthTokens.expires_at &&
-          new Date(oauthTokens.expires_at).getTime() - Date.now() < 5 * 60 * 1000;
-        if (!isExpired) {
-          return { authToken: oauthTokens.access_token, authType: 'bearer', source: 'oauth', resolvedUrl };
-        }
+      const sdkAuth = await resolveUserAgentAuth(agentContextDb, organizationId, resolvedUrl, logger);
+      if (sdkAuth?.type === 'oauth') {
+        return {
+          authToken: sdkAuth.tokens.access_token,
+          authType: 'bearer',
+          source: 'oauth',
+          resolvedUrl,
+          sdkAuth,
+        };
+      }
+      if (sdkAuth?.type === 'oauth_client_credentials') {
+        return { authType: 'bearer', source: 'oauth', resolvedUrl, sdkAuth };
+      }
+      if (sdkAuth?.type === 'bearer') {
+        return { authToken: sdkAuth.token, authType: 'bearer', source: 'oauth', resolvedUrl, sdkAuth };
       }
     } catch (error) {
       logger.debug({ error, agentUrl: resolvedUrl }, 'Could not lookup OAuth token');
@@ -532,7 +556,8 @@ function validateAgentUrl(agentUrl: string): string | null {
 /**
  * Build auth options for the SDK from resolved auth. Exported for unit testing.
  */
-export function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: string } | { type: 'basic'; username: string; password: string } | undefined {
+export function buildAuthOption(resolved: ResolvedAgentAuth): SdkAuth | undefined {
+  if (resolved.sdkAuth) return resolved.sdkAuth;
   if (!resolved.authToken) return undefined;
 
   if (resolved.authType === 'basic') {
@@ -564,11 +589,33 @@ async function inferHostedAuthProbeTask(
   if (!auth) return undefined;
 
   try {
-    const caps = await testCapabilityDiscovery(agentUrl, withHostedTestOptions({ auth }, runTarget));
+    const caps = await testCapabilityDiscovery(
+      agentUrl,
+      withSdkSafeTransport(withHostedTestOptions({ auth }, runTarget)),
+    );
     return hostedAuthProbeTaskForProfile(caps.profile);
   } catch (error) {
     logger.warn({ error, agentUrl }, 'Addie: could not infer hosted auth probe task; using default');
     return undefined;
+  }
+}
+
+async function classifyCapabilityResolutionErrorWithDeclaredProtocols(
+  error: unknown,
+  agentUrl: string,
+  auth: ReturnType<typeof buildAuthOption>,
+): Promise<CapabilityResolutionErrorInfo | undefined> {
+  const initial = classifyCapabilityResolutionError(error);
+  if (initial?.kind !== 'specialism_parent_protocol_missing') return initial;
+
+  try {
+    const caps = await testCapabilityDiscovery(agentUrl, withSdkSafeTransport({
+      ...(auth && { auth }),
+    }));
+    return classifyCapabilityResolutionError(error, caps.profile?.supported_protocols ?? []) ?? initial;
+  } catch (probeError) {
+    logger.warn({ probeError, agentUrl }, 'evaluate_agent_quality: could not reprobe capabilities after resolver error');
+    return initial;
   }
 }
 
@@ -905,6 +952,11 @@ const GITHUB_BODY_MAX_CHARS = 4000;
 const GITHUB_COMMENT_MAX_CHARS = 1000;
 const GITHUB_MAX_COMMENTS = 10;
 const GITHUB_DIFF_MAX_CHARS = 12000;
+// Keep generated issue links below a conservative cross-client URL ceiling.
+// This reduces the risk of Slack splitting a query string or GitHub clearing
+// an oversized prefill. Longer drafts still get a complete copyable preview
+// and a short link that pre-fills the title only.
+const GITHUB_PREFILL_URL_MAX_CHARS = 2000;
 
 type ParsedRepo =
   | { ok: true; org: string; repo: string }
@@ -960,6 +1012,242 @@ function wrapUntrusted(source: string, content: string): string {
 
 function sanitizeInline(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
+}
+
+function normalizeOrgSelector(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = sanitizeInline(value);
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeOrgNameForMatch(value: string): string {
+  return sanitizeInline(value).toLowerCase();
+}
+
+function formatOrgNameForTool(value: string): string {
+  return wrapUntrustedInput(sanitizeInline(value), 100);
+}
+
+function formatOrgChoice(org: { organizationId: string; name?: string | null }): string {
+  const name = org.name ? formatOrgNameForTool(org.name) : '';
+  return name ? `${name} (${org.organizationId})` : org.organizationId;
+}
+
+type SaveAgentOrgResolution =
+  | {
+      ok: true;
+      organizationId: string;
+      organizationName: string | null;
+      organizationIsPersonal?: boolean | null;
+    }
+  | { ok: false; message: string };
+
+function memberContextForOrgGuard(
+  memberContext: MemberContext,
+  orgResolution: Extract<SaveAgentOrgResolution, { ok: true }>,
+): MemberContext {
+  if (typeof orgResolution.organizationIsPersonal !== 'boolean') {
+    return memberContext;
+  }
+
+  return {
+    ...memberContext,
+    organization: {
+      ...memberContext.organization,
+      workos_organization_id: orgResolution.organizationId,
+      name: orgResolution.organizationName ?? memberContext.organization?.name ?? '',
+      subscription_status: memberContext.organization?.subscription_status ?? null,
+      is_personal: orgResolution.organizationIsPersonal,
+      membership_tier: memberContext.organization?.membership_tier ?? null,
+    },
+  };
+}
+
+function agentUrlBaseDomain(agentUrl: string): string | null {
+  try {
+    return canonicalizeBrandDomain(new URL(agentUrl).hostname);
+  } catch {
+    return null;
+  }
+}
+
+function formatOrgSelectionRequiredMessage(
+  result: Extract<PersonalWorkspaceDomainSelectionResult, { ok: false }>,
+  action: string,
+): string {
+  const choices = result.companyOrgs.map(formatOrgChoice).join(', ');
+  const selectedName = result.selectedOrg.name
+    ? formatOrgNameForTool(result.selectedOrg.name)
+    : result.selectedOrg.organizationId;
+  return (
+    `I need you to choose the company organization before I ${action}. ` +
+    `Right now the selected organization is your personal workspace (${selectedName}), but ${result.domain} matches company org ${choices}. ` +
+    `Reply with the organization_id for the company org, or select it in the dashboard, and I will continue there. I will not issue domain challenges or save agents against the personal workspace for this company domain.`
+  );
+}
+
+type ActiveSaveAgentMembership = {
+  userId: string;
+  organizationId: string;
+  status: 'active';
+};
+
+async function listActiveWorkosMembershipsForSaveAgent(
+  workosUserId: string,
+  organizationId?: string | null,
+): Promise<ActiveSaveAgentMembership[]> {
+  const allMemberships: Array<{
+    userId?: string;
+    organizationId?: string;
+    status?: string;
+  }> = [];
+  let after: string | undefined;
+
+  do {
+    const page = await getWorkos().userManagement.listOrganizationMemberships({
+      userId: workosUserId,
+      statuses: ['active'],
+      ...(organizationId ? { organizationId } : {}),
+      limit: 100,
+      after,
+    });
+    allMemberships.push(...(page.data ?? []));
+    after = page.listMetadata?.after ?? undefined;
+  } while (after);
+
+  const activeMemberships: ActiveSaveAgentMembership[] = [];
+  for (const membership of allMemberships) {
+    if (
+      membership.userId !== workosUserId ||
+      membership.status !== 'active' ||
+      typeof membership.organizationId !== 'string' ||
+      (organizationId && membership.organizationId !== organizationId)
+    ) {
+      continue;
+    }
+    activeMemberships.push({
+      userId: workosUserId,
+      organizationId: membership.organizationId,
+      status: 'active',
+    });
+  }
+
+  return activeMemberships;
+}
+
+async function resolveSaveAgentOrganization(
+  memberContext: MemberContext,
+  input: Record<string, unknown>,
+  actionLabel = 'save to',
+): Promise<SaveAgentOrgResolution> {
+  const workosUserId = memberContext.workos_user?.workos_user_id;
+  if (!workosUserId) {
+    return {
+      ok: false,
+      message: 'You need to be logged in to save agents. Please log in at https://agenticadvertising.org/dashboard first.',
+    };
+  }
+
+  const requestedOrgId = normalizeOrgSelector(input.organization_id);
+  const requestedOrgName = normalizeOrgSelector(input.organization_name);
+
+  if (requestedOrgId && requestedOrgName) {
+    return {
+      ok: false,
+      message: `Use either organization_id or organization_name to ${actionLabel}, not both.`,
+    };
+  }
+
+  if (!requestedOrgId && !requestedOrgName) {
+    const contextOrgId = memberContext.organization?.workos_organization_id;
+    if (!contextOrgId) {
+      return {
+        ok: false,
+        message: `This feature requires an organization. If you belong to multiple organizations, say which one to ${actionLabel}, or use the organization_id / organization_name field.`,
+      };
+    }
+    const activeMemberships = await listActiveWorkosMembershipsForSaveAgent(workosUserId, contextOrgId);
+    if (activeMemberships.length === 0) {
+      return {
+        ok: false,
+        message: `I can't ${actionLabel} ${contextOrgId} because your account is not an active member of that organization.`,
+      };
+    }
+    return {
+      ok: true,
+      organizationId: contextOrgId,
+      organizationName: memberContext.organization?.name || null,
+      organizationIsPersonal: memberContext.organization?.is_personal ?? null,
+    };
+  }
+
+  const memberships = await listActiveWorkosMembershipsForSaveAgent(workosUserId, requestedOrgId);
+  const activeOrgIds = [...new Set(
+    memberships
+      .map((m) => m.organizationId)
+      .filter(Boolean),
+  )];
+
+  if (requestedOrgId) {
+    if (activeOrgIds.length === 0) {
+      return {
+        ok: false,
+        message: `I can't ${actionLabel} ${requestedOrgId} because your account is not an active member of that organization.`,
+      };
+    }
+    const org = await orgDb.getOrganization(requestedOrgId).catch(() => null);
+    const workosOrg = org ? null : await getWorkos().organizations.getOrganization(requestedOrgId).catch(() => null);
+    const ambientOrgName = memberContext.organization?.workos_organization_id === requestedOrgId
+      ? memberContext.organization?.name
+      : null;
+    return {
+      ok: true,
+      organizationId: requestedOrgId,
+      organizationName: org?.name || workosOrg?.name || ambientOrgName || null,
+      organizationIsPersonal: org?.is_personal ?? null,
+    };
+  }
+
+  const candidates = await Promise.all(activeOrgIds.map(async (organizationId) => {
+    const localOrg = await orgDb.getOrganization(organizationId).catch(() => null);
+    let name = localOrg?.name ?? null;
+    if (!name) {
+      const workosOrg = await getWorkos().organizations.getOrganization(organizationId).catch(() => null);
+      name = workosOrg?.name ?? null;
+    }
+    return { organizationId, name, isPersonal: localOrg?.is_personal ?? null };
+  }));
+
+  const requestedName = normalizeOrgNameForMatch(requestedOrgName!);
+  const matches = candidates.filter((candidate) =>
+    candidate.organizationId === requestedOrgName ||
+    (candidate.name && normalizeOrgNameForMatch(candidate.name) === requestedName),
+  );
+
+  if (matches.length === 1) {
+    return {
+      ok: true,
+      organizationId: matches[0].organizationId,
+      organizationName: matches[0].name ?? null,
+      organizationIsPersonal: matches[0].isPersonal ?? null,
+    };
+  }
+
+  if (matches.length > 1) {
+    const choices = matches.map(formatOrgChoice).join(', ');
+    return {
+      ok: false,
+      message: `I found multiple active organizations named "${sanitizeInline(requestedOrgName!)}": ${choices}. Please use organization_id to choose the exact one.`,
+    };
+  }
+
+  const visibleChoices = candidates.map(formatOrgChoice).join(', ');
+  return {
+    ok: false,
+    message: visibleChoices
+      ? `I couldn't find an active organization named "${sanitizeInline(requestedOrgName!)}" for your account. Active organizations I can ${actionLabel}: ${visibleChoices}.`
+      : `I couldn't find any active organizations for your account, so I can't ${actionLabel} "${sanitizeInline(requestedOrgName!)}".`,
+  };
 }
 
 function sanitizeAuthorizationError(raw: string): string {
@@ -1238,8 +1526,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'request_brand_domain_challenge',
     description:
-      "Issue a DNS TXT challenge so the caller's organization can claim a brand domain currently registered to another org or unregistered. Returns the verification record (Name/Type/Value) for the user to publish at their DNS host. DO NOT use when: the domain is already owned by the caller's org (already linked in their member profile); the user is just asking what their domain is; the user is asking generic 'is my domain set up?' questions. Pair with verify_brand_domain_challenge ONLY after the user confirms they've published the record. Response begins with an HTML comment '<!-- STATUS: <code> -->' for machine parsing (invisible in rendered markdown) — codes: dns_record_issued, already_verified, collision, invalid_domain, workos_error, not_authenticated, no_org, not_admin, missing_domain.",
-    usage_hints: 'Use when the user explicitly asks to claim a domain they control but cannot link (cross-org dispute, "claim nike.com for us"). Do NOT call speculatively or as a status check.',
+      "Issue a DNS TXT challenge so the caller's selected organization can claim a brand domain currently registered to another org or unregistered. Returns the verification record (Name/Type/Value) for the user to publish at their DNS host. DO NOT use when: the domain is already owned by the caller's org (already linked in their member profile); the user is just asking what their domain is; the user is asking generic 'is my domain set up?' questions. If the caller belongs to multiple organizations, or the current org is a personal workspace while the domain matches a company org, STOP and ask them to choose the company organization_id before issuing a challenge. Pair with verify_brand_domain_challenge ONLY after the user confirms they've published the record. Response begins with an HTML comment '<!-- STATUS: <code> -->' for machine parsing (invisible in rendered markdown) — codes: dns_record_issued, already_verified, collision, invalid_domain, workos_error, not_authenticated, no_org, org_selection_required, not_admin, missing_domain.",
+    usage_hints: 'Use when the user explicitly asks to claim a domain they control but cannot link (cross-org dispute, "claim nike.com for us"). Do NOT call speculatively or as a status check. Include organization_id when the user has selected a specific org.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1247,6 +1535,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'The brand domain to claim (e.g., "acme.com"). The caller must control DNS for this domain.',
         },
+        organization_id: { type: 'string', description: 'Optional explicit WorkOS organization ID to issue the challenge under. Required when the caller must choose between a personal workspace and a company org.' },
+        organization_name: { type: 'string', description: 'Optional explicit organization name. Must match exactly one active organization for the caller. Prefer organization_id when available.' },
       },
       required: ['domain'],
     },
@@ -1254,8 +1544,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'verify_brand_domain_challenge',
     description:
-      "Run the WorkOS DNS lookup against a previously-issued challenge and, on success, apply the brand-registry update. ONLY call after request_brand_domain_challenge returned DNS instructions in this same conversation AND the user has explicitly confirmed they published the record. NEVER call speculatively, as a 'check status' tool, or in a retry loop — DNS propagation takes minutes and the server enforces a cooldown that will return still_pending if you call again too soon. If the call returns still_pending, STOP and ask the user to confirm before any retry. Response begins with an HTML comment '<!-- STATUS: <code> -->' (invisible in rendered markdown) — codes: verified, still_pending, no_challenge, workos_error, not_authenticated, no_org, not_admin, missing_domain. After 'verified' the claim is complete; after 'still_pending' STOP and ask the user to confirm before retrying.",
-    usage_hints: 'Use only after the user confirms publication. Pass adopt_prior_manifest=true ONLY when the prior request_brand_domain_challenge response indicated prior_manifest_exists=true AND the user explicitly asked to inherit the prior identity (acquisition/handoff case). Default false.',
+      "Run the WorkOS DNS lookup against a previously-issued challenge for the selected organization and, on success, apply the brand-registry update. ONLY call after request_brand_domain_challenge returned DNS instructions in this same conversation AND the user has explicitly confirmed they published the record. NEVER call speculatively, as a 'check status' tool, or in a retry loop — DNS propagation takes minutes and the server enforces a cooldown that will return still_pending if you call again too soon. If the call returns still_pending, STOP and ask the user to confirm before any retry. Response begins with an HTML comment '<!-- STATUS: <code> -->' (invisible in rendered markdown) — codes: verified, still_pending, no_challenge, workos_error, not_authenticated, no_org, org_selection_required, not_admin, missing_domain. After 'verified' the claim is complete; after 'still_pending' STOP and ask the user to confirm before retrying.",
+    usage_hints: 'Use only after the user confirms publication. Include organization_id when the original challenge was issued under a selected org. Pass adopt_prior_manifest=true ONLY when the prior request_brand_domain_challenge response indicated prior_manifest_exists=true AND the user explicitly asked to inherit the prior identity (acquisition/handoff case). Default false.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1263,6 +1553,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'The brand domain being verified.',
         },
+        organization_id: { type: 'string', description: 'Optional explicit WorkOS organization ID for the challenge to verify. Use the same org that issued the challenge.' },
+        organization_name: { type: 'string', description: 'Optional explicit organization name. Must match exactly one active organization for the caller. Prefer organization_id when available.' },
         adopt_prior_manifest: {
           type: 'boolean',
           description: 'Set true ONLY when the issue response had prior_manifest_exists=true AND the user explicitly asked to keep the existing brand record (logos, colors, agents). Default false starts fresh — this is the right choice for most claims, including reclaiming a domain from a squatter or first-time registration.',
@@ -1559,7 +1851,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to evaluate' },
         tracks: { type: 'array', items: { type: 'string', enum: ['core', 'products', 'media_buy', 'creative', 'reporting', 'governance', 'signals', 'si', 'audiences'] }, description: 'Specific compliance tracks to run (default: all applicable, driven by the agent\'s get_adcp_capabilities response)' },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0" for a badge-eligible stable line or "3.1-rc"/"3.1-beta" for explicit prerelease diagnostics. Defaults to the canonical badge-eligible target when advertised.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1" or "3.0" for badge-eligible stable lines, or "3.1-rc"/"3.1-beta" for explicit prerelease diagnostics. Defaults to the canonical badge-eligible target when advertised.' },
       },
       required: ['agent_url'],
     },
@@ -1666,7 +1958,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL to discover and recommend storyboards for' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit non-3.0 targets only run when the agent advertises support.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.1", "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit targets only run when the agent advertises support.' },
       },
       required: ['agent_url'],
     },
@@ -1680,7 +1972,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
       type: 'object',
       properties: {
         storyboard_id: { type: 'string', description: 'Storyboard ID (from recommend_storyboards)' },
-        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to 3.0.' },
+        compliance_target: { type: 'string', description: 'Compliance target to inspect, e.g. "3.1", "3.0", "3.1-rc", or "3.1-beta". Defaults to 3.0.' },
       },
       required: ['storyboard_id'],
     },
@@ -1696,7 +1988,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         agent_url: { type: 'string', description: 'Agent URL to test' },
         storyboard_id: { type: 'string', description: 'Storyboard ID to run' },
         dry_run: { type: 'boolean', description: 'If true (default), use test data that won\'t affect production state', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit non-3.0 targets are diagnostic-only and only run when the agent advertises support.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1", "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit prerelease targets are diagnostic-only and only run when the agent advertises support.' },
       },
       required: ['agent_url', 'storyboard_id'],
     },
@@ -1722,7 +2014,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
           additionalProperties: false,
         },
         dry_run: { type: 'boolean', description: 'If true (default), use test data', default: true },
-        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit non-3.0 targets are diagnostic-only and only run when the agent advertises support.' },
+        compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1", "3.0", "3.1-rc", or "3.1-beta". Defaults to the canonical badge-eligible target when advertised. Explicit prerelease targets are diagnostic-only and only run when the agent advertises support.' },
       },
       required: ['agent_url', 'storyboard_id', 'step_id'],
     },
@@ -1733,7 +2025,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'save_agent',
     description:
-      'Register an agent in the AAO registry on behalf of the current organization. Adds the agent to the org\'s member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other paying AAO members — Professional, Builder, Member, or Leader; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires a paid AAO tier (Professional, Builder, Member, or Leader) and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard\'s **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The caller MUST declare the agent\'s `type` (`brand`, `rights`, `measurement`, `governance`, `creative`, `sales`, `buying`, `signals`); ask the owner — do not guess. Server-side smuggle protection still validates the declared type against the capability snapshot when one is available. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AAO Registry" section of the rules for the intake script.',
+      'Register an agent in the AgenticAdvertising.org registry on behalf of the current organization, or an explicitly selected active organization via `organization_id` / `organization_name`. Adds the agent to the org\'s member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other paying AgenticAdvertising.org members — Professional, Builder, Member, or Leader; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires a paid AgenticAdvertising.org tier (Professional, Builder, Member, or Leader) and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard\'s **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The caller MUST declare the agent\'s `type` (`brand`, `rights`, `measurement`, `governance`, `creative`, `sales`, `buying`, `signals`); ask the owner — do not guess. Server-side smuggle protection still validates the declared type against the capability snapshot when one is available. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AgenticAdvertising.org Registry" section of the rules for the intake script.',
     usage_hints: 'use for "register my agent", "add an agent", "save my agent", "store my auth token", "configure client credentials". When the user opens the conversation with a registration intent and no details, follow the intake script in the rules — do not call save_agent until you have `agent_url`, `type`, and an explicit auth-mode choice.',
     input_schema: {
       type: 'object',
@@ -1755,7 +2047,13 @@ export const MEMBER_TOOLS: AddieTool[] = [
             client_id: { type: 'string', description: 'OAuth client ID. May be a `$ENV:VAR_NAME` reference — the SDK resolves at exchange time.' },
             client_secret: { type: 'string', description: 'OAuth client secret. May be a `$ENV:VAR_NAME` reference. Stored encrypted at rest regardless.' },
             scope: { type: 'string', description: 'Space-separated OAuth scope values (optional).' },
-            resource: { type: 'string', description: 'RFC 8707 resource indicator (optional).' },
+            resource: {
+              oneOf: [
+                { type: 'string', maxLength: 2048, description: 'Single resource URI (max 2048 chars).' },
+                { type: 'array', items: { type: 'string', maxLength: 2048 }, minItems: 1, maxItems: 8, description: '1–8 resource URIs for multi-resource authorization servers (each max 2048 chars).' },
+              ],
+              description: 'RFC 8707 resource indicator. Accepts a single URI string or an array of 1–8 for multi-resource authorization servers (Keycloak strict mode, AWS Cognito with multiple resource servers).',
+            },
             audience: { type: 'string', description: 'Audience parameter for audience-validating authorization servers like Auth0, Okta, Azure AD (optional).' },
             auth_method: { type: 'string', enum: ['basic', 'body'], description: 'Where to put client credentials on the token request. "basic" (default, RFC 6749 §2.3.1 preferred): HTTP Basic header. "body": form fields.' },
           },
@@ -1763,6 +2061,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
         },
         protocol: { type: 'string', enum: ['mcp', 'a2a'], description: 'Protocol (default: mcp)' },
         health_check_url: { type: 'string', description: 'Optional fallback liveness URL. The dashboard probe tries the protocol handshake first; if it fails and this URL is set, the probe GETs it and treats any 2xx as "online." Used by sellers whose protocol endpoint requires auth or is path-prefixed (e.g. /adcp/mcp). Liveness only — does not populate type or tools. Pass an empty string to clear a previously-set value.' },
+        organization_id: { type: 'string', description: 'Optional explicit WorkOS organization ID to save this agent under. Required when the caller belongs to multiple organizations and no selected organization context is available. The user must be an active member of this organization.' },
+        organization_name: { type: 'string', description: 'Optional explicit organization name to save this agent under, for natural-language requests like "save this to my org Example Co". Must match exactly one active organization for the caller. Prefer organization_id when available.' },
       },
       required: ['agent_url', 'type'],
     },
@@ -2069,7 +2369,8 @@ async function callApi(
  */
 export function createMemberToolHandlers(
   memberContext: MemberContext | null,
-  slackUserId?: string
+  slackUserId?: string,
+  certificationModuleContext?: { moduleId?: string },
 ): Map<string, (input: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
@@ -2542,19 +2843,9 @@ export function createMemberToolHandlers(
       }
     }
 
-    // Validate URL fields
-    for (const urlField of ['linkedin_url', 'twitter_url'] as const) {
-      const value = updates[urlField];
-      if (value && typeof value === 'string') {
-        try {
-          const parsed = new URL(value);
-          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-            return `${urlField} must be an HTTP or HTTPS URL.`;
-          }
-        } catch {
-          return `${urlField} must be a valid URL.`;
-        }
-      }
+    const invalidMemberProfileUrlField = validateMemberProfileUrlFields(updates);
+    if (invalidMemberProfileUrlField) {
+      return `${invalidMemberProfileUrlField} must be an HTTPS URL without credentials.`;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -2682,19 +2973,9 @@ export function createMemberToolHandlers(
       return 'Tagline must be 200 characters or fewer.';
     }
 
-    // Validate URL fields
-    for (const urlField of ['linkedin_url', 'twitter_url', 'contact_website'] as const) {
-      const value = updates[urlField];
-      if (value && typeof value === 'string') {
-        try {
-          const parsed = new URL(value);
-          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-            return `${urlField} must be an HTTP or HTTPS URL.`;
-          }
-        } catch {
-          return `${urlField} must be a valid URL.`;
-        }
-      }
+    const invalidMemberProfileUrlField = validateMemberProfileUrlFields(updates);
+    if (invalidMemberProfileUrlField) {
+      return `${invalidMemberProfileUrlField} must be an HTTPS URL without credentials.`;
     }
 
     // Validate contact email
@@ -2885,16 +3166,25 @@ export function createMemberToolHandlers(
     if (!memberContext?.workos_user?.workos_user_id) {
       return '<!-- STATUS: not_authenticated -->\n\nYou need to be logged in to claim a brand domain. Please sign in at https://agenticadvertising.org and try again.';
     }
-    const orgId = memberContext.organization?.workos_organization_id;
-    if (!orgId) {
-      return '<!-- STATUS: no_org -->\n\nYour account isn\'t linked to an organization yet. Set up your company on https://agenticadvertising.org/member-profile first.';
+    const rawDomain = typeof input.domain === 'string' ? input.domain.trim() : '';
+    if (!rawDomain) return '<!-- STATUS: missing_domain -->\n\nTell me the brand domain you want to claim (e.g., "acme.com").';
+
+    const orgResolution = await resolveSaveAgentOrganization(memberContext, input, 'issue a DNS challenge under');
+    if (!orgResolution.ok) {
+      return `<!-- STATUS: no_org -->\n\n${orgResolution.message}`;
+    }
+    const orgId = orgResolution.organizationId;
+    const orgGuard = await guardPersonalWorkspaceDomainSelection({
+      memberContext: memberContextForOrgGuard(memberContext, orgResolution),
+      selectedOrgId: orgId,
+      rawDomain,
+    });
+    if (!orgGuard.ok) {
+      return `<!-- STATUS: org_selection_required -->\n\n${formatOrgSelectionRequiredMessage(orgGuard, `issue a DNS challenge for ${rawDomain}`)}`;
     }
     if (!(await callerIsOrgAdmin(memberContext.workos_user.workos_user_id, orgId))) {
       return '<!-- STATUS: not_admin -->\n\nOnly your organization\'s admin or owner can claim a brand domain. Ask one of them to run this.';
     }
-
-    const rawDomain = typeof input.domain === 'string' ? input.domain.trim() : '';
-    if (!rawDomain) return '<!-- STATUS: missing_domain -->\n\nTell me the brand domain you want to claim (e.g., "acme.com").';
 
     const result = await issueDomainChallenge({ workos: getWorkos(), brandDb, orgId, rawDomain });
 
@@ -2921,9 +3211,6 @@ export function createMemberToolHandlers(
       return `<!-- STATUS: workos_error -->\n\nIssued a challenge for ${result.domain}, but WorkOS did not return a DNS TXT value. Ask the AgenticAdvertising.org team to verify ${result.domain} manually for you.`;
     }
 
-    const recordName = result.verification_prefix
-      ? `${result.verification_prefix}.${result.domain}`
-      : result.domain;
     const lines = [
       `<!-- STATUS: dns_record_issued -->`,
       ``,
@@ -2931,10 +3218,12 @@ export function createMemberToolHandlers(
       ``,
       `**Publish this DNS TXT record:**`,
       ``,
-      `- Name: \`${recordName}\``,
-      `- Type: \`TXT\``,
-      `- Value: \`${result.verification_token}\``,
+      `- Name: \`${result.dns_record_name}\``,
+      `- Type: \`${result.dns_record_type}\``,
+      `- Value: \`${result.dns_record_value}\``,
       `- TTL: \`300\` (or your registrar's minimum)`,
+      ``,
+      `Organization: ${orgResolution.organizationName ? `${formatOrgNameForTool(orgResolution.organizationName)} (${orgId})` : orgId}`,
       ``,
       `DNS propagation usually takes 5–15 minutes; some registrars take an hour. Once you've published it AND confirmed it's live, tell me and I'll run \`verify_brand_domain_challenge\`. Don't ask me to verify before then — the call will just fail and the server enforces a 60s cooldown between attempts.`,
     ];
@@ -2951,17 +3240,26 @@ export function createMemberToolHandlers(
     if (!memberContext?.workos_user?.workos_user_id) {
       return '<!-- STATUS: not_authenticated -->\n\nYou need to be logged in to verify a brand domain claim.';
     }
-    const orgId = memberContext.organization?.workos_organization_id;
-    if (!orgId) {
-      return '<!-- STATUS: no_org -->\n\nYour account isn\'t linked to an organization yet.';
+    const rawDomain = typeof input.domain === 'string' ? input.domain.trim() : '';
+    if (!rawDomain) return '<!-- STATUS: missing_domain -->\n\nWhich domain should I verify? Pass the domain you ran `request_brand_domain_challenge` for.';
+    const adoptPriorManifest = input.adopt_prior_manifest === true;
+
+    const orgResolution = await resolveSaveAgentOrganization(memberContext, input, 'verify a DNS challenge under');
+    if (!orgResolution.ok) {
+      return `<!-- STATUS: no_org -->\n\n${orgResolution.message}`;
+    }
+    const orgId = orgResolution.organizationId;
+    const orgGuard = await guardPersonalWorkspaceDomainSelection({
+      memberContext: memberContextForOrgGuard(memberContext, orgResolution),
+      selectedOrgId: orgId,
+      rawDomain,
+    });
+    if (!orgGuard.ok) {
+      return `<!-- STATUS: org_selection_required -->\n\n${formatOrgSelectionRequiredMessage(orgGuard, `verify ${rawDomain}`)}`;
     }
     if (!(await callerIsOrgAdmin(memberContext.workos_user.workos_user_id, orgId))) {
       return '<!-- STATUS: not_admin -->\n\nOnly your organization\'s admin or owner can verify a brand domain claim.';
     }
-
-    const rawDomain = typeof input.domain === 'string' ? input.domain.trim() : '';
-    if (!rawDomain) return '<!-- STATUS: missing_domain -->\n\nWhich domain should I verify? Pass the domain you ran `request_brand_domain_challenge` for.';
-    const adoptPriorManifest = input.adopt_prior_manifest === true;
 
     const result = await verifyDomainChallenge({
       workos: getWorkos(),
@@ -3085,6 +3383,9 @@ export function createMemberToolHandlers(
         }
         if (error.is('invalid_post_slug')) {
           return `Generated post slug was invalid (must contain only lowercase letters, numbers, and hyphens). Try again with a different title.`;
+        }
+        if (error.is('invalid_external_url')) {
+          return `Link posts require an HTTPS URL without embedded credentials.`;
         }
         if (error.is('duplicate_post_slug')) {
           return `A post with this slug already exists in "${slug}". Try again with a different title.`;
@@ -4310,6 +4611,7 @@ export function createMemberToolHandlers(
                     declaredSpecialisms,
                     runId: tracks ? null : run.id,
                     adcpVersions: badgeEligibleAdcpVersions,
+                    supportedVersions: result.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
                   });
                 } catch (badgeError) {
                   logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Badge fan-out failed after owner_test run');
@@ -4472,7 +4774,11 @@ export function createMemberToolHandlers(
       return output;
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
-      const capsError = classifyCapabilityResolutionError(error);
+      const capsError = await classifyCapabilityResolutionErrorWithDeclaredProtocols(
+        error,
+        resolved.resolvedUrl,
+        authOption,
+      );
 
       // Agent-declared strings (specialism id, parent protocol name) reach
       // the LLM via this tool result, so fence them to neutralise markdown /
@@ -4498,6 +4804,18 @@ export function createMemberToolHandlers(
           );
         }
         const safeSpec = fenceAgentValue(capsError.specialism ?? '', 80);
+        if (capsError.kind === 'unrecognized_supported_protocol') {
+          const safeDeclared = fenceAgentValue(capsError.declaredProtocol ?? '', 80);
+          const safeExpected = fenceAgentValue(capsError.expectedProtocol ?? capsError.parentProtocol ?? '', 80);
+          return (
+            `**Capabilities misconfigured.** The agent at ${resolved.resolvedUrl} declares the ` +
+            `${safeSpec} specialism, but \`supported_protocols\` contains the unrecognized ` +
+            `value ${safeDeclared}.\n\n` +
+            `Use the canonical protocol id ${safeExpected} instead. Protocol ids use underscores, ` +
+            `not hyphens. Update the agent's \`get_adcp_capabilities\` response, redeploy, then ` +
+            `re-run \`evaluate_agent_quality\`.`
+          );
+        }
         if (capsError.kind === 'specialism_parent_protocol_missing') {
           const safeParent = fenceAgentValue(capsError.parentProtocol ?? '', 80);
           return (
@@ -4567,9 +4885,9 @@ export function createMemberToolHandlers(
     let profile: AgentProfile | undefined;
     let discoveryProbeError: string | undefined;
     try {
-      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, {
+      const caps = await testCapabilityDiscovery(resolved.resolvedUrl, withSdkSafeTransport({
         ...(authOption && { auth: authOption }),
-      });
+      }));
       profile = caps.profile;
       discoveryProbeError = capabilityDiscoveryProbeError(caps);
       if (!hasExplicitComplianceTarget(input)) {
@@ -4718,7 +5036,7 @@ export function createMemberToolHandlers(
       const res = resolveStoryboardsForCapabilities(caps, runOptions);
       resolvedBundles = res.bundles;
     } catch (error) {
-      const capsError = classifyCapabilityResolutionError(error);
+      const capsError = classifyCapabilityResolutionError(error, supportedProtocols);
       // specialism ids came from the untrusted agent — fence them so a hostile
       // id string can't break out of the markdown fence.
       const safeDeclared = specialisms.map(s => fenceAgentValue(s, 80)).filter(Boolean).join(', ');
@@ -4735,6 +5053,17 @@ export function createMemberToolHandlers(
             .join(', ');
           output += `**Unsupported compliance target.** The selected compliance target resolves to ${safeVersion}, but the agent advertises \`adcp.supported_versions\`: ${safeSupported || '`(none advertised)`'}.\n\n`;
           output += `Select a compatible compliance target, then re-run \`recommend_storyboards\`.\n`;
+          return output;
+        }
+        if (capsError.kind === 'unrecognized_supported_protocol') {
+          const safeSpec = fenceAgentValue(capsError.specialism ?? '', 80);
+          const safeDeclaredProtocol = fenceAgentValue(capsError.declaredProtocol ?? '', 80);
+          const safeExpectedProtocol = fenceAgentValue(capsError.expectedProtocol ?? capsError.parentProtocol ?? '', 80);
+          output += `**Capabilities misconfigured.** The agent declares the ${safeSpec} specialism, but \`supported_protocols\` contains the unrecognized value ${safeDeclaredProtocol}.\n\n`;
+          if (safeProtocolsDeclared) {
+            output += `Currently declared protocols: ${safeProtocolsDeclared}.\n\n`;
+          }
+          output += `Use the canonical protocol id ${safeExpectedProtocol} instead. Protocol ids use underscores, not hyphens. Update \`get_adcp_capabilities\`, redeploy, then re-run \`recommend_storyboards\`.\n`;
           return output;
         }
         if (capsError.kind === 'specialism_parent_protocol_missing') {
@@ -4929,9 +5258,13 @@ export function createMemberToolHandlers(
 
     try {
       const authProbeTask = await inferHostedAuthProbeTask(resolved.resolvedUrl, authOption, runTarget);
-      const result = await runStoryboard(resolved.resolvedUrl, sb, withHostedStoryboardRunOptions({
-        ...(authOption && { auth: authOption }),
-      }, runTarget, authProbeTask));
+      const result = await runStoryboard(
+        resolved.resolvedUrl,
+        sb,
+        withSdkSafeTransport(withHostedStoryboardRunOptions({
+          ...(authOption && { auth: authOption }),
+        }, runTarget, authProbeTask)),
+      );
 
       // runStoryboard catches its own throws and surfaces them as step
       // errors. Detect OAuth on the first failing step before rendering a
@@ -5136,10 +5469,15 @@ export function createMemberToolHandlers(
 
     try {
       const authProbeTask = await inferHostedAuthProbeTask(resolved.resolvedUrl, authOption, runTarget);
-      const result: StoryboardStepResult = await runStoryboardStep(resolved.resolvedUrl, sb, resolvedStepId, withHostedStoryboardRunOptions({
-        context,
-        ...(authOption && { auth: authOption }),
-      }, runTarget, authProbeTask));
+      const result: StoryboardStepResult = await runStoryboardStep(
+        resolved.resolvedUrl,
+        sb,
+        resolvedStepId,
+        withSdkSafeTransport(withHostedStoryboardRunOptions({
+          context,
+          ...(authOption && { auth: authOption }),
+        }, runTarget, authProbeTask)),
+      );
 
       // runStoryboardStep catches its own throws and surfaces them as
       // result.error strings. Detect OAuth before rendering.
@@ -5299,12 +5637,10 @@ export function createMemberToolHandlers(
         name: 'target',
         agent_uri: resolved.resolvedUrl,
         protocol: 'mcp' as const,
-        ...(resolved.authToken && resolved.authType === 'basic'
-          ? { headers: { 'Authorization': `Basic ${resolved.authToken}` } }
-          : resolved.authToken ? { auth_token: resolved.authToken } : {}),
+        ...agentConfigAuthFields(buildAuthOption(resolved)),
       };
 
-      const multiClient = new AdCPClient([agentConfig], { debug: false });
+      const multiClient = new AdCPClient([agentConfig], withSdkSafeTransport({ debug: false }));
       const client = multiClient.agent('target');
 
       // Run each brief and collect results
@@ -5539,11 +5875,9 @@ export function createMemberToolHandlers(
         id: 'target', name: 'target',
         agent_uri: resolved.resolvedUrl,
         protocol: 'mcp' as const,
-        ...(resolved.authToken && resolved.authType === 'basic'
-          ? { headers: { 'Authorization': `Basic ${resolved.authToken}` } }
-          : resolved.authToken ? { auth_token: resolved.authToken } : {}),
+        ...agentConfigAuthFields(buildAuthOption(resolved)),
       };
-      const multiClient = new AdCPClient([agentConfig], { debug: false });
+      const multiClient = new AdCPClient([agentConfig], withSdkSafeTransport({ debug: false }));
       const client = multiClient.agent('target');
 
       const result = await Promise.race([
@@ -5777,11 +6111,9 @@ export function createMemberToolHandlers(
         id: 'target', name: 'target',
         agent_uri: resolved.resolvedUrl,
         protocol: 'mcp' as const,
-        ...(resolved.authToken && resolved.authType === 'basic'
-          ? { headers: { 'Authorization': `Basic ${resolved.authToken}` } }
-          : resolved.authToken ? { auth_token: resolved.authToken } : {}),
+        ...agentConfigAuthFields(buildAuthOption(resolved)),
       };
-      const multiClient = new AdCPClient([agentConfig], { debug: false });
+      const multiClient = new AdCPClient([agentConfig], withSdkSafeTransport({ debug: false }));
       const client = multiClient.agent('target');
 
       // Get full catalog via wholesale mode
@@ -6158,6 +6490,43 @@ export function createMemberToolHandlers(
   // ============================================
   // GITHUB ISSUE DRAFTING
   // ============================================
+  const activeCertification = () => {
+    const userId = memberContext?.workos_user?.workos_user_id;
+    if (!userId || !certificationModuleContext?.moduleId) return null;
+    return { userId, moduleId: certificationModuleContext.moduleId };
+  };
+
+  const trackCertificationContribution = async (input: {
+    repository: string;
+    title: string;
+    status: 'drafted' | 'submitted';
+    draftUrl?: string;
+    issueNumber?: number;
+    issueUrl?: string;
+  }) => {
+    const active = activeCertification();
+    if (!active) return;
+    try {
+      await upsertCertificationContribution({
+        userId: active.userId,
+        moduleId: active.moduleId,
+        ...input,
+      });
+      await recordCertificationExperienceEvent({
+        userId: active.userId,
+        moduleId: active.moduleId,
+        eventType: input.status === 'submitted' ? 'contribution_submitted' : 'contribution_drafted',
+        metadata: {
+          repository: input.repository,
+          title: input.title,
+          issue_number: input.issueNumber ?? null,
+        },
+      });
+    } catch (error) {
+      logger.error({ error }, 'Failed to track certification contribution');
+    }
+  };
+
   handlers.set('draft_github_issue', async (input) => {
     const title = input.title as string;
     let body = input.body as string;
@@ -6190,29 +6559,40 @@ export function createMemberToolHandlers(
       params.set('labels', labels.join(','));
     }
 
-    const issueUrl = `https://github.com/${org}/${repo}/issues/new?${params.toString()}`;
+    const newIssueUrl = `https://github.com/${org}/${repo}/issues/new`;
+    const issueUrl = `${newIssueUrl}?${params.toString()}`;
 
-    // Check URL length - browsers/GitHub have practical limits (~8000 chars)
+    // Avoid body-prefilled links that are likely to be truncated or rejected
+    // across browsers, Slack clients, and Addie's streamed responses.
     const urlLength = issueUrl.length;
-    const URL_LENGTH_WARNING_THRESHOLD = 6000;
-    const URL_LENGTH_MAX = 8000;
 
     // Build response with the draft details and link
     let response = `## GitHub Issue Draft\n\n`;
+    let reliableDraftUrl = issueUrl;
 
-    if (urlLength > URL_LENGTH_MAX) {
-      // URL too long - provide manual instructions instead
-      response += `⚠️ **Issue body is too long for a pre-filled URL.**\n\n`;
-      response += `Please create the issue manually:\n`;
-      response += `1. Go to https://github.com/${org}/${repo}/issues/new\n`;
-      response += `2. Copy the title and body from the preview below\n\n`;
+    if (urlLength > GITHUB_PREFILL_URL_MAX_CHARS) {
+      response += `⚠️ **This draft is too long for a reliable pre-filled link.**\n\n`;
+      const shortParams = new URLSearchParams();
+      shortParams.set('title', title);
+      if (labels.length > 0) {
+        shortParams.set('labels', labels.join(','));
+      }
+      const titlePrefillUrl = `${newIssueUrl}?${shortParams.toString()}`;
+      reliableDraftUrl = titlePrefillUrl.length <= GITHUB_PREFILL_URL_MAX_CHARS
+        ? titlePrefillUrl
+        : newIssueUrl;
+
+      if (titlePrefillUrl.length <= GITHUB_PREFILL_URL_MAX_CHARS) {
+        response += `**👉 [Open GitHub with the title pre-filled](${titlePrefillUrl})**\n\n`;
+        response += `Copy the body from the preview below, then submit the issue.\n\n`;
+      } else {
+        response += `Please create the issue manually:\n`;
+        response += `1. Go to ${newIssueUrl}\n`;
+        response += `2. Copy the title and body from the preview below\n\n`;
+      }
     } else {
       response += `I've drafted a GitHub issue for you. Click the link below to create it:\n\n`;
       response += `**👉 [Create Issue on GitHub](${issueUrl})**\n\n`;
-
-      if (urlLength > URL_LENGTH_WARNING_THRESHOLD) {
-        response += `⚠️ _Note: The issue body is quite long. If the link doesn't work, you may need to shorten it or copy/paste manually._\n\n`;
-      }
     }
 
     response += `---\n\n`;
@@ -6225,6 +6605,13 @@ export function createMemberToolHandlers(
     response += `\n**Body:**\n\n${body}\n\n`;
     response += `---\n\n`;
     response += `_Note: You'll need to be signed in to GitHub to create the issue. Feel free to edit the title, body, or labels before submitting._`;
+
+    await trackCertificationContribution({
+      repository: `${org}/${repo}`,
+      title,
+      status: 'drafted',
+      draftUrl: reliableDraftUrl,
+    });
 
     return response;
   });
@@ -6313,6 +6700,13 @@ export function createMemberToolHandlers(
           });
           if (retryResponse.ok) {
             const issue = await retryResponse.json() as { html_url: string; number: number };
+            await trackCertificationContribution({
+              repository: `${org}/${repo}`,
+              title,
+              status: 'submitted',
+              issueNumber: issue.number,
+              issueUrl: issue.html_url,
+            });
             return `Issue created: [#${issue.number}](${issue.html_url})`;
           }
         }
@@ -6321,6 +6715,13 @@ export function createMemberToolHandlers(
 
       const issue = await response.json() as { html_url: string; number: number };
       logger.info({ issueUrl: issue.html_url, repo }, 'create_github_issue: Issue created');
+      await trackCertificationContribution({
+        repository: `${org}/${repo}`,
+        title,
+        status: 'submitted',
+        issueNumber: issue.number,
+        issueUrl: issue.html_url,
+      });
       return `Issue created: [#${issue.number}](${issue.html_url})`;
     } catch (error) {
       logger.error({ error, repo }, 'create_github_issue: Failed to create issue');
@@ -6507,10 +6908,16 @@ export function createMemberToolHandlers(
       return 'You need to be logged in to save agents. Please log in at https://agenticadvertising.org/dashboard first.';
     }
 
-    const saveOrgId = memberContext.organization?.workos_organization_id;
-    if (!saveOrgId) {
-      return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `evaluate_agent_quality` without an organization.';
+    const saveOrg = await resolveSaveAgentOrganization(memberContext, input);
+    if (!saveOrg.ok) {
+      return saveOrg.message;
     }
+    const saveOrgId = saveOrg.organizationId;
+    const saveOrgNameForDisplay = saveOrg.organizationName
+      ? formatOrgNameForTool(saveOrg.organizationName)
+      : '';
+    const saveOrgProfileName = saveOrg.organizationName;
+    const saveOrgLabel = saveOrgNameForDisplay ? `${saveOrgNameForDisplay} (${saveOrgId})` : saveOrgId;
 
     const rawAgentUrl = input.agent_url as string;
     try {
@@ -6535,6 +6942,18 @@ export function createMemberToolHandlers(
     // rather than `string | null` — TS can't carry the narrowing across the
     // function boundary.
     const agentUrl: string = canonical;
+
+    const agentDomain = agentUrlBaseDomain(agentUrl);
+    if (agentDomain) {
+      const orgGuard = await guardPersonalWorkspaceDomainSelection({
+        memberContext: memberContextForOrgGuard(memberContext, saveOrg),
+        selectedOrgId: saveOrgId,
+        rawDomain: agentDomain,
+      });
+      if (!orgGuard.ok) {
+        return formatOrgSelectionRequiredMessage(orgGuard, `save agent ${agentUrl}`);
+      }
+    }
 
     // Hostname ownership check (#4499 MVP). Mirrors the REST POST
     // /api/me/agents gate. See `agent-hostname-verification.ts` for the
@@ -6628,7 +7047,7 @@ export function createMemberToolHandlers(
         let profile = await memberDb.getProfileByOrgId(saveOrgId);
         let createdProfile = false;
         if (!profile) {
-          const orgName = memberContext?.organization?.name;
+          const orgName = saveOrgProfileName;
           if (!orgName) {
             return { ok: false, reason: 'no-org-name' };
           }
@@ -6726,6 +7145,7 @@ export function createMemberToolHandlers(
         const profileStatus = await ensureAgentInProfile(agentName || context?.agent_name || new URL(agentUrl).hostname);
 
         let response = `✅ Updated saved agent: **${context?.agent_name || agentUrl}**\n\n`;
+        response += `**Organization:** ${saveOrgLabel}\n`;
         if (authToken) {
           const typeLabel = authType === 'basic' ? 'Basic' : 'Bearer';
           response += `🔐 ${typeLabel} auth token saved securely (hint: ${context?.auth_token_hint})\n`;
@@ -6763,6 +7183,7 @@ export function createMemberToolHandlers(
       const profileStatus = await ensureAgentInProfile(agentName || new URL(agentUrl).hostname);
 
       let response = `✅ Saved agent: **${context?.agent_name || agentUrl}**\n\n`;
+      response += `**Organization:** ${saveOrgLabel}\n`;
       response += `**URL:** ${agentUrl}\n`;
       response += `**Protocol:** ${protocol.toUpperCase()}\n`;
       if (authToken) {
@@ -6775,7 +7196,7 @@ export function createMemberToolHandlers(
         response += `_The client secret is encrypted and will never be shown again. The SDK exchanges and refreshes at test time._\n`;
       }
       if (profileStatus.ok) {
-        response += `\nThe agent has been added to your dashboard with **members_only** visibility — other paying AAO members (Professional, Builder, Member, or Leader) can discover it, but it won't appear in the public directory. To publish publicly, use the dashboard publish flow (requires a paid AAO tier). When you test this agent, I'll automatically use the saved credentials.`;
+        response += `\nThe agent has been added to your dashboard with **members_only** visibility — other paying AgenticAdvertising.org members (Professional, Builder, Member, or Leader) can discover it, but it won't appear in the public directory. To publish publicly, use the dashboard publish flow (requires a paid AgenticAdvertising.org tier). When you test this agent, I'll automatically use the saved credentials.`;
       } else {
         response += `\n⚠️ The credentials are saved on the backend, but I couldn't add this agent to your dashboard listing right now (${profileStatus.reason}). The team has been notified — please check back shortly, or use the dashboard's manual register flow at https://agenticadvertising.org/dashboard/agents.`;
       }

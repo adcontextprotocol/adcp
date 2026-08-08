@@ -95,6 +95,42 @@ When the same concept appears in multiple places with different subsets:
 - Adding new values is non-breaking
 - Documentation clarifies typical usage without restricting capability
 
+## Specialist Module Naming
+
+### Core Principle
+
+Specialist module names must reflect the **technical capability** being taught — what practitioners verify, resolve, or operate — not the business or marketing category.
+
+A module titled "Brand" is ambiguous: does it teach brand-safety policy, brand-identity schema validation, or brand-campaign strategy? A module titled "Brand Identity & Verification" tells a developer exactly what they will learn to do.
+
+### Naming Consistency
+
+The module name must be consistent across all four surfaces where it appears:
+
+1. **Page title** — the `title:` frontmatter in the module's `.mdx` file
+2. **Badge** — the `adcp_specialist_*` credential suffix (e.g., `adcp_specialist_signals`)
+3. **Sidebar navigation** — the `sidebarTitle:` frontmatter
+4. **Specialist overview table** — the row in the certification overview page
+
+If any of these diverge, implementers looking at one surface form a different mental model than those reading another. Keep all four in sync.
+
+### Good vs. Bad Names
+
+| Avoid | Prefer | Why |
+|-------|--------|-----|
+| Brand | Brand Identity & Verification | "Brand" reads as marketing; the module teaches schema validation and identity resolution |
+| Ads | Creative Asset Management | "Ads" is too broad; the module covers creative formats, asset pipelines, and approval flows |
+| Data | Signals & Audience Activation | "Data" is generic; the module teaches signal discovery, privacy controls, and activation loops |
+
+### Naming Checklist
+
+Before proposing a new specialist module:
+
+- [ ] Does the name describe the technical workflow, not the business domain?
+- [ ] Would a developer unfamiliar with AdCP understand what the module teaches from the name alone?
+- [ ] Is the name consistent across page title, badge, sidebar, and overview table?
+- [ ] Does the badge suffix (`adcp_specialist_*`) read naturally in a credential context?
+
 ## Enum Design
 
 ### Enum File Structure
@@ -312,6 +348,20 @@ When making breaking changes:
 
 ## JSON Schema Conventions
 
+### Dialect roadmap
+
+AdCP 3.x source schemas remain JSON Schema draft-07. The 3.2 build generates a
+semantics-preserving JSON Schema 2020-12 projection under
+`/schemas/{version}/mcp/2026-07-28/` for MCP tool `inputSchema` and
+`outputSchema` declarations. Do not author 2020-12-only validation behavior in
+3.x source schemas; the two dialects must continue to accept and reject the
+same AdCP payloads.
+
+AdCP 4.0 will move the canonical source dialect directly to JSON Schema
+2020-12. Contract tightening such as selective `unevaluatedProperties: false`
+belongs to that major-version migration. It must not be introduced by the 3.2
+projection generator.
+
 ### Nullable Scalars
 
 For AdCP 3.x draft-07 schemas, encode nullable scalar fields as a JSON Schema
@@ -356,7 +406,7 @@ All schema changes must:
 2. ✅ Pass example data through validation
 3. ✅ Generate types successfully (Python, TypeScript)
 4. ✅ Update documentation to match
-5. ✅ Include changeset describing the change
+5. ✅ Include an `adcontextprotocol` changeset describing the schema change
 
 ## Review Checklist
 
@@ -369,7 +419,7 @@ Before merging schema changes, verify:
 - [ ] Documentation updated to match schemas
 - [ ] Examples validate against new schemas
 - [ ] Type generation tested
-- [ ] Changeset created with proper version bump
+- [ ] `adcontextprotocol` changeset created with proper version bump
 
 ## Philosophy
 

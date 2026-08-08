@@ -8,29 +8,29 @@ description: "build_creative generates, transforms, or retrieves ad creative man
 Transform, generate, or retrieve a creative manifest for a specific format. To render a visual preview of the resulting manifest, pass it to [`preview_creative`](/docs/creative/task-reference/preview_creative). Supports three modes:
 
 1. **Generation**: Create a manifest from a brief or seed assets (`message` + `creative_manifest`)
-2. **Transformation**: Adapt an existing manifest to a different format (`creative_manifest` + `target_format_id`)
+2. **Transformation**: Adapt an existing manifest to a different format (`creative_manifest` + `target_capability_id`)
 3. **Library retrieval**: Resolve a `creative_id` from the agent's library into a manifest with ad-serving assets
 
 For generation and transformation, `build_creative` takes a creative manifest as input and produces a creative manifest as output. For library retrieval, provide a `creative_id` (from [`list_creatives`](/docs/creative/task-reference/list_creatives)) and the agent resolves it from its library.
 
-For information about legacy format IDs and how to reference formats, see [Creative Formats - Referencing Formats](/docs/creative/formats#referencing-formats). On the 3.1 canonical path, creative agents advertise buildable outputs through `get_adcp_capabilities.creative.supported_formats[]`; targetable entries SHOULD include a stable `capability_id`, and buyers pass that value as `target_format_id.id` (or `target_format_ids[N].id`) when calling `build_creative`.
+Creative agents advertise canonical outputs through `get_adcp_capabilities.creative.supported_formats[]`. Every targetable entry carries a stable `capability_id`; buyers pass that string as `target_capability_id` or in `target_capability_ids[]`. Legacy named `target_format_id` fields are deprecated in 3.2.
 
 ## Request parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `message` | string | No | Natural language instructions for the creative agent. For generation, this provides creative direction. For transformation, this guides how to adapt the creative. For refinement, this describes the desired changes. |
-| `creative_manifest` | object | No | Creative manifest to transform or generate from (see [Creative Manifest](https://adcontextprotocol.org/schemas/v3/core/creative-manifest.json)). For pure generation, this should include the target format_id and any required input assets. For transformation, this is the complete creative to adapt. When `creative_id` is provided, the agent resolves the creative from its library and this field is ignored. |
+| `creative_manifest` | object | No | Canonical creative manifest to transform or use as seed input. It carries `format_kind`, optional `format_option_ref`, and assets. When `creative_id` is provided, the agent resolves the creative from its library and this field is ignored. |
 | `creative_id` | string | No | Reference to a creative in the agent's library. The creative agent resolves this to a manifest from its library. Use this instead of `creative_manifest` when retrieving an existing creative for tag generation or format adaptation. |
 | `concept_id` | string | No | Creative concept containing the creative. Used to disambiguate when the same `creative_id` exists in multiple concepts. |
 | `media_buy_id` | string | No | Buyer's media buy reference for tag generation context. When the creative agent is also the ad server (e.g., CM360), this provides the trafficking context needed to generate placement-specific tags. Omit when the platform generates tags at the creative level (Flashtalking, Celtra). This is the buyer's reference — the seller-assigned identifier from `create_media_buy`. |
 | `package_id` | string | No | Buyer's package or line item reference within the media buy. Used with `media_buy_id` when the creative agent needs line-item-level context. Omit to get a tag not scoped to a specific package — the ad server may return the same tag regardless. |
-| `target_format_id` | object | Conditional | Single format ID to generate. Object with `agent_url` and `id` fields. For 3.1 canonical creative-agent routing, `id` is the advertised `creative.supported_formats[].capability_id`; legacy named-format IDs remain accepted during the migration window. Mutually exclusive with `target_format_ids` — provide exactly one. |
-| `target_format_ids` | array | Conditional | Array of format IDs to generate in a single call. Each element is an object with `agent_url` and `id` fields. For 3.1 canonical creative-agent routing, each `id` is an advertised `creative.supported_formats[].capability_id`; legacy named-format IDs remain accepted during the migration window. Mutually exclusive with `target_format_id` — provide exactly one. Returns one manifest per format. |
+| `target_capability_id` | string | Conditional | One canonical creative capability advertised in `creative.supported_formats[].capability_id`. Mutually exclusive with `target_capability_ids`. |
+| `target_capability_ids` | string[] | Conditional | Multiple advertised canonical capability IDs. Returns one canonical manifest per capability in request order. Mutually exclusive with `target_capability_id`. |
 | `brand` | object | No | Brand reference with `domain` field. Resolves brand identity via `/.well-known/brand.json`. Provides brand-level context (colors, logos, tone). |
 | `quality` | string | No | Quality tier: `"draft"` (fast, lower-fidelity for iteration) or `"production"` (full quality for final delivery). If omitted, the creative agent uses its own default. |
 | `item_limit` | integer | No | Maximum number of catalog items to use **within one creative**. Caps generation cost for catalog-driven formats (e.g. a 6-card carousel built from a 1,000-product catalog). Distinct from `max_creatives`, which fans out across items. |
-| `transformer_id` | string | No | Select one transformer (discovered via [`list_transformers`](/docs/creative/task-reference/list_transformers)) to perform the build. The requested target format(s) MUST be a subset of that transformer's `output_format_ids`. The transformer's `per_unit` rate is the pricing source for the build. |
+| `transformer_id` | string | No | Select one transformer (discovered via [`list_transformers`](/docs/creative/task-reference/list_transformers)) to perform the build. Requested target capabilities MUST be a subset of its `output_capability_ids`. |
 | `config` | object | No | Typed configuration bag keyed to the selected transformer's `params[].field` (e.g. `{ "voice": "isaac", "speaking_rate": 1.1 }`). The creative agent MUST reject unknown keys and out-of-range values with field-attributed errors (strict validation) — vendor-specific knobs that are not declared params go in `ext`. Only meaningful with `transformer_id`. |
 | `max_creatives` | integer | No | Catalog fan-out axis: produce up to N **distinct creatives, one per catalog item** (a sample — e.g. 5 of 150). Distinct from `item_limit`, which caps items used *within* a single creative. Mutually exclusive with `refine_from_build_variant_id`. Triggers the `BuildCreativeVariantSuccess` response shape. Supported only when the agent advertises `creative.multiplicity.supports_catalog_fanout`; values above `max_creatives_limit` are **clamped** (shortfall via `items_returned` < `items_total`), not rejected. |
 | `signal_conditions` | array | No | Signal fan-out axis: produce one distinct creative **per signal condition**, each kept and trafficked with its own targeting (a rain creative AND a sun creative). Each item is a [SignalTargeting](/docs/signals/specification). Sibling to `max_creatives`; composes with it (catalog × conditions). Advisory at this layer ([#5280](https://github.com/adcontextprotocol/adcp/issues/5280)) — trafficking-compatibility is enforced sales-side via `SIGNAL_TARGETING_INCOMPATIBLE`. Supported only when the agent advertises `creative.multiplicity.supports_signal_fanout`; counts above `max_signal_conditions_limit` are **clamped**. See [Signal fan-out](#signal-fan-out). |
@@ -43,11 +43,11 @@ For information about legacy format IDs and how to reference formats, see [Creat
 | `mode` | string | No | `"execute"` (default) produces and bills. `"estimate"` is a **dry run** — produces and bills nothing, returns a `BuildCreativeEstimate` cost band (`cost_low`/`cost_high`) computed against this request's inputs. Requires `creative.supports_spend_controls`. See [Spend controls](#spend-controls). |
 | `max_spend` | object | No | Hard per-call spend ceiling `{ amount, currency }`. The agent produces leaves until the next would exceed `amount`, then stops and returns the partial result with `budget_status: "capped"`. Requires `creative.supports_spend_controls`. Caps one call — bound refinement loops buyer-side. See [Spend controls](#spend-controls). |
 | `include_preview` | boolean | No | When true, requests preview renders alongside the manifest. Agents that support this return a `preview` object in the response. Agents that don't simply omit it. |
-| `preview_inputs` | array | No | Input sets for preview generation when `include_preview` is true. Each entry has `name` (required), optional `macros`, and optional `context_description`. If omitted, the agent generates a single default preview. Only supported with `target_format_id` (single-format) — ignored for multi-format requests. |
+| `preview_inputs` | array | No | Input sets for preview generation when `include_preview` is true. Each entry has `name` (required), optional `macros`, and optional `context_description`. If omitted, the agent generates a single default preview. Only supported with `target_capability_id` (single-format) — ignored for multi-format requests. |
 | `preview_quality` | string | No | Render quality for inline previews: `"draft"` or `"production"`. Independent of the build `quality` — you can build at draft and preview at production, or vice versa. Only used when `include_preview` is true. |
 | `preview_output_format` | string | No | Output format for preview renders: `"url"` (default) or `"html"`. Only used when `include_preview` is true. |
 | `macro_values` | object | No | Macro values to pre-substitute into the output manifest's assets. Keys are universal macro names (e.g., `CLICK_URL`, `CACHEBUSTER`); values are the literal substitution strings. The creative agent translates universal macros to its platform's native syntax. Macros not provided here remain as `{MACRO}` placeholders for the sales agent to resolve at serve time. |
-| `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | No | Account reference for pricing and billing. When present, the creative agent applies account-specific pricing from the rate card, records the build against the account, and can enforce quotas. Required by creative agents that charge for their services. |
+| `account` | [AccountRef](/docs/building/by-layer/L2/accounts-and-agents#account-references) | No | Account reference for pricing and billing. When present, the creative agent applies account-specific pricing from the rate card, records the build against the account, and can enforce quotas. Required by creative agents that charge for their services. |
 | `push_notification_config` | object | No | Operation-scoped webhook configuration for async terminal completion/failure notifications when `build_creative` returns `submitted`. Submitted tasks remain pollable via `get_task_status` whether or not this field is present; agents MUST NOT return `submitted` solely because this field is present. |
 
 ### Pricing response fields
@@ -98,18 +98,12 @@ For pure generation, provide a minimal source manifest with the required input a
   "$schema": "/schemas/media-buy/build-creative-request.json",
   "idempotency_key": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
   "message": "Create a banner promoting our winter sale with a warm, inviting feel",
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250_generative"
-  },
+  "target_capability_id": "display_300x250_generative",
   "brand": {
     "domain": "mybrand.com"
   },
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250_generative"
-    },
+    "format_kind": "image",
     "assets": {
       "offering_catalog": {
         "asset_type": "catalog",
@@ -137,10 +131,7 @@ For transformation, provide the complete source manifest:
   "idempotency_key": "b2c3d4e5-f6a7-4890-b123-456789abcdef",
   "message": "Adapt this creative for mobile, making the text larger and CTA more prominent",
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250"
-    },
+    "format_kind": "image",
     "assets": {
       "banner_image": {
         "asset_type": "image",
@@ -154,10 +145,7 @@ For transformation, provide the complete source manifest:
       }
     }
   },
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_mobile_320x50"
-  }
+  "target_capability_id": "display_mobile_320x50"
 }
 ```
 
@@ -168,16 +156,10 @@ Transform an existing creative to a different size:
 ```json
 {
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_728x90"
-    },
+    "format_kind": "image",
     "assets": { /* complete assets */ }
   },
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250"
-  }
+  "target_capability_id": "display_300x250"
 }
 ```
 
@@ -191,12 +173,7 @@ Retrieve a creative from the agent's library and resolve it into a manifest with
   "idempotency_key": "c3d4e5f6-a7b8-4901-c234-56789abcdef0",
   "creative_id": "ft_88201",
   "concept_id": "concept_holiday_2026",
-  "target_format_id": {
-    "agent_url": "https://creative.example.com",
-    "id": "display_static",
-    "width": 300,
-    "height": 250
-  },
+  "target_capability_id": "display_static_300x250",
   "macro_values": {
     "CLICK_URL": "https://publisher.example.com/click/abc123"
   }
@@ -211,12 +188,7 @@ Retrieve a creative from the agent's library and resolve it into a manifest with
   "status": "completed",
   "recipe_hash": "rh_scope3_9f2c7a1d5b3e",
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.example.com",
-      "id": "display_static",
-      "width": 300,
-      "height": 250
-    },
+    "format_kind": "image",
     "assets": {
       "ad_tag": {
         "asset_type": "javascript",
@@ -241,41 +213,23 @@ Do not use `recipe_hash` to deduplicate ad tags, prove legal/disclosure equivale
 
 ### Multi-format generation
 
-Generate creatives for multiple formats in a single call using `target_format_ids`. The agent produces one manifest per format from the same source assets and brief:
+Generate creatives for multiple formats in a single call using `target_capability_ids`. The agent produces one manifest per format from the same source assets and brief:
 
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-request.json",
   "idempotency_key": "d4e5f6a7-b8c9-4012-d345-6789abcdef01",
   "message": "Create display banners for our spring campaign",
-  "target_format_ids": [
-    {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_static",
-      "width": 300,
-      "height": 250
-    },
-    {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_static",
-      "width": 728,
-      "height": 90
-    },
-    {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_static",
-      "width": 320,
-      "height": 50
-    }
+  "target_capability_ids": [
+    "display_image_300x250",
+    "display_image_728x90",
+    "display_image_320x50"
   ],
   "brand": {
     "domain": "acmecorp.com"
   },
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_static"
-    },
+    "format_kind": "image",
     "assets": {
       "banner_image": {
         "asset_type": "image",
@@ -296,19 +250,14 @@ Generate creatives for multiple formats in a single call using `target_format_id
 }
 ```
 
-The response uses `creative_manifests` (array) instead of `creative_manifest` (singular). Each manifest is a complete creative manifest with its own `format_id`, ready for `sync_creatives` or `preview_creative`:
+The response uses `creative_manifests` instead of singular `creative_manifest`. Each result is a complete canonical manifest, ready for `sync_creatives` or `preview_creative`:
 
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
   "creative_manifests": [
     {
-      "format_id": {
-        "agent_url": "https://creative.adcontextprotocol.org",
-        "id": "display_static",
-        "width": 300,
-        "height": 250
-      },
+      "format_kind": "image",
       "assets": {
         "banner_image": {
           "asset_type": "image",
@@ -321,18 +270,18 @@ The response uses `creative_manifests` (array) instead of `creative_manifest` (s
       }
     },
     {
-      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_static", "width": 728, "height": 90 },
+      "format_kind": "image",
       "assets": { /* same structure, adapted for 728x90 */ }
     },
     {
-      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_static", "width": 320, "height": 50 },
+      "format_kind": "image",
       "assets": { /* same structure, adapted for 320x50 */ }
     }
   ]
 }
 ```
 
-Multi-format requests are atomic — if any format fails (e.g., `FORMAT_NOT_SUPPORTED`), the entire request fails with an error response. The response array order corresponds to the `target_format_ids` request order. Match manifests to requested formats by array position or by comparing the `format_id` on each manifest.
+Multi-capability requests are atomic — if any capability fails, the entire request fails. Response order matches `target_capability_ids`; each manifest's `format_kind` describes the resulting canonical contract.
 
 ### Multi-format workflow
 
@@ -343,14 +292,16 @@ After a multi-format build, preview all results using `preview_creative` batch m
   "request_type": "batch",
   "quality": "draft",
   "requests": [
-    { "creative_manifest": { /* 300x250 manifest from build response */ } },
-    { "creative_manifest": { /* 728x90 manifest from build response */ } },
-    { "creative_manifest": { /* 320x50 manifest from build response */ } }
+    { "target_capability_id": "preview_image_300x250", "creative_manifest": { /* 300x250 manifest from build response */ } },
+    { "target_capability_id": "preview_image_728x90", "creative_manifest": { /* 728x90 manifest from build response */ } },
+    { "target_capability_id": "preview_image_320x50", "creative_manifest": { /* 320x50 manifest from build response */ } }
   ]
 }
 ```
 
-To refine a single format from a multi-format build, call `build_creative` again with `target_format_id` (singular) and pass back that format's manifest. You don't need to rebuild all formats — just iterate on the one that needs work.
+Resolve each preview route from a `creative.supported_formats[]` entry whose `operations` contains `preview` and whose canonical declaration satisfies that manifest. Build and preview capability IDs may differ, even on the same agent.
+
+To refine a single format from a multi-format build, call `build_creative` again with `target_capability_id` (singular) and pass back that format's manifest. You don't need to rebuild all formats — just iterate on the one that needs work.
 
 <Note>
 Multi-format requests with `include_preview: true` generate one default preview per format. Custom `preview_inputs` are only supported with single-format requests. For multi-format builds where you need context-specific previews (device variants, different contexts), use a separate `preview_creative` batch call after building.
@@ -360,7 +311,7 @@ Multi-format requests with `include_preview: true` generate one default preview 
 
 Select a transformer (discovered via [`list_transformers`](/docs/creative/task-reference/list_transformers)) with `transformer_id`, supply a typed `config` keyed to its params, and ask for alternatives with `max_variants`. The agent returns the [variant response](#variant-response): `creatives[]`, each holding a `variants[]` array. Read `recommended` / `rank` to surface the agent's best-of-N pick; traffic the variant(s) you want by their `build_variant_id`.
 
-Resolutions and quality tiers go on `target_format_ids` (or `quality`), not on `variant_axis` — variants are alternatives for the *same* format.
+Resolutions and quality tiers go on `target_capability_ids` (or `quality`), not on `variant_axis` — variants are alternatives for the *same* format.
 
 <CodeGroup>
 
@@ -372,9 +323,9 @@ const result = await testAgent.buildCreative({
   account: { account_id: 'acct_acme' },
   transformer_id: 'audiostack_voiceover',
   config: { voice: 'isaac', speaking_rate: 1.1, mastering_preset: 'podcast' },
-  target_format_id: { agent_url: 'https://creative.audiostack.example', id: 'audio_vo' },
+  target_capability_id: 'audio_vo',
   creative_manifest: {
-    format_id: { agent_url: 'https://creative.audiostack.example', id: 'script' },
+    format_kind: 'audio_hosted',
     assets: { script: { asset_type: 'text', content: 'Discover the new winter collection.' } },
   },
   max_variants: 3,
@@ -401,9 +352,9 @@ async def main():
         account={"account_id": "acct_acme"},
         transformer_id="audiostack_voiceover",
         config={"voice": "isaac", "speaking_rate": 1.1, "mastering_preset": "podcast"},
-        target_format_id={"agent_url": "https://creative.audiostack.example", "id": "audio_vo"},
+        target_capability_id="audio_vo",
         creative_manifest={
-            "format_id": {"agent_url": "https://creative.audiostack.example", "id": "script"},
+            "format_kind": "audio_hosted",
             "assets": {"script": {"asset_type": "text", "content": "Discover the new winter collection."}},
         },
         max_variants=3,
@@ -435,10 +386,7 @@ When the creative agent charges and `account` is provided, the response includes
   "idempotency_key": "e5f6a7b8-c9d0-4123-e456-789abcdef012",
   "account": { "account_id": "acct_acme_creative" },
   "creative_id": "cr_hero_banner",
-  "target_format_id": {
-    "agent_url": "https://creative.example.com",
-    "id": "display_728x90"
-  }
+  "target_capability_id": "display_728x90"
 }
 ```
 
@@ -447,10 +395,7 @@ When the creative agent charges and `account` is provided, the response includes
   "$schema": "/schemas/media-buy/build-creative-response.json",
   "status": "completed",
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.example.com",
-      "id": "display_728x90"
-    },
+    "format_kind": "image",
     "assets": {
       "ad_tag": {
         "content": "<div data-adcp-creative='cr_hero_banner' style='width:728px;height:90px;'>...</div>"
@@ -485,7 +430,7 @@ The `pricing_option_id` corresponds to one of the options from [`list_creatives`
 
 ### Single-format response
 
-When the request uses `target_format_id`, the response contains a single creative manifest:
+When the request uses `target_capability_id`, the response contains a single creative manifest:
 
 ```json
 {
@@ -493,10 +438,7 @@ When the request uses `target_format_id`, the response contains a single creativ
   "status": "completed",
   "recipe_hash": "rh_winter_300x250_4c2a",
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250"
-    },
+    "format_kind": "image",
     "assets": {
       "offering_catalog": {
         "asset_type": "catalog",
@@ -524,18 +466,18 @@ When the request uses `target_format_id`, the response contains a single creativ
 
 ### Multi-format response
 
-When the request uses `target_format_ids`, the response contains an array of creative manifests:
+When the request uses `target_capability_ids`, the response contains an array of creative manifests:
 
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
   "creative_manifests": [
     {
-      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_static", "width": 300, "height": 250 },
+      "format_kind": "image",
       "assets": { /* ... */ }
     },
     {
-      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_static", "width": 728, "height": 90 },
+      "format_kind": "image",
       "assets": { /* ... */ }
     }
   ]
@@ -562,7 +504,7 @@ When the request uses `max_creatives`, `max_variants` > 1, `variant_axis`, or `r
         {
           "build_variant_id": "bv_card01_a",
           "recipe_hash": "rh_card01_bestofn_7b91",
-          "creative_manifest": { "format_id": { "agent_url": "https://creative.example.com", "id": "display_300x250" }, "assets": { "...": "..." } },
+          "creative_manifest": { "format_kind": "image", "assets": { "...": "..." } },
           "variant_axis_value": "take_1",
           "recommended": true,
           "rank": 1,
@@ -574,7 +516,7 @@ When the request uses `max_creatives`, `max_variants` > 1, `variant_axis`, or `r
         {
           "build_variant_id": "bv_card01_b",
           "recipe_hash": "rh_card01_bestofn_7b91",
-          "creative_manifest": { "format_id": { "agent_url": "https://creative.example.com", "id": "display_300x250" }, "assets": { "...": "..." } },
+          "creative_manifest": { "format_kind": "image", "assets": { "...": "..." } },
           "variant_axis_value": "take_2",
           "recommended": false,
           "rank": 2,
@@ -625,7 +567,7 @@ You pay for **every produced variant** (`per_unit` × N), not just the ones you 
 
 **Build-time variants are not delivery variants.** The `build_variant_id` here is a pre-delivery handle for an alternative you produced. It is a different namespace from the served `variant_id` in [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery), which identifies a creative *execution that was delivered*. A build-time variant becomes a delivery variant only once you keep and traffic it.
 
-**Resolutions and quality tiers are not variants.** Multiple sizes or quality levels belong on the format axis — pass them as `target_format_ids` (or `quality`), not as `variant_axis` values. Variants are alternatives *for the same format* (different voice, theme, or best-of-N take).
+**Resolutions and quality tiers are not variants.** Multiple sizes or quality levels belong on the format axis — pass them as `target_capability_ids` (or `quality`), not as `variant_axis` values. Variants are alternatives *for the same format* (different voice, theme, or best-of-N take).
 </Note>
 
 ### Refinement
@@ -663,6 +605,8 @@ They compose: estimate to get `cost_high`, then execute with `max_spend` = `cost
 
 <Warning>
 `max_spend` and `mode: "estimate"` require the agent to advertise `creative.supports_spend_controls`; otherwise they're rejected with `UNSUPPORTED_FEATURE`. They're only meaningful with `bills_through_adcp: true` (an out-of-band biller has no AdCP cost to cap against).
+
+**Governance applicability.** A creative service advertising `adcp.governance_enforcement` for `build_creative` requires an approved `governance_context` only when the execution incurs positive vendor cost. Estimate-only calls and zero-cost retrieval are exempt. A creative ad server that never commits or meters spend through AdCP does not acquire a `sync_governance` obligation merely by trafficking creative; if it later exposes an AdCP-billed mutation, that commitment-bearing task must be declared and governed explicitly.
 </Warning>
 
 ### Estimate response
@@ -698,11 +642,11 @@ A `mode: "estimate"` request returns the `BuildCreativeEstimate` shape (`oneOf` 
 ### Field descriptions
 
 - **creative_manifest**: (single-format) The complete creative manifest ready for use with `sync_creatives` or `preview_creative`
-- **creative_manifests**: (multi-format) Array of complete creative manifests, one per requested format. Each contains its own `format_id`.
-- **format_id**: The target format (matches the requested format)
+- **creative_manifests**: (multi-capability) Array of portable canonical creative manifests, one per requested capability and in request order. Each contains its own `format_kind` and, when needed, `format_option_ref`.
+- **format_kind**: The canonical format produced by the selected capability
 - **assets**: Map of asset keys to asset content — includes creative content (images, text, URLs), catalogs, briefs, and anything else the format requires
 - **expires_at**: Optional ISO 8601 timestamp when generated asset URLs in the manifest expire. Set to the earliest expiration across all generated assets. Re-build the creative after this time to get fresh URLs. Not present when the manifest contains no expiring URLs (e.g., pure text generation or assembly-only transforms).
-- **preview**: Optional. Present when `include_preview` was true in the request and the agent supports inline preview. Contains the same content fields as a `preview_creative` single response (`previews`, `interactive_url`, `expires_at`) minus the `response_type` discriminator, so clients can reuse the same preview rendering logic. Preview URLs follow the same durability contract as `preview_creative`: they remain dereferenceable until `expires_at`, or until explicit out-of-band revocation when no expiration is present. For single-format responses, each entry in `previews[]` corresponds to an input set from `preview_inputs`. For multi-format responses, each entry includes a `format_id` and corresponds to one requested format (one default preview per format; `preview_inputs` is ignored).
+- **preview**: Optional. Present when `include_preview` was true in the request and the agent supports inline preview. Contains the same content fields as a `preview_creative` single response (`previews`, `interactive_url`, `expires_at`) minus the `response_type` discriminator, so clients can reuse the same preview rendering logic. Preview URLs follow the same durability contract as `preview_creative`: they remain dereferenceable until `expires_at`, or until explicit out-of-band revocation when no expiration is present. For single-capability responses, each entry in `previews[]` corresponds to an input set from `preview_inputs`. For multi-capability responses, each entry includes a `capability_id` and corresponds to one requested capability (one default preview per capability; `preview_inputs` is ignored).
 - **preview_error**: Optional. Standard error object (`code`, `message`, `recovery`) present when `include_preview` was true but preview generation failed. The `recovery` field indicates whether the failure is `transient` (retry later), `correctable`, or `terminal`. Distinguishes "agent doesn't support inline preview" (field absent, no error) from "preview generation failed" (field present with structured error).
 
 ### Compliance errors
@@ -787,13 +731,13 @@ Use `preview_quality` to control render fidelity independently from build qualit
 // Build at draft quality, but preview at production quality for stakeholder review
 {
   "message": "Create a display banner for our winter sale",
-  "target_format_id": {"agent_url": "...", "id": "display_300x250_generative"},
+  "target_capability_id": "display_300x250_generative",
   "brand": { "domain": "mybrand.com" },
   "quality": "draft",
   "include_preview": true,
   "preview_quality": "production",
   "creative_manifest": {
-    "format_id": {"agent_url": "...", "id": "display_300x250_generative"},
+    "format_kind": "image",
     "assets": {
       "product_catalog": {
         "type": "product",
@@ -807,10 +751,10 @@ Use `preview_quality` to control render fidelity independently from build qualit
 // Step 1: Build
 {
   "message": "Create a display banner for our winter sale",
-  "target_format_id": {"agent_url": "...", "id": "display_300x250_generative"},
+  "target_capability_id": "display_300x250_generative",
   "brand": { "domain": "mybrand.com" },
   "creative_manifest": {
-    "format_id": {"agent_url": "...", "id": "display_300x250_generative"},
+    "format_kind": "image",
     "assets": {
       "product_catalog": {
         "type": "product",
@@ -823,7 +767,7 @@ Use `preview_quality` to control render fidelity independently from build qualit
 // Step 2: Preview (using the output manifest from step 1)
 {
   "request_type": "single",
-  "format_id": {"agent_url": "...", "id": "display_300x250"},
+  "format_kind": "image",
   "creative_manifest": {
     /* output from build_creative - includes all assets */
   },
@@ -849,18 +793,12 @@ Generate a creative from scratch using a generative format:
   "$schema": "/schemas/media-buy/build-creative-request.json",
   "idempotency_key": "f6a7b8c9-d0e1-4234-f567-89abcdef0123",
   "message": "Create a display banner for our winter sale. Use warm colors and emphasize the 50% discount",
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250_generative"
-  },
+  "target_capability_id": "display_300x250_generative",
   "brand": {
     "domain": "mybrand.com"
   },
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250_generative"
-    },
+    "format_kind": "image",
     "assets": {
       "offering_catalog": {
         "asset_type": "catalog",
@@ -884,10 +822,7 @@ Generate a creative from scratch using a generative format:
   "$schema": "/schemas/media-buy/build-creative-response.json",
   "status": "completed",
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250"
-    },
+    "format_kind": "image",
     "assets": {
       "offering_catalog": {
         "asset_type": "catalog",
@@ -919,10 +854,7 @@ Transform an existing 728x90 leaderboard to a 300x250 banner:
   "idempotency_key": "a7b8c9d0-e1f2-4345-a678-9abcdef01234",
   "message": "Adapt this leaderboard creative to a 300x250 banner format",
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_728x90"
-    },
+    "format_kind": "image",
     "assets": {
       "banner_image": {
         "asset_type": "image",
@@ -940,10 +872,7 @@ Transform an existing 728x90 leaderboard to a 300x250 banner:
       }
     }
   },
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250"
-  }
+  "target_capability_id": "display_300x250"
 }
 ```
 
@@ -953,10 +882,7 @@ Transform an existing 728x90 leaderboard to a 300x250 banner:
   "$schema": "/schemas/media-buy/build-creative-response.json",
   "status": "completed",
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250"
-    },
+    "format_kind": "image",
     "assets": {
       "banner_image": {
         "asset_type": "image",
@@ -987,10 +913,7 @@ Adapt a creative for mobile with specific design changes:
   "idempotency_key": "b8c9d0e1-f2a3-4456-b789-abcdef012345",
   "message": "Make this mobile-friendly: increase text size, simplify the layout, and make the CTA button more prominent",
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x600"
-    },
+    "format_kind": "image",
     "assets": {
       "background_image": {
         "asset_type": "image",
@@ -1012,10 +935,7 @@ Adapt a creative for mobile with specific design changes:
       }
     }
   },
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_mobile_320x50"
-  }
+  "target_capability_id": "display_mobile_320x50"
 }
 ```
 
@@ -1025,10 +945,7 @@ Adapt a creative for mobile with specific design changes:
   "$schema": "/schemas/media-buy/build-creative-response.json",
   "status": "completed",
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_mobile_320x50"
-    },
+    "format_kind": "image",
     "assets": {
       "banner_image": {
         "asset_type": "image",
@@ -1058,18 +975,12 @@ Generate a creative using structured campaign context via `brand` and a brief as
   "$schema": "/schemas/media-buy/build-creative-request.json",
   "idempotency_key": "c9d0e1f2-a3b4-4567-c890-bcdef0123456",
   "message": "Create a display banner for the holiday campaign targeting gift shoppers",
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250_generative"
-  },
+  "target_capability_id": "display_300x250_generative",
   "brand": {
     "domain": "acmecorp.com"
   },
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250_generative"
-    },
+    "format_kind": "image",
     "assets": {
       "brief": {
         "asset_type": "brief",
@@ -1118,18 +1029,12 @@ Generate a financial services creative with regulatory disclosures and prohibite
   "$schema": "/schemas/media-buy/build-creative-request.json",
   "idempotency_key": "d0e1f2a3-b4c5-4678-d901-cdef01234567",
   "message": "Create a display banner promoting retirement planning advisory services",
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250_generative"
-  },
+  "target_capability_id": "display_300x250_generative",
   "brand": {
     "domain": "pinnaclewealth.com"
   },
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250_generative"
-    },
+    "format_kind": "image",
     "assets": {
       "brief": {
         "asset_type": "brief",
@@ -1193,18 +1098,12 @@ Generate a sponsored product carousel with campaign context, compliance disclosu
   "$schema": "/schemas/media-buy/build-creative-request.json",
   "idempotency_key": "e1f2a3b4-c5d6-4789-e012-def012345678",
   "message": "Create a product carousel highlighting the top 4 sale items",
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "sponsored_product_carousel"
-  },
+  "target_capability_id": "sponsored_product_carousel",
   "brand": {
     "domain": "novabrands.com"
   },
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "sponsored_product_carousel"
-    },
+    "format_kind": "sponsored_placement",
     "assets": {
       "brief": {
         "asset_type": "brief",
@@ -1238,7 +1137,7 @@ Generate a sponsored product carousel with campaign context, compliance disclosu
 }
 ```
 
-The brief and product catalog travel together in the manifest's `assets` map. The format declares both a `brief` and `catalog` asset type — the buying agent discovers this via `list_creative_formats` and syncs the required catalog before submitting.
+The brief and product catalog travel together in the manifest's `assets` map. The selected `creative.supported_formats[]` declaration exposes both `brief` and `catalog` slots, so the buying agent can sync the required catalog before submitting.
 
 ### Example 7: Build with inline preview
 
@@ -1249,10 +1148,7 @@ Build a creative and get preview renders in the same response:
   "$schema": "/schemas/media-buy/build-creative-request.json",
   "idempotency_key": "f2a3b4c5-d6e7-4890-f123-ef0123456789",
   "message": "Create a banner for our spring campaign",
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250_generative"
-  },
+  "target_capability_id": "display_300x250_generative",
   "brand": {
     "domain": "novabrands.com"
   },
@@ -1262,10 +1158,7 @@ Build a creative and get preview renders in the same response:
     { "name": "Dark mode", "macros": { "COLOR_SCHEME": "dark" } }
   ],
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250_generative"
-    },
+    "format_kind": "image",
     "assets": {
       "offering_catalog": {
         "asset_type": "catalog",
@@ -1289,10 +1182,7 @@ Build a creative and get preview renders in the same response:
   "$schema": "/schemas/media-buy/build-creative-response.json",
   "status": "completed",
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250"
-    },
+    "format_kind": "image",
     "assets": {
       "offering_catalog": {
         "asset_type": "catalog",
@@ -1357,20 +1247,14 @@ Generate a draft-quality creative from a large catalog, capping the number of it
   "$schema": "/schemas/media-buy/build-creative-request.json",
   "idempotency_key": "a3b4c5d6-e7f8-4901-a234-f01234567890",
   "message": "Create hero images for our top sale items",
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "sponsored_product_carousel"
-  },
+  "target_capability_id": "sponsored_product_carousel",
   "brand": {
     "domain": "novabrands.com"
   },
   "quality": "draft",
   "item_limit": 4,
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "sponsored_product_carousel"
-    },
+    "format_kind": "sponsored_placement",
     "assets": {
       "product_catalog": {
         "asset_type": "catalog",
@@ -1390,10 +1274,7 @@ The catalog may contain hundreds of products, but `item_limit: 4` ensures only 4
   "$schema": "/schemas/media-buy/build-creative-response.json",
   "status": "completed",
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "sponsored_product_carousel"
-    },
+    "format_kind": "sponsored_placement",
     "assets": {
       "product_catalog": {
         "asset_type": "catalog",
@@ -1460,7 +1341,7 @@ Both are optional. `brand` provides stable brand identity (colors, logos, tone) 
 
 ### Pure generation vs transformation
 
-- **Pure Generation**: Provide minimal `creative_manifest` with just the format_id, catalog assets (if the format renders catalog items), and any required seed assets. The creative agent generates output assets from scratch using `message` as guidance.
+- **Pure Generation**: Provide `target_capability_id`, any catalog or seed assets required by that capability, and `message`. The creative agent generates a canonical output manifest from scratch.
 - **Transformation**: Provide complete `creative_manifest` with all existing assets. The creative agent adapts existing assets to the target format, optionally following guidance in `message`.
 
 ### Integration with other tasks
@@ -1480,9 +1361,9 @@ This separation allows you to:
 
 `build_creative` supports multi-turn iteration without a mode flag. The presence and combination of fields determines the operation:
 
-- **Generation**: `message` + minimal `creative_manifest` (empty or seed assets) + `target_format_id`
-- **Transformation**: full `creative_manifest` + `message` + `target_format_id`
-- **Library retrieval**: `creative_id` + `target_format_id` + optional `macro_values`
+- **Generation**: `message` + minimal `creative_manifest` (empty or seed assets) + `target_capability_id`
+- **Transformation**: full `creative_manifest` + `message` + `target_capability_id`
+- **Library retrieval**: `creative_id` + `target_capability_id` + optional `macro_values`
 - **Refinement**: previous output as `creative_manifest` + `message` with changes
 
 To refine, pass the previous response's `creative_manifest` back as input with a new `message`. Alternatively, update the brief asset (`assets.brief`) to change the creative direction — the brief is the buyer-owned source of truth for what the creative should be.
@@ -1492,15 +1373,9 @@ To refine, pass the previous response's `creative_manifest` back as input with a
   "$schema": "/schemas/media-buy/build-creative-request.json",
   "idempotency_key": "b4c5d6e7-f8a9-4012-b345-012345678901",
   "message": "Make the headline bolder and increase the contrast on the CTA button",
-  "target_format_id": {
-    "agent_url": "https://creative.adcontextprotocol.org",
-    "id": "display_300x250_generative"
-  },
+  "target_capability_id": "display_300x250_generative",
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "display_300x250"
-    },
+    "format_kind": "image",
     "assets": {
       "banner_image": {
         "asset_type": "image",
@@ -1525,7 +1400,7 @@ To refine, pass the previous response's `creative_manifest` back as input with a
 
 | Code | Description |
 |------|-------------|
-| `FORMAT_NOT_SUPPORTED` | The `target_format_id` (or `target_format_ids[N]` in a multi-format request) is not supported by this creative agent. For canonical creative-agent routing, retry with an advertised `creative.supported_formats[].capability_id`; legacy named-format IDs remain valid when the agent still advertises them. |
-| `INVALID_MANIFEST` | The `creative_manifest` is malformed or missing required assets for the target format |
+| `FORMAT_NOT_SUPPORTED` | The `target_capability_id` (or `target_capability_ids[N]`) is not advertised by this creative agent. Refresh `get_adcp_capabilities.creative.supported_formats[]` and retry with a supported capability. |
+| `VALIDATION_ERROR` | The `creative_manifest` is malformed or missing required assets for the target format |
 | `CREATIVE_NOT_FOUND` | The `creative_id` does not exist in the agent's library (or in the specified `concept_id`) |
 | `COMPLIANCE_UNSATISFIED` | A required disclosure from the brief cannot be rendered in the target format (e.g., format does not support the required disclosure position) |

@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/protocol/sync-agent-notification-configs-response.json",
+  "title": "Sync Agent Notification Configs Response",
+  "description": "Response from caller-scoped agent-level notification subscriber replacement. Echoes the authenticated caller's persisted subscriber set with legacy credentials redacted, or reports operation-level errors when the replacement failed.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "dry_run": {
+      "type": "boolean",
+      "description": "Whether this was a dry run and no persisted subscriber set changed."
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "updated",
+        "unchanged",
+        "cleared",
+        "failed"
+      ],
+      "description": "Outcome for the caller-scoped replacement. `updated`: a new subscriber set was persisted for this caller. `unchanged`: the submitted set matched this caller's current set. `cleared`: the submitted empty array removed all subscribers owned by this caller. `failed`: validation, authorization, or endpoint proof failed; the prior caller-scoped set remains unchanged and `errors[]` explains why."
+    },
+    "notification_configs": {
+      "type": "array",
+      "description": "Current persisted agent-level notification subscribers owned by the authenticated caller after the request. Entries are keyed by `subscriber_id`; `authentication.credentials` is omitted on every entry because credentials are write-only. Present on successful actions and MAY be present on `failed` responses to show the unchanged prior caller-scoped set.",
+      "items": {
+        "$ref": "/schemas/core/agent-notification-config.json"
+      },
+      "maxItems": 16
+    },
+    "errors": {
+      "type": "array",
+      "description": "Operation-level errors and warnings. Present when action is `failed`, and MAY include non-fatal warnings on successful responses.",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "action"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Subscriber set updated",
+      "data": {
+        "status": "completed",
+        "action": "updated",
+        "notification_configs": [
+          {
+            "subscriber_id": "registry-cache",
+            "url": "https://registry.example/webhooks/adcp/capabilities",
+            "event_types": [
+              "capabilities.changed"
+            ],
+            "active": true
+          }
+        ]
+      }
+    }
+  ]
+}

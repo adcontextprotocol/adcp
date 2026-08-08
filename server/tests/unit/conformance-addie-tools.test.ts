@@ -151,6 +151,61 @@ describe('run_conformance_against_my_agent Addie tool', () => {
     expect(out).toMatch(/discover/);
   });
 
+  it('labels missing comply_test_controller skips as optional coverage gaps', async () => {
+    conformanceSessions.register({
+      orgId: 'org_a',
+      transport: { close: vi.fn().mockResolvedValue(undefined) } as never,
+      mcpClient: {} as never,
+      connectedAt: Date.now(),
+    });
+
+    runStoryboardMock.mockResolvedValue({
+      storyboard_id: 'media_buy_state_machine',
+      storyboard_title: 'Media buy state machine',
+      overall_passed: true,
+      passed_count: 1,
+      failed_count: 0,
+      skipped_count: 1,
+      total_duration_ms: 150,
+      phases: [
+        {
+          phase_id: 'state_transitions',
+          phase_title: 'State transitions',
+          passed: true,
+          duration_ms: 150,
+          steps: [
+            {
+              step_id: 'force_active',
+              phase_id: 'state_transitions',
+              title: 'Force media buy active',
+              task: 'comply_test_controller',
+              passed: true,
+              skipped: true,
+              skip_reason: 'missing_test_controller',
+            },
+            {
+              step_id: 'read_state',
+              phase_id: 'state_transitions',
+              title: 'Read state',
+              task: 'get_media_buys',
+              passed: true,
+            },
+          ],
+        },
+      ],
+    });
+
+    const handlers = createConformanceToolHandlers(memberContextWithOrg('org_a'));
+    const out = await handlers.get('run_conformance_against_my_agent')!({
+      storyboard_id: 'media_buy_state_machine',
+    });
+    expect(out).toMatch(/skip reason: `missing_test_controller`/);
+    expect(out).toMatch(/optional deterministic-test-surface coverage gap/);
+    expect(out).toMatch(/optional for production-path Sandbox validation/);
+    expect(out).not.toMatch(/required for the storyboard suite/i);
+    expect(out).not.toMatch(/untestable without/i);
+  });
+
   it('renders error text and failed validation details on failing steps', async () => {
     conformanceSessions.register({
       orgId: 'org_a',

@@ -1,0 +1,102 @@
+{
+  "$schema_version": "1.0",
+  "name": "Universal macro translation — cross-SDK conformance fixtures",
+  "spec_reference": "docs/creative/universal-macros.mdx#implementing-translation-with-the-sdk",
+  "description": "Reference vectors pinning the universal_macro_translation helper contract across SDKs (JS @adcp/sdk, Python adcp). The helper rewrites a pixel URL's query parameters from a per-macro mapping: value entries are RFC-3986 unreserved-whitelist percent-encoded; native entries are inserted raw; params whose macro is unmapped are dropped; already-minted params pass through. Each vector's `expected` is the full return value { url, dropped_params, unmapped_macros }. Both SDKs MUST produce byte-identical output for every vector — the conformance storyboard only exercises alphanumeric IDs, so cross-language encoder drift is invisible without this fixture.",
+  "vectors": [
+    {
+      "name": "value-unreserved-encoded",
+      "description": "value entries are RFC-3986 unreserved-whitelist encoded; space/slash/ampersand/equals cannot break out of the query value. This is the vector that catches Python urllib.quote() defaults (which leave '/' unescaped).",
+      "input": {
+        "url": "https://track.brand.com/imp?buy={MEDIA_BUY_ID}",
+        "mapping": { "{MEDIA_BUY_ID}": { "value": "mb spring/2025&x=1" } }
+      },
+      "expected": {
+        "url": "https://track.brand.com/imp?buy=mb%20spring%2F2025%26x%3D1",
+        "dropped_params": [],
+        "unmapped_macros": []
+      }
+    },
+    {
+      "name": "native-inserted-raw",
+      "description": "native tokens are inserted verbatim (not percent-encoded) so the downstream ad server still recognizes %%...%%.",
+      "input": {
+        "url": "https://t.ex/i?cb={CACHEBUSTER}&dev={DEVICE_ID}",
+        "mapping": {
+          "{CACHEBUSTER}": { "native": "%%CACHEBUSTER%%" },
+          "{DEVICE_ID}": { "native": "%%ADVERTISING_IDENTIFIER_PLAIN%%" }
+        }
+      },
+      "expected": {
+        "url": "https://t.ex/i?cb=%%CACHEBUSTER%%&dev=%%ADVERTISING_IDENTIFIER_PLAIN%%",
+        "dropped_params": [],
+        "unmapped_macros": []
+      }
+    },
+    {
+      "name": "unmapped-macro-param-dropped",
+      "description": "a param whose macro is unmapped is dropped entirely and reported. An unmapped universal token left raw is unfillable by GAM/Kevel/Xandr (literal replacement of their own native syntax only), so dropping is correct.",
+      "input": {
+        "url": "https://t.ex/i?buy={MEDIA_BUY_ID}&geo={COUNTRY}",
+        "mapping": { "{MEDIA_BUY_ID}": { "value": "mb_1" } }
+      },
+      "expected": {
+        "url": "https://t.ex/i?buy=mb_1",
+        "dropped_params": ["geo"],
+        "unmapped_macros": ["{COUNTRY}"]
+      }
+    },
+    {
+      "name": "already-minted-param-untouched",
+      "description": "a param with no macro passes through exactly as-is (no re-encoding of pkg_123).",
+      "input": {
+        "url": "https://t.ex/i?pkg=pkg_123&buy={MEDIA_BUY_ID}",
+        "mapping": { "{MEDIA_BUY_ID}": { "value": "mb_1" } }
+      },
+      "expected": {
+        "url": "https://t.ex/i?pkg=pkg_123&buy=mb_1",
+        "dropped_params": [],
+        "unmapped_macros": []
+      }
+    },
+    {
+      "name": "no-query-string-url-unchanged",
+      "description": "SCOPE: the helper rewrites query parameters only. A macro in a path segment is left raw and is NOT reported in unmapped_macros. Documented limitation — substitute path/fragment macros before calling.",
+      "input": {
+        "url": "https://t.ex/imp/{MEDIA_BUY_ID}",
+        "mapping": { "{MEDIA_BUY_ID}": { "value": "mb_1" } }
+      },
+      "expected": {
+        "url": "https://t.ex/imp/{MEDIA_BUY_ID}",
+        "dropped_params": [],
+        "unmapped_macros": []
+      }
+    },
+    {
+      "name": "fragment-left-untouched",
+      "description": "the fragment is split off before query processing and never rewritten.",
+      "input": {
+        "url": "https://t.ex/i?buy={MEDIA_BUY_ID}#frag={CREATIVE_ID}",
+        "mapping": { "{MEDIA_BUY_ID}": { "value": "mb_1" }, "{CREATIVE_ID}": { "value": "cr_1" } }
+      },
+      "expected": {
+        "url": "https://t.ex/i?buy=mb_1#frag={CREATIVE_ID}",
+        "dropped_params": [],
+        "unmapped_macros": []
+      }
+    },
+    {
+      "name": "no-re-expansion-of-substituted-value",
+      "description": "single-pass: a {MACRO} appearing inside a substituted value is treated as data and encoded (braces -> %7B/%7D), never re-expanded. Injection defense.",
+      "input": {
+        "url": "https://t.ex/i?buy={MEDIA_BUY_ID}",
+        "mapping": { "{MEDIA_BUY_ID}": { "value": "{PACKAGE_ID}" } }
+      },
+      "expected": {
+        "url": "https://t.ex/i?buy=%7BPACKAGE_ID%7D",
+        "dropped_params": [],
+        "unmapped_macros": []
+      }
+    }
+  ]
+}

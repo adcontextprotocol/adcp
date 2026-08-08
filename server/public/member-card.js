@@ -35,6 +35,9 @@ const offeringLabels = {
 function renderMemberCard(member, options = {}) {
   const { isPreview = false, showVisibilityBadge = false } = options;
   const brand = member.resolved_brand;
+  const linkedInUrl = getSafeHttpsUrl(member.linkedin_url);
+  const contactWebsiteUrl = getSafeHttpsUrl(member.contact_website)
+    || getSafeHttpsUrl(brand?.contact?.domain ? `https://${brand.contact.domain}` : null);
 
   // Name: prefer brand.json, fallback to profile
   const displayName = brand?.name || member.display_name;
@@ -141,11 +144,8 @@ function renderMemberCard(member, options = {}) {
       </div>
       <div class="member-card-footer">
         <div class="member-contact">
-          ${(() => {
-            const website = member.contact_website || (brand?.contact?.domain ? `https://${escapeHtmlSafe(brand.contact.domain)}` : '');
-            return website ? `<a href="${escapeHtmlSafe(website)}" target="_blank" onclick="event.stopPropagation()">Website</a>` : '';
-          })()}
-          ${member.linkedin_url ? `<a href="${member.linkedin_url}" target="_blank" onclick="event.stopPropagation()">LinkedIn</a>` : ''}
+          ${contactWebsiteUrl ? `<a href="${escapeHtmlSafe(contactWebsiteUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Website</a>` : ''}
+          ${linkedInUrl ? `<a href="${escapeHtmlSafe(linkedInUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">LinkedIn</a>` : ''}
         </div>
         ${viewBtn}
       </div>
@@ -855,6 +855,17 @@ function escapeHtmlSafe(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+function getSafeHttpsUrl(value) {
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null;
+    return parsed.href;
+  } catch {
+    return null;
+  }
 }
 
 // ============================================

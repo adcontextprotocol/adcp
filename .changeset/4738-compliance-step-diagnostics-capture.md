@@ -1,4 +1,0 @@
----
----
-
-Capture per-step compliance diagnostics (request + response payloads) on failing storyboard steps and expose them at `GET /api/registry/agents/:encodedUrl/compliance/diagnostics`. Owners can diff the runner's actual wire call against their own probes without re-running the storyboard themselves. Closes the diagnostic gap that drove adcp#4738 — sellers had no way to see why the scoring engine kept returning the same failed verdict when their direct probes succeeded, and ended up triangulating against a hypothetical result cache that does not exist. The SDK already records the exact request/response on every step (`StoryboardStepResult.request` / `.response_record`); we now persist failing-step rows into `agent_compliance_step_diagnostics` (migration 489) keyed by `run_id` with payloads capped at 64KB.

@@ -92,7 +92,13 @@ describe('FederatedIndexService.listAllProbeableAgents (adcp#4849)', () => {
       [
         ORG_ID,
         PROFILE_SLUG,
-        JSON.stringify([{ url: AGENT_REGISTERED, name: 'registered name', type: 'sales', visibility: 'public' }]),
+        JSON.stringify([{
+          url: AGENT_REGISTERED,
+          name: 'registered name',
+          type: 'sales',
+          visibility: 'public',
+          health_check_url: `${AGENT_REGISTERED}/health`,
+        }]),
       ],
     );
 
@@ -100,5 +106,6 @@ describe('FederatedIndexService.listAllProbeableAgents (adcp#4849)', () => {
     const found = probeable.find(a => a.url === AGENT_REGISTERED);
     expect(found).toBeDefined();
     expect(found!.name).toBe('registered name'); // member-profile metadata wins
+    expect(found!.health_check_url).toBe(`${AGENT_REGISTERED}/health`);
   });
 });

@@ -22,11 +22,11 @@ const logger = createLogger('addie-web-home-service');
 /**
  * Get home content for a web user (WorkOS user ID)
  */
-export async function getWebHomeContent(workosUserId: string): Promise<HomeContent> {
-  logger.debug({ workosUserId }, 'Addie Web Home: Building content');
+export async function getWebHomeContent(workosUserId: string, selectedOrganizationId?: string | null): Promise<HomeContent> {
+  logger.debug({ workosUserId, selectedOrganizationId }, 'Addie Web Home: Building content');
 
   // Get member context for web user
-  const memberContext = await getWebMemberContext(workosUserId);
+  const memberContext = await getWebMemberContext(workosUserId, selectedOrganizationId);
 
   // Check if user is AAO admin (based on aao-admin working group membership)
   const userIsAdmin = await isWebUserAAOAdmin(workosUserId);

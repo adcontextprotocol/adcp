@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/build-creative-response.json",
   "title": "Build Creative Response",
-  "description": "Response payload for build_creative. Exactly one of six shapes: (1) synchronous single-format success — creative_manifest issued in-line (target_format_id request); (2) synchronous multi-format success — creative_manifests issued in-line (target_format_ids request); (3) multiplicity success — creatives[] each carrying variants[], returned when the request used item (max_creatives) and/or variant (max_variants) fan-out; (4) dry-run estimate — mode 'estimate' returns a BuildCreativeEstimate cost band and produces/bills nothing; (5) terminal failure — an errors array; (6) submitted task envelope — status 'submitted' with task_id when the build is queued (e.g., slow generative or multi-minute LLM pipeline). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These six shapes are mutually exclusive — a response has exactly one.",
+  "description": "Response payload for build_creative. Exactly one of six shapes: (1) synchronous single-capability success — creative_manifest issued in-line; (2) synchronous multi-capability success — creative_manifests issued in request order; (3) multiplicity success — creatives[] each carrying variants[]; (4) dry-run estimate; (5) terminal failure; (6) submitted task envelope. Canonical 3.2 requests use target_capability_id(s); deprecated target_format_id(s) retain the same response branches during the 3.x compatibility window.",
   "type": "object",
   "allOf": [
     {
@@ -15,7 +15,7 @@
   "oneOf": [
     {
       "title": "BuildCreativeSuccess",
-      "description": "Single-format success response. Returned when the request used target_format_id (without fan-out). Carries an optional build_variant_id so a single build is refinable; multi-format builds that need per-output refinable leaves should request the variant shape (max_variants).",
+      "description": "Single-capability success response. Returned when the request used target_capability_id (or deprecated target_format_id) without fan-out. The returned creative_manifest uses canonical format_kind on the 3.2 path.",
       "type": "object",
       "properties": {
         "creative_manifest": {
@@ -149,7 +149,7 @@
     },
     {
       "title": "BuildCreativeMultiSuccess",
-      "description": "Multi-format success response. Returned when the request used target_format_ids. Contains one manifest per requested format. Multi-format requests are atomic — all formats must succeed or the entire request fails with an error response. Array order corresponds to the target_format_ids request order.",
+      "description": "Multi-capability success response. Returned when the request used target_capability_ids (or deprecated target_format_ids). Contains one manifest per requested capability. Multi-output requests are atomic and preserve request order.",
       "type": "object",
       "properties": {
         "creative_manifests": {
@@ -158,7 +158,7 @@
             "$ref": "/schemas/core/creative-manifest.json"
           },
           "minItems": 1,
-          "description": "Array of generated creative manifests, one per requested format. Each manifest contains its own format_id identifying which format it was generated for."
+          "description": "Array of generated canonical creative manifests, one per requested capability. Each manifest carries format_kind and any applicable format_option_ref."
         },
         "sandbox": {
           "type": "boolean",
@@ -175,7 +175,7 @@
           "properties": {
             "previews": {
               "type": "array",
-              "description": "Array of preview entries, one per requested format. Array order matches creative_manifests. Each entry includes a format_id for explicit correlation.",
+              "description": "Array of preview entries, one per requested capability. Array order matches creative_manifests. Canonical responses use capability_id for explicit correlation.",
               "items": {
                 "type": "object",
                 "properties": {
@@ -185,7 +185,13 @@
                   },
                   "format_id": {
                     "$ref": "/schemas/core/format-id.json",
-                    "description": "The format this preview was generated for. Matches one of the requested target_format_ids."
+                    "deprecated": true,
+                    "description": "Deprecated named-format correlation for a legacy target_format_ids request."
+                  },
+                  "capability_id": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$",
+                    "description": "Canonical creative capability this preview was generated through. Matches one requested target_capability_ids entry."
                   },
                   "renders": {
                     "type": "array",
@@ -221,11 +227,10 @@
                     "additionalProperties": true
                   }
                 },
-                "required": [
-                  "preview_id",
-                  "format_id",
-                  "renders",
-                  "input"
+                "required": ["preview_id", "renders", "input"],
+                "anyOf": [
+                  { "required": ["capability_id"] },
+                  { "required": ["format_id"] }
                 ]
               },
               "minItems": 1
@@ -588,12 +593,12 @@
     },
     {
       "title": "BuildCreativeError",
-      "description": "Error response — creative generation failed. Multi-format requests (`target_format_ids[]`) are atomic per `BuildCreativeMultiSuccess` semantics: a single format failing means the entire batch returns an error response, not a partial success. Buyers diagnose per-format failures by reading the `errors[]` array's per-format attribution (see the `errors` field description).",
+      "description": "Error response — creative generation failed. Multi-capability requests (`target_capability_ids[]`) are atomic: a single output failing means the entire batch returns an error response. Deprecated target_format_ids requests retain equivalent compatibility behavior.",
       "type": "object",
       "properties": {
         "errors": {
           "type": "array",
-          "description": "Array of errors explaining why creative generation failed.\n\n**Per-format attribution on multi-format requests.** When the request used `target_format_ids[]` (a batch request), sellers MUST attribute each failure to the specific format(s) that caused it so buyers can correct and retry the failing subset rather than re-running the entire batch. Two attribution surfaces, populated together:\n\n1. **`error.field`** — set to `target_format_ids[N]` where `N` is the zero-based index of the failing format in the request's `target_format_ids[]` array (e.g., `target_format_ids[1]` for the second requested format). Mirrors the JSONPath-lite convention `error.field` uses elsewhere. Required when the error is format-scoped.\n2. **`error.details.format_id`** — the resolved `format_id` value (e.g., `\"meta-reels-9x16\"`). Required when the error is format-scoped. Lets buyers dispatch on the format identity without re-parsing `error.field`.\n\nErrors not attributable to a specific format (whole-batch failures: authentication, governance denial, transport-level errors) MAY omit `field` and `details.format_id`. Buyers MUST treat per-format errors as scoped to the named format only — a `correctable` error on `target_format_ids[1]` does NOT mean the buyer must reshape the entire batch; they may retry just that format with corrected input. Sellers SHOULD emit one error per failing format (rather than collapsing multiple format failures into a single error entry) so per-format recovery routing is unambiguous.",
+          "description": "Array of errors explaining why creative generation failed. For a canonical multi-output request, an output-scoped failure MUST set `error.field` to `target_capability_ids[N]` and SHOULD include the rejected value in `error.details.capability_id`. Whole-batch failures may omit output attribution. Deprecated target_format_ids requests retain legacy attribution during the 3.x compatibility window.",
           "items": {
             "$ref": "/schemas/core/error.json"
           },

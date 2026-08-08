@@ -3,11 +3,31 @@ const VERSION_DIR_PATH = /^\/([^/]+)\/$/;
 const SEMVER_PATH = /^\/(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\/|$)/;
 const PINNED_TARBALL = /(?:^|\/)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.tgz$/;
 const PINNED_TARBALL_SIDECAR = /(?:^|\/)(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.tgz\.(?:sha256|sig|crt)$/;
+const LEGACY_TMP_SCHEMA_KEY = /^schemas\/(latest|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\/tmp\/([A-Za-z0-9._-]+\.json)$/;
+const TRUSTED_MATCH_SCHEMA_FILES = new Set([
+  "available-package.json",
+  "context-match-request.json",
+  "context-match-response.json",
+  "error.json",
+  "identity-match-request.json",
+  "identity-match-response.json",
+  "offer-price.json",
+  "offer.json",
+  "provider-registration.json",
+]);
 
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const REVALIDATE_CACHE_CONTROL = "public, no-cache, must-revalidate";
 const VERSION_CACHE_TTL_MS = 60 * 1000;
 const versionCache = new Map();
+const RELEASE_STATUS_OVERRIDES = new Map([
+  ["3.1.3", "withdrawn"],
+  ["3.2.0", "unpublished"],
+]);
+
+function isSelectableRelease(version) {
+  return !RELEASE_STATUS_OVERRIDES.has(version);
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -84,6 +104,29 @@ async function versionedArtifactResponse(request, env, ctx, mount, pathname) {
     }
   }
 
+  // Pinned semver path whose exact version directory is absent from R2: resolve
+  // to the nearest published release on the same line (e.g. a 3.0.19 docs
+  // snapshot's links to /schemas/3.0.19/... resolve to the 3.0.18 artifacts it
+  // was built against). Mirrors the Fly schemas middleware so docs-only version
+  // bumps don't 404 when no schema directory is published for them. Tracks
+  // whether the exact directory exists so the cache policy below stays correct.
+  let exactPinnedHit = false;
+  if (!isAlias) {
+    const semverMatch = requestPath.match(SEMVER_PATH);
+    if (semverMatch) {
+      const requestedVersion = semverMatch[1];
+      const versions = await getVersions(env.ARTIFACTS, mount);
+      if (versions.includes(requestedVersion)) {
+        exactPinnedHit = true;
+      } else {
+        const fallback = resolvePinnedFallback(versions, requestedVersion);
+        if (fallback) {
+          resolvedPath = `/${fallback}${requestPath.slice(requestedVersion.length + 1)}`;
+        }
+      }
+    }
+  }
+
   const bareVersionMatch = resolvedPath.match(/^\/([^/]+)$/);
   if (bareVersionMatch && (bareVersionMatch[1] === "latest" || parseSemver(bareVersionMatch[1]))) {
     return redirect(`/${mount}${resolvedPath}/`, 301);
@@ -94,14 +137,19 @@ async function versionedArtifactResponse(request, env, ctx, mount, pathname) {
     return redirect(`/${mount}${resolvedPath}index.json`, 302);
   }
 
-  const isImmutableArtifact = !isAlias && SEMVER_PATH.test(requestPath);
+  // Only an exact pinned directory hit is immutable. Resolved fallbacks (like
+  // aliases) revalidate, since the version they point at can shift as patches
+  // land on the line.
+  const isImmutableArtifact = exactPinnedHit;
   const cacheControl = isImmutableArtifact
     ? IMMUTABLE_CACHE_CONTROL
     : REVALIDATE_CACHE_CONTROL;
 
-  return r2ArtifactResponse(request, env, `${mount}${resolvedPath}`, cacheControl, {
+  const key = `${mount}${resolvedPath}`;
+  return r2ArtifactResponse(request, env, key, cacheControl, {
     edgeCache: isImmutableArtifact,
     overrideCacheControl: true,
+    fallbackKey: mount === "schemas" ? legacyTmpFallbackKey(key) : undefined,
     ctx,
   });
 }
@@ -111,8 +159,9 @@ async function discoveryResponse(bucket, mount) {
     const versions = await getVersions(bucket, mount);
     const aliases = buildAliases(versions, mount);
     return jsonResponse({
-      versions: versions.map((version) => ({ version, path: `/${mount}/${version}/` })),
+      versions: versions.map((version) => versionEntry(version, `/${mount}`, versions)),
       aliases,
+      latest_stable: latestStableVersion(versions),
       latest: {
         path: `/${mount}/latest/`,
         note: "Development version, may differ from released versions",
@@ -133,6 +182,9 @@ async function protocolDiscoveryResponse(bucket) {
     const versioned = names
       .filter((name) => name !== "latest.tgz")
       .sort((a, b) => compareVersions(b.replace(/\.tgz$/, ""), a.replace(/\.tgz$/, "")));
+    const selectableVersioned = versioned.filter((name) =>
+      isSelectableRelease(name.replace(/\.tgz$/, "")),
+    );
 
     const sidecarsFor = (tarballName) => ({
       ...(files.has(`${tarballName}.sig`) && { signature: `/protocol/${tarballName}.sig` }),
@@ -144,8 +196,8 @@ async function protocolDiscoveryResponse(bucket) {
           tarball: "/protocol/latest.tgz",
           checksum: "/protocol/latest.tgz.sha256",
           ...sidecarsFor("latest.tgz"),
-          published_version: versioned[0]?.replace(/\.tgz$/, ""),
-          adcp_version: versioned[0]?.replace(/\.tgz$/, ""),
+          published_version: selectableVersioned[0]?.replace(/\.tgz$/, ""),
+          adcp_version: selectableVersioned[0]?.replace(/\.tgz$/, ""),
           note: "Development bundle — changes with every merge. Pin a version for production.",
         }
       : null;
@@ -159,12 +211,16 @@ async function protocolDiscoveryResponse(bucket) {
         certificate_oidc_issuer: "https://token.actions.githubusercontent.com",
         docs: "/docs/building/by-layer/L0/schemas#verifying-protocol-bundle-signatures",
       },
-      versions: versioned.map((name) => ({
-        version: name.replace(/\.tgz$/, ""),
-        tarball: `/protocol/${name}`,
-        checksum: `/protocol/${name}.sha256`,
-        ...sidecarsFor(name),
-      })),
+      versions: versioned.map((name) => {
+        const version = name.replace(/\.tgz$/, "");
+        return {
+          version,
+          ...releaseStatusMetadata(version),
+          tarball: `/protocol/${name}`,
+          checksum: `/protocol/${name}.sha256`,
+          ...sidecarsFor(name),
+        };
+      }),
       latest,
     });
   } catch (error) {
@@ -180,9 +236,14 @@ async function r2ArtifactResponse(request, env, key, fallbackCacheControl, optio
     if (cached) return cached;
   }
 
-  const object = request.method === "HEAD"
+  let object = request.method === "HEAD"
     ? await env.ARTIFACTS.head(key)
     : await env.ARTIFACTS.get(key);
+  if (!object && options.fallbackKey) {
+    object = request.method === "HEAD"
+      ? await env.ARTIFACTS.head(options.fallbackKey)
+      : await env.ARTIFACTS.get(options.fallbackKey);
+  }
 
   if (!object) {
     return fallbackResponse(request, env);
@@ -282,10 +343,46 @@ async function listObjects(bucket, prefix) {
 
 export function findMatchingVersion(versions, requestedMajor, requestedMinor) {
   return versions.find((version) => {
+    if (!isSelectableRelease(version)) return false;
     const parsed = parseSemver(version);
     if (!parsed || parsed.major !== requestedMajor) return false;
+    if (parsed.prerelease.length > 0) return false;
     return requestedMinor === undefined || parsed.minor === requestedMinor;
   });
+}
+
+/**
+ * Resolve a pinned semver whose exact version directory is not published to the
+ * nearest release it should map to: the highest release at-or-below the request
+ * on the same major.minor line, falling back to the highest at-or-below release
+ * in the same major. Staying at-or-below keeps a frozen 3.0.x doc pointing at
+ * 3.0.x artifacts rather than jumping forward to a newer minor.
+ *
+ * A stable request excludes prerelease candidates so a missing stable pin never
+ * silently resolves to a release candidate; a prerelease request also accepts
+ * lower prereleases (and stables) on the line. Returns undefined when nothing in
+ * the same major qualifies.
+ */
+export function resolvePinnedFallback(versions, requested) {
+  const parsed = parseSemver(requested);
+  if (!parsed) return undefined;
+
+  const wantStable = parsed.prerelease.length === 0;
+  const eligible = (candidate) => {
+    if (!isSelectableRelease(candidate)) return false;
+    const p = parseSemver(candidate);
+    if (!p || p.major !== parsed.major) return false;
+    if (wantStable && p.prerelease.length > 0) return false;
+    return compareVersions(candidate, requested) <= 0;
+  };
+
+  const sameMinor = versions
+    .filter((candidate) => eligible(candidate) && parseSemver(candidate).minor === parsed.minor)
+    .sort((a, b) => compareVersions(b, a));
+  if (sameMinor[0]) return sameMinor[0];
+
+  const sameMajor = versions.filter(eligible).sort((a, b) => compareVersions(b, a));
+  return sameMajor[0];
 }
 
 export function clearVersionCacheForTests() {
@@ -293,23 +390,25 @@ export function clearVersionCacheForTests() {
 }
 
 function buildAliases(versions, mount) {
+  const latestPerMajor = {};
   const latestPerMinor = {};
-  let latestMajorVersion;
 
   for (const version of versions) {
+    if (!isSelectableRelease(version)) continue;
     const parsed = parseSemver(version);
     if (!parsed) continue;
+    if (parsed.prerelease.length > 0) continue;
+    const majorKey = `${parsed.major}`;
     const minorKey = `${parsed.major}.${parsed.minor}`;
-    if (!latestMajorVersion) latestMajorVersion = version;
+    if (!latestPerMajor[majorKey]) latestPerMajor[majorKey] = version;
     if (!latestPerMinor[minorKey]) latestPerMinor[minorKey] = version;
   }
 
   const aliases = [];
-  if (latestMajorVersion) {
-    const major = parseSemver(latestMajorVersion).major;
+  for (const [major, version] of Object.entries(latestPerMajor)) {
     aliases.push({
       alias: `v${major}`,
-      resolves_to: latestMajorVersion,
+      resolves_to: version,
       path: `/${mount}/v${major}/`,
     });
   }
@@ -323,6 +422,46 @@ function buildAliases(versions, mount) {
   }
 
   return aliases.sort((a, b) => a.alias.localeCompare(b.alias, undefined, { numeric: true }));
+}
+
+function versionEntry(version, mountPath, knownVersions = []) {
+  const statusMetadata = releaseStatusMetadata(version);
+  const parsed = parseSemver(version);
+  const prerelease = !!parsed && parsed.prerelease.length > 0;
+  const label = prerelease ? String(parsed.prerelease[0]).toLowerCase() : "";
+  const stableVersion = prerelease ? version.split("-")[0] : undefined;
+  const supersededBy = stableVersion && knownVersions.includes(stableVersion) ? stableVersion : undefined;
+  return {
+    version,
+    stability: statusMetadata.stability
+      ?? (prerelease
+        ? (label === "rc" || label === "beta" ? label : "prerelease")
+        : "stable"),
+    prerelease,
+    deprecated: statusMetadata.deprecated ?? Boolean(supersededBy),
+    ...statusMetadata,
+    ...(supersededBy ? { superseded_by: supersededBy } : {}),
+    path: `${mountPath}/${version}/`,
+  };
+}
+
+function latestStableVersion(versions) {
+  return versions.find((version) => {
+    if (!isSelectableRelease(version)) return false;
+    const parsed = parseSemver(version);
+    return parsed && parsed.prerelease.length === 0;
+  }) || null;
+}
+
+function releaseStatusMetadata(version) {
+  const status = RELEASE_STATUS_OVERRIDES.get(version);
+  if (status === "withdrawn") {
+    return { stability: "withdrawn", deprecated: true, withdrawn: true };
+  }
+  if (status === "unpublished") {
+    return { stability: "unpublished", deprecated: false, published: false };
+  }
+  return {};
 }
 
 function parseSemver(version) {
@@ -382,6 +521,14 @@ function edgeCacheKey(request) {
   const url = new URL(request.url);
   url.search = "";
   return new Request(url.toString(), { method: "GET" });
+}
+
+function legacyTmpFallbackKey(key) {
+  const match = key.match(LEGACY_TMP_SCHEMA_KEY);
+  if (!match) return undefined;
+  const [, version, filename] = match;
+  if (!TRUSTED_MATCH_SCHEMA_FILES.has(filename)) return undefined;
+  return `schemas/${version}/trusted-match/${filename}`;
 }
 
 function contentTypeForKey(key) {

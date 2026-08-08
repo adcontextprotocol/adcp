@@ -134,6 +134,23 @@ describe('blockIfActiveSubscription', () => {
     expect(result!.body.message).toContain('$250.50');
   });
 
+  it('falls back to generic tier copy when amount_cents is not a safe cent value', async () => {
+    const orgDb = makeOrgDb({
+      info: {
+        status: 'active',
+        product_name: 'Membership',
+        amount_cents: Number.MAX_SAFE_INTEGER + 1,
+      },
+      org: { stripe_customer_id: null },
+    });
+
+    const result = await blockIfActiveSubscription('org_x', orgDb, { customerPortalReturnUrl: PORTAL_RETURN_URL });
+
+    expect(result).not.toBeNull();
+    expect(result!.body.message).toContain('Membership (an active tier)');
+    expect(result!.body.message).not.toContain('$');
+  });
+
   it('omits customer_portal_url when caller does not pass customerPortalReturnUrl (privilege check)', async () => {
     // The invite-acceptance route omits returnUrl because the recipient gets
     // `member` role only and a portal session would grant admin-equivalent

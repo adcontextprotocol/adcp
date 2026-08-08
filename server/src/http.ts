@@ -25,6 +25,8 @@ import { AdAgentsManager } from "./adagents-manager.js";
 import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "./schemas-middleware.js";
 import { closeDatabase, getPool, healthCheck } from "./db/client.js";
 import { AuthenticationRequiredError, CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
+import { sdkSafeFetch, withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
+import { jsonBodyLimitForPath } from './utils/json-body-limit.js';
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";
@@ -34,7 +36,7 @@ import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import { dedupOnSubscriptionCreated } from "./billing/dedup-on-subscription-created.js";
 import { pickMembershipSubWithProductFetch } from "./billing/membership-prices.js";
 import Stripe from "stripe";
-import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier } from "./db/organization-db.js";
+import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, MEMBERSHIP_TIER_COLUMNS, resolveMembershipTier, resolveMembershipTierForSubscriptionWrite, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier, type MembershipTierRow } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
 import { getBrandPrimaryDomain, getBrandPrimaryDomainsForOrgs } from "./services/brand-domain-resolver.js";
@@ -54,6 +56,8 @@ import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
+import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
+import { formatPerspectiveUrlAsMarkdownDestination, normalizePerspectiveExternalUrl } from "./utils/perspective-url.js";
 import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
@@ -73,6 +77,7 @@ import {
 import { createAdminRouter } from "./routes/admin.js";
 import { createAdminInsightsRouter } from "./routes/admin-insights.js";
 import { createAddieAdminRouter } from "./routes/addie-admin.js";
+import { createSecretariatAdminRouter } from "./routes/secretariat-admin.js";
 import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { createTavusRouter } from "./routes/tavus.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
@@ -241,9 +246,10 @@ function buildPerspectiveUrl(slug: string): string {
 }
 
 function getPerspectiveCrawlerUrl(item: PublicPerspectiveCrawlerItem): string {
-  return item.content_type === 'link' && item.external_url
-    ? item.external_url
-    : buildPerspectiveUrl(item.slug);
+  const externalUrl = item.content_type === 'link'
+    ? normalizePerspectiveExternalUrl(item.external_url)
+    : null;
+  return externalUrl ?? buildPerspectiveUrl(item.slug);
 }
 
 async function getPublicPerspectiveCrawlerItems(limit = PERSPECTIVES_CRAWLER_LIMIT): Promise<PublicPerspectiveCrawlerItem[]> {
@@ -271,6 +277,10 @@ async function getPublicPerspectiveCrawlerItems(limit = PERSPECTIVES_CRAWLER_LIM
 }
 
 function buildLlmsTxt(items: PublicPerspectiveCrawlerItem[]): string {
+  const markdownDestination = (url: string): string => (
+    formatPerspectiveUrlAsMarkdownDestination(url)
+    ?? formatPerspectiveUrlAsMarkdownDestination(PUBLIC_SITE_URL)!
+  );
   const lines = [
     '# AgenticAdvertising.org',
     '',
@@ -278,20 +288,21 @@ function buildLlmsTxt(items: PublicPerspectiveCrawlerItem[]): string {
     '',
     '## Discoverability',
     '',
-    `- [Sitemap](${PUBLIC_SITE_URL}/sitemap.xml)`,
-    `- [Perspectives RSS feed](${PUBLIC_SITE_URL}/perspectives/feed.xml)`,
+    `- [Sitemap](${markdownDestination(`${PUBLIC_SITE_URL}/sitemap.xml`)})`,
+    `- [Perspectives RSS feed](${markdownDestination(`${PUBLIC_SITE_URL}/perspectives/feed.xml`)})`,
     '',
     '## Perspectives',
     '',
   ];
 
   if (items.length === 0) {
-    lines.push(`- [Latest perspectives](${PUBLIC_SITE_URL}/latest/perspectives)`);
+    lines.push(`- [Latest perspectives](${markdownDestination(`${PUBLIC_SITE_URL}/latest/perspectives`)})`);
   } else {
     for (const item of items) {
       const title = escapeMarkdownText(item.title);
       const excerpt = escapeMarkdownText(item.excerpt);
-      lines.push(`- [${title}](${getPerspectiveCrawlerUrl(item)})${excerpt ? `: ${excerpt}` : ''}`);
+      const destination = markdownDestination(getPerspectiveCrawlerUrl(item));
+      lines.push(`- [${title}](${destination})${excerpt ? `: ${excerpt}` : ''}`);
     }
   }
 
@@ -928,7 +939,10 @@ export class HTTPServer {
         // `/mcp` endpoint, which rehashes the exact bytes the signer signed.
         // Cheap (one utf-8 decode per request) and unused elsewhere.
         express.json({
-          limit: '10mb',
+          // The 10MB default carries base64-encoded logo uploads in member
+          // profiles. Unauthenticated endpoints that only take a short list get
+          // a tight cap so a caller cannot make the parser the expensive part.
+          limit: jsonBodyLimitForPath(req.path),
           verify: (req, _res, buf) => {
             (req as unknown as { rawBody?: string }).rawBody = buf.toString('utf8');
           },
@@ -949,7 +963,11 @@ export class HTTPServer {
     // AAO domain redirects to the DB-managed hosted brand.
     this.app.get('/.well-known/brand.json', (req, res) => {
       res.setHeader('Cache-Control', 'public, max-age=3600');
-      if (this.isAdcpDomain(req)) {
+      // The training-agent hostname publishes the same operator record as the
+      // AdCP site. Its capabilities point at this exact origin, so returning
+      // the AAO authoritative-location stub here would break the required
+      // capabilities -> brand.json -> agents[] -> JWKS discovery chain.
+      if (this.isAdcpDomain(req) || TRAINING_AGENT_HOSTNAMES.has(req.hostname)) {
         return res.json({
           "$schema": "https://adcontextprotocol.org/schemas/latest/brand.json",
           "agents": [
@@ -1305,6 +1323,11 @@ export class HTTPServer {
     const { pageRouter: addiePageRouter, apiRouter: addieApiRouter } = createAddieAdminRouter();
     this.app.use('/admin/addie', addiePageRouter);      // Page routes: /admin/addie
     this.app.use('/api/admin/addie', addieApiRouter);   // API routes: /api/admin/addie/*
+
+    // Mount Secretariat console routes (human-approved action queue)
+    const { pageRouter: secretariatPageRouter, apiRouter: secretariatApiRouter } = createSecretariatAdminRouter();
+    this.app.use('/admin/secretariat', secretariatPageRouter);      // Page routes: /admin/secretariat
+    this.app.use('/api/admin/secretariat', secretariatApiRouter);   // API routes: /api/admin/secretariat/*
 
 
     // Mount Addie chat routes (public chat interface)
@@ -3366,18 +3389,46 @@ export class HTTPServer {
       }
     });
 
-    // POST /api/brands/discovered/:domain/rollback - Rollback to a previous revision (admin only)
+    // POST /api/brands/discovered/:domain/rollback - Rollback to a previous revision.
+    // AAO members can roll back editable community/enriched brands. Admins retain
+    // access for moderation and support.
     this.app.post('/api/brands/discovered/:domain/rollback', requireAuth, async (req, res) => {
       try {
         const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
-        if (!isAdmin) {
-          return res.status(403).json({ error: 'Admin access required' });
+        await enrichUserWithMembership(req.user as any);
+        if (!isAdmin && !(req.user as any)?.isMember) {
+          return res.status(403).json({ error: 'Membership required to roll back brands' });
+        }
+        if ((req as any).apiKey || req.user?.id === 'admin_api_key' || req.user?.id?.startsWith('api_key_')) {
+          return res.status(403).json({ error: 'Human user session required to roll back brands' });
         }
 
         const domain = decodeURIComponent(req.params.domain).toLowerCase();
+        if (!domainPattern.test(domain)) {
+          return res.status(400).json({ error: 'Invalid domain format' });
+        }
+
         const { to_revision } = req.body;
-        if (!to_revision || typeof to_revision !== 'number') {
-          return res.status(400).json({ error: 'to_revision (number) required' });
+        if (!Number.isInteger(to_revision) || to_revision < 1) {
+          return res.status(400).json({ error: 'to_revision (positive integer) required' });
+        }
+
+        const currentBrand = await this.brandDb.getDiscoveredBrandByDomain(domain);
+        if (!currentBrand) {
+          return res.status(404).json({ error: 'Resource not found' });
+        }
+        if (currentBrand.source_type === 'brand_json') {
+          return res.status(403).json({ error: 'Managed by brand owner via brand.json' });
+        }
+        if (currentBrand.review_status === 'pending') {
+          return res.status(403).json({ error: 'Cannot roll back brand pending review' });
+        }
+
+        if (!isAdmin) {
+          const banCheck = await this.bansDb.isUserBannedFromRegistry('registry_brand', req.user!.id, domain);
+          if (banCheck.banned) {
+            return res.status(403).json({ error: 'You are banned from editing this brand', reason: banCheck.ban?.reason });
+          }
         }
 
         const { brand, revision_number } = await this.brandDb.rollbackBrand(domain, to_revision, {
@@ -3399,6 +3450,10 @@ export class HTTPServer {
         if (error.message?.includes('not found')) {
           logger.warn({ err: error, path: req.path }, 'Brand not found during rollback');
           return res.status(404).json({ error: 'Resource not found' });
+        }
+        if (error.message?.includes('Cannot roll back')) {
+          logger.warn({ err: error, path: req.path }, 'Access denied rolling back brand');
+          return res.status(403).json({ error: 'Access denied' });
         }
         logger.error({ error }, 'Failed to rollback brand');
         return res.status(500).json({ error: 'Failed to rollback brand' });
@@ -3589,14 +3644,19 @@ export class HTTPServer {
     // POST /api/properties/hosted - Create a hosted property (authenticated)
     this.app.post('/api/properties/hosted', requireAuth, async (req, res) => {
       try {
-        const { publisher_domain, adagents_json, source_type } = req.body;
-        if (!publisher_domain || !adagents_json) {
+        // Establish the identity-only write invariant before any validation
+        // branch derived from caller input. Only this scrubbed value may reach
+        // the database boundary below.
+        const requestedAdagentsJson = req.body?.adagents_json;
+        const adagentsJsonForStorage = scrubCommunityAuthorizedAgents(requestedAdagentsJson);
+        const { publisher_domain, source_type } = req.body;
+        if (!publisher_domain || !requestedAdagentsJson) {
           return res.status(400).json({ error: 'publisher_domain and adagents_json required' });
         }
 
         const property = await this.propertyDb.createHostedProperty({
           publisher_domain: publisher_domain.toLowerCase(),
-          adagents_json,
+          adagents_json: adagentsJsonForStorage,
           source_type: source_type || 'community',
           created_by_user_id: req.user?.id,
           created_by_email: req.user?.email,
@@ -3612,13 +3672,18 @@ export class HTTPServer {
     // POST /api/properties/hosted/community - Create a new community property (member-authenticated, pending review)
     this.app.post('/api/properties/hosted/community', requireAuth, async (req, res) => {
       try {
+        // Scrub unconditionally, before membership and payload validation can
+        // branch on request-derived values.
+        const requestedAdagentsJson = req.body?.adagents_json;
+        const adagentsJsonForStorage = scrubCommunityAuthorizedAgents(requestedAdagentsJson);
+
         await enrichUserWithMembership(req.user as any);
         if (!(req.user as any)?.isMember) {
           return res.status(403).json({ error: 'Membership required to create properties' });
         }
 
-        const { publisher_domain, adagents_json } = req.body;
-        if (!publisher_domain || !adagents_json) {
+        const { publisher_domain } = req.body;
+        if (!publisher_domain || !requestedAdagentsJson) {
           return res.status(400).json({ error: 'publisher_domain and adagents_json required' });
         }
 
@@ -3630,7 +3695,7 @@ export class HTTPServer {
 
         const property = await this.propertyDb.createCommunityProperty({
           publisher_domain: publisher_domain.toLowerCase(),
-          adagents_json,
+          adagents_json: adagentsJsonForStorage,
           source_type: 'community',
           created_by_user_id: req.user!.id,
           created_by_email: req.user!.email,
@@ -3696,6 +3761,15 @@ export class HTTPServer {
     // PUT /api/properties/hosted/:domain - Edit a community property with revision tracking
     this.app.put('/api/properties/hosted/:domain', requireAuth, async (req, res) => {
       try {
+        // Always scrub before request-dependent branching. Preserve the
+        // existing optional-update behavior by selecting undefined only after
+        // the scrub has established the safe storage value.
+        const requestedAdagentsJson = req.body?.adagents_json;
+        const adagentsJsonForStorage = scrubCommunityAuthorizedAgents(requestedAdagentsJson);
+        const adagentsJsonUpdate = requestedAdagentsJson === undefined
+          ? undefined
+          : adagentsJsonForStorage;
+
         await enrichUserWithMembership(req.user as any);
         if (!(req.user as any)?.isMember) {
           return res.status(403).json({ error: 'Membership required to edit properties' });
@@ -3703,7 +3777,7 @@ export class HTTPServer {
 
         const domain = decodeURIComponent(req.params.domain).toLowerCase();
 
-        const { edit_summary, adagents_json } = req.body;
+        const { edit_summary } = req.body;
         if (!edit_summary || typeof edit_summary !== 'string') {
           return res.status(400).json({ error: 'edit_summary required' });
         }
@@ -3715,7 +3789,7 @@ export class HTTPServer {
         }
 
         const { property, revision_number } = await this.propertyDb.editCommunityProperty(domain, {
-          adagents_json,
+          adagents_json: adagentsJsonUpdate,
           edit_summary,
           editor_user_id: req.user!.id,
           editor_email: req.user!.email,
@@ -4346,15 +4420,17 @@ export class HTTPServer {
             // paying member with stale subscription_status until a human
             // noticed (#3623 catch-block audit; #3681).
             let subUpdate: ReturnType<typeof buildSubscriptionUpdate> | undefined;
-            let oldTier: string | null | undefined;
+            let oldTier: MembershipTier | null | undefined;
+            let writtenMembershipTier: MembershipTier | null | undefined;
             if (org && !suppressOrgUpdate) {
               subUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal);
 
-              const oldTierResult = await pool.query<{ membership_tier: string | null }>(
-                'SELECT membership_tier FROM organizations WHERE workos_organization_id = $1',
+              const oldTierResult = await pool.query<MembershipTierRow>(
+                `SELECT ${MEMBERSHIP_TIER_COLUMNS.join(', ')} FROM organizations WHERE workos_organization_id = $1`,
                 [org.workos_organization_id]
               );
-              oldTier = oldTierResult.rows[0]?.membership_tier;
+              oldTier = resolveMembershipTier(oldTierResult.rows[0] ?? null);
+              writtenMembershipTier = resolveMembershipTierForSubscriptionWrite(subUpdate, oldTier);
 
               await pool.query(
                 `UPDATE organizations
@@ -4384,7 +4460,7 @@ export class HTTPServer {
                   subUpdate.subscription_product_name,
                   subUpdate.subscription_price_id,
                   subUpdate.subscription_price_lookup_key,
-                  subUpdate.membership_tier,
+                  writtenMembershipTier,
                   org.workos_organization_id,
                 ]
               );
@@ -4398,12 +4474,12 @@ export class HTTPServer {
               // (FOR UPDATE on member_profiles; no-ops if no public agents
               // remain). Hoisted outside the swallow-on-error block so a
               // transient failure here re-throws and Stripe retries (#3694).
-              if (oldTier && oldTier !== subUpdate.membership_tier) {
+              if (oldTier && oldTier !== writtenMembershipTier) {
                 const { demotePublicAgentsOnTierDowngrade } = await import('./services/agent-visibility-enforcement.js');
                 await demotePublicAgentsOnTierDowngrade(
                   org.workos_organization_id,
-                  oldTier as MembershipTier,
-                  (subUpdate.membership_tier ?? null) as MembershipTier | null,
+                  oldTier,
+                  (writtenMembershipTier ?? null) as MembershipTier | null,
                 );
               }
             }
@@ -4419,7 +4495,7 @@ export class HTTPServer {
               if (org && !suppressOrgUpdate && subUpdate) {
 
                 // Detect tier change and notify admins
-                if (subUpdate.membership_tier && oldTier && subUpdate.membership_tier !== oldTier) {
+                if (writtenMembershipTier && oldTier && writtenMembershipTier !== oldTier) {
                   const { getSeatLimits, getSeatUsage } = await import('./db/organization-db.js');
                   const { notifyTierChange } = await import('./slack/org-group-dm.js');
                   const { getOrgAdminEmails } = await import('./utils/org-admins.js');
@@ -4427,7 +4503,7 @@ export class HTTPServer {
                   (async () => {
                     try {
                       const oldLimits = getSeatLimits(oldTier);
-                      const newLimits = getSeatLimits(subUpdate.membership_tier);
+                      const newLimits = getSeatLimits(writtenMembershipTier);
                       const currentUsage = await getSeatUsage(org.workos_organization_id);
                       const adminEmails = await getOrgAdminEmails(workos!, org.workos_organization_id);
 
@@ -4452,7 +4528,7 @@ export class HTTPServer {
                   subscriptionId: subscription.id,
                   status: subscription.status,
                   lookupKey: subUpdate.subscription_price_lookup_key,
-                  membershipTier: subUpdate.membership_tier,
+                  membershipTier: writtenMembershipTier,
                 }, 'Subscription data synced to database');
 
                 // Invalidate member context cache for all users in this org
@@ -4496,7 +4572,7 @@ export class HTTPServer {
                   }
 
                   const { getSeatLimits } = await import('./db/organization-db.js');
-                  const seatLimits = getSeatLimits(subUpdate.membership_tier);
+                  const seatLimits = getSeatLimits(writtenMembershipTier ?? null);
                   const capturedAdmin = activationAdminContext;
                   const orgIdForDispatch = org.workos_organization_id;
                   const orgNameForDispatch = org.name;
@@ -5316,6 +5392,8 @@ export class HTTPServer {
     // queue with a "not authorized" message rather than a hard 404.
     this.app.get('/admin/brand-logos', requireAuth, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-brand-logos.html'));
+    this.app.get('/admin/community-mirrors', requireAuth, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-community-mirrors.html'));
 
     // Redirects from old /manage paths (preserve query strings)
     const manageRedirect = (target: string) => (req: express.Request, res: express.Response) => {
@@ -6483,6 +6561,7 @@ export class HTTPServer {
                          THEN '/api/perspectives/' || p.slug || '/card.png'
                          ELSE NULL END) AS featured_image_url,
                   p.status, p.published_at,
+                  p.revision_notes, p.rejection_reason,
                   p.illustration_id,
                   p.content_origin, p.source_type,
                   wg.slug as committee_slug, wg.name as committee_name
@@ -6555,6 +6634,7 @@ export class HTTPServer {
                          THEN '/api/perspectives/' || p.slug || '/card.png'
                          ELSE NULL END) AS featured_image_url,
                   p.status, p.published_at,
+                  p.revision_notes, p.rejection_reason,
                   p.illustration_id,
                   p.content_origin, p.source_type, p.updated_at,
                   wg.slug as committee_slug, wg.name as committee_name
@@ -8016,7 +8096,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         const user = req.user!;
         const { getWebHomeContent, renderHomeHTML, ADDIE_HOME_CSS } = await import('./addie/home/index.js');
 
-        const content = await getWebHomeContent(user.id);
+        const selectedOrganizationId = typeof req.query.org === 'string' ? req.query.org : null;
+        const content = await getWebHomeContent(user.id, selectedOrganizationId);
 
         // Check if HTML rendering is requested
         const format = req.query.format as string | undefined;
@@ -9214,7 +9295,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           name: 'discovery-client',
           agent_uri: url,
           protocol: 'mcp', // Library handles protocol detection internally
-        });
+        }, withSdkSafeTransport({}));
 
         // getAgentInfo() handles all the protocol detection and tool discovery
         const agentInfo = await client.getAgentInfo();
@@ -9240,7 +9321,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           // Check for A2A agent card if we detected MCP
           if (agentInfo.protocol === 'mcp') {
             const a2aUrl = new URL('/.well-known/agent.json', url).toString();
-            const a2aResponse = await fetch(a2aUrl, {
+            const a2aResponse = await sdkSafeFetch(a2aUrl, {
               headers: { 'Accept': 'application/json' },
               signal: AbortSignal.timeout(3000),
             });
@@ -9261,7 +9342,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         if (agentType === 'creative') {
           try {
-            const creativeClient = new CreativeAgentClient({ agentUrl: url });
+            const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
             const formats = await creativeClient.listFormats();
             stats.format_count = formats.length;
           } catch (statsError) {
@@ -9574,6 +9655,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       // Drain manager_revalidation_queue (#4200 item 2) — fan-out
       // re-validation when a manager rotates its adagents.json.
       this.crawler.startPeriodicManagerRevalidation(5); // 5-minute tick
+
+      // Re-verify AAO-hosted origins on a TTL so a transferred domain or a
+      // removed origin pointer lapses the owner lock (bind-on-verify, #5752),
+      // releasing the domain for re-claim.
+      this.crawler.startPeriodicHostedOriginReverification(60); // hourly tick
 
       // Register and start all scheduled jobs
       registerAllJobs();

@@ -41,7 +41,11 @@ export interface ActiveSubscriptionBlock {
  */
 const BLOCKING_STATUSES: ReadonlySet<string> = new Set(TIER_PRESERVING_STATUSES);
 
-function formatAmount(cents: number): string {
+function formatAmount(cents: number): string | null {
+  if (!Number.isSafeInteger(cents) || cents < 0) {
+    return null;
+  }
+
   // Render as fixed 2-decimal currency; otherwise $250.50 displays as "$250.5".
   return `$${(cents / 100).toLocaleString('en-US', {
     minimumFractionDigits: 2,
@@ -99,7 +103,7 @@ export async function blockIfActiveSubscription(
   }
 
   const productName = info.product_name || info.lookup_key || 'membership';
-  const amountDisplay = info.amount_cents != null ? formatAmount(info.amount_cents) : 'an active tier';
+  const amountDisplay = info.amount_cents != null ? formatAmount(info.amount_cents) ?? 'an active tier' : 'an active tier';
 
   const remediation = portalUrl
     ? 'To change tiers, cancel, or update payment method, use the Stripe Customer Portal.'

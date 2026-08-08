@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting.json",
   "title": "Targeting Overlay",
-  "description": "Optional restriction overlays for media buys. Most targeting should be expressed in the brief and handled by the publisher. These fields are for functional restrictions: geographic (RCT testing, regulatory compliance, proximity targeting), age verification (alcohol, gambling), device platform (app compatibility), language (localization), and keyword targeting (search/retail media).",
+  "description": "Optional targeting overlays for media buys. Most audience strategy remains in the brief and product, while overlays carry buyer intent that must remain exact through execution and readback: geographic restrictions, canonical demographic age selection, age eligibility/verification, device compatibility, language, keyword targeting, and other explicit controls. Sellers apply supported overlays as intersections with the selected product and MUST reject incompatible controls rather than silently dropping or broadening them.",
   "type": "object",
   "properties": {
     "geo_countries": {
@@ -152,12 +152,20 @@
       },
       "minItems": 1
     },
+    "demographics": {
+      "$ref": "/schemas/core/demographic-targeting-intent.json",
+      "description": "Canonical demographic audience targeting intent with optional constraints on how age may be determined. AdCP 3.2 standardizes age first. This is distinct from age_restriction: demographics selects an audience, while age_restriction expresses a legal eligibility or verification floor. Sellers MUST compile the predicate exactly using the selected product's demographic_targeting capability and an accepted determination basis or reject it; they MUST NOT silently broaden, narrow, default, drop, or substitute the basis. A buyer choosing a suggested supported predicate submits that predicate as a new request."
+    },
     "frequency_cap": {
       "$ref": "/schemas/core/frequency-cap.json"
     },
     "property_list": {
       "$ref": "/schemas/core/property-list-ref.json",
       "description": "Reference to a property list for targeting specific properties within this product. The package runs on the intersection of the product's publisher_properties and this list. Sellers SHOULD return a validation error if the product has property_targeting_allowed: false."
+    },
+    "property_list_exclude": {
+      "$ref": "/schemas/core/property-list-ref.json",
+      "description": "Reference to a property list whose properties must not carry the buyer's ads. Matched properties are removed from delivery. Use for brand-safety do-not-run lists (apps, sites). Exclude wins on overlap with property_list, and applies regardless of the product's property_targeting_allowed flag. Seller must declare support in get_adcp_capabilities."
     },
     "collection_list": {
       "$ref": "/schemas/core/collection-list-ref.json",
@@ -418,5 +426,61 @@
       "minItems": 1
     }
   },
+  "allOf": [
+    {
+      "description": "Unknown-age delivery cannot satisfy a minimum-age eligibility policy. When demographic audience targeting and age_restriction are both present, include_unknown must be false.",
+      "if": {
+        "required": ["demographics", "age_restriction"]
+      },
+      "then": {
+        "properties": {
+          "demographics": {
+            "properties": {
+              "age": {
+                "properties": {
+                  "include_unknown": { "const": false }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "A legal verification requirement always narrows demographic targeting. When the buyer supplies accepted_bases and age_restriction requires verification, verified must be accepted; otherwise the constraints have an empty intersection and the request is invalid.",
+      "if": {
+        "properties": {
+          "age_restriction": {
+            "properties": {
+              "verification_required": { "const": true }
+            },
+            "required": ["verification_required"]
+          },
+          "demographics": {
+            "properties": {
+              "age": { "required": ["accepted_bases"] }
+            },
+            "required": ["age"]
+          }
+        },
+        "required": ["demographics", "age_restriction"]
+      },
+      "then": {
+        "properties": {
+          "demographics": {
+            "properties": {
+              "age": {
+                "properties": {
+                  "accepted_bases": {
+                    "contains": { "const": "verified" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "additionalProperties": true
 }

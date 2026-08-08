@@ -18,6 +18,42 @@ AdCP schemas are available from two sources:
 
 Both sources contain identical schemas. The GitHub repository includes all released versions with bundled schemas committed directly to the codebase.
 
+### Schema identity and offline resolution
+
+The `latest` tree and releases cut after this behavior was introduced use canonical HTTPS URIs for root `$id` values and external `$ref` values, for example `https://adcontextprotocol.org/schemas/{version}/core/product.json`. These URIs are stable schema identifiers; a validator does not have to fetch them over the network. Older release directories are immutable and retain their original `/schemas/...` references; for offline use of those releases, select their `bundled/` schemas.
+
+When using the modular schema tree from a downloaded tarball, configure the validator or code generator to map the canonical `https://adcontextprotocol.org/schemas/{version}/` prefix to the extracted `schemas/` directory. Tools that cannot register URI-to-file mappings should use the corresponding `schemas/bundled/` artifact, which has external `$ref` values resolved inline.
+
+For Python's `jsonschema`, the `referencing` registry can perform that mapping without network access:
+
+```python
+import json
+from pathlib import Path
+
+from jsonschema import Draft7Validator
+from referencing import Registry, Resource
+from referencing.exceptions import NoSuchResource
+
+VERSION = "3.2.0"
+SCHEMA_ROOT = Path(f"adcp-{VERSION}/schemas")
+CANONICAL_PREFIX = f"https://adcontextprotocol.org/schemas/{VERSION}/"
+
+def retrieve_local_schema(uri: str) -> Resource:
+    if not uri.startswith(CANONICAL_PREFIX):
+        raise NoSuchResource(ref=uri)
+    relative_path = uri.removeprefix(CANONICAL_PREFIX)
+    contents = json.loads((SCHEMA_ROOT / relative_path).read_text())
+    return Resource.from_contents(contents)
+
+root = json.loads(
+    (SCHEMA_ROOT / "media-buy/get-products-response.json").read_text()
+)
+validator = Draft7Validator(
+    root,
+    registry=Registry(retrieve=retrieve_local_schema),
+)
+```
+
 ## One-shot protocol bundle
 
 Syncing hundreds of individual schema files adds up. Every AdCP release also publishes a single gzipped tarball containing the complete protocol — schemas, compliance storyboards, and the OpenAPI registry — so clients can pull one artifact instead of crawling the tree.
@@ -160,6 +196,41 @@ datamodel-codegen \
 
 For tools that don't support `$ref` resolution, use bundled schemas with all references resolved inline. Bundled schemas are available from both the website and GitHub:
 
+### MCP 2026 tool-schema projection
+
+Beginning with AdCP 3.2, every release also includes a self-contained JSON
+Schema 2020-12 projection for MCP `2026-07-28` tool discovery:
+
+```
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/manifest.json
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/media-buy/get-products-request.json
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/media-buy/get-products-response.json
+```
+
+The projection manifest maps every AdCP tool to downloadable `inputSchema` and
+`outputSchema` files. Servers can select and embed these schemas when building
+their `tools/list` response; publishing the artifacts does not automatically
+change a server's MCP registration. MCP disables automatic network
+dereferencing by default, so each projected schema is a compact, self-contained
+document containing only local fragment references.
+
+The 3.2 projection changes schema syntax, not the AdCP payload contract. It is
+generated from the canonical draft-07 schemas and MUST preserve the same
+validation outcomes. In particular, it does not add
+`unevaluatedProperties: false` or otherwise close extension points. The build
+tests inspect every projected schema for dialect, local-reference integrity,
+and self-containment; enforce AdCP-defined defensive depth, schema-object, and
+compact-serialization byte bounds following MCP guidance; compile
+representative schemas from every protocol; and compare the source and
+projected dialects across representative instances. Repeated shared schemas are
+stored once under `$defs` rather than recursively inlined.
+
+AdCP 4.0 will make JSON Schema 2020-12 the canonical source dialect. That
+major-version migration is where the protocol may selectively use
+`unevaluatedProperties`, `dependentRequired`, `dependentSchemas`, and other
+2020-12 semantics to tighten contracts. Published v3 schemas remain draft-07
+for their support lifetime.
+
 ### Website access
 
 ```
@@ -192,10 +263,14 @@ dist/schemas/{VERSION}/
 │   ├── sponsored-intelligence/   # Sponsored intelligence tasks
 │   ├── protocol/                 # Protocol tasks
 │   └── core/                     # Core shared schemas and legacy task lifecycle schemas
+├── mcp/2026-07-28/               # Self-contained JSON Schema 2020-12 tool projections
 ├── core/                         # Modular schemas with $ref
+├── trusted-match/                # Serve-time Context Match and Identity Match schemas
 ├── media-buy/
 └── index.json                    # Schema registry
 ```
+
+`index.json` is the directory authority. It declares the bundle's `published_version`, stability metadata, and `protocol_layers`: the negotiation layer (`media-buy`, `creative`, `signals`, `account`, `governance`, `brand`, `sponsored-intelligence`) and the decisioning/serving layer (`trusted-match`).
 
 ### Bundled schema categories
 
@@ -217,13 +292,21 @@ See the [schema registry](https://adcontextprotocol.org/schemas/v3/index.json) f
 ## Version discovery
 
 ```bash
-# Get the full semver of the published schema bundle.
+# Get the canonical stable schema bundle and registry URL.
+curl https://adcontextprotocol.org/schemas/latest.json | jq '{version: .latest_stable, index}'
+
+# Or read the full file-based discovery index.
+curl https://adcontextprotocol.org/schemas/index.json | jq '.aliases'
+
+# The versioned registry also carries the full semver of its bundle.
 # (Note: `published_version` carries full semver including patch.
 # It's distinct from the per-request/response wire `adcp_version`
 # field defined in core/version-envelope.json, which uses
 # release-precision — never send `published_version` on the wire.)
 curl https://adcontextprotocol.org/schemas/v3/index.json | jq '.published_version'
 ```
+
+Do not infer the canonical version from directory order or `versions[0]`; pre-release artifacts remain discoverable for pinned historical builds. Use `latest_stable` or the `aliases` map for canonical stable selection.
 
 Check [Release Notes](/docs/reference/release-notes) for version history and migration guides.
 

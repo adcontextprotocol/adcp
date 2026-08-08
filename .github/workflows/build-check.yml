@@ -2,9 +2,9 @@ name: Build Check
 
 on:
   pull_request:
-    branches: [main, develop, '3.0.x', '2.6.x']
+    branches: [main, develop, '3.1.x', '3.0.x', '2.6.x']
   push:
-    branches: [main, develop, '3.0.x', '2.6.x']
+    branches: [main, develop, '3.1.x', '3.0.x', '2.6.x']
 
 concurrency:
   group: build-check-${{ github.ref }}
@@ -19,12 +19,12 @@ jobs:
     # headroom without masking real regressions.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6.0.3
+      - uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -88,6 +88,9 @@ jobs:
       - name: Validate schemas
         run: npm run test:schemas && npm run test:json-schema && npm run test:adagents-catalog-only && npm run test:extension-schemas && npm run test:composed
 
+      - name: Validate MCP schema projection
+        run: npm run test:mcp-schema-projection
+
       - name: Canonical reference resolver fixtures
         run: npm run test:canonical-reference-resolver
 
@@ -147,10 +150,10 @@ jobs:
     env:
       DATABASE_URL: postgresql://ci_runner:ci_runner_throwaway_no_secret_value@127.0.0.1:5432/adcp_test
     steps:
-      - uses: actions/checkout@v6.0.3
+      - uses: actions/checkout@v7.0.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'

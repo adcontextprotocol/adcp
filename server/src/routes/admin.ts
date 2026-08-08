@@ -208,24 +208,25 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
       try {
         const { userId } = req.params;
         const { type } = req.query;
+        const selectedOrgId = typeof req.query.org === 'string' ? req.query.org : null;
         const pool = getPool();
 
         let context;
 
         // Auto-detect or use specified type
         if (type === "slack" || (!type && userId.startsWith("U"))) {
-          context = await getMemberContext(userId);
+          context = await getMemberContext(userId, selectedOrgId);
         } else if (type === "workos" || (!type && userId.startsWith("user_"))) {
-          context = await getWebMemberContext(userId);
+          context = await getWebMemberContext(userId, selectedOrgId);
         } else {
           // Try both - first check if it's a WorkOS ID
           try {
-            context = await getWebMemberContext(userId);
+            context = await getWebMemberContext(userId, selectedOrgId);
             if (!context.workos_user && !context.organization) {
-              context = await getMemberContext(userId);
+              context = await getMemberContext(userId, selectedOrgId);
             }
           } catch {
-            context = await getMemberContext(userId);
+            context = await getMemberContext(userId, selectedOrgId);
           }
         }
 

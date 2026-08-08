@@ -117,6 +117,18 @@ export const SPORTSHAUS_HOLDINGS_BRAND_JSON = {
     { domain: 'streamhaus.example', brand_id: 'streamhaus', effective_at: '2025-01-01T00:00:00Z' },
     { domain: 'courtsidehq.example', brand_id: 'courtsidehq' },
   ],
+  // Buy-side operator authorization — who may represent these brands when
+  // BUYING (agency-of-record, platforms, in-house teams). Distinct from the
+  // sell-side agent delegation in StreamHaus's adagents.json (who may SELL
+  // StreamHaus inventory). Third parties verify an operator by resolving its
+  // domain against this list and checking brands[]/countries/scopes.
+  authorized_operators: [
+    // Agency-of-record for the whole portfolio (brands: ['*']).
+    { domain: 'meridian-agency.example', brands: ['*'], scopes: ['media_buying', 'creative_generation', 'measurement'] },
+    // Brand-scoped, US-only in-house operator — authorized for courtsidehq
+    // only, so it is NOT authorized to buy for streamhaus.
+    { domain: 'courtside-inhouse.example', brands: ['courtsidehq'], countries: ['US'], scopes: ['media_buying'] },
+  ],
   contact: {
     name: 'Sportshaus Brand Operations',
     email: 'brands@sportshaus-holdings.example',

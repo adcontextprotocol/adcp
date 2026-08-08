@@ -1,4 +1,0 @@
----
----
-
-Add `GET /api/admin/accounts/:orgId/agents` and `DELETE /api/admin/accounts/:orgId/agents/:url` for admin inspection and removal of rogue or disputed agent registrations the owning org cannot or will not self-serve clean up. DELETE bypasses the member-side "unpublish public first" guard, requires a `reason` query param, writes an `admin_remove_agent` row to `registry_audit_log` (actor, reason, optional `escalation_id`, removed-agent snapshot), invalidates the member-context cache so Addie reflects the change immediately, and emits a structured `brand_json_drift` event when a public agent is removed so `/check` can surface manifest divergence. Both routes refuse cross-tenant WorkOS API keys (an `admin:*` key issued by org A cannot operate on org B's profile) as defense-in-depth on top of `requireAdmin`. Resolves the gap surfaced by escalation #340 (Celtra).

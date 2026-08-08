@@ -105,6 +105,7 @@ export class FederatedIndexService {
           name: agentConfig.name || profile.display_name,
           type: agentType as FederatedAgent['type'],
           protocol: 'mcp',
+          ...(agentConfig.health_check_url ? { health_check_url: agentConfig.health_check_url } : {}),
           member: {
             slug: profile.slug,
             display_name: profile.display_name,

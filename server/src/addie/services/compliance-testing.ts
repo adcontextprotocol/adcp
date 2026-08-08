@@ -23,6 +23,7 @@ import {
 import {
   hostedComplianceTarget,
   hostedAuthProbeTaskForProfile,
+  hostedStaticApiKeyForProfile,
   agentAdvertisesBadgeEligibleHostedComplianceTarget,
   badgeEligibleVersionsForHostedComplianceTarget,
   selectCanonicalHostedComplianceTargetForProfile,
@@ -32,6 +33,7 @@ import {
 } from '../../services/hosted-compliance-version.js';
 import { getStoryboard } from '../../services/storyboards.js';
 import { createLogger } from '../../logger.js';
+import { withSdkSafeTransport } from '../../utils/sdk-safe-fetch.js';
 
 import type {
   TrackSummaryEntry,
@@ -89,20 +91,29 @@ export type {
   SampleBrief,
 };
 
-async function hostedAuthProbeTaskForRun(
+async function hostedAuthDefaultsForRun(
   agentUrl: string,
   options: ComplyOptions,
-): Promise<string | undefined> {
-  const auth = options.auth;
-  if (auth?.type !== 'bearer' && auth?.type !== 'basic') return undefined;
-  if (options.test_kit?.auth?.probe_task) return options.test_kit.auth.probe_task;
+): Promise<{ probeTask?: string; apiKey?: string }> {
+  const hasOperatorTransportAuth = options.auth?.type === 'bearer' || options.auth?.type === 'basic';
+  const shouldInferStaticFixture =
+    !hasOperatorTransportAuth && !options.test_kit?.auth?.api_key && !options.test_kit?.auth?.basic;
+  if (options.test_kit?.auth?.probe_task && !shouldInferStaticFixture) {
+    return { probeTask: options.test_kit.auth.probe_task };
+  }
 
   try {
     const discovery = await testCapabilityDiscovery(agentUrl, options);
-    return hostedAuthProbeTaskForProfile(discovery.profile);
+    const apiKey = shouldInferStaticFixture
+      ? hostedStaticApiKeyForProfile(discovery.profile)
+      : undefined;
+    return {
+      probeTask: options.test_kit?.auth?.probe_task ?? hostedAuthProbeTaskForProfile(discovery.profile),
+      ...(apiKey ? { apiKey } : {}),
+    };
   } catch (err) {
-    logger.warn({ err, agentUrl }, 'Could not pre-discover hosted auth probe task; using default');
-    return undefined;
+    logger.warn({ err, agentUrl }, 'Could not pre-discover hosted auth defaults; using default probe task only');
+    return {};
   }
 }
 
@@ -111,15 +122,23 @@ export async function comply(
   options: ComplyOptions,
   target: HostedComplianceTarget,
 ): Promise<ComplianceResult> {
-  const authProbeTask = await hostedAuthProbeTaskForRun(agentUrl, options);
-  const result = await sdkComply(agentUrl, withHostedComplianceRunOptions(options, target, authProbeTask));
+  const safeOptions = withSdkSafeTransport(options);
+  const authDefaults = await hostedAuthDefaultsForRun(agentUrl, safeOptions);
+  const result = await sdkComply(
+    agentUrl,
+    withSdkSafeTransport(
+      withHostedComplianceRunOptions(safeOptions, target, authDefaults.probeTask, authDefaults.apiKey),
+    ),
+  );
   result.adcp_version ??= target.version;
   (result as ComplianceResult & { requested_compliance_target?: string }).requested_compliance_target = target.requested;
   return result;
 }
 
 export function loadComplianceIndex(target: HostedComplianceTarget, options: ComplyOptions = {}) {
-  return sdkLoadComplianceIndex(withHostedComplianceRunOptions(options, target));
+  return sdkLoadComplianceIndex(
+    withSdkSafeTransport(withHostedComplianceRunOptions(options, target)),
+  );
 }
 
 export function defaultComplianceTarget(): HostedComplianceTarget {
@@ -133,9 +152,10 @@ export async function selectComplianceTargetForAgentSelection(
   mode: 'preferred' | 'canonical' = 'preferred',
 ): Promise<ComplianceTargetSelection> {
   try {
+    const safeOptions = withSdkSafeTransport(options);
     const discovery = await withTimeout(
-      testCapabilityDiscovery(agentUrl, options),
-      complianceTargetDiscoveryTimeoutMs(options),
+      testCapabilityDiscovery(agentUrl, safeOptions),
+      complianceTargetDiscoveryTimeoutMs(safeOptions),
       'Hosted compliance target pre-discovery',
     );
     const target = mode === 'canonical'
@@ -207,12 +227,15 @@ export function badgeEligibleVersionsForTargetSelection(
 export type CapabilityResolutionErrorKind =
   | 'specialism_parent_protocol_missing'
   | 'unknown_specialism'
-  | 'unsupported_adcp_version';
+  | 'unsupported_adcp_version'
+  | 'unrecognized_supported_protocol';
 
 export interface CapabilityResolutionErrorInfo {
   kind: CapabilityResolutionErrorKind;
   specialism?: string;
   parentProtocol?: string;
+  declaredProtocol?: string;
+  expectedProtocol?: string;
   complianceVersion?: string;
   supportedVersions?: string[];
 }
@@ -253,7 +276,16 @@ function parseSupportedVersionList(value: string): string[] {
 function knownProtocolsFromIndex(): Set<string> {
   try {
     const index = loadComplianceIndex(defaultComplianceTarget());
-    return new Set(index.specialisms.map(s => s.protocol).filter(Boolean));
+    const protocols = new Set<string>();
+    for (const protocol of index.specialisms.map(s => s.protocol).filter(Boolean)) {
+      protocols.add(protocol);
+      protocols.add(protocol.replace(/-/g, '_'));
+    }
+    for (const protocol of index.protocols?.map(p => p.id).filter(Boolean) ?? []) {
+      protocols.add(protocol);
+      protocols.add(protocol.replace(/-/g, '_'));
+    }
+    return protocols;
   } catch {
     // Cache unavailable — accept the extracted value without cross-check.
     // The anchored regex + sanitizer still bound what can reach downstream.
@@ -261,8 +293,27 @@ function knownProtocolsFromIndex(): Set<string> {
   }
 }
 
+function nearMissProtocolDeclaration(
+  parentProtocol: string,
+  declaredProtocols: readonly unknown[] | undefined,
+): { declaredProtocol: string; expectedProtocol: string } | undefined {
+  if (!declaredProtocols?.length) return undefined;
+
+  for (const raw of declaredProtocols) {
+    if (typeof raw !== 'string') continue;
+    const declaredProtocol = sanitizeClassifiedValue(raw, 80);
+    if (!declaredProtocol || declaredProtocol === parentProtocol) continue;
+    if (declaredProtocol.replace(/-/g, '_') === parentProtocol) {
+      return { declaredProtocol, expectedProtocol: parentProtocol };
+    }
+  }
+
+  return undefined;
+}
+
 export function classifyCapabilityResolutionError(
   err: unknown,
+  declaredProtocols?: readonly unknown[],
 ): CapabilityResolutionErrorInfo | undefined {
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
   if (!msg) return undefined;
@@ -289,6 +340,17 @@ export function classifyCapabilityResolutionError(
   if (parentMatch) {
     const specialism = sanitizeClassifiedValue(parentMatch[1]);
     const parentProtocol = sanitizeClassifiedValue(parentMatch[2]);
+    const nearMiss = nearMissProtocolDeclaration(parentProtocol, declaredProtocols);
+    if (nearMiss) {
+      return {
+        kind: 'unrecognized_supported_protocol',
+        specialism,
+        parentProtocol,
+        declaredProtocol: nearMiss.declaredProtocol,
+        expectedProtocol: nearMiss.expectedProtocol,
+      };
+    }
+
     // Defense in depth: the upstream resolver only throws this variant when
     // the specialism exists in the local index, so its parent is a known
     // protocol. If the extracted parent isn't known, the attacker smuggled
@@ -338,6 +400,8 @@ export function presentCapabilityResolutionError(
 ): CapabilityResolutionErrorPresentation {
   const specialism = info.specialism ?? '';
   const parentProtocol = info.parentProtocol ?? '';
+  const declaredProtocol = info.declaredProtocol ?? '';
+  const expectedProtocol = info.expectedProtocol ?? '';
   const complianceVersion = info.complianceVersion ?? '';
   const supportedVersions = info.supportedVersions ?? [];
   const supportedVersionsText = supportedVersions.length > 0 ? supportedVersions.join(', ') : '(none advertised)';
@@ -368,6 +432,23 @@ export function presentCapabilityResolutionError(
         error_kind: 'unsupported_adcp_version',
         compliance_version: complianceVersion,
         supported_versions: supportedVersionsText,
+      },
+    };
+  }
+
+  if (info.kind === 'unrecognized_supported_protocol') {
+    return {
+      headline:
+        `Agent capabilities misconfigured: supported_protocols contains unrecognized ` +
+        `"${declaredProtocol}"; use "${expectedProtocol}" for specialism "${specialism}".`,
+      logMsg: 'Agent declared unrecognized supported_protocols value',
+      logFields: { specialism, parentProtocol, declaredProtocol, expectedProtocol },
+      restBody: {
+        error_kind: 'unrecognized_supported_protocol',
+        specialism,
+        parent_protocol: parentProtocol,
+        declared_protocol: declaredProtocol,
+        expected_protocol: expectedProtocol,
       },
     };
   }
@@ -431,12 +512,31 @@ function isExplicitRequiresToolMissingSkip(step: {
   return detail?.startsWith('Required tool "') === true && detail.includes('" not advertised');
 }
 
+function isRunnerApplicabilitySkip(step: {
+  skip_reason?: string;
+  step_id?: unknown;
+  requirement?: unknown;
+}, scenario?: unknown): boolean {
+  switch (step.skip_reason) {
+    case 'capability_unsupported':
+      return true;
+    case 'missing_test_kit_contract':
+      return scenario === 'idempotency/rate_limit_replay_invariant' &&
+        firstString(step.step_id) === 'expect_rate_limit_not_replayed';
+    case 'requirement_unmet':
+      return firstString(step.requirement) === 'webhook_receiver';
+    default:
+      return false;
+  }
+}
+
 function skipReasonIsCoverageGap(
   reason: string | undefined,
   step?: {
     skip_reason?: string;
     step?: unknown;
     step_id?: unknown;
+    requirement?: unknown;
     details?: unknown;
     error?: unknown;
     warnings?: unknown;
@@ -446,6 +546,7 @@ function skipReasonIsCoverageGap(
 ): boolean {
   if (step && isSyntheticRequiredToolsMissingSkip(step, scenario)) return false;
   if (step && isExplicitRequiresToolMissingSkip(step)) return false;
+  if (step && isRunnerApplicabilitySkip(step, scenario)) return false;
   switch (reason) {
     case 'not_applicable':
     case 'peer_branch_taken':
@@ -579,6 +680,7 @@ export function deriveStoryboardStatuses(
       details?: unknown;
       error?: unknown;
       warnings?: unknown;
+      requirement?: unknown;
       skip?: { detail?: unknown };
     },
     scenario: string,
@@ -590,6 +692,7 @@ export function deriveStoryboardStatuses(
     // out of scope for this agent, not that a claimed production step failed.
     if (isSyntheticRequiredToolsMissingSkip(step, scenario)) return true;
     if (isExplicitRequiresToolMissingSkip(step)) return true;
+    if (isRunnerApplicabilitySkip(step, scenario)) return true;
 
     return false;
   };

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock dependencies before importing module
-const mockSendChannelMessage = vi.fn().mockResolvedValue(undefined);
+const mockSendChannelMessage = vi.fn().mockResolvedValue({ ok: true, ts: '123.456' });
 const mockGetErrorChannel = vi.fn().mockResolvedValue({ channel_id: 'C123', channel_name: 'errors' });
 
 vi.mock('../../src/slack/client.js', () => ({
@@ -13,7 +13,7 @@ vi.mock('../../src/db/system-settings-db.js', () => ({
 }));
 
 // Dynamic import after mocks are set up
-const { notifyToolError, notifySystemError } = await import('../../src/addie/error-notifier.js');
+const { notifyToolError, notifySystemError, __testResetErrorNotifier } = await import('../../src/addie/error-notifier.js');
 
 // Use unique names per test to avoid throttle collisions (module is a singleton)
 let testCounter = 0;
@@ -24,6 +24,9 @@ function uniqueName(prefix: string) {
 describe('error-notifier', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSendChannelMessage.mockResolvedValue({ ok: true, ts: '123.456' });
+    mockGetErrorChannel.mockResolvedValue({ channel_id: 'C123', channel_name: 'errors' });
+    __testResetErrorNotifier();
   });
 
   describe('notifyToolError', () => {
@@ -155,6 +158,50 @@ describe('error-notifier', () => {
       await vi.waitFor(() => expect(mockSendChannelMessage).toHaveBeenCalledTimes(1));
 
       notifySystemError({ source: source2, errorMessage: 'timeout' });
+      await vi.waitFor(() => expect(mockSendChannelMessage).toHaveBeenCalledTimes(2));
+    });
+
+    it('coalesces Anthropic billing exhaustion across sources', async () => {
+      const anthropicBillingError =
+        '400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}}';
+
+      notifySystemError({
+        source: uniqueName('addie-claude-client'),
+        errorMessage: `Addie Stream: Error during streaming: ${anthropicBillingError}`,
+      });
+      await vi.waitFor(() => expect(mockSendChannelMessage).toHaveBeenCalledTimes(1));
+
+      const text = mockSendChannelMessage.mock.calls[0][1].text;
+      expect(text).toContain('anthropic-billing-exhausted');
+      expect(text).toContain('surfaced by addie-claude-client');
+
+      notifySystemError({
+        source: uniqueName('addie-router'),
+        errorMessage: `Router: Failed to generate execution plan: ${anthropicBillingError}`,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(mockSendChannelMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not throttle Anthropic billing exhaustion when Slack delivery fails', async () => {
+      const anthropicBillingError =
+        '400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}}';
+      mockSendChannelMessage
+        .mockResolvedValueOnce({ ok: false, error: 'slack_down' })
+        .mockResolvedValue({ ok: true, ts: '123.456' });
+
+      notifySystemError({
+        source: uniqueName('addie-claude-client'),
+        errorMessage: `Addie Stream: Error during streaming: ${anthropicBillingError}`,
+      });
+      await vi.waitFor(() => expect(mockSendChannelMessage).toHaveBeenCalledTimes(1));
+
+      notifySystemError({
+        source: uniqueName('addie-router'),
+        errorMessage: `Router: Failed to generate execution plan: ${anthropicBillingError}`,
+      });
+
       await vi.waitFor(() => expect(mockSendChannelMessage).toHaveBeenCalledTimes(2));
     });
   });

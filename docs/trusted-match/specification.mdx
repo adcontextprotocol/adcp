@@ -51,7 +51,7 @@ Sent by the publisher (via router) to buyer agents. Contains content context. MU
 | `request_id` | string | Yes | Unique request identifier for logging. MUST NOT correlate with any Identity Match request_id. |
 | `property_rid` | UUID | Yes | Property catalog UUID (v7). Globally unique, stable. |
 | `property_id` | string | No | Publisher's human-readable slug. Optional when `property_rid` is present. |
-| `property_type` | enum | Yes | One of: `website`, `mobile_app`, `ctv_app`, `desktop_app`, `dooh`, `podcast`, `radio`, `streaming_audio`, `ai_assistant`. See `property-type` enum. |
+| `property_type` | enum | Yes | One of: `website`, `mobile_app`, `ctv_app`, `desktop_app`, `dooh`, `podcast`, `radio`, `linear_tv`, `streaming_audio`, `ai_assistant`. See `property-type` enum. |
 | `placement_id` | string | Yes | Placement identifier from the publisher's placement registry in `adagents.json`. One placement per request. |
 | `seller_agent_url` | string (URI) | Yes | API endpoint URL of the seller agent issuing this request. The provider resolves the active package set it has synced for this seller against it; an unsynced seller MUST yield an empty offer set, never a fall-back to another seller's set. A single per-placement value carrying no user identity. Compared with AdCP URL canonicalization. Consistent with `seller_agent_url` on the Identity Match request and `agent_url` in `adagents.json`. |
 | `artifact` | Artifact | No | Full content artifact adjacent to this ad opportunity. Same schema as content standards evaluation. The publisher sends the full artifact when they want the buyer to evaluate the actual content. Contractual protections govern buyer use. TEE deployment upgrades contractual trust to cryptographic verification. |
@@ -133,6 +133,7 @@ Returned by the buyer agent. Contains offers for matched packages and optional r
 | `type` | string | Yes | `"context_match_response"`. Message type discriminator for deserialization. |
 | `request_id` | string | Yes | Echo of the request's `request_id`. |
 | `offers` | List\<Offer\> | Yes | Offers from the buyer, one per activated package. Empty list means no packages matched. |
+| `cache_ttl` | integer | No | Provider override (in seconds) for the router's default Context Match response cache TTL. When present, routers MUST use this value instead of their default. `0` disables caching (e.g., when targeting configuration has just changed); schema-enforced maximum is 86400 seconds. See [Caching](#caching). |
 | `signals` | Signals | No | Response-level targeting signals for ad server pass-through. Not per-offer — applies to the response as a whole. In the GAM case, these carry the key-value pairs that trigger line items. |
 
 #### Offer
@@ -199,17 +200,43 @@ Each entry in `identities` is a `{user_token, uid_type, attestation?}` triple:
 
 ### IdentityMatchResponse
 
-Returned by the buyer agent. A list of eligible package IDs with a serve-window throttle.
+Returned by the buyer agent. A list of eligible package IDs with a serve-window throttle. Two shapes carry this message across the two hops of an Identity Match fan-out — the schemas are split so each hop's obligations are expressible in JSON Schema and the untrusted provider boundary never accepts a publisher-local destination name.
+
+**Provider → router** (`provider-identity-match-response.json`):
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `type` | string | Yes | `"identity_match_response"`. Message type discriminator for deserialization. |
 | `request_id` | string | Yes | Echo of the request's `request_id`. |
 | `eligible_package_ids` | List\<string\> | Yes | Package IDs the user is eligible for. Packages not listed are ineligible. |
-| `serve_window_sec` | integer | Yes | Per-package single-shot fcap window, in seconds. Range: 1–300. Default: 60. After serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. This is **not** a router response cache TTL — it is a buyer-asserted serve throttle. Multi-impression frequency caps are handled separately by the buyer's impression tracker, which writes cap-fire events to the IdentityMatch cap-state store at the boundary regardless of this window — see [Frequency-Cap Data Flow](/docs/trusted-match/identity-match-implementation). |
-| `tmpx` | string | No | HPKE-encrypted exposure token containing resolved user identity tokens. The publisher substitutes this into creative tracking URLs as `{TMPX}`. The buyer's impression pixel receives the token, enabling real-time per-user frequency state updates. Wire format: `kid.base64url_nopad(ciphertext)` (unpadded, no `=` characters). Publishers MUST treat this value as opaque pass-through data. |
+| `serve_window_sec` | integer | Yes | Per-package single-shot fcap window, in seconds. Range: 1–300. Default: 60. |
+| `tmpx_chunks` | List\<TmpxChunk\> | No | Ordered TMPX chunks minted by this identity agent. Each entry pairs a provider-local `slot_id` (from the provider's registered `tmpx_slots` on provider-registration.json) with an opaque URL-safe `value`. Slot IDs are provider-local opaque tokens — the agent does NOT emit publisher-local ad-server names. Ordered-prefix invariant: a response that carries fewer chunks than the provider registered MUST emit an ordered prefix of the registered `tmpx_slots` (never shifted or sparse). Capped at 2 chunks in v1; the cap MAY rise without a shape change. Omitted when the agent mints no TMPX for this request. |
 
-The response includes eligible package IDs, a serve-window throttle, and an optional `tmpx` field. The TMPX token is an HPKE-encrypted exposure token that flows through creative tracking URLs to the buyer's impression pixel, enabling real-time per-user frequency state updates without exposing user identity to the publisher. The buyer computes eligibility from whatever identity signals they have (frequency caps, audience membership, purchase history) and returns only the packages that pass. The publisher does not need to know why a package was excluded — just which packages are eligible.
+**Router → publisher** (`identity-match-response.json`):
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `type` | string | Yes | `"identity_match_response"`. Message type discriminator for deserialization. |
+| `request_id` | string | Yes | Echo of the request's `request_id`. |
+| `eligible_package_ids` | List\<string\> | Yes | Union of eligible package IDs across the fan-out. |
+| `serve_window_sec` | integer | Yes | Per-package single-shot fcap window, in seconds. Range: 1–300. Default: 60. After serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. This is **not** a router response cache TTL — it is a buyer-asserted serve throttle. Multi-impression frequency caps are handled separately by the buyer's impression tracker, which writes cap-fire events to the IdentityMatch cap-state store at the boundary regardless of this window — see [Frequency-Cap Data Flow](/docs/trusted-match/identity-match-implementation). |
+| `tmpx_providers` | Map\<provider_id, \{ chunks: List\<TmpxChunk\> \}\> | No | Router-populated. Ordered TMPX chunks grouped by the originating identity provider's `provider_id`. Each entry's `chunks[]` is a copy of the provider's emitted `tmpx_chunks` list in the same order. Each chunk carries `{slot_id, value}` — the publisher's deployment configuration (see [Publisher TMPX macro mapping](#publisher-tmpx-macro-mapping)) resolves each `(provider_id, slot_id)` pair to a local destination on this surface. Required by router conformance when any identity provider emitted TMPX in this request; collapsing per-provider tokens into a single string loses attribution and breaks per-provider impression accounting. Map keys MUST match the `provider_id` charset registered in provider-registration.json (`^[A-Za-z0-9_]+$`, 1–64 chars). |
+| `tmpx` | string | No | DEPRECATED in favor of `tmpx_providers`. Single HPKE-encrypted exposure token. Routers MAY continue to populate this field for back-compat with consumers that only know the single-token shape; when both fields are present, `tmpx_providers` is authoritative. Wire format: `kid.base64url_nopad(ciphertext)` (unpadded, no `=` characters). Removed in 4.0. |
+
+#### TmpxChunk
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `slot_id` | string | Yes | Provider-local slot identifier from the emitting provider's registered `tmpx_slots` (provider-registration.json). Opaque provider-namespaced token; publishers map `(provider_id, slot_id)` → local destination via `tmpx_macro_mapping`. Pattern: `^[a-zA-Z][a-zA-Z0-9_]*$`, 1–64 chars. NOT an ad-server macro name. |
+| `value` | string | Yes | Opaque, URL-safe wire string the publisher substitutes verbatim into the destination the publisher's mapping resolves for this `(provider_id, slot_id)` pair. Length capped at 1024 characters. Publishers MUST NOT parse, decode, or transform this value. |
+
+Each TMPX `value` is an HPKE-encrypted exposure token that flows through creative tracking URLs to the buyer's impression pixel, enabling real-time per-user frequency state updates without exposing user identity to the publisher. The buyer computes eligibility from whatever identity signals they have (frequency caps, audience membership, purchase history) and returns only the packages that pass. The publisher does not need to know why a package was excluded — just which packages are eligible.
+
+**TMPX destinations are publisher-owned.** Naming an ad-server macro, targeting key, VAST substitution, or DOOH play-log field is a deployment concern owned by the publisher, not a protocol identifier. Providers declare their own slot contract (`tmpx_slots` on provider-registration.json) using opaque provider-local IDs; identity-match responses carry ordered `{slot_id, value}` chunks; the router preserves the chunks and their slot IDs under the emitting `provider_id`; the publisher's [Publisher TMPX macro mapping](#publisher-tmpx-macro-mapping) resolves each `(provider_id, slot_id)` to the local destination on that surface. Slot IDs and destination names never mix on the wire — the router only ever sees provider-local slot tokens, never a publisher's ad-server namespace. Ordered multi-chunk support lets a single TMPX exceed one macro slot (capped at 2 chunks per provider in v1 and MAY be raised without a shape change). This keeps the same identity provider mappable to different destinations across surfaces (GAM key-values vs. VAST macros vs. DOOH play-log fields) via publisher-side configuration, and closes the cross-provider name-hijack surface that existed while destination names travelled on the wire — the router never accepts a destination name from an untrusted provider.
+
+**Startup validation and drift detection.** Because each chunk carries its `slot_id`, publishers can validate `tmpx_macro_mapping` at deployment startup: every `slot_id` a provider registered SHOULD have a corresponding entry in `tmpx_macro_mapping[provider_id]`, and every response chunk's `slot_id` MUST already be known — a chunk with an unrecognized `slot_id` for a provider present in the mapping is treated as a configuration error (see the fail-closed rule under [Publisher TMPX macro mapping](#publisher-tmpx-macro-mapping)). Publishers detect provider slot-contract drift (a provider adding, removing, or renaming a slot) at startup rather than at serve time.
+
+`tmpx_providers` keys ordered chunk lists by `provider_id` so the router preserves attribution when its fan-out reaches multiple identity providers. The legacy `tmpx` field remains supported through 3.x for consumers that haven't migrated; when both fields are present, `tmpx_providers` is authoritative and the singular field SHOULD reflect one provider's first-slot value solely as a transitional convenience.
 
 The `serve_window_sec` field is a **per-package single-shot fcap**, not a router cache TTL. The buyer is saying: "After you serve the user one impression on each eligible package, re-query me before serving from those packages again." The router MAY still cache the response for an internal deduplication/cost-saving window, but the binding contract on the publisher side is "one impression per eligible package per window." Multi-impression frequency caps (5 per day per campaign, 100 per month per advertiser, etc.) live in the buyer's impression tracker and surface to the IdentityMatch service as cap-fire events at the boundary regardless of `serve_window_sec`.
 
@@ -315,11 +342,11 @@ The router SHOULD exclude providers that return errors from the merged response 
 
 TMP providers are registered with the router via publisher configuration. The publisher specifies which providers the router should call, along with each provider's endpoint and supported capabilities. This is an operational relationship — the publisher trusts the provider to run code in their ad decisioning path.
 
-The standard registration path is **static configuration** — the publisher declares providers in their Prebid module config, router YAML, or equivalent surface-specific configuration. Dynamic registration (API-driven, database-backed) is an equally valid variant for publishers who manage many providers or need runtime updates. Both approaches use the same provider registration schema (`/schemas/tmp/provider-registration.json`).
+The standard registration path is **static configuration** — the publisher declares providers in their Prebid module config, router YAML, or equivalent surface-specific configuration. Dynamic registration (API-driven, database-backed) is an equally valid variant for publishers who manage many providers or need runtime updates. Both approaches use the same provider registration schema (`/schemas/trusted-match/provider-registration.json`).
 
 | Setting | Type | Required | Description |
 |---|---|---|---|
-| `provider_id` | string | Yes | Stable identifier for this provider registration. Used in logs, metrics, and cache keys. |
+| `provider_id` | string | Yes | Stable identifier for this provider registration. Used in logs, metrics, cache keys, and as the key in `tmpx_providers` on the identity-match response so the publisher can route each provider's ordered TMPX values to that provider's pre-configured destinations via the publisher's [`tmpx_macro_mapping`](#publisher-tmpx-macro-mapping). Pattern: `^[A-Za-z0-9_]+$`, max length 64 — a safe alphanumeric/underscore charset so the value can appear in operational surfaces (logs, metrics, dashboards) without quoting. |
 | `endpoint` | URL | Yes | Provider's base URL. The router appends `/context` or `/identity` when dispatching. |
 | `context_match` | bool | No | Provider handles Context Match requests. At least one of `context_match` or `identity_match` must be true. |
 | `identity_match` | bool | No | Provider handles Identity Match requests. At least one of `context_match` or `identity_match` must be true. |
@@ -328,6 +355,7 @@ The standard registration path is **static configuration** — the publisher dec
 | `properties` | List\<UUID\> | No | Property RIDs this provider serves. When absent, the provider serves all properties. |
 | `timeout_ms` | integer | No | Per-provider timeout in milliseconds. Must be ≤ the router's overall `latency_budget_ms`. Default: 50. |
 | `priority` | integer | No | Provider ordering for merge conflict resolution. Lower values = higher priority. Default: 0. |
+| `tmpx_slots` | List\<string\> | No | Stable provider-local slot identifiers for the ordered TMPX chunks this provider mints — e.g. `["primary","secondary"]`. Slot IDs are opaque provider-namespaced tokens, NOT ad-server macro names; publishers map `(provider_id, slot_id)` → local destination via [`tmpx_macro_mapping`](#publisher-tmpx-macro-mapping), so the destination namespace stays publisher-owned. Distinct providers MAY reuse the same slot_id without collision (publisher lookup keys on `(provider_id, slot_id)`). Ordering carries the ordered-prefix invariant: a provider that emits fewer chunks than it registered MUST emit an ordered prefix — chunks are never shifted, sparse, or reordered. Pattern: `^[a-zA-Z][a-zA-Z0-9_]*$`, 1–64 chars, `uniqueItems`. Cap of 2 slots in v1; the cap MAY rise without a shape change. A provider that emits TMPX (populates `tmpx_chunks` on its identity-match response) MUST register this list. |
 | `status` | enum | No | Provider lifecycle status: `active`, `inactive`, or `draining`. Default: `active`. |
 
 At least one of `context_match` or `identity_match` must be true — a provider that handles neither operation is invalid. When `identity_match` is true, `countries` and `uid_types` are **required** — the router cannot perform country-partitioned identity routing without them. The schema enforces both constraints.
@@ -344,9 +372,34 @@ Providers have three lifecycle states:
 
 State transitions are immediate in static configuration (reload the config) and take effect within one refresh cycle in dynamic registration.
 
+### Publisher TMPX macro mapping
+
+Where an identity provider's TMPX chunks land in the ad server is a deployment concern owned by the publisher. Providers declare their own slot contract as `tmpx_slots` on their registration entry (opaque provider-local IDs — see [Provider Registration](#provider-registration)); the identity-match response carries each chunk as a `{slot_id, value}` pair. The publisher maps each `(provider_id, slot_id)` to the ad-server macro name, GAM key-value, VAST URL macro, DOOH play-log field, or equivalent local destination for that surface. The mapping never travels between provider and router, so the router never accepts a destination name from an untrusted provider.
+
+The shape is captured by `/schemas/trusted-match/publisher-tmpx-config.json` and is authored by the publisher — the same operator who trafficks the corresponding ad-server line items — alongside the router configuration for that surface:
+
+```yaml
+tmpx_macro_mapping:
+  provider_a:
+    primary: PIN_TMPX_1
+    secondary: PIN_TMPX_2
+  provider_b:
+    primary: NOVA_TMPX_1
+```
+
+Inner-map keys are the provider's registered `slot_id`s; values are the local ad-server destination strings. Slot IDs are provider-local, so distinct providers MAY reuse the same slot_id (as `provider_a` and `provider_b` do above) with no collision — the publisher lookup keys on `(provider_id, slot_id)`. The same `provider_id` may map to different destinations across surfaces (GAM key-values on web, VAST URL macros on CTV, play-log fields on DOOH) by carrying one instance of this configuration per surface. Outer-map key charset matches `provider_id`; inner-map key charset matches `slot_id` — both enforced by `propertyNames` on the schema.
+
+**Startup validation.** Publishers use `tmpx_slots` from each provider's registration to validate the mapping at startup:
+- Every `slot_id` a provider registered SHOULD have a corresponding entry in that provider's inner map. A missing entry is an operator misconfiguration — the provider is expected to emit that slot at serve time, and once it does the serve-time fail-closed rule below will suppress the whole provider's chunks on that impression. Publishers SHOULD surface missing entries as a startup warning so operators can add them before serve-time responses begin carrying the unmapped slot.
+- Every provider present in `tmpx_macro_mapping` SHOULD have a registration; a mapping entry for an unregistered provider is dead configuration.
+
+**Serve-time fail-closed rule.** When a response carries a `slot_id` for a provider that this mapping has no entry for — the mapping is missing the whole provider, OR the provider is present but the specific `slot_id` is unknown to this surface — the publisher's adapter MUST fail closed for that provider on that impression: none of that provider's chunks are fired into the ad-serving path and the adapter logs a configuration error. Other providers on the same response are unaffected. A `provider_id` absent from the mapping entirely (e.g. a newly onboarded provider not yet trafficked on this surface) is the same case — the adapter drops that provider's chunks on this surface. This is a single rule with two detection stages: startup validation gives the operator a warning before responses begin carrying the unmapped slot; if the warning is not acted on, the serve-time rule catches it.
+
+Ordered position is preserved on the wire (chunks are an ordered prefix of the provider's registered `tmpx_slots`) but is not the identity key — `slot_id` is. That distinction is what makes this proposal not "macro name → slot id" rename: slot IDs stay provider-local and opaque, publisher destinations stay publisher-local, and the mapping between them lives only on the publisher side. Adopters gain startup drift detection and self-describing chunks; the router still never sees a destination name.
+
 ### Provider registration security
 
-**Endpoint URL validation (SSRF).** Both static configuration and dynamic registration MUST validate provider `endpoint` URLs against the canonical [Webhook URL validation (SSRF)](/docs/building/implementation/security#webhook-url-validation-ssrf) rules — HTTPS only in production, reserved IPv4 and IPv6 ranges rejected (including `::ffff:0:0/96` IPv4-mapped bypasses and the `169.254.169.254` / `fd00:ec2::254` cloud metadata addresses), no redirects. Because a router calls the provider on every request, DNS rebinding is the primary risk: routers MUST either pin the TCP connection to the IP that passed validation or re-validate the socket's post-handshake peer address before sending the request body. Re-resolving DNS without pinning is not sufficient.
+**Endpoint URL validation (SSRF).** Both static configuration and dynamic registration MUST validate provider `endpoint` URLs against the canonical [Webhook URL validation (SSRF)](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf) rules — HTTPS only in production, reserved IPv4 and IPv6 ranges rejected (including `::ffff:0:0/96` IPv4-mapped bypasses and the `169.254.169.254` / `fd00:ec2::254` cloud metadata addresses), no redirects. Because a router calls the provider on every request, DNS rebinding is the primary risk: routers MUST either pin the TCP connection to the IP that passed validation or re-validate the socket's post-handshake peer address before sending the request body. Re-resolving DNS without pinning is not sufficient.
 
 **Dynamic registration authentication.** The dynamic registration API is a privileged surface; unauthenticated registration lets an attacker point publisher traffic at arbitrary HTTPS endpoints. Routers exposing dynamic registration MUST authenticate callers (mTLS or short-lived OAuth 2.0 tokens; static API keys only with IP allow-listing) and SHOULD apply per-agent rate limits on mutations and a cap on total registered providers per publisher to bound registration-storm abuse.
 
@@ -391,7 +444,8 @@ Package metadata is synced from seller agents to TMP providers at media buy crea
 | `package_id` | string | Yes | Unique identifier for the package. |
 | `media_buy_id` | string | Yes | Media buy this package belongs to. |
 | `seller_agent` | SellerAgentRef | Yes | Seller agent that owns this package. `agent_url` MUST match one of `authorized_agents[].url` in the adagents.json authoritative for every property this package may serve. See [Seller Agent Attribution](#seller-agent-attribution). |
-| `format_ids` | List\<FormatId\> | No | Creative format identifiers eligible for this package. Uses the standard `{agent_url, id}` shape. |
+| `format_options` | ProductFormatDeclaration[] | No | Canonical creative contracts eligible for this package. |
+| `format_ids` | FormatId[] | No | Deprecated 3.x named-format compatibility projection. |
 | `catalogs` | List\<Catalog\> | No | Buyer catalogs attached to this package, with selectors scoping which items are in play. Referenced by `catalog_id` against separately-synced catalog data. |
 
 #### SellerAgentRef
@@ -419,7 +473,7 @@ The canonical seller identity in AdCP is the agent URL declared in the property 
 
 Providers SHOULD validate `seller_agent.agent_url` against the property publisher's adagents.json at sync time:
 
-1. For each property the package may serve, fetch `/.well-known/adagents.json` on the property domain. If the file contains an `authoritative_location` pointer, follow it at most one hop to a same-scheme HTTPS URL; do not chain further. Both the initial fetch and the `authoritative_location` hop MUST apply the [Webhook URL validation (SSRF)](/docs/building/implementation/security#webhook-url-validation-ssrf) rules — HTTPS-only, reserved IPv4 and IPv6 ranges rejected (including `::ffff:0:0/96` IPv4-mapped bypasses and the `169.254.169.254` / `fd00:ec2::254` cloud metadata addresses), no transparent redirects, and the TCP connection pinned to the validated IP. The inbound-fetch rules referenced for [Provider registration security](#provider-registration-security) apply equally to this outbound fetch.
+1. For each property the package may serve, fetch `/.well-known/adagents.json` on the property domain. If the file contains an `authoritative_location` pointer, follow it at most one hop to a same-scheme HTTPS URL; do not chain further. Both the initial fetch and the `authoritative_location` hop MUST apply the [Webhook URL validation (SSRF)](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf) rules — HTTPS-only, reserved IPv4 and IPv6 ranges rejected (including `::ffff:0:0/96` IPv4-mapped bypasses and the `169.254.169.254` / `fd00:ec2::254` cloud metadata addresses), no transparent redirects, and the TCP connection pinned to the validated IP. The inbound-fetch rules referenced for [Provider registration security](#provider-registration-security) apply equally to this outbound fetch.
 2. Confirm that `seller_agent.agent_url` appears in `authorized_agents[].url` and that any `property_ids`, `collections`, `placement_ids`, `placement_tags`, `countries`, `effective_from`, and `effective_until` constraints on that entry permit the package's scope. The URL comparison uses the [AdCP URL canonicalization rules](/docs/reference/url-canonicalization) — canonicalize both values before matching, never byte-equality. Reject `seller_agent.agent_url` values that do not use the `https://` scheme with `seller_not_authorized`; non-HTTPS seller URLs have no transport-integrity guarantee and cannot be trusted as an authorization key.
 3. On mismatch, reject the sync operation for that `AvailablePackage` with an `error` response using `code: seller_not_authorized`. Other packages in the same sync batch are unaffected. The exact wire shape of the sync error is deployment-specific; `code` is the machine-readable reason.
 
@@ -498,6 +552,8 @@ The router signs all requests using Ed25519. Both Context Match and Identity Mat
 
 Signatures bind the request to a specific provider. The router signs a separate signature per fan-out target using the provider's endpoint URL from the router's provider registration. Providers MUST verify that the signed `provider_endpoint_url` matches their own advertised endpoint and reject the request otherwise. This prevents a captured signature from being replayed against a different provider in the registry within the epoch.
 
+Signatures also bind to `seller_agent_url`, the asking seller's agent URL. `seller_agent_url` selects which seller's registered active package set the receiver evaluates against (see [Seller Agent Attribution](#seller-agent-attribution)) and is the lookup key receivers use to resolve the publisher's signing keys for verification. Including it in the signed bytes prevents a captured signature from being replayed under a different seller's identity to read another seller's offers or active package set.
+
 The daily epoch provides replay protection — a captured signature is valid for at most ~48 hours (current + previous epoch accepted by verifiers).
 
 ### Signature envelope
@@ -516,6 +572,7 @@ Concatenated in this order, UTF-8, newline-separated:
 | Field | Source |
 |---|---|
 | `type` | `context_match_request` |
+| `seller_agent_url` | From the request body, compared using the [AdCP URL canonicalization rules](/docs/reference/url-canonicalization). Binds the signature to the asking seller — reusing a signature under a different `seller_agent_url` fails verification. |
 | `property_rid` | From the request body |
 | `placement_id` | From the request body |
 | `package_ids` | Sorted, comma-separated list of active package IDs |
@@ -524,7 +581,7 @@ Concatenated in this order, UTF-8, newline-separated:
 
 When `package_ids` is absent from the request, the signature MUST use an empty string for that field in the signed payload.
 
-Because the signed fields are static per placement per provider, the same signature can be cached and reused for all requests to the same `(placement_id, provider_endpoint_url)` pair within a 24-hour epoch. Cache keys MUST include `provider_endpoint_url` — reusing a signature across providers violates the binding and will fail verification.
+Because the signed fields are static per seller per placement per provider, the same signature can be cached and reused for all requests to the same `(seller_agent_url, placement_id, provider_endpoint_url)` triple within a 24-hour epoch. Cache keys MUST include `seller_agent_url` and `provider_endpoint_url` — reusing a signature across sellers or providers violates the binding and will fail verification.
 
 #### Identity Match signed fields
 
@@ -534,6 +591,7 @@ The signed input is the hex-encoded SHA-256 of the [RFC 8785 JCS](https://datatr
 |---|---|
 | `type` | `"identity_match_request"` |
 | `request_id` | From the request body |
+| `seller_agent_url` | From the request body, compared using the [AdCP URL canonicalization rules](/docs/reference/url-canonicalization). Binds the signature to the asking seller — reusing a signature under a different `seller_agent_url` fails verification. |
 | `identities_hash` | Hex-encoded SHA-256 of the canonical `identities` bytes (see below) |
 | `consent` | The request's `consent` object verbatim, or `null` when absent |
 | `package_ids` | The request's `package_ids` sorted lexicographically by UTF-8 byte order |
@@ -690,9 +748,11 @@ Publishers MUST NOT parse, decrypt, or make decisions based on TMPX values. The 
 
 ### Inventory-specific behavior
 
-- **Web, mobile, CTV (SSAI), audio (DAI):** Standard impression pixel — `{TMPX}` substituted at serve time.
-- **CTV (client-side VAST):** Publisher substitutes `{TMPX}` before the VAST document reaches the player.
-- **DOOH:** Play-log-based — the TMPX token is logged by the DOOH player and included in play log records rather than pixel URLs.
+For each terminal surface the publisher trafficks the destinations named in its [`tmpx_macro_mapping`](#publisher-tmpx-macro-mapping) — those names (macros, GAM key-values, VAST URL macros, DOOH play-log fields) are the operational contract the ad-server line items target. At serve time, the publisher walks `tmpx_providers[provider_id].chunks[]` from the response and, for each chunk, substitutes `chunk.value` into `tmpx_macro_mapping[provider_id][chunk.slot_id]`. The legacy `{TMPX}` macro (from the deprecated singular `tmpx` field) remains supported for consumers that haven't migrated.
+
+- **Web, mobile, CTV (SSAI), audio (DAI):** Standard impression pixel — for each `chunk ∈ tmpx_providers[provider_id].chunks`, substitute `chunk.value` into the destination the publisher's mapping resolves for `(provider_id, chunk.slot_id)`.
+- **CTV (client-side VAST):** Publisher performs the same per-chunk substitution before the VAST document reaches the player.
+- **DOOH:** Play-log-based — TMPX values are logged by the DOOH player into the play-log fields the publisher's mapping resolves for `(provider_id, chunk.slot_id)` rather than pixel URLs. Play log records MUST carry `provider_id` alongside each `slot_id`/`value` pair so the buyer can route to the correct decryption master.
 
 ## Transport
 

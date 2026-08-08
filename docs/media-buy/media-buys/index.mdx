@@ -24,6 +24,7 @@ Transform discovered products into active advertising campaigns using [`create_m
 
 - **Package Configuration**: Combine products with formats, targeting, and budget
 - **Campaign Setup**: Define timing, overall budget, and brand context
+- **Execution Policy**: Define media-buy bidding defaults and explicit package overrides separately from optimization goals
 - **Validation & Approval**: Automated checks with optional human approval
 - **Platform Deployment**: Campaign creation across advertising platforms
 
@@ -75,6 +76,7 @@ For complete details on optimization strategies, performance monitoring, standar
 A media buy contains:
 - **Campaign metadata** (buyer reference, brand, timing)
 - **Overall budget** with currency and pacing preferences
+- **Bidding policy** at media-buy scope, with optional complete package overrides and authored-scope-preserving readback
 - **Multiple packages** representing different targeting/creative combinations
 - **Status tracking** through creation, approval, and execution phases
 
@@ -96,7 +98,7 @@ Packages are the building blocks of media buys:
 - **Single product** selection from discovery results - when you buy a product, you buy the entire product (unless using property targeting)
 - **Creative formats** to be provided for this package
 - **Targeting overlays** for refinements including geo restrictions, frequency caps, and property targeting
-- **Budget allocation** as portion of overall media buy budget
+- **Budget controls** as an independent fixed budget or a cap/soft minimum within seller-optimized allocation
 - **Pricing option** selection from product's available pricing models
 - **Pacing strategy** for budget delivery (even, asap, or front_loaded)
 - **Bid price** for auction-based pricing models (when applicable)
@@ -109,7 +111,7 @@ Packages can have independent flight dates within a media buy. This enables week
 
 - **Inheritance**: When `start_time` or `end_time` is omitted on a package, the package inherits the media buy's dates. Each field inherits independently — a package may specify `start_time` while inheriting the media buy's `end_time`, or vice versa.
 - **Validation**: Package dates must fall within the parent media buy's date range. Sellers SHOULD reject packages where `start_time` is equal to or after `end_time`.
-- **Overlapping flights**: Multiple packages for the same product may have overlapping date ranges. Each package maintains its own independent budget.
+- **Overlapping flights**: Multiple packages for the same product may have overlapping date ranges. In fixed mode each package maintains an independent budget; in seller-optimized mode the packages draw from the shared total within their constraints.
 - **Format**: Plain ISO 8601 date-time — packages do not support `"asap"`
 
 **Weekly flights example:**
@@ -176,7 +178,7 @@ When a product defines multiple buyer-targetable placements, buyers can assign d
       "placement_id": "homepage_banner",
       "name": "Homepage Banner",
       "mode": "targetable",
-      "format_ids": [{"agent_url": "...", "id": "display_728x90"}]
+      "format_option_refs": [{ "scope": "product", "format_option_id": "display_728x90" }]
     },
     {
       "kind": "publisher_ref",
@@ -184,7 +186,7 @@ When a product defines multiple buyer-targetable placements, buyers can assign d
       "placement_id": "homepage_banner",
       "name": "Homepage Banner",
       "mode": "targetable",
-      "format_ids": [{"agent_url": "...", "id": "display_728x90"}]
+      "format_option_refs": [{ "scope": "product", "format_option_id": "display_728x90" }]
     },
     {
       "kind": "seller_inline",
@@ -192,7 +194,7 @@ When a product defines multiple buyer-targetable placements, buyers can assign d
       "placement_id": "article_sidebar",
       "name": "Article Sidebar",
       "mode": "targetable",
-      "format_ids": [{"agent_url": "...", "id": "display_300x250"}]
+      "format_option_refs": [{ "scope": "product", "format_option_id": "display_300x250" }]
     },
     {
       "kind": "seller_inline",
@@ -469,9 +471,9 @@ Media buy operations use a unified status system with predictable timing:
 
 ## Error Handling
 
-For comprehensive error handling guidance including pending vs error states, response patterns, and recovery strategies, see [Error Handling](/docs/building/implementation/error-handling).
+For comprehensive error handling guidance including pending vs error states, response patterns, and recovery strategies, see [Error Handling](/docs/building/by-layer/L3/error-handling).
 
-Media buy specific error codes are documented in each task specification and the [Error Handling Reference](/docs/building/implementation/error-handling).
+Media buy specific error codes are documented in each task specification and the [Error Handling Reference](/docs/building/by-layer/L3/error-handling).
 
 ## Asynchronous Operations and Human-in-the-Loop
 
@@ -608,4 +610,4 @@ Data-driven campaign improvement leveraging comprehensive analytics:
 - **[Product Discovery](/docs/media-buy/product-discovery/)** - Finding inventory for media buys
 - **[Task Reference](/docs/media-buy/task-reference/)** - Complete API documentation
 - **[Creatives](/docs/media-buy/creatives/)** - Creative asset management
-- **[Orchestrator Design Guide](/docs/building/implementation/orchestrator-design)** - Implementation best practices
+- **[Orchestrator Design Guide](/docs/building/operating/orchestrator-design)** - Implementation best practices

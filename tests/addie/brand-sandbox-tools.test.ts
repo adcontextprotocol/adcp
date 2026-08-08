@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { createHash } from 'node:crypto';
+import { canonicalize } from '@adcp/sdk';
 import {
   handleGetBrandIdentity,
   handleGetRights,
@@ -19,6 +21,22 @@ const handlers: Record<string, Handler> = {
 
 async function call(tool: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
   return await handlers[tool](args, ctx);
+}
+
+function rightsTestDates() {
+  const year = new Date(Date.now()).getUTCFullYear() + 1;
+  return {
+    extensionEndDate: `${year}-09-30`,
+    beforeCurrentEndDate: `${year}-01-01`,
+  };
+}
+
+function rightsConstraintDigest(constraint: Record<string, unknown>): string {
+  const projection = structuredClone(constraint);
+  delete projection.content_digest;
+  delete projection.attestation_refs;
+  delete projection.verification_url;
+  return `sha256:${createHash('sha256').update(canonicalize(projection)).digest('hex')}`;
 }
 
 describe('brand protocol tools (training agent)', () => {
@@ -198,7 +216,8 @@ describe('brand protocol tools (training agent)', () => {
           countries: ['NL'],
         },
       });
-      expect(result.status).toBe('acquired');
+      expect(result.status).toBe('completed');
+      expect(result.rights_status).toBe('acquired');
       expect((result.generation_credentials as unknown[]).length).toBeGreaterThan(0);
       expect((result.disclosure as { required: boolean }).required).toBe(true);
       expect(result.rights_constraint).toBeDefined();
@@ -214,7 +233,8 @@ describe('brand protocol tools (training agent)', () => {
           uses: ['likeness'],
         },
       });
-      expect(result.status).toBe('pending_approval');
+      expect(result.status).toBe('completed');
+      expect(result.rights_status).toBe('pending_approval');
       expect(result.estimated_response_time).toBe('48h');
     });
 
@@ -228,7 +248,8 @@ describe('brand protocol tools (training agent)', () => {
           uses: ['likeness'],
         },
       });
-      expect(result.status).toBe('rejected');
+      expect(result.status).toBe('completed');
+      expect(result.rights_status).toBe('rejected');
       expect(result.reason).toContain('exclusivity');
       expect(result.suggestions).toBeDefined();
       expect((result.suggestions as string[]).length).toBeGreaterThan(0);
@@ -244,7 +265,8 @@ describe('brand protocol tools (training agent)', () => {
           uses: ['likeness'],
         },
       });
-      expect(result.status).toBe('rejected');
+      expect(result.status).toBe('completed');
+      expect(result.rights_status).toBe('rejected');
       expect(result.reason).toBe('This conflicts with our talent lifestyle guidelines');
       expect(result.suggestions).toBeUndefined();
     });
@@ -259,7 +281,8 @@ describe('brand protocol tools (training agent)', () => {
           uses: ['likeness', 'voice'],
         },
       });
-      expect(result.status).toBe('acquired');
+      expect(result.status).toBe('completed');
+      expect(result.rights_status).toBe('acquired');
       const providers = (result.generation_credentials as Array<{ provider: string }>).map(c => c.provider);
       expect(providers).toContain('midjourney');
       expect(providers).toContain('elevenlabs');
@@ -301,7 +324,7 @@ describe('brand protocol tools (training agent)', () => {
       expect(webhook.authentication.credentials.length).toBeGreaterThanOrEqual(32);
     });
 
-    it('rights_constraint includes verification_url', async () => {
+    it('rights_constraint carries a digest-pinned issuer attestation, not a verification URL', async () => {
       const result = await call('acquire_rights', {
         rights_id: 'janssen_likeness_voice',
         pricing_option_id: 'monthly_exclusive',
@@ -311,12 +334,43 @@ describe('brand protocol tools (training agent)', () => {
           uses: ['likeness'],
         },
       });
-      const constraint = result.rights_constraint as { verification_url: string };
-      expect(constraint.verification_url).toMatch(/^https:\/\//);
-      expect(constraint.verification_url).toContain('/verify');
+      const constraint = result.rights_constraint as {
+        verification_url?: string;
+        content_digest: string;
+        grant_status: string;
+        restrictions: string[];
+        disclosure: { required: boolean; text: string };
+        creative_approval_required: boolean;
+        attestation_refs: Array<{
+          issuer: { type: string; brand: { domain: string; brand_id: string } };
+          subject: { id: string; namespace: string; content_digest: string };
+        }>;
+      } & Record<string, unknown>;
+      expect(constraint.verification_url).toBeUndefined();
+      expect(constraint.content_digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+      expect(constraint.content_digest).toBe(rightsConstraintDigest(constraint));
+      expect(constraint.grant_status).toBe('active');
+      expect(constraint.restrictions).toEqual(result.restrictions);
+      expect(constraint.disclosure).toEqual(result.disclosure);
+      expect(constraint.creative_approval_required).toBe(true);
+      expect(JSON.stringify(constraint)).not.toContain('rk_approve_sandbox_');
+      expect(constraint.attestation_refs).toHaveLength(1);
+      expect(constraint.attestation_refs[0].issuer).toEqual({
+        type: 'brand',
+        brand: { domain: 'lotientertainment.com', brand_id: 'daan_janssen' },
+      });
+      expect(constraint.attestation_refs[0].subject.id).toBe('janssen_likeness_voice');
+      expect(constraint.attestation_refs[0].subject.namespace).toBe('https://rights.lotientertainment.com/mcp');
+      expect(constraint.attestation_refs[0].subject.content_digest).toBe(constraint.content_digest);
     });
 
     it('rights_constraint uses date-time format', async () => {
+      // Use a window in the next calendar year so this exercises the success
+      // path durably. A hardcoded past end_date is (correctly) rejected as
+      // expired, and a hardcoded "today" date is a calendar time-bomb.
+      const year = new Date(Date.now()).getUTCFullYear() + 1;
+      const startDate = `${year}-04-01`;
+      const endDate = `${year}-06-30`;
       const result = await call('acquire_rights', {
         rights_id: 'janssen_likeness_voice',
         pricing_option_id: 'monthly_exclusive',
@@ -324,13 +378,13 @@ describe('brand protocol tools (training agent)', () => {
         campaign: {
           description: 'Restaurant food campaign',
           uses: ['likeness'],
-          start_date: '2026-04-01',
-          end_date: '2026-06-30',
+          start_date: startDate,
+          end_date: endDate,
         },
       });
       const constraint = result.rights_constraint as { valid_from: string; valid_until: string };
-      expect(constraint.valid_from).toBe('2026-04-01T00:00:00Z');
-      expect(constraint.valid_until).toBe('2026-06-30T23:59:59Z');
+      expect(constraint.valid_from).toBe(`${startDate}T00:00:00Z`);
+      expect(constraint.valid_until).toBe(`${endDate}T23:59:59Z`);
     });
 
     it('returns error for unknown rights_id', async () => {
@@ -372,7 +426,8 @@ describe('brand protocol tools (training agent)', () => {
           uses: ['voice'],
         },
       });
-      expect(result.status).toBe('rejected');
+      expect(result.status).toBe('completed');
+      expect(result.rights_status).toBe('rejected');
       expect(result.reason).toContain('cosmetics');
     });
   });
@@ -380,12 +435,13 @@ describe('brand protocol tools (training agent)', () => {
   describe('update_rights', () => {
 
     it('returns updated terms with extended end_date', async () => {
+      const { extensionEndDate } = rightsTestDates();
       const result = await call('update_rights', {
         rights_id: 'janssen_likeness_voice',
-        end_date: '2026-09-30',
+        end_date: extensionEndDate,
       });
       expect(result.rights_id).toBe('janssen_likeness_voice');
-      expect((result.terms as { end_date: string }).end_date).toBe('2026-09-30');
+      expect((result.terms as { end_date: string }).end_date).toBe(extensionEndDate);
     });
 
     it('returns updated impression cap', async () => {
@@ -398,26 +454,40 @@ describe('brand protocol tools (training agent)', () => {
     });
 
     it('returns re-issued generation credentials', async () => {
+      const { extensionEndDate } = rightsTestDates();
       const result = await call('update_rights', {
         rights_id: 'janssen_likeness_voice',
-        end_date: '2026-09-30',
+        end_date: extensionEndDate,
       });
       const creds = result.generation_credentials as Array<{ expires_at: string; rights_key: string }>;
       expect(creds.length).toBeGreaterThan(0);
-      expect(creds[0].expires_at).toBe('2026-09-30T23:59:59Z');
+      expect(creds[0].expires_at).toBe(`${extensionEndDate}T23:59:59Z`);
       expect(creds[0].rights_key).toMatch(/^rk_mj_sandbox_/);
     });
 
     it('returns updated rights_constraint', async () => {
+      const { extensionEndDate } = rightsTestDates();
       const result = await call('update_rights', {
         rights_id: 'janssen_likeness_voice',
-        end_date: '2026-09-30',
+        end_date: extensionEndDate,
         impression_cap: 200000,
       });
-      const constraint = result.rights_constraint as { valid_until: string; impression_cap: number; rights_id: string };
-      expect(constraint.valid_until).toBe('2026-09-30T23:59:59Z');
+      const constraint = result.rights_constraint as {
+        valid_until: string;
+        impression_cap: number;
+        rights_id: string;
+        content_digest: string;
+        restrictions: string[];
+        disclosure: { required: boolean; text: string };
+        creative_approval_required: boolean;
+      } & Record<string, unknown>;
+      expect(constraint.valid_until).toBe(`${extensionEndDate}T23:59:59Z`);
       expect(constraint.impression_cap).toBe(200000);
       expect(constraint.rights_id).toBe('janssen_likeness_voice');
+      expect(constraint.content_digest).toBe(rightsConstraintDigest(constraint));
+      expect(constraint.restrictions).toContain('All generated creatives must be submitted for approval before distribution');
+      expect(constraint.disclosure.required).toBe(true);
+      expect(constraint.creative_approval_required).toBe(true);
     });
 
     it('returns paused state', async () => {
@@ -426,6 +496,13 @@ describe('brand protocol tools (training agent)', () => {
         paused: true,
       });
       expect(result.paused).toBe(true);
+      expect(result.generation_credentials).toEqual([]);
+      const constraint = result.rights_constraint as {
+        grant_status: string;
+        content_digest: string;
+      } & Record<string, unknown>;
+      expect(constraint.grant_status).toBe('paused');
+      expect(constraint.content_digest).toBe(rightsConstraintDigest(constraint));
     });
 
     it('omits paused when not provided', async () => {
@@ -456,9 +533,10 @@ describe('brand protocol tools (training agent)', () => {
     });
 
     it('returns error for end_date before current', async () => {
+      const { beforeCurrentEndDate } = rightsTestDates();
       const result = await call('update_rights', {
         rights_id: 'janssen_likeness_voice',
-        end_date: '2025-01-01',
+        end_date: beforeCurrentEndDate,
       });
       expect(result.errors).toBeDefined();
       expect((result.errors as Array<{ code: string }>)[0].code).toBe('INVALID_REQUEST');

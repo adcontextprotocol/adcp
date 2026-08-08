@@ -180,12 +180,12 @@ phases:
             description: "Context correlation_id returned unchanged"
 
       - id: list_creative_formats_with_idempotency_key
-        title: "Creative format discovery read accepts idempotency_key"
+        title: "Deprecated creative-format compatibility read accepts idempotency_key"
         narrative: |
-          `list_creative_formats` is the common creative discovery read used by
-          both media-buy and creative agents. The wrapper must accept the 3.1
-          envelope without rejecting the read request before it reaches the
-          handler.
+          When an agent voluntarily exposes the deprecated `list_creative_formats`
+          compatibility task, its wrapper must accept the 3.x envelope without
+          rejecting the read request before it reaches the handler. Canonical
+          discovery is tested through `get_adcp_capabilities` and `get_products`.
         task: list_creative_formats
         requires_tool: list_creative_formats
         schema_ref: "creative/list-creative-formats-request.json"

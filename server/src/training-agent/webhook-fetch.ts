@@ -33,9 +33,34 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { fetch as undiciFetch, type Dispatcher } from 'undici';
-import { buildSsrfSafeDispatcher } from '../utils/url-security.js';
+import {
+  buildSsrfSafeDispatcher,
+  isPrivateHostname,
+  isTestOrDevelopmentRuntime as isWebhookTestOrDevelopment,
+  SSRF_CONNECT_TIMEOUT_MS,
+} from '../utils/url-security.js';
+
+export { isWebhookTestOrDevelopment };
 
 type FetchInitWithDispatcher = Omit<RequestInit, 'dispatcher'> & { dispatcher?: Dispatcher };
+
+type DnsLookup = (
+  hostname: string,
+  options: { all: true; verbatim: true },
+) => Promise<Array<{ address: string; family: number }>>;
+
+interface PublicTargetOptions {
+  dnsLookup?: DnsLookup;
+  dnsTimeoutMs?: number;
+}
+
+export interface WebhookValidationError {
+  code: 'VALIDATION_ERROR';
+  message: string;
+  field: 'webhook_url';
+}
+
+export const WEBHOOK_DNS_TIMEOUT_MS = SSRF_CONNECT_TIMEOUT_MS;
 
 const fetchWithDispatcher = undiciFetch as unknown as (
   input: Parameters<typeof fetch>[0],
@@ -53,33 +78,22 @@ export class SsrfRefusedError extends Error {
   }
 }
 
-function isPrivateIpv4(address: string): boolean {
-  const [a, b] = address.split('.').map(Number);
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168)
-  );
-}
-
-function isPrivateIpAddress(address: string): boolean {
-  const version = isIP(address);
-  if (version === 4) return isPrivateIpv4(address);
-  if (version === 6) {
+/** A literal IP or resolved address is an unsafe webhook target if it is either:
+ *  - private/internal — delegated to the shared `isPrivateHostname` so this
+ *    pre-flight check and the connect-time `ssrfSafeLookup` dispatcher use ONE
+ *    classifier and cannot drift. It covers IPv4 private/CGNAT and the IPv6
+ *    loopback/link-local/ULA/site-local plus the IPv6-encoded private-v4 forms
+ *    (IPv4-mapped, IPv4-compatible, 6to4, NAT64) via canonicalization; or
+ *  - a reserved range that is never a valid delivery destination. Multicast
+ *    (ff00::/8) and documentation (2001:db8::/32) aren't "private" — the shared
+ *    classifier deliberately scopes them out — but a webhook must never POST to
+ *    them, so they're refused here. */
+function isUnsafeTarget(address: string): boolean {
+  if (isPrivateHostname(address)) return true;
+  if (isIP(address) === 6) {
     const v = address.toLowerCase();
-    if (v === '::1' || v === '::') return true;
-    if (v.startsWith('fe80:')) return true;
-    if (v.startsWith('fc') || v.startsWith('fd')) return true;        // ULA fc00::/7
-    if (v.startsWith('ff')) return true;                               // multicast ff00::/8
-    if (v.startsWith('64:ff9b:')) return true;                         // NAT64 well-known
-    if (v.startsWith('2001:db8:')) return true;                        // documentation
-    // IPv4-mapped (::ffff:a.b.c.d). Node's URL parser canonicalizes to this form.
-    const mapped = v.match(/^::ffff:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)$/);
-    if (mapped && isPrivateIpv4(mapped[1])) return true;
-    return false;
+    if (v.startsWith('ff')) return true;          // multicast ff00::/8
+    if (v.startsWith('2001:db8:')) return true;   // documentation (RFC 3849)
   }
   return false;
 }
@@ -96,19 +110,27 @@ function isNumericHostname(hostname: string): boolean {
   return false;
 }
 
-export async function assertPublicTarget(url: URL): Promise<void> {
+export async function assertPublicTarget(
+  url: URL,
+  options: PublicTargetOptions = {},
+): Promise<void> {
   // Scheme refusal is handled by the wrapper before this is called (so it
   // applies unconditionally, including under `allowPrivateIp: true`). By the
   // time we get here the URL is already known to be http(s).
-  // `url.hostname` strips brackets from `[::1]` → `::1`. Userinfo (user:pass@)
-  // never leaks into hostname per WHATWG, so we don't need to scrub that.
-  const hostname = url.hostname;
+  // `url.hostname` keeps the brackets on IPv6 literals (`[::1]`), so strip
+  // them before classification — `isIP('[::1]')` returns 0, which would route
+  // a literal private v6 address into the DNS-lookup path and let it through.
+  // Userinfo (user:pass@) never leaks into hostname per WHATWG, so we don't
+  // need to scrub that.
+  const hostname = url.hostname.startsWith('[') && url.hostname.endsWith(']')
+    ? url.hostname.slice(1, -1)
+    : url.hostname;
   if (!hostname || hostname === 'localhost' || hostname.endsWith('.localhost')) {
     throw new SsrfRefusedError(url.toString(), 'hostname resolves to loopback');
   }
   const version = isIP(hostname);
   if (version !== 0) {
-    if (isPrivateIpAddress(hostname)) {
+    if (isUnsafeTarget(hostname)) {
       throw new SsrfRefusedError(url.toString(), 'literal private/loopback address');
     }
     return;
@@ -116,18 +138,64 @@ export async function assertPublicTarget(url: URL): Promise<void> {
   if (isNumericHostname(hostname)) {
     throw new SsrfRefusedError(url.toString(), 'numeric-encoded hostname not allowed');
   }
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    const records = await lookup(hostname, { all: true, verbatim: true });
+    const dnsLookup = options.dnsLookup ?? lookup as DnsLookup;
+    const dnsTimeoutMs = options.dnsTimeoutMs ?? WEBHOOK_DNS_TIMEOUT_MS;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => {
+        reject(new SsrfRefusedError(url.toString(), 'DNS lookup timed out'));
+      }, dnsTimeoutMs);
+      timeout.unref?.();
+    });
+    const records = await Promise.race([
+      dnsLookup(hostname, { all: true, verbatim: true }),
+      timeoutPromise,
+    ]);
     if (records.length === 0) {
       throw new SsrfRefusedError(url.toString(), 'hostname did not resolve');
     }
-    if (records.some(r => isPrivateIpAddress(r.address))) {
+    if (records.some(r => isUnsafeTarget(r.address))) {
       throw new SsrfRefusedError(url.toString(), 'hostname resolves to private address');
     }
   } catch (err) {
     if (err instanceof SsrfRefusedError) throw err;
     throw new SsrfRefusedError(url.toString(), `DNS lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
+}
+
+/** Validate a webhook URL before storing it on collection/property state.
+ *
+ * This is only a pre-flight policy check. Any future list-change delivery
+ * must still use `createTrainingWebhookFetch`, which repeats the DNS check,
+ * pins the validated address at connect time, and refuses redirects. */
+export async function validateWebhookUrl(
+  value: string,
+  options: PublicTargetOptions = {},
+): Promise<WebhookValidationError | undefined> {
+  let target: URL;
+  try {
+    target = new URL(value);
+  } catch {
+    return { code: 'VALIDATION_ERROR', message: 'webhook_url must be a valid URL', field: 'webhook_url' };
+  }
+  if (
+    target.protocol !== 'https:' &&
+    (!isWebhookTestOrDevelopment(process.env.NODE_ENV) || target.protocol !== 'http:')
+  ) {
+    return { code: 'VALIDATION_ERROR', message: 'webhook_url must use HTTPS', field: 'webhook_url' };
+  }
+  if (target.username || target.password) {
+    return { code: 'VALIDATION_ERROR', message: 'webhook_url must not include userinfo credentials', field: 'webhook_url' };
+  }
+  try {
+    await assertPublicTarget(target, options);
+  } catch {
+    return { code: 'VALIDATION_ERROR', message: 'webhook_url must target a public network address', field: 'webhook_url' };
+  }
+  return undefined;
 }
 
 /** Build a `fetch`-shaped function gated by the SSRF guard.
@@ -142,6 +210,9 @@ export async function assertPublicTarget(url: URL): Promise<void> {
  * The returned function uses userland `undici.fetch` so its dispatcher and
  * request-handler contract stay aligned with the imported undici version. */
 export function createWebhookFetch(options: { allowPrivateIp: boolean }): typeof fetch {
+  if (options.allowPrivateIp && !isWebhookTestOrDevelopment(process.env.NODE_ENV)) {
+    throw new Error('Private webhook targets can only be enabled in test or development');
+  }
   return async (input, init) => {
     const href = typeof input === 'string' || input instanceof URL
       ? input.toString()
@@ -170,4 +241,16 @@ export function createWebhookFetch(options: { allowPrivateIp: boolean }): typeof
       dispatcher,
     });
   };
+}
+
+/** The required fetch policy for every training-agent webhook delivery,
+ * including future collection/property list-change notifications.
+ *
+ * Runtime behavior is intentionally derived here rather than at call sites:
+ * callers cannot accidentally enable private targets unless the environment
+ * is explicitly `test` or `development`. */
+export function createTrainingWebhookFetch(
+  environment: string | undefined = process.env.NODE_ENV,
+): typeof fetch {
+  return createWebhookFetch({ allowPrivateIp: isWebhookTestOrDevelopment(environment) });
 }

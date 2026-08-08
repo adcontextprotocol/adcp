@@ -2,6 +2,7 @@ import { AdCPClient } from "@adcp/sdk";
 import type { Agent, FormatInfo } from "./types.js";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
+import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 
 type AdCPClientInstance = InstanceType<typeof AdCPClient>;
 
@@ -19,8 +20,8 @@ export class FormatsService {
   private authedClients: WeakMap<SdkAuth, Map<string, AdCPClientInstance>> = new WeakMap();
   private readonly CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
-  async getFormatsForAgent(agent: Agent, auth?: SdkAuth): Promise<AgentFormatsProfile> {
-    if (!auth) {
+  async getFormatsForAgent(agent: Agent, auth?: SdkAuth, forceRefresh = false): Promise<AgentFormatsProfile> {
+    if (!auth && !forceRefresh) {
       const cached = this.cache.get(agent.url);
       if (cached && Date.now() - new Date(cached.last_fetched).getTime() < this.CACHE_TTL_MS) {
         return cached;
@@ -33,29 +34,25 @@ export class FormatsService {
     try {
       const multiClient = this.getClient(agent, auth);
       const client = multiClient.agent(agent.name);
-      const result = await client.executeTask("list_creative_formats", {});
+      const result = await client.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
 
       if (result.success && result.data) {
-        const response = result.data;
-
-        // Handle different response formats:
-        // 1. Array of formats directly
-        if (Array.isArray(response)) {
-          formats = response.map(this.normalizeFormat);
-        }
-        // 2. Object with formats array
-        else if (response?.formats && Array.isArray(response.formats)) {
-          formats = response.formats.map(this.normalizeFormat);
-        }
-        // 3. Single format object
-        else if (response && typeof response === "object") {
-          formats = [this.normalizeFormat(response)];
+        const creative = (result.data as unknown as Record<string, unknown>).creative;
+        const supported = creative && typeof creative === 'object' && !Array.isArray(creative)
+          ? (creative as Record<string, unknown>).supported_formats
+          : undefined;
+        if (!Array.isArray(supported)) {
+          error = 'Agent did not declare creative.supported_formats in get_adcp_capabilities';
+        } else {
+          formats = supported
+            .filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object' && !Array.isArray(entry)))
+            .map(entry => this.normalizeCapability(entry));
         }
       } else if (!result.success) {
         error = `Agent returned error: ${result.error || "Unknown error"}`;
       }
     } catch (toolError: any) {
-      error = `Agent does not support list_creative_formats: ${toolError.message}`;
+      error = `Agent does not support canonical capability discovery: ${toolError.message}`;
     }
 
     const profile: AgentFormatsProfile = {
@@ -86,7 +83,10 @@ export class FormatsService {
       protocol: (agent.protocol || "mcp") as "mcp" | "a2a",
       ...agentConfigAuthFields(auth),
     };
-    const client = new AdCPClient([agentConfig], { userAgent: AAO_UA_DISCOVERY });
+    const client = new AdCPClient(
+      [agentConfig],
+      withSdkSafeTransport({ userAgent: AAO_UA_DISCOVERY }),
+    );
     clientPool.set(key, client);
     return client;
   }
@@ -105,18 +105,22 @@ export class FormatsService {
     return `${agent.name}:${protocol}:${agent.url}`;
   }
 
-  private normalizeFormat(format: any): FormatInfo {
-    // Handle string format (just a name)
-    if (typeof format === "string") {
-      return { name: format };
-    }
-
-    // Handle object format
+  private normalizeCapability(entry: Record<string, unknown>): FormatInfo {
+    const format = entry.format && typeof entry.format === 'object' && !Array.isArray(entry.format)
+      ? entry.format as Record<string, unknown>
+      : {};
+    const params = format.params && typeof format.params === 'object' && !Array.isArray(format.params)
+      ? format.params as Record<string, unknown>
+      : {};
+    const width = typeof params.width === 'number' ? params.width : undefined;
+    const height = typeof params.height === 'number' ? params.height : undefined;
     return {
-      name: format.name || format.format || "unknown",
-      dimensions: format.dimensions || format.size,
-      aspect_ratio: format.aspect_ratio || format.aspectRatio,
-      description: format.description,
+      name: typeof entry.capability_id === 'string'
+        ? entry.capability_id
+        : typeof format.format_kind === 'string' ? format.format_kind : 'unknown',
+      ...(width !== undefined && height !== undefined ? { dimensions: `${width}x${height}` } : {}),
+      ...(typeof params.aspect_ratio === 'string' ? { aspect_ratio: params.aspect_ratio } : {}),
+      ...(typeof format.display_name === 'string' ? { description: format.display_name } : {}),
     };
   }
 

@@ -1,4 +1,4 @@
-import type { PoolClient, Pool } from 'pg';
+import type { Client, PoolClient, Pool } from 'pg';
 
 const MAX_NAME_LEN = 255;
 
@@ -75,7 +75,7 @@ export function splitFullName(fullName: string): { firstName: string; lastName: 
  * callback and the user.updated webhook agree on the resolved name.
  */
 export async function resolveUserNameWithFallbacks(
-  db: Pick<Pool | PoolClient, 'query'>,
+  db: Pick<Pool | PoolClient | Client, 'query'>,
   workosUserId: string,
   workosFirstName: string | null | undefined,
   workosLastName: string | null | undefined,

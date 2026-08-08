@@ -129,8 +129,8 @@
           "minimum": 0
         },
         "completion_rate": {
-          "type": "number",
-          "description": "Aggregate completion rate across all media buys (weighted by impressions, not a simple average of per-buy rates)",
+          "type": ["number", "null"],
+          "description": "Aggregate completion rate across all media buys (weighted by impressions, not a simple average of per-buy rates). Null indicates the metric is not applicable to the aggregated buys (e.g. all non-video inventory).",
           "minimum": 0,
           "maximum": 1
         },
@@ -255,6 +255,11 @@
             "$ref": "/schemas/enums/pricing-model.json",
             "description": "Pricing model used for this media buy"
           },
+          "pacing_index": {
+            "type": "number",
+            "description": "Aggregate media-buy delivery pace relative to the media-buy pacing plan (1.0 = on track, <1.0 = behind, >1.0 = ahead). This is the authoritative pacing signal for seller-optimized buys; package pacing indexes are subordinate diagnostics.",
+            "minimum": 0
+          },
           "totals": {
             "allOf": [
               {
@@ -294,7 +299,7 @@
                     },
                     "pacing_index": {
                       "type": "number",
-                      "description": "Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)",
+                      "description": "Package delivery pace relative to its package-level pacing plan (1.0 = on track, <1.0 = behind, >1.0 = ahead). In seller-optimized mode this is a subordinate diagnostic and may be absent when no package pacing preference exists.",
                       "minimum": 0
                     },
                     "pricing_model": {
@@ -308,19 +313,12 @@
                     },
                     "currency": {
                       "type": "string",
-                      "description": "ISO 4217 currency code (e.g., USD, EUR, GBP) for this package's pricing. Indicates the currency in which the rate and spend values are denominated. Different packages can use different currencies when supported by the publisher.",
+                      "description": "ISO 4217 currency code for this package's pricing rate and spend. For AdCP-authored media buys this MUST equal the media-buy currency. A different package currency may appear only when reporting a legacy or externally created buy whose original contract allowed mixed denominations.",
                       "pattern": "^[A-Z]{3}$"
                     },
                     "delivery_status": {
-                      "type": "string",
-                      "description": "System-reported operational state of this package. Reflects actual delivery state independent of buyer pause control.",
-                      "enum": [
-                        "delivering",
-                        "completed",
-                        "budget_exhausted",
-                        "flight_ended",
-                        "goal_met"
-                      ]
+                      "$ref": "/schemas/enums/delivery-status.json",
+                      "description": "System-reported operational state of this package. Reflects actual delivery state independent of buyer pause control. 'not_delivering' means zero impressions were recorded for the entire reporting_period while the package was in-flight. Sellers SHOULD only report 'not_delivering' once the package's data is_final for the period — a provisional (is_final: false) zero may still be measurement catching up, not genuine non-delivery."
                     },
                     "paused": {
                       "type": "boolean",

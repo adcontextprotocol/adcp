@@ -30,11 +30,66 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const semver = require('semver');
+const {
+  MCP_PROTOCOL_VERSION,
+  generateMcpSchemaProjection,
+} = require('./mcp-schema-projection.cjs');
 
 const SOURCE_DIR = path.join(__dirname, '../static/schemas/source');
 const DIST_DIR = path.join(__dirname, '../dist/schemas');
 const PACKAGE_JSON = path.join(__dirname, '../package.json');
 const SKILLS_DIR = path.join(__dirname, '../skills');
+const SCHEMA_ORIGIN = 'https://adcontextprotocol.org';
+
+/**
+ * Turn a source-form schema URI into its canonical published identity.
+ * Source schemas intentionally use `/schemas/...` paths for local authoring;
+ * emitted artifacts use exact-version HTTPS URIs so their identity and refs
+ * do not depend on whether the retrieval URI was http(s) or file://.
+ */
+function canonicalPublishedSchemaUri(uri, version) {
+  if (typeof uri !== 'string' || !uri.startsWith('/schemas/')) return uri;
+  const versionPrefix = `/schemas/${version}/`;
+  return uri.startsWith(versionPrefix)
+    ? `${SCHEMA_ORIGIN}${uri}`
+    : `${SCHEMA_ORIGIN}${versionPrefix}${uri.slice('/schemas/'.length)}`;
+}
+
+/** Mutates schema objects, canonicalizing only URI-bearing schema keywords. */
+function canonicalizePublishedSchemaUris(node, version) {
+  if (!node || typeof node !== 'object') return node;
+  if (Array.isArray(node)) {
+    for (const item of node) canonicalizePublishedSchemaUris(item, version);
+    return node;
+  }
+  for (const [key, value] of Object.entries(node)) {
+    if ((key === '$id' || key === '$ref' || key === '$schema') && typeof value === 'string') {
+      node[key] = canonicalPublishedSchemaUri(value, version);
+    } else {
+      canonicalizePublishedSchemaUris(value, version);
+    }
+  }
+  return node;
+}
+
+function transformPublishedSchemaText(content, version) {
+  const schema = JSON.parse(content);
+  canonicalizePublishedSchemaUris(schema, version);
+  return `${JSON.stringify(schema, null, 2)}\n`;
+}
+
+// Keep generated file-based discovery aligned with the CDN and server
+// middleware. Exact artifacts remain available, but non-selectable releases
+// must never win latest/major/minor aliases.
+const RELEASE_STATUS_OVERRIDES = new Map([
+  ['3.1.3', 'withdrawn'],
+  ['3.2.0', 'unpublished'],
+]);
+
+function isSelectableRelease(version) {
+  return !RELEASE_STATUS_OVERRIDES.has(version);
+}
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -56,16 +111,24 @@ function getAllReleasedVersions() {
 
   const entries = fs.readdirSync(DIST_DIR, { withFileTypes: true });
   return entries
-    .filter(e => e.isDirectory() && /^\d+\.\d+\.\d+$/.test(e.name))
+    .filter(e => e.isDirectory()
+      && semver.valid(e.name) !== null
+      && semver.prerelease(e.name) === null
+      && isSelectableRelease(e.name))
     .map(e => e.name)
-    .sort((a, b) => {
-      // Sort by semver (descending)
-      const [aMajor, aMinor, aPatch] = a.split('.').map(Number);
-      const [bMajor, bMinor, bPatch] = b.split('.').map(Number);
-      if (aMajor !== bMajor) return bMajor - aMajor;
-      if (aMinor !== bMinor) return bMinor - aMinor;
-      return bPatch - aPatch;
-    });
+    .sort(semver.rcompare);
+}
+
+function getAllSchemaVersions() {
+  if (!fs.existsSync(DIST_DIR)) {
+    return [];
+  }
+
+  const entries = fs.readdirSync(DIST_DIR, { withFileTypes: true });
+  return entries
+    .filter(e => e.isDirectory() && semver.valid(e.name) !== null)
+    .map(e => e.name)
+    .sort(semver.rcompare);
 }
 
 /**
@@ -106,6 +169,125 @@ function getMinorVersion(version) {
     throw new Error(`Invalid semantic version: ${version}. Expected format: major.minor.patch`);
   }
   return `${parts[0]}.${parts[1]}`;
+}
+
+function getReleaseMetadata(version, knownVersions = []) {
+  if (version === 'latest') {
+    return {
+      stability: 'development',
+      prerelease: false,
+      deprecated: false,
+    };
+  }
+
+  const statusOverride = RELEASE_STATUS_OVERRIDES.get(version);
+  if (statusOverride === 'withdrawn') {
+    return {
+      stability: 'withdrawn',
+      prerelease: false,
+      deprecated: true,
+      withdrawn: true,
+    };
+  }
+  if (statusOverride === 'unpublished') {
+    return {
+      stability: 'unpublished',
+      prerelease: false,
+      deprecated: false,
+      published: false,
+    };
+  }
+
+  const match = String(version).match(/^\d+\.\d+\.\d+(?:-([0-9A-Za-z.-]+))?$/);
+  if (!match) {
+    throw new Error(`Invalid semantic version: ${version}. Expected format: major.minor.patch[-prerelease]`);
+  }
+
+  const prerelease = match[1] || '';
+  if (!prerelease) {
+    return {
+      stability: 'stable',
+      prerelease: false,
+      deprecated: false,
+    };
+  }
+
+  const label = prerelease.split('.')[0].toLowerCase();
+  const stableVersion = String(version).split('-')[0];
+  const supersededBy = knownVersions.includes(stableVersion) ? stableVersion : undefined;
+  const metadata = {
+    stability: label === 'rc' ? 'rc' : label === 'beta' ? 'beta' : 'prerelease',
+    prerelease: true,
+    deprecated: Boolean(supersededBy),
+  };
+  if (supersededBy) {
+    metadata.superseded_by = supersededBy;
+  }
+  return metadata;
+}
+
+function buildRootSchemaDiscovery() {
+  const stableVersions = getAllReleasedVersions();
+  const allVersions = getAllSchemaVersions();
+  const latestStable = stableVersions[0] || null;
+  const latestByMajor = {};
+  const latestByMinor = {};
+  const aliases = {};
+
+  for (const version of stableVersions) {
+    const major = getMajorVersion(version);
+    const minor = getMinorVersion(version);
+    if (!latestByMajor[major]) {
+      latestByMajor[major] = version;
+      aliases[`v${major}`] = version;
+    }
+    if (!latestByMinor[minor]) {
+      latestByMinor[minor] = version;
+      aliases[`v${minor}`] = version;
+    }
+  }
+
+  return {
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    $id: `${SCHEMA_ORIGIN}/schemas/index.json`,
+    title: 'AdCP Schema Discovery',
+    description: 'Root discovery document for file-based AdCP schema consumers. Use latest_stable or a major/minor alias target instead of choosing by directory listing.',
+    latest: latestStable,
+    latest_stable: latestStable,
+    channel: 'stable',
+    aliases,
+    latest_by_major: latestByMajor,
+    latest_by_minor: latestByMinor,
+    versions: allVersions.map((version) => ({
+      version,
+      ...getReleaseMetadata(version, allVersions),
+      path: `/schemas/${version}/`,
+      index: `/schemas/${version}/index.json`,
+    })),
+  };
+}
+
+function writeRootSchemaDiscovery() {
+  const discovery = buildRootSchemaDiscovery();
+  ensureDir(DIST_DIR);
+
+  fs.writeFileSync(
+    path.join(DIST_DIR, 'index.json'),
+    JSON.stringify(discovery, null, 2) + '\n',
+    'utf8'
+  );
+
+  fs.writeFileSync(
+    path.join(DIST_DIR, 'latest.json'),
+    JSON.stringify({
+      latest: discovery.latest_stable,
+      latest_stable: discovery.latest_stable,
+      channel: 'stable',
+      path: discovery.latest_stable ? `/schemas/${discovery.latest_stable}/` : null,
+      index: discovery.latest_stable ? `/schemas/${discovery.latest_stable}/index.json` : null,
+    }, null, 2) + '\n',
+    'utf8'
+  );
 }
 
 function ensureDir(dir) {
@@ -555,7 +737,7 @@ function generateExtensionRegistry(extensions, targetVersion) {
     }
   }
 
-  return registry;
+  return canonicalizePublishedSchemaUris(registry, targetVersion);
 }
 
 /**
@@ -579,11 +761,9 @@ function buildExtensions(sourceDir, targetDir, version) {
     // No extensions yet - just copy the meta schema and generate empty registry
     const metaSchemaPath = path.join(sourceExtensionsDir, 'extension-meta.json');
     if (fs.existsSync(metaSchemaPath)) {
-      let content = fs.readFileSync(metaSchemaPath, 'utf8');
-      // Update $id to include version
-      content = content.replace(
-        /"\$id":\s*"\/schemas\//g,
-        `"$id": "/schemas/${version}/`
+      const content = transformPublishedSchemaText(
+        fs.readFileSync(metaSchemaPath, 'utf8'),
+        version,
       );
       fs.writeFileSync(path.join(targetExtensionsDir, 'extension-meta.json'), content);
     }
@@ -604,21 +784,18 @@ function buildExtensions(sourceDir, targetDir, version) {
   // Copy extension-meta.json (with version transform)
   const metaSchemaPath = path.join(sourceExtensionsDir, 'extension-meta.json');
   if (fs.existsSync(metaSchemaPath)) {
-    let content = fs.readFileSync(metaSchemaPath, 'utf8');
-    content = content.replace(
-      /"\$id":\s*"\/schemas\//g,
-      `"$id": "/schemas/${version}/`
+    const content = transformPublishedSchemaText(
+      fs.readFileSync(metaSchemaPath, 'utf8'),
+      version,
     );
     fs.writeFileSync(path.join(targetExtensionsDir, 'extension-meta.json'), content);
   }
 
   // Copy each valid extension schema (with version transform)
   for (const ext of validExtensions) {
-    let content = JSON.stringify(ext.schema, null, 2);
-    // Update $id to include version
-    content = content.replace(
-      /"\$id":\s*"\/schemas\//g,
-      `"$id": "/schemas/${version}/`
+    const content = transformPublishedSchemaText(
+      JSON.stringify(ext.schema),
+      version,
     );
     fs.writeFileSync(
       path.join(targetExtensionsDir, `${ext.namespace}.json`),
@@ -682,7 +859,7 @@ function buildExtensions(sourceDir, targetDir, version) {
 const MANIFEST_PROTOCOLS = new Set([
   'media-buy', 'signals', 'governance', 'account', 'creative',
   'brand', 'content-standards', 'property', 'collection',
-  'sponsored-intelligence', 'protocol', 'compliance', 'tmp', 'a2ui'
+  'sponsored-intelligence', 'protocol', 'compliance', 'trusted-match', 'a2ui'
 ]);
 
 // Strip the `Recovery: <verdict>(...).` sentence from an error-code
@@ -978,20 +1155,9 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
       ensureDir(targetPath);
       copyAndTransformSchemas(sourcePath, targetPath, version);
     } else if (entry.name.endsWith('.json')) {
-      let content = fs.readFileSync(sourcePath, 'utf8');
-
-      // Update $id, $ref, and $schema fields to include version
-      content = content.replace(
-        /"\$id":\s*"\/schemas\//g,
-        `"$id": "/schemas/${version}/`
-      );
-      content = content.replace(
-        /"\$ref":\s*"\/schemas\//g,
-        `"$ref": "/schemas/${version}/`
-      );
-      content = content.replace(
-        /"\$schema":\s*"\/schemas\//g,
-        `"$schema": "/schemas/${version}/`
+      let content = transformPublishedSchemaText(
+        fs.readFileSync(sourcePath, 'utf8'),
+        version,
       );
 
       // Update baseUrl and metadata in registry
@@ -1006,10 +1172,25 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
         schema.adcp_version = version;
         schema.lastUpdated = new Date().toISOString().split('T')[0];
         schema.baseUrl = `/schemas/${version}`;
+        schema.protocol_layers = [
+          {
+            id: 'negotiation',
+            title: 'Negotiation layer',
+            description: 'Planning-time protocols for discovery, buying, creative, signals, accounts, governance, brand identity, and sponsored intelligence.',
+            schema_groups: ['media-buy', 'creative', 'signals', 'account', 'governance', 'brand', 'sponsored-intelligence']
+          },
+          {
+            id: 'decisioning-serving',
+            title: 'Decisioning and serving layer',
+            description: 'Trusted Match Protocol schemas for serve-time Context Match and Identity Match decisions.',
+            schema_groups: ['trusted-match']
+          }
+        ];
+        Object.assign(schema, getReleaseMetadata(version, getAllSchemaVersions()));
         if (!schema.versioning) {
           schema.versioning = {};
         }
-        schema.versioning.note = `AdCP uses build-time versioning. This directory contains schemas for AdCP ${version}. Full semantic versions are available at /schemas/{version}/ (e.g., /schemas/2.5.0/). Major version aliases point to the latest release: /schemas/v${getMajorVersion(version)}/ → /schemas/${version}/.`;
+        schema.versioning.note = `AdCP uses build-time versioning. This directory contains schemas for AdCP ${version}. Full semantic versions are available at /schemas/{version}/ (e.g., /schemas/2.5.0/). Major version aliases point to the latest stable release in that major line; use /schemas/index.json or /schemas/latest.json for the canonical file-based pointer.`;
         content = JSON.stringify(schema, null, 2);
       }
 
@@ -1769,6 +1950,7 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       if (dereferenced.$id) {
         dereferenced.$id = dereferenced.$id.replace('/schemas/', `/schemas/${version}/bundled/`);
       }
+      canonicalizePublishedSchemaUris(dereferenced, version);
 
       // Add metadata indicating this is bundled
       dereferenced._bundled = {
@@ -1788,6 +1970,22 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
   }
 
   return { successCount, errorCount };
+}
+
+function generateMcpProjectionForVersion(versionDir, urlVersion) {
+  const targetDir = path.join(versionDir, 'mcp', MCP_PROTOCOL_VERSION);
+  const stats = generateMcpSchemaProjection({
+    sourceDir: SOURCE_DIR,
+    targetDir,
+    manifestPath: path.join(versionDir, 'manifest.json'),
+    urlVersion,
+  });
+  console.log(
+    `   ✓ MCP ${MCP_PROTOCOL_VERSION} projection: ${stats.toolCount} tools, ${stats.schemaCount} schemas, `
+      + `${(stats.totalBytes / (1024 * 1024)).toFixed(2)} MiB total, `
+      + `${Math.ceil(stats.largestSchemaBytes / 1024)} KiB largest`
+  );
+  return stats;
 }
 
 /**
@@ -1939,6 +2137,8 @@ async function main() {
     console.log(`📦 Generating bundled schemas to dist/schemas/${version}/bundled/`);
     const { successCount, errorCount } = await generateBundledSchemas(SOURCE_DIR, bundledDir, version);
     console.log(`   ✓ Bundled ${successCount} schemas${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
+    console.log(`🔀 Generating MCP ${MCP_PROTOCOL_VERSION} JSON Schema projection`);
+    generateMcpProjectionForVersion(versionDir, version);
 
     // Note: Version aliases (v2, v2.5, v1, latest) are handled by HTTP middleware
     // No symlinks needed - the server rewrites /schemas/v2.5/* to /schemas/2.5.1/*
@@ -1962,15 +2162,17 @@ async function main() {
     // Generate bundled schemas for latest
     const latestBundledDir = path.join(latestDir, 'bundled');
     await generateBundledSchemas(SOURCE_DIR, latestBundledDir, 'latest');
+    generateMcpProjectionForVersion(latestDir, 'latest');
 
     // Generate skill schemas from the release version
     generateSkillSchemas(versionDir, version);
 
     // Stage the new versioned directory for git commit
     // This is needed for the changesets workflow to include it in the version commit
+    writeRootSchemaDiscovery();
     console.log(`📝 Staging dist/schemas/${version}/ for git commit`);
     try {
-      execSync(`git add dist/schemas/${version}/`, { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
+      execSync(`git add dist/schemas/${version}/ dist/schemas/index.json dist/schemas/latest.json`, { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
     } catch (error) {
       // Not in a git repo or git add failed - that's okay for non-CI builds
       console.log(`   (git add skipped - not in git context or git not available)`);
@@ -1984,6 +2186,7 @@ async function main() {
     console.log('Released paths:');
     console.log(`   /schemas/${version}/          - Exact version (pin for production)`);
     console.log(`   /schemas/${version}/bundled/  - Bundled schemas (no $ref)`);
+    console.log(`   /schemas/${version}/mcp/${MCP_PROTOCOL_VERSION}/ - MCP 2020-12 tool schemas`);
     console.log(`   /schemas/latest/           - Development (matches release)`);
     console.log('');
     console.log('Version aliases (handled by HTTP middleware):');
@@ -2026,12 +2229,15 @@ async function main() {
     console.log(`📦 Generating bundled schemas to dist/schemas/latest/bundled/`);
     const { successCount, errorCount } = await generateBundledSchemas(SOURCE_DIR, bundledDir, 'latest');
     console.log(`   ✓ Bundled ${successCount} schemas${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
+    console.log(`🔀 Generating MCP ${MCP_PROTOCOL_VERSION} JSON Schema projection`);
+    generateMcpProjectionForVersion(latestDir, 'latest');
 
     // Generate skill schemas from latest
     generateSkillSchemas(latestDir, 'latest');
 
     // Note: Version aliases (v2, v2.5, v1) are handled by HTTP middleware
     // No symlinks needed - the server rewrites URLs dynamically
+    writeRootSchemaDiscovery();
 
     // Show available paths
     const latestPerMinor = getLatestPatchPerMinor();
@@ -2040,6 +2246,7 @@ async function main() {
     console.log('');
     console.log('Available paths:');
     console.log(`   /schemas/latest/           - Development schemas (just rebuilt)`);
+    console.log(`   /schemas/latest/mcp/${MCP_PROTOCOL_VERSION}/ - MCP 2020-12 tool schemas`);
     if (latestReleasedVersion) {
       const releasedMajor = getMajorVersion(latestReleasedVersion);
       console.log(`   /schemas/${latestReleasedVersion}/          - Latest release (unchanged)`);
@@ -2060,7 +2267,21 @@ async function main() {
   console.log('📖 See docs/reference/versioning.mdx for guidance on which to use.');
 }
 
-module.exports = { hoistDuplicateInlineEnums, hoistMarkedSchemas, resolveRefs, versionInlineSchemaIds, dedupBundledSchemaIds, stripIdsFromSubtreesWithLocalRefs, copyAsyncResponseRefsToCore };
+module.exports = {
+  canonicalPublishedSchemaUri,
+  canonicalizePublishedSchemaUris,
+  generateExtensionRegistry,
+  hoistDuplicateInlineEnums,
+  hoistMarkedSchemas,
+  resolveRefs,
+  versionInlineSchemaIds,
+  dedupBundledSchemaIds,
+  stripIdsFromSubtreesWithLocalRefs,
+  copyAsyncResponseRefsToCore,
+  getReleaseMetadata,
+  buildRootSchemaDiscovery,
+  isSelectableRelease,
+};
 
 if (require.main === module) {
   main().catch(err => {

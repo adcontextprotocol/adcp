@@ -1,4 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+const executeTrainingAgentTool = vi.hoisted(() => vi.fn());
+
+vi.mock('../../../src/training-agent/task-handlers.js', () => ({
+  executeTrainingAgentTool,
+}));
 import {
   ADCP_TASK_REGISTRY,
   ADCP_TOOLS,
@@ -286,5 +292,41 @@ describe('call_adcp_task handler validation boundary', () => {
         media_buy_id: 'mb_123',
       },
     })).resolves.toContain('account.operator must be a string domain, not an array');
+  });
+});
+
+describe('call_adcp_task training module isolation', () => {
+  it('passes the shared current module to the embedded training agent', async () => {
+    executeTrainingAgentTool.mockResolvedValue({ success: true, data: { formats: [] } });
+    const trainingModuleContext = { moduleId: 'S1' };
+    const handlers = createAdcpToolHandlers({
+      workos_user: { workos_user_id: 'user_training' },
+    } as any, trainingModuleContext);
+    const callAdcpTask = handlers.get('call_adcp_task');
+
+    await callAdcpTask?.({
+      agent_url: 'https://test-agent.adcontextprotocol.org/sales/mcp',
+      task: 'list_creative_formats',
+      params: {},
+    });
+    trainingModuleContext.moduleId = 'S4';
+    await callAdcpTask?.({
+      agent_url: 'https://test-agent.adcontextprotocol.org/governance/mcp',
+      task: 'list_creative_formats',
+      params: {},
+    });
+
+    expect(executeTrainingAgentTool).toHaveBeenNthCalledWith(
+      1,
+      'list_creative_formats',
+      {},
+      expect.objectContaining({ mode: 'training', userId: 'user_training', moduleId: 'S1' }),
+    );
+    expect(executeTrainingAgentTool).toHaveBeenNthCalledWith(
+      2,
+      'list_creative_formats',
+      {},
+      expect.objectContaining({ mode: 'training', userId: 'user_training', moduleId: 'S4' }),
+    );
   });
 });

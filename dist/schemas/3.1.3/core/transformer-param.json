@@ -1,0 +1,146 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.3/core/transformer-param.json",
+  "title": "Transformer Param",
+  "description": "Descriptor for one configuration knob a transformer exposes. Returned inside transformer.json `params[]` from list_transformers. The descriptor declares the knob's shape; the buyer supplies its value in build_creative `config` keyed by `field`. For `value_source: enumerable` params (e.g. account-specific voices), the legal `options[]` are account-scoped and dynamic — they are returned only when the param's `field` is named in the list_transformers `expand_params` request, and may be paginated via `options_cursor`.",
+  "type": "object",
+  "properties": {
+    "field": {
+      "type": "string",
+      "description": "The config key. Buyers set the value under this exact key in build_creative `config`."
+    },
+    "type": {
+      "type": "string",
+      "enum": ["string", "number", "integer", "boolean"],
+      "description": "JSON type of the value the buyer supplies for this field."
+    },
+    "value_source": {
+      "type": "string",
+      "enum": ["inline", "range", "enumerable", "free_text"],
+      "description": "Where the legal values come from. `inline` — a small closed set listed in `allowed_values` (e.g. mastering_preset). `range` — a numeric interval bounded by `minimum`/`maximum` (e.g. speaking_rate). `enumerable` — an account-scoped, dynamic set (e.g. voices, including custom/cloned ones) resolved per-credential; values appear in `options[]` only when expanded. `free_text` — an open buyer-authored string with no closed/enumerable set (e.g. a negative_prompt or style note for a generative agent); `type` MUST be `string` and `allowed_values`/`minimum`/`maximum`/`options`/`options_cursor` MUST be absent. NOTE: a transformer-param MUST NOT be a generation-count knob (sample_count/n/num_images/count) — output count is owned by `max_variants`/`max_creatives`, never config."
+    },
+    "max_length": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Optional maximum character length for a `free_text` param. Omit for no declared limit."
+    },
+    "allowed_values": {
+      "type": "array",
+      "description": "The closed set of legal values. Present when `value_source` is `inline`.",
+      "items": {},
+      "minItems": 1
+    },
+    "minimum": {
+      "type": "number",
+      "description": "Inclusive lower bound. Present when `value_source` is `range`."
+    },
+    "maximum": {
+      "type": "number",
+      "description": "Inclusive upper bound. Present when `value_source` is `range`."
+    },
+    "options": {
+      "type": "array",
+      "description": "Account-scoped legal values for an `enumerable` param. Populated ONLY when this param's `field` was named in the list_transformers `expand_params` request — otherwise omitted (the buyer enumerates on demand). Brief-filtered and paginated; use `options_cursor` for the next page.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "description": "The value the buyer passes in `config` for this field."
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable label for this option."
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Option-specific attributes the buyer can filter or display (e.g. for a voice: language, gender, provider, custom).",
+            "additionalProperties": true
+          }
+        },
+        "required": ["value"],
+        "additionalProperties": true
+      }
+    },
+    "options_cursor": {
+      "type": "string",
+      "description": "Opaque pagination cursor for this param's `options[]`. Present when more option values are available than were returned. Pass back to list_transformers (scoped to this transformer + field) to fetch the next page."
+    },
+    "default": {
+      "description": "The value applied when the buyer omits this field from `config`. Type matches `type`."
+    },
+    "required": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the buyer MUST supply this field in `config`. When false and no `default` is declared, the agent chooses."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable explanation of what this knob does."
+    }
+  },
+  "required": ["field", "type", "value_source"],
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": { "properties": { "value_source": { "const": "inline" } }, "required": ["value_source"] },
+      "then": { "required": ["allowed_values"] }
+    },
+    {
+      "if": { "properties": { "value_source": { "const": "range" } }, "required": ["value_source"] },
+      "then": { "required": ["minimum", "maximum"] }
+    },
+    {
+      "if": { "properties": { "value_source": { "const": "free_text" } }, "required": ["value_source"] },
+      "then": {
+        "properties": { "type": { "const": "string" } },
+        "not": {
+          "anyOf": [
+            { "required": ["allowed_values"] },
+            { "required": ["minimum"] },
+            { "required": ["maximum"] },
+            { "required": ["options"] },
+            { "required": ["options_cursor"] }
+          ]
+        }
+      }
+    }
+  ],
+  "examples": [
+    {
+      "field": "voice",
+      "type": "string",
+      "value_source": "enumerable",
+      "default": "sara",
+      "description": "Narration voice, including account-specific custom/cloned voices.",
+      "options": [
+        { "value": "isaac", "label": "Isaac", "metadata": { "language": "en-US", "gender": "male", "provider": "audiostack" } },
+        { "value": "ceo_clone_2026", "label": "CEO (custom)", "metadata": { "language": "en-US", "custom": true } }
+      ],
+      "options_cursor": "eyJvZmZzZXQiOjI1fQ=="
+    },
+    {
+      "field": "mastering_preset",
+      "type": "string",
+      "value_source": "inline",
+      "allowed_values": ["broadcast", "podcast", "music"],
+      "default": "broadcast",
+      "description": "Audio mastering profile applied to the final mix."
+    },
+    {
+      "field": "speaking_rate",
+      "type": "number",
+      "value_source": "range",
+      "minimum": 0.5,
+      "maximum": 2.0,
+      "default": 1.0,
+      "description": "Narration speed multiplier."
+    },
+    {
+      "field": "negative_prompt",
+      "type": "string",
+      "value_source": "free_text",
+      "max_length": 500,
+      "description": "Open buyer-authored guidance for what the generative agent should avoid (e.g. \"no text overlays, no humans\")."
+    }
+  ]
+}

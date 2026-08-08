@@ -90,7 +90,7 @@ asyncio.run(main())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account` | [account-ref](/docs/building/integration/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. |
+| `account` | [account-ref](/docs/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. |
 | `event_sources` | [EventSource](/docs/media-buy/conversion-tracking/#event-source)[] | No | Event sources to sync. When omitted, the call is discovery-only and returns all existing event sources without modification. |
 | `delete_missing` | boolean | No | When true, buyer-managed event sources on the account not in this request are removed (default: false) |
 
@@ -101,6 +101,7 @@ asyncio.run(main())
 | `event_source_id` | string | Yes | Unique identifier for this event source |
 | `name` | string | No | Human-readable name |
 | `event_types` | [EventType](/docs/media-buy/conversion-tracking/#event-types)[] | No | Event types this source handles. If omitted, accepts all event types. |
+| `value_currencies` | string[] | No | ISO 4217 currencies accepted for monetary event values. Required before using this source for canonical ROAS. One source may support multiple currencies; each buy uses only records matching its media-buy currency. |
 | `action_source` | [ActionSource](/docs/media-buy/conversion-tracking/#action-sources) | No | Flat source category for compatibility (`website`, `app`, `system_generated`, etc.). Pair with `surface` when the flat value is too coarse. |
 | `allowed_domains` | string[] | No | Domains authorized to send events for this source |
 | `surface` | [EventSurface](/docs/media-buy/conversion-tracking/#event-surfaces) | No | Structured surface this source represents, such as an owned channel, profile, feed, podcast, newsletter list, website, app, or store |

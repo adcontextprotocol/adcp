@@ -177,8 +177,8 @@ retry_replay_contract:
 # --- @adcp/client primitives the runner hooks ---
 #
 # The runner does NOT reimplement signature verification or dedup. It consumes
-# the following primitives from @adcp/client (see adcontextprotocol/adcp-client)
-# so the conformance surface matches what production receivers use:
+# the following published client/SDK primitives so the conformance surface
+# matches what production receivers use:
 
 client_primitives:
   async_handler_config:
@@ -206,14 +206,11 @@ client_primitives:
     doc: https://github.com/adcontextprotocol/adcp-client/pull/629
 
   webhook_signature_verifier:
-    # Once RFC 9421 webhook signing lands in the client library (follow-up to
-    # adcontextprotocol/adcp#2423), the runner hooks the verifier to surface
-    # webhook_signature_* error codes on failure. Until that lands,
-    # expect_webhook_signature_valid grades as preview / skip with a stable
-    # non-applicable marker.
-    reference: 9421 webhook verifier (TBD in @adcp/client)
-    status: pending
-    blocked_on: "@adcp/client implementation of docs/building/implementation/security.mdx#webhook-callbacks"
+    # The runner hooks the published SDK verifier to surface stable
+    # webhook_signature_* error codes on failure. Implementations in another
+    # language run the same published vectors against their native verifier.
+    reference: "@adcp/sdk/signing verifyWebhookSignature"
+    status: available
 
   signature_replay_store:
     # The runner MUST maintain ONE (keyid, nonce) replay store shared across

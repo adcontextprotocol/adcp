@@ -346,6 +346,21 @@
       <!-- Overview metrics -->
       <div class="metrics-grid" id="metrics-grid"></div>
 
+      <div class="section" id="model-outcomes-section" style="display:none;">
+        <h2>Certification outcomes by model</h2>
+        <table id="model-outcomes-table">
+          <thead><tr>
+            <th>Model</th><th>Module</th>
+            <th class="text-right">Completed turns</th>
+            <th class="text-right">Interrupted</th>
+            <th class="text-right">Evidence</th>
+            <th class="text-right">Modules</th>
+            <th class="text-right">Credentials</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
       <!-- Credentials by tier -->
       <div class="section">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
@@ -388,7 +403,10 @@
       <!-- Attempts needing attention -->
       <div class="section" id="stuck-section" style="display:none;">
         <h2>Attempts needing attention</h2>
-        <p style="color:var(--color-text-secondary);font-size:14px;margin-bottom:16px;">Capstone attempts in progress for 7+ days, plus passed attempts that still need credential reconciliation.</p>
+        <p style="color:var(--color-text-secondary);font-size:14px;margin-bottom:16px;">
+          Capstone attempts in progress for 7+ days, plus passed attempts that still need credential reconciliation.
+          Follow the <a href="/docs/building/operating/support-recovery-runbooks#certification-completion-recovery" target="_blank" rel="noopener">recovery runbook</a> when automatic reconciliation returns warnings.
+        </p>
         <table id="stuck-table">
           <thead>
             <tr>
@@ -491,6 +509,12 @@
 
         // Metrics cards
         const grid = document.getElementById('metrics-grid');
+        const experience = data.experience || {};
+        const credentialLatency = experience.avg_credential_latency_seconds == null
+          ? '—'
+          : experience.avg_credential_latency_seconds < 60
+            ? `${experience.avg_credential_latency_seconds}s`
+            : `${Math.round(experience.avg_credential_latency_seconds / 60)}m`;
         grid.innerHTML = `
           <div class="metric-card">
             <div class="metric-label">Total learners</div>
@@ -516,7 +540,62 @@
             <div class="metric-value">${data.totals.stuck_attempts}</div>
             <div class="metric-sub">Blocking learners</div>
           </div>` : ''}
+          <div class="metric-card">
+            <div class="metric-label">Turn completion</div>
+            <div class="metric-value">${experience.completion_rate || 0}%</div>
+            <div class="metric-sub">Last ${experience.window_days || 30} days</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Interrupted turns</div>
+            <div class="metric-value">${experience.interruption_rate || 0}%</div>
+            <div class="metric-sub">${experience.recovery_rate || 0}% recovered after retry</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Resume sessions</div>
+            <div class="metric-value">${experience.resume_sessions || 0}</div>
+            <div class="metric-sub">${experience.resume_completion_rate || 0}% reached module completion</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Capacity protection</div>
+            <div class="metric-value">${experience.reserve_turns || 0}</div>
+            <div class="metric-sub">${experience.capacity_blocks || 0} blocked turns</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Contributions submitted</div>
+            <div class="metric-value">${experience.contributions_submitted || 0}</div>
+            <div class="metric-sub">${experience.contribution_submit_rate || 0}% of drafts</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Credential issue time</div>
+            <div class="metric-value">${credentialLatency}</div>
+            <div class="metric-sub">${experience.credential_action_resolution_rate || 0}% of action blocks resolved</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Evidence → completion</div>
+            <div class="metric-value">${experience.evidence_completion_rate || 0}%</div>
+            <div class="metric-sub">Validated module completions only</div>
+          </div>
         `;
+
+        const modelOutcomes = experience.model_outcomes || [];
+        const modelSection = document.getElementById('model-outcomes-section');
+        const modelBody = document.querySelector('#model-outcomes-table tbody');
+        if (modelOutcomes.length > 0) {
+          modelSection.style.display = '';
+          modelBody.innerHTML = modelOutcomes.map(outcome => `
+            <tr>
+              <td>${escapeHtml(outcome.model)}</td>
+              <td>${escapeHtml(outcome.module_id || '—')}</td>
+              <td class="text-right">${Number(outcome.turns_completed) || 0}</td>
+              <td class="text-right">${Number(outcome.turns_interrupted) || 0}</td>
+              <td class="text-right">${Number(outcome.evidence_complete) || 0}</td>
+              <td class="text-right">${Number(outcome.modules_completed) || 0}</td>
+              <td class="text-right">${Number(outcome.credentials_issued) || 0}</td>
+            </tr>`).join('');
+        } else {
+          modelSection.style.display = 'none';
+          modelBody.innerHTML = '';
+        }
 
         // Credentials by tier
         const credBody = document.querySelector('#credentials-table tbody');
@@ -760,15 +839,42 @@
         }).join('');
 
         const credentialRows = data.credentials.map(c => {
-          const badgeStatus = c.certifier_credential_id
-            ? '<span class="badge badge-active">issued</span>'
-            : '<span class="badge badge-stuck">pending</span>';
+          const badgeStatus = !c.certifier_configured
+            ? '<span class="badge">Certifier not configured</span>'
+            : !c.certifier_credential_id && c.certifier_issuance_state !== 'not_started'
+              ? '<span class="badge badge-stuck">manual reconciliation required</span>'
+            : !c.certifier_credential_id
+              ? '<span class="badge badge-stuck">not issued</span>'
+              : !c.certifier_public_id
+                ? '<span class="badge badge-stuck">issued · sharing ID missing</span>'
+                : !c.certifier_badge_url
+                  ? '<span class="badge badge-stuck">issued · badge pending</span>'
+                  : '<span class="badge badge-active">issued</span>';
+          let actionType = '';
+          let actionLabel = '';
+          if (c.certifier_configured && !c.certifier_credential_id && c.certifier_issuance_state === 'not_started') {
+            actionType = 'issue';
+            actionLabel = 'Issue credential';
+          } else if (c.certifier_configured && c.certifier_credential_id && !c.certifier_public_id && !c.certifier_badge_url) {
+            actionType = 'metadata';
+            actionLabel = 'Repair credential metadata';
+          } else if (c.certifier_configured && c.certifier_credential_id && !c.certifier_public_id) {
+            actionType = 'metadata';
+            actionLabel = 'Repair sharing ID';
+          } else if (c.certifier_configured && c.certifier_credential_id && !c.certifier_badge_url) {
+            actionType = 'badge';
+            actionLabel = 'Retry badge lookup';
+          }
+          const repairAction = actionType
+            ? `<button type="button" data-user-id="${escapeHtml(userId)}" data-credential-id="${escapeHtml(c.credential_id)}" data-action="${actionType}" data-learner-name="${escapeHtml(data.user.name)}" data-learner-email="${escapeHtml(data.user.email)}" data-credential-name="${escapeHtml(c.name)}" onclick="reissueCredential(event)">${actionLabel}</button>`
+            : '-';
           return `
             <tr>
               <td>${escapeHtml(c.name)}</td>
               <td>${tierBadge(c.tier)}</td>
               <td>${formatDate(c.awarded_at)}</td>
               <td>${badgeStatus}</td>
+              <td>${repairAction}</td>
             </tr>
           `;
         }).join('');
@@ -800,8 +906,9 @@
           ${data.credentials.length > 0 ? `
             <div class="detail-section">
               <h4>Credentials</h4>
+              <div id="credential-action-result" class="repair-result" role="status" aria-live="polite"></div>
               <table>
-                <thead><tr><th>Credential</th><th>Tier</th><th>Awarded</th><th>Badge</th></tr></thead>
+                <thead><tr><th>Credential</th><th>Tier</th><th>Awarded</th><th>Badge</th><th>Action</th></tr></thead>
                 <tbody>${credentialRows}</tbody>
               </table>
             </div>
@@ -856,6 +963,91 @@
 
     function closeDetail() {
       document.getElementById('learner-modal').style.display = 'none';
+    }
+
+    function showCredentialActionResult(message, isError = false) {
+      const result = document.getElementById('credential-action-result');
+      if (!result) return;
+      result.style.display = 'block';
+      result.style.background = isError ? 'var(--color-error-50)' : 'var(--color-success-50)';
+      result.style.color = isError ? 'var(--color-error-800)' : 'var(--color-success-800)';
+      result.textContent = message;
+    }
+
+    async function reissueCredential(event) {
+      const btn = event.currentTarget;
+      const userId = btn.dataset.userId;
+      const credentialId = btn.dataset.credentialId;
+      const action = btn.dataset.action;
+      const learnerName = btn.dataset.learnerName;
+      const learnerEmail = btn.dataset.learnerEmail;
+      const credentialName = btn.dataset.credentialName;
+      const promptMessage = action === 'issue'
+        ? `Issue ${credentialName} to ${learnerName} (${learnerEmail})?\n\nThis creates and emails an external credential. Enter the incident or escalation reason to confirm:`
+        : `Recover ${credentialName} for ${learnerName} (${learnerEmail})?\n\nEnter the incident or escalation reason to confirm:`;
+      const reasonInput = window.prompt(promptMessage);
+      if (reasonInput === null) return;
+      const reason = reasonInput.trim();
+      if (reason.length < 10) {
+        showCredentialActionResult('Enter a reason of at least 10 characters.', true);
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = action === 'issue' ? 'Issuing...' : 'Checking...';
+      showCredentialActionResult(action === 'issue'
+        ? `Issuing credential to ${learnerEmail}…`
+        : `Checking credential metadata for ${learnerEmail}…`);
+
+      try {
+        const response = await AdminSidebar.fetch(
+          `/api/admin/certification/learners/${encodeURIComponent(userId)}/credentials/${encodeURIComponent(credentialId)}/reissue`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason }),
+          },
+        );
+        const data = await response.json();
+        if (!response.ok) {
+          const operationNote = data.operation_id ? ` Operation ID: ${data.operation_id}.` : '';
+          showCredentialActionResult((data.error || 'Failed to recover credential.') + operationNote, true);
+          return;
+        }
+        let message;
+        if (data.outcome === 'issued' && data.badge_available) {
+          message = `Credential issued and badge retrieved. External ID: ${data.credential.certifier_credential_id}.`;
+        } else if (data.outcome === 'issued') {
+          message = `Credential issued, but the badge is still processing. Retry badge lookup later. External ID: ${data.credential.certifier_credential_id}.`;
+        } else if (data.outcome === 'badge_refreshed') {
+          message = 'Badge retrieved successfully.';
+        } else if (data.outcome === 'metadata_refreshed') {
+          message = data.badge_available
+            ? 'Credential sharing ID and badge metadata repaired successfully.'
+            : 'Credential sharing ID repaired; its badge is not available yet.';
+        } else if (data.outcome === 'already_complete') {
+          message = 'Credential was already complete; no external changes were made.';
+        } else {
+          message = 'Credential exists, but its badge is not available yet. Retry later.';
+        }
+        if (data.email_delivery === 'unknown') {
+          message += ' Email delivery could not be confirmed; check Certifier before sending again.';
+        } else if (data.email_delivery === 'not_attempted' && data.outcome !== 'already_complete') {
+          message += ' Email was not sent by this recovery; verify existing delivery in Certifier before sending manually.';
+        }
+        if (data.warnings?.length) message += ` Warning: ${data.warnings.join(' ')}`;
+        if (data.operation_id) message += ` Operation ID: ${data.operation_id}.`;
+        await showDetail(userId);
+        showCredentialActionResult(message);
+      } catch (err) {
+        showCredentialActionResult(
+          'Network error while recovering the credential. Check the audit log and Certifier before retrying.',
+          true,
+        );
+      } finally {
+        btn.disabled = false;
+        btn.textContent = action === 'issue' ? 'Issue credential' : action === 'badge' ? 'Retry badge lookup' : 'Repair credential metadata';
+      }
     }
 
     async function adminCompleteModule(event) {

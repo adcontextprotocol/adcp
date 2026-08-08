@@ -96,6 +96,141 @@ describe('compliance result adapter', () => {
     });
   });
 
+  it('does not count runner applicability skips against storyboard pass totals', () => {
+    const result = baseResult({
+      tracks: [
+        {
+          track: 'core',
+          label: 'Core',
+          status: 'pass',
+          duration_ms: 1,
+          scenarios: [
+            {
+              scenario: 'webhook_emission/requirement_unmet',
+              overall_passed: true,
+              steps: [
+                {
+                  step: "Storyboard skipped: requires 'webhook_receiver'",
+                  step_id: 'requirement_unmet:webhook_receiver',
+                  task: '',
+                  skipped: true,
+                  skip_reason: 'requirement_unmet',
+                  requirement: 'webhook_receiver',
+                  passed: true,
+                },
+              ],
+            },
+            {
+              scenario: 'idempotency/rate_limit_replay_invariant',
+              overall_passed: true,
+              steps: [
+                {
+                  step: 'Trip the limiter, replay the key after retry_after, assert the cached response is not RATE_LIMITED',
+                  step_id: 'expect_rate_limit_not_replayed',
+                  task: 'expect_rate_limit_not_replayed',
+                  skipped: true,
+                  skip_reason: 'missing_test_kit_contract',
+                  passed: true,
+                },
+              ],
+            },
+            {
+              scenario: 'media_buy_state_machine/capability_unsupported',
+              overall_passed: true,
+              steps: [
+                {
+                  step: 'Storyboard skipped: capability not supported by this agent',
+                  step_id: 'capability_unsupported',
+                  task: '',
+                  skipped: true,
+                  skip_reason: 'capability_unsupported',
+                  passed: true,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(deriveStoryboardStatuses(result)).toEqual([
+      {
+        storyboard_id: 'webhook_emission',
+        status: 'untested',
+        steps_passed: 0,
+        steps_total: 0,
+      },
+      {
+        storyboard_id: 'idempotency',
+        status: 'untested',
+        steps_passed: 0,
+        steps_total: 0,
+      },
+      {
+        storyboard_id: 'media_buy_state_machine',
+        status: 'untested',
+        steps_passed: 0,
+        steps_total: 0,
+      },
+    ]);
+
+    const dbInput = complianceResultToDbInput(result, 'https://agent.example/mcp', 'production');
+    expect(dbInput.tracks_json[0]).toMatchObject({
+      track: 'core',
+      has_coverage_gap_skip: false,
+    });
+  });
+
+  it('keeps non-idempotency missing runner contracts visible as coverage gaps', () => {
+    const result = baseResult({
+      tracks: [
+        {
+          track: 'core',
+          label: 'Core',
+          status: 'partial',
+          duration_ms: 1,
+          scenarios: [
+            {
+              scenario: 'signed_requests/stateful_nonce_replay',
+              overall_passed: true,
+              steps: [
+                {
+                  step: 'Reject replayed nonce',
+                  step_id: 'reject_replayed_nonce',
+                  task: 'request_signing_probe',
+                  skipped: true,
+                  skip_reason: 'missing_test_kit_contract',
+                  passed: true,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(deriveStoryboardStatuses(result)).toEqual([
+      {
+        storyboard_id: 'signed_requests',
+        status: 'failing',
+        steps_passed: 0,
+        steps_total: 1,
+        failure_count: 1,
+        skipped_count: 0,
+        first_failed_step_id: 'reject_replayed_nonce',
+        first_failed_step_title: 'Reject replayed nonce',
+        first_failed_step_task: 'request_signing_probe',
+        first_failure_message: 'missing_test_kit_contract',
+      },
+    ]);
+
+    const dbInput = complianceResultToDbInput(result, 'https://agent.example/mcp', 'production');
+    expect(dbInput.tracks_json[0]).toMatchObject({
+      track: 'core',
+      has_coverage_gap_skip: true,
+    });
+  });
+
   it('preserves billing-gate validation path, expected value, and actual value in diagnostics', () => {
     const result = baseResult({
       overall_status: 'failing',

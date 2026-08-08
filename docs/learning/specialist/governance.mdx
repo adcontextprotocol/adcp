@@ -17,7 +17,7 @@ Passing earns the **AdCP specialist — Governance** credential.
 
 ## Specialisms this track prepares you to validate
 
-The following `specialisms` fall under the `governance` domain. Each has its own compliance storyboard — see the [Compliance Catalog](/docs/building/compliance-catalog) for the full taxonomy.
+The following `specialisms` fall under the `governance` domain. Each has its own compliance storyboard — see the [Compliance Catalog](/docs/building/verification/compliance-catalog) for the full taxonomy.
 
 | Specialism | Status | What it covers |
 |---|---|---|
@@ -46,7 +46,7 @@ The following `specialisms` fall under the `governance` domain. Each has its own
 - Explain when to use each layer alone and how they compose (most buyers use one or two)
 - Explain how governance domains compose — campaign, property, collection, content standards, creative
 - Handle `GOVERNANCE_DENIED` end-to-end: read the `governance_context`, identify the failed rule, correct the payload, and retry
-- Walk through the 15-step seller verification of a signed `governance_context` (JWS): `alg` allowlist, `typ` match, JWKS resolution via SSRF-validated fetch, `aud`/`sub`/`phase` binding, `jti` replay dedup, revocation-list check. Explain why each step closes a specific attack (spoofed issuer, plan swap, token replay, key compromise).
+- Walk through the 15-step seller verification of a signed `governance_context` (JWS): `alg` allowlist, `typ` match, JWKS resolution via SSRF-validated fetch, `aud`/opaque-action-`sub`/`phase` binding, `jti` replay dedup, revocation-list check. Explain why each step closes a specific attack (spoofed issuer, cross-action token swap, token replay, key compromise) without disclosing `plan_id` to the seller.
 - Apply governance across `purchase_type` values: `media_buy`, `rights_license`, `signal_activation`, `creative_services`. All share the same loop; media-buy-specific validations (channel compliance, seller concentration, pacing) apply only when the payload contains the relevant fields
 - Explain the `governance_context` correlation model: governance agent issues an opaque token on first check; buyer attaches it to the media buy envelope; seller echoes it on execution checks so the agent reconnects each lifecycle event without re-deriving state
 - Configure audience constraints on a campaign plan using policy categories and restricted attributes
@@ -145,8 +145,20 @@ Lab exercises run against the public test agent. Use the shared token — no sig
 
 ```bash
 export ADCP_AUTH_TOKEN="1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
-export AGENT_URL="https://test-agent.adcontextprotocol.org/governance/mcp"
+export SALES_AGENT_URL="https://test-agent.adcontextprotocol.org/sales/mcp"
+export GOVERNANCE_AGENT_URL="https://test-agent.adcontextprotocol.org/governance/mcp"
+export ROOT_AGENT_URL="https://test-agent.adcontextprotocol.org/mcp"
 ```
+
+Use the endpoint that owns the task. The training agent deliberately splits the workflow across tenants:
+
+| Task | Endpoint |
+|---|---|
+| `sync_governance` | `$SALES_AGENT_URL` |
+| `sync_plans`, `check_governance`, `report_plan_outcome`, `get_plan_audit_logs` | `$GOVERNANCE_AGENT_URL` |
+| `validate_property_delivery` | `$ROOT_AGENT_URL` (legacy root-only custom tool) |
+
+Do not send `sync_governance` to the governance tenant: it configures the seller account, so the sales tenant owns it. The root route for `validate_property_delivery` is an explicit sandbox compatibility surface, not a claim that every governance task belongs on `/mcp`.
 
 See the [Quickstart](/docs/quickstart) for a walkthrough of your first call.
 

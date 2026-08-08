@@ -6,6 +6,9 @@ import {
   isActiveSubscriptionStatus,
   tierLabel,
   resolveOwnerMembership,
+  isContentSubmissionMembershipEligible,
+  checkContentSubmissionTier,
+  type CheckContentSubmissionTierDeps,
 } from '../../src/services/membership-tiers.js';
 
 describe('membership-tiers', () => {
@@ -88,6 +91,67 @@ describe('membership-tiers', () => {
 
   it('subscription statuses match the heartbeat query', () => {
     expect(ACTIVE_SUBSCRIPTION_STATUSES).toEqual(['active', 'past_due', 'trialing']);
+  });
+
+  describe('Perspectives content submission eligibility', () => {
+    const directMembership = (
+      subscription_status: string | null,
+      subscription_canceled_at: Date | null = null,
+      membership_tier = 'company_standard',
+    ) => ({ membership_tier, subscription_status, subscription_canceled_at });
+
+    it.each(['active', 'past_due', 'trialing'])(
+      'allows an uncanceled API-access tier with %s status',
+      (status) => {
+        expect(isContentSubmissionMembershipEligible(directMembership(status))).toBe(true);
+      },
+    );
+
+    it('rejects canceled, inactive, and non-API direct memberships', () => {
+      expect(isContentSubmissionMembershipEligible(
+        directMembership('active', new Date('2026-01-01')),
+      )).toBe(false);
+      expect(isContentSubmissionMembershipEligible(directMembership('unpaid'))).toBe(false);
+      expect(isContentSubmissionMembershipEligible(
+        directMembership('active', null, 'explorer'),
+      )).toBe(false);
+      expect(isContentSubmissionMembershipEligible(null)).toBe(false);
+    });
+
+    it('keeps past_due eligibility local to content submission', async () => {
+      const deps: CheckContentSubmissionTierDeps = {
+        resolvePrimaryOrganization: vi.fn().mockResolvedValue('org_123'),
+        fetchDirectMembership: vi.fn().mockResolvedValue(directMembership('past_due')),
+        resolveEffectiveMembership: vi.fn().mockResolvedValue({
+          is_member: false,
+          is_inherited: false,
+          paying_org_id: null,
+          paying_org_name: null,
+          hierarchy_chain: [],
+          membership_tier: null,
+        }),
+      };
+
+      await expect(checkContentSubmissionTier('user_123', deps)).resolves.toBe(true);
+      expect(deps.resolveEffectiveMembership).not.toHaveBeenCalled();
+    });
+
+    it('preserves strict inherited paid membership as a fallback', async () => {
+      const deps: CheckContentSubmissionTierDeps = {
+        resolvePrimaryOrganization: vi.fn().mockResolvedValue('org_child'),
+        fetchDirectMembership: vi.fn().mockResolvedValue(null),
+        resolveEffectiveMembership: vi.fn().mockResolvedValue({
+          is_member: true,
+          is_inherited: true,
+          paying_org_id: 'org_parent',
+          paying_org_name: 'Parent company',
+          hierarchy_chain: ['child.example', 'parent.example'],
+          membership_tier: 'company_standard',
+        }),
+      };
+
+      await expect(checkContentSubmissionTier('user_123', deps)).resolves.toBe(true);
+    });
   });
 
   describe('resolveOwnerMembership — security boundary', () => {

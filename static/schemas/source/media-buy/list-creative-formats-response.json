@@ -2,7 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/list-creative-formats-response.json",
   "title": "List Creative Formats Response",
-  "description": "Response payload for list_creative_formats task",
+  "deprecated": true,
+  "description": "**DEPRECATED in 3.2.** Compatibility response containing legacy named-format definitions. It is not a sales-agent deliverability contract. Use Product.format_options, publisher adagents.json formats, or get_adcp_capabilities creative.supported_formats according to the question being answered.",
   "type": "object",
   "allOf": [
     {
@@ -15,23 +16,26 @@
   "properties": {
     "formats": {
       "type": "array",
-      "description": "Full format definitions for all formats this agent supports. Each format's authoritative source is indicated by its agent_url field.",
+      "deprecated": true,
+      "description": "Deprecated named-format definitions projected for older 3.x callers. This list is neither the publisher acceptance catalog nor the seller's canonical product deliverability contract.",
       "items": {
         "$ref": "/schemas/core/format.json"
       }
     },
     "source": {
       "type": "string",
+      "deprecated": true,
       "enum": [
         "publisher",
         "aao_mirror",
         "agent_derived"
       ],
-      "description": "Which tier of the resolution order produced this `formats[]` list when the request carried a `publisher_domain` filter. `publisher`: agent fetched `<publisher_domain>/.well-known/adagents.json` and returned its `formats[]` directly (publisher-authoritative). `aao_mirror`: publisher's hosted file was 404 / lacked `formats[]`, agent fell back to `https://creative.adcontextprotocol.org/translated/<platform>/adagents.json` (community-curated; lower authority — buyer SHOULD treat as advisory until platform adopts). `agent_derived`: neither tier 1 nor tier 2 returned a catalog, so the agent synthesized `formats[]` from the union of its own products' `format_options[]` for products selling the publisher's inventory (lowest authority — agent's view of what it sells, not the publisher's catalog). When two SDKs query the same agent for the same publisher and the agent-derived tier is in play, results may diverge by product set; buyers SHOULD record `source` for telemetry. When the request did NOT carry `publisher_domain`, this field MAY be omitted."
+      "description": "Deprecated compatibility provenance. `publisher` means publisher-origin catalog; `aao_mirror` means community catalog; `agent_derived` is retained only to parse historical 3.x responses and MUST NOT be produced by a new 3.2 implementation because seller products are not publisher authority."
     },
     "creative_agents": {
       "type": "array",
-      "description": "Optional: Creative agents that provide additional formats. Buyers can recursively query these agents to discover more formats. No authentication required for list_creative_formats.",
+      "deprecated": true,
+      "description": "Deprecated recursive discovery projection retained for historical 3.x responses. New buyers query the registry's canonical creative capability index and confirm candidates with get_adcp_capabilities; they do not recursively walk agent-provided lists.",
       "items": {
         "type": "object",
         "properties": {

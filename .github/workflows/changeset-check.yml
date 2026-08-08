@@ -2,7 +2,7 @@ name: Changeset Check
 
 on:
   pull_request:
-    branches: [main, '3.0.x', '2.6.x', '2.5-maintenance']
+    branches: [main, '3.1.x', '3.0.x', '2.6.x', '2.5-maintenance']
 
 jobs:
   pr-title:
@@ -11,10 +11,10 @@ jobs:
     # Keep the release-machinery exceptions aligned with the changeset check below.
     if: ${{ !startsWith(github.head_ref, 'changeset-release/') && !startsWith(github.head_ref, 'forward-merge/') && !startsWith(github.head_ref, 'auto/docs-v') }}
     steps:
-      - uses: actions/checkout@v6.0.3
+      - uses: actions/checkout@v7.0.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
 
@@ -40,14 +40,26 @@ jobs:
     #   already-published version and do not represent a new package release.
     if: ${{ !startsWith(github.head_ref, 'changeset-release/') && !startsWith(github.head_ref, 'forward-merge/') && !startsWith(github.head_ref, 'auto/docs-v') }}
     steps:
-      - uses: actions/checkout@v6.0.3
+      - uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
 
+      - name: Check changeset protocol scope
+        run: node scripts/check-changeset-protocol-scope.cjs origin/${{ github.base_ref }}
+
       - name: Check for changeset
-        run: npx --yes @changesets/cli@^2.31.0 status --since=origin/${{ github.base_ref }}
+        run: |
+          if node scripts/check-changeset-protocol-scope.cjs origin/${{ github.base_ref }} --is-status-exempt-maintenance; then
+            echo "Skipping changesets status for changeset policy maintenance."
+            exit 0
+          fi
+          if ! node scripts/check-changeset-protocol-scope.cjs origin/${{ github.base_ref }} --has-protocol-scoped-changes; then
+            echo "Skipping changesets status because this PR does not touch the protocol release surface."
+            exit 0
+          fi
+          npx --yes @changesets/cli@^2.31.0 status --since=origin/${{ github.base_ref }}

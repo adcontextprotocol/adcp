@@ -1,4 +1,0 @@
----
----
-
-Closes the periodic-probe gap for agents discovered via `publisher_properties` fan-out (follow-up to #4840). When the crawler encounters `authorization_type: 'publisher_properties'` in an `adagents.json`, it now registers the declared agent as a `sales_candidate` in `discovered_agents`. On the next periodic crawl cycle the candidate is included in the `PropertyCrawler.crawlAgents()` call alongside registered agents; a successful `list_authorized_properties` response promotes the row to `sales` and triggers the standard per-publisher recording path. Probe failures apply exponential backoff (1 day → 7 days → 30 days) so unreachable agents are retried over time without flooding every cycle. Adds migration 492 (`probe_failure_count`, `next_probe_after` columns on `discovered_agents`).

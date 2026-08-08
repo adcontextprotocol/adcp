@@ -1,0 +1,129 @@
+---
+title: "L3: Deciding and leading"
+sidebarTitle: "L3: Deciding and leading"
+description: "AdCP Decision-Makers module L3: brief your agency or team, decide pilot-vs-standardize, and produce a decision artifact — a business case, agency brief, or phased adoption plan. The capstone is a decision, not a build."
+"og:title": "AdCP — L3: Deciding and leading"
+---
+
+# L3: Deciding and leading
+
+**~15 min** | Prerequisite: L2 | Free
+
+L1 and L2 gave you the model and the control surface. L3 is where you make the call and lead your organization through it. The capstone of this track is a **decision artifact** — not a build, not a spec, but the thing your role actually produces: a business case, an agency brief, or a phased adoption plan.
+
+Two judgments matter most:
+
+- **Brief the people who execute.** Your job is the brief, not the build. The brand provides catalogs, `brand.json`, content standards, and goals; the agency or in-house team runs campaigns across AI surfaces and reports delivery. Frame it as additive to your existing agency relationships and programmatic stack — a buyer agent sits alongside the DSP.
+- **Pilot or standardize.** When a surface is experimental, pilot one surface with one partner to learn cheaply and reversibly. Once value is proven, standardize on the protocol so one integration reaches many surfaces instead of negotiating direct deals platform by platform. Reason from reversibility and risk, not hype.
+
+## Reading list
+
+<CardGroup cols={2}>
+  <Card title="Getting started by role" icon="user-gear" href="/dist/docs/3.1.3/sponsored-intelligence/monetizing-ai#getting-started-by-role">
+    What brands, agencies, and SMBs each do first — and what to brief versus own.
+  </Card>
+  <Card title="FAQ: agency or partner?" icon="circle-question" href="/dist/docs/3.1.3/faq#buying-ai-media">
+    Whether you need a buyer agent or can work through an agency, ad network, or commerce-platform partner.
+  </Card>
+  <Card title="Experimental status" icon="flask" href="/dist/docs/3.1.3/reference/experimental-status">
+    Which surfaces are explicitly experimental and may change — an input to the pilot-vs-standardize call.
+  </Card>
+  <Card title="Find a partner" icon="handshake" href="https://agenticadvertising.org/members">
+    The member directory for agencies, ad networks, and platforms that handle the protocol plumbing.
+  </Card>
+</CardGroup>
+
+## Key concepts
+
+- **Briefing the executors** — what the brand provides (catalogs, `brand.json`, content standards, goals) vs what to expect back (campaigns across AI surfaces, delivery reporting)
+- **Additive adoption** — the buyer agent extends your stack and agency relationships; it does not replace them
+- **Pilot vs standardize** — pilot to learn when a surface is experimental; standardize on the protocol once value is proven, so one integration reaches many surfaces
+- **Economics and the competitive case** — pricing is set per platform (e.g. cost-per-click, per-session), not a single fixed rate; weigh standardize-once-reach-many against per-platform direct deals and the time-to-reach that implies
+
+## Decision-artifact templates
+
+Your capstone is one of these — a starting skeleton, not a form to fill blindly. Use the one that fits your role.
+
+<AccordionGroup>
+<Accordion title="Business case (brand leader → CMO)">
+
+- **The opportunity** — consumers in our category are already asking AI assistants; today we have no presence and no control over how we're represented
+- **What changes** — the platform generates ads from our brand data; we own the data, and our measurement carries over
+- **What we own** — catalog, `brand.json`, content standards, conversion events, and the success metric
+- **The pilot** — one surface, one agency, one success metric, a budget we can write off as learning
+- **The ask** — budget, timeline, and who owns the data pipeline
+- **The risk of waiting** — competitors with richer brand data reach AI-surface demand first
+
+</Accordion>
+<Accordion title="Agency brief (agency exec → client / internal)">
+
+- **Client and goal**
+- **What the client provides** — catalogs, `brand.json`, content standards, goals
+- **What we deliver** — campaigns across the chosen AI surfaces, delivery reporting into existing dashboards
+- **Where it sits** — alongside the DSP and existing programmatic; additive, not a replacement
+- **Pilot scope** — one surface, one success metric
+- **P&L note** — managed-service (we run the buyer agent, mark up media + a service fee) vs self-serve (the client runs it, we charge for setup and strategy). One integration reaches many AI surfaces, so the margin comes from collapsing per-platform labor — not from negotiating rate cards platform by platform
+
+</Accordion>
+<Accordion title="Phased adoption plan (SMB founder)">
+
+- **Step 1 — pick a partner** — an ad network or a Shopify-type app; [ask Addie](https://agenticadvertising.org/chat) or browse the [member directory](https://agenticadvertising.org/members)
+- **Step 2 — connect your feed** — your existing product feed plus brand basics (name, voice, any rules)
+- **Step 3 — set budget and goal** — start small, pick one goal (sales? store visits?), confirm your ROAS/CPA tracking
+- **Step 4 — review and expand** — keep what works, add surfaces from there
+
+</Accordion>
+</AccordionGroup>
+
+## Sizing a pilot (without a price list)
+
+Pricing is set per platform, so there is no single rate to quote. Reason about it instead:
+
+- **Size a pilot you can write off as learning** — a number you don't have to defend, not a forecast
+- **Pick one surface and one success metric** — keep the variables few enough to read the result
+- **Discover the actual price per platform** — your buyer agent or partner reads it from the seller's products at buy time
+- **Compare cost-per-outcome to a benchmark you already trust** — your current best channel for the same goal
+
+<Note>
+**Worked example — your numbers, not ours.** These are placeholders to show the *shape* of the reasoning; plug in your own.
+
+- Pilot budget: **$25k** you can write off as learning (not a forecast you must defend)
+- One surface, one goal: **qualified leads**
+- Your benchmark: your current best channel runs **~$40 CPA**
+- The read: if the AI surface lands **at or under ~$40 CPA**, it earns a standardize decision; if it comes in **2–3× higher**, you learned that cheaply and you don't scale
+- Note what you *didn't* do: negotiate a rate card. Per-platform pricing (CPC / per-session) is discovered at buy time by your buyer agent or partner — you set the budget and the success metric, not the unit price
+
+The discipline is comparing cost-per-outcome to a benchmark you already trust — not forecasting a number for a channel you haven't run yet.
+</Note>
+
+On *"is anyone else doing this?"* — characterize the landscape by surface maturity (which surfaces are [experimental](/dist/docs/3.1.3/reference/experimental-status) vs live) and how many sellers are reachable today through the [registry](/dist/docs/3.1.3/registry), rather than waiting for a competitor headline. One surface being experimental is an input to the decision, not a reason to wait on all of them.
+
+## What you'll demonstrate
+
+Sage verifies three demonstrations through conversation — the same for every learner:
+
+1. **Brief an agency or team** on the division of labor, framed as additive to existing relationships. `l3_ex1_sc_brief_agency`
+2. **Decide pilot-vs-standardize** for a given surface and justify it on reversibility and risk. `l3_ex1_sc_pilot_vs_standardize`
+3. **Produce a decision artifact** — a business case, agency brief, or phased adoption plan tying together economics, org-readiness, and a concrete next step. `l3_ex1_sc_decision_artifact`
+
+## Assessment rubric
+
+| Dimension | Weight | What Sage evaluates |
+|-----------|--------|---------------------|
+| Leadership brief | 30% | Can brief an agency or team on inputs versus expectations |
+| Decision reasoning | 35% | Reasons about pilot-vs-standardize on risk and reversibility |
+| Decision artifact | 25% | Produces a coherent, role-appropriate decision artifact |
+| Competitive economics | 10% | Reasons about economics and the competitive case |
+
+Passing threshold: 70%. Scores are internal — you experience the module as a conversation that continues until you have demonstrated mastery.
+
+## What's next
+
+Completing L1–L3 earns the **AdCP for Decision-Makers** credential. From here:
+
+- Hand the [Monetizing AI guide](/dist/docs/3.1.3/sponsored-intelligence/monetizing-ai) and your decision artifact to your team
+- If you want the hands-on path, the free [Basics track](/dist/docs/3.1.3/learning/overview#basics-free) (A1–A3) teaches the protocol fundamentals, and the [Buyer track](/dist/docs/3.1.3/learning/tracks/buyer) (C1–C4) builds a working buyer agent — no programming experience required
+
+<Card title="Start L3 with Addie" icon="play" href="https://agenticadvertising.org/chat">
+  "I'd like to start certification module L3."
+</Card>

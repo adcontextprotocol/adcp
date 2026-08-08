@@ -62,4 +62,19 @@ describe('decodeHtmlEntities', () => {
     // Emoji encoded as hex
     expect(decodeHtmlEntities("&#x1F600;")).toBe("😀");
   });
+
+  it('does not throw on out-of-range numeric references', () => {
+    // Beyond the max Unicode code point (0x10FFFF). String.fromCodePoint would
+    // throw a RangeError; malformed references from untrusted feeds/scraped
+    // pages must be tolerated, not crash the caller.
+    expect(decodeHtmlEntities("&#9999999999;")).toBe("&#9999999999;");
+    expect(decodeHtmlEntities("&#1114112;")).toBe("&#1114112;");
+    expect(decodeHtmlEntities("&#x110000;")).toBe("&#x110000;");
+    expect(decodeHtmlEntities("&#xFFFFFFFF;")).toBe("&#xFFFFFFFF;");
+    // Max valid code point still decodes.
+    expect(decodeHtmlEntities("&#x10FFFF;")).toBe(String.fromCodePoint(0x10ffff));
+    // An out-of-range reference embedded in otherwise-valid text leaves only
+    // the bad reference untouched.
+    expect(decodeHtmlEntities("Tom &amp; &#9999999999; Jerry")).toBe("Tom & &#9999999999; Jerry");
+  });
 });

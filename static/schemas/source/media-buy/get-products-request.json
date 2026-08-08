@@ -180,7 +180,7 @@
     },
     "fields": {
       "type": "array",
-      "description": "Specific product fields to include in the response. When omitted, all fields are returned. Use for lightweight discovery calls where only a subset of product data is needed (e.g., just IDs and pricing for comparison). Required fields (product_id, name) are always included regardless of selection.",
+      "description": "Specific product fields to include in the response. When omitted, all fields are returned. Use for lightweight discovery calls where only a subset of product data is needed (e.g., just IDs and pricing for comparison). Required fields (product_id, name) are always included regardless of selection. `format_ids` is a deprecated 3.x compatibility projection; new integrations request canonical `format_options`. When filters.audience_evidence_requirements affects eligibility or ranking, audience_evidence_selections is also mandatory decision readback even if omitted here; fields controls the optional audience_evidence payload, not the evidence decision receipt.",
       "minItems": 1,
       "items": {
         "type": "string",
@@ -213,6 +213,9 @@
           "signal_targeting_allowed",
           "signal_targeting_options",
           "signal_targeting_rules",
+          "demographic_targeting",
+          "audience_evidence",
+          "audience_evidence_selections",
           "max_optimization_goals",
           "catalog_match",
           "collections",
@@ -240,7 +243,8 @@
       "description": "Optional webhook configuration for async terminal completion/failure notifications on curated discovery. Meaningful only for `buying_mode: \"brief\"` and `buying_mode: \"refine\"` requests that enter the async lifecycle. Submitted envelopes with `task_id` remain pollable through `get_task_status` (legacy `tasks/get`) whether or not this field is present. If a brief/refine request includes this field and the seller returns a Submitted envelope, the seller MUST deliver at least the terminal completion/failure notification to the configured URL; intermediate progress notifications are MAY. If the seller cannot honor the webhook channel, it MUST reject the request with a structured error instead of silently accepting. This field does not change wholesale timing semantics: sellers MUST NOT route `buying_mode: \"wholesale\"` requests through the async/Submitted arm or emit async delivery solely because `push_notification_config` is present; partial wholesale completion is reported via `incomplete[]`."
     },
     "pagination": {
-      "$ref": "/schemas/core/pagination-request.json"
+      "$ref": "/schemas/core/pagination-request.json",
+      "description": "Cursor-based pagination controls for get_products. Valid in all buying modes. In brief mode, pagination bounds the seller's returned products[] for the curated answer to the brief and is not an exhaustive catalog-enumeration contract. In refine mode, pagination bounds the refined products[] result implied by refine[] and filters; proposals may accompany a page as plan metadata but are not independently counted by this pagination envelope. In wholesale mode, pagination walks the wholesale product feed and may be combined with wholesale feed versioning."
     },
     "if_wholesale_feed_version": {
       "type": "string",

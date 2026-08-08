@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0/core/signal-id.json",
+  "title": "Signal ID",
+  "description": "DEPRECATED. Use SignalRef for new discovery, activation, and media-buy signal identity surfaces. Legacy universal signal identifier used by older Signals Protocol clients. Uses 'source' as discriminator: 'catalog' for signals from a data provider's published catalog (verifiable), or 'agent' for signals native to a signal source identified by agent_url.",
+  "deprecated": true,
+  "x-entity": "signal",
+  "discriminator": {
+    "propertyName": "source"
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Data-provider signal - references a signal from a data provider's published adagents.json signals[]. Buyers can verify authorization by checking the data provider's adagents.json.",
+      "properties": {
+        "source": {
+          "type": "string",
+          "const": "catalog",
+          "description": "Discriminator indicating this signal is from a data provider's published adagents.json signals[]"
+        },
+        "data_provider_domain": {
+          "type": "string",
+          "description": "Domain of the data provider that owns this signal (e.g., 'pinnacle-data.example'). The signal definition is published at this domain's /.well-known/adagents.json",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Signal identifier within the data provider's catalog (e.g., 'likely_ev_buyers', 'income_100k_plus')"
+        }
+      },
+      "required": ["source", "data_provider_domain", "id"],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "description": "Agent signal - references a signal native to a signal source identified by agent_url. Not externally verifiable through an upstream catalog; buyer trusts the issuing signal source's claim about the signal.",
+      "properties": {
+        "source": {
+          "type": "string",
+          "const": "agent",
+          "description": "Discriminator indicating this signal is native to the signal source identified by agent_url, not from a data provider's published signal definitions."
+        },
+        "agent_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the signal source that provides this signal (e.g., 'https://signals.example/.well-known/adcp/signals')"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Signal identifier within the agent's signal set (e.g., 'custom_auto_intenders')"
+        }
+      },
+      "required": ["source", "agent_url", "id"],
+      "additionalProperties": true
+    }
+  ]
+}

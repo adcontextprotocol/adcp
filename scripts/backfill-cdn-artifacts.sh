@@ -344,9 +344,26 @@ fi
 immutable_cache="public, max-age=31536000, immutable"
 revalidate_cache="public, no-cache, must-revalidate"
 
-exclude_latest=1 sync_schema_tree dist/schemas schemas "$immutable_cache"
-if [[ "$skip_latest" -eq 0 && -d dist/schemas/latest ]]; then
-  cp_schema_tree dist/schemas/latest schemas/latest "$revalidate_cache"
+for schema_dir in dist/schemas/*; do
+  if [[ ! -d "$schema_dir" ]]; then
+    continue
+  fi
+  schema_version="$(basename "$schema_dir")"
+  if [[ "$schema_version" == "latest" ]]; then
+    continue
+  fi
+  sync_schema_tree "$schema_dir" "schemas/$schema_version" "$immutable_cache"
+done
+if [[ "$skip_latest" -eq 0 ]]; then
+  if [[ -f dist/schemas/index.json ]]; then
+    cp_file dist/schemas/index.json schemas/index.json "$revalidate_cache" "application/json; charset=utf-8"
+  fi
+  if [[ -f dist/schemas/latest.json ]]; then
+    cp_file dist/schemas/latest.json schemas/latest.json "$revalidate_cache" "application/json; charset=utf-8"
+  fi
+  if [[ -d dist/schemas/latest ]]; then
+    cp_schema_tree dist/schemas/latest schemas/latest "$revalidate_cache"
+  fi
 fi
 
 exclude_latest=1 sync_compliance_tree dist/compliance compliance "$immutable_cache"

@@ -140,7 +140,7 @@
 #   different topologies.)
 #
 # requires: string[] (optional — storyboard-level runtime requirement gate.
-#   Known values: controller | seeded_state | real_wire | webhook_receiver (forward-compat:
+#   Known values: controller | seeded_state | real_wire | webhook_receiver | multi_agent (forward-compat:
 #   unrecognized values are NOT schema violations — runners emit
 #   requirement_unmet at runtime; see Forward compatibility below).
 #   Default when absent: [real_wire] — untagged storyboards run unchanged.
@@ -226,6 +226,19 @@
 #                    This value may be declared explicitly on storyboards such
 #                    as webhook-emission; runners may also infer it from
 #                    webhook URL substitutions in sample_request payloads.
+#
+#     multi_agent  — gate on the runner being configured with every logical
+#                    agent key required by this storyboard's `default_agent`
+#                    and step-level `agent:` declarations. Available when the
+#                    runner receives an `agents` map containing at least two
+#                    logical agents and all authored route keys used by the
+#                    storyboard resolve against that map. When unmet, the
+#                    runner MUST emit skip_result.reason: requirement_unmet
+#                    with detail naming "multi_agent" rather than failing a
+#                    routed step with default_agent_unresolved or unrouted_step.
+#                    Storyboards SHOULD declare this when the scenario's setup
+#                    and execution require distinct logical tenants, such as a
+#                    seller agent plus a governance agent.
 #
 #   Forward compatibility: runners encountering a requires value they do not
 #   recognize MUST emit skip_result.reason: requirement_unmet (not fail-load)
@@ -389,7 +402,7 @@
 #       creatives:
 #         - creative_id: "campaign_hero_video"
 #           status: "approved"
-#           format_id: { id: "video_30s" }
+#           format_kind: "video_hosted"
 #       plans:
 #         - plan_id: "gov_acme_q2_2027"
 #           budget: { total: 30000, currency: "USD" }
@@ -591,6 +604,13 @@
 #   on setup phases, not on sibling consumption phases that may legitimately
 #   skip on different adopters).
 #
+#   Branch-set peers are exempt from this cross-phase cascade: phases sharing a
+#   `branch_set.id` with `any_of` semantics do NOT cascade `prerequisite_failed`
+#   onto one another (they are mutually-exclusive alternatives, not a chain),
+#   independent of whether the dependency is the implicit default or an explicit
+#   `depends_on`. See `runner-output-contract.yaml >
+#   cascade_rules.branch_set_cascade_exemption`.
+#
 #   References: adcp-client#1161 (field introduction); adcp-client#1711
 #   follow-up + adcp#4750 (deterministic_testing scope tightening that
 #   surfaced the documentation gap).
@@ -619,6 +639,20 @@
 #   case where the SDK's per-task request builder discards a body field
 #   from `sample_request`, use `context_inputs:` (above) as the
 #   post-builder injection path.
+#
+#   Creative asset expansion: an `assets` object MAY contain the reserved
+#   `$build_assets_from_format` key with a `$context.<name>` value. The context
+#   value MUST be either canonical `FormatOption.params` captured from
+#   `get_products` or a legacy `FormatId` resolved against formats captured from
+#   `list_creative_formats`. Before request-schema validation or transport, the
+#   runner MUST replace the entire directive-bearing `assets` object with an
+#   asset map keyed by each required slot's canonical `asset_group_id` or legacy
+#   `asset_id`. Values come from the storyboard's test kit and MUST satisfy the
+#   slot contract. Image slots use an `assets.images[]` fixture satisfying the
+#   declared dimensions; URL slots use `assets.click_url`. If any required slot
+#   cannot be populated, the runner
+#   MUST fail the step before transport with `unresolved_substitution` rather
+#   than sending the directive or an incomplete manifest.
 # sample_response: object (optional — example expected response; also surfaces in published docs)
 #
 # auth: "none" | object (optional — overrides the transport's default credentials for this step)
@@ -1342,8 +1376,9 @@
 # Cross-step integrity — use `check: refs_resolve`:
 #   `refs_resolve` asserts every ref in a source set resolves to a member of a
 #   target set, matched on declared keys. Use it when one step's response
-#   contains references (e.g., `format_ids` on `products`) that MUST exist in
-#   another step's response (e.g., `formats` from `list_creative_formats`).
+#   contains references that MUST exist in another step's response. In 3.2,
+#   prefer direct canonical declarations and use this primitive for remaining
+#   cross-resource identifiers.
 #   Without this primitive, broken references are silent until a later call
 #   (e.g., `sync_creatives`) fails at runtime, after commitments are already
 #   made.
@@ -1393,9 +1428,9 @@
 #     on the projected tuple so one broken ref across 50 products shows up
 #     once — compliance reports stay readable.
 #
-#   Example — every `format_id` on products resolves to a format on this agent:
+#   Legacy 3.x example — every named format reference resolves:
 #     - check: refs_resolve
-#       description: "Every format_id on products resolves to a format returned by list_creative_formats"
+#       description: "Every deprecated format_id resolves in the compatibility catalog"
 #       source:
 #         from: context
 #         path: "products[*].format_ids[*]"
@@ -1849,7 +1884,7 @@
 #   rule 9 may return `IDEMPOTENCY_IN_FLIGHT` on the second (or later) dispatch
 #   rather than block. The runner MUST resolve `IDEMPOTENCY_IN_FLIGHT` responses
 #   to their eventual cached response before applying these checks: wait
-#   `error.details.retry_after` seconds and retry with the SAME idempotency_key,
+#   top-level `error.retry_after` seconds and retry with the SAME idempotency_key,
 #   exactly as the buyer-side normative behavior specifies. The cross-response
 #   check operates on the resolved response set, not the raw initial set. If
 #   resolution exceeds the runner's step-timeout budget, the step grades
@@ -2084,12 +2119,11 @@
 # task: expect_webhook_signature_valid
 #   Assert that the inbound webhook passed the 9421 webhook-signing verifier
 #   checklist (see docs/building/implementation/security.mdx#verifier-checklist-for-webhooks).
-#   Runner delegates verification to the `@adcp/client` 9421 webhook verifier;
-#   this step is gated on the client library having that verifier available
-#   (see test-kit contract). Negative conformance — signatures that MUST be
-#   rejected with a specific webhook_signature_* code — is tested via static
-#   conformance vectors under /compliance/{version}/test-vectors/webhook-signing/
-#   when those land, not by this step type.
+#   Runner delegates verification to `verifyWebhookSignature` from
+#   `@adcp/sdk/signing` (see test-kit contract). Negative conformance —
+#   signatures that MUST be rejected with a specific webhook_signature_* code —
+#   is exercised through the published static conformance vectors under
+#   /compliance/{version}/test-vectors/webhook-signing/, not by this step type.
 #
 #   Cross-step replay dedup: the runner MUST share a single (keyid, nonce) replay
 #   store across ALL expect_webhook_signature_valid invocations (and all retry
@@ -2151,7 +2185,7 @@
 #   and bullet 8 (insert-rate ceiling). The runner drives a sequential fresh-
 #   key burst against the named mutating-op target until a RATE_LIMITED
 #   response appears, then re-submits the same idempotency_key after waiting
-#   `error.details.retry_after` seconds. The cross-step assertion fails if the
+#   the RATE_LIMITED response's top-level `error.retry_after` seconds. The cross-step assertion fails if the
 #   replay returned the cached RATE_LIMITED response shape.
 #
 #   When `max_attempts` requests complete without producing a RATE_LIMITED
@@ -2276,11 +2310,10 @@
 # --- Unresolved substitution behavior ---
 #
 # When a storyboard references a substitution variable the runner cannot
-# resolve — most commonly {{runner.webhook_base}} or {{runner.webhook_url:<id>}}
-# on a run with no webhook receiver configured — the runner MUST NOT ship the
-# literal `{{...}}` token to the agent under test. Shipping unresolved
-# substitutions is a conformance bug on the runner side, not a grading signal
-# about the agent.
+# resolve — whether a `$context.*` token or a `{{...}}` token, including tokens
+# nested in object properties or array elements — the runner MUST NOT ship the
+# literal token to the agent under test. Shipping unresolved substitutions is a
+# conformance bug on the runner side, not a grading signal about the agent.
 #
 # Runners MUST resolve substitutions at one of two preflight points:
 #   1. Before the storyboard run starts — if any step references an unresolvable
@@ -2291,4 +2324,4 @@
 #      (e.g., {{prior_step.<id>.task_id}}) fails to resolve, grade the
 #      step as failed with `unresolved_substitution`.
 #
-# Neither path may ship a literal `{{...}}` token on the wire.
+# Neither path may ship a literal `$context.*` or `{{...}}` token on the wire.

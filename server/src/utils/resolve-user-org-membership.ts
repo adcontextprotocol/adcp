@@ -30,6 +30,8 @@ const logger = createLogger('resolve-user-org-membership');
 export type MembershipRole = 'owner' | 'admin' | 'member';
 
 export interface UserOrgMembership {
+  /** Canonical organization ID returned by the authoritative membership row. */
+  organizationId: string;
   /** Highest-privilege active role slug (member < admin < owner). */
   role: MembershipRole;
   /** Membership status from WorkOS or 'active' for dev memberships. */
@@ -63,15 +65,21 @@ export async function resolveUserOrgMembership(
   if (isDevModeEnabled()) {
     const devUser = Object.values(DEV_USERS).find((du) => du.id === userId);
     if (devUser) {
-      const result = await query<{ role: string }>(
-        `SELECT role FROM organization_memberships
+      const result = await query<{ workos_organization_id: string; role: string }>(
+        `SELECT workos_organization_id, role FROM organization_memberships
          WHERE workos_user_id = $1 AND workos_organization_id = $2`,
         [userId, organizationId],
       );
       if (result.rows.length === 0) return null;
-      const rawRole = result.rows[0].role || 'member';
+      const membershipRow = result.rows[0];
+      const rawRole = membershipRow.role || 'member';
       const role = (VALID_ROLES.has(rawRole) ? rawRole : 'member') as MembershipRole;
-      return { role, status: 'active', via_dev_bypass: true };
+      return {
+        organizationId: membershipRow.workos_organization_id,
+        role,
+        status: 'active',
+        via_dev_bypass: true,
+      };
     }
     // Real users in dev mode (e.g. someone running tsx with their actual
     // WorkOS account) fall through to the WorkOS path below.
@@ -88,14 +96,23 @@ export async function resolveUserOrgMembership(
     organizationId,
   });
 
-  if (memberships.data.length === 0) return null;
+  // Bind authorization to the organization ID returned by the authoritative
+  // membership row instead of relying solely on the request filter.
+  const matchingMemberships = memberships.data.filter(
+    (membership) => membership.organizationId === organizationId,
+  );
+  if (matchingMemberships.length === 0) return null;
 
-  const roleSlug = resolveUserRole(memberships.data);
+  const roleSlug = resolveUserRole(matchingMemberships);
   if (!roleSlug || !VALID_ROLES.has(roleSlug)) return null;
 
-  // Pick the active row's status if any; otherwise the first.
-  const activeRow = memberships.data.find((m) => m.status === 'active');
-  const status = (activeRow?.status ?? memberships.data[0].status) as 'active' | 'pending' | 'inactive';
+  const activeRow = matchingMemberships.find((m) => m.status === 'active');
+  if (!activeRow) return null;
 
-  return { role: roleSlug as MembershipRole, status, via_dev_bypass: false };
+  return {
+    organizationId: activeRow.organizationId,
+    role: roleSlug as MembershipRole,
+    status: 'active',
+    via_dev_bypass: false,
+  };
 }

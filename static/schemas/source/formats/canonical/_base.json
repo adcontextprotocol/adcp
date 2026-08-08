@@ -8,7 +8,7 @@
     "experimental": {
       "type": "boolean",
       "default": false,
-      "description": "When true, this canonical (or a seller's specific narrowing of it) may not work as declared — adopters SHOULD have a v1 fallback ready and SHOULD NOT route production budget without testing. Same semantics as `experimental` on protocols: 'this is shipping but may break, evolve, or fail.' Buyers reading `experimental: true` SHOULD prefer the v1 path when a v1 fallback exists for the same product (via `format_ids` on the parent product or via the v2 declaration's `v1_format_ref`).\n\nThree drivers of `experimental: true`:\n1. **Spec maturity** — the canonical's tracking model or parameter shape is still being settled (`agent_placement`'s tracking macros, `sponsored_placement`'s per-adapter contracts, `responsive_creative`'s algorithmic composition).\n2. **Adopter runtime gap** — the seller has declared the canonical in their catalog but their runtime doesn't yet honor it cleanly.\n3. **Custom shapes** — `format_kind: \"custom\"` is inherently experimental until the working group promotes a `format_shape` to a first-class canonical.\n\nReplaces the earlier `status` enum (`stable | preview | deprecated`) + `runtime_status` enum (`stable | preview | declared_only`) — two axes with subtle overlap. The single boolean is what buyers actually care about: do I treat this as production-stable or as 'try at my own risk.' Sellers SHOULD set `experimental: true` on canonicals or product declarations that aren't yet production-ready, regardless of which axis (spec, runtime, custom) drives the experimentation. The 9 non-experimental canonicals at 3.1 GA (`image`, `html5`, `display_tag`, `image_carousel`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `native_in_feed`) default to non-experimental at the canonical level; sellers MAY still mark a specific product declaration experimental (e.g., a beta runtime path for an existing product)."
+      "description": "When true, this canonical or seller narrowing may not work as declared. Adopters SHOULD preflight it with validate_input or in a sandbox and SHOULD NOT route production budget without testing; experimental status never makes the deprecated v1 path preferable. Drivers include unsettled spec shape, an adopter runtime gap, and custom shapes awaiting promotion. This replaces the earlier status plus runtime_status axes. Sellers SHOULD set experimental whenever a canonical or declaration is not production-ready."
     },
     "deprecated": {
       "type": "boolean",
@@ -90,6 +90,26 @@
             "minimum": 1,
             "description": "Per-slot file size limit in kilobytes. Valid only when `asset_type` is `image`, `video`, `audio`, or `zip`. Mutually exclusive with `max_chars` (which applies to text asset types). Schema enforces via if/then so a producer can't set both on the same slot."
           },
+          "pixel_ratios": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "description": "Accepted intrinsic-pixel densities for this image-bearing slot. Valid when `asset_type` is `image`, and on a `card` slot where it constrains each card's image media (video media is unaffected). This makes density available to every canonical carrying image assets (native, carousel, responsive, companion images, and image itself), not only `format_kind: image`. When the image canonical also declares top-level `params.pixel_ratios`, the effective set is the intersection; an empty intersection is invalid. One matching asset satisfies the slot unless `required_pixel_ratios` requires rendition coverage."
+          },
+          "required_pixel_ratios": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "description": "Required density coverage for an image rendition set. Valid only when `asset_type` is `image` and `pixel_ratios` is also declared. Every value MUST appear in the effective accepted set after intersecting any top-level image `params.pixel_ratios`, and the manifest slot value MUST be an array containing exactly one matching image rendition for each required ratio. Other accepted ratios remain optional. For example, `pixel_ratios: [1, 1.5, 2]` with `required_pixel_ratios: [1, 2]` requires the 1x and 2x renditions while making 1.5x optional. SDKs enforce intersection, subset, coverage, and duplicate-ratio rules because JSON Schema draft-07 cannot express them generically."
+          },
           "logo_slots": {
             "type": "array",
             "items": { "$ref": "/schemas/enums/logo-slot.json" },
@@ -142,6 +162,28 @@
                 { "required": ["logo_slots"] },
                 { "required": ["required_logo_slots"] }
               ] }
+            }
+          },
+          {
+            "if": {
+              "properties": { "asset_type": { "enum": ["image", "card"] } },
+              "required": ["asset_type"]
+            },
+            "else": {
+              "not": {
+                "anyOf": [
+                  { "required": ["pixel_ratios"] },
+                  { "required": ["required_pixel_ratios"] }
+                ]
+              }
+            }
+          },
+          {
+            "$comment": "A rendition set is representable only by an array-valued image slot. Card media is singular in card-asset.json, so card slots may accept densities but cannot require multiple density renditions.",
+            "if": { "required": ["required_pixel_ratios"] },
+            "then": {
+              "properties": { "asset_type": { "const": "image" } },
+              "required": ["pixel_ratios"]
             }
           },
           {

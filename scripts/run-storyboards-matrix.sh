@@ -25,13 +25,17 @@ else
 fi
 export ADCP_RELEASE_GIT_REF="${RELEASE_GIT_REF}"
 SDK_GENERATED_SCHEMA_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js"
+SDK_GENERATED_SCHEMA_MJS_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/types/schemas.generated.mjs"
 
 restore_sdk_generated_schema() {
-  local backup="${SDK_GENERATED_SCHEMA_FILE}.adcp-overlay-backup"
-  if [ -f "${backup}" ]; then
-    cp "${backup}" "${SDK_GENERATED_SCHEMA_FILE}"
-    rm -f "${backup}"
-  fi
+  local file backup
+  for file in "${SDK_GENERATED_SCHEMA_FILE}" "${SDK_GENERATED_SCHEMA_MJS_FILE}"; do
+    backup="${file}.adcp-overlay-backup"
+    if [ -f "${backup}" ]; then
+      cp "${backup}" "${file}"
+      rm -f "${backup}"
+    fi
+  done
 }
 
 usage() {

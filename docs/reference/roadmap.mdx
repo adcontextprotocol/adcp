@@ -86,6 +86,7 @@ v4.0 is the next **breaking-changes accumulation window**, targeted for early 20
 | Area | Item |
 |---|---|
 | Security (floor) | [Mandatory request signing for spend-committing operations (RFC 9421)](https://github.com/adcontextprotocol/adcp/issues/2307) — the 3.0 optional profile in `security.mdx` becomes required. Agents MUST sign spend-committing operations; sellers MUST verify. |
+| Canonical formats | Remove every exact `format_ids` field. Products use `format_options`; package selection uses `format_option_refs` or direct canonical selectors; filters and registry payloads use their canonical-format equivalents. The deprecated fields remain accepted only through 3.x. |
 
 This milestone is intentionally not a "security release." It is the version where accumulated breaking changes across protocol surfaces land together. Request signing is the current floor requirement; other accepted RFCs carrying breaking changes will be added here as they progress through the `rfc` label lifecycle on the main board.
 

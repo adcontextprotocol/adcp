@@ -9,8 +9,23 @@ required_tools:
   - create_media_buy
   - get_media_buys
   - sync_creatives
+  - list_creatives
   - update_media_buy
   - comply_test_controller
+
+# Capability gate: this scenario grades the snapshot-coherence surface, so it
+# runs only for sellers that declare media_buy.propagation_surfaces including
+# "snapshot". Webhook-only or out_of_band sellers grade not_applicable instead
+# of false-failing on a contract that does not apply to them — the opt-out the
+# propagation_surfaces schema already documents (get-adcp-capabilities-response.json)
+# but that was never wired into this scenario. Requires the `contains:` matcher
+# (@adcp/sdk >= 7.70). Sellers that OMIT propagation_surfaces inherit the
+# ["snapshot"] default and are graded here only on @adcp/sdk >= 9.2.0, which
+# materializes capability-gate schema defaults; earlier runners skip them as
+# not_applicable (adcp-client#2278).
+requires_capability:
+  path: media_buy.propagation_surfaces
+  contains: "snapshot"
 
 narrative: |
   The base dependency_impairment scenario tests forward + inverse + health-iff
@@ -99,7 +114,7 @@ phases:
         comply_scenario: full_sales_flow
         stateful: false
         expected: |
-          Return at least one product with a pricing option and at least one format_id.
+          Return at least one product with a pricing option and one canonical format option.
         sample_request:
           buying_mode: "brief"
           brief: "Display inventory on outdoor lifestyle content for dependency-impairment cardinality testing."
@@ -116,16 +131,16 @@ phases:
             key: "product_id"
           - path: "products[0].pricing_options[0].pricing_option_id"
             key: "pricing_option_id"
-          - path: "products[0].format_ids[0].agent_url"
-            key: "format_agent_url"
-          - path: "products[0].format_ids[0].id"
-            key: "format_id"
+          - path: "products[0].format_options[0].format_kind"
+            key: "format_kind"
+          - path: "products[0].format_options[0].format_option_id"
+            key: "format_option_id"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
           - check: field_present
-            path: "products[0].format_ids[0].id"
-            description: "Product exposes at least one format_id for creative sync"
+            path: "products[0].format_options[0].format_option_id"
+            description: "Product exposes at least one canonical format option for creative sync"
           - check: field_present
             path: "products[0].pricing_options[0].fixed_price"
             description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
@@ -201,9 +216,10 @@ phases:
           creatives:
             - creative_id: "acme_card_banner_a"
               name: "Acme Outdoor cardinality A"
-              format_id:
-                agent_url: "$context.format_agent_url"
-                id: "$context.format_id"
+              format_kind: "$context.format_kind"
+              format_option_ref:
+                scope: "product"
+                format_option_id: "$context.format_option_id"
               assets:
                 image:
                   asset_type: "image"
@@ -213,9 +229,10 @@ phases:
                   mime_type: "image/png"
             - creative_id: "acme_card_banner_b"
               name: "Acme Outdoor cardinality B"
-              format_id:
-                agent_url: "$context.format_agent_url"
-                id: "$context.format_id"
+              format_kind: "$context.format_kind"
+              format_option_ref:
+                scope: "product"
+                format_option_id: "$context.format_option_id"
               assets:
                 image:
                   asset_type: "image"
@@ -417,6 +434,48 @@ phases:
             allowed_values: [true]
             description: "Controller acknowledged the rejection directive"
 
+      - id: reread_a_rejected
+        title: "Re-read creative A — runner observes rejected"
+        narrative: |
+          The impairment.coherence invariant ledgers each resource's last status
+          OBSERVED ON THE WIRE (sync_creatives / list_creatives), not the
+          comply_test_controller force directive (the runner has no observation
+          hook for the forced transition). Without this re-read the creative's
+          last observed status stays its pre-rejection value (e.g. pending_review
+          from the sync step), so the next get_media_buys — which correctly
+          reports health: impaired — trips coherence because impairments[]
+          references a creative the ledger still considers online. This re-read
+          surfaces the rejected status so the ledger and the buy agree.
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        comply_scenario: creative_library
+        stateful: true
+        expected: |
+          The rejected creative is returned with status: rejected.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          filters:
+            creative_ids:
+              - "acme_card_banner_a"
+          context:
+            correlation_id: "dependency_impairment_cardinality--reread_a_rejected"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "acme_card_banner_a"
+            description: "Filter returned creative A specifically — proves the rejected status below is A's, not creative B (also rejected by the cardinality-2 point)"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "rejected"
+            description: "Creative observed as rejected on the wire — closes the impairment.coherence ledger for the impaired read that follows"
+
       - id: verify_cardinality_one
         title: "Read the buy — exactly one impairment, scoped to package_a"
         task: get_media_buys
@@ -504,6 +563,48 @@ phases:
             allowed_values: [true]
             description: "Controller acknowledged the rejection directive"
 
+      - id: reread_b_rejected
+        title: "Re-read creative B — runner observes rejected"
+        narrative: |
+          The impairment.coherence invariant ledgers each resource's last status
+          OBSERVED ON THE WIRE (sync_creatives / list_creatives), not the
+          comply_test_controller force directive (the runner has no observation
+          hook for the forced transition). Without this re-read the creative's
+          last observed status stays its pre-rejection value (e.g. pending_review
+          from the sync step), so the next get_media_buys — which correctly
+          reports health: impaired — trips coherence because impairments[]
+          references a creative the ledger still considers online. This re-read
+          surfaces the rejected status so the ledger and the buy agree.
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        comply_scenario: creative_library
+        stateful: true
+        expected: |
+          The rejected creative is returned with status: rejected.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          filters:
+            creative_ids:
+              - "acme_card_banner_b"
+          context:
+            correlation_id: "dependency_impairment_cardinality--reread_b_rejected"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "acme_card_banner_b"
+            description: "Filter returned creative B specifically — proves the rejected status below is B's, not creative A (also rejected at this point)"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "rejected"
+            description: "Creative observed as rejected on the wire — closes the impairment.coherence ledger for the impaired read that follows"
+
       - id: verify_cardinality_two
         title: "Read the buy — exactly two impairments, one per creative"
         task: get_media_buys
@@ -571,9 +672,10 @@ phases:
           creatives:
             - creative_id: "acme_card_banner_c"
               name: "Acme Outdoor cardinality C"
-              format_id:
-                agent_url: "$context.format_agent_url"
-                id: "$context.format_id"
+              format_kind: "$context.format_kind"
+              format_option_ref:
+                scope: "product"
+                format_option_id: "$context.format_option_id"
               assets:
                 image:
                   asset_type: "image"
@@ -726,9 +828,10 @@ phases:
           creatives:
             - creative_id: "acme_card_banner_d"
               name: "Acme Outdoor cardinality D"
-              format_id:
-                agent_url: "$context.format_agent_url"
-                id: "$context.format_id"
+              format_kind: "$context.format_kind"
+              format_option_ref:
+                scope: "product"
+                format_option_id: "$context.format_option_id"
               assets:
                 image:
                   asset_type: "image"

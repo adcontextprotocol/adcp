@@ -76,6 +76,43 @@ if (!navigation || !navigation.versions) {
 
 const rootDir = path.join(__dirname, '..');
 const defaultVersion = (navigation.versions.find(v => v.default) || navigation.versions[0]).version;
+const pageOwners = new Map();
+const crossVersionDuplicates = [];
+
+test('default version is first in the versions array', () => {
+  if (navigation.versions[0].version !== defaultVersion) {
+    throw new Error(
+      `Default version "${defaultVersion}" must be first; Mintlify can omit its ` +
+      `file-backed routes when an archived version precedes it.`
+    );
+  }
+});
+
+test('one release-labeled version owns the live docs tree', () => {
+  const liveVersions = navigation.versions.filter(versionEntry =>
+    collectPages(versionEntry.groups).some(page => page.startsWith('docs/'))
+  );
+  const expectedVersion = JSON.parse(
+    fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')
+  ).version.split('.').slice(0, 2).join('.');
+
+  if (liveVersions.length !== 1) {
+    throw new Error(`Expected one live docs owner, found ${liveVersions.length}`);
+  }
+
+  const [liveVersion] = liveVersions;
+  if (liveVersion !== navigation.versions[0] || !liveVersion.default) {
+    throw new Error('The live docs owner must be the first and default version');
+  }
+  if (liveVersion.version !== expectedVersion) {
+    throw new Error(
+      `Live docs version "${liveVersion.version}" must match package release "${expectedVersion}"`
+    );
+  }
+  if (liveVersion.tag !== 'Latest') {
+    throw new Error('The live docs owner must carry the "Latest" tag');
+  }
+});
 
 for (const versionEntry of navigation.versions) {
   const { version, groups } = versionEntry;
@@ -83,6 +120,15 @@ for (const versionEntry of navigation.versions) {
 
   const allPages = collectPages(groups);
   const allGroups = collectGroups(groups);
+
+  for (const page of allPages) {
+    const owner = pageOwners.get(page);
+    if (owner) {
+      crossVersionDuplicates.push(`${page} (${owner}, ${version})`);
+    } else {
+      pageOwners.set(page, version);
+    }
+  }
 
   // Test 1: All page references resolve to files on disk
   test(`all ${allPages.length} page files exist`, () => {
@@ -162,6 +208,79 @@ for (const versionEntry of navigation.versions) {
 
   log('');
 }
+
+test('page files belong to only one version', () => {
+  if (crossVersionDuplicates.length > 0) {
+    throw new Error(`Pages referenced across versions:\n      ${crossVersionDuplicates.join('\n      ')}`);
+  }
+});
+
+// Emergency fallback while Mintlify omits file-backed docs/** routes.
+// Remove this invariant with the temporary redirects once live files publish again.
+test('temporary snapshot redirects cover every available live page', () => {
+  const liveVersion = navigation.versions.find(version => version.default)
+    || navigation.versions[0];
+  const livePages = collectPages(liveVersion.groups)
+    .filter(page => page.startsWith('docs/'));
+  const expectedRedirects = new Map();
+  const uncoveredPages = [];
+
+  for (const page of livePages) {
+    const relativePath = page.slice('docs/'.length);
+    const destination = `/dist/docs/3.1.2/${relativePath}`;
+    const filePath = path.join(rootDir, destination.slice(1));
+    if (fs.existsSync(`${filePath}.mdx`) || fs.existsSync(`${filePath}.md`)) {
+      expectedRedirects.set(`/${page}`, destination);
+    } else {
+      uncoveredPages.push(page);
+    }
+  }
+
+  // This file is linked by Addie but intentionally omitted from navigation.
+  expectedRedirects.set(
+    '/docs/aao/aao-admins',
+    '/dist/docs/3.1.2/aao/aao-admins'
+  );
+
+  const expectedUncoveredPages = [
+    'docs/reference/migration/asset-access',
+    'docs/reference/migration/cross-role-governance-enforcement',
+    'docs/protocol/language-and-localization',
+    'docs/protocol/sync_agent_notification_configs',
+    'docs/creative/channels/radio',
+  ];
+  if (JSON.stringify(uncoveredPages) !== JSON.stringify(expectedUncoveredPages)) {
+    throw new Error(
+      `Unexpected live pages without a 3.1.2 snapshot: ${uncoveredPages.join(', ')}`
+    );
+  }
+
+  const snapshotRedirects = docsConfig.redirects.filter(redirect =>
+    redirect.destination.startsWith('/dist/docs/3.1.2/')
+  );
+  if (snapshotRedirects.length !== expectedRedirects.size) {
+    throw new Error(
+      `Expected ${expectedRedirects.size} snapshot redirects, found ${snapshotRedirects.length}`
+    );
+  }
+
+  for (const [source, destination] of expectedRedirects) {
+    const matches = docsConfig.redirects.filter(redirect => redirect.source === source);
+    if (matches.length !== 1 || matches[0].destination !== destination) {
+      throw new Error(`${source} must redirect exactly once to ${destination}`);
+    }
+    if (matches[0].permanent !== false) {
+      throw new Error(`${source} snapshot fallback must be temporary`);
+    }
+  }
+
+  const generatedApiRedirect = snapshotRedirects.find(redirect =>
+    redirect.source.startsWith('/docs/registry/api-reference/')
+  );
+  if (generatedApiRedirect) {
+    throw new Error(`Generated API route must not be redirected: ${generatedApiRedirect.source}`);
+  }
+});
 
 // --- Summary ---
 log('====================================');

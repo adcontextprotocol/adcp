@@ -19,7 +19,45 @@
       "type": "array",
       "description": "Array of creative assets to sync (create or update)",
       "items": {
-        "$ref": "/schemas/core/creative-asset.json"
+        "allOf": [
+          {
+            "$ref": "/schemas/core/creative-asset.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "localization": {
+                "description": "Sync-only materialized-localization mutation. The top-level assets are the source variant; optional locale_fallbacks declare buyer-approved language-family substitutions, and default_locale_variant_id selects the final serving fallback. An object transactionally replaces the source assets and complete locale set, omission preserves existing localization only when the top-level source assets are unchanged, and null removes localization. This field never requests translation or generation. Receivers MUST advertise get_adcp_capabilities creative.localization before accepting it.",
+                "anyOf": [
+                  { "$ref": "/schemas/core/creative-localization.json" },
+                  { "type": "null" }
+                ]
+              }
+            },
+            "additionalProperties": true
+          }
+        ],
+        "x-adcp-validation": {
+          "verifier_constraints": {
+            "localization_capability_gate": {
+              "required_capability": "creative.localization",
+              "target_count_ceiling": "creative.localization.max_target_variants_or_50",
+              "locale_format_account_support": "validate_request_before_mutation",
+              "on_violation": "reject_before_mutation"
+            },
+            "existing_localized_source_upsert": {
+              "localization_omitted": "top_level_assets_must_equal_prior_source_assets",
+              "source_assets_changed": "require_non_null_localization_or_null_removal",
+              "on_violation": "reject_before_mutation"
+            },
+            "localization_replacement": {
+              "scope": "top_level_assets_and_complete_localization",
+              "on_failure": "prior_state_unchanged",
+              "orphan_locale_variants": "must_not_be_visible"
+            }
+          },
+          "spec": "docs/creative/task-reference/sync_creatives.mdx#native-localization"
+        }
       },
       "minItems": 1,
       "maxItems": 100
@@ -69,7 +107,21 @@
           "creative_id",
           "package_id"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "x-adcp-validation": {
+          "verifier_constraints": {
+            "product_format_locale_policy": {
+              "scope": "every_effective_product_and_placement_format_option_where_assignment_may_serve",
+              "range_matching": "rfc4647_basic_filtering",
+              "eligible_variant_set": "filter_before_buyer_lookup_fallback_or_default",
+              "minimum_eligible_variants_per_scope": 1,
+              "serve_default": "default_locale_variant_id_must_be_eligible",
+              "policy_lifecycle": "snapshot_effective_policy_at_assignment_acceptance",
+              "on_violation": "CREATIVE_LOCALE_NOT_ACCEPTED"
+            }
+          },
+          "spec": "docs/creative/task-reference/sync_creatives.mdx#native-localization"
+        }
       },
       "minItems": 1
     },
@@ -88,7 +140,7 @@
     "dry_run": {
       "type": "boolean",
       "default": false,
-      "description": "When true, preview changes without applying them. Returns what would be created/updated/deleted."
+      "description": "When true, rehearse this sync_creatives operation without applying it. Validates the actual trafficking request in the seller's current context, including library upsert semantics, creative IDs, assignments, account-scoped gates, and seller policies, then returns what would be created/updated/deleted. This is distinct from validate_input, which only validates manifest structure against canonical/product format targets."
     },
     "validation_mode": {
       "$ref": "/schemas/enums/validation-mode.json",
@@ -124,10 +176,7 @@
           {
             "creative_id": "hero_video_30s",
             "name": "Brand Hero Video 30s",
-            "format_id": {
-              "agent_url": "https://creative.adcontextprotocol.org",
-              "id": "video_standard_30s"
-            },
+            "format_kind": "video_hosted",
             "assets": {
               "video": {
                 "asset_type": "video",
@@ -166,10 +215,7 @@
           {
             "creative_id": "holiday_hero",
             "name": "Holiday Campaign Hero",
-            "format_id": {
-              "agent_url": "https://creative.example.com",
-              "id": "premium_bespoke_display"
-            },
+            "format_kind": "image",
             "assets": {
               "product_catalog": {
                 "asset_type": "catalog",
@@ -204,10 +250,7 @@
           {
             "creative_id": "hero_video_30s",
             "name": "Brand Hero Video 30s - Updated",
-            "format_id": {
-              "agent_url": "https://creative.adcontextprotocol.org",
-              "id": "video_standard_30s"
-            },
+            "format_kind": "video_hosted",
             "assets": {
               "video": {
                 "asset_type": "video",
@@ -221,10 +264,7 @@
           {
             "creative_id": "banner_300x250",
             "name": "Display Banner 300x250 - Updated",
-            "format_id": {
-              "agent_url": "https://creative.adcontextprotocol.org",
-              "id": "display_300x250"
-            },
+            "format_kind": "image",
             "assets": {
               "image": {
                 "asset_type": "image",

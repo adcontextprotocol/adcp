@@ -104,6 +104,15 @@ interface FormattedFailedValidations {
   note?: string;
 }
 
+interface StoryboardStepLike {
+  skipped?: boolean;
+  skip_reason?: unknown;
+  requirement?: unknown;
+  details?: unknown;
+  error?: unknown;
+  warnings?: unknown;
+}
+
 const SENSITIVE_VALIDATION_TEXT_PATTERN =
   /(?:-----BEGIN [A-Z ]+PRIVATE KEY-----|\bbearer\s+\S+|\bbasic\s+[A-Za-z0-9+/=]{8,}|\b(?:authorization|auth|cookie|set-cookie|session(?:[_ -]?id)?|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret|password|credential|private[_ -]?key|signing[_ -]?key|client[_ -]?secret|oauth[_ -]?(?:code|verifier)|jwt)\b\s*[:=]\s*\S+)/i;
 const SENSITIVE_VALUE_PATTERN = /\b(?:sk_(?:live|test)_[A-Za-z0-9_]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{12,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/;
@@ -166,6 +175,49 @@ function safeDiagnosticText(value: unknown, max = MAX_VALIDATION_STRING_CHARS): 
   if (typeof value !== 'string') return '[redacted]';
   const sanitized = cleanValidationText(value, max);
   return sanitized === '[redacted]' ? sanitized : wrapUntrustedInput(sanitized, max);
+}
+
+function safeSkipReason(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const sanitized = cleanValidationText(value, 80);
+  return sanitized === '[redacted]' ? undefined : sanitized;
+}
+
+function firstSafeDiagnostic(values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const sanitized = safeDiagnosticText(value, 240);
+    if (sanitized !== '[redacted]') return sanitized;
+  }
+  return undefined;
+}
+
+function formatSkipDiagnostics(step: StoryboardStepLike): string[] {
+  const reason = safeSkipReason(step.skip_reason);
+  const lines: string[] = [];
+  if (reason) {
+    lines.push(`  - skip reason: \`${reason}\``);
+  }
+
+  const isControllerSkip =
+    step.skip_reason === 'missing_test_controller' ||
+    (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller');
+  if (isControllerSkip) {
+    lines.push(
+      '  - classification: optional deterministic-test-surface coverage gap, not a failed seller assertion.',
+      '  - guidance: `comply_test_controller` is optional for production-path Sandbox validation; do not describe it as required or call the storyboard untestable solely because this skip appears.',
+    );
+    return lines;
+  }
+
+  const warning = Array.isArray(step.warnings)
+    ? step.warnings.find((w): w is string => typeof w === 'string' && w.trim().length > 0)
+    : undefined;
+  const diagnostic = firstSafeDiagnostic([step.details, step.error, warning]);
+  if (diagnostic) {
+    lines.push(`  - details: ${diagnostic}`);
+  }
+  return lines;
 }
 
 function safeValidationId(value: unknown): string | undefined {
@@ -252,6 +304,9 @@ function formatStoryboardResult(result: StoryboardResult): string {
     for (const step of phase.steps) {
       const tag = step.skipped ? '⊘ skipped' : step.passed ? '✓ passed' : '✗ failed';
       lines.push(`- ${tag} — ${step.title}`);
+      if (step.skipped) {
+        lines.push(...formatSkipDiagnostics(step as StoryboardStepLike));
+      }
       if (!step.passed && !step.skipped) {
         const errMsg = (step as unknown as { error?: string }).error;
         if (errMsg) {

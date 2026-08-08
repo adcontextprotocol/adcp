@@ -28,7 +28,7 @@ Each record requires `account`, `vendor_cost`, and `currency`. Additional fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `account` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references) | Yes | Account for this record — by `account_id` or `{ brand, operator }`. |
+| `account` | [AccountRef](/docs/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account for this record — by `account_id` or `{ brand, operator }`. |
 | `vendor_cost` | number | Yes | Amount owed to the vendor for this record, in `currency` |
 | `currency` | string | Yes | ISO 4217 currency code |
 | `pricing_option_id` | string | Vendor: Yes | Pricing option from the vendor's discovery response (`get_signals`, `list_creatives`, `list_content_standards`, `list_property_lists`) or execution response (`build_creative`). The vendor uses this to verify the correct rate was applied. |
@@ -166,6 +166,8 @@ If some records fail validation, the response identifies how many were accepted:
 
 Always include `idempotency_key` in production usage. If a request times out or returns a network error, retry with the same key — the server will return the original result without double-counting.
 
+An idempotent replay is transparent: the server returns the original response unchanged and does not emit a `DUPLICATE_REQUEST` error or advisory.
+
 Generate a fresh UUID per request, not per usage record. If you need to report additional records for the same period, submit a new request with a new key.
 
 ## Reporting cadence
@@ -181,10 +183,9 @@ Report upon campaign completion to close out the final period.
 | `ACCOUNT_NOT_FOUND` | Account reference in a usage record not found or not accessible | Verify via `list_accounts`; re-run `sync_accounts` if needed |
 | `INVALID_USAGE_DATA` | A usage record has missing or invalid fields | Check required fields for your vendor type |
 | `INVALID_PRICING_OPTION` | `pricing_option_id` not found on this account | Verify `pricing_option_id` from the vendor's discovery response |
-| `DUPLICATE_REQUEST` | Request with this `idempotency_key` was already accepted | Safe to ignore — original response is returned unchanged |
 
 ## Next Steps
 
 - [sync_accounts](/docs/accounts/tasks/sync_accounts) — Sync advertiser accounts with a seller before reporting
 - [Accounts Protocol](/docs/accounts/overview) — How account establishment and settlement fit together
-- [Accounts and agents](/docs/building/integration/accounts-and-agents) — Billing hierarchy and operator model
+- [Accounts and agents](/docs/building/by-layer/L2/accounts-and-agents) — Billing hierarchy and operator model

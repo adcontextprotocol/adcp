@@ -134,13 +134,13 @@ If the brand domain was previously registered by another organization, the tool 
 
 ### `request_brand_domain_challenge`
 
-Issue a DNS TXT challenge so the caller's organization can claim a brand domain currently registered to another org or unregistered. Returns the verification record (Name/Type/Value) for the user to publish at their DNS host. DO NOT use when: the domain is already owned by the caller's org (already linked in their member profile); the user is just asking what their domain is; the user is asking generic 'is my domain set up?' questions. Pair with verify_brand_domain_challenge ONLY after the user confirms they've published the record. Response begins with an HTML comment '&lt;!-- STATUS: &lt;code> -->' for machine parsing (invisible in rendered markdown) — codes: dns_record_issued, already_verified, collision, invalid_domain, workos_error, not_authenticated, no_org, not_admin, missing_domain.
+Issue a DNS TXT challenge so the caller's selected organization can claim a brand domain currently registered to another org or unregistered. Returns the verification record (Name/Type/Value) for the user to publish at their DNS host. DO NOT use when: the domain is already owned by the caller's org (already linked in their member profile); the user is just asking what their domain is; the user is asking generic 'is my domain set up?' questions. If the caller belongs to multiple organizations, or the current org is a personal workspace while the domain matches a company org, STOP and ask them to choose the company organization_id before issuing a challenge. Pair with verify_brand_domain_challenge ONLY after the user confirms they've published the record. Response begins with an HTML comment '&lt;!-- STATUS: &lt;code> -->' for machine parsing (invisible in rendered markdown) — codes: dns_record_issued, already_verified, collision, invalid_domain, workos_error, not_authenticated, no_org, org_selection_required, not_admin, missing_domain.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
 ### `verify_brand_domain_challenge`
 
-Run the WorkOS DNS lookup against a previously-issued challenge and, on success, apply the brand-registry update. ONLY call after request_brand_domain_challenge returned DNS instructions in this same conversation AND the user has explicitly confirmed they published the record. NEVER call speculatively, as a 'check status' tool, or in a retry loop — DNS propagation takes minutes and the server enforces a cooldown that will return still_pending if you call again too soon. If the call returns still_pending, STOP and ask the user to confirm before any retry. Response begins with an HTML comment '&lt;!-- STATUS: &lt;code> -->' (invisible in rendered markdown) — codes: verified, still_pending, no_challenge, workos_error, not_authenticated, no_org, not_admin, missing_domain. After 'verified' the claim is complete; after 'still_pending' STOP and ask the user to confirm before retrying.
+Run the WorkOS DNS lookup against a previously-issued challenge for the selected organization and, on success, apply the brand-registry update. ONLY call after request_brand_domain_challenge returned DNS instructions in this same conversation AND the user has explicitly confirmed they published the record. NEVER call speculatively, as a 'check status' tool, or in a retry loop — DNS propagation takes minutes and the server enforces a cooldown that will return still_pending if you call again too soon. If the call returns still_pending, STOP and ask the user to confirm before any retry. Response begins with an HTML comment '&lt;!-- STATUS: &lt;code> -->' (invisible in rendered markdown) — codes: verified, still_pending, no_challenge, workos_error, not_authenticated, no_org, org_selection_required, not_admin, missing_domain. After 'verified' the claim is complete; after 'still_pending' STOP and ask the user to confirm before retrying.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -432,7 +432,7 @@ Execute AdCP protocol operations - discover documentation, execute tasks against
 
 ### `save_agent`
 
-Register an agent in the AAO registry on behalf of the current organization. Adds the agent to the org's member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other paying AAO members — Professional, Builder, Member, or Leader; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires a paid AAO tier (Professional, Builder, Member, or Leader) and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard's **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The caller MUST declare the agent's `type` (`brand`, `rights`, `measurement`, `governance`, `creative`, `sales`, `buying`, `signals`); ask the owner — do not guess. Server-side smuggle protection still validates the declared type against the capability snapshot when one is available. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AAO Registry" section of the rules for the intake script.
+Register an agent in the AgenticAdvertising.org registry on behalf of the current organization, or an explicitly selected active organization via `organization_id` / `organization_name`. Adds the agent to the org's member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other paying AgenticAdvertising.org members — Professional, Builder, Member, or Leader; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires a paid AgenticAdvertising.org tier (Professional, Builder, Member, or Leader) and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard's **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The caller MUST declare the agent's `type` (`brand`, `rights`, `measurement`, `governance`, `creative`, `sales`, `buying`, `signals`); ask the owner — do not guess. Server-side smuggle protection still validates the declared type against the capability snapshot when one is available. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AgenticAdvertising.org Registry" section of the rules for the intake script.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -922,6 +922,12 @@ Get statistics about industry feeds - total feeds, active feeds, articles collec
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
+### `get_platform_stats`
+
+Get admin platform stats: deduplicated people totals plus organization counts by lifecycle tier, membership tier, and subscription status. Use for platform-level member, user, or organization counts.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
 ### `list_feed_proposals`
 
 List pending feed proposals submitted by community members. Use this to review what news sources have been proposed.
@@ -1032,7 +1038,7 @@ Check domain health for data quality issues: orphan domains, conflicts, misalign
 
 ### `manage_organization_domains`
 
-Add, remove, or list verified domains for an organization. Syncs to WorkOS.
+Add, remove, list, set primary, or reconcile verified domains for an organization. Syncs to WorkOS.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
@@ -1211,6 +1217,12 @@ Approve, reject, or delete a pending brand logo. Approving makes it visible on t
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
+### `list_pending_community_mirrors`
+
+List community mirror proposals awaiting expert review, including platform, proposal ID, digest, and submission time.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
 ### `update_member_logo`
 
 Set or update the logo URL on a member's directory profile. Requires a publicly hosted HTTPS logo URL plus either the member's org_name or profile slug to identify them. Creates a brand entry if none exists, or updates the existing one.
@@ -1345,13 +1357,13 @@ Get the current learner's progress across all certification modules and tracks. 
 
 ### `test_out_modules`
 
-Mark modules as tested out after a placement assessment confirms the learner already has the knowledge. Only call this after conducting a thorough assessment — ask probing questions per module topic, not just surface-level familiarity. Never test out specialist or build project modules (S1-S5, B4, C4, D4). Does not award scores since no formal coursework was completed, but satisfies prerequisites for advancement.
+Mark modules as tested out after a placement assessment confirms the learner already has the knowledge. Only call this after conducting a thorough assessment — ask probing questions per module topic, not just surface-level familiarity. Never test out specialist or build project modules (any S-track module, B4, C4, D4). Does not award scores since no formal coursework was completed, but satisfies prerequisites for advancement.
 
 *Source: `server/src/addie/mcp/certification-tools.ts`*
 
 ### `start_certification_exam`
 
-Begin a specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.
+Begin an available specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S6: Security). S5 Sponsored Intelligence is listed in the curriculum but is not assessable until its sandbox labs exist. The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.
 
 *Source: `server/src/addie/mcp/certification-tools.ts`*
 

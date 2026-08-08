@@ -1091,7 +1091,11 @@ Update your profile: https://agenticadvertising.org/member-profile
     });
 
     if (error) {
-      logger.error({ error, to: data.memberEmail }, 'Failed to send introduction email');
+      logger.error({
+        resendError: error.message,
+        resendErrorName: 'name' in error ? error.name : undefined,
+        to: data.memberEmail,
+      }, 'Failed to send introduction email');
       return { success: false, error: error.message };
     }
 

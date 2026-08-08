@@ -159,6 +159,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             declaredSpecialisms,
             runId: run.id,
             adcpVersions: badgeEligibleAdcpVersions,
+            supportedVersions: complianceResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
           });
 
           if (badgeResult.issued.length > 0 || badgeResult.revoked.length > 0) {

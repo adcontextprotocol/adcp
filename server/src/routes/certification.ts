@@ -1,15 +1,30 @@
 import { Router } from 'express';
+import { randomUUID } from 'node:crypto';
 import { WorkOS } from '@workos-inc/node';
 import { Resend } from 'resend';
 import rateLimit from 'express-rate-limit';
 import { createLogger } from '../logger.js';
-import { requireAuth, requireAdmin, optionalAuth, isDevModeEnabled } from '../middleware/auth.js';
+import { requireAuth, requireGlobalAdmin, optionalAuth, isDevModeEnabled } from '../middleware/auth.js';
 import { enrichUserWithMembership } from '../utils/html-config.js';
 import * as certDb from '../db/certification-db.js';
 import { query } from '../db/client.js';
 import { notifyUser } from '../notifications/notification-service.js';
 import { isUuid } from '../utils/uuid.js';
 import { CachedPostgresStore } from '../middleware/pg-rate-limit-store.js';
+import {
+  CertifierNotConfiguredError,
+  CredentialNameRequiredError,
+  CredentialNotEarnedError,
+  CredentialRecoveryConflictError,
+  ensureCertifierCredential,
+} from '../services/certification-credential-issuance.js';
+import {
+  confirmCertificationContribution,
+  getCertificationContributions,
+  getCertificationExperienceMetrics,
+  getCertificationModuleExperience,
+  recordCertificationExperienceEvent,
+} from '../services/certification-experience.js';
 
 const logger = createLogger('certification-routes');
 
@@ -35,6 +50,16 @@ const adminModuleCompletionLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   store: new CachedPostgresStore('cert-admin-module-complete:'),
+  keyGenerator: (req) => req.user?.id || req.ip || 'unknown',
+  validate: { keyGeneratorIpFallback: false },
+});
+
+const adminCredentialRecoveryLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('cert-admin-credential-recovery:'),
   keyGenerator: (req) => req.user?.id || req.ip || 'unknown',
   validate: { keyGeneratorIpFallback: false },
 });
@@ -317,10 +342,101 @@ export function createCertificationRouters() {
         certDb.getPublicUserCredentials(userId),
       ]);
 
-      res.json({ progress, trackProgress, certifications, credentials });
+      const experiences = await Promise.all(
+        progress
+          .filter(item => item.status === 'in_progress')
+          .map(item => getCertificationModuleExperience(userId, item.module_id)),
+      );
+      const experienceByModule = new Map(
+        experiences.filter(Boolean).map(experience => [experience!.module_id, experience]),
+      );
+      res.json({
+        progress: progress.map(item => ({
+          ...item,
+          experience: experienceByModule.get(item.module_id) ?? null,
+        })),
+        trackProgress,
+        certifications,
+        credentials,
+      });
     } catch (error) {
       logger.error({ error }, 'Failed to get certification progress');
       res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/me/certification/modules/:id/experience — authoritative learner-facing state
+  userRouter.get('/certification/modules/:id/experience', async (req, res) => {
+    try {
+      const experience = await getCertificationModuleExperience(req.user!.id, req.params.id.toUpperCase());
+      if (!experience) return res.status(404).json({ error: 'Module not found' });
+      res.json(experience);
+    } catch (error) {
+      logger.error({ error, moduleId: req.params.id }, 'Failed to get module experience');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/me/certification/modules/:id/resume — resolve a true resume target
+  userRouter.post('/certification/modules/:id/resume', async (req, res) => {
+    try {
+      const moduleId = req.params.id.toUpperCase();
+      const experience = await getCertificationModuleExperience(req.user!.id, moduleId);
+      if (!experience || (experience.status !== 'in_progress' && experience.status !== 'evidence_complete')) {
+        return res.status(409).json({ error: 'Module is not in progress' });
+      }
+      res.json(experience);
+    } catch (error) {
+      logger.error({ error, moduleId: req.params.id }, 'Failed to resume module');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Count a resume only after the chat UI successfully loaded the stored thread.
+  userRouter.post('/certification/modules/:id/resumed', async (req, res) => {
+    try {
+      const moduleId = req.params.id.toUpperCase();
+      const conversationId = typeof req.body?.conversation_id === 'string'
+        ? req.body.conversation_id
+        : null;
+      const experience = await getCertificationModuleExperience(req.user!.id, moduleId);
+      if (!conversationId || !experience || experience.resume_conversation_id !== conversationId) {
+        return res.status(409).json({ error: 'Resume target does not match current module progress' });
+      }
+      await recordCertificationExperienceEvent({
+        userId: req.user!.id,
+        moduleId,
+        threadId: conversationId,
+        eventType: 'module_resumed',
+        metadata: { checkpoint_saved_at: experience.checkpoint?.saved_at ?? null },
+      });
+      res.json({ success: true });
+    } catch (error) {
+      logger.error({ error, moduleId: req.params.id }, 'Failed to confirm module resume');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  userRouter.get('/certification/contributions', async (req, res) => {
+    try {
+      res.json({ contributions: await getCertificationContributions(req.user!.id) });
+    } catch (error) {
+      logger.error({ error }, 'Failed to get certification contributions');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  userRouter.post('/certification/contributions/:id/confirm', async (req, res) => {
+    try {
+      const issueUrl = typeof req.body?.issue_url === 'string' ? req.body.issue_url.trim() : '';
+      if (!issueUrl) return res.status(400).json({ error: 'GitHub issue URL is required' });
+      const contribution = await confirmCertificationContribution(req.user!.id, req.params.id, issueUrl);
+      if (!contribution) return res.status(404).json({ error: 'Contribution not found' });
+      res.json({ contribution });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to verify contribution';
+      logger.warn({ error, contributionId: req.params.id }, 'Failed to confirm certification contribution');
+      res.status(422).json({ error: message });
     }
   });
 
@@ -987,7 +1103,7 @@ export function createCertificationRouters() {
   // =====================================================
 
   const adminRouter = Router();
-  adminRouter.use(requireAuth, requireAdmin);
+  adminRouter.use(...requireGlobalAdmin);
 
   // POST /api/admin/certification/backfill-badges — retry Certifier for credentials missing data
   let backfillInProgress = false;
@@ -997,8 +1113,7 @@ export function createCertificationRouters() {
     }
     backfillInProgress = true;
     try {
-      const { issueCredential, isCertifierConfigured, getCredentialBadgeUrl, buildRecipientName } =
-        await import('../services/certifier-client.js');
+      const { isCertifierConfigured } = await import('../services/certifier-client.js');
 
       if (!isCertifierConfigured()) {
         return res.status(503).json({ error: 'Certifier not configured' });
@@ -1038,50 +1153,11 @@ export function createCertificationRouters() {
 
       for (const row of needsBadgeUrl.rows) {
         try {
-          if (row.certifier_credential_id) {
-            // Has certifier ID but missing badge URL — just fetch the badge
-            const badgeUrl = await getCredentialBadgeUrl(row.certifier_credential_id);
-            if (badgeUrl) {
-              await certDb.awardCredential(
-                row.workos_user_id, row.credential_id,
-                row.certifier_credential_id, row.certifier_public_id || undefined,
-                badgeUrl,
-              );
-              updated++;
-            }
-          } else {
-            // No certifier ID at all — need to re-issue
-            const cred = await certDb.getCredential(row.credential_id);
-            if (!cred?.certifier_group_id) continue;
-
-            // Get user info for Certifier
-            const userResult = await query<{ first_name: string; last_name: string; email: string }>(
-              'SELECT first_name, last_name, email FROM users WHERE workos_user_id = $1',
-              [row.workos_user_id]
-            );
-            const user = userResult.rows[0];
-            if (!user) continue;
-
-            const credential = await issueCredential({
-              groupId: cred.certifier_group_id,
-              recipient: {
-                name: buildRecipientName(user),
-                email: user.email,
-              },
-            });
-
-            let badgeUrl: string | null = null;
-            try {
-              badgeUrl = await getCredentialBadgeUrl(credential.id);
-            } catch { /* badge URL is optional */ }
-
-            await certDb.awardCredential(
-              row.workos_user_id, row.credential_id,
-              credential.id, credential.publicId,
-              badgeUrl || undefined,
-            );
-            updated++;
-          }
+          const result = await ensureCertifierCredential({
+            userId: row.workos_user_id,
+            credentialId: row.credential_id,
+          });
+          if (result.badgeUrl) updated++;
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           errors.push(`${row.credential_id}/${row.workos_user_id}: ${msg}`);
@@ -1101,8 +1177,11 @@ export function createCertificationRouters() {
   // GET /api/admin/certification/overview — aggregate metrics
   adminRouter.get('/overview', async (_req, res) => {
     try {
-      const metrics = await certDb.getAdminOverviewMetrics();
-      res.json(metrics);
+      const [metrics, experience] = await Promise.all([
+        certDb.getAdminOverviewMetrics(),
+        getCertificationExperienceMetrics(),
+      ]);
+      res.json({ ...metrics, experience });
     } catch (error) {
       logger.error({ error }, 'Failed to get admin overview metrics');
       res.status(500).json({ error: 'Internal server error' });
@@ -1121,6 +1200,169 @@ export function createCertificationRouters() {
     } catch (error) {
       logger.error({ error }, 'Failed to get admin learner list');
       res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/admin/certification/learners/:userId/credentials/:credentialId/reissue
+  // Targeted recovery for an already-awarded local credential whose Certifier
+  // issuance or badge lookup failed. The shared issuance service serializes all
+  // recovery paths and persists a draft external ID before issue/send.
+  adminRouter.post('/learners/:userId/credentials/:credentialId/reissue', adminCredentialRecoveryLimiter, async (req, res) => {
+    const { userId, credentialId } = req.params;
+    let operationId: string | null = null;
+    let auditContext: {
+      adminUserId: string;
+      reason: string;
+    } | null = null;
+    try {
+      if (!userId || userId.length > 255 || !credentialId || credentialId.length > 50) {
+        return res.status(400).json({ error: 'Invalid learner or credential identifier' });
+      }
+
+      const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+      if (reason.length < 10 || reason.length > 1000) {
+        return res.status(400).json({ error: 'Reason must be between 10 and 1000 characters' });
+      }
+
+      const isStaticAdminApiKey = Boolean(
+        (req as typeof req & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey,
+      );
+      if (!req.user?.id && !isStaticAdminApiKey) {
+        return res.status(401).json({ error: 'Global admin identity is required' });
+      }
+      const adminUserId = req.user?.id || 'static-admin-api-key';
+      auditContext = { adminUserId, reason };
+
+      const credential = await certDb.getCredential(credentialId);
+      if (!credential) {
+        return res.status(404).json({ error: 'Credential definition not found' });
+      }
+      if (!credential.certifier_group_id) {
+        return res.status(409).json({ error: 'Credential is not configured for Certifier issuance' });
+      }
+
+      const awardedResult = await query<{
+        certifier_credential_id: string | null;
+        certifier_public_id: string | null;
+        certifier_badge_url: string | null;
+      }>(
+        `SELECT uc.certifier_credential_id, uc.certifier_public_id, uc.certifier_badge_url
+         FROM user_credentials uc
+         WHERE uc.workos_user_id = $1 AND uc.credential_id = $2`,
+        [userId, credentialId],
+      );
+      const awarded = awardedResult.rows[0];
+      if (!awarded) {
+        return res.status(404).json({ error: 'Learner has not earned this credential' });
+      }
+
+      operationId = randomUUID();
+      await certDb.recordAdminCredentialReissueEvent({
+        operationId,
+        userId,
+        credentialId,
+        adminUserId,
+        reason,
+        eventType: 'started',
+        details: {
+          before: {
+            certifier_credential_id: awarded.certifier_credential_id,
+            certifier_public_id: awarded.certifier_public_id,
+            badge_available: Boolean(awarded.certifier_badge_url),
+          },
+        },
+      });
+
+      const result = await ensureCertifierCredential({ userId, credentialId });
+
+      let auditWarning = false;
+      try {
+        await certDb.recordAdminCredentialReissueEvent({
+          operationId,
+          userId,
+          credentialId,
+          adminUserId,
+          reason,
+          eventType: 'succeeded',
+          details: {
+            outcome: result.outcome,
+            email_delivery: result.emailDelivery,
+            after: {
+              certifier_credential_id: result.credentialId,
+              certifier_public_id: result.publicId,
+              badge_available: Boolean(result.badgeUrl),
+            },
+          },
+        });
+      } catch (auditError) {
+        auditWarning = true;
+        logger.error(
+          { error: auditError, operationId, userId, credentialId },
+          'Credential recovery succeeded but success audit event failed',
+        );
+      }
+
+      return res.json({
+        operation_id: operationId,
+        outcome: result.outcome,
+        issued: result.outcome === 'issued',
+        badge_available: Boolean(result.badgeUrl),
+        email_delivery: result.emailDelivery,
+        ...(auditWarning && { warnings: ['Credential recovered, but the success audit event could not be recorded'] }),
+        credential: {
+          credential_id: credentialId,
+          name: credential.name,
+          certifier_credential_id: result.credentialId,
+          certifier_public_id: result.publicId,
+          certifier_badge_url: result.badgeUrl,
+        },
+      });
+    } catch (error) {
+      if (operationId && auditContext) {
+        try {
+          await certDb.recordAdminCredentialReissueEvent({
+            operationId,
+            userId,
+            credentialId,
+            adminUserId: auditContext.adminUserId,
+            reason: auditContext.reason,
+            eventType: 'failed',
+            details: { error_type: error instanceof Error ? error.constructor.name : 'UnknownError' },
+          });
+        } catch (auditError) {
+          logger.error({ error: auditError, operationId }, 'Failed to append credential recovery failure audit event');
+        }
+      }
+
+      if (error instanceof CredentialNotEarnedError) {
+        return res.status(404).json({
+          error: 'Learner has not earned this credential',
+          ...(operationId && { operation_id: operationId }),
+        });
+      }
+      if (error instanceof CredentialNameRequiredError) {
+        return res.status(409).json({
+          error: 'Learner name is required before issuance',
+          ...(operationId && { operation_id: operationId }),
+        });
+      }
+      if (error instanceof CredentialRecoveryConflictError) {
+        return res.status(409).json({
+          error: 'Credential recovery requires manual reconciliation',
+          ...(operationId && { operation_id: operationId }),
+        });
+      }
+      if (error instanceof CertifierNotConfiguredError) {
+        return res.status(503).json({
+          error: 'Certifier not configured',
+          ...(operationId && { operation_id: operationId }),
+        });
+      }
+      logger.error({ error, userId, credentialId }, 'Failed to reissue Certifier credential');
+      return res.status(502).json({
+        error: 'Certifier credential recovery failed',
+        ...(operationId && { operation_id: operationId }),
+      });
     }
   });
 

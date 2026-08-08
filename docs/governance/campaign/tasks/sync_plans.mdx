@@ -124,7 +124,7 @@ These fields use the same ISO codes and semantics as `product-filters`, `offerin
 
 ## Plan-hash preimage
 
-Each plan item a buyer supplies here is the preimage the governance agent hashes to produce the `plan_hash` audit-layer claim carried in every [signed `governance_context`](/docs/building/implementation/security#signed-governance-context). Canonicalization rules, the closed bookkeeping exclusion list, retention obligations, and the full set of reference test vectors are specified in [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit). Governance-agent implementers SHOULD run their hashing code against the eleven vectors under [`static/compliance/source/test-vectors/plan-hash/`](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/test-vectors/plan-hash) before shipping.
+Each plan item a buyer supplies here is the preimage the governance agent hashes to produce the `plan_hash` audit-layer claim carried in every [signed `governance_context`](/docs/building/by-layer/L1/security#signed-governance-context). Canonicalization rules, the closed bookkeeping exclusion list, retention obligations, and the full set of reference test vectors are specified in [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit). Governance-agent implementers SHOULD run their hashing code against the eleven vectors under [`static/compliance/source/test-vectors/plan-hash/`](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/test-vectors/plan-hash) before shipping.
 
 ## Fields
 
@@ -175,8 +175,8 @@ Each plan item a buyer supplies here is the preimage the governance agent hashes
 | `plans[].plan_id` | string | Plan identifier. |
 | `plans[].status` | enum | `active` (sync succeeded) or `error` (sync failed). This is the sync result status, not the plan lifecycle status. |
 | `plans[].version` | number | Plan version (increments on each sync). |
-| `plans[].categories` | array | Validation categories active for this plan. Depends on the governance agent's declared capabilities. |
-| `plans[].categories[].category_id` | string | Validation category identifier. |
+| `plans[].categories` | array | Validation categories the governance agent reports as active for this plan. Category labels come from the agent's internal policy model, not `get_adcp_capabilities`. |
+| `plans[].categories[].category_id` | string | Opaque agent-internal validation label for display and audit. Common vocabulary includes `budget_authority`, `strategic_alignment`, `bias_fairness`, `regulatory_compliance`, `seller_verification`, and `brand_policy`. An agent that actually evaluated accessibility may use the documented label `accessibility_compliance`, but clients MUST NOT treat it as a protocol enum, policy activation, or typed format guarantee. |
 | `plans[].categories[].status` | enum | `active` or `inactive`. |
 | `plans[].resolved_policies` | array | Policies the governance agent will enforce for this plan. Includes explicitly referenced and auto-applied policies. |
 | `plans[].resolved_policies[].policy_id` | string | Registry policy ID. |
@@ -231,9 +231,9 @@ Policy categories are distinct from `brand.industries`. Industries describe what
 
 | Code | Recovery | Description |
 |------|----------|-------------|
-| `INVALID_PLAN` | correctable | Plan is missing required fields or has invalid values. |
+| `INVALID_REQUEST` | correctable | Plan is missing required fields or has invalid values. `error.field` identifies the offending plan field. |
 | `REFERENCE_NOT_FOUND` | correctable | Brand domain could not be resolved via the Brand Protocol. The governance agent cannot determine applicable compliance policies without a valid brand reference. `error.field` MUST identify the brand field that failed to resolve. |
-| `BUDGET_BELOW_COMMITTED` | correctable | Cannot reduce budget below the amount already committed (on plan update). |
+| `VALIDATION_ERROR` | correctable | Cannot reduce budget below the amount already committed (on plan update). `error.field` identifies the budget field. |
 
 ## Related tasks
 

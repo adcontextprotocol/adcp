@@ -4,12 +4,39 @@
   "title": "AdCP Schema Registry",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "3.1.0-rc.15",
+  "adcp_version": "3.1.1",
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
   "lastUpdated": "2026-06-05",
   "baseUrl": "/schemas/latest",
+  "stability": "development",
+  "prerelease": false,
+  "deprecated": false,
+  "protocol_layers": [
+    {
+      "id": "negotiation",
+      "title": "Negotiation layer",
+      "description": "Planning-time protocols for discovery, buying, creative, signals, accounts, governance, brand identity, and sponsored intelligence.",
+      "schema_groups": [
+        "media-buy",
+        "creative",
+        "signals",
+        "account",
+        "governance",
+        "brand",
+        "sponsored-intelligence"
+      ]
+    },
+    {
+      "id": "decisioning-serving",
+      "title": "Decisioning and serving layer",
+      "description": "Trusted Match Protocol schemas for serve-time Context Match and Identity Match decisions.",
+      "schema_groups": [
+        "trusted-match"
+      ]
+    }
+  ],
   "schemas": {
     "core": {
       "description": "Core data models used throughout AdCP",
@@ -34,6 +61,22 @@
           "$ref": "/schemas/core/creative-asset.json",
           "description": "Creative asset for upload to library - supports static assets, generative formats, and third-party ad serving (VAST, DAAST, HTML, JavaScript)"
         },
+        "locale-tag": {
+          "$ref": "/schemas/core/locale-tag.json",
+          "description": "BCP 47 language-identity tag using the AdCP canonical wire profile — required shared primitive for new language-bearing fields"
+        },
+        "creative-localization": {
+          "$ref": "/schemas/core/creative-localization.json",
+          "description": "Explicit source and target locale variants requested on a creative"
+        },
+        "localized-creative-asset": {
+          "$ref": "/schemas/core/localized-creative-asset.json",
+          "description": "Creative variant asset with contextual language-tag conformance"
+        },
+        "creative-localization-readback": {
+          "$ref": "/schemas/core/creative-localization-readback.json",
+          "description": "Exact materialized locale assets, buyer-assigned identities, and matching policy"
+        },
         "account": {
           "$ref": "/schemas/core/account.json",
           "description": "Billing account representing who pays for advertising. Accounts have rate cards, payment terms, and platform mappings."
@@ -45,6 +88,42 @@
         "targeting": {
           "$ref": "/schemas/core/targeting.json",
           "description": "Audience targeting criteria"
+        },
+        "demographic-age-range": {
+          "$ref": "/schemas/core/demographic-age-range.json",
+          "description": "Canonical inclusive age interval with explicit unknown-age membership"
+        },
+        "demographic-predicate": {
+          "$ref": "/schemas/core/demographic-predicate.json",
+          "description": "Portable demographic audience intent, beginning with age in AdCP 3.2"
+        },
+        "demographic-targeting-capability": {
+          "$ref": "/schemas/core/demographic-targeting-capability.json",
+          "description": "Product-scoped demographic execution modes and exact interval capabilities"
+        },
+        "demographic-targeting-resolution": {
+          "$ref": "/schemas/core/demographic-targeting-resolution.json",
+          "description": "Requested, applied, execution, and exact-equivalence demographic readback"
+        },
+        "audience-characteristic": {
+          "$ref": "/schemas/core/audience-characteristic.json",
+          "description": "Machine-comparable audience dimension and value or range"
+        },
+        "audience-evidence": {
+          "$ref": "/schemas/core/audience-evidence.json",
+          "description": "Immutable population-level audience composition, affinity, or reach evidence"
+        },
+        "audience-evidence-requirements": {
+          "$ref": "/schemas/core/audience-evidence-requirements.json",
+          "description": "Buyer-authored audience-evidence admissibility and ranking policy"
+        },
+        "audience-evidence-pin": {
+          "$ref": "/schemas/core/audience-evidence-pin.json",
+          "description": "Buyer commitment pin for an exact immutable audience-evidence snapshot"
+        },
+        "audience-evidence-selection": {
+          "$ref": "/schemas/core/audience-evidence-selection.json",
+          "description": "Digest-pinned package readback for evidence used in a decision"
         },
         "duration": {
           "$ref": "/schemas/core/duration.json",
@@ -68,7 +147,8 @@
         },
         "format": {
           "$ref": "/schemas/core/format.json",
-          "description": "Represents a creative format with its requirements"
+          "description": "Deprecated 3.x named-format compatibility definition; use ProductFormatDeclaration canonical contracts for new integrations.",
+          "deprecated": true
         },
         "overlay": {
           "$ref": "/schemas/core/overlay.json",
@@ -134,9 +214,33 @@
           "$ref": "/schemas/core/generation-credential.json",
           "description": "Scoped credential for generating rights-cleared content via LLM providers"
         },
+        "attestation-issuer": {
+          "$ref": "/schemas/core/attestation-issuer.json",
+          "description": "Typed canonical identity of an attestation credential issuer"
+        },
+        "attestation-subject": {
+          "$ref": "/schemas/core/attestation-subject.json",
+          "description": "Typed identity of the entity or object an attestation concerns"
+        },
+        "attestation-reference": {
+          "$ref": "/schemas/core/attestation-reference.json",
+          "description": "Reference-first presentation of an independently issued claim"
+        },
+        "attestation-capabilities": {
+          "$ref": "/schemas/core/attestation-capabilities.json",
+          "description": "Evaluator allowlist and supported attestation delivery and proof formats"
+        },
+        "attestation-evaluation": {
+          "$ref": "/schemas/core/attestation-evaluation.json",
+          "description": "Evaluator-of-record result bound to an exact attestation presentation"
+        },
+        "rights-attestation-evaluation": {
+          "$ref": "/schemas/core/rights-attestation-evaluation.json",
+          "description": "Seller-produced rights-grant presentation and evaluation readback"
+        },
         "rights-constraint": {
           "$ref": "/schemas/core/rights-constraint.json",
-          "description": "Rights metadata attached to creative manifests for tracking validity and constraints"
+          "description": "Digest-pinned rights metadata and portable issuer-attestation references attached to creatives"
         },
         "pagination-request": {
           "$ref": "/schemas/core/pagination-request.json",
@@ -201,6 +305,14 @@
         "proposal": {
           "$ref": "/schemas/core/proposal.json",
           "description": "A proposed media plan with budget allocations across products - actionable via create_media_buy"
+        },
+        "budget-allocation": {
+          "$ref": "/schemas/core/budget-allocation.json",
+          "description": "Fixed or seller-optimized allocation of a media-buy total budget across packages"
+        },
+        "bidding-policy": {
+          "$ref": "/schemas/core/bidding-policy.json",
+          "description": "Buyer-authored bidding, average-cost, or return policy at media-buy or package scope"
         },
         "insertion-order": {
           "$ref": "/schemas/core/insertion-order.json",
@@ -386,6 +498,22 @@
           "$ref": "/schemas/core/mcp-webhook-payload.json",
           "description": "MCP-specific webhook payload structure for HTTP-based push notifications. Protocol-level fields at top-level (task_id, status, etc.) and AdCP data layer nested under 'result'. NOT used in A2A (uses native statusUpdate)."
         },
+        "agent-notification-config": {
+          "$ref": "/schemas/core/agent-notification-config.json",
+          "description": "Agent-level webhook subscriber configuration for notifications such as capabilities.changed"
+        },
+        "agent-webhook-challenge": {
+          "$ref": "/schemas/core/agent-webhook-challenge.json",
+          "description": "Proof-of-control challenge payload for agent-level notification endpoint activation"
+        },
+        "capabilities-changed-webhook": {
+          "$ref": "/schemas/core/capabilities-changed-webhook.json",
+          "description": "Agent-level webhook payload that invalidates cached get_adcp_capabilities responses"
+        },
+        "account-status-changed-webhook": {
+          "$ref": "/schemas/core/account-status-changed-webhook.json",
+          "description": "Account-level webhook payload that invalidates a list_accounts account status snapshot"
+        },
         "destination": {
           "$ref": "/schemas/core/destination.json",
           "description": "A destination platform where signals can be activated (DSP, sales agent, etc.)"
@@ -416,6 +544,7 @@
         },
         "signal-pricing-option": {
           "$ref": "/schemas/core/signal-pricing-option.json",
+          "deprecated": true,
           "description": "Deprecated — alias for vendor-pricing-option.json. Retained for backward compatibility. Prefer vendor-pricing-option.json for new implementations."
         },
         "vendor-pricing-option": {
@@ -588,7 +717,7 @@
         },
         "webhook-challenge": {
           "$ref": "/schemas/core/webhook-challenge.json",
-          "description": "Proof-of-control challenge payload for account-level notification_configs[] endpoint activation"
+          "description": "Proof-of-control challenge payload for account-level notification endpoint activation"
         },
         "webhook-challenge-response": {
           "$ref": "/schemas/core/webhook-challenge-response.json",
@@ -938,11 +1067,16 @@
         },
         "legacy-postal-system": {
           "$ref": "/schemas/enums/legacy-postal-system.json",
+          "deprecated": true,
           "description": "Deprecated country-fused postal code systems for compatibility (us_zip, gb_outward, ca_fsa, etc.)"
         },
         "age-verification-method": {
           "$ref": "/schemas/enums/age-verification-method.json",
           "description": "Methods for verifying user age for compliance (facial_age_estimation, id_document, digital_id, credit_card, world_id)"
+        },
+        "age-determination-basis": {
+          "$ref": "/schemas/enums/age-determination-basis.json",
+          "description": "User-level age determination bases permitted for targeting execution (verified, declared, or inferred)"
         },
         "device-platform": {
           "$ref": "/schemas/enums/device-platform.json",
@@ -1149,6 +1283,10 @@
     "media-buy": {
       "description": "Media buy task request/response schemas",
       "supporting-schemas": {
+        "get-products-rejected": {
+          "$ref": "/schemas/media-buy/get-products-rejected.json",
+          "description": "Terminal business rejection arm for a well-formed get_products brief or refinement"
+        },
         "package-request": {
           "$ref": "/schemas/media-buy/package-request.json",
           "description": "Package configuration for media buy creation - used within create_media_buy request"
@@ -1172,11 +1310,13 @@
         "list-creative-formats": {
           "request": {
             "$ref": "/schemas/media-buy/list-creative-formats-request.json",
-            "description": "Request parameters for discovering format IDs and creative agents supported by this sales agent"
+            "deprecated": true,
+            "description": "Deprecated 3.x compatibility request. Sales agents publish canonical sellable formats through get_products Product.format_options[]."
           },
           "response": {
             "$ref": "/schemas/media-buy/list-creative-formats-response.json",
-            "description": "Response payload with format_ids and creative_agents list. Sales agent returns which formats it supports and which creative agents provide those formats. Buyers query creative agents for full format specifications."
+            "deprecated": true,
+            "description": "Deprecated 3.x compatibility response for legacy named formats. Not a sales-agent deliverability contract."
           }
         },
         "create-media-buy": {
@@ -1297,11 +1437,13 @@
         "list-creative-formats": {
           "request": {
             "$ref": "/schemas/creative/list-creative-formats-request.json",
-            "description": "Request parameters for discovering creative formats from this creative agent"
+            "deprecated": true,
+            "description": "Deprecated 3.x compatibility request; use get_adcp_capabilities creative.supported_formats[]."
           },
           "response": {
             "$ref": "/schemas/creative/list-creative-formats-response.json",
-            "description": "Response payload with full format definitions - this is the authoritative source for format specifications"
+            "deprecated": true,
+            "description": "Deprecated 3.x compatibility response for legacy named formats."
           }
         },
         "list-transformers": {
@@ -1714,6 +1856,16 @@
             "$ref": "/schemas/protocol/list-tasks-response.json",
             "description": "Filtered AdCP application-layer async task list for reconciliation; alias response for legacy tasks/list"
           }
+        },
+        "sync-agent-notification-configs": {
+          "request": {
+            "$ref": "/schemas/protocol/sync-agent-notification-configs-request.json",
+            "description": "Register, replace, pause, or clear agent-level webhook subscribers such as capabilities.changed"
+          },
+          "response": {
+            "$ref": "/schemas/protocol/sync-agent-notification-configs-response.json",
+            "description": "Applied agent-level webhook subscriber set with credentials redacted"
+          }
         }
       }
     },
@@ -1804,44 +1956,56 @@
       "description": "Trusted Match Protocol (TMP) — real-time execution layer for activating pre-negotiated packages across any surface. Conformance invariants are normative in docs/trusted-match/specification.mdx; the cap-fire boundary contract is at docs/trusted-match/identity-match-implementation.mdx; a non-normative impression-tracker implementation reference (multi-identity dedup, fcap_keys labels, log-based data model, SDK primitives) is at docs/trusted-match/impression-tracker-implementation.mdx. Storage backend is an implementation choice; conformant services may use any store that satisfies the invariants.",
       "supporting-schemas": {
         "available-package": {
-          "$ref": "/schemas/tmp/available-package.json",
+          "$ref": "/schemas/trusted-match/available-package.json",
           "description": "A package available for contextual matching on a given impression opportunity"
         },
         "offer": {
-          "$ref": "/schemas/tmp/offer.json",
+          "$ref": "/schemas/trusted-match/offer.json",
           "description": "Buyer's response to a context match — ranges from simple activation (package_id only) to rich offers with brand, price, summary, and creative manifest"
         },
         "offer-price": {
-          "$ref": "/schemas/tmp/offer-price.json",
+          "$ref": "/schemas/trusted-match/offer-price.json",
           "description": "Lightweight price for variable-priced offers"
         },
         "error": {
-          "$ref": "/schemas/tmp/error.json",
+          "$ref": "/schemas/trusted-match/error.json",
           "description": "Error response from a TMP provider or router when a request cannot be processed"
         },
         "provider-registration": {
-          "$ref": "/schemas/tmp/provider-registration.json",
+          "$ref": "/schemas/trusted-match/provider-registration.json",
           "description": "TMP provider registration — endpoint, capabilities, and operational parameters for router configuration"
+        },
+        "provider-identity-match-response": {
+          "$ref": "/schemas/trusted-match/provider-identity-match-response.json",
+          "description": "Provider-to-router Identity Match response shape — carries ordered TMPX `{slot_id, value}` chunks with no publisher-local names"
+        },
+        "publisher-tmpx-config": {
+          "$ref": "/schemas/trusted-match/publisher-tmpx-config.json",
+          "description": "Publisher-owned deployment configuration that maps (provider_id, slot_id) to the ad-server macro name, GAM key-value, VAST substitution, or play-log field for that surface"
+        },
+        "tmpx-chunk": {
+          "$ref": "/schemas/trusted-match/tmpx-chunk.json",
+          "description": "A single TMPX chunk — provider-local slot_id and opaque URL-safe value; shared between provider→router and router→publisher hops"
         }
       },
       "operations": {
         "context-match": {
           "request": {
-            "$ref": "/schemas/tmp/context-match-request.json",
+            "$ref": "/schemas/trusted-match/context-match-request.json",
             "description": "Evaluate available packages against content context. Contains no user identity."
           },
           "response": {
-            "$ref": "/schemas/tmp/context-match-response.json",
+            "$ref": "/schemas/trusted-match/context-match-response.json",
             "description": "Offers for matched packages with optional brand, price, summary, creative manifest, and targeting signals"
           }
         },
         "identity-match": {
           "request": {
-            "$ref": "/schemas/tmp/identity-match-request.json",
+            "$ref": "/schemas/trusted-match/identity-match-request.json",
             "description": "Evaluate user eligibility for packages using an opaque identity token. Contains no page context."
           },
           "response": {
-            "$ref": "/schemas/tmp/identity-match-response.json",
+            "$ref": "/schemas/trusted-match/identity-match-response.json",
             "description": "Per-package eligibility — boolean eligible plus optional intent score"
           }
         }
@@ -1989,5 +2153,5 @@
       "code": "// Use everit-org/json-schema or similar library"
     }
   ],
-  "published_version": "3.1.0-rc.15"
+  "published_version": "3.1.1"
 }

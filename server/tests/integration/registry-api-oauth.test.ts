@@ -159,6 +159,26 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       expect(res.body.agent_context_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     });
 
+    it('canonicalizes the requested URL before ownership and auth-context save', async () => {
+      const requestedUrl = 'HTTPS://AGENT.EXAMPLE.COM/';
+      const res = await request(app)
+        .put(`/api/registry/agents/${encodeURIComponent(requestedUrl)}/connect`)
+        .send({ auth_token: 'test-bearer-123', auth_type: 'bearer' });
+      expect(res.status).toBe(200);
+
+      const stored = await pool.query(
+        `SELECT agent_url, auth_token_hint
+         FROM agent_contexts
+         WHERE organization_id = $1`,
+        [TEST_ORG_ID],
+      );
+      expect(stored.rows).toHaveLength(1);
+      expect(stored.rows[0]).toMatchObject({
+        agent_url: TEST_AGENT_URL,
+        auth_token_hint: '****-123',
+      });
+    });
+
     it('normalizes raw Basic credentials before storing', async () => {
       const res = await request(app).put(url).send({ auth_token: 'test-user:test-password', auth_type: 'basic' });
       expect(res.status).toBe(200);
@@ -248,6 +268,26 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       });
     });
 
+    it('canonicalizes the requested URL before client-credentials save', async () => {
+      const requestedUrl = 'HTTPS://AGENT.EXAMPLE.COM/';
+      const res = await request(app)
+        .put(`/api/registry/agents/${encodeURIComponent(requestedUrl)}/oauth-client-credentials`)
+        .send(validBody);
+      expect(res.status).toBe(200);
+
+      const stored = await pool.query(
+        `SELECT agent_url, oauth_cc_client_id
+         FROM agent_contexts
+         WHERE organization_id = $1`,
+        [TEST_ORG_ID],
+      );
+      expect(stored.rows).toHaveLength(1);
+      expect(stored.rows[0]).toMatchObject({
+        agent_url: TEST_AGENT_URL,
+        oauth_cc_client_id: validBody.client_id,
+      });
+    });
+
     it('persists the full config including optional fields', async () => {
       await request(app)
         .put(url)
@@ -261,7 +301,8 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       );
       expect(r.rows[0]).toMatchObject({
         oauth_cc_scope: 'adcp',
-        oauth_cc_resource: TEST_AGENT_URL,
+        // scalar resources are stored with the v1s: prefix to prevent codec collisions
+        oauth_cc_resource: `v1s:${TEST_AGENT_URL}`,
         oauth_cc_auth_method: 'body',
       });
     });
@@ -287,6 +328,47 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       const res = await request(app).put(url).send(missing);
       expect(res.status).toBe(400);
       expect(res.body.error).toMatch(/client_id/);
+    });
+
+    it('saves an array resource and stores it with the v1a: storage prefix', async () => {
+      const resources = ['https://api1.example.com', 'https://api2.example.com'];
+      await request(app)
+        .put(url)
+        .send({ ...validBody, resource: resources })
+        .expect(200);
+
+      const r = await pool.query(
+        `SELECT oauth_cc_resource FROM agent_contexts WHERE organization_id = $1 AND agent_url = $2`,
+        [TEST_ORG_ID, TEST_AGENT_URL],
+      );
+      // Verify the typed codec prefix is written to the TEXT column
+      expect(r.rows[0].oauth_cc_resource).toBe(`v1a:${JSON.stringify(resources)}`);
+    });
+
+    it('codec collision: scalar resource starting with "v1a:" round-trips as a scalar string', async () => {
+      // A scalar value whose text starts with "v1a:" would be decoded as an array if stored
+      // bare. The encoder writes it as "v1s:v1a:..." so the decoder returns the original scalar.
+      const collisionValue = 'v1a:["https://a"]';
+      await request(app)
+        .put(url)
+        .send({ ...validBody, resource: collisionValue })
+        .expect(200);
+
+      const r = await pool.query(
+        `SELECT oauth_cc_resource FROM agent_contexts WHERE organization_id = $1 AND agent_url = $2`,
+        [TEST_ORG_ID, TEST_AGENT_URL],
+      );
+      // DB column must be the v1s:-tagged form
+      expect(r.rows[0].oauth_cc_resource).toBe(`v1s:${collisionValue}`);
+
+      // Round-trip via the test endpoint: the SDK should receive the original scalar
+      exchangeMock.mockResolvedValueOnce({ access_token: 'tok', token_type: 'Bearer' });
+      const testRes = await request(app).post(`${url}/test`).send({});
+      expect(testRes.status).toBe(200);
+      expect(exchangeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ resource: collisionValue }),
+        expect.anything(),
+      );
     });
 
     it('returns 403 for an agent the user does not own', async () => {
@@ -323,6 +405,18 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       expect(typeof res.body.latency_ms).toBe('number');
     });
 
+    it('canonicalizes the requested URL before testing saved client credentials', async () => {
+      await request(app).put(saveUrl).send(validBody).expect(200);
+      exchangeMock.mockResolvedValueOnce({ access_token: 'new-access', token_type: 'Bearer' });
+
+      const requestedUrl = 'HTTPS://AGENT.EXAMPLE.COM/';
+      const res = await request(app)
+        .post(`/api/registry/agents/${encodeURIComponent(requestedUrl)}/oauth-client-credentials/test`)
+        .send({});
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+    });
+
     it('returns { ok: false, error: { kind: "oauth", ... } } when the AS rejects the client', async () => {
       await request(app).put(saveUrl).send(validBody).expect(200);
 
@@ -349,12 +443,37 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       });
     });
 
+    it('passes a decoded resource array to the exchange mock after save/load round-trip', async () => {
+      const resources = ['https://api1.example.com', 'https://api2.example.com'];
+      await request(app).put(saveUrl).send({ ...validBody, resource: resources }).expect(200);
+      exchangeMock.mockResolvedValueOnce({ access_token: 'tok', token_type: 'Bearer' });
+
+      const res = await request(app).post(testUrl).send({});
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+
+      // The credentials passed to the SDK exchange must carry the decoded array
+      expect(exchangeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ resource: resources }),
+        expect.anything(),
+      );
+    });
+
     it('returns 403 when the user does not own the agent', async () => {
       const res = await request(app)
         .post(`/api/registry/agents/${encodeURIComponent(OTHER_AGENT_URL)}/oauth-client-credentials/test`)
         .send({});
       expect(res.status).toBe(403);
     });
+
+    it('returns 400 when PUT receives an empty resource array', async () => {
+      const res = await request(app)
+        .put(saveUrl)
+        .send({ ...validBody, resource: [] });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/array/i);
+    });
+
   });
 
   // ── GET /auth-status ────────────────────────────────────────────
@@ -375,6 +494,20 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
         .expect(200);
 
       const res = await request(app).get(statusUrl).expect(200);
+      expect(res.body).toMatchObject({ has_auth: true, auth_type: 'bearer' });
+    });
+
+    it('canonicalizes the requested URL before ownership and auth-context lookup', async () => {
+      await request(app)
+        .put(`/api/registry/agents/${encodeURIComponent(TEST_AGENT_URL)}/connect`)
+        .send({ auth_token: 'test-bearer', auth_type: 'bearer' })
+        .expect(200);
+
+      const requestedUrl = 'HTTPS://AGENT.EXAMPLE.COM/';
+      const res = await request(app)
+        .get(`/api/registry/agents/${encodeURIComponent(requestedUrl)}/auth-status`)
+        .expect(200);
+
       expect(res.body).toMatchObject({ has_auth: true, auth_type: 'bearer' });
     });
 

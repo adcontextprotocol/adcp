@@ -42,6 +42,8 @@ POST https://you.com/adcp/webhook/create_media_buy/agent_123/route_abc123
   }
 ```
 
+Webhook v1 retains this legacy unpadded Base64URL encoding throughout AdCP 3.x; it does not inherit the 3.2 request-signing migration to RFC 8941 padded Base64. SDKs select the webhook parser from the configured callback route, never as fallback after request-profile parsing fails.
+
 If you're using the `@adcp/sdk` library, this entire flow is handled automatically. As a **buyer**, configure `webhookUrlTemplate` and your agent URL on the client; `push_notification_config` is injected into every outgoing task call, and incoming webhooks are verified against the seller's JWKS automatically. As a **seller emitting webhooks**, publish a signing JWK at your brand.json `agents[]` entry. New signers use `adcp_use: "request-signing"`; if you want webhook-only key material, publish a second `request-signing` JWK with a distinct `kid`.
 
 :::warning Legacy HMAC fallback (deprecated)
@@ -301,6 +303,8 @@ Webhook envelope shape is determined by **which registration mechanism the buyer
 |---|---|
 | AdCP `push_notification_config` (task argument, MCP/A2A/REST) | [`mcp-webhook-payload.json`](#mcp) |
 | A2A `TaskPushNotificationConfig` ([`CreateTaskPushNotificationConfig`](https://a2a-protocol.org/latest/specification/) RPC, or inline `task_push_notification_config` on `SendMessage`) | A2A native `Task` / `TaskStatusUpdateEvent` per A2A 1.0 §4.3.3 |
+| Account-level `sync_accounts.accounts[].notification_configs[]` | Event-specific AdCP payload schemas such as `creative-status-changed-webhook.json`, `account-status-changed-webhook.json`, or `wholesale-feed-webhook.json` |
+| Agent-level `sync_agent_notification_configs.notification_configs[]` | Event-specific AdCP payload schemas such as `capabilities-changed-webhook.json` |
 
 The two channels are independent. A buyer MAY register both for the same task and receive both webhooks per status change.
 
@@ -333,7 +337,11 @@ Signature: sig1=:<base64url-unpadded>:
 Content-Digest: sha-256=:<base64url-unpadded>:
 ```
 
+These two binary headers use the webhook-v1 legacy encoding. The AdCP 3.2 request profile uses RFC 8941 padded Base64 instead; a receiver selects one parser from the trusted route/profile and never tries both.
+
 Covered components are fixed: `@method`, `@target-uri`, `@authority`, `content-type`, `content-digest`. `content-digest` is REQUIRED — the body is the event; a signature that doesn't cover it isn't protecting the attack surface that matters.
+
+Property-list change payloads retain a required body-level `signature: "rfc9421"` compatibility marker through 3.x because the previously published schema required a string at that location without defining interoperable signature semantics. Receivers MUST accept any string in that field from an older 3.x sender, ignore it for authentication, and verify only the HTTP signature headers above. Property-list registration exposes no legacy authentication selector, so this delivery surface is RFC 9421-only. The marker is removed in 4.0. Collection-list webhook schema and behavior remain unchanged; migrating that contract requires separately versioned work.
 
 **Verification** follows the 14-step [request verifier checklist](/docs/building/by-layer/L1/security#verifier-checklist-requests) with three webhook substitutions:
 
@@ -588,9 +596,15 @@ Reporting webhooks are separate from task status webhooks. They deliver periodic
 
 See [Task Reference](/docs/media-buy/task-reference) for details on `reporting_webhook`.
 
+## Agent-level webhooks
+
+Agent-level webhooks outlive any account or media buy. They are registered with [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs), not with account-level `notification_configs[]` or per-task `push_notification_config`.
+
+The initial agent-level event type is `capabilities.changed`. It invalidates cached [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) responses. The webhook payload is deliberately small and does not contain the full capability document; receivers re-read `get_adcp_capabilities` and replace their cached snapshot from the fresh response. Sellers MUST publish the new capability snapshot before firing so the webhook's `capabilities_version` is observable on read. Receivers SHOULD retry the read with normal transient-error backoff if the webhook revision is not yet observable.
+
 ## Persistent channel contract
 
-Task webhooks fire once per logical task and stop when the task settles. **Persistent webhooks** — `reporting_webhook` and `push_notification_config` on a media buy — outlive any single operation and fire repeatedly for the life of the resource. The contract below applies to persistent channels.
+Task webhooks fire once per logical task and stop when the task settles. **Persistent webhooks** — `reporting_webhook`, `push_notification_config` on a media buy, account-level `notification_configs[]`, and agent-level `sync_agent_notification_configs` subscribers — outlive any single operation and fire repeatedly for the life of the resource or agent. The contract below applies to persistent channels.
 
 This section is the transport half of the [Snapshot and log contract](/docs/protocol/snapshot-and-log). For the read-side rules (snapshot is authoritative, replay = re-read), see that page.
 

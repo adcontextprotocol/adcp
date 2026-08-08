@@ -14,10 +14,12 @@ import { stripeSubReflectedInOrgRowInvariant } from '../../../src/audit/integrit
 import { workosMembershipRowExistsInWorkosInvariant } from '../../../src/audit/integrity/invariants/workos-membership-row-exists-in-workos.js';
 import { everyEntitledOrgHasResolvableTierInvariant } from '../../../src/audit/integrity/invariants/every-entitled-org-has-resolvable-tier.js';
 import { uniqueOrgPerEmailDomainInvariant } from '../../../src/audit/integrity/invariants/unique-org-per-email-domain.js';
+import { workosVerifiedDomainsMirroredInvariant } from '../../../src/audit/integrity/invariants/workos-verified-domains-mirrored.js';
+import { personalMemberCompanyOrgSplitInvariant } from '../../../src/audit/integrity/invariants/personal-member-company-org-split.js';
 import { ALL_INVARIANTS, getInvariantByName } from '../../../src/audit/integrity/invariants/index.js';
 import type { InvariantContext } from '../../../src/audit/integrity/types.js';
 
-const EXPECTED_INVARIANT_COUNT = 9;
+const EXPECTED_INVARIANT_COUNT = 11;
 
 const mockPoolQuery = vi.fn();
 const mockStripeCustomersRetrieve = vi.fn();
@@ -25,6 +27,7 @@ const mockStripeSubsList = vi.fn();
 const mockStripeSubsRetrieve = vi.fn();
 const mockStripeProductsRetrieve = vi.fn();
 const mockWorkosListMemberships = vi.fn();
+const mockWorkosGetOrganization = vi.fn();
 
 function makeCtx(): InvariantContext {
   return {
@@ -35,6 +38,7 @@ function makeCtx(): InvariantContext {
       products: { retrieve: mockStripeProductsRetrieve },
     } as unknown as InvariantContext['stripe'],
     workos: {
+      organizations: { getOrganization: mockWorkosGetOrganization },
       userManagement: { listOrganizationMemberships: mockWorkosListMemberships },
     } as unknown as InvariantContext['workos'],
     logger: {
@@ -52,6 +56,7 @@ beforeEach(() => {
   mockStripeSubsRetrieve.mockReset();
   mockStripeProductsRetrieve.mockReset();
   mockWorkosListMemberships.mockReset();
+  mockWorkosGetOrganization.mockReset();
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -67,6 +72,7 @@ describe('invariants registry', () => {
 
   it('resolves invariants by name', () => {
     expect(getInvariantByName('one-active-stripe-sub-per-org')).toBe(oneActiveStripeSubPerOrgInvariant);
+    expect(getInvariantByName('workos-verified-domains-mirrored')).toBe(workosVerifiedDomainsMirroredInvariant);
     expect(getInvariantByName('does-not-exist')).toBeUndefined();
   });
 
@@ -75,6 +81,130 @@ describe('invariants registry', () => {
       expect(inv.description.length).toBeGreaterThan(20);
       expect(['critical', 'warning', 'info']).toContain(inv.severity);
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// workos-verified-domains-mirrored
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('workos-verified-domains-mirrored', () => {
+  it('passes when every WorkOS verified domain has a matching verified local row', async () => {
+    mockPoolQuery
+      .mockResolvedValueOnce({
+        rows: [{ workos_organization_id: 'org_acme', name: 'Acme' }],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            domain: 'acme.test',
+            workos_organization_id: 'org_acme',
+            org_name: 'Acme',
+            verified: true,
+            is_primary: true,
+          },
+        ],
+      });
+    mockWorkosGetOrganization.mockResolvedValueOnce({
+      id: 'org_acme',
+      name: 'Acme',
+      domains: [{ domain: 'acme.test', state: 'verified' }],
+    });
+
+    const result = await workosVerifiedDomainsMirroredInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(1);
+    expect(result.violations).toEqual([]);
+  });
+
+  it('flags a verified WorkOS domain that is missing locally', async () => {
+    mockPoolQuery
+      .mockResolvedValueOnce({
+        rows: [{ workos_organization_id: 'org_spanglish', name: 'Spanglish Movies' }],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+    mockWorkosGetOrganization.mockResolvedValueOnce({
+      id: 'org_spanglish',
+      name: 'Spanglish Movies',
+      domains: [{ domain: 'spanglishmovies.com', state: 'verified' }],
+    });
+
+    const result = await workosVerifiedDomainsMirroredInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].severity).toBe('critical');
+    expect(result.violations[0].subject_type).toBe('domain');
+    expect(result.violations[0].subject_id).toBe('spanglishmovies.com');
+    expect(result.violations[0].message).toContain('no local row');
+  });
+
+  it('flags a verified WorkOS domain whose local row belongs to another org', async () => {
+    mockPoolQuery
+      .mockResolvedValueOnce({
+        rows: [{ workos_organization_id: 'org_spanglish', name: 'Spanglish Movies' }],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            domain: 'spanglishmovies.com',
+            workos_organization_id: 'org_personal',
+            org_name: 'Gustavo Workspace',
+            verified: false,
+            is_primary: false,
+          },
+        ],
+      });
+    mockWorkosGetOrganization.mockResolvedValueOnce({
+      id: 'org_spanglish',
+      name: 'Spanglish Movies',
+      domains: [{ domain: 'spanglishmovies.com', state: 'verified' }],
+    });
+
+    const result = await workosVerifiedDomainsMirroredInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].message).toContain('local row belongs');
+    expect(result.violations[0].details?.local_workos_organization_id).toBe('org_personal');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// personal-member-company-org-split
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('personal-member-company-org-split', () => {
+  it('passes when no split rows are returned', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] });
+
+    const result = await personalMemberCompanyOrgSplitInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(0);
+    expect(result.violations).toEqual([]);
+  });
+
+  it('flags an active personal workspace holding a company domain for the same user', async () => {
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [
+        {
+          personal_org_id: 'org_personal',
+          personal_org_name: 'Gustavo Workspace',
+          company_org_id: 'org_spanglish',
+          company_org_name: 'Spanglish Movies',
+          domain: 'latinxctv.com',
+          domain_verified: false,
+          user_email: 'gustavo@spanglishmovies.com',
+          company_member_status: 'prospect',
+          company_subscription_status: null,
+        },
+      ],
+    });
+
+    const result = await personalMemberCompanyOrgSplitInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].subject_id).toBe('org_spanglish');
+    expect(result.violations[0].message).toContain('active personal workspace');
+    expect(result.violations[0].details?.personal_org_id).toBe('org_personal');
   });
 });
 

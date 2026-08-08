@@ -71,7 +71,16 @@
           },
           "format_id": {
             "$ref": "/schemas/core/format-id.json",
-            "description": "Format of this creative"
+            "description": "**DEPRECATED in 3.2.** Legacy named format of this creative. New responses use `format_kind` and optional `format_option_ref`.",
+            "deprecated": true
+          },
+          "format_kind": {
+            "$ref": "/schemas/core/canonical-format-kind.json",
+            "description": "Canonical format kind delivered for this creative."
+          },
+          "format_option_ref": {
+            "$ref": "/schemas/core/format-option-ref.json",
+            "description": "Portable reference to the product or publisher format option used for delivery, when disambiguation is required."
           },
           "totals": {
             "$ref": "/schemas/core/delivery-metrics.json",

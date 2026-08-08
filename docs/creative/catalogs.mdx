@@ -64,7 +64,7 @@ sequenceDiagram
 
     rect rgb(240, 248, 255)
         Note over B,S: 1. Discovery
-        B->>S: list_creative_formats
+        B->>S: get_products (read format_options)
         S->>B: Formats with catalog asset types
     end
 
@@ -87,7 +87,7 @@ sequenceDiagram
     end
 ```
 
-This is the same dependency order documented in [Account state](/docs/building/integration/account-state): `sync_catalogs` → `sync_creatives` → `create_media_buy`.
+This is the same dependency order documented in [Account state](/docs/building/by-layer/L2/account-state): `sync_catalogs` → `sync_creatives` → `create_media_buy`.
 
 ### When to use sync_catalogs vs inline
 
@@ -479,19 +479,15 @@ Each vertical catalog type has a defined item schema with field tables, required
 
 ## Format catalog requirements
 
-Formats that render product listings, store locators, or promotional content declare what catalog feeds they need as `catalog` asset types in their `assets` array. Each catalog asset carries `requirements` with fields like `catalog_type`, `min_items`, and `required_fields`. This tells buying agents which catalogs to sync before submitting creatives.
+Canonical declarations that render product listings, store locators, or promotional content declare catalog inputs in `params.slots[]`. This tells buying agents which catalogs to sync before submitting creatives.
 
 ```json
 {
-  "format_id": {
-    "agent_url": "https://creative.retailer.com/adcp",
-    "id": "product_carousel_with_inventory"
-  },
-  "name": "Product Carousel with Inventory",
-  "assets": [
-    {
-      "item_type": "individual",
-      "asset_id": "product_catalog",
+  "format_option_id": "product_carousel_with_inventory",
+  "format_kind": "image_carousel",
+  "params": {
+    "slots": [{
+      "asset_group_id": "product_catalog",
       "asset_type": "catalog",
       "required": true,
       "requirements": {
@@ -499,22 +495,20 @@ Formats that render product listings, store locators, or promotional content dec
         "min_items": 3,
         "required_fields": ["title", "price", "image_url"]
       }
-    },
-    {
-      "item_type": "individual",
-      "asset_id": "inventory_catalog",
+    }, {
+      "asset_group_id": "inventory_catalog",
       "asset_type": "catalog",
       "required": true,
       "requirements": {
         "catalog_type": "inventory",
         "required_fields": ["store_id", "quantity", "in_stock"]
       }
-    }
-  ]
+    }]
+  }
 }
 ```
 
-Buying agents check catalog asset types in the format's `assets` array after discovering formats, sync the required catalogs via `sync_catalogs`, then submit creatives that reference those catalogs.
+Buying agents check catalog slots in the selected product's `format_options[]`, sync the required feeds via `sync_catalogs`, then submit canonical creatives that reference them.
 
 ### Field bindings
 
@@ -586,7 +580,7 @@ When a format declares catalog asset types, the buying agent syncs the required 
 
 ### Workflow
 
-1. **Discover format requirements** — Call `list_creative_formats` and check the format's `assets` array for `catalog` asset types and their `requirements`.
+1. **Discover format requirements** — Read the selected product's canonical `format_options[]` and check `params.slots[]` for catalog assets and constraints.
 
 2. **Sync catalogs** — Use `sync_catalogs` to push the required feeds to the account. Wait for approval.
 
@@ -597,17 +591,17 @@ When a format declares catalog asset types, the buying agent syncs the required 
   "creatives": [
     {
       "creative_id": "product-carousel",
-      "format_id": {
-        "agent_url": "https://creative.retailer.com/adcp",
-        "id": "product_carousel_with_inventory"
-      },
+      "format_kind": "image_carousel",
+      "format_option_ref": { "scope": "product", "format_option_id": "product_carousel_with_inventory" },
       "assets": {
         "product_catalog": {
+          "asset_type": "catalog",
           "catalog_id": "product-feed",
           "type": "product",
           "tags": ["summer"]
         },
         "banner_image": {
+          "asset_type": "image",
           "url": "https://cdn.acmecorp.com/carousel-hero.jpg",
           "width": 1200,
           "height": 628
@@ -733,7 +727,7 @@ interface OfferingAssetConstraint {
 
 ### Format requirements for offerings
 
-Call `list_creative_formats` and check the format's `assets` array for `catalog` asset types to see what catalog types are needed and what each offering must provide:
+Read the selected canonical declaration's `params.slots[]` for catalog assets to see what catalog types are needed and what each offering must provide:
 
 ```json
 {
@@ -1162,7 +1156,7 @@ Which items render is **seller-declared** via the `fanout_mode` enum on the [`sp
 
 ### Match `asset_group_id` to the format's vocabulary
 
-Read the format definition from `list_creative_formats` before building offerings. The `asset_group_id` values must match exactly what the format declares in `offering_asset_constraints` within each catalog asset's `requirements`. Group IDs like `headlines`, `images`, or `videos` are format-defined vocabulary, not protocol constants — each format chooses its own IDs. The protocol provides the container and constraint mechanism; the format defines the vocabulary.
+Read the selected product or creative capability's canonical declaration before building offerings. The `asset_group_id` values must match exactly what the declaration carries in `offering_asset_constraints` within each catalog slot's requirements. Group IDs like `headlines`, `images`, or `videos` are declaration-defined vocabulary, not protocol constants.
 
 ### Provide more assets than the minimum
 
@@ -1186,8 +1180,8 @@ Budget allocation across catalog items is a platform optimization decision — s
 
 ## Related documentation
 
-- **[Account state](/docs/building/integration/account-state)** — How catalogs fit into account state and the setup sequence
+- **[Account state](/docs/building/by-layer/L2/account-state)** — How catalogs fit into account state and the setup sequence
 - **[Brand identity](/docs/brand-protocol/brand-json)** — Brand identity and assets
 - **[SI Chat Protocol](/docs/sponsored-intelligence/si-chat-protocol)** — Conversational brand experiences
 - **[sync_creatives](/docs/creative/task-reference/sync_creatives)** — Submitting creative manifests
-- **[list_creative_formats](/docs/creative/task-reference/list_creative_formats)** — Discovering format requirements
+- **[Canonical formats](/docs/creative/canonical-formats)** — Discovering format requirements and authority

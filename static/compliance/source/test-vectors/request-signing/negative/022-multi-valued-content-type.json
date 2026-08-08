@@ -1,6 +1,7 @@
 {
   "name": "Content-Type header sent as multiple field values (malformed — field covered by signature must be single-valued)",
   "spec_reference": "#verifier-checklist-requests step 1 (covered component fields must be single-valued; RFC 9421 §2.1 derivation rules do not permit concatenation for non-list headers)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

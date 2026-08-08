@@ -9,6 +9,7 @@
  * - chat-routes.ts (Web conversations)
  */
 
+import { randomUUID } from 'crypto';
 import { query, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 
@@ -159,6 +160,12 @@ export interface CreateMessageInput {
   // How the user initiated this message. Only populated on role='user' rows.
   // NULL on rows predating migration 451 (2026-04-28).
   message_source?: 'typed' | 'cta_chip' | 'voice' | 'paste' | 'email' | 'unknown';
+  // Browser-generated turn identity used to make a retry idempotent.
+  client_request_id?: string;
+  delivery_status?: 'completed' | 'interrupted';
+  /** Internal web-turn fencing: terminal status and message commit atomically. */
+  client_turn_lease_id?: string;
+  finalize_client_turn_status?: 'completed' | 'interrupted';
 }
 
 export interface ThreadMessage {
@@ -217,10 +224,24 @@ export interface ThreadMessage {
   user_id: string | null;
   user_display_name: string | null;
   message_source: 'typed' | 'cta_chip' | 'voice' | 'paste' | 'email' | 'unknown' | null;
+  client_request_id: string | null;
+  delivery_status: 'completed' | 'interrupted';
 }
 
 export interface ThreadWithMessages extends Thread {
   messages: ThreadMessage[];
+}
+
+export type ClientTurnClaimResult = {
+  state: 'claimed' | 'processing' | 'completed' | 'not_retryable';
+  leaseId?: string;
+};
+
+export class StaleClientTurnLeaseError extends Error {
+  constructor() {
+    super('Client turn lease is no longer owned by this worker');
+    this.name = 'StaleClientTurnLeaseError';
+  }
 }
 
 export interface ThreadSummary {
@@ -352,6 +373,24 @@ export class ThreadService {
     return result.rows[0] || null;
   }
 
+  /** Permanently attach a browser-owned anonymous thread to its signed-in user. */
+  async claimAnonymousThread(
+    threadId: string,
+    anonymousOwnerId: string,
+    workosUserId: string,
+    userDisplayName?: string,
+  ): Promise<Thread | null> {
+    const result = await query<Thread>(
+      `UPDATE addie_threads
+       SET user_type = 'workos', user_id = $3,
+           user_display_name = COALESCE($4, user_display_name), updated_at = NOW()
+       WHERE thread_id = $1 AND user_type = 'anonymous' AND user_id = $2
+       RETURNING *`,
+      [threadId, anonymousOwnerId, workosUserId, userDisplayName ?? null],
+    );
+    return result.rows[0] ?? null;
+  }
+
   /**
    * Update thread context (e.g., when user switches channels in Slack)
    */
@@ -463,6 +502,22 @@ export class ThreadService {
       // ordering in getThreadMessages.
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [input.thread_id]);
 
+      if (input.client_turn_lease_id && input.client_request_id && input.finalize_client_turn_status) {
+        const finalized = await client.query(
+          `UPDATE addie_chat_turns
+           SET status = $4, lease_expires_at = NULL, updated_at = NOW()
+           WHERE thread_id = $1 AND client_request_id = $2
+             AND lease_id = $3 AND status = 'processing'`,
+          [
+            input.thread_id,
+            input.client_request_id,
+            input.client_turn_lease_id,
+            input.finalize_client_turn_status,
+          ],
+        );
+        if ((finalized.rowCount ?? 0) === 0) throw new StaleClientTurnLeaseError();
+      }
+
       const seqResult = await client.query<{ next_seq: number }>(
         `SELECT COALESCE(MAX(sequence_number), 0) + 1 as next_seq
          FROM addie_thread_messages WHERE thread_id = $1`,
@@ -479,8 +534,9 @@ export class ThreadService {
           timing_system_prompt_ms, timing_total_llm_ms, timing_total_tool_ms,
           processing_iterations, tokens_cache_creation, tokens_cache_read, active_rule_ids,
           router_decision, config_version_id, email_message_id,
-          user_id, user_display_name, message_source
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+          user_id, user_display_name, message_source,
+          client_request_id, delivery_status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
         RETURNING *`,
         [
           input.thread_id,
@@ -510,6 +566,8 @@ export class ThreadService {
           input.user_id ?? null,
           input.user_display_name != null ? stripNullBytesString(input.user_display_name) : null,
           input.message_source ?? null,
+          input.client_request_id ?? null,
+          input.delivery_status ?? 'completed',
         ]
       );
 
@@ -526,7 +584,30 @@ export class ThreadService {
   /**
    * Get all messages in a thread
    */
-  async getThreadMessages(threadId: string): Promise<ThreadMessage[]> {
+  async getThreadMessages(
+    threadId: string,
+    options?: { limit?: number; offset?: number },
+  ): Promise<ThreadMessage[]> {
+    if (options) {
+      const limit = Number.isFinite(options.limit)
+        ? Math.min(Math.max(Math.trunc(options.limit!), 1), 200)
+        : 100;
+      const offset = Number.isFinite(options.offset)
+        ? Math.min(Math.max(Math.trunc(options.offset!), 0), 10_000)
+        : 0;
+      const result = await query<ThreadMessage>(
+        `SELECT * FROM (
+           SELECT * FROM addie_thread_messages
+           WHERE thread_id = $1
+           ORDER BY sequence_number DESC
+           LIMIT $2 OFFSET $3
+         ) recent_messages
+         ORDER BY sequence_number ASC`,
+        [threadId, limit, offset],
+      );
+      return result.rows;
+    }
+
     const result = await query<ThreadMessage>(
       `SELECT * FROM addie_thread_messages
        WHERE thread_id = $1
@@ -534,6 +615,125 @@ export class ThreadService {
       [threadId]
     );
     return result.rows;
+  }
+
+  /**
+   * Return all attempts associated with one browser turn. The caller has
+   * already authorized access to the parent thread before using this method.
+   */
+  async getMessagesByClientRequestId(
+    threadId: string,
+    clientRequestId: string,
+  ): Promise<ThreadMessage[]> {
+    const result = await query<ThreadMessage>(
+      `SELECT * FROM addie_thread_messages
+       WHERE thread_id = $1 AND client_request_id = $2
+       ORDER BY sequence_number ASC`,
+      [threadId, clientRequestId],
+    );
+    return result.rows;
+  }
+
+  /**
+   * Atomically claim the right to execute one browser turn. A retry may only
+   * transition an interrupted (or expired) turn back to processing.
+   */
+  async claimClientTurn(
+    threadId: string,
+    clientRequestId: string,
+    retry: boolean,
+  ): Promise<ClientTurnClaimResult> {
+    const leaseId = randomUUID();
+    if (!retry) {
+      const inserted = await query(
+        `INSERT INTO addie_chat_turns
+           (thread_id, client_request_id, status, lease_id, lease_expires_at)
+         VALUES ($1, $2, 'processing', $3, NOW() + INTERVAL '2 minutes')
+         ON CONFLICT DO NOTHING
+         RETURNING status`,
+        [threadId, clientRequestId, leaseId],
+      );
+      if ((inserted.rowCount ?? 0) > 0) return { state: 'claimed', leaseId };
+    } else {
+      const reclaimed = await query(
+        `UPDATE addie_chat_turns
+         SET status = 'processing', lease_id = $3,
+             lease_expires_at = NOW() + INTERVAL '2 minutes', updated_at = NOW()
+         WHERE thread_id = $1 AND client_request_id = $2
+           AND (status = 'interrupted'
+             OR (status = 'processing' AND lease_expires_at < NOW()))
+         RETURNING status`,
+        [threadId, clientRequestId, leaseId],
+      );
+      if ((reclaimed.rowCount ?? 0) > 0) return { state: 'claimed', leaseId };
+    }
+
+    const current = await query<{ status: 'processing' | 'interrupted' | 'completed' }>(
+      `SELECT status FROM addie_chat_turns
+       WHERE thread_id = $1 AND client_request_id = $2`,
+      [threadId, clientRequestId],
+    );
+    const status = current.rows[0]?.status;
+    if (status === 'processing') return { state: 'processing' };
+    if (status === 'completed') return { state: 'completed' };
+    return { state: 'not_retryable' };
+  }
+
+  async renewClientTurnLease(
+    threadId: string,
+    clientRequestId: string,
+    leaseId: string,
+  ): Promise<boolean> {
+    const result = await query(
+      `UPDATE addie_chat_turns
+       SET lease_expires_at = NOW() + INTERVAL '2 minutes', updated_at = NOW()
+       WHERE thread_id = $1 AND client_request_id = $2
+         AND lease_id = $3 AND status = 'processing'`,
+      [threadId, clientRequestId, leaseId],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async setClientTurnStatus(
+    threadId: string,
+    clientRequestId: string,
+    leaseId: string,
+    status: 'interrupted' | 'completed',
+  ): Promise<boolean> {
+    const result = await query(
+      `UPDATE addie_chat_turns
+       SET status = $4, lease_expires_at = NULL, updated_at = NOW()
+       WHERE thread_id = $1 AND client_request_id = $2
+         AND lease_id = $3 AND status = 'processing'`,
+      [threadId, clientRequestId, leaseId, status],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getRecoverableClientTurn(threadId: string): Promise<{
+    client_request_id: string;
+    content: string;
+    message_source: CreateMessageInput['message_source'] | null;
+  } | null> {
+    const result = await query<{
+      client_request_id: string;
+      content: string;
+      message_source: CreateMessageInput['message_source'] | null;
+    }>(
+      `SELECT turn.client_request_id::text, message.content, message.message_source
+       FROM addie_chat_turns turn
+       JOIN addie_thread_messages message
+         ON message.thread_id = turn.thread_id
+        AND message.client_request_id = turn.client_request_id
+        AND message.role = 'user'
+       WHERE turn.thread_id = $1
+         AND (turn.status = 'interrupted'
+           OR (turn.status = 'processing' AND turn.lease_expires_at < NOW()))
+       ORDER BY turn.updated_at DESC
+       LIMIT 1`,
+      [threadId],
+    );
+    return result.rows[0] ?? null;
   }
 
   /**
@@ -602,6 +802,7 @@ export class ThreadService {
    * Add feedback to a message
    */
   async addMessageFeedback(
+    threadId: string,
     messageId: string,
     feedback: MessageFeedback
   ): Promise<boolean> {
@@ -616,7 +817,8 @@ export class ThreadService {
          rated_by = $7,
          rating_source = $8,
          rated_at = NOW()
-       WHERE message_id = $1`,
+       WHERE message_id = $1
+         AND thread_id = $9`,
       [
         messageId,
         feedback.rating,
@@ -626,6 +828,7 @@ export class ThreadService {
         feedback.improvement_suggestion || null,
         feedback.rated_by,
         feedback.rating_source,
+        threadId,
       ]
     );
     return result.rowCount !== null && result.rowCount > 0;

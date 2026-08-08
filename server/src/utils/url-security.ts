@@ -7,6 +7,28 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('url-security');
 
+export const SSRF_CONNECT_TIMEOUT_MS = 5_000;
+
+/**
+ * Private network access is a local test/development affordance only.
+ * Unknown, unset, staging, and misspelled runtime names must fail closed.
+ */
+export function isTestOrDevelopmentRuntime(
+  environment: string | undefined,
+): boolean {
+  return environment === 'test' || environment === 'development';
+}
+
+const TRANSIENT_DNS_CODES = new Set(['EAI_AGAIN', 'ESERVFAIL', 'ETIMEOUT', 'ECONNREFUSED']);
+const PERMANENT_DNS_CODES = new Set(['ENOTFOUND', 'EAI_NONAME', 'ENODATA', 'ENONAME', 'EAI_NODATA']);
+const DNS_CODE_RE = /\b(EAI_AGAIN|ESERVFAIL|ETIMEOUT|ECONNREFUSED|ENOTFOUND|EAI_NONAME|ENODATA|ENONAME|EAI_NODATA)\b/i;
+
+interface DnsResolutionFailureCause {
+  code?: string;
+  codes: string[];
+  hostname: string;
+}
+
 const fetchWithDispatcher = undiciFetch as unknown as (
   input: string | URL,
   init?: RequestInit & { dispatcher: Dispatcher },
@@ -130,9 +152,94 @@ export function isPrivateHostname(hostname: string): boolean {
     if ((groups[0] & 0xfe00) === 0xfc00) return true;
     // fec0::/10 deprecated site-local (RFC 3879) — first group is fec0..feff
     if ((groups[0] & 0xffc0) === 0xfec0) return true;
+    // Deprecated IPv4-compatible ::a.b.c.d (RFC 4291 §2.5.5.1) — high 96 bits
+    // zero (and not ::ffff:, handled above); classify the embedded v4 so a
+    // private v4 tunneled through the compatible form is rejected.
+    if (groups.slice(0, 6).every((n) => n === 0)) {
+      const v4 = `${(groups[6] >> 8) & 0xff}.${groups[6] & 0xff}.${(groups[7] >> 8) & 0xff}.${groups[7] & 0xff}`;
+      if (isPrivateHostname(v4)) return true;
+    }
+    // 6to4 2002:V4::/16 (RFC 3056) — the embedded v4 is groups[1:2].
+    if (groups[0] === 0x2002) {
+      const v4 = `${(groups[1] >> 8) & 0xff}.${groups[1] & 0xff}.${(groups[2] >> 8) & 0xff}.${groups[2] & 0xff}`;
+      if (isPrivateHostname(v4)) return true;
+    }
+    // NAT64 well-known 64:ff9b::/96 (RFC 6052) — embedded v4 in groups[6:7];
+    // classify it so a NAT64-wrapped private v4 is rejected while a wrapped
+    // public v4 stays reachable.
+    if (groups[0] === 0x0064 && groups[1] === 0xff9b && groups.slice(2, 6).every((n) => n === 0)) {
+      const v4 = `${(groups[6] >> 8) & 0xff}.${groups[6] & 0xff}.${(groups[7] >> 8) & 0xff}.${groups[7] & 0xff}`;
+      if (isPrivateHostname(v4)) return true;
+    }
+    // Scope: this classifier covers private/internal *reachability*. Multicast
+    // (ff00::/8) and documentation (2001:db8::/32) are intentionally NOT flagged
+    // here — they aren't reachable internal targets, and the dns-rebind suite
+    // asserts ff00::1 is allowed. Don't add them without updating that test.
   }
 
   return false;
+}
+
+/**
+ * Normalize a URL parser hostname for security classification.
+ *
+ * A single terminal dot is the canonical DNS root label. Empty labels in any
+ * other position are malformed and must fail closed rather than reaching a
+ * resolver or proxy that may interpret them differently. WHATWG URL parsing
+ * maps the IDNA dot variants to ASCII dots before this helper is called.
+ */
+export function normalizeExternalHostname(hostname: string): string | null {
+  const lowerHostname = hostname.toLowerCase();
+  const hostnameWithoutIpv6Brackets = lowerHostname.startsWith('[') && lowerHostname.endsWith(']')
+    ? lowerHostname.slice(1, -1)
+    : lowerHostname;
+  const normalizedHostname = hostnameWithoutIpv6Brackets.endsWith('.')
+    ? hostnameWithoutIpv6Brackets.slice(0, -1)
+    : hostnameWithoutIpv6Brackets;
+
+  if (!normalizedHostname || normalizedHostname.split('.').some(label => label.length === 0)) {
+    return null;
+  }
+  return normalizedHostname;
+}
+
+function extractDnsErrorCode(reason: unknown): string | undefined {
+  if (!reason || typeof reason !== 'object') return undefined;
+  const err = reason as { code?: unknown; message?: unknown };
+  if (typeof err.code === 'string') return err.code.toUpperCase();
+  if (typeof err.message === 'string') {
+    const match = err.message.match(DNS_CODE_RE);
+    if (match) return match[1].toUpperCase();
+  }
+  return undefined;
+}
+
+function dnsResolutionFailureCause(
+  hostname: string,
+  results: readonly PromiseSettledResult<string[]>[],
+): DnsResolutionFailureCause | undefined {
+  const codes = results
+    .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+    .map((result) => extractDnsErrorCode(result.reason))
+    .filter((code): code is string => !!code);
+
+  if (codes.length === 0) return undefined;
+
+  return {
+    hostname,
+    codes,
+    code:
+      codes.find((code) => TRANSIENT_DNS_CODES.has(code)) ??
+      codes.find((code) => PERMANENT_DNS_CODES.has(code)) ??
+      codes[0],
+  };
+}
+
+function unresolvedHostnameError(hostname: string, results: readonly PromiseSettledResult<string[]>[]): Error {
+  const err = new Error('Could not resolve hostname') as Error & { cause?: DnsResolutionFailureCause };
+  const cause = dnsResolutionFailureCause(hostname, results);
+  if (cause) err.cause = cause;
+  return err;
 }
 
 /**
@@ -159,7 +266,7 @@ export async function validateHostResolution(hostname: string): Promise<void> {
   ];
 
   if (allAddresses.length === 0) {
-    throw new Error('Could not resolve hostname');
+    throw unresolvedHostnameError(hostname, [ipv4Result, ipv6Result]);
   }
 
   for (const address of allAddresses) {
@@ -235,31 +342,28 @@ export async function validateCrawlDomain(domain: string): Promise<string> {
  * - Must parse as a URL.
  * - Protocol must be http or https.
  * - Cloud metadata hosts are always blocked, every environment (AWS/GCP).
- * - In production only: localhost/loopback and RFC1918 private IPv4 ranges
- *   are blocked. Development keeps them allowed so local agents and local
- *   auth servers are reachable.
+ * - Private/internal hosts are allowed only in explicit test or development
+ *   runtimes so local agents and auth servers remain reachable. Unknown,
+ *   unset, staging, and misspelled runtime names fail closed.
  *
- * For stronger SSRF guarantees (DNS rebind defence, redirect-hop validation,
- * IPv6, CGNAT, link-local), prefer `safeFetch` at fetch time.
+ * For stronger SSRF guarantees (DNS resolution/rebind defence, redirect-hop
+ * validation, and connect-time enforcement), prefer `safeFetch` at fetch time.
  */
 export function validateExternalUrl(raw: string): string | null {
   try {
     const url = new URL(raw);
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
 
-    const hostname = url.hostname.toLowerCase();
+    const normalizedHostname = normalizeExternalHostname(url.hostname);
+    if (!normalizedHostname) return null;
 
-    if (hostname === '169.254.169.254' || hostname === 'metadata.google.internal') return null;
+    if (normalizedHostname === '169.254.169.254' || normalizedHostname === 'metadata.google.internal') return null;
 
-    if (process.env.NODE_ENV === 'production') {
-      if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '0.0.0.0') {
-        return null;
-      }
-      const ipMatch = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-      if (ipMatch) {
-        const [, a, b] = ipMatch.map(Number);
-        if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return null;
-      }
+    if (
+      !isTestOrDevelopmentRuntime(process.env.NODE_ENV) &&
+      isPrivateHostname(normalizedHostname)
+    ) {
+      return null;
     }
 
     return raw;
@@ -329,6 +433,7 @@ export function buildSsrfSafeDispatcher(): Dispatcher {
   return new Agent({
     connect: {
       lookup: ssrfSafeLookup,
+      timeout: SSRF_CONNECT_TIMEOUT_MS,
     },
   });
 }

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   recordComplianceRun: vi.fn(),
   query: vi.fn(),
   comply: vi.fn(),
+  complianceResultToDbInput: vi.fn(),
   classifyCapabilityResolutionError: vi.fn(),
   presentCapabilityResolutionError: vi.fn(),
   badgeEligibleVersionsForTargetSelection: vi.fn(),
@@ -33,7 +34,7 @@ vi.mock('../../src/db/client.js', () => ({
 
 vi.mock('../../src/addie/services/compliance-testing.js', () => ({
   comply: mocks.comply,
-  complianceResultToDbInput: vi.fn(),
+  complianceResultToDbInput: mocks.complianceResultToDbInput,
   classifyCapabilityResolutionError: mocks.classifyCapabilityResolutionError,
   presentCapabilityResolutionError: mocks.presentCapabilityResolutionError,
   badgeEligibleVersionsForTargetSelection: mocks.badgeEligibleVersionsForTargetSelection,
@@ -68,7 +69,7 @@ vi.mock('../../src/addie/error-notifier.js', () => ({
 }));
 
 describe('runComplianceHeartbeatJob', () => {
-  const target = { requested: '3.1.0-rc.6', version: '3.1.0-rc.6' };
+  const target = { requested: '3.1', version: '3.1.0' };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -82,7 +83,58 @@ describe('runComplianceHeartbeatJob', () => {
     mocks.selectComplianceTargetForAgentSelection.mockResolvedValue({ target, confirmed: false });
     mocks.classifyCapabilityResolutionError.mockReturnValue(null);
     mocks.badgeEligibleVersionsForTargetSelection.mockReturnValue([]);
+    mocks.complianceResultToDbInput.mockReturnValue({
+      agent_url: 'https://agent.example.com/mcp',
+      lifecycle_stage: 'testing',
+      overall_status: 'passing',
+      headline: 'All good',
+      tracks_json: [],
+      storyboard_statuses: [],
+      dry_run: true,
+    });
     mocks.recordComplianceRun.mockResolvedValue({});
+  });
+
+  it('runs heartbeat against the selected canonical target and passes supported versions to badge fan-out', async () => {
+    const complianceResult = {
+      overall_status: 'passing',
+      summary: { headline: 'All good' },
+      agent_profile: {
+        specialisms: ['sales-broadcast-tv'],
+        adcp_supported_versions: ['3.0', '3.1'],
+      },
+    };
+    mocks.comply.mockResolvedValueOnce(complianceResult);
+    mocks.badgeEligibleVersionsForTargetSelection.mockReturnValue(['3.1']);
+    mocks.recordComplianceRun.mockResolvedValueOnce({
+      run: { id: 'run-31' },
+      statusTransition: null,
+      storyboardStatuses: [],
+    });
+    mocks.runBadgeFanOut.mockResolvedValueOnce({ issued: [], revoked: [], degraded: [], unchanged: [] });
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const result = await runComplianceHeartbeatJob({ limit: 1 });
+
+    expect(result).toEqual({ checked: 1, passed: 1, failed: 0, skipped: 0 });
+    expect(mocks.selectComplianceTargetForAgentSelection).toHaveBeenCalledWith(
+      'https://agent.example.com/mcp',
+      expect.objectContaining({ timeout_ms: 600_000 }),
+      target,
+      'canonical',
+    );
+    expect(mocks.comply).toHaveBeenCalledWith(
+      'https://agent.example.com/mcp',
+      expect.objectContaining({ timeout_ms: 600_000 }),
+      target,
+    );
+    expect(mocks.runBadgeFanOut).toHaveBeenCalledWith(expect.objectContaining({
+      agentUrl: 'https://agent.example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      runId: 'run-31',
+      adcpVersions: ['3.1'],
+      supportedVersions: ['3.0', '3.1'],
+    }));
   });
 
   it('counts malformed saved Basic auth as a checked failure', async () => {

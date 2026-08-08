@@ -227,11 +227,15 @@ export function buildSalesComplyConfig(): ComplyControllerConfig {
     force: {
       media_buy_status: cast(forceAdapter('force_media_buy_status')),
       create_media_buy_arm: cast(forceAdapter('force_create_media_buy_arm')),
+      get_products_arm: cast(forceAdapter('force_get_products_arm')),
       task_completion: cast(forceAdapter('force_task_completion')),
       // force_creative_status drives dependency_impairment storyboards —
       // toggles creative.status and propagates to dependent media buys'
       // impairments[] via the v5 store's propagateCreativeImpairment.
       creative_status: cast(forceAdapter('force_creative_status')),
+      // Audience sibling: suspends a synced audience and propagates the
+      // resulting impairment to packages that target it.
+      audience_status: cast(forceAdapter('force_audience_status')),
       upstream_unavailable: cast(forceAdapter('force_upstream_unavailable')),
     },
     simulate: {

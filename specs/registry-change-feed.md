@@ -8,11 +8,11 @@ Buyers have no way to discover new agents or publishers joining the registry, or
 
 1. Buyers can poll a single feed endpoint and maintain a near-real-time local copy of the registry.
 2. Publishers/agents can trigger immediate re-crawl of their domain after updating `adagents.json`.
-3. Optional webhook notifications reduce polling frequency for subscribers.
+3. Consumer-facing push transport lets subscribers receive a prompt wake-up without inventing a second source of truth.
 
 ## Design Principles
 
-- **Polling is the source of truth.** Webhooks are best-effort notifications, not guaranteed delivery.
+- **The feed is the source of truth.** Push transports are delivery mechanisms for feed pages or wake-ups, not a separate event log.
 - **Cursor-based, not timestamp-based.** UUID v7 event IDs are monotonically ordered and avoid clock-skew problems.
 - **Events are denormalized.** Payload contains enough data for consumers to act without additional API calls.
 - **Single unified feed.** Buyers care about downstream effects on property lists, not internal entity taxonomy.
@@ -177,11 +177,20 @@ Poll the change feed.
     }
   ],
   "cursor": "019539a1-...",
-  "has_more": true
+  "has_more": true,
+  "freshness": {
+    "generated_at": "2026-06-26T12:00:00.000Z",
+    "latest_event_created_at": "2026-06-26T11:59:47.000Z",
+    "lag_seconds": 13,
+    "retention_days": 90
+  }
 }
 ```
 
 Consumers save `cursor` and pass it as `cursor` on the next poll. When `has_more` is false, the consumer is caught up.
+Persisted cursors are tied to the same logical `types` subscription. Reusing a
+cursor after broadening or changing `types` can skip matching events that were
+filtered out under the previous subscription.
 
 ### `POST /api/registry/crawl-request`
 
@@ -218,84 +227,91 @@ Publisher or authorized agent requests immediate re-crawl of a domain's `adagent
 
 **Rate limit:** One re-crawl per domain per 10 minutes. Returns 429 if the domain was crawled within that window.
 
-After the re-crawl completes, the crawler diffs previous state against new state and writes events to `catalog_events`. Those events flow to the feed and trigger webhook notifications.
+After the re-crawl completes, the crawler diffs previous state against new state and writes events to `catalog_events`. Those events flow to the feed and any active stream subscribers.
 
-### `POST /api/registry/webhooks`
+### `GET /api/registry/feed/stream`
 
-Register a webhook subscription for change notifications.
+Subscribe to the change feed over Server-Sent Events. This is the shipped
+consumer-facing push surface for 3.x. It uses the same cursor, type filter,
+limit, retention, and recovery rules as `GET /api/registry/feed`.
 
-**Authentication:** Required. One subscription per member (higher tiers may have more).
+**Authentication:** Required. Member-only endpoint.
 
-**Request:**
+**Parameters:**
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `cursor` | UUID | (none) | Last event_id processed. Omit for start of retention window. |
+| `types` | string | all | Comma-separated event types. Supports glob: `authorization.*` |
+| `limit` | integer | 100 | Max events per feed page. Max 10000. |
+| `poll_interval_seconds` | integer | 15 | Server-side interval while caught up. Min 5, max 60. Backlog pages are sent without waiting. |
+
+**Events:**
+
+```text
+event: feed
+data: {"events":[...],"cursor":"019...","has_more":false,"freshness":{...}}
+
+event: heartbeat
+data: {"generated_at":"2026-06-26T12:00:00.000Z","cursor":"019...","freshness":{...}}
+```
+
+`feed` event bodies validate against
+`static/schemas/source/core/registry-feed-response.json`. `heartbeat` events do
+not advance the cursor; they keep intermediaries from closing an idle stream
+and expose current freshness while the client is caught up.
+
+The stream intentionally carries the resume cursor in the JSON `data` payload
+rather than SSE `id:` / `Last-Event-ID`. Generic browser `EventSource` clients
+must persist `data.cursor` and reconnect with `?cursor=...`; native
+`Last-Event-ID` resume is not part of the 3.x contract.
+
+**Recovery:** On disconnect, clients reconnect with their last persisted
+cursor. If the initial cursor is expired, the endpoint returns `410
+cursor_expired`; clients re-bootstrap from the full-state sync endpoints and
+then resume tailing the feed.
+
+### Freshness Contract
+
+Every feed page includes:
+
 ```json
 {
-  "url": "https://buyer.example.com/hooks/registry",
-  "events": ["property.*", "agent.discovered"]
+  "freshness": {
+    "generated_at": "2026-06-26T12:00:00.000Z",
+    "latest_event_created_at": "2026-06-26T11:59:47.000Z",
+    "lag_seconds": 13,
+    "retention_days": 90
+  }
 }
 ```
 
-Default subscriptions do not require a shared webhook secret. The registry signs
-outbound deliveries with its `adcp_use: "webhook-signing"` key using the AdCP
-RFC 9421 webhook profile. This surface does not define a registry-specific
-`secret`, `X-Registry-Signature`, or versioned-HMAC signing mode.
+`latest_event_created_at` is the newest event currently visible in the feed for
+the requested `types` filter. `lag_seconds` is computed against
+`generated_at`. Consumers should alert when lag exceeds their own freshness
+target and should treat a missing `latest_event_created_at` as "no matching
+events inside retention", not as proof that the registry has crawled every
+publisher.
 
-**Response:**
-```json
-{
-  "subscription_id": "sub_...",
-  "status": "active"
-}
-```
+`POST /api/registry/crawl-request` is still asynchronous. Acceptance means the
+domain passed validation and rate limits and has been queued for immediate
+work; convergence is observed by `last_validated` advancing on
+`lookupPublisher`, by a `publisher.adagents_discovered` /
+`publisher.adagents_changed` feed event, or by authorization events. The 3.x
+contract is "request accepted plus observable completion signal", not
+"synchronous validation completed before the 202 response".
 
-Additional CRUD endpoints:
-- `GET /api/registry/webhooks` — list subscriptions
-- `DELETE /api/registry/webhooks/:id` — remove subscription
+### Future Transport: Persistent Webhook Wake-Ups
 
-### Webhook Delivery
+Persistent registry-to-consumer webhooks are not the 3.x push surface. The 3.x
+surface is `GET /api/registry/feed/stream`.
 
-Webhooks are notifications, not event delivery. The payload says "something changed, poll the feed."
-
-```
-POST https://buyer.example.com/hooks/registry
-Signature-Input: sig1=("@method" "@target-uri" "@authority" "content-type" "content-digest");
-                 created=1770044400;expires=1770044700;nonce="...";
-                 keyid="registry-webhook-2026";alg="ed25519";tag="adcp/webhook-signing/v1"
-Signature: sig1=:<base64url-unpadded>:
-Content-Digest: sha-256=:<base64url-unpadded>:
-Content-Type: application/json
-
-{
-  "event_count": 3,
-  "latest_event_id": "019...",
-  "event_types": ["property.created", "property.updated"]
-}
-```
-
-**Signature verification and anti-replay:** Receivers MUST verify registry
-webhooks with the AdCP RFC 9421 webhook profile defined in
-`docs/building/by-layer/L1/security.mdx` §Webhook callbacks. The signed
-`content-digest` binds the body bytes; `created` / `expires` bound the validity
-window; and the receiver's `(keyid, nonce)` replay cache rejects captured
-deliveries replayed inside that window. A registry-specific HMAC signature
-scheme MUST NOT be introduced.
-
-**Receiver dedup:** The webhook is still only a notification. After signature
-verification, receivers poll `GET /api/registry/feed` from their last saved
-cursor and treat the feed as authoritative. The sender MUST NOT provide a
-cursor-bearing feed URL that overrides receiver state; using
-`latest_event_id` as the next request cursor would skip the events the
-notification is announcing. Receivers MAY suppress redundant polls by
-remembering the largest `latest_event_id` observed per subscription, but they
-MUST NOT treat a repeated notification as event replay or recovery.
-
-Implementations that need a simple dispatch header MAY include
-`X-Registry-Event`, but receivers MUST route from the JSON payload's
-`event_types` and the authoritative feed response. The dispatch header is not a
-trust anchor unless it is explicitly covered by a future webhook-signing profile.
-
-**Coalescing:** Events are batched per subscriber per 30-second window. A seed operation that creates 1000 properties produces one webhook notification, not 1000.
-
-**Retries:** 3 attempts with exponential backoff (30s, 5m, 30m). After 3 consecutive failures, subscription marked `degraded`. After 24 hours of failures, marked `suspended` and subscriber notified via email.
+If a later phase adds persisted webhook subscriptions, those callbacks must be
+wake-ups for the feed, not event delivery. Receivers would still persist their
+own cursor and drain `GET /api/registry/feed` or
+`GET /api/registry/feed/stream` as the authoritative event source. Any callback
+signing must reuse the AdCP RFC 9421 webhook profile rather than introducing a
+registry-specific HMAC scheme.
 
 ---
 
@@ -329,7 +345,7 @@ Events are written at the point of change, not reconstructed later:
 ## Consumer Pattern
 
 1. **Bootstrap:** `GET /api/registry/catalog` with cursor pagination for the full property catalog, and `GET /api/registry/catalog/collections/sync` for the full collection catalog.
-2. **Steady state:** Poll `GET /api/registry/feed?cursor={last_event_id}` every 30-60 seconds, or wait for webhook notification and then poll.
+2. **Steady state:** Prefer `GET /api/registry/feed/stream?cursor={last_event_id}` for push delivery. If streaming is unavailable, poll `GET /api/registry/feed?cursor={last_event_id}` every 30-60 seconds.
 3. **Recovery:** If cursor is older than 90 days (retention window), do another full sync via `/catalog` and `/catalog/collections/sync`, then reset the cursor.
 
 ---
@@ -446,7 +462,7 @@ matches := registry.Agents().Search(adcp.AgentSearchQuery{
    - Builds in-memory indexes: properties by rid, properties by identifier, agents by url, agents by profile fields, authorizations by domain
 
 2. **Steady state** (background poller):
-   - Polls `GET /registry/feed?cursor={last_event_id}` every 30 seconds
+   - Streams `GET /registry/feed/stream?cursor={last_event_id}` when available, otherwise polls `GET /registry/feed?cursor={last_event_id}` every 30 seconds
    - Applies events to in-memory indexes incrementally
    - Emits typed events for subscribers (`on('agent.discovered', ...)`)
 
@@ -597,14 +613,14 @@ The change feed keeps all of this live. When a publisher updates their `adagents
 
 | SDK Method | Server Endpoint (bootstrap) | Server Endpoint (updates) |
 |------------|---------------------------|--------------------------|
-| `registry.agents.search(...)` | `GET /registry/agents/search` | `GET /registry/feed` (agent events) |
-| `registry.agents.get(url)` | `GET /registry/agents/search` | `GET /registry/feed` |
-| `registry.properties.getByRid(rid)` | `GET /catalog` | `GET /registry/feed` (property events) |
-| `registry.properties.getByIdentifier(...)` | `GET /catalog` | `GET /registry/feed` |
-| `registry.collections.getByDistributionIdentifier(...)` | `GET /catalog/collections/sync` | `GET /registry/feed` (collection events) |
-| `registry.authorizations.check(...)` | `GET /registry/agents/search` (includes auth data) | `GET /registry/feed` (authorization events) |
-| `registry.authorizations.getSigningKeys(...)` | `GET /registry/agents/search` | `GET /registry/feed` |
-| `registry.on('event', ...)` | — | `GET /registry/feed` |
+| `registry.agents.search(...)` | `GET /registry/agents/search` | `GET /registry/feed/stream`, fallback `GET /registry/feed` (agent events) |
+| `registry.agents.get(url)` | `GET /registry/agents/search` | `GET /registry/feed/stream`, fallback `GET /registry/feed` |
+| `registry.properties.getByRid(rid)` | `GET /catalog` | `GET /registry/feed/stream`, fallback `GET /registry/feed` (property events) |
+| `registry.properties.getByIdentifier(...)` | `GET /catalog` | `GET /registry/feed/stream`, fallback `GET /registry/feed` |
+| `registry.collections.getByDistributionIdentifier(...)` | `GET /catalog/collections/sync` | `GET /registry/feed/stream`, fallback `GET /registry/feed` (collection events) |
+| `registry.authorizations.check(...)` | `GET /registry/agents/search` (includes auth data) | `GET /registry/feed/stream`, fallback `GET /registry/feed` (authorization events) |
+| `registry.authorizations.getSigningKeys(...)` | `GET /registry/agents/search` | `GET /registry/feed/stream`, fallback `GET /registry/feed` |
+| `registry.on('event', ...)` | — | `GET /registry/feed/stream`, fallback `GET /registry/feed` |
 
 ---
 
@@ -617,13 +633,16 @@ Add `catalog_events` table. Instrument `CatalogDatabase` and the crawler to writ
 Add `agent_inventory_profiles` table (see `specs/structured-agent-query.md`). Populate from crawled data. Ship `GET /api/registry/agents/search`. This gives the bootstrap data for `RegistrySync`.
 
 ### Phase 3: SDK `RegistrySync` client
-Ship `RegistrySync` in `@adcp/client` (TypeScript). Bootstrap from search + sync endpoints, poll the feed, maintain in-memory indexes. This is where buyers get the "just works" experience.
+Ship `RegistrySync` in `@adcp/client` (TypeScript). Bootstrap from search + sync endpoints, stream the feed when available, fall back to polling, and maintain in-memory indexes. This is where buyers get the "just works" experience.
 
-### Phase 4: Re-crawl trigger
+### Phase 4: Feed stream endpoint
+Ship `GET /api/registry/feed/stream` as the 3.x consumer-facing push surface. It sends the same cursor-bearing feed pages over SSE, with heartbeat events while caught up and reconnect recovery through the persisted cursor.
+
+### Phase 5: Re-crawl trigger
 Add `POST /api/registry/crawl-request`. Wire to the crawler for single-domain re-crawl. Closes the "publisher changed file → buyer sees it within minutes" loop.
 
-### Phase 5: Go and Python SDKs
+### Phase 6: Go and Python SDKs
 Port `RegistrySync` to the Go and Python clients with idiomatic APIs.
 
-### Phase 6: Webhook subscriptions
-Add subscription CRUD, delivery worker with coalescing, retry/suspension logic. Most operationally complex — ship after the feed endpoint and SDK have proven stable.
+### Future: Persistent webhook wake-ups
+Optional subscription CRUD and delivery workers can be considered after the feed endpoint, SSE stream, and SDK have proven stable. These would remain wake-ups for the cursor feed, not a second event source.

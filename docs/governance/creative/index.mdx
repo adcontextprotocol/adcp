@@ -106,12 +106,10 @@ The orchestrator calls [`get_creative_features`](./get_creative_features) with a
 ```json
 {
   "creative_manifest": {
-    "format_id": {
-      "agent_url": "https://creative.adcontextprotocol.org",
-      "id": "html5-display-300x250"
-    },
+    "format_kind": "display_tag",
     "assets": {
-      "creative_html": {
+      "tag_url": {
+        "asset_type": "url",
         "url": "https://cdn.agency.com/creative/abc123.html"
       }
     }
@@ -205,4 +203,4 @@ Governance agents that charge MUST implement the [Accounts Protocol](/docs/accou
 
 ## Async evaluation
 
-If evaluation takes time (e.g., sandboxed execution for malware scanning), the agent returns `status: "working"` and delivers results via the standard webhook mechanism. No custom status values or webhook events needed — the existing [async task pattern](/docs/building/implementation/async-operations) handles this.
+If evaluation takes time (e.g., sandboxed execution for malware scanning), the agent returns `status: "working"` and delivers results via the standard webhook mechanism. No custom status values or webhook events needed — the existing [async task pattern](/docs/building/by-layer/L3/async-operations) handles this.

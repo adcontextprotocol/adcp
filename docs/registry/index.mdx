@@ -62,12 +62,14 @@ print(brand["brand_name"], brand["canonical_domain"])
 
 | Endpoint | Limit |
 |----------|-------|
-| Bulk resolve (`/api/brands/resolve/bulk`, `/api/properties/resolve/bulk`) | 20 requests/minute per IP |
+| Brand bulk resolve (`/api/brands/resolve/bulk`) | 20 requests and 100 unique domain resolutions/minute per IP; 25 domains and 16 KB per request |
+| Property bulk resolve (`/api/properties/resolve/bulk`) | 20 requests/minute per IP |
+| Brand reads (`/api/brands/resolve`, `/api/brands/brand-json`) | 60 requests/minute per IP |
 | Save endpoints (`/api/brands/save`, `/api/properties/save`) | 60 requests/hour per user |
 | Crawl request (`/api/registry/crawl-request`) | 5 minutes per domain, 30 requests/hour per user |
 | All other endpoints | No limit |
 
-Rate-limited endpoints return `429 Too Many Requests` when the limit is exceeded.
+Rate-limited endpoints return `429 Too Many Requests` when the limit is exceeded. Brand bulk resolve returns `503` with a `Retry-After` header when too much resolution work is already queued.
 
 ## Endpoint Groups
 
@@ -94,7 +96,7 @@ Rate-limited endpoints return `429 Too Many Requests` when the limit is exceeded
 Three endpoints answer different questions about who is in the registry. They span two tag groups in the API reference, so use this table to pick the right lookup surface before diving into endpoint-specific parameters.
 
 | Endpoint | Auth surface | What it returns |
-|----------|--------------|-----------------|
+|----------|--------------|------------------|
 | `GET /api/registry/agents` | Public catalog; authenticated AgenticAdvertising.org API-tier members also see `members_only` agents. | The AgenticAdvertising.org-attested member-enrolled agent catalog, with optional filters and enrichment for health, capabilities, properties, compliance, measurement metrics, and verification state. |
 | `GET /api/registry/operator?domain=X` | Auth-aware: anonymous callers see `public`; AgenticAdvertising.org API-tier members also see `members_only`; profile owners can also see `private`. | The agents operated by the queried entity plus the publishers that trust those agents. |
 | `GET /api/registry/publisher?domain=X` | Public and unauthenticated; AgenticAdvertising.org membership does not change the response shape. | The inventory the queried entity publishes (`properties[]`) and the agents it authorizes (`authorized_agents[]` from `adagents.json`). |
@@ -105,22 +107,55 @@ Three endpoints answer different questions about who is in the registry. They sp
 
 **`GET /api/registry/publisher?domain=X`** — use this when you have one publisher in hand and want its inventory and delegations.
 
+The response's `formats[]` is a lossy display projection, not the complete publisher contract. It omits custom-format schema pointers, channel applicability, and legacy projection metadata. Pass `include=placements` to receive provenance-labeled placement summaries with resolved canonical format options for placement eligibility. Consumers doing creative validation or needing omitted declaration fields must fetch the resolved raw catalog using the returned community `registry_url` or publisher `hosting.resolved_url` / `hosting.expected_url`. The registry lookup chooses the publisher-origin/community rung and reports provenance; the raw document supplies the complete declarations.
+
 ### Brand Resolution
 
-These endpoints resolve domains to brand identities. The `source` field in the response indicates where the data came from:
+These endpoints resolve domains to brand identities. The `source` field identifies the provenance of the selected registry record. When more than one candidate fact exists for a domain, selection is deterministic: `hosted` wins over `brand_json`, then `community`, then `enriched`. Ties among stored rows use the most recently validated record and a stable ID tie-breaker. A normal read prefers that durable stored winner on a source tie; `fresh=true` lets a successful live origin read win a tie, but never override a higher-provenance stored record. Identical normal requests therefore do not randomly change records or labels.
 
 | Source | Meaning |
-|--------|---------|
+|--------|----------|
+| `hosted` | Registered by a domain owner whose control of the domain has been verified |
 | `brand_json` | Resolved from the domain's `/.well-known/brand.json` file |
 | `enriched` | Enriched via Brandfetch API |
 | `community` | Submitted by a community member |
 
-All sources produce the same resolution response structure. To get full brand identity data (logos, colors, tone), use `/api/brands/enrich` or look up the brand in the registry.
+All sources produce the same resolution response structure, but they are not equivalent evidence. `hosted` and `brand_json` are backed by domain control; `community` and `enriched` describe what the registry has learned without proving that the domain operator asserted it. `source` is identity provenance, not proof of a house relationship—use `relationship_trust` for that. To get full brand identity data (logos, colors, tone), use `/api/brands/enrich` or look up the brand in the registry.
+
+#### Reading trust
+
+A domain is authoritative for its own identity — TLS proves the document came from that domain and nothing more. Relationships between a brand and a house need both sides to publish them, so resolution reports how each relationship was established rather than flattening it into a single answer.
+
+For third-party verification, call `GET /api/brands/resolve?domain=<leaf-domain>` and inspect `relationship_trust`. Only `mutual` and `inline` are reciprocated relationships suitable for extending trust to `house_domain`:
+
+- `mutual` means the leaf publishes `house_domain` and the house names the leaf in `brand_refs[]`; `relationship_verified_at` reports when the resolver last observed both sides agreeing.
+- `inline` means the house's own canonical document defines the leaf, so the ownership statement and identity come from the house authority itself.
+
+Every other value is non-reciprocated. In particular, `claimed_house_domain` with `leaf_only` is one side's self-assertion and must not authorize the leaf as part of that house. There is no separate ordered-chain endpoint in v3: the hierarchy is one level deep, and the reciprocated `house_domain` edge in this response is the supported ownership-verification result.
+
+An absent `relationship_trust` is not the same as `standalone`: it means the selected record carries no relationship verdict. Consumers must treat missing evidence as unknown, not as evidence that no relationship exists.
+
+| `relationship_trust` | Meaning |
+|---|---|
+| `inline` | The house's own document defines the brand. |
+| `mutual` | Both sides publish the relationship. The trust-extending edge. |
+| `leaf_only` | The brand claims a house whose reciprocal declaration is missing, not yet active, or older than the resolver's trust ceiling. See `claimed_house_domain`. |
+| `house_only` | A house claims the brand, which has not claimed the house. |
+| `standalone` | The brand claims no house. |
+| `unverifiable` | A claimed house exists but could not be checked. |
+
+`house_domain` is only set on a trust-extending relationship; a one-sided claim appears as `claimed_house_domain`. For `mutual`, `relationship_verified_at` records when both sides were last seen agreeing — it does not advance while the house side is unreachable. `relationship_declared_at` records the house's `brand_refs[].effective_at`, falling back to the resolver's durable first observation when the publisher omits it. AgenticAdvertising.org's reference resolver requires both clocks to remain live: confirmation may be retained for at most 24 hours while the house is unreachable, and declarations age out after 180 days even when re-confirmation keeps succeeding. Future declarations remain `leaf_only` until their effective time. Callers can apply stricter policies to either timestamp.
+
+Following a redirect never lets a domain adopt a house's identity. When a domain's brand.json points at a house that does not name the domain back — in `properties[]` as `relationship: "owned"`, or in `brand_refs[]` — the response carries the claim (`claimed_house_domain` with `relationship_trust: leaf_only`) and no brand identity. A house that lists a domain with `direct`, `delegated`, or `ad_network` is declaring a monetization path, not ownership, so it does not resolve that domain's identity either. If you expected an identity here, the house is missing its half of the relationship.
+
+`fresh=true` bypasses the resolution cache and refetches from the origin. When that fetch fails and a stored record is returned instead, `live_brand_json` carries that request's failed-fetch diagnostics so you can distinguish "stored evidence returned" from "origin checked successfully." Apply your own freshness policy to that fallback rather than silently treating it as live.
+
+Pre-v3 documents are promoted to canonical v3 identity for the response, flagged with `promoted_from_schema` and `migration_warnings`. Promotion covers identity only; legacy relationship data is preserved opaquely and never becomes a trust claim. In particular, a warning with `field: "house"` means the legacy house object was moved to `legacy_metadata.legacy_house` and did **not** establish `house_domain`. The publisher must add `house_domain` to the leaf document and a reciprocal `brand_refs[]` entry to the house document.
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/brands/resolve` | Resolve a domain to its canonical brand |
-| POST | `/api/brands/resolve/bulk` | Resolve up to 100 domains at once |
+| POST | `/api/brands/resolve/bulk` | Resolve up to 25 domains at once |
 | GET | `/api/brands/brand-json` | Fetch raw brand.json for a domain |
 | GET | `/api/brands/registry` | List all brands (search, pagination) |
 | GET | `/api/brands/enrich` | Enrich brand data via Brandfetch |
@@ -156,17 +191,46 @@ To discover measurement vendors specifically (Adelaide-style attention, Scope3-s
 curl "https://agenticadvertising.org/api/registry/agents?type=measurement"
 ```
 
-This returns every measurement agent enrolled in the registry by an AAO member.
+This returns every measurement agent enrolled in the registry by an AgenticAdvertising.org member organization.
 
-**Per-metric catalog discovery.** Each measurement agent publishes its full per-metric catalog at [`get_adcp_capabilities.measurement.metrics[]`](/docs/protocol/get_adcp_capabilities#measurement) — the canonical, vendor-controlled source of truth. AAO crawls each measurement agent's `get_adcp_capabilities` on a TTL and stores the result; passing `?capabilities=true` folds the catalog into the response next to `creative_capabilities` and `signals_capabilities`.
+**Per-metric catalog discovery.** Each measurement agent publishes its full per-metric catalog at [`get_adcp_capabilities.measurement.metrics[]`](/docs/protocol/get_adcp_capabilities#measurement) — the canonical, vendor-controlled source of truth. AgenticAdvertising.org crawls each measurement agent's `get_adcp_capabilities` on a TTL and stores the result; passing `?capabilities=true` folds the catalog into the response next to `creative_capabilities` and `signals_capabilities`.
+
+##### Trust and external links
+
+The registry caches measurement catalogs; it does not endorse or independently review their links or claims. Read each URL according to its field-level purpose:
+
+| Field | Meaning | What it does not prove |
+|-------|---------|------------------------|
+| `methodology_url` | Vendor-published methodology documentation for the metric. | That AgenticAdvertising.org, an accreditor, or another independent party reviewed the methodology. |
+| `standard_reference` | The industry-standard document the vendor says the metric implements. | That the implementation conforms to the standard or holds accreditation. |
+| `accreditations[].evidence_url` | The vendor-supplied pointer intended to lead to the accreditor's public listing or other public evidence for the named accreditation. | That the accreditation is valid, current, or independently verified by the registry. |
+
+An accreditation entry is a vendor assertion while `verified_by_aao` is `false`. Treat it as independently verified only when a separate, explicit attestation or verification state establishes who verified the claim, what was verified, and when. Enrollment, catalog caching, a plausible accreditor name, and an `evidence_url` alone do not establish that state.
+
+Clients must treat all three fields as untrusted external-link input. Parse the value as a URL, offer clickable links only for HTTPS destinations, show the destination hostname, and use an external-site confirmation when the destination is not already trusted by the user. A new-tab link should set `target="_blank"` with `rel="noopener noreferrer"`; render escaped text and attributes rather than interpolating catalog values through `innerHTML`.
+
+Fetching a link is a separate security decision from rendering it. Browser and server clients should not fetch these URLs merely to display a catalog. A service that deliberately retrieves methodology or evidence content must apply its normal SSRF and privacy controls, including blocking private, loopback, link-local, and metadata-service destinations and revalidating every redirect.
+
+These semantics are stable properties of the named fields, so the response does not repeat them in a top-level `_meta` path list or per-value provenance flag. Such metadata would duplicate the schema contract without turning a vendor-supplied link into verified evidence.
 
 **Filter parameters** (all imply `type=measurement` when present; an explicit non-measurement type returns 400):
 
 | Param | Match | Notes |
 |-------|-------|-------|
-| `metric_id=attention_units` | Exact match on `metrics[].metric_id` | Repeatable; multiple values are OR'd within the param. |
-| `accreditation=MRC` | Exact match on `metrics[].accreditations[].accrediting_body` | Repeatable. Vendor-asserted — `verified_by_aao` is always `false` in the response; renderers should mark these as vendor claims, not AAO endorsements. |
+| `metric_id=attention_units` | Exact match on `metrics[].metric_id` | Repeatable; multiple values are AND'd (vendor must carry all named metrics). |
+| `accreditation=MRC` | Exact match on `metrics[].accreditations[].accrediting_body` | Repeatable; multiple values are AND'd (vendor must carry all named accreditations). When combined with `metric_id`, a cross-product AND applies — see combined filter semantics below. Vendor-asserted — `verified_by_aao` is always `false` in the response; renderers should mark these as vendor claims, not AgenticAdvertising.org endorsements. |
 | `q=attention` | Case-insensitive substring on `metric_id` | v1 scope: metric_id only. Max 64 chars; SQL wildcards (`%`, `_`) rejected. Description/standard fuzzy search is a follow-up. |
+
+**Combined filter semantics.** When both `metric_id` and `accreditation` are present, per-metric semantics apply: the same `metrics[]` element must satisfy both constraints simultaneously. A vendor with an `attention_units` metric and a separately MRC-accredited `viewability` metric does **not** match — only a vendor whose `attention_units` metric itself carries MRC accreditation does.
+
+With multiple values, every `(metric_id, accreditation)` pair must be satisfied by at least one metrics element. This is a cross-product AND, not an OR within accreditation:
+
+```bash
+# Vendor must have MRC-accredited attention_units AND MRC-accredited emissions
+curl "https://agenticadvertising.org/api/registry/agents?metric_id=attention_units&metric_id=emissions&accreditation=MRC"
+```
+
+Using multiple `accreditation` values alongside multiple `metric_id` values produces an all-pairs AND (`M × N` constraints) and typically returns few or no results. Prefer single `accreditation` with multiple `metric_id` values for discovery.
 
 ```bash
 # All vendors offering attention measurement
@@ -180,15 +244,40 @@ curl "https://agenticadvertising.org/api/registry/agents?type=measurement&accred
 
 | Use case | Path | Why |
 |----------|------|-----|
-| Discovery / planning ("which vendors offer attention?") | AAO index (`?metric_id=...`) | Pre-aggregated, cached, fast. Cross-vendor in one call. Stale up to the AAO TTL window (typically 24h). |
+| Discovery / planning ("which vendors offer attention?") | Registry index (`?metric_id=...`) | Pre-aggregated, cached, fast. Cross-vendor in one call. Stale up to the registry TTL window (typically 24h). |
 | Settlement / audit ("does Adelaide currently support metric X?") | Direct call to `get_adcp_capabilities` | Live, canonical, no staleness. The buyer is already calling the measurement agent at delivery / reconciliation time; one extra call is cheap and removes index staleness from the audit trail. |
-| Filtering at `get_products` time | AAO index | Buyer is in a fast-path query and the seller's product catalog already needs to know which vendors are valid. |
+| Filtering at `get_products` time | Registry index | Buyer is in a fast-path query and the seller's product catalog already needs to know which vendors are valid. |
+
+#### Creative-agent discovery
+
+Endpoints publish their canonical build, validation, and preview surface in [`get_adcp_capabilities.creative.supported_formats[]`](/docs/protocol/get_adcp_capabilities). The registry snapshots those self-declarations and supports reverse lookup without calling every candidate. Results can include standalone creative agents and mixed sales/creative agents; registry `type` is the endpoint's primary role, not an exclusion of its other capability blocks.
+
+Creative filters do not force a primary `type`, because mixed sales/creative endpoints are valid renderer candidates. Multiple `format_kind` or `creative_operation` values are OR'd within that parameter; different parameters must match the same `supported_formats[]` entry.
+
+| Param | Match |
+|---|---|
+| `format_kind` | Exact canonical `format.format_kind` |
+| `publisher_domain` | Exact publisher namespace on `format` |
+| `format_option_id` | Exact publisher format option on `format` |
+| `capability_id` | Exact agent-local capability identifier |
+| `creative_operation` | `build`, `validate`, or `preview` |
+
+```bash
+# Agents claiming they can build a fictional publisher's exact vertical-video contract
+curl "https://agenticadvertising.org/api/registry/agents?publisher_domain=shorts.streamhaus.example&format_option_id=vertical_video&creative_operation=build&capabilities=true"
+
+# Generic hosted-video builders
+curl "https://agenticadvertising.org/api/registry/agents?format_kind=video_hosted&creative_operation=build"
+```
+
+These are endpoint self-claims, not publisher endorsements. Before production use, call the selected endpoint's `get_adcp_capabilities` directly to refresh the declaration and then route `build_creative` with that entry's `capability_id` when `operations` includes `build`.
 
 ### Change Feed
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/registry/feed` | Poll cursor-based registry change feed (auth required) |
+| GET | `/api/registry/feed/stream` | Stream cursor-based registry feed pages over Server-Sent Events (auth required) |
 
 
 ### Lookups & Authorization
@@ -223,7 +312,7 @@ Authorization validation checks both sides: the publisher's `adagents.json` (doe
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/public/discover-agent` | Probe an agent URL for capabilities |
-| GET | `/api/public/agent-formats` | Get creative formats from an agent |
+| GET | `/api/public/agent-formats` | Get canonical `creative.supported_formats[]` capabilities from an agent |
 | GET | `/api/public/agent-products` | Get products from a sales agent |
 | GET | `/api/public/validate-publisher` | Validate a publisher domain |
 
@@ -302,6 +391,8 @@ Authorization: Bearer <jwt>
 ```
 
 A valid user JWT proves identity, not entitlement. Endpoints gated on organization membership or admin role (most write endpoints) still return `403` if the authenticated user lacks the required standing.
+
+Community-mirror submissions are the exception to direct role rejection: `PUT /api/registry/mirrors/{platform}` accepts any authenticated organization. A registry moderator or AgenticAdvertising.org administrator publishes immediately; other callers create a pending proposal and receive `202 Accepted` plus `Location`, `status_url`, and `proposal_digest`. Review decisions must echo that digest, and approval fails if the public mirror changed since submission. Contributor proposals are limited to 1 MiB and 2,000 catalog items. This keeps community contribution open without allowing an organization credential to publish a global fallback catalog on another platform's behalf without bounded, revision-safe review.
 
 ### Authenticated endpoints
 
@@ -394,14 +485,13 @@ result = requests.post(
 
 Save or update a hosted property in the registry. For existing properties, creates a revision-tracked edit. Cannot edit authoritative properties managed via `adagents.json` — those return `409 Conflict`.
 
+This is an identity-only write surface: the stored document always carries `authorized_agents: []`. Sales authorization lives solely in the publisher's own origin `adagents.json` — the community registry cannot mint or carry it — so any `authorized_agents` sent in the request body is ignored.
+
 **Request body:**
 
 ```json
 {
   "publisher_domain": "examplepub.com",
-  "authorized_agents": [
-    { "url": "https://agent.example.com", "authorized_for": "sell" }
-  ],
   "properties": [
     { "type": "website", "name": "Example Publisher" }
   ],
@@ -412,7 +502,7 @@ Save or update a hosted property in the registry. For existing properties, creat
 }
 ```
 
-`publisher_domain` and `authorized_agents` (each with a required `url` and optional `authorized_for`) are required. `properties` (each requiring `type` and `name`) and `contact` are optional. Domains are normalized (protocol stripped, lowercased).
+`publisher_domain` is required. `properties` (each requiring `type` and `name`) and `contact` are optional. Domains are normalized (protocol stripped, lowercased).
 
 <CodeGroup>
 
@@ -422,7 +512,6 @@ curl -X POST "https://agenticadvertising.org/api/properties/save" \
   -H "Content-Type: application/json" \
   -d '{
     "publisher_domain": "examplepub.com",
-    "authorized_agents": [{"url": "https://agent.example.com", "authorized_for": "sell"}],
     "properties": [{"type": "website", "name": "Example Publisher"}]
   }'
 ```
@@ -438,7 +527,6 @@ const res = await fetch(
     },
     body: JSON.stringify({
       publisher_domain: "examplepub.com",
-      authorized_agents: [{ url: "https://agent.example.com", authorized_for: "sell" }],
       properties: [{ type: "website", name: "Example Publisher" }],
     }),
   }
@@ -454,7 +542,6 @@ result = requests.post(
     headers={"Authorization": "Bearer YOUR_API_KEY"},
     json={
         "publisher_domain": "examplepub.com",
-        "authorized_agents": [{"url": "https://agent.example.com", "authorized_for": "sell"}],
         "properties": [{"type": "website", "name": "Example Publisher"}],
     },
 ).json()
@@ -483,7 +570,7 @@ result = requests.post(
 
 `GET /api/registry/feed`
 
-Poll a cursor-based feed of registry changes. Use this to keep a local copy of the registry in sync without re-fetching the full dataset. Events are ordered by UUID v7 `event_id`, providing monotonic cursor progression. The feed retains events for 90 days — expired cursors return `410 Gone`.
+Poll a cursor-based feed of registry changes. Use this to keep a local copy of the registry in sync without re-fetching the full dataset. Events are ordered by UUID v7 `event_id`, providing monotonic cursor progression. The feed retains events for 90 days — expired cursors return `410 Gone`. Each response includes `freshness` metadata so consumers can measure feed lag for the requested type filter.
 
 **Schema:** [`core/registry-feed-response.json`](https://adcontextprotocol.org/schemas/v3/core/registry-feed-response.json) wraps [`core/registry-event.json`](https://adcontextprotocol.org/schemas/v3/core/registry-event.json) items.
 
@@ -515,7 +602,7 @@ Poll a cursor-based feed of registry changes. Use this to keep a local copy of t
 | `agent.verification_earned` | Agent earned an AAO Verified badge |
 | `agent.verification_lost` | Agent lost an AAO Verified badge |
 | `publisher.adagents_discovered` | A publisher's adagents.json was discovered and projected into the registry |
-| `publisher.adagents_changed` | A publisher's adagents.json was updated |
+| `publisher.adagents_changed` | A semantic field of a publisher's adagents.json changed, including a formats-only or placements-only revision. The payload includes `changed_fields`, `format_count`, and `placement_count` on newly emitted 3.2 events. |
 | `authorization.granted` | An agent was authorized for a property |
 | `authorization.revoked` | An authorization was removed |
 | `authorization.modified` | An authorization stayed visible, but externally visible metadata changed |
@@ -549,6 +636,8 @@ feed = requests.get(
 
 </CodeGroup>
 
+The crawler compares every semantic top-level field of the normalized document. Changes confined to `formats[]` or `placements[]` therefore emit `publisher.adagents_changed`; changes only to transport/version metadata (`$schema` or `last_updated`) do not. Consumers may use `changed_fields` to target their refresh, but should re-resolve every field they depend on when reading an older retained event that lacks this field. **3.2 migration note:** handlers that previously reacted only to `agents_added`, `agents_removed`, `properties_added`, or `properties_removed` should also inspect `changed_fields` — a formats-only or placements-only revision emits this event with those count fields unchanged and `changed_fields` set to `["formats"]` or `["placements"]`.
+
 ```json Response
 {
   "events": [
@@ -570,11 +659,21 @@ feed = requests.get(
     }
   ],
   "cursor": "019539a0-1234-7000-8000-000000000001",
-  "has_more": true
+  "has_more": true,
+  "freshness": {
+    "generated_at": "2026-03-31T10:00:15.000Z",
+    "latest_event_created_at": "2026-03-31T10:00:00.000Z",
+    "lag_seconds": 15,
+    "retention_days": 90
+  }
 }
 ```
 
 When `has_more` is `true`, pass the returned `cursor` value in the next request to continue polling. When `false`, you've reached the end of the current feed — poll again later with the same cursor to pick up new events.
+
+`latest_event_created_at` is the newest matching event currently visible to the feed. `lag_seconds` is computed against `generated_at`; alert on it according to your own mirror freshness target.
+
+`GET /api/registry/feed/stream` provides the same feed pages over Server-Sent Events. Reconnect with your last persisted cursor after disconnects. The stream emits `event: feed` with the same JSON shape shown above and `event: heartbeat` while caught up. Cursors are tied to the same logical `types` subscription; changing filters while reusing a cursor can skip events that were filtered out previously. The stream carries the resume cursor in JSON `data.cursor`, not SSE `id`, so browser `EventSource` clients must reconnect with `?cursor=...`.
 
 If the cursor has expired (older than 90 days or not found), the response is `410 Gone`:
 
@@ -646,7 +745,7 @@ agents = requests.get(
       "categories": ["IAB-7", "IAB-7-1"],
       "tags": ["premium"],
       "delivery_types": ["guaranteed"],
-      "format_ids": [],
+      "format_kinds": ["video_hosted", "video_vast"],
       "property_count": 42,
       "publisher_count": 3,
       "has_tmp": true,

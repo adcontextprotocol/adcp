@@ -11,6 +11,8 @@
 // @ts-ignore - sharp default export varies by bundler
 import sharp from 'sharp';
 
+type SharpCompositeOptions = Parameters<ReturnType<typeof sharp>['composite']>[0];
+
 interface CardOptions {
   title: string;
   category?: string;
@@ -154,7 +156,7 @@ export async function compositePerspectiveCard(options: CompositeCardOptions): P
   // Start with the AI illustration, resize to exactly 1200x630
   let base = sharp(illustrationBuffer).resize(1200, 630, { fit: 'cover' });
 
-  const composites: sharp.OverlayOptions[] = [];
+  const composites: SharpCompositeOptions = [];
 
   // If author portrait exists, add it with an amber ring at bottom-right
   // 220px portrait on 1200px card = ~18% width, visible at carousel size (~60px)

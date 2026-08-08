@@ -227,47 +227,6 @@ phases:
       synchronously.
 
     steps:
-      - id: discover_catalog_formats
-        title: "Check catalog format requirements"
-        narrative: |
-          Before pushing catalog items, the buyer checks what creative formats your
-          platform supports for catalog-driven ads. This tells the buyer what image
-          dimensions, text lengths, and required fields each catalog item needs.
-        task: list_creative_formats
-        schema_ref: "creative/list-creative-formats-request.json"
-        response_schema_ref: "creative/list-creative-formats-response.json"
-        doc_ref: "/creative/task-reference/list_creative_formats"
-        comply_scenario: creative_lifecycle
-        stateful: false
-        expected: |
-          Return creative formats that accept catalog assets. Look for formats with
-          catalog-specific asset slots (product_image, product_title, price, description).
-
-        sample_request:
-          channels: ["display", "native"]
-
-          context:
-            correlation_id: "sales_catalog_driven--discover_catalog_formats"
-        validations:
-          - check: response_schema
-            description: "Response matches list-creative-formats-response.json schema"
-          - check: field_present
-            path: "formats"
-            description: "Response contains formats array"
-
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "sales_catalog_driven--discover_catalog_formats"
-            description: "Context correlation_id returned unchanged"
-          - check: field_present
-            path: "formats[0].format_id.agent_url"
-            description: "Format IDs include agent_url"
-          - check: field_present
-            path: "formats[0].format_id.id"
-            description: "Format IDs include id — must match those in get_products"
       - id: sync_catalogs
         title: "Push product catalog"
         narrative: |
@@ -452,9 +411,7 @@ phases:
 
         sample_request:
           message: "Build a catalog-driven display ad for the substitution_safety_probe_v1 catalog. Use {SKU} in impression and click tracker URLs."
-          target_format_id:
-            agent_url: "https://your-agent.example.com"
-            id: "display_300x250_catalog"
+          target_capability_id: "display_300x250_catalog"
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
@@ -469,8 +426,8 @@ phases:
           - check: response_schema
             description: "Response matches build-creative-response.json schema"
           - check: field_present
-            path: "creative_manifest.format_id"
-            description: "Creative manifest returned"
+            path: "creative_manifest.format_kind"
+            description: "Creative manifest returned with a canonical format kind"
 
       - id: expect_substitution_safe
         title: "Assert substituted tracker URLs percent-encode attacker shapes"
@@ -554,14 +511,14 @@ phases:
             value: "sales_catalog_driven--get_products"
             description: "Context correlation_id returned unchanged"
           - check: field_present
-            path: "products[0].format_ids"
-            description: "Products include format_ids for creative requirements"
+            path: "products[0].format_options"
+            description: "Products include canonical format_options for creative requirements"
           - check: field_present
-            path: "products[0].format_ids[0].agent_url"
-            description: "Format IDs include agent_url — must match this agent's URL"
+            path: "products[0].format_options[0].format_kind"
+            description: "Canonical format options include a format_kind discriminator"
           - check: field_present
-            path: "products[0].format_ids[0].id"
-            description: "Format IDs include id — must be accepted back in sync_creatives"
+            path: "products[0].format_options[0].format_option_id"
+            description: "Canonical format options include a stable ID accepted by sync_creatives"
       - id: create_media_buy
         title: "Create media buy with catalog packages"
         narrative: |
@@ -715,19 +672,19 @@ phases:
           events:
             - event_id: "evt_001"
               event_type: "purchase"
-              event_time: "2026-04-15T19:30:00Z"
+              event_time: "2099-04-15T19:30:00Z"
               content_ids: ["ribeye_36oz"]
               value: 89.00
               currency: "USD"
             - event_id: "evt_002"
               event_type: "lead"
-              event_time: "2026-04-15T20:15:00Z"
+              event_time: "2099-04-15T20:15:00Z"
               content_ids: ["wagyu_flight"]
               value: 195.00
               currency: "USD"
             - event_id: "evt_003"
               event_type: "page_view"
-              event_time: "2026-04-15T20:45:00Z"
+              event_time: "2099-04-15T20:45:00Z"
               content_ids: ["seafood_tower"]
 
           idempotency_key: "$generate:uuid_v4#sales_catalog_driven_conversion_tracking_log_events"
@@ -782,8 +739,8 @@ phases:
             operator: "pinnacle-agency.example"
           media_buy_id: "$context.media_buy_id"
           measurement_period:
-            start: "2026-04-07T00:00:00Z"
-            end: "2026-04-14T23:59:59Z"
+            start: "2099-04-07T00:00:00Z"
+            end: "2099-04-14T23:59:59Z"
           performance_index: 1.4
           metric_type: "conversion_rate"
           feedback_source: "buyer_attribution"

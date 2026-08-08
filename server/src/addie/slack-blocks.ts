@@ -84,6 +84,9 @@ export function splitMrkdwnIntoSections(text: string): SlackSectionBlock[] {
  */
 export const DEFAULT_STREAM_SOFT_CAP = 9000;
 
+export const STREAM_DELIVERY_UNCERTAIN_NOTICE =
+  "_(I streamed that response, but couldn't finish Slack's delivery metadata. Some of the response may be missing; ask again and I'll retry.)_";
+
 export interface StreamAppendDecision {
   /** Pass to `streamer.append({ markdown_text: appendPart })` when non-empty. */
   appendPart: string;
@@ -119,6 +122,17 @@ export function decideStreamAppend(
     carryPart: delta.slice(cut),
     shouldFinalize: true,
   };
+}
+
+export type StreamStopFailureFallbackPlan = 'full-response' | 'delivery-notice';
+
+/**
+ * Slack can persist appended stream text even when chat.stopStream fails.
+ * If any answer text was appended successfully, reposting the full response
+ * via say() duplicates content; use a short delivery notice instead.
+ */
+export function planStreamStopFailureFallback(streamedLen: number): StreamStopFailureFallbackPlan {
+  return streamedLen > 0 ? 'delivery-notice' : 'full-response';
 }
 
 /**

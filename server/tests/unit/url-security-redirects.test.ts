@@ -26,6 +26,74 @@ vi.mock('dns/promises', () => ({
 }));
 
 import { safeFetch } from '../../src/utils/url-security.js';
+import { oauthSafeFetch } from '../../src/utils/oauth-safe-fetch.js';
+
+describe('oauthSafeFetch redirect policy', () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    agentMock.mockClear();
+    resolve4Mock.mockClear();
+    resolve6Mock.mockClear();
+    resolve4Mock.mockResolvedValue(['93.184.216.34']);
+    resolve6Mock.mockResolvedValue([]);
+  });
+
+  it.each([302, 307, 308])(
+    'does not forward credential-bearing POST data across a %i redirect',
+    async (status) => {
+      fetchMock.mockResolvedValueOnce(new Response('', {
+        status,
+        headers: { Location: 'https://attacker.example/collect' },
+      }));
+
+      const response = await oauthSafeFetch('https://auth.example/token', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Basic client-secret',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code: 'authorization-code',
+          code_verifier: 'pkce-verifier',
+        }),
+      });
+
+      expect(response.status).toBe(status);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe('https://auth.example/token');
+      expect(fetchMock.mock.calls[0][1]).toMatchObject({
+        method: 'POST',
+        headers: {
+          authorization: 'Basic client-secret',
+          'content-type': 'application/x-www-form-urlencoded',
+        },
+        body: 'grant_type=authorization_code&code=authorization-code&code_verifier=pkce-verifier',
+      });
+    },
+  );
+
+  it('continues to follow same-origin discovery GET redirects', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('', {
+        status: 302,
+        headers: { Location: '/oauth-configuration' },
+      }))
+      .mockResolvedValueOnce(new Response('{"token_endpoint":"https://auth.example/token"}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+
+    const response = await oauthSafeFetch(
+      'https://auth.example/.well-known/oauth-authorization-server',
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe('https://auth.example/oauth-configuration');
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'GET' });
+  });
+});
 
 describe('safeFetch redirects', () => {
   beforeEach(() => {

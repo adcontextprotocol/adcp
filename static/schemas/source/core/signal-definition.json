@@ -49,6 +49,10 @@
       },
       "minItems": 1
     },
+    "demographic_predicate": {
+      "$ref": "/schemas/core/demographic-predicate.json",
+      "description": "Authoritative machine-readable demographic meaning for this signal. Signal names and taxonomy labels alone never establish exact demographic equivalence. Signals carrying this field MUST also declare restricted_attributes including age."
+    },
     "policy_categories": {
       "type": "array",
       "description": "Policy categories this signal is sensitive for (e.g., a children's interest signal declares ['children_directed']). Governance agents match these against a plan's policy_categories to flag sensitive data usage.",
@@ -256,13 +260,11 @@
       "additionalProperties": false
     },
     "subject_type": {
-      "type": "string",
-      "enum": ["individual", "household", "business", "contextual", "none"],
+      "$ref": "/schemas/enums/audience-subject-type.json",
       "description": "What kind of subject this signal characterizes."
     },
     "resolution_method": {
-      "type": "string",
-      "enum": ["deterministic_id", "probabilistic_device", "browser", "geographic", "content_signal", "mixed"],
+      "$ref": "/schemas/enums/audience-resolution-method.json",
       "description": "How the subject is resolved at decision time."
     },
     "id_types": {
@@ -495,6 +497,17 @@
         "required": ["data_sources"]
       },
       "then": { "required": ["onboarder"] }
+    },
+    {
+      "if": { "required": ["demographic_predicate"] },
+      "then": {
+        "properties": {
+          "restricted_attributes": {
+            "contains": { "const": "age" }
+          }
+        },
+        "required": ["restricted_attributes"]
+      }
     }
   ],
   "additionalProperties": true

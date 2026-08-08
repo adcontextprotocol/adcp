@@ -16,12 +16,30 @@
 
 import { Router } from 'express';
 import { getPool } from '../../db/client.js';
+import { canonicalizeAgentUrl } from '../../db/publisher-db.js';
+import {
+  hasApiAccess,
+  OrganizationDatabase,
+  resolveMembershipTier,
+} from '../../db/organization-db.js';
 import { createLogger } from '../../logger.js';
 import { requireAuth, requireAdmin } from '../../middleware/auth.js';
 import { invalidateMemberContextCache } from '../../addie/index.js';
+import {
+  gateAgentVisibilityForCaller,
+  type VisibilityWarning,
+} from '../../services/agent-visibility-gate.js';
+import {
+  buildUnverifiedHostnameMessage,
+  isHostnameOwnershipRejection,
+  verifyAgentHostname,
+} from '../../services/agent-hostname-verification.js';
+import { logResolvedTypeChanges, resolveAgentTypes } from '../member-profiles.js';
 import type { AgentConfig } from '../../types.js';
+import { isValidAgentType, isValidAgentVisibility } from '../../types.js';
 
 const logger = createLogger('admin-agents');
+const orgDb = new OrganizationDatabase();
 
 const MIN_REASON_LENGTH = 5;
 const MAX_REASON_LENGTH = 500;
@@ -56,6 +74,34 @@ function parseAgents(raw: unknown): AgentConfig[] {
     throw new CorruptAgentsColumnError();
   }
   throw new CorruptAgentsColumnError();
+}
+
+function isParseableUrl(value: string): boolean {
+  try {
+    // eslint-disable-next-line no-new
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function pickAgent(agents: AgentConfig[], url: string): AgentConfig | undefined {
+  return agents.find((a) => a.url === url);
+}
+
+function redactAgentForAudit<T extends { health_check_url?: string } | undefined>(agent: T): T {
+  if (!agent?.health_check_url) return agent;
+  try {
+    const url = new URL(agent.health_check_url);
+    url.username = '';
+    url.password = '';
+    url.search = '';
+    url.hash = '';
+    return { ...agent, health_check_url: url.toString() };
+  } catch {
+    return { ...agent, health_check_url: '[redacted-invalid-url]' };
+  }
 }
 
 export function setupAdminAgentsRoutes(apiRouter: Router): void {
@@ -96,6 +142,227 @@ export function setupAdminAgentsRoutes(apiRouter: Router): void {
           error: 'internal_error',
           message: 'Failed to list agents',
         });
+      }
+    },
+  );
+
+  // POST /api/admin/accounts/:orgId/agents
+  //
+  // Audited repair path for registering or updating a single agent under an
+  // existing member profile. Mirrors the member POST's identity protections:
+  // canonical URL matching, declared type requirement, hostname ownership
+  // verification, visibility gating, type-resolution smuggle protection, and
+  // metadata seeding.
+  apiRouter.post(
+    '/accounts/:orgId/agents',
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const { orgId } = req.params;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+
+      const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+      if (reason.length < MIN_REASON_LENGTH) {
+        return res.status(400).json({
+          error: 'reason_required',
+          message: `reason is required in the request body (min ${MIN_REASON_LENGTH} chars)`,
+        });
+      }
+      if (reason.length > MAX_REASON_LENGTH) {
+        return res.status(400).json({
+          error: 'reason_too_long',
+          message: `reason exceeds ${MAX_REASON_LENGTH} chars`,
+        });
+      }
+
+      const rawUrl = typeof body.url === 'string' ? body.url : '';
+      if (rawUrl.length === 0) {
+        return res.status(400).json({ error: 'url_required', message: 'url is required' });
+      }
+      if (!isParseableUrl(rawUrl)) {
+        return res.status(400).json({ error: 'invalid_url', message: 'url must be a valid URL' });
+      }
+      if (rawUrl.includes('?') || rawUrl.includes('#')) {
+        return res.status(400).json({
+          error: 'invalid_url',
+          message: 'url must not contain query strings or fragments',
+        });
+      }
+      const canonicalUrl = canonicalizeAgentUrl(rawUrl);
+      if (!canonicalUrl) {
+        return res.status(400).json({ error: 'invalid_url', message: 'url is not a valid agent URL' });
+      }
+
+      const type = body.type;
+      if (typeof type !== 'string' || !isValidAgentType(type) || type === 'unknown') {
+        return res.status(400).json({
+          error: 'type_required',
+          message: 'Specify one of: brand, rights, measurement, governance, creative, sales, buying, signals.',
+        });
+      }
+
+      const requestedVisibility = body.visibility;
+      if (requestedVisibility !== undefined && !isValidAgentVisibility(requestedVisibility)) {
+        return res.status(400).json({
+          error: 'invalid_visibility',
+          message: 'visibility must be one of: private, members_only, public.',
+        });
+      }
+      if (requestedVisibility === 'public') {
+        return res.status(400).json({
+          error: 'public_visibility_not_supported',
+          message: 'Admin agent repair can register private or members_only agents only. Use the normal publish flow to list an agent publicly.',
+        });
+      }
+
+      const verification = await verifyAgentHostname(orgId, canonicalUrl);
+      if (isHostnameOwnershipRejection(verification)) {
+        return res.status(400).json({
+          error: 'unverified_hostname',
+          message: buildUnverifiedHostnameMessage(verification),
+          agent_hostname: verification.agent_hostname,
+          verified_domains: verification.verified_domains,
+          reason: verification.reason,
+        });
+      }
+
+      const escalationId =
+        typeof body.escalation_id === 'string' && body.escalation_id.length > 0
+          ? body.escalation_id
+          : null;
+      const agentPatch: Partial<AgentConfig> & { url: string } = {
+        url: canonicalUrl,
+        type,
+        ...(requestedVisibility !== undefined ? { visibility: requestedVisibility } : {}),
+        ...(typeof body.name === 'string' && body.name.trim().length > 0
+          ? { name: body.name.trim() }
+          : {}),
+        ...(typeof body.health_check_url === 'string' && body.health_check_url.length > 0
+          ? { health_check_url: body.health_check_url }
+          : {}),
+      };
+
+      const pool = getPool();
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        const row = await client.query<{ id: string; agents: unknown }>(
+          `SELECT id, agents
+           FROM member_profiles
+           WHERE workos_organization_id = $1
+           FOR UPDATE`,
+          [orgId],
+        );
+        if (row.rowCount === 0) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({
+            error: 'profile_not_found',
+            message: `No member profile exists for org ${orgId}`,
+          });
+        }
+
+        const profileId = row.rows[0].id;
+        const existing = parseAgents(row.rows[0].agents);
+        const idx = existing.findIndex((a) => (canonicalizeAgentUrl(a.url) ?? a.url) === canonicalUrl);
+        const wasUpdate = idx !== -1;
+        const newAgent: AgentConfig = {
+          ...agentPatch,
+          visibility: requestedVisibility ?? 'members_only',
+        } as AgentConfig;
+        const next = wasUpdate
+          ? existing.map((a, i) => (i === idx ? { ...a, ...agentPatch } : a))
+          : [...existing, newAgent];
+
+        const org = await orgDb.getOrganization(orgId);
+        const callerHasApi = hasApiAccess(resolveMembershipTier(org));
+        const { agents: gated, warnings } = gateAgentVisibilityForCaller(next, callerHasApi);
+        const typed = (await resolveAgentTypes(gated)) as AgentConfig[];
+        await logResolvedTypeChanges(gated, typed, orgId);
+
+        await client.query(
+          `UPDATE member_profiles
+           SET agents = $1::jsonb, updated_at = NOW()
+           WHERE id = $2`,
+          [JSON.stringify(typed), profileId],
+        );
+
+        const urls = typed
+          .map((a) => (a && typeof a.url === 'string' ? canonicalizeAgentUrl(a.url) : null))
+          .filter((u): u is string => u !== null);
+        if (urls.length > 0) {
+          await client.query(
+            `INSERT INTO agent_registry_metadata (agent_url)
+             SELECT unnest($1::text[])
+             ON CONFLICT (agent_url) DO NOTHING`,
+            [urls],
+          );
+        }
+
+        const upsertedAgent = pickAgent(typed, canonicalUrl);
+        await client.query(
+          `INSERT INTO registry_audit_log
+             (workos_organization_id, workos_user_id, action, resource_type, resource_id, details)
+           VALUES ($1, $2, 'admin_add_agent', 'agent', $3, $4)`,
+          [
+            orgId,
+            req.user!.id,
+            canonicalUrl,
+            JSON.stringify({
+              reason,
+              escalation_id: escalationId,
+              admin_email: req.user!.email,
+              was_update: wasUpdate,
+              requested_agent: redactAgentForAudit(wasUpdate ? agentPatch : newAgent),
+              upserted_agent: redactAgentForAudit(upsertedAgent),
+            }),
+          ],
+        );
+
+        await client.query('COMMIT');
+        invalidateMemberContextCache();
+
+        logger.warn(
+          {
+            orgId,
+            agentUrl: canonicalUrl,
+            adminUserId: req.user!.id,
+            adminEmail: req.user!.email,
+            escalationId,
+            wasUpdate,
+          },
+          'Admin registered agent on org member profile',
+        );
+
+        return res.status(wasUpdate ? 200 : 201).json({
+          agent: upsertedAgent,
+          org_id: orgId,
+          reason,
+          escalation_id: escalationId,
+          was_update: wasUpdate,
+          agents_count: typed.length,
+          ...(warnings.length ? { warnings: warnings as VisibilityWarning[] } : {}),
+        });
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (err instanceof CorruptAgentsColumnError) {
+          logger.error({ orgId }, 'member_profiles.agents column is corrupt');
+          return res.status(500).json({
+            error: 'corrupt_agents_column',
+            message: `member_profiles.agents for org ${orgId} is not a JSON array`,
+          });
+        }
+        logger.error({ err, orgId, agentUrl: canonicalUrl }, 'Admin agent registration failed');
+        return res.status(500).json({
+          error: 'internal_error',
+          message: 'Failed to register agent',
+        });
+      } finally {
+        try {
+          client.release();
+        } catch (releaseErr) {
+          logger.warn({ err: releaseErr, orgId }, 'pg client release failed');
+        }
       }
     },
   );

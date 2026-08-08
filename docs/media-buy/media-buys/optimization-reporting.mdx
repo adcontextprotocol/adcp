@@ -74,7 +74,17 @@ The two flows aren't a duplication — they encode the difference between *stand
 
 ### Required coherence between layers
 
-Three rules connect the layers and prevent orphaned goals:
+`optimization_goals` define the objective function: what the seller should optimize, its units, and priority. They do not define 3.2 bidding policy. Currency-bearing execution controls live in `bidding` at media-buy or package scope. All monetary amounts use the media-buy currency; a selected pricing option contributes the auction unit but MUST declare that same currency:
+
+- seller-optimized media-buy `cost_per`/`roas` bind to the primary `budget_allocation.optimization_goals` goal;
+- package-authored `cost_per`/`roas` bind to that package's primary goal;
+- fixed media-buy `cost_per` binds to every inheriting package and requires compatible primary-goal result units; fixed inherited `roas` requires value-bearing primary goals;
+- `bid_amount` and `max_bid` are expressed per the selected pricing option's auction unit; and
+- `{automatic: true}` explicitly overrides inherited policy with provider automatic bidding.
+
+The separation matters when the units differ—for example, a seller can optimize toward conversions using a target CPA while also enforcing a max-CPC auction ceiling, with both amounts denominated in the media-buy currency. Legacy goal targets `cost_per` and `per_ad_spend` remain accepted during 3.2 migration but cannot be combined with canonical `bidding` on the same effective package. Their conservative normalization remains `cost_per` → `strength: "target"` and `per_ad_spend` → `strength: "target"`.
+
+Four rules connect the layers and prevent orphaned goals:
 
 1. **Optimization requires capability.** A package's `optimization_goals[]` entry MUST match a product capability — `metric_optimization.supported_metrics` for `kind: "metric"`, or `vendor_metric_optimization.supported_metrics` for `kind: "vendor_metric"`. Sellers reject mismatches with `TERMS_REJECTED`.
 
@@ -85,7 +95,7 @@ Three rules connect the layers and prevent orphaned goals:
    - Standard only — "you owe me ≥ X," seller decides how to hit it
    - Both — optimization steers; standard backstops
 
-4. **Priority is ordinal, lowest-value-first.** When `optimization_goals[]` carry explicit `priority` values, the seller treats the goal with the **lowest** priority value as primary — even when no goal is `priority: 1` (priorities of `2` and `3` mean `2` is primary). When `priority` is omitted, sellers may use array position. Duplicate priority values are undefined.
+4. **Priority is ordinal, lowest-value-first.** When `optimization_goals[]` carry explicit `priority` values, the seller treats the goal with the **lowest** priority value as primary — even when no goal is `priority: 1` (priorities of `2` and `3` mean `2` is primary). When all priorities are omitted, the first array entry is primary. Duplicate priority values are undefined.
 
 ### Worked example: Adelaide attention end-to-end
 
@@ -252,7 +262,7 @@ Configure reporting webhooks when creating a media buy using the `reporting_webh
 - **Bearer tokens**: Simple, good for development (Authorization header)
 - **HMAC-SHA256**: Production-recommended, prevents replay attacks (signature headers)
 - Credentials exchanged out-of-band during publisher onboarding
-- See [Security](/docs/building/implementation/security) for implementation details
+- See [Security](/docs/building/by-layer/L1/security) for implementation details
 
 #### Supported Frequencies
 
@@ -260,7 +270,12 @@ Publishers declare supported reporting frequencies in the product's `reporting_c
 
 - **`hourly`**: Receive notifications every hour during campaign flight (optional, consider cost/complexity)
 - **`daily`**: Receive notifications once per day (most common, recommended for Phase 1)
+- **`weekly`**: Receive notifications once per week — the native cadence for audience-currency channels reporting weekly increments (OOH, radio)
 - **`monthly`**: Receive notifications once per month (timezone specified by publisher)
+- **`quarterly`**: Receive notifications once per quarter — matches quarterly measurement-currency publication cycles
+- **`post_campaign`**: A single report after the flight ends — for channels where delivery is only knowable in arrears
+
+A product's declared frequencies are an optimization-eligibility signal: buyers should not mid-flight-optimize against a channel whose data arrives quarterly or post-campaign.
 
 **Cost Consideration:** Hourly webhooks generate 24x more traffic than daily. Large buyer-seller pairs may prefer offline reporting mechanisms (see below) for cost efficiency.
 
@@ -279,7 +294,7 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`ctr`**: Click-through rate
 - **`views`**: Views at platform-defined threshold
 - **`completed_views`**: Video/audio completions (or threshold-based completion when an optimization goal sets a custom view duration)
-- **`completion_rate`**: Completion rate (`completed_views` / `impressions`)
+- **`completion_rate`**: Completion rate (`completed_views` / `impressions`); `null` when not applicable (e.g. a non-video buy)
 - **`conversions`**: Post-click or post-view conversions
 - **`conversion_value`**: Monetary value of attributed conversions
 - **`roas`**: Return on ad spend
@@ -296,7 +311,7 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`saves`**: Saves, bookmarks, playlist adds attributed to delivery (platforms vary in name — Pinterest "repins", TikTok "video_saves" — all report under this canonical key)
 - **`profile_visits`**: Visits to the brand's in-platform page
 - **`viewability`**: Viewability data (measurable_impressions, viewable_impressions, viewable_rate, viewed_seconds, standard, vendor). Separates MRC and GroupM standards. `viewed_seconds` is the average in-view duration per measurable impression — reporting-side counterpart to the `viewed_seconds` optimization goal, governed by the same `standard` threshold as `viewable_rate`. The optional `vendor` field carries a `BrandRef` so the row is self-describing — buyer agents reading delivery in isolation can attribute the numbers to a measurement vendor without joining back to `package.committed_metrics` or `package.performance_standards`.
-- **`quartile_data`**: Video quartile completion data (q1-q4)
+- **`quartile_data`**: Video quartile completion data (q1-q4); `null` when not applicable (e.g. a non-video buy)
 - **`dooh_metrics`**: DOOH-specific metrics (loop plays, screens, venue breakdown)
 - **`cost_per_click`**: Cost per click (`spend / clicks`)
 - **`cost_per_completed_view`**: Cost per completed view (`spend / completed_views`); CPCV pricing scalar for video/audio inventory
@@ -307,6 +322,8 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`plays`**: Raw play count for DOOH/broadcast inventory (mirrors `forecastable-metric.plays`); distinct from `dooh_metrics.loop_plays` (per-screen rotation) and `impressions` (multiplied audience figure)
 
 Buyers can optionally request a subset via `requested_metrics` to reduce payload size and focus on relevant KPIs.
+
+For `completion_rate` and `quartile_data`, sellers MAY return `null` to signal the metric does not apply (e.g. on a non-video buy), and clients MUST accept `null` as a valid value for these two fields. Every other metric signals "not applicable" by omission — sellers omit it rather than sending `null`.
 
 #### Vendor-Defined Metrics
 
@@ -465,6 +482,8 @@ For channels where billing-grade data is produced in **phases** rather than arri
 | Podcast | `downloads_7d` → `downloads_30d` (guarantee basis) |
 
 Each window's numbers supersede the previous one. One window is typically the `is_guarantee_basis` — the number both sides reconcile against. The measurement vendor's processing time is captured in `expected_availability_days` on each window (it includes both accumulation and processing).
+
+For broadcast, delayed or sparse early-window data is usually a measurement-vendor settlement issue, not a seller-side metadata problem. Nielsen, Comscore, VideoAmp, or another named vendor may publish Live, C3, C7, Live+5, or market-level results in waves. During that period, sellers should label delivery as provisional or awaiting measurement-vendor finalization, preserve the `measurement_window`, and use `is_final`, `finalized_at`, `supersedes_window`, and delayed/window-update notifications to show what changed. Buyers should not fork creative records or product metadata to represent partial affiliate or station visibility; aggregate the seller's delivery rows by market, placement, daypart, creative, and measurement window instead.
 
 Sellers set `expected_delay_minutes` on their products to reflect the first-available data pipeline. The `measurement_windows` array on `reporting_capabilities` provides per-window timelines.
 
@@ -750,7 +769,7 @@ Publishers MUST scrub personally identifiable information (PII) from all webhook
 
 #### Webhook Health Monitoring
 
-Webhook delivery status is tracked through **AdCP's global task management system** (see [Task Lifecycle](/docs/building/implementation/task-lifecycle)).
+Webhook delivery status is tracked through **AdCP's global task management system** (see [Task Lifecycle](/docs/building/by-layer/L3/task-lifecycle)).
 
 When a media buy is created with `reporting_webhook` configured, the publisher creates an ongoing task for webhook delivery. Buyers can monitor webhook health using standard task queries.
 
@@ -1005,7 +1024,7 @@ Each file contains one media buy delivery per line (JSONL), row (CSV/Parquet/ORC
 
 ### Security considerations for offline delivery
 
-Offline files sit at rest for `file_retention_days`, so a misconfigured IAM policy leaks historical reporting across tenants. The [general security controls](/docs/building/implementation/security) apply; the offline-specific requirements:
+Offline files sit at rest for `file_retention_days`, so a misconfigured IAM policy leaks historical reporting across tenants. The [general security controls](/docs/building/by-layer/L1/security) apply; the offline-specific requirements:
 
 - **Scope access at the IAM layer, not by obscurity.** Buyer read access MUST be scoped to `{bucket}/{prefix}/*` (S3 bucket policy condition, GCS conditional IAM binding on `resource.name.startsWith(...)`, or Azure SAS scoped to the prefix). A bucket-wide read grant is non-compliant even when the seller only writes under one prefix per account.
 - **Scope listing as well as reads.** Prefix scoping MUST cover both object-level operations (`s3:GetObject`) and listing (`s3:ListBucket` with an `s3:prefix` condition). A policy that scopes `GetObject` to the prefix but leaves `ListBucket` unscoped lets a buyer enumerate other tenants' prefix names — a cross-tenant isolation failure even without read access to their objects. The same applies to GCS `storage.objects.list` and Azure `list` SAS permissions.
@@ -1013,7 +1032,7 @@ Offline files sit at rest for `file_retention_days`, so a misconfigured IAM poli
 
 PII scrubbing requirements (see [above](#pii-scrubbing-for-gdpr-ccpa)) apply to offline files identically — scrub at the collection layer, not at delivery, because the files accumulate at rest.
 
-`setup_instructions` is a seller-provided URL. It is operator-facing documentation, not agent-consumable content. Buyer agents MUST NOT auto-fetch the URL; they SHOULD surface it to a human operator. If an implementation chooses to fetch it (for example, to preview the target before showing it to the operator), apply [webhook URL SSRF validation](/docs/building/implementation/security#webhook-url-validation-ssrf), and the fetched content MUST NOT be passed into an LLM context without indirect-prompt-injection guarding — seller-controlled text in this field can contain instructions to rotate credentials, change billing, or alter downstream agent behavior.
+`setup_instructions` is a seller-provided URL. It is operator-facing documentation, not agent-consumable content. Buyer agents MUST NOT auto-fetch the URL; they SHOULD surface it to a human operator. If an implementation chooses to fetch it (for example, to preview the target before showing it to the operator), apply [webhook URL SSRF validation](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf), and the fetched content MUST NOT be passed into an LLM context without indirect-prompt-injection guarding — seller-controlled text in this field can contain instructions to rotate credentials, change billing, or alter downstream agent behavior.
 
 ## Data Reconciliation
 
@@ -1169,7 +1188,7 @@ Reporting webhooks follow AdCP's standard webhook reliability patterns:
 - **Best-effort ordering**: Notifications may arrive out of order
 - **Timeout and retry**: Limited retry attempts on delivery failure
 
-See [Webhooks](/docs/building/implementation/webhooks) for detailed implementation guidance.
+See [Webhooks](/docs/building/by-layer/L3/webhooks) for detailed implementation guidance.
 
 ## Optimization Strategies
 
