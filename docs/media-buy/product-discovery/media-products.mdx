@@ -163,6 +163,7 @@ Publishers declare which pricing models they support for each product. Buyers se
 - **CPCV** (Cost Per Completed View) - Cost per 100% video/audio completion
 - **CPV** (Cost Per View) - Cost per view at publisher-defined threshold
 - **CPA** (Cost Per Acquisition) - Cost per conversion event (purchase, lead, signup, etc.)
+- **Revenue Share** - Commission rate applied to settled attributed conversion value
 - **CPP** (Cost Per Point) - Cost per Gross Rating Point (TV/audio)
 - **Flat Rate** - Fixed cost regardless of delivery volume
 - **Time** - Cost per time unit (day, week, month) that scales with campaign duration
@@ -197,6 +198,8 @@ For auction-based pricing (no `fixed_price`), use `floor_price` for the seller's
   }
 }
 ```
+
+`revenue_share` is the exception to the old "no fixed price means auction" shortcut: it is contingent pricing, uses `commission_rate`, and never uses auction bidding fields.
 
 #### Delivery Measurement
 

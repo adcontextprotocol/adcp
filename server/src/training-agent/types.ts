@@ -217,6 +217,8 @@ export interface ComplyDeliveryAccumulator {
   clicks: number;
   reportedSpend: { amount: number; currency: string };
   conversions: number;
+  conversionValue?: number;
+  commissionableValue?: number;
   isFinal?: boolean;
   finalizedAt?: string;
   measurementWindow?: string;
@@ -591,11 +593,15 @@ export interface CreativeWebhookActivityRecord {
 
 export interface UsageRecord {
   account: AccountRef;
+  mediaBuyId?: string;
   creativeId?: string;
   signalAgentSegmentId?: string;
   pricingOptionId?: string;
   impressions?: number;
   mediaSpend?: number;
+  conversions?: number;
+  conversionValue?: number;
+  commissionableValue?: number;
   vendorCost: number;
   currency: string;
   final?: boolean;

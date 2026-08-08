@@ -176,7 +176,8 @@ The seller must declare `features.property_list_filtering: true` in [`get_adcp_c
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `delivery_type` | string | Filter by `"guaranteed"` or `"non_guaranteed"` |
-| `is_fixed_price` | boolean | Filter for fixed-price vs auction products. Products with both pricing types can match either value, but the returned `pricing_options` array must include only options matching the requested pricing type so buyers can select deterministically from discovery. |
+| `is_fixed_price` | boolean | Legacy filter for fixed-price vs auction products. `true` returns options with `fixed_price`; `false` returns options established through `bid_price`. Contingent options such as `revenue_share` match neither value and are omitted whenever this filter is present. |
+| `pricing_structures` | string[] | Filter by how the payable price is determined: `fixed`, `auction`, or `contingent`. Sellers return only matching `pricing_options`. Use `contingent` to discover `revenue_share`. When combined with `is_fixed_price`, both filters apply. |
 | `pricing_currencies` | string[] | Filter by ISO 4217 currencies the buyer can use for the media product transaction (e.g., `["USD"]`). Products match when they offer at least one product-level `pricing_options` entry in one of the requested currencies and any seller-applied or otherwise mandatory product-scoped signal charges are satisfiable in one of those currencies or have no incremental price. Sellers MUST return only matching product `pricing_options` so buyers can select deterministically from discovery. Optional signal or vendor add-on pricing is not pruned by this filter. |
 | `format_kinds` | string[] | Filter by canonical format kinds |
 | `format_option_refs` | FormatOptionRef[] | Filter by exact publisher- or product-scoped canonical format options |
@@ -295,7 +296,7 @@ Use `filters.pricing_currencies` when the buyer's constraint is "only show produ
 
 Buyers MAY send both. Sellers apply them conjunctively: `budget_range.currency` denominates the budget amounts, while `pricing_currencies` narrows which returned product `pricing_options` are eligible. If the two fields conflict, sellers SHOULD return zero matching products rather than reject the request solely because of the conflict. Because product-scoped signal pricing is a separate add-on surface, this filter only gates mandatory seller-applied signal charges; optional signal or vendor add-ons may still advertise other currencies, and buyers should not select unsupported add-on prices.
 
-When combined with `is_fixed_price`, returned product `pricing_options` MUST satisfy both filters: the option must be fixed-price when requested and its `currency` must be in `pricing_currencies`.
+When combined with `is_fixed_price` or `pricing_structures`, returned product `pricing_options` MUST satisfy every filter: each retained option must have a requested pricing structure and its `currency` must be in `pricing_currencies`.
 
 Currency-only filter example:
 

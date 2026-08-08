@@ -54,7 +54,7 @@ const VALID_CHANNELS = [
 ] as const;
 
 const VALID_PRICING_MODELS = [
-  'cpm', 'vcpm', 'cpc', 'cpcv', 'cpv', 'cpp', 'cpa', 'flat_rate', 'time',
+  'cpm', 'vcpm', 'cpc', 'cpcv', 'cpv', 'cpp', 'cpa', 'revenue_share', 'flat_rate', 'time',
 ] as const;
 
 const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
@@ -1652,6 +1652,60 @@ describe('get_products handler', () => {
       expect(p.pricing_options.every(po => po.fixed_price === undefined)).toBe(true);
       expect(p.pricing_options[0].fixed_price).toBeUndefined();
     }
+  });
+
+  it('discovers contingent revenue-share pricing without classifying it as auction pricing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'affiliate-filter.example' }, operator: 'affiliate-filter.example' };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'affiliate_contingent_product',
+        fixture: {
+          name: 'Affiliate contingent product',
+          description: 'Content commerce priced as a percentage of settled attributed value.',
+          delivery_type: 'guaranteed',
+          channels: ['affiliate'],
+          format_ids: [{ id: 'display_300x250' }],
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: 'affiliate_contingent_product',
+        pricing_option_id: 'affiliate_purchase_4pct',
+        fixture: {
+          pricing_model: 'revenue_share',
+          event_type: 'purchase',
+          event_source_id: 'affiliate_attribution',
+          commission_rate: 0.04,
+          currency: 'USD',
+          commission_basis_description: 'Net merchandise value after discounts and returns.',
+        },
+      },
+    });
+
+    const { result: contingentResult } = await simulateCallTool(server, 'get_products', {
+      account,
+      buying_mode: 'wholesale',
+      filters: { pricing_structures: ['contingent'] },
+    });
+    const contingent = contingentResult.products as Array<{ product_id: string; pricing_options: Array<Record<string, unknown>> }>;
+    expect(contingent).toHaveLength(1);
+    expect(contingent[0].product_id).toBe('affiliate_contingent_product');
+    expect(contingent[0].pricing_options).toHaveLength(1);
+    expect(contingent[0].pricing_options[0].pricing_model).toBe('revenue_share');
+
+    const { result: auctionResult } = await simulateCallTool(server, 'get_products', {
+      account,
+      buying_mode: 'wholesale',
+      filters: { is_fixed_price: false },
+    });
+    const auction = auctionResult.products as Array<{ product_id: string }>;
+    expect(auction.some(product => product.product_id === 'affiliate_contingent_product')).toBe(false);
   });
 
   it('keeps fixed-price filtering when brief mode falls back to suggestions', async () => {
@@ -6320,6 +6374,63 @@ describe('report_usage handler', () => {
     });
   }
 
+  async function setupRevenueShareBuy(server: ReturnType<typeof createTrainingAgentServer>, budget = 10000) {
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'affiliate_usage_product',
+        fixture: {
+          name: 'Affiliate usage product',
+          description: 'Content commerce with settled revenue-share billing.',
+          delivery_type: 'guaranteed',
+          channels: ['affiliate'],
+          format_ids: [{ id: 'display_300x250' }],
+          reporting_capabilities: {
+            available_metrics: ['conversions', 'conversion_value', 'commissionable_value', 'spend'],
+          },
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: 'affiliate_usage_product',
+        pricing_option_id: 'affiliate_purchase_4pct',
+        fixture: {
+          pricing_model: 'revenue_share',
+          event_type: 'purchase',
+          event_source_id: 'affiliate_attribution',
+          commission_rate: 0.04,
+          currency: 'USD',
+          commission_basis_description: 'Net merchandise value after discounts and returns.',
+        },
+      },
+    });
+    await simulateCallTool(server, 'sync_event_sources', {
+      account,
+      event_sources: [{
+        event_source_id: 'affiliate_attribution',
+        name: 'Affiliate attribution',
+        event_types: ['purchase'],
+      }],
+    });
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'usage.example' },
+      start_time: 'asap',
+      end_time: '2099-08-31T23:59:59Z',
+      packages: [{
+        product_id: 'affiliate_usage_product',
+        pricing_option_id: 'affiliate_purchase_4pct',
+        budget,
+      }],
+    });
+    expect(result.errors).toBeUndefined();
+    return result.media_buy_id as string;
+  }
+
   it('accepts valid usage for a synced creative', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     await setupCreativeWithPricing(server);
@@ -6334,6 +6445,28 @@ describe('report_usage handler', () => {
         pricing_option_id: 'po_display_300x250_cpm',
         impressions: 1000000,
         vendor_cost: 200.00,
+        currency: 'USD',
+      }],
+    });
+
+    expect(result.accepted).toBe(1);
+    expect(result.rejected).toBeUndefined();
+  });
+
+  it('keeps vendor pricing_option_id validation when creative usage also names a media buy', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await setupCreativeWithPricing(server);
+    const mediaBuyId = await setupRevenueShareBuy(server);
+    const { result } = await simulateCallTool(server, 'report_usage', {
+      account,
+      reporting_period: period,
+      usage: [{
+        account,
+        media_buy_id: mediaBuyId,
+        creative_id: 'cr_usage',
+        pricing_option_id: 'po_display_300x250_cpm',
+        impressions: 1000000,
+        vendor_cost: 200,
         currency: 'USD',
       }],
     });
@@ -6526,6 +6659,148 @@ describe('report_usage handler', () => {
     expect(isError).toBe(true);
     expect(result.code).toBe('INVALID_USAGE_DATA');
     expect(result.message).toContain('non-negative');
+  });
+
+  it('accepts revenue-share usage when commission arithmetic matches', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const mediaBuyId = await setupRevenueShareBuy(server);
+    const { result } = await simulateCallTool(server, 'report_usage', {
+      account,
+      reporting_period: period,
+      usage: [{
+        account,
+        media_buy_id: mediaBuyId,
+        pricing_option_id: 'affiliate_purchase_4pct',
+        conversions: 320,
+        conversion_value: 125000,
+        commissionable_value: 112500,
+        vendor_cost: 4500,
+        currency: 'USD',
+      }],
+    });
+
+    expect(result.accepted).toBe(1);
+  });
+
+  it('reports seeded revenue-share delivery without synthesizing auction pacing spend', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const mediaBuyId = await setupRevenueShareBuy(server);
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: mediaBuyId,
+        conversions: 320,
+        conversion_value: 125000,
+        commissionable_value: 112500,
+        reported_spend: { amount: 4500, currency: 'USD' },
+        is_final: true,
+      },
+    });
+    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+
+    const delivery = (result.media_buy_deliveries as Array<Record<string, unknown>>)[0];
+    const packages = delivery.by_package as Array<Record<string, unknown>>;
+    expect(packages[0]).toMatchObject({
+      pricing_model: 'revenue_share',
+      rate: 0.04,
+      spend: 4500,
+      conversions: 320,
+      conversion_value: 125000,
+      commissionable_value: 112500,
+    });
+  });
+
+  it('rejects revenue-share usage when commission arithmetic does not match', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const mediaBuyId = await setupRevenueShareBuy(server);
+    const { result, isError } = await simulateCallTool(server, 'report_usage', {
+      account,
+      reporting_period: period,
+      usage: [{
+        account,
+        media_buy_id: mediaBuyId,
+        pricing_option_id: 'affiliate_purchase_4pct',
+        commissionable_value: 112500,
+        vendor_cost: 4600,
+        currency: 'USD',
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_USAGE_DATA');
+    expect(result.field).toBe('usage[0].vendor_cost');
+    expect(result.message).toContain('expected 4500');
+  });
+
+  it('rejects revenue-share usage above the package commission budget', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const mediaBuyId = await setupRevenueShareBuy(server, 1000);
+    const { result, isError } = await simulateCallTool(server, 'report_usage', {
+      account,
+      reporting_period: period,
+      usage: [{
+        account,
+        media_buy_id: mediaBuyId,
+        pricing_option_id: 'affiliate_purchase_4pct',
+        commissionable_value: 112500,
+        vendor_cost: 4500,
+        currency: 'USD',
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_USAGE_DATA');
+    expect(result.message).toContain('exceeds the package commission budget');
+  });
+
+  it('rejects a pricing option that is not part of the referenced media buy', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const mediaBuyId = await setupRevenueShareBuy(server);
+    const { result, isError } = await simulateCallTool(server, 'report_usage', {
+      account,
+      reporting_period: period,
+      usage: [{
+        account,
+        media_buy_id: mediaBuyId,
+        pricing_option_id: 'affiliate_purchase_wrong',
+        commissionable_value: 112500,
+        vendor_cost: 4500,
+        currency: 'USD',
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result.code).toBe('INVALID_PRICING_OPTION');
+    expect(result.field).toBe('usage[0].pricing_option_id');
+  });
+
+  it('enforces the commission budget cumulatively across accepted usage records', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const mediaBuyId = await setupRevenueShareBuy(server, 1000);
+    const usageRecord = {
+      account,
+      media_buy_id: mediaBuyId,
+      pricing_option_id: 'affiliate_purchase_4pct',
+      commissionable_value: 15000,
+      vendor_cost: 600,
+      currency: 'USD',
+    };
+    const { result, isError } = await simulateCallTool(server, 'report_usage', {
+      account,
+      reporting_period: period,
+      usage: [usageRecord, usageRecord],
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result.accepted).toBe(1);
+    const rejected = result.rejected as Array<Record<string, unknown>>;
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].code).toBe('INVALID_USAGE_DATA');
+    expect(rejected[0].message).toContain('cumulative vendor_cost 1200');
   });
 });
 

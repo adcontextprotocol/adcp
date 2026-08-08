@@ -940,6 +940,7 @@ const PRICING_ALIASES: Record<string, string> = {
   'flat': 'flat_rate', 'flat rate': 'flat_rate', 'sponsorship': 'flat_rate',
   'cost per view': 'cpv',
   'cost per action': 'cpa', 'cost per acquisition': 'cpa',
+  'revenue share': 'revenue_share', 'rev share': 'revenue_share', 'commission': 'revenue_share',
 };
 
 function normalizeChannel(ch: string): string {
@@ -6310,7 +6311,7 @@ export function createMemberToolHandlers(
           product_id: bestProduct.product_id,
           pricing_option_id: bestPricing.pricing_option_id,
           budget: liBudget || 0,
-          ...(bestPricing.pricing_model !== 'flat_rate' && liRate ? { bid_price: liRate } : {}),
+          ...(!['flat_rate', 'revenue_share'].includes(bestPricing.pricing_model) && liRate ? { bid_price: liRate } : {}),
           ...(liStartDate ? { start_time: liStartDate } : {}),
           ...(liEndDate ? { end_time: liEndDate } : {}),
         } : undefined;

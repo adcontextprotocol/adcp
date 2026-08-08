@@ -1935,6 +1935,95 @@ async function runTests() {
     return true;
   });
 
+  // Test 12C: Revenue-share pricing is contingent and formula-verifiable
+  await test('Revenue-share pricing validates its contingent billing contract', async () => {
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validatePricing = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'core/pricing-option.json'))
+    );
+    const base = {
+      pricing_option_id: 'affiliate_purchase_4pct',
+      pricing_model: 'revenue_share',
+      event_type: 'purchase',
+      event_source_id: 'affiliate_attribution',
+      commission_rate: 0.04,
+      currency: 'USD',
+      commission_basis_description: 'Net merchandise value after discounts; returns removed before commission lock.'
+    };
+
+    if (!validatePricing(base)) {
+      return `valid revenue-share option failed: ${validatePricing.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const invalidCases = [
+      [{ ...base, commission_rate: 0 }, 'zero commission rate'],
+      [{ ...base, commission_rate: 1.01 }, 'commission rate above one'],
+      [{ ...base, event_source_id: undefined }, 'missing event source'],
+      [{ ...base, commission_basis_description: undefined }, 'missing commission basis'],
+      [{ ...base, fixed_price: 4 }, 'fixed_price on contingent pricing'],
+      [{ ...base, floor_price: 1 }, 'floor_price on contingent pricing'],
+      [{ ...base, custom_event_name: 'purchase_complete' }, 'custom event name on non-custom event'],
+      [{ ...base, event_type: 'custom' }, 'custom event without custom_event_name']
+    ];
+    for (const [value, label] of invalidCases) {
+      if (validatePricing(value)) return `${label} unexpectedly validated`;
+    }
+
+    const custom = { ...base, event_type: 'custom', custom_event_name: 'qualified_purchase' };
+    if (!validatePricing(custom)) {
+      return `custom revenue-share event failed: ${validatePricing.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const validateFilters = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'core/product-filters.json'))
+    );
+    if (!validateFilters({ pricing_structures: ['contingent'] })) {
+      return `contingent pricing filter failed: ${validateFilters.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (validateFilters({ pricing_structures: ['variable'] })) {
+      return 'unknown pricing structure unexpectedly validated';
+    }
+
+    const availableMetric = loadSchema(path.join(SCHEMA_BASE_DIR, 'enums/available-metric.json'));
+    if (!availableMetric.enum.includes('commissionable_value')) {
+      return 'commissionable_value is missing from available-metric enum';
+    }
+
+    const validateUsage = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'account/report-usage-request.json'))
+    );
+    const usage = {
+      idempotency_key: '3c1f7987-b2dc-4ee9-a391-2f761d8aca4c',
+      reporting_period: {
+        start: '2026-07-01T00:00:00Z',
+        end: '2026-07-31T23:59:59Z'
+      },
+      usage: [{
+        account: { account_id: 'acct_affiliate' },
+        media_buy_id: 'mb_affiliate',
+        pricing_option_id: 'affiliate_purchase_4pct',
+        conversions: 320,
+        conversion_value: 125000,
+        commissionable_value: 112500,
+        vendor_cost: 4500,
+        currency: 'USD'
+      }]
+    };
+    if (!validateUsage(usage)) {
+      return `revenue-share usage failed: ${validateUsage.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    return true;
+  });
+
   await test('build_creative accepts canonical capability selectors and rejects mixed legacy selectors', async () => {
     const requestSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/build-creative-request.json'));
     const testAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
