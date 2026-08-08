@@ -59,17 +59,22 @@ describe('certification_modules.tenant_ids (migration 464)', () => {
     expect(s2!.tenant_ids).toEqual(['creative', 'creative-builder', 'sales']);
   });
 
-  it('SI-dependent modules are intentionally NULL until an si tenant exists', async () => {
-    // A3 (tour), C3 (creative + SI), S5 (SI capstone) all teach `si_*`
-    // tools that no per-specialism tenant currently serves. Pinning them
-    // to a sibling would ship a confidently-wrong URL into Sage's prompt;
-    // staying NULL makes them fall back to the legacy `/mcp` alias, which
-    // also lacks SI but matches today's behavior. Tracked as follow-up.
-    for (const id of ['A3', 'C3', 'S5']) {
-      const m = await getModule(id);
-      expect(m).not.toBeNull();
-      expect(m!.tenant_ids).toBeNull();
-    }
+  it('A3 (tour) is intentionally NULL — no per-tenant SI tour sandbox yet', async () => {
+    const a3 = await getModule('A3');
+    expect(a3).not.toBeNull();
+    expect(a3!.tenant_ids).toBeNull();
+  });
+
+  it('C3 is pinned to creative and si tenants (migration 533)', async () => {
+    const c3 = await getModule('C3');
+    expect(c3).not.toBeNull();
+    expect(c3!.tenant_ids).toEqual(['creative', 'si']);
+  });
+
+  it('S5 (SI capstone) is pinned to si as primary, then creative and sales (migration 533)', async () => {
+    const s5 = await getModule('S5');
+    expect(s5).not.toBeNull();
+    expect(s5!.tenant_ids).toEqual(['si', 'creative', 'sales']);
   });
 
   it('B3 (publisher track) does not point at the buy-side signals tenant', async () => {

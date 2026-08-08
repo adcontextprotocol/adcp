@@ -12,6 +12,7 @@ import { execFileSync } from 'node:child_process';
 import type { TrainingContext } from '../types.js';
 import { clearAccountStore } from '../account-handlers.js';
 import { clearSessions, stopSessionCleanup } from '../state.js';
+import { clearSiSessions } from '../si-handlers.js';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
@@ -128,11 +129,13 @@ describe('tenant routing smoke', () => {
   beforeEach(() => {
     clearSessions();
     clearAccountStore();
+    clearSiSessions();
   });
 
   afterEach(() => {
     clearSessions();
     clearAccountStore();
+    clearSiSessions();
     stopSessionCleanup();
   });
 
@@ -690,4 +693,118 @@ describe('tenant routing smoke', () => {
       await close();
     }
   }, 15000);
+
+  it('SI Chat Protocol: full lifecycle — get-offering → initiate (token) → send → terminate (idempotent)', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/si/mcp`;
+      await initializeTenant(url);
+
+      // Step 1: get offering and capture the offering_token
+      const getOfferingResp = await callTenantTool(url, 2, 'si_get_offering', {
+        offering_id: 'offer_sandbox_001',
+      }) as {
+        result?: {
+          structuredContent?: {
+            available?: boolean;
+            offering_token?: string;
+            offering?: { offering_id?: string; brand?: { name?: string } };
+          };
+        };
+      };
+      const offeringToken = getOfferingResp.result?.structuredContent?.offering_token;
+      expect(getOfferingResp.result?.structuredContent?.available).toBe(true);
+      expect(offeringToken).toBe('tok_offer_sandbox_001_sandbox');
+      expect(getOfferingResp.result?.structuredContent?.offering?.brand?.name).toBe('BrandCo');
+
+      // Step 2: initiate session using offering_token — token must be authoritative
+      const initiateResp = await callTenantTool(url, 3, 'si_initiate_session', {
+        idempotency_key: 'tenant-si-initiate-0001',
+        offering_token: offeringToken,
+        intent: 'Browse products and learn about the catalog.',
+        identity: { consent_granted: true },
+      }) as {
+        result?: {
+          structuredContent?: {
+            session_id?: string;
+            session_status?: string;
+            response?: { message?: string; ui_elements?: unknown[] };
+            negotiated_capabilities?: { rich_cards?: boolean };
+          };
+        };
+      };
+      const sessionId = initiateResp.result?.structuredContent?.session_id;
+      expect(sessionId).toBeDefined();
+      expect(initiateResp.result?.structuredContent?.session_status).toBe('active');
+      expect(typeof initiateResp.result?.structuredContent?.response?.message).toBe('string');
+      expect(initiateResp.result?.structuredContent?.negotiated_capabilities?.rich_cards).toBe(true);
+
+      // Step 3: send a message and verify canonical shape (session_id + session_status required)
+      const sendResp = await callTenantTool(url, 4, 'si_send_message', {
+        idempotency_key: 'tenant-si-send-0000001',
+        session_id: sessionId,
+        message: 'Show me your most popular products.',
+      }) as {
+        result?: {
+          structuredContent?: {
+            session_id?: string;
+            session_status?: string;
+            response?: { message?: string; ui_elements?: unknown[] };
+          };
+        };
+      };
+      expect(sendResp.result?.structuredContent?.session_id).toBe(sessionId);
+      expect(sendResp.result?.structuredContent?.session_status).toBe('active');
+      expect(Array.isArray(sendResp.result?.structuredContent?.response?.ui_elements)).toBe(true);
+
+      // Step 4: terminate the session
+      const terminateResp1 = await callTenantTool(url, 5, 'si_terminate_session', {
+        session_id: sessionId,
+        reason: 'user_exit',
+      }) as {
+        result?: {
+          structuredContent?: {
+            session_id?: string;
+            terminated?: boolean;
+            session_status?: string;
+            reason?: string;
+          };
+        };
+      };
+      expect(terminateResp1.result?.structuredContent?.session_id).toBe(sessionId);
+      expect(terminateResp1.result?.structuredContent?.terminated).toBe(true);
+      expect(terminateResp1.result?.structuredContent?.session_status).toBe('terminated');
+      expect(terminateResp1.result?.structuredContent?.reason).toBe('user_exit');
+
+      // Step 5: idempotency — second terminate must return identical result (no new checkout token)
+      const terminateResp2 = await callTenantTool(url, 6, 'si_terminate_session', {
+        session_id: sessionId,
+        reason: 'user_exit',
+      }) as {
+        result?: {
+          structuredContent?: {
+            session_id?: string;
+            terminated?: boolean;
+            session_status?: string;
+            reason?: string;
+          };
+        };
+      };
+      expect(terminateResp2.result?.structuredContent).toEqual(terminateResp1.result?.structuredContent);
+
+      // Step 6: send after termination must return SESSION_TERMINATED with session_id + session_status
+      const sendAfterTerminate = await callTenantTool(url, 7, 'si_send_message', {
+        idempotency_key: 'tenant-si-send-0000002',
+        session_id: sessionId,
+        message: 'Still there?',
+      }) as {
+        result?: {
+          structuredContent?: { adcp_error?: { code?: string } };
+        };
+      };
+      expect(sendAfterTerminate.result?.structuredContent?.adcp_error?.code).toBe('SESSION_TERMINATED');
+    } finally {
+      await close();
+    }
+  }, 20000);
 });

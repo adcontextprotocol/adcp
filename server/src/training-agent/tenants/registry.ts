@@ -45,6 +45,7 @@ import { buildGovernanceTenantConfig } from './governance.js';
 import { buildCreativeTenantConfig } from './creative.js';
 import { buildCreativeBuilderTenantConfig } from './creative-builder.js';
 import { buildBrandTenantConfig } from './brand.js';
+import { buildSiTenantConfig } from './si.js';
 import { createLogger } from '../../logger.js';
 import type { TrainingContext } from '../types.js';
 import { getCanonicalBase } from '../canonical-base.js';
@@ -266,6 +267,7 @@ export function createRegistryHolder(options: { storyboardCompat?: TrainingConte
           { id: 'creative', cfg: buildCreativeTenantConfig(hostBase, options) },
           { id: 'creative-builder', cfg: buildCreativeBuilderTenantConfig(hostBase, options) },
           { id: 'brand', cfg: buildBrandTenantConfig(hostBase, options) },
+          { id: 'si', cfg: buildSiTenantConfig(hostBase, options) },
         ] as const;
         const tConfigs = Date.now();
         // awaitFirstValidation:true blocks until the no-op validator
