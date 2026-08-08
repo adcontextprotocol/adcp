@@ -6260,7 +6260,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           },
         });
       } catch (err) {
-        logger.warn({ err, agentUrl, userId }, "Owner membership lookup failed");
+        logger.error({ err, agentUrl, userId }, "Owner membership lookup failed");
         ownerMembership = {
           is_owner: false,
           membership_tier: null,
@@ -6271,9 +6271,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       }
 
       const encodedUrl = encodeURIComponent(agentUrl);
-      const storyboardStatusesForOwner = ownerMembership.is_owner
-        ? storyboardStatuses.map(s => serializeStoryboardStatus(s))
-        : [];
+      const serializedStoryboardStatuses = storyboardStatuses.map(s =>
+        serializeStoryboardStatus(s, { includeDiagnostics: ownerMembership.is_owner }),
+      );
 
       res.json({
         agent_url: agentUrl,
@@ -6295,11 +6295,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         check_interval_hours: metadata?.check_interval_hours ?? 12,
         declared_specialisms: declaredSpecialisms,
         specialism_status: specialismStatus,
-        // Owner-scoped: failing storyboard names and step counts for the
-        // dashboard hover states. Non-owners get an empty array so public
-        // registry consumers keep the same response shape without receiving
-        // implementation-level diagnostics.
-        storyboard_statuses: storyboardStatusesForOwner,
+        // Public per-storyboard verdicts and aggregate step counts explain
+        // storyboards_passing/storyboards_total. First-failure details stay
+        // owner-scoped; non-owner entries carry null scalar diagnostics and
+        // empty validation evidence.
+        storyboard_statuses: serializedStoryboardStatuses,
         // Advisory notices from the latest run. Forward-compat: unknown codes
         // and severities are passed through verbatim (runner-output-contract.yaml).
         notices,

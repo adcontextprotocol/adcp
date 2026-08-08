@@ -3775,6 +3775,10 @@ components:
                 type:
                   - string
                   - "null"
+              first_failure_validations:
+                type: array
+                items: {}
+                description: Validation evidence for the first failure. Populated only for owners and empty for other callers.
               last_tested_at:
                 type:
                   - string
@@ -3797,9 +3801,10 @@ components:
               - first_failed_step_title
               - first_failed_step_task
               - first_failure_message
+              - first_failure_validations
               - last_tested_at
               - last_passed_at
-          description: Owner-scoped per-storyboard diagnostics used by the dashboard. Empty for non-owners.
+          description: Public per-storyboard verdicts and aggregate step counts. First-failure diagnostic fields are populated only for owners; scalar diagnostics are null and validation evidence is empty for other callers.
         notices:
           type: array
           items: {}

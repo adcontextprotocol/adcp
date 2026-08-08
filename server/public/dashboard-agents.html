@@ -172,6 +172,11 @@
       font-size: var(--text-xs);
     }
     .agent-track-detail h4 { margin: 0 0 var(--space-2); font-size: var(--text-sm); }
+    .track-coverage-gap-note {
+      color: var(--color-warning-700);
+      font-size: var(--text-xs);
+      margin-top: var(--space-1);
+    }
     .track-scenario { padding: var(--space-1) 0; border-bottom: 1px solid var(--color-gray-200); }
     .track-scenario:last-child { border-bottom: none; }
     .track-scenario-name { font-weight: var(--font-semibold); }
@@ -3411,6 +3416,14 @@
       }
     });
 
+    function buildTrackCoverageGapNote(trackData) {
+      if (!trackData.has_coverage_gap_skip || trackData.status !== 'partial') return '';
+      return '<div class="track-coverage-gap-note">'
+        + 'Badge eligibility is storyboard-level. One or more storyboards in this track '
+        + 'have a coverage-gap skip and do not count as passing, even when every scenario that ran passed.'
+        + '</div>';
+    }
+
     // Track pill click — fetch history and show scenario details for that track
     document.addEventListener('click', async function(e) {
       const trackBtn = e.target.closest('.agent-track[data-track]');
@@ -3451,9 +3464,11 @@
             : trackData.status === 'partial' ? 'Partial' : trackData.status;
 
           let html = '<h4>' + escapeHtml(track) + ' — ' + escapeHtml(statusLabel) + '</h4>';
-          html += '<div>' + parseInt(trackData.passed_count, 10) + ' of ' + parseInt(trackData.scenario_count, 10) + ' scenarios passing';
+          html += '<div>' + Number(trackData.passed_count) + ' of ' + Number(trackData.scenario_count) + ' scenarios passing';
           if (trackData.duration_ms) html += ' (' + (trackData.duration_ms / 1000).toFixed(1) + 's)';
           html += '</div>';
+
+          html += buildTrackCoverageGapNote(trackData);
 
           if (trackData.scenarios) {
             for (const s of trackData.scenarios) {
