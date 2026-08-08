@@ -229,6 +229,38 @@ describe('deriveStoryboardStatuses', () => {
     });
   });
 
+  it('treats an unavailable runner fixture and any legacy cascade as untested', () => {
+    const result = makeResult([
+      {
+        scenario: 'creative_fate_after_cancellation/sync_creative_with_assignment',
+        passed: true,
+        steps: [
+          {
+            passed: true,
+            skipped: true,
+            skip_reason: 'fixture_unavailable',
+            step: 'Runner cannot synthesize the required creative asset',
+          },
+          {
+            passed: true,
+            skipped: true,
+            skip_reason: 'prerequisite_failed',
+            step: 'Observe creative state',
+          },
+        ],
+      },
+    ]);
+
+    const [entry] = deriveStoryboardStatuses(result);
+
+    expect(entry).toEqual({
+      storyboard_id: 'creative_fate_after_cancellation',
+      status: 'untested',
+      steps_passed: 0,
+      steps_total: 0,
+    });
+  });
+
   it('treats storyboard-level required-tool skips as untested', () => {
     const result = makeResult([
       {

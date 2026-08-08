@@ -685,7 +685,10 @@ export function deriveStoryboardStatuses(
     },
     scenario: string,
   ): boolean => {
-    if (step.skip_reason === 'not_applicable') return true;
+    if (
+      step.skip_reason === 'not_applicable' ||
+      step.skip_reason === 'fixture_unavailable'
+    ) return true;
 
     // `@adcp/sdk` emits a single synthetic `missing_tool` phase when a
     // storyboard's `required_tools` gate is unmet. That means the storyboard is
