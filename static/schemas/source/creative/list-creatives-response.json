@@ -588,6 +588,7 @@
             "webhook_activity": [
               {
                 "idempotency_key": "whk_01HW9D2T3VXQ5M7K9N1P3R5S7U",
+                "notification_id": "cs_ft88201_2026_05_18a",
                 "subscriber_id": "buyer-primary",
                 "fired_at": "2026-05-18T14:20:00Z",
                 "completed_at": "2026-05-18T14:20:00Z",
@@ -617,6 +618,7 @@
             "webhook_activity": [
               {
                 "idempotency_key": "whk_01HW9H4X5ZTQ8R0O2P4S6U8V0X",
+                "notification_id": "cp_ft87100_retention",
                 "subscriber_id": "buyer-primary",
                 "fired_at": "2026-05-18T03:00:00Z",
                 "completed_at": "2026-05-18T03:00:00Z",
