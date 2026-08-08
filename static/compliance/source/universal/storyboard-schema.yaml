@@ -1330,8 +1330,10 @@
 #   the RFC 9728 document returned by that task, the runner validates the full
 #   public OAuth discovery graph described by `test-kits/oauth-setup-runner.yaml`:
 #   the protected-resource identifier, a non-empty `authorization_servers`
-#   array, every referenced RFC 8414 document, exact resource and issuer
-#   string equality after JSON decoding (without URL normalization),
+#   array, every referenced RFC 8414 document, resource equality under the
+#   shared `resource_equals_agent_url` rule (scheme and host lowercased,
+#   default ports elided, path case-sensitive), exact issuer string equality
+#   after JSON decoding (without URL normalization),
 #   conditional RFC 8414 required fields, HTTPS URL constraints, and passive
 #   reachability of advertised authorization, token, and JWKS endpoints.
 #

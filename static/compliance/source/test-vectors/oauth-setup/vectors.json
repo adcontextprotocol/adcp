@@ -3,7 +3,7 @@
   "description": "Deterministic network fixtures for runner implementations of the oauth_metadata_graph check. Hosts and organizations are fictional. No request may escape the fixture response map.",
   "fixture_contract": {
     "responses": "Exact METHOD URL keys. A request missing from the map fails closed; token endpoint probes use credential-free GET under the passive transport-reachability policy from the runner contract.",
-    "dns": "Optional hostname fixtures declare all resolved addresses, lookup sequences, or the connected peer address. Implementations must inject these values rather than consult live DNS.",
+    "dns": "Optional hostname fixtures declare all resolved addresses, lookup sequences, or the connected peer address. Implementations must inject these values rather than consult live DNS. When fixture_address_classes is present, it is index-aligned with addresses and is the authoritative test-double classification: globally_routable_fixture_only must pass pre-connect address classification, while named blocked classes (for example private) must fail it. The literal address remains documentation-safe and must not be reclassified from the live IANA registry in that case.",
     "redirects": "A fixture response may carry headers.location. Redirect targets are validated before lookup or request and consume graph budgets.",
     "network": "No live network access is permitted while executing this corpus."
   },
@@ -187,6 +187,35 @@
           "content_type": "text/html"
         },
         "GET https://default-grants.example.net/oauth2/access": {
+          "status": 405,
+          "content_type": "application/json"
+        }
+      },
+      "expected_outcome": { "success": true }
+    },
+    {
+      "id": "006-resource-default-port-normalizes",
+      "coverage": ["resource_normalization", "host_case_normalization", "default_port_elision"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://AGENT.EXAMPLE.COM:443/mcp",
+            "authorization_servers": ["https://machine-identity.example.net"]
+          }
+        },
+        "GET https://machine-identity.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://machine-identity.example.net",
+            "token_endpoint": "https://machine-identity.example.net/token",
+            "grant_types_supported": ["client_credentials"]
+          }
+        },
+        "GET https://machine-identity.example.net/token": {
           "status": 405,
           "content_type": "application/json"
         }
@@ -553,7 +582,8 @@
       "agent_url": "https://agent.example.com/mcp",
       "dns": {
         "rebind.example.net": {
-          "addresses": ["203.0.113.11"]
+          "addresses": ["203.0.113.11"],
+          "fixture_address_classes": ["globally_routable_fixture_only"]
         }
       },
       "responses": {

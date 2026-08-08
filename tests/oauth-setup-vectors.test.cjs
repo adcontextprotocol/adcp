@@ -19,6 +19,20 @@ const storyboard = yaml.load(fs.readFileSync(
   path.join(ROOT, 'static/compliance/source/universal/oauth-setup.yaml'),
   'utf8',
 ));
+const securityStoryboard = yaml.load(fs.readFileSync(
+  path.join(ROOT, 'static/compliance/source/universal/security.yaml'),
+  'utf8',
+));
+
+function collectChecks(value, checks = []) {
+  if (Array.isArray(value)) {
+    for (const item of value) collectChecks(item, checks);
+  } else if (value && typeof value === 'object') {
+    if (typeof value.check === 'string') checks.push(value);
+    for (const child of Object.values(value)) collectChecks(child, checks);
+  }
+  return checks;
+}
 
 test('OAuth setup is scoped to the AdCP 3.2 feature line', () => {
   assert.equal(storyboard.introduced_in, '3.2');
@@ -52,6 +66,24 @@ test('OAuth endpoint probes remain passive and credential-free', () => {
   );
   assert.equal(runnerContract.graph_limits.max_authorization_servers, 16);
   assert.equal(runnerContract.graph_limits.max_total_requests, 64);
+});
+
+test('OAuth resource comparison matches the universal security storyboard', () => {
+  const securityResourceCheck = collectChecks(securityStoryboard)
+    .find((check) => check.check === 'resource_equals_agent_url');
+  assert.ok(securityResourceCheck, 'security storyboard must define its resource comparison');
+  assert.equal(
+    runnerContract.discovery.protected_resource_metadata.resource_comparison,
+    securityResourceCheck.check,
+  );
+  assert.match(
+    runnerContract.discovery.protected_resource_metadata.resource_comparison_semantics,
+    /default ports \(443 for HTTPS and 80 for HTTP\).*path remains case-sensitive/s,
+  );
+  assert.equal(
+    runnerContract.discovery.authorization_server_metadata.issuer_comparison,
+    'exact_string_equal_to_source_issuer_after_json_decoding_no_url_normalization',
+  );
 });
 
 test('OAuth setup vector IDs and outcomes are deterministic', () => {
@@ -118,6 +150,33 @@ test('OAuth setup vectors cover the issue acceptance cases', () => {
     vector.coverage.includes('off_origin_authorization_server'));
   assert.ok(offOrigin, 'off-origin-but-explicit authorization server must have a positive vector');
   assert.equal(offOrigin.expected_outcome.success, true);
+
+  const normalizedResource = vectors.positive.find((vector) =>
+    vector.coverage.includes('resource_normalization'));
+  assert.ok(normalizedResource, 'normalizable RFC 9728 resource must have a positive vector');
+  assert.equal(normalizedResource.expected_outcome.success, true);
+});
+
+test('SSRF isolation vectors use authoritative routable fixture classes', () => {
+  assert.match(vectors.fixture_contract.dns, /fixture_address_classes.*authoritative/s);
+
+  const mixedAnswers = vectors.negative.find((vector) =>
+    vector.id === '113-mixed-public-private-dns-blocked');
+  assert.deepEqual(mixedAnswers.dns['mixed-dns.example.net'].fixture_address_classes, [
+    'globally_routable_fixture_only',
+    'private',
+  ]);
+
+  const rebinding = vectors.negative.find((vector) =>
+    vector.id === '114-connected-peer-rebinding-blocked');
+  assert.deepEqual(rebinding.dns['rebind.example.net'].fixture_address_classes, [
+    'globally_routable_fixture_only',
+  ]);
+  assert.equal(
+    rebinding.responses['GET https://rebind.example.net/.well-known/oauth-authorization-server']
+      .connected_peer_address,
+    '127.0.0.1',
+  );
 });
 
 test('OAuth setup fixtures contain only passive HTTPS GET requests', () => {

@@ -40,7 +40,14 @@ discovery:
     required_fields:
       resource: absolute_https_uri
       authorization_servers: non_empty_array_of_absolute_https_issuer_uris_without_userinfo_query_or_fragment
-    resource_comparison: exact_string_equal_to_agent_url_after_json_decoding_no_url_normalization
+    resource_comparison: resource_equals_agent_url
+    resource_comparison_semantics: |
+      Use the same comparison as the universal security storyboard: lowercase
+      scheme and host, elide default ports (443 for HTTPS and 80 for HTTP), and
+      compare the remaining URL exactly. The path remains case-sensitive and a
+      trailing slash is significant. Keeping one shared rule prevents the
+      security and oauth-setup storyboards from grading the same RFC 9728 field
+      differently.
 
   authorization_server_metadata:
     source: protected_resource_metadata.authorization_servers
@@ -173,7 +180,7 @@ graph_limits:
 diagnostic_codes:
   oauth_protected_resource_metadata_unavailable: "The derived RFC 9728 document did not return HTTP 200 JSON."
   oauth_protected_resource_metadata_invalid: "The RFC 9728 response was not a JSON object or omitted a required field."
-  oauth_resource_mismatch: "The RFC 9728 resource value was not exactly equal to the agent endpoint after JSON decoding; URL normalization is forbidden."
+  oauth_resource_mismatch: "The RFC 9728 resource value did not match the agent endpoint under resource_equals_agent_url semantics: scheme and host are lowercased, default ports are elided, and the remaining URL (including path and trailing slash) must match exactly."
   oauth_authorization_servers_empty: "authorization_servers was absent, not an array, or empty."
   oauth_authorization_server_url_invalid: "An authorization_servers item was not an absolute HTTPS issuer URI."
   oauth_authorization_server_metadata_unavailable: "A referenced RFC 8414 document did not return HTTP 200 JSON."

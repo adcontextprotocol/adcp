@@ -27,8 +27,9 @@ narrative: |
 
   **Scope.** The runner fetches the RFC 9728 protected-resource metadata derived from the
   full agent endpoint, then follows every issuer in `authorization_servers` to its RFC 8414
-  authorization-server metadata. It checks exact resource and issuer relationships,
-  conditional RFC 8414 required fields, HTTPS URL shape, and passive reachability of the
+  authorization-server metadata. It applies the shared normalized resource comparison and
+  exact issuer comparison, checks conditional RFC 8414 required fields and HTTPS URL shape,
+  and passively probes reachability of the
   authorization, token, and JWKS endpoints when applicable. An authorization server may be
   on a different origin from the agent; explicit reference plus a self-consistent issuer
   proves structural consistency, so off-origin placement is not itself a failure. It does
@@ -122,8 +123,9 @@ phases:
         comply_scenario: oauth_setup_discovery
         stateful: false
         expected: |
-          RFC 9728 metadata returns HTTP 200 JSON, its `resource` is exactly equal to the
-          agent endpoint after JSON string decoding (with no URL normalization),
+          RFC 9728 metadata returns HTTP 200 JSON, its `resource` matches the agent
+          endpoint under the shared `resource_equals_agent_url` rule (scheme and host
+          lowercased, default ports elided, and the path compared case-sensitively),
           `authorization_servers` is non-empty, and every referenced RFC 8414
           document is self-consistent with reachable endpoints as applicable.
         sample_response:
@@ -147,7 +149,7 @@ phases:
             path: "authorization_servers"
             description: "Protected-resource metadata declares authorization servers"
           - check: oauth_metadata_graph
-            description: "The resource identifier, every advertised authorization server, and every applicable public endpoint are exact, reachable, and internally consistent"
+            description: "The resource identifier uses the shared security-storyboard comparison; every advertised authorization server and every applicable public endpoint are exact, reachable, and internally consistent"
 
 grading:
   pass_criteria: |
