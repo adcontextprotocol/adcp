@@ -227,6 +227,46 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
     ]);
   });
 
+  it('keeps a genuine seller failure above a concurrent runner fixture gap', () => {
+    const fixtureTrack = {
+      track: 'creative',
+      label: 'Creative',
+      status: 'pass',
+      duration_ms: 1000,
+      skipped_scenarios: [],
+      observations: [],
+      scenarios: [
+        {
+          scenario: 'creative_fate_after_cancellation/fixture_preflight',
+          overall_passed: true,
+          steps: [
+            { step: 'Capture format', passed: true, duration_ms: 0 },
+            {
+              step: 'Fixture unavailable',
+              passed: true,
+              skipped: true,
+              skip_reason: 'fixture_unavailable',
+              duration_ms: 0,
+            },
+          ],
+        },
+      ],
+    };
+    const result = makeResult([
+      makeTrack('fail'),
+      fixtureTrack,
+    ] as any, 'failing');
+
+    const out = complianceResultToDbInput(
+      result as any,
+      'https://agent.example.com/mcp',
+      'production',
+    );
+
+    expect(out.overall_status).toBe('failing');
+    expect(out.tracks_failed).toBe(1);
+  });
+
   it('does not promote when all tracks are skipped (no active tracks)', () => {
     const result = makeResult([makeTrack('skip'), makeTrack('skip')], 'partial');
     const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');

@@ -626,6 +626,18 @@ function effectiveRunStatus(result: ComplianceResult): {
   const hasCoverageGapSkip = hasFixtureUnavailable || result.tracks
     .filter((track: TrackResult) => track.status === 'skip')
     .some(trackHasCoverageGapSkip);
+  const hasGenuineFailure = activeTracks.some((track: TrackResult) => track.status === 'fail') ||
+    result.overall_status === 'failing' ||
+    result.overall_status === 'auth_required' ||
+    result.overall_status === 'unreachable';
+  if (hasGenuineFailure) {
+    return {
+      overall_status: mapOverallStatus(result.overall_status),
+      tracks_passed: result.summary.tracks_passed,
+      tracks_failed: result.summary.tracks_failed,
+      tracks_partial: result.summary.tracks_partial,
+    };
+  }
   if (hasFixtureUnavailable) {
     return {
       overall_status: 'partial',
