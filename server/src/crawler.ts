@@ -406,6 +406,37 @@ export class CrawlerService {
       if (result.variant === 'house_portfolio' || result.variant === 'brand_canonical') {
         await this.upsertBrandProperties(domain, result.raw_data as Record<string, unknown>);
       }
+
+      // Compute and persist relationship trust. resolveBrand() re-fetches via
+      // its own skipCache path (validateDomain used skipCache:true above so the
+      // validation cache is cold), records any relationship declarations, and
+      // returns the trust verdict. The double-fetch is acceptable for a
+      // background crawler that runs on a schedule.
+      try {
+        const resolved = await this.brandManager.resolveBrand(domain, { skipCache: true });
+        if (resolved?.relationship_trust) {
+          // Only set claimed_house_domain for one-sided states; for mutual/inline
+          // the relationship is fully verified and there is no unverified "claim".
+          const isMutualOrInline = resolved.relationship_trust === 'mutual' || resolved.relationship_trust === 'inline';
+          await this.brandDb.updateRelationshipTrust(domain, {
+            relationship_trust: resolved.relationship_trust,
+            relationship_verified_at: resolved.relationship_verified_at
+              ? new Date(resolved.relationship_verified_at)
+              : null,
+            // For one-sided states the leaf document's unverified claim is the
+            // meaningful artifact; for fully-verified states it is not.
+            claimed_house_domain: isMutualOrInline ? null : (resolved.claimed_house_domain ?? null),
+            // For mutual/inline, persist the resolver-verified house edge so that
+            // list endpoints surface the trusted domain without an extra resolve call.
+            house_domain: isMutualOrInline ? (resolved.house_domain ?? null) : null,
+          });
+        }
+        // If resolved but trust is absent, leave stale trust and computed_at
+        // in place — it is better to serve a stale verified verdict than to
+        // silently clear it on an inconclusive resolution pass.
+      } catch (err) {
+        log.warn({ domain, err }, 'Trust computation failed during brand scan');
+      }
     }
   }
 

@@ -8,7 +8,9 @@ import type {
   RegistryRevision,
   MemberBrandInfo,
   BrandLogo,
+  RelationshipTrust,
 } from '../types.js';
+import { isValidRelationshipTrust } from '../types.js';
 
 /**
  * Brand-manifest keys that must not be accepted from caller-supplied
@@ -278,6 +280,9 @@ export interface UpsertDiscoveredBrandInput {
   classification?: TrustedBrandClassification;
   source_type: 'brand_json' | 'community' | 'enriched' | 'stub';
   expires_at?: Date;
+  relationship_trust?: RelationshipTrust;
+  relationship_verified_at?: Date | null;
+  claimed_house_domain?: string | null;
 }
 
 /**
@@ -708,12 +713,15 @@ export class BrandDatabase {
       `INSERT INTO brands (
         domain, brand_id, canonical_domain, house_domain, brand_name, brand_names,
         keller_type, parent_brand, brand_agent_url, brand_agent_capabilities,
-        has_brand_manifest, brand_manifest, source_type, last_validated, expires_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14)
+        has_brand_manifest, brand_manifest, source_type, last_validated, expires_at,
+        relationship_trust, relationship_verified_at, claimed_house_domain,
+        relationship_trust_computed_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14,
+        $15::TEXT, $16::TIMESTAMPTZ, $17::TEXT, CASE WHEN $15 IS NOT NULL THEN NOW() ELSE NULL END)
       ON CONFLICT (domain) DO UPDATE SET
         brand_id = COALESCE(EXCLUDED.brand_id, brands.brand_id),
         canonical_domain = EXCLUDED.canonical_domain,
-        house_domain = EXCLUDED.house_domain,
+        house_domain = COALESCE(EXCLUDED.house_domain, brands.house_domain),
         brand_name = EXCLUDED.brand_name,
         brand_names = EXCLUDED.brand_names,
         keller_type = EXCLUDED.keller_type,
@@ -724,7 +732,14 @@ export class BrandDatabase {
         brand_manifest = COALESCE(EXCLUDED.brand_manifest, brands.brand_manifest),
         source_type = EXCLUDED.source_type,
         last_validated = NOW(),
-        expires_at = EXCLUDED.expires_at
+        expires_at = EXCLUDED.expires_at,
+        relationship_trust = COALESCE(EXCLUDED.relationship_trust, brands.relationship_trust),
+        relationship_verified_at = CASE WHEN EXCLUDED.relationship_trust IS NOT NULL THEN EXCLUDED.relationship_verified_at ELSE brands.relationship_verified_at END,
+        claimed_house_domain = CASE WHEN EXCLUDED.relationship_trust IS NOT NULL THEN EXCLUDED.claimed_house_domain ELSE brands.claimed_house_domain END,
+        relationship_trust_computed_at = CASE
+          WHEN EXCLUDED.relationship_trust IS NOT NULL THEN NOW()
+          ELSE brands.relationship_trust_computed_at
+        END
       RETURNING *`,
       [
         canonicalDomain,
@@ -741,9 +756,49 @@ export class BrandDatabase {
         persistedManifest ? JSON.stringify(persistedManifest) : null,
         input.source_type,
         input.expires_at || null,
+        input.relationship_trust ?? null,
+        input.relationship_verified_at ?? null,
+        input.claimed_house_domain ?? null,
       ]
     );
     return this.deserializeDiscoveredBrand(result.rows[0]);
+  }
+
+  /**
+   * Persist relationship trust fields computed by BrandManager.resolveBrand().
+   * Called by the crawler after each brand.json resolution cycle so that
+   * list endpoints can return trust without a per-row resolveBrand() call.
+   */
+  async updateRelationshipTrust(
+    domain: string,
+    trust: {
+      relationship_trust: RelationshipTrust;
+      relationship_verified_at?: Date | null;
+      claimed_house_domain?: string | null;
+      /** Verified house domain from resolveBrand(). Populated for mutual/inline; null clears a stale edge. */
+      house_domain?: string | null;
+    },
+  ): Promise<void> {
+    // house_only trust is determined from the house's brand.json brand_refs[], not
+    // from the leaf brand's own document. Crawling brand_refs[] is out of scope for
+    // this PR; house_only entries are seeded via observeBrandRelationshipDeclaration()
+    // when the house manifest is resolved.
+    await query(
+      `UPDATE brands
+       SET relationship_trust = $2,
+           relationship_verified_at = $3,
+           claimed_house_domain = $4,
+           house_domain = CASE WHEN $5::TEXT IS NOT NULL THEN $5::TEXT ELSE house_domain END,
+           relationship_trust_computed_at = NOW()
+       WHERE domain = $1`,
+      [
+        domain.toLowerCase(),
+        trust.relationship_trust,
+        trust.relationship_verified_at ?? null,
+        trust.claimed_house_domain ?? null,
+        trust.house_domain ?? null,
+      ],
+    );
   }
 
   /**
@@ -885,6 +940,9 @@ export class BrandDatabase {
     parent_brand?: string;
     brand_agent_url?: string;
     source: string;
+    relationship_trust?: RelationshipTrust;
+    relationship_verified_at?: Date;
+    claimed_house_domain?: string;
   }>> {
     const limit = options.limit ?? 10;
     const escaped = rawQuery.trim().replace(/[%_\\]/g, '\\$&');
@@ -899,6 +957,9 @@ export class BrandDatabase {
       parent_brand: string | null;
       brand_agent_url: string | null;
       source_type: string;
+      relationship_trust: string | null;
+      relationship_verified_at: Date | null;
+      claimed_house_domain: string | null;
     }>(
       `SELECT
         domain,
@@ -908,7 +969,10 @@ export class BrandDatabase {
         keller_type,
         parent_brand,
         brand_agent_url,
-        source_type
+        source_type,
+        relationship_trust,
+        relationship_verified_at,
+        claimed_house_domain
       FROM brands
       WHERE
         brand_name ILIKE $1
@@ -935,6 +999,9 @@ export class BrandDatabase {
       parent_brand: row.parent_brand ?? undefined,
       brand_agent_url: row.brand_agent_url ?? undefined,
       source: row.source_type,
+      relationship_trust: isValidRelationshipTrust(row.relationship_trust) ? row.relationship_trust : undefined,
+      relationship_verified_at: row.relationship_verified_at ?? undefined,
+      claimed_house_domain: row.claimed_house_domain ?? undefined,
     }));
   }
 
@@ -962,6 +1029,9 @@ export class BrandDatabase {
     industries: string[];
     sub_brand_count: number;
     employee_count: number;
+    relationship_trust?: RelationshipTrust;
+    relationship_verified_at?: Date;
+    claimed_house_domain?: string;
   }>> {
     const params: unknown[] = [];
     let paramIndex = 1;
@@ -1014,6 +1084,9 @@ export class BrandDatabase {
       industries: string[];
       sub_brand_count: number;
       employee_count: number;
+      relationship_trust: string | null;
+      relationship_verified_at: Date | null;
+      claimed_house_domain: string | null;
     }>(
       `
       SELECT
@@ -1029,7 +1102,10 @@ export class BrandDatabase {
         COALESCE(brands.brand_manifest->'company'->'industries', brands.brand_manifest->'brands'->0->'industries', '[]'::jsonb) as industries,
         (SELECT COUNT(*)::int FROM brands sub WHERE sub.house_domain = brands.domain) as sub_brand_count,
         COALESCE(CASE WHEN brands.brand_manifest->'company'->>'employees' ~ '^\\d+$'
-          THEN (brands.brand_manifest->'company'->>'employees')::int ELSE 0 END, 0) as employee_count
+          THEN (brands.brand_manifest->'company'->>'employees')::int ELSE 0 END, 0) as employee_count,
+        brands.relationship_trust,
+        brands.relationship_verified_at,
+        brands.claimed_house_domain
       FROM brands
       ${whereClause}
       ORDER BY employee_count DESC, brand_name, brands.domain
@@ -1039,7 +1115,12 @@ export class BrandDatabase {
       params
     );
 
-    return result.rows;
+    return result.rows.map(row => ({
+      ...row,
+      relationship_trust: isValidRelationshipTrust(row.relationship_trust) ? row.relationship_trust : undefined,
+      relationship_verified_at: row.relationship_verified_at ?? undefined,
+      claimed_house_domain: row.claimed_house_domain ?? undefined,
+    }));
   }
 
   /**

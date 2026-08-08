@@ -379,4 +379,216 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
       expect(b.total).toBe(1);
     });
   });
+
+  describe('relationship trust fields', () => {
+    it('returns relationship_trust when set', async () => {
+      await insertBrand({
+        domain: 'leaf-trust.example.com',
+        brand_name: 'Leaf Brand',
+        is_public: true,
+        source_type: 'brand_json',
+        house_domain: 'house.example.com',
+      });
+      await pool.query(
+        `UPDATE brands
+         SET relationship_trust = 'leaf_only',
+             claimed_house_domain = 'house.example.com',
+             relationship_trust_computed_at = NOW()
+         WHERE domain = 'leaf-trust.example.com'`,
+      );
+
+      const result = await brandDb.getAllBrandsForRegistry({ search: 'leaf-trust' });
+      const row = result.find((b) => b.domain === 'leaf-trust.example.com');
+      expect(row).toBeDefined();
+      expect(row!.relationship_trust).toBe('leaf_only');
+      expect(row!.claimed_house_domain).toBe('house.example.com');
+      expect(row!.relationship_verified_at).toBeUndefined();
+    });
+
+    it('returns relationship_verified_at for mutual trust', async () => {
+      await insertBrand({
+        domain: 'mutual-trust.example.com',
+        brand_name: 'Mutual Brand',
+        is_public: true,
+        source_type: 'brand_json',
+        house_domain: 'house.example.com',
+      });
+      const verifiedAt = new Date('2026-01-15T12:00:00Z');
+      await pool.query(
+        `UPDATE brands
+         SET relationship_trust = 'mutual',
+             relationship_verified_at = $2,
+             relationship_trust_computed_at = NOW()
+         WHERE domain = $1`,
+        ['mutual-trust.example.com', verifiedAt.toISOString()],
+      );
+
+      const result = await brandDb.getAllBrandsForRegistry({ search: 'mutual-trust' });
+      const row = result.find((b) => b.domain === 'mutual-trust.example.com');
+      expect(row).toBeDefined();
+      expect(row!.relationship_trust).toBe('mutual');
+      // Verify the timestamp round-trips correctly, not just that some value is present.
+      expect(row!.relationship_verified_at instanceof Date).toBe(true);
+      expect(row!.relationship_verified_at!.toISOString()).toBe('2026-01-15T12:00:00.000Z');
+    });
+
+    it('returns undefined relationship_trust when not yet computed', async () => {
+      await insertBrand({
+        domain: 'no-trust.example.com',
+        brand_name: 'Uncomputed Brand',
+        is_public: true,
+        source_type: 'brand_json',
+      });
+
+      const result = await brandDb.getAllBrandsForRegistry({ search: 'no-trust' });
+      const row = result.find((b) => b.domain === 'no-trust.example.com');
+      expect(row).toBeDefined();
+      // Absent trust must not be assumed to mean standalone.
+      expect(row!.relationship_trust).toBeUndefined();
+    });
+
+    it('updateRelationshipTrust persists all trust fields', async () => {
+      await insertBrand({
+        domain: 'update-trust.example.com',
+        brand_name: 'Trust Update Test',
+        is_public: true,
+        source_type: 'brand_json',
+      });
+
+      await brandDb.updateRelationshipTrust('update-trust.example.com', {
+        relationship_trust: 'mutual',
+        relationship_verified_at: new Date('2026-02-01T00:00:00Z'),
+        claimed_house_domain: null,
+        house_domain: 'house.example.com',
+      });
+
+      const result = await brandDb.getAllBrandsForRegistry({ search: 'update-trust' });
+      const row = result.find((b) => b.domain === 'update-trust.example.com');
+      expect(row!.relationship_trust).toBe('mutual');
+      expect(row!.relationship_verified_at instanceof Date).toBe(true);
+      expect(row!.claimed_house_domain).toBeUndefined();
+    });
+
+    it('upsertDiscoveredBrand does not clear a previously set house_domain', async () => {
+      await insertBrand({
+        domain: 'house-edge.example.com',
+        brand_name: 'House Edge Brand',
+        is_public: true,
+        source_type: 'brand_json',
+        house_domain: 'confirmed-house.example.com',
+      });
+      // Re-upsert without house_domain (simulates crawler path that doesn't carry house_domain)
+      await brandDb.upsertDiscoveredBrand({
+        domain: 'house-edge.example.com',
+        brand_name: 'House Edge Brand Updated',
+        has_brand_manifest: true,
+        source_type: 'brand_json',
+      });
+      const result = await brandDb.getAllBrandsForRegistry({ search: 'house-edge' });
+      const row = result.find((b) => b.domain === 'house-edge.example.com');
+      expect(row).toBeDefined();
+      // house_domain must survive the upsert that didn't supply it
+      expect(row!.house_domain).toBe('confirmed-house.example.com');
+    });
+
+    it('updateRelationshipTrust sets house_domain for mutual state', async () => {
+      await insertBrand({
+        domain: 'mutual-edge.example.com',
+        brand_name: 'Mutual Edge Brand',
+        is_public: true,
+        source_type: 'brand_json',
+      });
+      await brandDb.updateRelationshipTrust('mutual-edge.example.com', {
+        relationship_trust: 'mutual',
+        relationship_verified_at: new Date('2026-04-01T00:00:00Z'),
+        claimed_house_domain: null,
+        house_domain: 'mutual-house.example.com',
+      });
+
+      const result = await brandDb.getAllBrandsForRegistry({ search: 'mutual-edge' });
+      const row = result.find((b) => b.domain === 'mutual-edge.example.com');
+      expect(row!.relationship_trust).toBe('mutual');
+      expect(row!.house_domain).toBe('mutual-house.example.com');
+    });
+
+    it('findCompany returns relationship_trust when present', async () => {
+      await insertBrand({
+        domain: 'findco-trust.example.com',
+        brand_name: 'FindCo Brand',
+        is_public: true,
+        source_type: 'brand_json',
+      });
+      await pool.query(
+        `UPDATE brands SET relationship_trust = 'standalone', relationship_trust_computed_at = NOW()
+         WHERE domain = 'findco-trust.example.com'`,
+      );
+
+      const result = await brandDb.findCompany('FindCo Brand');
+      const row = result.find((b) => b.domain === 'findco-trust.example.com');
+      expect(row).toBeDefined();
+      expect(row!.relationship_trust).toBe('standalone');
+    });
+
+    it('findCompany returns undefined relationship_trust when not computed', async () => {
+      await insertBrand({
+        domain: 'findco-notrust.example.com',
+        brand_name: 'FindCo NoTrust',
+        is_public: true,
+        source_type: 'brand_json',
+      });
+
+      const result = await brandDb.findCompany('FindCo NoTrust');
+      const row = result.find((b) => b.domain === 'findco-notrust.example.com');
+      expect(row).toBeDefined();
+      expect(row!.relationship_trust).toBeUndefined();
+    });
+
+    it('findCompany returns relationship_verified_at for mutual trust', async () => {
+      await insertBrand({
+        domain: 'findco-mutual.example.com',
+        brand_name: 'FindCo Mutual',
+        is_public: true,
+        source_type: 'brand_json',
+        house_domain: 'findco-house.example.com',
+      });
+      const verifiedAt = new Date('2026-03-10T09:00:00Z');
+      await pool.query(
+        `UPDATE brands SET relationship_trust = 'mutual', relationship_verified_at = $2,
+             relationship_trust_computed_at = NOW()
+         WHERE domain = $1`,
+        ['findco-mutual.example.com', verifiedAt.toISOString()],
+      );
+
+      const result = await brandDb.findCompany('FindCo Mutual');
+      const row = result.find((b) => b.domain === 'findco-mutual.example.com');
+      expect(row).toBeDefined();
+      expect(row!.relationship_trust).toBe('mutual');
+      expect(row!.relationship_verified_at instanceof Date).toBe(true);
+      expect(row!.relationship_verified_at!.toISOString()).toBe('2026-03-10T09:00:00.000Z');
+      expect(row!.claimed_house_domain).toBeUndefined();
+    });
+
+    it('findCompany returns claimed_house_domain for leaf_only trust', async () => {
+      await insertBrand({
+        domain: 'findco-leaf.example.com',
+        brand_name: 'FindCo Leaf',
+        is_public: true,
+        source_type: 'brand_json',
+      });
+      await pool.query(
+        `UPDATE brands SET relationship_trust = 'leaf_only',
+             claimed_house_domain = 'findco-house.example.com',
+             relationship_trust_computed_at = NOW()
+         WHERE domain = $1`,
+        ['findco-leaf.example.com'],
+      );
+
+      const result = await brandDb.findCompany('FindCo Leaf');
+      const row = result.find((b) => b.domain === 'findco-leaf.example.com');
+      expect(row).toBeDefined();
+      expect(row!.relationship_trust).toBe('leaf_only');
+      expect(row!.claimed_house_domain).toBe('findco-house.example.com');
+      expect(row!.relationship_verified_at).toBeUndefined();
+    });
+  });
 });
