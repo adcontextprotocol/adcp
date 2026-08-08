@@ -649,10 +649,27 @@
 #   asset map keyed by each required slot's canonical `asset_group_id` or legacy
 #   `asset_id`. Values come from the storyboard's test kit and MUST satisfy the
 #   slot contract. Image slots use an `assets.images[]` fixture satisfying the
-#   declared dimensions; URL slots use `assets.click_url`. If any required slot
-#   cannot be populated, the runner
-#   MUST fail the step before transport with `unresolved_substitution` rather
-#   than sending the directive or an incomplete manifest.
+#   declared dimensions; URL slots use `assets.click_url`; text slots use
+#   `assets.text` only through an explicit runner-maintained mapping from the
+#   exact declared `asset_group_id` or legacy `asset_id` to a fixture category
+#   (for example, `headlines`, `descriptions`, or `cta`). Runners MUST NOT infer
+#   text semantics from a slot-id substring or populate an unmapped slot (for
+#   example, `legal`, `disclaimer`, or `alt_text`) from an arbitrary fallback
+#   category.
+#
+#   Asset-fixture coverage exception: when the captured format is valid but the
+#   runner cannot populate a required slot from the test kit — including an
+#   unsupported asset type, an unknown text-slot semantic, or no image fixture
+#   satisfying the declared dimensions — the runner MUST stop before transport
+#   and grade the storyboard `not_applicable` with `skip_result.reason:
+#   unsatisfied_contract`. The diagnostic detail MUST begin with
+#   `creative_asset_fixture_unavailable:` and name the slot id, asset type, and
+#   any unsatisfied constraint. This is a runner/test-kit coverage gap, not a
+#   grading signal about the agent, and MUST NOT contribute to failed steps.
+#   A malformed directive, or missing format context caused by a prior agent
+#   step failing or being skipped, follows the ordinary harness-error or
+#   prerequisite-failure path instead; this exception MUST NOT conceal agent
+#   behavior that the storyboard actually observed.
 # sample_response: object (optional — example expected response; also surfaces in published docs)
 #
 # auth: "none" | object (optional — overrides the transport's default credentials for this step)
@@ -1968,7 +1985,12 @@
 #       ran). The step grades as failed. Also used at preflight when a
 #       substitution is statically unresolvable (e.g., {{runner.webhook_url:*}}
 #       on a run with no webhook receiver) to grade the entire storyboard
-#       not_applicable before execution.
+#       not_applicable before execution. A `$build_assets_from_format`
+#       directive whose valid captured format cannot be satisfied by the
+#       runner's test-kit assets is not an unresolved substitution: it uses the
+#       storyboard-level not_applicable disposition with `skip_result.reason:
+#       unsatisfied_contract` at step preflight. This runner-owned coverage gap
+#       MUST NOT count as a failed step.
 #
 #       Output shape: runner-output-contract.yaml > validation_result, with
 #       check: unresolved_substitution, expected: the unresolved token string,
@@ -2354,5 +2376,15 @@
 #   2. Before individual step execution — if a later-computed substitution
 #      (e.g., {{prior_step.<id>.task_id}}) fails to resolve, grade the
 #      step as failed with `unresolved_substitution`.
+#
+# Exception for runner-owned creative-asset coverage: a
+# `$build_assets_from_format` directive can only be resolved after a prior step
+# captures the seller's valid format contract. If the format context exists but
+# the runner's test kit cannot synthesize every required slot, the runner MUST
+# apply a storyboard-level `not_applicable` disposition with
+# `skip_result.reason: unsatisfied_contract` at step preflight, not the
+# failed-step disposition from point 2. If the format context itself is absent
+# because its producer failed or was skipped, point 2 and the normal
+# prerequisite cascade still apply.
 #
 # Neither path may ship a literal `$context.*` or `{{...}}` token on the wire.
