@@ -9687,16 +9687,6 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     return { errors: [{ code, message }] };
   }
 
-  if (aggregateMediaBuyUpdate(req).total_budget !== undefined && (req.packages !== undefined || req.new_packages !== undefined)) {
-    return {
-      errors: [{
-        code: 'VALIDATION_ERROR',
-        message: 'total_budget is mutually exclusive with packages and new_packages.',
-      }] as TaskError[],
-      ...(req.context !== undefined && { context: req.context }),
-    };
-  }
-
   const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
   overlaySeededProducts(session, productMap);
 
@@ -9748,7 +9738,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   }
   const resultingAllocation = aggregateUpdate.budget_allocation ?? mb.budgetAllocation;
   const sellerOptimized = resultingAllocation?.mode === 'seller_optimized';
-  const fixedRedistribution = aggregateUpdate.total_budget && !sellerOptimized
+  const fixedRedistribution = aggregateUpdate.total_budget && !sellerOptimized && req.packages === undefined && req.new_packages === undefined
     ? proportionalFixedPackageBudgets(mb, aggregateUpdate.total_budget.amount)
     : undefined;
   if (fixedRedistribution?.error) {

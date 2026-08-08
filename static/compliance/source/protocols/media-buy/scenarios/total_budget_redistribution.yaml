@@ -167,16 +167,15 @@ phases:
             value: 20000
 
   - id: reject_ambiguous_update
-    title: "Reject a competing package patch"
+    title: "Reject an inconsistent total_budget assertion"
     steps:
       - id: reject_total_with_packages
-        title: "Reject total_budget combined with packages"
+        title: "Reject total_budget that does not match the explicit package sum"
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
         response_schema_ref: "media-buy/update-media-buy-response.json"
         stateful: false
         expect_error: true
-        negative_path: schema_invalid
         sample_request:
           account:
             brand:
@@ -188,7 +187,7 @@ phases:
             currency: "USD"
           packages:
             - package_id: "$context.first_package_id"
-              budget: 60000
+              budget: 99999
           idempotency_key: "$generate:uuid_v4#total_budget_redistribution_conflict"
         validations:
           - check: error_code
