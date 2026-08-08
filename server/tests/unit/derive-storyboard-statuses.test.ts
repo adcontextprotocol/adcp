@@ -84,10 +84,13 @@ describe('deriveStoryboardStatuses', () => {
   it('classifies fixture-only UI scenarios as non-executable coverage gaps', () => {
     expect(isNonExecutableCoverageGapScenario({
       scenario: 'creative_fate_after_cancellation/fixture_preflight',
-      steps: [{
-        skipped: true,
-        skip_reason: 'fixture_unavailable',
-      }],
+      steps: [
+        { skipped: false },
+        {
+          skipped: true,
+          skip_reason: 'fixture_unavailable',
+        },
+      ],
     })).toBe(true);
   });
 

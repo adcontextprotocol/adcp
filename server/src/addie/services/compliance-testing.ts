@@ -541,6 +541,9 @@ export function isNonExecutableCoverageGapScenario(scenario: {
 }): boolean {
   const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
   const scenarioId = typeof scenario.scenario === 'string' ? scenario.scenario : '';
+  if (steps.some(
+    (step) => step.skipped && step.skip_reason === 'fixture_unavailable',
+  )) return true;
   return steps.length > 0 && steps.every((step) => {
     if (!step?.skipped) return false;
     return step.skip_reason === 'peer_branch_taken' ||
@@ -590,6 +593,14 @@ function trackHasCoverageGapSkip(track: TrackResult): boolean {
   return false;
 }
 
+function trackHasFixtureUnavailableSkip(track: TrackResult): boolean {
+  return track.scenarios.some((scenario) =>
+    (scenario.steps ?? []).some((step) =>
+      step.skipped && step.skip_reason === 'fixture_unavailable'
+    )
+  );
+}
+
 /**
  * Derive the effective overall status and track counters from a ComplianceResult.
  *
@@ -611,9 +622,10 @@ function effectiveRunStatus(result: ComplianceResult): {
   // e.g. a signals-only agent skipping controller-gated media-buy pagination
   // storyboards with `missing_test_controller` — are expected and must not
   // degrade an otherwise all-pass run (#5429, regression of #5328).
-  const hasCoverageGapSkip = result.tracks
-    .filter((t: TrackResult) => t.status === 'skip')
-    .some(trackHasCoverageGapSkip);
+  const hasCoverageGapSkip = result.tracks.some((track: TrackResult) =>
+    trackHasFixtureUnavailableSkip(track) ||
+    (track.status === 'skip' && trackHasCoverageGapSkip(track))
+  );
   if (
     !hasCoverageGapSkip &&
     activeTracks.length > 0 &&

@@ -183,7 +183,7 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
       {
         track: 'creative',
         label: 'Creative',
-        status: 'skip',
+        status: 'silent',
         duration_ms: 1000,
         skipped_scenarios: [],
         observations: [],
@@ -192,6 +192,11 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
             scenario: 'creative_fate_after_cancellation/sync_creative_with_assignment',
             overall_passed: true,
             steps: [
+              {
+                step: 'Capture the seller format contract',
+                passed: true,
+                duration_ms: 0,
+              },
               {
                 step: 'Runner cannot synthesize the required creative asset',
                 passed: true,
@@ -216,7 +221,7 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
       expect.objectContaining({ track: 'core', has_coverage_gap_skip: false }),
       expect.objectContaining({
         track: 'creative',
-        status: 'skip',
+        status: 'silent',
         has_coverage_gap_skip: true,
       }),
     ]);
