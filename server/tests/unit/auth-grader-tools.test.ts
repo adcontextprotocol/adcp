@@ -11,13 +11,16 @@ describe('auth grader tools', () => {
     expect(names).toEqual(['diagnose_agent_auth', 'grade_agent_signing']);
   });
 
-  it('declares allow_live_side_effects as opt-in (not required)', () => {
+  it('does not expose hosted private-network or live-side-effect escape hatches', () => {
     const grader = AUTH_GRADER_TOOLS.find((t) => t.name === 'grade_agent_signing');
+    const diagnosis = AUTH_GRADER_TOOLS.find((t) => t.name === 'diagnose_agent_auth');
     expect(grader).toBeDefined();
     expect(grader!.input_schema.required).toEqual(['agent_url']);
     const props = grader!.input_schema.properties as Record<string, unknown>;
-    expect(props.allow_live_side_effects).toBeDefined();
-    expect(props.allow_http).toBeDefined();
+    const diagnosisProps = diagnosis!.input_schema.properties as Record<string, unknown>;
+    expect(props.allow_live_side_effects).toBeUndefined();
+    expect(props.allow_http).toBeUndefined();
+    expect(diagnosisProps.allow_http).toBeUndefined();
   });
 
   it('exposes transport mcp/raw with mcp default (the schema declares enum, handler defaults absent → mcp)', () => {
@@ -30,24 +33,29 @@ describe('auth grader tools', () => {
   });
 
   it('rejects malformed agent URLs without invoking the grader', async () => {
-    const handlers = createAuthGraderToolHandlers();
+    const handlers = createAuthGraderToolHandlers('system:addie');
     const grader = handlers.get('grade_agent_signing')!;
     const out = await grader({ agent_url: 'not-a-url' });
     expect(out).toContain('Invalid agent URL');
   });
 
   it('rejects cloud-metadata SSRF targets', async () => {
-    const handlers = createAuthGraderToolHandlers();
+    const handlers = createAuthGraderToolHandlers('system:addie');
     const diag = handlers.get('diagnose_agent_auth')!;
-    const out = await diag({ agent_url: 'http://169.254.169.254/' });
-    expect(out).toContain('blocked');
+    const out = await diag({ agent_url: 'https://169.254.169.254/' });
+    expect(out).toContain('public network');
   });
 
   it('rejects non-http(s) protocols', async () => {
-    const handlers = createAuthGraderToolHandlers();
+    const handlers = createAuthGraderToolHandlers('system:addie');
     const grader = handlers.get('grade_agent_signing')!;
     const out = await grader({ agent_url: 'file:///etc/passwd' });
-    expect(out).toContain('HTTP or HTTPS');
+    expect(out).toContain('public HTTPS');
+  });
+
+  it('requires a stable nonempty caller ID', () => {
+    expect(() => createAuthGraderToolHandlers('')).toThrow(/stable caller ID/);
+    expect(() => createAuthGraderToolHandlers('   ')).toThrow(/stable caller ID/);
   });
 });
 

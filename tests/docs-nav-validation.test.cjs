@@ -248,7 +248,8 @@ test('temporary snapshot redirects cover every available live page', () => {
     'docs/protocol/language-and-localization',
     'docs/protocol/sync_agent_notification_configs',
     'docs/media-buy/media-buys/insights',
-    'docs/creative/channels/radio'
+    'docs/creative/channels/radio',
+    'docs/brand-protocol/tasks/search_brands',
   ];
   if (JSON.stringify(uncoveredPages) !== JSON.stringify(expectedUncoveredPages)) {
     throw new Error(

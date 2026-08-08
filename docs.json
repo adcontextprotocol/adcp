@@ -522,6 +522,7 @@
                   {
                     "group": "Tasks",
                     "pages": [
+                      "docs/brand-protocol/tasks/search_brands",
                       "docs/brand-protocol/tasks/get_brand_identity",
                       "docs/brand-protocol/tasks/verify_brand_claim",
                       "docs/brand-protocol/tasks/verify_brand_claims",

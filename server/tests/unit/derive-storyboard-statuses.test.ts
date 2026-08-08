@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { deriveStoryboardStatuses } from '../../src/addie/services/compliance-testing.js';
+import {
+  deriveStoryboardStatuses,
+  isNonExecutableCoverageGapScenario,
+} from '../../src/addie/services/compliance-testing.js';
 import type { ComplianceResult } from '@adcp/sdk/testing';
 
 /**
@@ -78,6 +81,34 @@ function makeResult(
 }
 
 describe('deriveStoryboardStatuses', () => {
+  it('classifies fixture-only UI scenarios as non-executable coverage gaps', () => {
+    expect(isNonExecutableCoverageGapScenario({
+      scenario: 'creative_fate_after_cancellation/fixture_preflight',
+      steps: [
+        { passed: true, skipped: false },
+        {
+          skipped: true,
+          skip_reason: 'fixture_unavailable',
+        },
+      ],
+    })).toBe(true);
+  });
+
+  it('keeps fixture-gap UI scenarios executable when a real step also failed', () => {
+    expect(isNonExecutableCoverageGapScenario({
+      scenario: 'creative_fate_after_cancellation/fixture_preflight',
+      steps: [
+        { passed: true },
+        {
+          passed: true,
+          skipped: true,
+          skip_reason: 'fixture_unavailable',
+        },
+        { passed: false },
+      ],
+    })).toBe(false);
+  });
+
   it('emits one entry per storyboard the runner produced data for', () => {
     const result = makeResult([
       { scenario: 'signal_owned/capability_discovery', passed: true, steps: [{ passed: true }] },
@@ -223,6 +254,48 @@ describe('deriveStoryboardStatuses', () => {
 
     expect(entry).toEqual({
       storyboard_id: 'get_signals_pagination_integrity',
+      status: 'untested',
+      steps_passed: 0,
+      steps_total: 0,
+    });
+  });
+
+  it('treats an unavailable runner fixture and any legacy cascade as untested', () => {
+    const result = makeResult([
+      {
+        scenario: 'creative_fate_after_cancellation/get_products_brief',
+        passed: true,
+        steps: [
+          {
+            passed: true,
+            step: 'Capture the seller format contract',
+          },
+        ],
+      },
+      {
+        scenario: 'creative_fate_after_cancellation/sync_creative_with_assignment',
+        passed: true,
+        steps: [
+          {
+            passed: true,
+            skipped: true,
+            skip_reason: 'fixture_unavailable',
+            step: 'Runner cannot synthesize the required creative asset',
+          },
+          {
+            passed: true,
+            skipped: true,
+            skip_reason: 'prerequisite_failed',
+            step: 'Observe creative state',
+          },
+        ],
+      },
+    ]);
+
+    const [entry] = deriveStoryboardStatuses(result);
+
+    expect(entry).toEqual({
+      storyboard_id: 'creative_fate_after_cancellation',
       status: 'untested',
       steps_passed: 0,
       steps_total: 0,

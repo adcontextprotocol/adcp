@@ -342,6 +342,33 @@ let initialized = false;
 // Directory where repos are cached
 let reposDir: string;
 
+// External repositories are untrusted input. Keep individual documents
+// bounded so a repository cannot exhaust memory while the in-memory index is
+// built. The descriptor reader below also enforces this limit if a file grows
+// after it is opened.
+const MAX_EXTERNAL_DOC_BYTES = 4 * 1024 * 1024;
+const FILE_READ_CHUNK_BYTES = 64 * 1024;
+
+interface TrustedRepoRoot {
+  path: string;
+  realPath: string;
+  dev: number;
+  ino: number;
+}
+
+interface InspectedRepoFile {
+  path: string;
+  realPath: string;
+  stats: fs.Stats;
+}
+
+class UnsafeExternalRepoPathError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnsafeExternalRepoPathError';
+  }
+}
+
 /**
  * Get the repos cache directory
  */
@@ -454,59 +481,313 @@ function syncRepo(repo: ExternalRepo): string | null {
   }
 }
 
+function isContainedPath(rootPath: string, candidatePath: string, allowRoot: boolean): boolean {
+  const relativePath = path.relative(rootPath, candidatePath);
+  if (relativePath === '') return allowRoot;
+  return relativePath !== '..'
+    && !relativePath.startsWith(`..${path.sep}`)
+    && !path.isAbsolute(relativePath);
+}
+
+function createTrustedRepoRoot(repoPath: string): TrustedRepoRoot {
+  const absolutePath = path.resolve(repoPath);
+  const rootStats = fs.lstatSync(absolutePath);
+  if (rootStats.isSymbolicLink() || !rootStats.isDirectory()) {
+    throw new UnsafeExternalRepoPathError('Repository root must be a non-symlink directory');
+  }
+
+  const realPath = fs.realpathSync.native(absolutePath);
+  const realStats = fs.lstatSync(realPath);
+  if (!realStats.isDirectory()
+    || realStats.dev !== rootStats.dev
+    || realStats.ino !== rootStats.ino) {
+    throw new UnsafeExternalRepoPathError('Repository root changed during validation');
+  }
+
+  return { path: absolutePath, realPath, dev: rootStats.dev, ino: rootStats.ino };
+}
+
+function hasNestedGitBoundary(repoRoot: TrustedRepoRoot, directoryPath: string): boolean {
+  if (path.resolve(directoryPath) === repoRoot.path) return false;
+
+  try {
+    return fs.lstatSync(path.join(directoryPath, '.git'), { throwIfNoEntry: false }) !== undefined;
+  } catch {
+    // A marker that cannot be inspected is not safe to cross.
+    return true;
+  }
+}
+
+function inspectRepoPath(
+  repoRoot: TrustedRepoRoot,
+  candidatePath: string,
+  expectedType: 'directory' | 'file'
+): InspectedRepoFile {
+  const currentRootStats = fs.lstatSync(repoRoot.path);
+  if (currentRootStats.isSymbolicLink()
+    || !currentRootStats.isDirectory()
+    || currentRootStats.dev !== repoRoot.dev
+    || currentRootStats.ino !== repoRoot.ino) {
+    throw new UnsafeExternalRepoPathError('Repository root changed during validation');
+  }
+
+  const absolutePath = path.resolve(candidatePath);
+  if (!isContainedPath(repoRoot.path, absolutePath, expectedType === 'directory')) {
+    throw new UnsafeExternalRepoPathError('Path escapes the repository root');
+  }
+
+  const relativePath = path.relative(repoRoot.path, absolutePath);
+  const components = relativePath === '' ? [] : relativePath.split(path.sep);
+  let currentPath = repoRoot.path;
+  let finalStats: fs.Stats | undefined;
+
+  for (let index = 0; index < components.length; index++) {
+    const component = components[index];
+    if (component.toLowerCase() === '.git') {
+      throw new UnsafeExternalRepoPathError('Git metadata is not indexable');
+    }
+
+    currentPath = path.join(currentPath, component);
+    const stats = fs.lstatSync(currentPath);
+    const isFinalComponent = index === components.length - 1;
+
+    if (stats.isSymbolicLink()) {
+      throw new UnsafeExternalRepoPathError('Symbolic links are not indexable');
+    }
+
+    if (!isFinalComponent) {
+      if (!stats.isDirectory()) {
+        throw new UnsafeExternalRepoPathError('Path ancestor must be a directory');
+      }
+      if (hasNestedGitBoundary(repoRoot, currentPath)) {
+        throw new UnsafeExternalRepoPathError('Nested Git repositories are not indexable');
+      }
+      continue;
+    }
+
+    if (expectedType === 'directory') {
+      if (!stats.isDirectory()) {
+        throw new UnsafeExternalRepoPathError('Expected a directory');
+      }
+      if (hasNestedGitBoundary(repoRoot, currentPath)) {
+        throw new UnsafeExternalRepoPathError('Nested Git repositories are not indexable');
+      }
+    } else {
+      if (!stats.isFile()) {
+        throw new UnsafeExternalRepoPathError('Expected a regular file');
+      }
+      if (stats.nlink !== 1) {
+        throw new UnsafeExternalRepoPathError('Hard-linked files are not indexable');
+      }
+      if (stats.size < 0 || stats.size > MAX_EXTERNAL_DOC_BYTES) {
+        throw new UnsafeExternalRepoPathError('External repository document exceeds the size limit');
+      }
+    }
+
+    finalStats = stats;
+  }
+
+  if (components.length === 0) {
+    if (expectedType !== 'directory') {
+      throw new UnsafeExternalRepoPathError('Repository root is not an indexable file');
+    }
+    finalStats = fs.lstatSync(repoRoot.path);
+  }
+
+  const realPath = fs.realpathSync.native(absolutePath);
+  if (!isContainedPath(repoRoot.realPath, realPath, expectedType === 'directory')) {
+    throw new UnsafeExternalRepoPathError('Resolved path escapes the repository root');
+  }
+
+  return { path: absolutePath, realPath, stats: finalStats! };
+}
+
+function tryInspectRepoPath(
+  repoRoot: TrustedRepoRoot,
+  candidatePath: string,
+  expectedType: 'directory' | 'file'
+): InspectedRepoFile | null {
+  try {
+    return inspectRepoPath(repoRoot, candidatePath, expectedType);
+  } catch {
+    return null;
+  }
+}
+
+function readBoundedFileDescriptor(fd: number): string {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+
+  while (totalBytes <= MAX_EXTERNAL_DOC_BYTES) {
+    const remainingBytes = MAX_EXTERNAL_DOC_BYTES + 1 - totalBytes;
+    const buffer = Buffer.allocUnsafe(Math.min(FILE_READ_CHUNK_BYTES, remainingBytes));
+    const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, null);
+    if (bytesRead === 0) {
+      return Buffer.concat(chunks, totalBytes).toString('utf8');
+    }
+
+    totalBytes += bytesRead;
+    if (totalBytes > MAX_EXTERNAL_DOC_BYTES) {
+      throw new UnsafeExternalRepoPathError('External repository document exceeds the size limit');
+    }
+    chunks.push(buffer.subarray(0, bytesRead));
+  }
+
+  throw new UnsafeExternalRepoPathError('External repository document exceeds the size limit');
+}
+
+function readContainedRegularFile(repoRoot: TrustedRepoRoot, candidatePath: string): string {
+  const inspected = inspectRepoPath(repoRoot, candidatePath, 'file');
+  const noFollowFlag = fs.constants.O_NOFOLLOW;
+  if (typeof noFollowFlag !== 'number') {
+    throw new UnsafeExternalRepoPathError('This platform cannot safely open untrusted repository files');
+  }
+
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(inspected.realPath, fs.constants.O_RDONLY | noFollowFlag);
+    const openedStats = fs.fstatSync(fd);
+    if (!openedStats.isFile()
+      || openedStats.nlink !== 1
+      || openedStats.dev !== inspected.stats.dev
+      || openedStats.ino !== inspected.stats.ino
+      || openedStats.size < 0
+      || openedStats.size > MAX_EXTERNAL_DOC_BYTES) {
+      throw new UnsafeExternalRepoPathError('Repository file changed during validation');
+    }
+
+    return readBoundedFileDescriptor(fd);
+  } finally {
+    if (fd !== undefined) {
+      fs.closeSync(fd);
+    }
+  }
+}
+
+function isSafeRelativePattern(pattern: string): boolean {
+  if (!pattern
+    || pattern.includes('\0')
+    || pattern.includes('\\')
+    || path.posix.isAbsolute(pattern)
+    || /^[a-zA-Z]:\//.test(pattern)) {
+    return false;
+  }
+
+  const components = pattern.split('/');
+  if (components.some((component) => component === ''
+    || component === '.'
+    || component === '..'
+    || component.toLowerCase() === '.git')) {
+    return false;
+  }
+
+  const recursiveIndexes = components
+    .map((component, index) => component === '**' ? index : -1)
+    .filter((index) => index >= 0);
+  if (recursiveIndexes.length > 1) return false;
+
+  const basename = components[components.length - 1];
+  const isSupportedBasename = !basename.includes('*')
+    || basename === '*'
+    || (/^\*\.[^*]+$/.test(basename));
+  if (!isSupportedBasename) return false;
+
+  return components.every((component, index) => {
+    if (!component.includes('*')) return true;
+    if (component === '**') {
+      return index === components.length - 2;
+    }
+    return index === components.length - 1;
+  });
+}
+
 /**
  * Find files matching glob patterns in a directory
  * Simple implementation without glob library dependency
  */
-function findMatchingFiles(baseDir: string, patterns: string[]): string[] {
-  const files: string[] = [];
+function findMatchingFiles(repoRoot: TrustedRepoRoot, patterns: string[]): string[] {
+  const files = new Set<string>();
 
   for (const pattern of patterns) {
-    if (pattern.includes('**')) {
-      // Recursive pattern like 'docs/**/*.md'
-      const [prefix, suffix] = pattern.split('**');
-      const searchDir = path.join(baseDir, prefix.replace(/\/$/, ''));
-      if (fs.existsSync(searchDir)) {
-        findFilesRecursive(searchDir, suffix.replace(/^\//, ''), files);
-      }
-    } else if (pattern.includes('*')) {
-      // Simple glob like '*.md'
-      const dir = path.dirname(pattern);
-      const filePattern = path.basename(pattern);
-      const searchDir = dir === '.' ? baseDir : path.join(baseDir, dir);
-      if (fs.existsSync(searchDir)) {
-        const entries = fs.readdirSync(searchDir);
-        for (const entry of entries) {
-          if (matchesPattern(entry, filePattern)) {
-            files.push(path.join(searchDir, entry));
+    if (!isSafeRelativePattern(pattern)) {
+      logger.warn({ pattern }, 'Addie External Repos: Ignoring unsafe index pattern');
+      continue;
+    }
+
+    try {
+      if (pattern.includes('**')) {
+        // Recursive pattern like 'docs/**/*.md'
+        const [prefix, suffix] = pattern.split('**');
+        const relativePrefix = prefix.replace(/\/$/, '');
+        const searchDir = relativePrefix === ''
+          ? repoRoot.path
+          : path.resolve(repoRoot.path, ...relativePrefix.split('/'));
+        if (tryInspectRepoPath(repoRoot, searchDir, 'directory')) {
+          findFilesRecursive(repoRoot, searchDir, suffix.replace(/^\//, ''), files);
+        }
+      } else if (pattern.includes('*')) {
+        // Simple glob like '*.md'
+        const components = pattern.split('/');
+        const filePattern = components.pop()!;
+        const searchDir = components.length === 0
+          ? repoRoot.path
+          : path.resolve(repoRoot.path, ...components);
+        if (tryInspectRepoPath(repoRoot, searchDir, 'directory')) {
+          const entries = fs.readdirSync(searchDir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (entry.isFile() && matchesPattern(entry.name, filePattern)) {
+              const filePath = path.join(searchDir, entry.name);
+              if (tryInspectRepoPath(repoRoot, filePath, 'file')) {
+                files.add(filePath);
+              }
+            }
           }
         }
+      } else {
+        // Exact file like 'README.md'
+        const filePath = path.resolve(repoRoot.path, ...pattern.split('/'));
+        if (tryInspectRepoPath(repoRoot, filePath, 'file')) {
+          files.add(filePath);
+        }
       }
-    } else {
-      // Exact file like 'README.md'
-      const filePath = path.join(baseDir, pattern);
-      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-        files.push(filePath);
-      }
+    } catch (error) {
+      logger.warn(
+        { pattern, error },
+        'Addie External Repos: Skipping index pattern after filesystem change'
+      );
     }
   }
 
-  return files;
+  return Array.from(files);
 }
 
-function findFilesRecursive(dir: string, suffix: string, files: string[]): void {
-  if (!fs.existsSync(dir)) return;
+function findFilesRecursive(
+  repoRoot: TrustedRepoRoot,
+  dir: string,
+  suffix: string,
+  files: Set<string>
+): void {
+  if (!tryInspectRepoPath(repoRoot, dir, 'directory')) return;
 
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (!entry.name.startsWith('.') && entry.name !== 'node_modules') {
-        findFilesRecursive(fullPath, suffix, files);
+      if (!entry.name.startsWith('.')
+        && entry.name !== 'node_modules'
+        && entry.name.toLowerCase() !== '.git') {
+        findFilesRecursive(repoRoot, fullPath, suffix, files);
       }
     } else if (entry.isFile()) {
       if (matchesPattern(entry.name, suffix)) {
-        files.push(fullPath);
+        if (tryInspectRepoPath(repoRoot, fullPath, 'file')) {
+          files.add(fullPath);
+        }
       }
     }
   }
@@ -725,12 +1006,20 @@ function indexRepo(
   const headings: IndexedExternalHeading[] = [];
   const patterns = repo.indexPatterns || ['README.md', 'docs/**/*.md'];
 
-  const files = findMatchingFiles(repoPath, patterns);
+  let repoRoot: TrustedRepoRoot;
+  try {
+    repoRoot = createTrustedRepoRoot(repoPath);
+  } catch (error) {
+    logger.warn({ repoId: repo.id, repoPath, error }, 'Addie External Repos: Unsafe repository root');
+    return { docs, headings };
+  }
+
+  const files = findMatchingFiles(repoRoot, patterns);
 
   for (const filePath of files) {
     try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const relativePath = path.relative(repoPath, filePath);
+      const content = readContainedRegularFile(repoRoot, filePath);
+      const relativePath = path.relative(repoRoot.path, filePath);
       const filename = path.basename(filePath);
       const title = extractTitle(content, filename);
       const cleanedContent = cleanContent(content);
@@ -1122,3 +1411,10 @@ export function getExternalRepoStats(): Array<{ id: string; name: string; docCou
 export function getConfiguredRepos(): ExternalRepo[] {
   return [...EXTERNAL_REPOS];
 }
+
+/** @internal Exported for focused filesystem boundary tests only. */
+export const _testing = {
+  indexRepo,
+  isSafeRelativePattern,
+  MAX_EXTERNAL_DOC_BYTES,
+};
