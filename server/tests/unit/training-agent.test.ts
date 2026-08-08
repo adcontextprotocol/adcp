@@ -1407,6 +1407,36 @@ describe('get_products handler', () => {
     });
   });
 
+  it('skips advisories for seeded products with non-array format_options', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'malformed-format-options.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    const seeded = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'malformed_format_options',
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'non_guaranteed',
+          format_options: { format_kind: 'custom' },
+        },
+      },
+    });
+    expect(seeded.result.success).toBe(true);
+
+    const { result, isError } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+    });
+
+    expect(isError).not.toBe(true);
+    expect(Array.isArray(result.products)).toBe(true);
+  });
+
   it('returns wholesale feed metadata and honors unchanged product probes', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: first } = await simulateCallTool(server, 'get_products', {

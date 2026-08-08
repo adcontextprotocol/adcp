@@ -2856,7 +2856,8 @@ function collectCanonicalFormatAdvisories(products: Product[]): TaskError[] {
       format_ids?: CanonicalFormatRef[];
       format_options?: CanonicalFormatOption[];
     };
-    product.format_options?.forEach((option, optionIndex) => {
+    if (!Array.isArray(product.format_options)) continue;
+    product.format_options.forEach((option, optionIndex) => {
       if (option.format_kind !== 'custom' || typeof option.format_shape !== 'string') return;
       const promotion = promotedFormatShapes[option.format_shape];
       if (!promotion) return;
@@ -2875,7 +2876,7 @@ function collectCanonicalFormatAdvisories(products: Product[]): TaskError[] {
         },
       });
     });
-    if (!Array.isArray(product.format_ids) || !Array.isArray(product.format_options)) continue;
+    if (!Array.isArray(product.format_ids)) continue;
     if (product.format_ids.length === 0 || product.format_options.length === 0) continue;
 
     const declaredRefs = new Set(
