@@ -7042,7 +7042,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     return { errors: [{ code, message }] };
   }
 
-  if (req.total_budget !== undefined && (req.packages !== undefined || req.new_packages !== undefined)) {
+  if (aggregateMediaBuyUpdate(req).total_budget !== undefined && (req.packages !== undefined || req.new_packages !== undefined)) {
     return {
       errors: [{
         code: 'VALIDATION_ERROR',
