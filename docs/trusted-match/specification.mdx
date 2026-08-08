@@ -150,7 +150,7 @@ Contains offers for matched packages and optional response-level signals. Two sc
 
 The hop-specific fields are disjoint. `provider-context-match-response.json` permits `signals.targeting_kvs` and forbids `signals_by_provider`; `context-match-response.json` permits `signals_by_provider` and forbids `signals.targeting_kvs` whether or not the attributed map is present. Both forbid `context` and `ext` so extension data cannot cross the context privacy boundary.
 
-`signals_by_provider` is the attribution boundary for merged targeting signals. The router MUST NOT invent a namespace by rewriting provider keys, accept a provider's claimed bucket name, or flatten attributed pairs back into `signals.targeting_kvs`. The publisher resolves each `(provider_id, key)` tuple through publisher-owned deployment configuration to a local ad-server destination. A tuple without a local mapping MUST be dropped; its provider-local `key` MUST NOT be treated as a global or publisher-owned targeting key. The mapping format is deployment-specific in 3.2 and is not carried on either protocol hop.
+`signals_by_provider` is the attribution boundary for merged targeting signals. The router MUST NOT invent a namespace by rewriting provider keys, accept a provider's claimed bucket name, or flatten attributed pairs back into `signals.targeting_kvs`. The publisher resolves each `(provider_id, key)` tuple through its [`targeting_kv_mapping`](#publisher-targeting-kv-mapping) to a local ad-server destination. A tuple without a local mapping MUST be dropped; its provider-local `key` MUST NOT be treated as a global or publisher-owned targeting key. The mapping is deployment configuration and is not carried on either protocol hop.
 
 #### Offer
 
@@ -370,7 +370,7 @@ The standard registration path is **static configuration** — the publisher dec
 
 | Setting | Type | Required | Description |
 |---|---|---|---|
-| `provider_id` | string | Yes | Stable identifier for this provider registration. Used in logs, metrics, cache keys, and as the key in `tmpx_providers` on the identity-match response so the publisher can route each provider's ordered TMPX values to that provider's pre-configured destinations via the publisher's [`tmpx_macro_mapping`](#publisher-tmpx-macro-mapping). Pattern: `^[A-Za-z0-9_]+$`, max length 64 — a safe alphanumeric/underscore charset so the value can appear in operational surfaces (logs, metrics, dashboards) without quoting. |
+| `provider_id` | string | Yes | Stable identifier for this provider registration. Used in logs, metrics, cache keys, as the key in `signals_by_provider` and publisher [`targeting_kv_mapping`](#publisher-targeting-kv-mapping) for Context Match, and as the key in `tmpx_providers` and publisher [`tmpx_macro_mapping`](#publisher-tmpx-macro-mapping) for Identity Match. Pattern: `^[A-Za-z0-9_]+$`, max length 64 — a safe alphanumeric/underscore charset so the value can appear in operational surfaces (logs, metrics, dashboards) without quoting. |
 | `endpoint` | URL | Yes | Provider's base URL. The router appends `/context` or `/identity` when dispatching. |
 | `context_match` | bool | No | Provider handles Context Match requests. At least one of `context_match` or `identity_match` must be true. |
 | `identity_match` | bool | No | Provider handles Identity Match requests. At least one of `context_match` or `identity_match` must be true. |
@@ -395,6 +395,29 @@ Providers have three lifecycle states:
 - **Inactive**: Provider is skipped entirely. Use this to disable a provider without removing its configuration.
 
 State transitions are immediate in static configuration (reload the config) and take effect within one refresh cycle in dynamic registration.
+
+### Publisher targeting KV mapping
+
+Context providers author targeting pairs in their own local vocabulary. The router preserves those pairs under the emitting provider's registered `provider_id` in `signals_by_provider`; the publisher then maps each `(provider_id, key)` tuple to the ad-server targeting destination it owns on that surface. The mapping never travels between provider and router, so neither party can select or overwrite a publisher-local destination name.
+
+The shape is captured by `/schemas/trusted-match/publisher-targeting-kv-config.json` and is authored alongside the publisher's surface-specific adapter configuration:
+
+```yaml
+targeting_kv_mapping:
+  outdoor_media:
+    segment: adcp_seg
+    package: adcp_pkg
+  commerce_media:
+    segment: commerce_seg
+```
+
+Outer-map keys are publisher-assigned `provider_id` values. Inner-map keys are exact provider-local targeting keys; values are publisher-local ad-server destinations. Distinct providers MAY reuse the same local key, as `outdoor_media` and `commerce_media` do above, because lookup uses the full `(provider_id, key)` tuple. A publisher may map the same provider to different destinations across surfaces by carrying one instance of this configuration per surface.
+
+**Exact, own-property lookup.** Implementations MUST NOT add a prefix, separator, or case normalization before lookup. They MUST test both the provider and key as own properties of their respective mapping objects, rather than following an object prototype. This keeps legal object-like identifiers such as `constructor` from resolving an inherited property in JavaScript-family implementations.
+
+**Unmapped tuples are dropped independently.** If the mapping omits the provider or the exact provider-local key, the publisher MUST drop that tuple and MUST NOT fall back to using the provider-local key as an ad-server destination. Other mapped tuples from the same provider remain usable. Publishers SHOULD warn at startup when `targeting_kv_mapping` names an unregistered provider because that entry is dead configuration.
+
+**Destination aliases are multi-valued.** Multiple `(provider_id, key)` tuples MAY intentionally map to the same publisher destination. Every mapped input tuple contributes its value; the publisher MUST NOT silently select a first or last value, and exact duplicate values are preserved. The relative order of values contributed by different provider buckets is not significant because `signals_by_provider` is a map. An adapter serializes all contributed values using the surface's native multi-value mechanism, just as it does when one provider emits the same local key more than once.
 
 ### Publisher TMPX macro mapping
 

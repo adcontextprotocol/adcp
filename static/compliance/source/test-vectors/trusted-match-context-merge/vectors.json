@@ -6,6 +6,7 @@
     { "provider_id": "provider_spoof" },
     { "provider_id": "provider_absent" },
     { "provider_id": "provider_empty" },
+    { "provider_id": "Provider_Case" },
     { "provider_id": "__proto__" },
     { "provider_id": "constructor" }
   ],
@@ -21,7 +22,10 @@
           "segments": ["outdoor"],
           "targeting_kvs": [
             { "key": "shared_key", "value": "alpha" },
-            { "key": "unmapped_key", "value": "drop-me" }
+            { "key": "shared_key", "value": "alpha" },
+            { "key": "unmapped_key", "value": "drop-me" },
+            { "key": "Segment", "value": "key-case-sensitive-drop" },
+            { "key": "constructor", "value": "inner-constructor-value" }
           ]
         }
       }
@@ -79,6 +83,20 @@
       }
     },
     {
+      "registration_provider_id": "Provider_Case",
+      "response": {
+        "status": "completed",
+        "type": "context_match_response",
+        "request_id": "ctx-provider-attribution-1",
+        "offers": [],
+        "signals": {
+          "targeting_kvs": [
+            { "key": "segment", "value": "provider-case-sensitive-drop" }
+          ]
+        }
+      }
+    },
+    {
       "registration_provider_id": "__proto__",
       "response": {
         "status": "completed",
@@ -122,12 +140,20 @@
       "provider_a": {
         "targeting_kvs": [
           { "key": "shared_key", "value": "alpha" },
-          { "key": "unmapped_key", "value": "drop-me" }
+          { "key": "shared_key", "value": "alpha" },
+          { "key": "unmapped_key", "value": "drop-me" },
+          { "key": "Segment", "value": "key-case-sensitive-drop" },
+          { "key": "constructor", "value": "inner-constructor-value" }
         ]
       },
       "provider_b": {
         "targeting_kvs": [
           { "key": "shared_key", "value": "bravo" }
+        ]
+      },
+      "Provider_Case": {
+        "targeting_kvs": [
+          { "key": "segment", "value": "provider-case-sensitive-drop" }
         ]
       },
       "__proto__": {
@@ -142,20 +168,27 @@
       }
     }
   },
-  "publisher_mapping": {
-    "provider_a": {
-      "shared_key": "gam_provider_a"
-    },
-    "provider_b": {
-      "shared_key": "gam_provider_b"
-    },
-    "__proto__": {
-      "edge_key": "gam_proto"
+  "publisher_config": {
+    "targeting_kv_mapping": {
+      "provider_a": {
+        "shared_key": "gam_shared",
+        "segment": "gam_case_sensitive"
+      },
+      "provider_b": {
+        "shared_key": "gam_shared"
+      },
+      "provider_case": {
+        "segment": "gam_provider_case"
+      },
+      "__proto__": {
+        "edge_key": "gam_proto"
+      }
     }
   },
   "expected_publisher_targeting": [
-    { "key": "gam_provider_a", "value": "alpha" },
-    { "key": "gam_provider_b", "value": "bravo" },
+    { "key": "gam_shared", "value": "alpha" },
+    { "key": "gam_shared", "value": "alpha" },
+    { "key": "gam_shared", "value": "bravo" },
     { "key": "gam_proto", "value": "proto-value" }
   ],
   "invalid_router_responses": [

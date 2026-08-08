@@ -187,7 +187,7 @@ For each offer from Context Match:
     → Skip this offer for this user.
 
 Result: Accept Package A.
-Resolve the provider-attributed targeting tuples through the publisher's local mapping, then set the mapped ad-server keys. Drop any tuple without a mapping.
+Resolve the provider-attributed targeting tuples through the publisher's [`targeting_kv_mapping`](/docs/trusted-match/specification#publisher-targeting-kv-mapping), then set the mapped ad-server keys. Drop any tuple without a mapping.
 ```
 
 The publisher already knows how to render Package A — it maps to a sponsored carousel slot. The inline creative manifest carries the catalog items and assets needed. The publisher handled the rest.

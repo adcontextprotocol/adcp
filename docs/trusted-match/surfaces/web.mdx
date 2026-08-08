@@ -73,7 +73,7 @@ Key points:
 
 - `offers` contains one entry per activated package. The provider's synced set for this placement included three packages — these two matched the kitchen/sustainability context, the third (`pkg-display-0103`) did not and is absent.
 - For web/GAM activation, offers are simple — just `package_id`. Richer fields (`brand`, `price`, `summary`, `creative_manifest`, `macros`) are available for integrations that need them but are not required.
-- `signals_by_provider` preserves which provider emitted each targeting pair. The Prebid module resolves each `(provider_id, key)` through publisher-owned configuration before setting the resulting GAM key. Unmapped tuples are dropped.
+- `signals_by_provider` preserves which provider emitted each targeting pair. The Prebid module resolves each `(provider_id, key)` through the publisher's [`targeting_kv_mapping`](/docs/trusted-match/specification#publisher-targeting-kv-mapping) before setting the resulting GAM key. Unmapped tuples are dropped.
 
 ## Identity Match
 
@@ -153,7 +153,16 @@ Only two packages survive: `pkg-display-0041` and `pkg-native-0078`.
 
 ### Step 2: Set GAM Targeting
 
-The Prebid module resolves the context match `signals_by_provider` tuples through the publisher's local mapping. For example, mapping `(outdoor_media, segment)` to `adcp_seg` and `(outdoor_media, package)` to `adcp_pkg` produces:
+The Prebid module resolves the context match `signals_by_provider` tuples through the publisher's [`targeting_kv_mapping`](/docs/trusted-match/specification#publisher-targeting-kv-mapping):
+
+```yaml
+targeting_kv_mapping:
+  outdoor_media:
+    segment: adcp_seg
+    package: adcp_pkg
+```
+
+That configuration produces:
 
 ```
 adcp_seg = sustainability, home_cooking

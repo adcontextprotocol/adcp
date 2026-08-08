@@ -69,14 +69,21 @@ function applyPublisherMapping(response, mapping) {
   return targeting;
 }
 
+function sortTargeting(targeting) {
+  return [...targeting].sort((a, b) =>
+    a.key.localeCompare(b.key) || a.value.localeCompare(b.value));
+}
+
 describe('Trusted Match Context targeting merge vectors', () => {
   let validateProviderResponse;
   let validateRouterResponse;
+  let validatePublisherConfig;
 
   before(async () => {
-    [validateProviderResponse, validateRouterResponse] = await Promise.all([
+    [validateProviderResponse, validateRouterResponse, validatePublisherConfig] = await Promise.all([
       compile('/schemas/trusted-match/provider-context-match-response.json'),
       compile('/schemas/trusted-match/context-match-response.json'),
+      compile('/schemas/trusted-match/publisher-targeting-kv-config.json'),
     ]);
   });
 
@@ -127,13 +134,51 @@ describe('Trusted Match Context targeting merge vectors', () => {
   });
 
   it('maps by provider and drops unmapped tuples at the publisher boundary', () => {
-    const actual = applyPublisherMapping(fixture.expected_router_response, fixture.publisher_mapping);
-    assert.deepEqual(actual, fixture.expected_publisher_targeting);
     assert.equal(
-      actual.some(({ value }) => value === 'constructor-value'),
-      false,
-      'inherited constructor/name properties must not create publisher targeting',
+      validatePublisherConfig(fixture.publisher_config),
+      true,
+      JSON.stringify(validatePublisherConfig.errors),
     );
+    const actual = applyPublisherMapping(
+      fixture.expected_router_response,
+      fixture.publisher_config.targeting_kv_mapping,
+    );
+    assert.deepEqual(sortTargeting(actual), sortTargeting(fixture.expected_publisher_targeting));
+    assert.equal(
+      actual.some(({ value }) => value.includes('constructor-value') || value.includes('case-sensitive-drop')),
+      false,
+      'inherited or case-normalized provider/key lookups must not create publisher targeting',
+    );
+    assert.deepEqual(
+      actual.filter(({ key }) => key === 'gam_shared').map(({ value }) => value).sort(),
+      ['alpha', 'alpha', 'bravo'],
+      'destination aliases and exact duplicates must retain every value instead of overwriting',
+    );
+  });
+
+  it('does not resolve inherited provider or key mappings', () => {
+    const inheritedOuter = Object.create({
+      provider_a: { shared_key: 'inherited_outer_destination' },
+    });
+    assert.deepEqual(applyPublisherMapping(fixture.expected_router_response, inheritedOuter), []);
+
+    const inheritedInner = Object.create({ shared_key: 'inherited_inner_destination' });
+    const ownOuter = Object.create(null);
+    ownOuter.provider_a = inheritedInner;
+    assert.deepEqual(applyPublisherMapping(fixture.expected_router_response, ownOuter), []);
+  });
+
+  it('rejects invalid publisher targeting mappings', () => {
+    const invalidConfigs = [
+      { targeting_kv_mapping: { 'bad-provider': { key: 'destination' } } },
+      { targeting_kv_mapping: { provider_a: {} } },
+      { targeting_kv_mapping: { provider_a: { key: '' } } },
+      {},
+      { targeting_kv_mapping: {}, unexpected: true },
+    ];
+    for (const config of invalidConfigs) {
+      assert.equal(validatePublisherConfig(config), false, `${JSON.stringify(config)} unexpectedly validated`);
+    }
   });
 
   it('rejects invalid merged response shapes', () => {
