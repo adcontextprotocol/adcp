@@ -166,6 +166,6 @@ Synchronous success arms of `create_media_buy` and `update_media_buy` may return
 | `flight_change_creates_pacing_risk` | Package `pacing_risk` |
 | `fields_ignored_due_to_precedence` | Operation-relative receipt; no continuing condition. `details` identifies ignored fields |
 
-Every warning includes typed `affected_resource` identity so buyers can join it to durable state in multi-package and multi-creative responses. Warnings never change success, never appear on terminal or submitted arms, and never grant action authority. Codes are the closed vocabulary of the negotiated AdCP release.
+Every warning includes typed `affected_resource` identity so buyers can join it to durable state in multi-package and multi-creative responses. Warnings never change success, never appear on terminal or submitted arms, and never grant action authority. Codes are the closed vocabulary of the negotiated AdCP release. Whether `inventory_shortfall_forecast` surfaces as a warning on a successful `create_media_buy` or instead blocks via `input-required` is seller discretion; a buyer unconditionally carries delivery risk on a buy created with that warning.
 
 A seller MUST NOT emit `inventory_shortfall_forecast` unless it advertises that insight type, or `flight_change_creates_pacing_risk` unless it advertises `pacing_risk`. This keeps the promised durable readback available; `fields_ignored_due_to_precedence` is operation-relative and needs no insight capability.

@@ -78,7 +78,7 @@ creatives[].assignments.assigned_packages[].insights[]
 
 The last path is an optional reverse projection of the same package–creative relationship. Every seller exposes the authoritative relationship through `get_media_buys`. A creative-library seller advertises `list_creatives` in `relationship_notifications.projection_tasks`; only then must it include `media_buy_id` and `approval_status` on every reverse assignment row and keep both projections coherent. This bounded projection is useful for discovery but is not a repair task.
 
-Uniform eligibility uses the existing scalar approval. Mixed publisher/placement outcomes use `approval_status: partially_approved` plus a complete, disjoint `approval_scopes[]` partition on both projections. Each normalized `(publisher_domain, optional placement_id)` occurs once. For a publisher, the array uses either one publisher-wide outcome or placement-specific outcomes, never both; there is no implicit override precedence. This avoids both falsely flattening and contradicting “approved on publisher A, rejected on publisher B.”
+Uniform eligibility uses the existing scalar approval. Mixed publisher/placement outcomes use `approval_status: partially_approved` plus a complete, disjoint `approval_scopes[]` partition on both projections. Each normalized `(publisher_domain, optional placement_id)` occurs once. For a publisher, the array uses either one publisher-wide outcome or placement-specific outcomes, never both; there is no implicit override precedence. This avoids both falsely flattening and contradicting "approved on publisher A, rejected on publisher B."
 
 ## Evaluation contract
 
@@ -124,7 +124,7 @@ Initial codes:
 - `flight_change_creates_pacing_risk`; and
 - `fields_ignored_due_to_precedence`.
 
-Terminal error and submitted arms reject `warnings`. `sync_creatives` does not receive the new root warning surface in this proposal: the suggested creative-format warning has no durable creative-root readback until the defect contract is standardized. Existing per-item `sync_creatives.creatives[].warnings: string[]` remains a legacy item-local surface and is not expanded here.
+Terminal error and submitted arms reject `warnings`. `sync_creatives` does not receive the new root warning surface in this proposal: the suggested creative-format warning has no durable creative-root readback until the defect contract is standardized. Existing per-item `sync_creatives.creatives[].warnings: string[]` remains a legacy item-local surface and is not expanded here. `sync-creatives-response.json` enforces this exclusion via `not.anyOf` additions on all three response arms; this formally forbids a key that `additionalProperties: true` previously permitted silently — same tightening class as a conditional-required addition, contained to a surface where the key was never defined.
 
 Every warning carries typed `affected_resource` identity. The initial codes target media buys or packages; package warnings include both `media_buy_id` and `package_id`. Buyers never parse `message` or seller-defined diagnostic values to find the durable readback target.
 

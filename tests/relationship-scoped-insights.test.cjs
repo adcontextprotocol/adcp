@@ -520,6 +520,20 @@ describe('relationship-scoped insights', () => {
     }
 
     for (const vector of vectors.assignment_projection_count_cases) {
+      assertValid(validateListCreatives, {
+        status: 'completed',
+        query_summary: { total_matching: 1, returned: 1 },
+        pagination: { has_more: false },
+        creatives: [{
+          creative_id: 'cv_test',
+          name: 'test creative',
+          format_kind: 'image',
+          status: 'approved',
+          created_date: '2026-08-01T00:00:00Z',
+          updated_date: '2026-08-01T00:00:00Z',
+          assignments: vector.assignments
+        }]
+      });
       assert.equal(projectionCountsValid(vector), vector.valid, vector.name);
     }
 
