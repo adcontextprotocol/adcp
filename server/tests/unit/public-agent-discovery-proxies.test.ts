@@ -107,7 +107,12 @@ describe('public agent discovery proxies', () => {
     const response = await request(app).get('/api/public/agent-formats?url=https://creative.example.com/mcp');
 
     expect(response.status).toBe(200);
-    expect(sdkMocks.agentExecuteTask).toHaveBeenCalledWith('list_creative_formats', {});
+    expect(sdkMocks.agentExecuteTask).toHaveBeenCalledWith(
+      'list_creative_formats',
+      {},
+      undefined,
+      { timeout: 10_000 },
+    );
     expect(response.body.formats).toEqual([{
       capability_id: 'preview_display_300x250',
       operations: ['preview'],
@@ -196,7 +201,12 @@ describe('public agent discovery proxies', () => {
     const response = await request(app).get('/api/public/agent-publishers?url=https://sales.example.com/mcp');
 
     expect(response.status).toBe(200);
-    expect(sdkMocks.singleExecuteTask).toHaveBeenCalledWith('list_authorized_properties', {});
+    expect(sdkMocks.singleExecuteTask).toHaveBeenCalledWith(
+      'list_authorized_properties',
+      {},
+      undefined,
+      { timeout: 10_000 },
+    );
     expect(response.body).toEqual({
       success: true,
       properties: [{

@@ -9678,7 +9678,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       if (formats.length === 0) {
         try {
-          const legacyResult = await capabilityClient.executeTask("list_creative_formats", {});
+          const legacyResult = await capabilityClient.executeTask(
+            "list_creative_formats",
+            {},
+            undefined,
+            { timeout: PUBLIC_AGENT_TIMEOUT_MS },
+          );
           if (!legacyResult.success) {
             throw new Error(legacyResult.error || "Legacy creative format discovery failed");
           }
@@ -9729,7 +9734,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         agent_uri: url,
         protocol: "mcp",
       }, publicAgentTransportOptions());
-      const result = await client.executeTask("list_authorized_properties", {});
+      const result = await client.executeTask(
+        "list_authorized_properties",
+        {},
+        undefined,
+        { timeout: PUBLIC_AGENT_TIMEOUT_MS },
+      );
       if (!result.success) {
         throw new Error(result.error || "Publisher discovery failed");
       }
@@ -9776,7 +9786,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         protocol: "mcp",
       }, publicAgentTransportOptions());
 
-      const result = await client.getProducts({ buying_mode: 'wholesale' });
+      const result = await client.getProducts(
+        { buying_mode: 'wholesale' },
+        undefined,
+        { timeout: PUBLIC_AGENT_TIMEOUT_MS },
+      );
       const products = (result.data?.products || []).slice(0, PUBLIC_AGENT_MAX_ITEMS);
 
       const payload = {
