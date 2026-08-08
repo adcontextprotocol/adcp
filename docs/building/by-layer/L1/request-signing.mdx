@@ -730,19 +730,11 @@ adcp grade request-signing https://agent.example.com/mcp --auth-token $TOKEN
 
 ### Error codes
 
-When verification fails, return `401` with `WWW-Authenticate: Signature error="<code>"`:
+When verification fails, return `401` with `WWW-Authenticate: Signature error="<code>"`.
 
-| Code | Meaning |
-|---|---|
-| `missing_signature` | Signature headers not present when required |
-| `invalid_signature` | Signature doesn't verify against the public key |
-| `expired_signature` | Signature timestamp too old |
-| `replayed_nonce` | Nonce was already used |
-| `revoked_key` | Key has been revoked |
-| `unknown_key` | Key ID not found in JWKS |
-| `unsupported_algorithm` | Algorithm not in allowlist |
+The negative vectors grade `<code>` **byte-for-byte** against the vector's `expected_outcome.error_code`, so a rejection that is correct in substance still fails its vector if the code string differs. Take the code from the taxonomy rather than from memory.
 
-For the full error code taxonomy, see [Transport error taxonomy](/docs/building/by-layer/L1/security#transport-error-taxonomy).
+For the codes — with retry semantics for each, and the rules for the `WWW-Authenticate` header itself — see [Transport error taxonomy](/docs/building/by-layer/L1/security#transport-error-taxonomy). Signing-key discovery via `brand_json_url` raises its own `request_signature_brand_*` and `request_signature_key_origin_*` codes, listed under [Discovering an agent's signing keys via `brand_json_url`](/docs/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url).
 
 ## Related
 

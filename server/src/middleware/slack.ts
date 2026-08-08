@@ -45,9 +45,9 @@ export function createSlackSignatureVerifier(
   appName: string = 'Slack'
 ): RequestHandler {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (!signingSecret) {
-      logger.warn(`${appName}: Signing secret not configured, skipping verification`);
-      next();
+    if (!signingSecret?.trim()) {
+      logger.error(`${appName}: Signing secret not configured; rejecting webhook`);
+      res.status(503).json({ error: 'Service unavailable' });
       return;
     }
 
@@ -61,7 +61,7 @@ export function createSlackSignatureVerifier(
     }
 
     const rawBody = (req as any).rawBody;
-    if (!rawBody) {
+    if (typeof rawBody !== 'string') {
       logger.warn(`${appName}: Raw body not captured for signature verification`);
       res.status(500).json({ error: 'Internal error' });
       return;

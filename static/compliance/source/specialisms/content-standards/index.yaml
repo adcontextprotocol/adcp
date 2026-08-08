@@ -50,6 +50,12 @@ prerequisites:
     The caller needs a brand identity and creative quality requirements. The test kit
     provides a sample brand with visual assets for calibration.
   test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  media_buys:
+    - media_buy_id: "content_standards_artifacts_mb_1"
+      status: "active"
 
 phases:
   - id: capability_discovery
@@ -577,4 +583,87 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "content_standards--validate_content_delivery"
+            description: "Context correlation_id returned unchanged"
+
+  - id: creative_feature_extraction
+    title: "Optional creative feature extraction"
+    narrative: |
+      Governance agents that implement `get_creative_features` can evaluate a
+      concrete creative manifest and return schema-valid scored features.
+
+    steps:
+      - id: get_creative_features
+        title: "Evaluate creative features"
+        task: get_creative_features
+        schema_ref: "creative/get-creative-features-request.json"
+        response_schema_ref: "creative/get-creative-features-response.json"
+        doc_ref: "/governance/creative/get_creative_features"
+        comply_scenario: creative_feature_extraction
+        requires_tool: get_creative_features
+        stateful: false
+        expected: |
+          Return a schema-valid results array for the submitted manifest.
+        sample_request:
+          creative_manifest:
+            creative_id: "content_standards_feature_test"
+            format_id:
+              agent_url: "https://your-platform.example.com"
+              id: "display_300x250"
+            assets:
+              image:
+                asset_type: "image"
+                url: "https://test-assets.adcontextprotocol.org/acme-outdoor/banner_300x250.jpg"
+                width: 300
+                height: 250
+              click_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/trail-pro"
+          context:
+            correlation_id: "content_standards--get_creative_features"
+        validations:
+          - check: response_schema
+            description: "Response matches get-creative-features-response.json schema"
+          - check: field_present
+            path: "results"
+            description: "Response includes evaluated feature results"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "content_standards--get_creative_features"
+            description: "Context correlation_id returned unchanged"
+
+  - id: media_buy_artifacts_retrieval
+    title: "Optional media-buy artifact retrieval"
+    narrative: |
+      Agents that implement `get_media_buy_artifacts` can read the seeded buy's
+      validation artifacts without making the experimental task a specialism gate.
+
+    steps:
+      - id: get_media_buy_artifacts
+        title: "Retrieve artifacts for a media buy"
+        task: get_media_buy_artifacts
+        schema_ref: "content-standards/get-media-buy-artifacts-request.json"
+        response_schema_ref: "content-standards/get-media-buy-artifacts-response.json"
+        doc_ref: "/governance/content-standards/tasks/get_media_buy_artifacts"
+        comply_scenario: media_buy_artifacts_retrieval
+        requires_tool: get_media_buy_artifacts
+        stateful: true
+        expected: |
+          Return a schema-valid artifact array scoped to the requested media buy.
+        sample_request:
+          media_buy_id: "content_standards_artifacts_mb_1"
+          context:
+            correlation_id: "content_standards--get_media_buy_artifacts"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-artifacts-response.json schema"
+          - check: field_value
+            path: "media_buy_id"
+            value: "content_standards_artifacts_mb_1"
+            description: "Response is scoped to the seeded media buy"
+          - check: field_present
+            path: "artifacts"
+            description: "Response includes the artifacts array"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "content_standards--get_media_buy_artifacts"
             description: "Context correlation_id returned unchanged"
