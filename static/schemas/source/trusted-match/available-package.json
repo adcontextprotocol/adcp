@@ -20,10 +20,17 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Creative format identifiers eligible for this package. Uses the standard AdCP format-id object with agent_url and id for unambiguous format resolution across namespaces.",
+      "deprecated": true,
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format identifiers eligible for this package. Use canonical `format_options`.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }
+    },
+    "format_options": {
+      "type": "array",
+      "description": "Canonical creative contracts eligible for this package. These are the seller-resolved package options, not a global agent format list.",
+      "items": { "$ref": "/schemas/core/product-format-declaration.json" },
+      "minItems": 1
     },
     "catalogs": {
       "type": "array",

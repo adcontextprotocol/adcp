@@ -90,7 +90,7 @@ export function createCreativeAgentRouter(): Router {
       agents: [{
         url: `${agentBaseUrl}/mcp`,
         type: 'creative',
-        capabilities: ['list_creative_formats', 'preview_creative'],
+        capabilities: ['get_adcp_capabilities', 'preview_creative'],
       }],
       last_updated: STARTUP_TIME,
     });

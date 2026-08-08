@@ -126,6 +126,7 @@ jobs:
           createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          HUSKY: '0'
 
       - name: Sign local protocol tarball if needed
         if: steps.changesets.outputs.published == 'true' || steps.release-artifacts.outputs.has_release_artifacts == 'true'

@@ -17,8 +17,9 @@
         }
       },
       "then": {
-        "required": [
-          "creative_manifest"
+        "anyOf": [
+          { "required": ["creative_manifest"] },
+          { "required": ["creative_id"] }
         ]
       }
     },
@@ -49,6 +50,44 @@
           "variant_id"
         ]
       }
+    },
+    {
+      "$comment": "A single request selects either an inline manifest or a library creative, never both.",
+      "not": {
+        "required": ["creative_manifest", "creative_id"]
+      }
+    },
+    {
+      "$comment": "Canonical and deprecated preview route selectors are mutually exclusive at the request level.",
+      "not": {
+        "required": ["target_capability_id", "format_id"]
+      }
+    },
+    {
+      "$comment": "A batch uses one routing generation: canonical capability selectors or deprecated named-format selectors, never both across defaults and items.",
+      "not": {
+        "anyOf": [
+          {
+            "allOf": [
+              { "required": ["target_capability_id", "requests"] },
+              { "properties": { "requests": { "contains": { "required": ["format_id"] } } } }
+            ]
+          },
+          {
+            "allOf": [
+              { "required": ["format_id", "requests"] },
+              { "properties": { "requests": { "contains": { "required": ["target_capability_id"] } } } }
+            ]
+          },
+          {
+            "allOf": [
+              { "required": ["requests"] },
+              { "properties": { "requests": { "contains": { "required": ["target_capability_id"] } } } },
+              { "properties": { "requests": { "contains": { "required": ["format_id"] } } } }
+            ]
+          }
+        ]
+      }
     }
   ],
   "properties": {
@@ -63,11 +102,17 @@
     },
     "creative_manifest": {
       "$ref": "/schemas/core/creative-manifest.json",
-      "description": "Complete creative manifest with all required assets for the format. Required when request_type is 'single'. Also accepted per item in batch mode."
+      "description": "Complete creative manifest with all required assets for the format. In single mode, provide exactly one of creative_manifest or creative_id. Also accepted per item in batch mode."
+    },
+    "target_capability_id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "description": "Canonical preview-operation selector. Identifies one get_adcp_capabilities creative.supported_formats[].capability_id entry whose operations contains preview. In single mode it selects the renderer for this request; in batch mode it is the default for items that omit their own target_capability_id. When omitted, the agent MAY resolve the renderer only if exactly one advertised preview capability satisfies the manifest's canonical declaration; zero matches or multiple matches MUST be rejected with FORMAT_NOT_SUPPORTED rather than choosing nondeterministically. Mutually exclusive with deprecated format_id."
     },
     "format_id": {
       "$ref": "/schemas/core/format-id.json",
-      "description": "Always a structured object {agent_url, id} — never a plain string. Format identifier for rendering the preview. Defaults to creative_manifest.format_id if omitted. Used in single mode."
+      "description": "**DEPRECATED in 3.2.** Legacy named-format preview route. New requests select an advertised preview renderer with target_capability_id and carry portable format identity in creative_manifest.format_kind plus optional creative_manifest.format_option_ref.",
+      "deprecated": true
     },
     "inputs": {
       "type": "array",
@@ -122,13 +167,24 @@
       "items": {
         "type": "object",
         "properties": {
+          "target_capability_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "description": "Canonical preview-operation selector for this batch item. Overrides the batch-level target_capability_id and MUST identify an advertised capability whose operations contains preview. If neither item nor batch supplies one, renderer inference is permitted only for a unique compatible preview capability."
+          },
           "format_id": {
             "$ref": "/schemas/core/format-id.json",
-            "description": "Format identifier for rendering the preview. Defaults to creative_manifest.format_id if omitted."
+            "description": "**DEPRECATED in 3.2.** Legacy named-format preview route. Use target_capability_id plus the canonical identity in creative_manifest.",
+            "deprecated": true
           },
           "creative_manifest": {
             "$ref": "/schemas/core/creative-manifest.json",
             "description": "Complete creative manifest with all required assets."
+          },
+          "creative_id": {
+            "type": "string",
+            "description": "Creative-library identifier. Use instead of creative_manifest to preview a stored canonical creative.",
+            "x-entity": "creative"
           },
           "inputs": {
             "type": "array",
@@ -178,8 +234,19 @@
             "description": "Maximum number of catalog items to render in this preview."
           }
         },
-        "required": [
-          "creative_manifest"
+        "anyOf": [
+          { "required": ["creative_manifest"] },
+          { "required": ["creative_id"] }
+        ],
+        "not": {
+          "required": ["target_capability_id", "format_id"]
+        },
+        "allOf": [
+          {
+            "not": {
+              "required": ["creative_manifest", "creative_id"]
+            }
+          }
         ],
         "additionalProperties": true
       },
@@ -192,8 +259,17 @@
     },
     "creative_id": {
       "type": "string",
-      "description": "Creative identifier for context. Used in variant mode.",
+      "description": "Creative-library identifier. In single mode, previews the stored canonical creative without requiring the caller to reconstruct its manifest. Also available as context in variant mode.",
       "x-entity": "creative"
+    },
+    "allow_async": {
+      "type": "boolean",
+      "default": false,
+      "description": "Opt in to an asynchronous preview response. When true, the creative agent MAY return status 'submitted' with a task_id only when rendering has been handed to a queue or external renderer and will continue after the request connection is released. Active processing on an open connection uses working progress instead. The buyer polls get_task_status for completion. When false or absent, the agent MUST return a synchronous preview response or a terminal protocol error; it MUST NOT return the submitted shape. This field applies to preview_creative only; build_creative already defines its own async lifecycle."
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/core/push-notification-config.json",
+      "description": "Optional webhook configuration for terminal completion/failure notifications when allow_async is true and preview_creative returns a submitted task envelope. Submitted tasks remain pollable through get_task_status whether or not this field is present. If the agent accepts this configuration and returns submitted, it MUST deliver at least the terminal notification; if it cannot honor the webhook, it MUST return a structured error. Presence of this field alone MUST NOT cause asynchronous execution."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

@@ -134,7 +134,7 @@ phases:
         comply_scenario: full_sales_flow
         stateful: false
         expected: |
-          Return at least one product with a pricing option and at least one format_id.
+          Return at least one product with a pricing option and one canonical format option.
         sample_request:
           buying_mode: "brief"
           brief: "Display inventory on outdoor lifestyle content for dependency-impairment testing."
@@ -151,16 +151,16 @@ phases:
             key: "product_id"
           - path: "products[0].pricing_options[0].pricing_option_id"
             key: "pricing_option_id"
-          - path: "products[0].format_ids[0].agent_url"
-            key: "format_agent_url"
-          - path: "products[0].format_ids[0].id"
-            key: "format_id"
+          - path: "products[0].format_options[0].format_kind"
+            key: "format_kind"
+          - path: "products[0].format_options[0].format_option_id"
+            key: "format_option_id"
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
           - check: field_present
-            path: "products[0].format_ids[0].id"
-            description: "Product exposes at least one format_id for creative sync"
+            path: "products[0].format_options[0].format_option_id"
+            description: "Product exposes at least one canonical format option for creative sync"
           - check: field_present
             path: "products[0].pricing_options[0].fixed_price"
             description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
@@ -232,9 +232,10 @@ phases:
           creatives:
             - creative_id: "acme_dep_banner_001"
               name: "Acme Outdoor dependency-test banner"
-              format_id:
-                agent_url: "$context.format_agent_url"
-                id: "$context.format_id"
+              format_kind: "$context.format_kind"
+              format_option_ref:
+                scope: "product"
+                format_option_id: "$context.format_option_id"
               assets:
                 image:
                   asset_type: "image"
@@ -561,9 +562,10 @@ phases:
           creatives:
             - creative_id: "acme_dep_banner_002"
               name: "Acme Outdoor dependency-test replacement banner"
-              format_id:
-                agent_url: "$context.format_agent_url"
-                id: "$context.format_id"
+              format_kind: "$context.format_kind"
+              format_option_ref:
+                scope: "product"
+                format_option_id: "$context.format_option_id"
               assets:
                 image:
                   asset_type: "image"

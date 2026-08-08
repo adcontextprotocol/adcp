@@ -14,6 +14,7 @@ The rules on this page layer AdCP-specific semantics onto A2A. Non-AdCP A2A agen
 - **Last-DataPart authority.** When multiple DataParts appear in one artifact (typical during streaming), the last one is authoritative. Earlier DataParts are superseded progress snapshots.
 - **First-DataPart for interim.** When multiple DataParts appear in `status.message.parts`, the first is used — interim updates are single-event snapshots, not accumulated.
 - **Wrapper rejection.** A DataPart whose `.data` is `{ response: {...} }` (single key named `response`) is treated as a framework-wrapper bug, not a valid payload.
+- **Two status layers.** `task.status.state` is the A2A transport lifecycle; the extracted DataPart is the complete AdCP response and carries its own `status`. They normally align, but a structured AdCP business rejection uses A2A `completed` with DataPart `status: "rejected"` because the transport call succeeded.
 
 ## Wire-Format Compatibility
 
@@ -34,7 +35,7 @@ The extraction location depends on the task's status. State names in this table 
 | `completed` | Final | `.artifacts[0].parts[]` (fallback: `status.message.parts[]`) | Last DataPart |
 | `failed` | Final | `.artifacts[0].parts[]` (fallback: `status.message.parts[]`) | Last DataPart |
 | `canceled` | Final | `.artifacts[0].parts[]` | Last DataPart (typically none) |
-| `rejected` | Final (1.0) | `.artifacts[0].parts[]` | Last DataPart (carries `adcp_error` for policy/validation rejections) |
+| `rejected` | Final transport rejection (1.0) | `.artifacts[0].parts[]` | Last DataPart (normally carries `adcp_error`) |
 | `working` | Interim | `status.message.parts[]` | First DataPart |
 | `submitted` | Interim | `status.message.parts[]` | First DataPart |
 | `input-required` | Interim | `status.message.parts[]` | First DataPart |
@@ -42,7 +43,9 @@ The extraction location depends on the task's status. State names in this table 
 
 Final states fall back to `status.message.parts[]` when `.artifacts` is absent or empty — this covers servers that put a final payload in the status message rather than a separate artifact.
 
-Canceled tasks rarely carry data — extraction returns null when no DataPart is present, which is the expected case. Rejected tasks are expected to carry an `adcp_error` DataPart describing why the request was rejected (tier/policy/validation).
+Canceled tasks rarely carry data — extraction returns null when no DataPart is present, which is the expected case. Native A2A `rejected` tasks are transport rejections and are expected to carry an `adcp_error` DataPart describing why the call was rejected (tier/policy/validation).
+
+An AdCP structured business rejection is different. The seller successfully handled the call and produced a typed result, so A2A uses `task.status.state: "completed"`; the authoritative DataPart carries `status: "rejected"`, `reason`, and any task-specific fields. Extractors MUST return the DataPart unchanged and MUST NOT overwrite its `status` with the A2A transport state.
 
 ## Extraction Algorithm
 
@@ -53,7 +56,7 @@ Clients MUST extract AdCP data from A2A responses using these steps:
    Unwrap **exactly once**. Clients MUST NOT recurse. If the unwrapped inner object itself has the single-key envelope shape (`{ task: { task: {...} } }` or any combination), treat as malformed and return null — this is a nested-envelope smuggling attempt. An envelope whose inner value's top-level keys include any of `task` / `message` / `statusUpdate` / `artifactUpdate` MUST be rejected.
 
    Bare `{ message }` envelopes (out-of-band agent messages) MUST be ignored by task-oriented extractors — step 1 returns null when the unwrapped object has no `status.state`. Webhook/SSE handlers MUST NOT return a `200 OK` acknowledgment for unrecognized `{ message }` envelopes; return `400 Bad Request` or silently discard at the transport layer to avoid acting as a presence oracle for attackers probing endpoints.
-1. **Read `status.state`.** If absent, return null. Normalize to lowercase form (`TASK_STATE_COMPLETED` → `completed`) before comparing. After normalization, the state MUST match one of the known final/interim tokens by **exact ASCII string equality**. Clients MUST NOT collapse repeated separators, trim whitespace, or apply Unicode case-folding beyond ASCII lowercase. Any other value — including novel `TASK_STATE_*` inputs the client does not recognize — is "unknown" and extraction returns null (step 4).
+1. **Read `status.state`.** If absent, return null. Normalize to lowercase form (`TASK_STATE_COMPLETED` → `completed`) before comparing. After normalization, the state MUST match one of the known final/interim tokens by **exact ASCII string equality**. Clients MUST NOT collapse repeated separators, trim whitespace, or apply Unicode case-folding beyond ASCII lowercase. Any other value — including novel `TASK_STATE_*` inputs the client does not recognize — is "unknown" and extraction returns null (step 4). This state selects the extraction location; it does not replace a `status` field present in the extracted AdCP DataPart.
 2. **Final states** (`completed`, `failed`, `canceled`, `rejected`):
    a. Look in `artifacts[0].parts[]` for DataParts (a Part whose `data` field is a non-null object — regardless of whether `kind` is present).
    b. Use the **last** DataPart as authoritative (see [Last-DataPart Authority](#last-datapart-authority)).

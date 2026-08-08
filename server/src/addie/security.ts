@@ -368,6 +368,7 @@ export function logInteraction(log: AddieInteractionLog): void {
       userId: log.user_id,
       channelId: log.channel_id,
       latencyMs: log.latency_ms,
+      deliveryStatus: log.delivery_status,
       toolsUsed: log.tools_used,
       flagged: log.flagged,
       flagReason: log.flag_reason,

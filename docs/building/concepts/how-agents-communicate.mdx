@@ -82,27 +82,26 @@ The response includes product IDs, pricing models (CPM, CPC, flat rate), availab
 
 ### Creative specs
 
-Before submitting creatives, the agent checks what formats the platform accepts by calling `list_creative_formats`. The response includes structured format objects with dimensions, accepted file types, and rendering roles:
+Before submitting creatives, the agent reads the product's canonical `format_options[]`. The declaration is already complete: it carries the accepted canonical kind, parameters, and asset slots.
 
 ```json
 {
-  "formats": [
+  "format_options": [
     {
-      "format_id": {
-        "agent_url": "https://ads.publisher.example.com",
-        "id": "video_preroll_16x9"
-      },
-      "name": "Pre-roll video (16:9)",
-      "renders": [{
-        "role": "primary",
-        "dimensions": { "width": 1920, "height": 1080, "unit": "px" }
-      }]
+      "format_option_id": "video_preroll_16x9",
+      "publisher_domain": "streamhaus.example",
+      "format_kind": "video_hosted",
+      "params": {
+        "width": 1920,
+        "height": 1080,
+        "slots": [{ "asset_group_id": "video_main", "asset_type": "video", "required": true }]
+      }
     }
   ]
 }
 ```
 
-The agent then submits matching creatives via `build_creative`, which generates or adapts ads to the platform's requirements.
+When production is needed, the buyer finds a compatible creative agent through the registry and selects one of that agent's `creative.supported_formats[]` entries with `build_creative.target_capability_id`.
 
 ### Audience data
 
@@ -145,7 +144,7 @@ The agent calls `get_products` on all three platforms in parallel. It receives s
 
 ### Check creative requirements
 
-The agent calls `list_creative_formats` on each platform and identifies common formats across all three, reducing creative production to a shared set.
+The agent compares the products' canonical `format_options[]` declarations and identifies a compatible shared constraint envelope across all three, reducing creative production to a shared set.
 
 ### Execute buys
 

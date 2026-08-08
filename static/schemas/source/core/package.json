@@ -15,9 +15,22 @@
       "description": "ID of the product this package is based on. For packages created from an explicit create_media_buy package request, sellers MUST echo the request package's product_id on every response package object that represents that requested package.",
       "x-entity": "product"
     },
+    "audience_evidence_selections": {
+      "type": "array",
+      "description": "Exact immutable audience-evidence snapshots that affected recommendation, eligibility, or package construction. A confirmed package MUST include a package_construction selection matching every buyer audience_evidence_pin and every snapshot used to satisfy package audience_evidence_requirements; this readback remains mandatory on subsequent package read surfaces. This is decision provenance only; applied targeting remains exclusively in targeting_overlay and demographic_targeting_resolution.",
+      "items": {
+        "$ref": "/schemas/core/audience-evidence-selection.json"
+      },
+      "minItems": 1
+    },
     "budget": {
       "type": "number",
-      "description": "Budget allocation for this package in the currency specified by the pricing option",
+      "description": "Hard lifetime spend cap for this package in the media-buy currency. Every selected pricing option in an AdCP-authored media buy MUST declare that same currency. In seller-optimized allocation mode this is a ceiling, not a current allocation. May be omitted when the package is bounded only by the shared media-buy total.",
+      "minimum": 0
+    },
+    "min_spend_target": {
+      "type": "number",
+      "description": "Soft lifetime spend target accepted for this package under seller-optimized budget allocation. This is an allocation preference, not a billing or delivery guarantee.",
       "minimum": 0
     },
     "pacing": {
@@ -30,8 +43,15 @@
     },
     "bid_price": {
       "type": "number",
-      "description": "Bid price for auction-based pricing. This is the exact bid/price to honor unless the selected pricing option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
+      "deprecated": true,
+      "description": "DEPRECATED legacy bidding representation. 3.2 sellers normalize accepted legacy input and SHOULD echo bidding instead. Removed in the next major.",
       "minimum": 0
+    },
+    "bidding": {
+      "allOf": [
+        { "$ref": "/schemas/core/bidding-policy.json" }
+      ],
+      "description": "Package-authored bidding policy, echoed only when the buyer authored a package override. `{automatic:true}` is an explicit automatic-bidding override. Omission means the package inherits media-buy bidding or, when both scopes are absent, uses provider automatic delivery. Monetary fields are denominated in the media-buy currency. Sellers MUST NOT materialize inherited media-buy policy here."
     },
     "price_breakdown": {
       "description": "Breakdown of the effective price for this package. On fixed-price packages, echoes the pricing option's breakdown. On auction packages, shows the clearing price breakdown including any commission or settlement terms.",
@@ -51,7 +71,8 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Legacy named-format IDs supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it, including dual-emission cases where `format_option_refs` was the winning selector, so read surfaces preserve the original wire contract. Omitted means the request did not carry legacy format_ids unless the seller cannot reconstruct legacy requests created before this field was persisted.",
+      "deprecated": true,
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format IDs supplied for this package on create_media_buy. Sellers SHOULD echo this field whenever the request included it, including dual-emission cases where `format_option_refs` was the winning selector, so read surfaces preserve the original wire contract. Omitted means the request did not carry legacy format_ids unless the seller cannot reconstruct legacy requests created before this field was persisted.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }
@@ -116,9 +137,33 @@
         "$ref": "/schemas/core/creative-assignment.json"
       }
     },
+    "formats_to_provide": {
+      "type": "array",
+      "description": "Canonical creative contracts that the buyer must satisfy for this package. Each entry is a package-time snapshot of a selected Product.format_options declaration (or the equivalent declaration normalized from a direct format_kind + params selector) and MUST equal or narrow that product contract. Full declarations keep the requirement stable if the live product or publisher catalog later changes and remain usable when format_option_id is absent. Sellers SHOULD emit this field whenever additional creative coverage is required.",
+      "items": {
+        "$ref": "/schemas/core/product-format-declaration.json"
+      },
+      "minItems": 1
+    },
+    "formats_pending": {
+      "type": "array",
+      "description": "The declarations from formats_to_provide that do not yet have creative coverage through sync_creatives or inline creative assignment. An empty emitted array means every required format is covered. Absence means readiness was not reported, so buyers MUST NOT infer full coverage from omission. Sellers SHOULD emit this field with formats_to_provide when returning current package readiness.",
+      "items": {
+        "$ref": "/schemas/core/product-format-declaration.json"
+      }
+    },
     "format_ids_to_provide": {
       "type": "array",
-      "description": "Format IDs that creative assets will be provided for this package",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.2.** Legacy named-format projection of formats_to_provide retained for older 3.x peers. New sellers emit canonical formats_to_provide declarations.",
+      "items": {
+        "$ref": "/schemas/core/format-id.json"
+      }
+    },
+    "format_ids_pending": {
+      "type": "array",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.2.** Legacy named-format projection of formats_pending retained for older 3.x peers. New sellers emit canonical formats_pending declarations. An empty emitted array means every projected requirement is covered. Absence means legacy readiness was not reported and MUST NOT be interpreted as full coverage.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }
@@ -199,6 +244,35 @@
   },
   "required": [
     "package_id"
+  ],
+  "allOf": [
+    {
+      "not": {
+        "required": ["bidding", "bid_price"]
+      }
+    },
+    {
+      "if": { "required": ["bidding"] },
+      "then": {
+        "properties": {
+          "optimization_goals": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "target": {
+                    "properties": {
+                      "kind": { "enum": ["cost_per", "per_ad_spend"] }
+                    },
+                    "required": ["kind"]
+                  }
+                },
+                "required": ["target"]
+              }
+            }
+          }
+        }
+      }
+    }
   ],
   "dependencies": {
     "params": ["format_kind"]

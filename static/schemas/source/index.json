@@ -61,6 +61,22 @@
           "$ref": "/schemas/core/creative-asset.json",
           "description": "Creative asset for upload to library - supports static assets, generative formats, and third-party ad serving (VAST, DAAST, HTML, JavaScript)"
         },
+        "locale-tag": {
+          "$ref": "/schemas/core/locale-tag.json",
+          "description": "BCP 47 language-identity tag using the AdCP canonical wire profile — required shared primitive for new language-bearing fields"
+        },
+        "creative-localization": {
+          "$ref": "/schemas/core/creative-localization.json",
+          "description": "Explicit source and target locale variants requested on a creative"
+        },
+        "localized-creative-asset": {
+          "$ref": "/schemas/core/localized-creative-asset.json",
+          "description": "Creative variant asset with contextual language-tag conformance"
+        },
+        "creative-localization-readback": {
+          "$ref": "/schemas/core/creative-localization-readback.json",
+          "description": "Exact materialized locale assets, buyer-assigned identities, and matching policy"
+        },
         "account": {
           "$ref": "/schemas/core/account.json",
           "description": "Billing account representing who pays for advertising. Accounts have rate cards, payment terms, and platform mappings."
@@ -89,6 +105,26 @@
           "$ref": "/schemas/core/demographic-targeting-resolution.json",
           "description": "Requested, applied, execution, and exact-equivalence demographic readback"
         },
+        "audience-characteristic": {
+          "$ref": "/schemas/core/audience-characteristic.json",
+          "description": "Machine-comparable audience dimension and value or range"
+        },
+        "audience-evidence": {
+          "$ref": "/schemas/core/audience-evidence.json",
+          "description": "Immutable population-level audience composition, affinity, or reach evidence"
+        },
+        "audience-evidence-requirements": {
+          "$ref": "/schemas/core/audience-evidence-requirements.json",
+          "description": "Buyer-authored audience-evidence admissibility and ranking policy"
+        },
+        "audience-evidence-pin": {
+          "$ref": "/schemas/core/audience-evidence-pin.json",
+          "description": "Buyer commitment pin for an exact immutable audience-evidence snapshot"
+        },
+        "audience-evidence-selection": {
+          "$ref": "/schemas/core/audience-evidence-selection.json",
+          "description": "Digest-pinned package readback for evidence used in a decision"
+        },
         "duration": {
           "$ref": "/schemas/core/duration.json",
           "description": "A time duration with value and unit (hours or days)"
@@ -111,7 +147,8 @@
         },
         "format": {
           "$ref": "/schemas/core/format.json",
-          "description": "Represents a creative format with its requirements"
+          "description": "Deprecated 3.x named-format compatibility definition; use ProductFormatDeclaration canonical contracts for new integrations.",
+          "deprecated": true
         },
         "overlay": {
           "$ref": "/schemas/core/overlay.json",
@@ -177,9 +214,33 @@
           "$ref": "/schemas/core/generation-credential.json",
           "description": "Scoped credential for generating rights-cleared content via LLM providers"
         },
+        "attestation-issuer": {
+          "$ref": "/schemas/core/attestation-issuer.json",
+          "description": "Typed canonical identity of an attestation credential issuer"
+        },
+        "attestation-subject": {
+          "$ref": "/schemas/core/attestation-subject.json",
+          "description": "Typed identity of the entity or object an attestation concerns"
+        },
+        "attestation-reference": {
+          "$ref": "/schemas/core/attestation-reference.json",
+          "description": "Reference-first presentation of an independently issued claim"
+        },
+        "attestation-capabilities": {
+          "$ref": "/schemas/core/attestation-capabilities.json",
+          "description": "Evaluator allowlist and supported attestation delivery and proof formats"
+        },
+        "attestation-evaluation": {
+          "$ref": "/schemas/core/attestation-evaluation.json",
+          "description": "Evaluator-of-record result bound to an exact attestation presentation"
+        },
+        "rights-attestation-evaluation": {
+          "$ref": "/schemas/core/rights-attestation-evaluation.json",
+          "description": "Seller-produced rights-grant presentation and evaluation readback"
+        },
         "rights-constraint": {
           "$ref": "/schemas/core/rights-constraint.json",
-          "description": "Rights metadata attached to creative manifests for tracking validity and constraints"
+          "description": "Digest-pinned rights metadata and portable issuer-attestation references attached to creatives"
         },
         "pagination-request": {
           "$ref": "/schemas/core/pagination-request.json",
@@ -244,6 +305,14 @@
         "proposal": {
           "$ref": "/schemas/core/proposal.json",
           "description": "A proposed media plan with budget allocations across products - actionable via create_media_buy"
+        },
+        "budget-allocation": {
+          "$ref": "/schemas/core/budget-allocation.json",
+          "description": "Fixed or seller-optimized allocation of a media-buy total budget across packages"
+        },
+        "bidding-policy": {
+          "$ref": "/schemas/core/bidding-policy.json",
+          "description": "Buyer-authored bidding, average-cost, or return policy at media-buy or package scope"
         },
         "insertion-order": {
           "$ref": "/schemas/core/insertion-order.json",
@@ -475,6 +544,7 @@
         },
         "signal-pricing-option": {
           "$ref": "/schemas/core/signal-pricing-option.json",
+          "deprecated": true,
           "description": "Deprecated — alias for vendor-pricing-option.json. Retained for backward compatibility. Prefer vendor-pricing-option.json for new implementations."
         },
         "vendor-pricing-option": {
@@ -997,6 +1067,7 @@
         },
         "legacy-postal-system": {
           "$ref": "/schemas/enums/legacy-postal-system.json",
+          "deprecated": true,
           "description": "Deprecated country-fused postal code systems for compatibility (us_zip, gb_outward, ca_fsa, etc.)"
         },
         "age-verification-method": {
@@ -1212,6 +1283,10 @@
     "media-buy": {
       "description": "Media buy task request/response schemas",
       "supporting-schemas": {
+        "get-products-rejected": {
+          "$ref": "/schemas/media-buy/get-products-rejected.json",
+          "description": "Terminal business rejection arm for a well-formed get_products brief or refinement"
+        },
         "package-request": {
           "$ref": "/schemas/media-buy/package-request.json",
           "description": "Package configuration for media buy creation - used within create_media_buy request"
@@ -1235,11 +1310,13 @@
         "list-creative-formats": {
           "request": {
             "$ref": "/schemas/media-buy/list-creative-formats-request.json",
-            "description": "Request parameters for discovering format IDs and creative agents supported by this sales agent"
+            "deprecated": true,
+            "description": "Deprecated 3.x compatibility request. Sales agents publish canonical sellable formats through get_products Product.format_options[]."
           },
           "response": {
             "$ref": "/schemas/media-buy/list-creative-formats-response.json",
-            "description": "Response payload with format_ids and creative_agents list. Sales agent returns which formats it supports and which creative agents provide those formats. Buyers query creative agents for full format specifications."
+            "deprecated": true,
+            "description": "Deprecated 3.x compatibility response for legacy named formats. Not a sales-agent deliverability contract."
           }
         },
         "create-media-buy": {
@@ -1360,11 +1437,13 @@
         "list-creative-formats": {
           "request": {
             "$ref": "/schemas/creative/list-creative-formats-request.json",
-            "description": "Request parameters for discovering creative formats from this creative agent"
+            "deprecated": true,
+            "description": "Deprecated 3.x compatibility request; use get_adcp_capabilities creative.supported_formats[]."
           },
           "response": {
             "$ref": "/schemas/creative/list-creative-formats-response.json",
-            "description": "Response payload with full format definitions - this is the authoritative source for format specifications"
+            "deprecated": true,
+            "description": "Deprecated 3.x compatibility response for legacy named formats."
           }
         },
         "list-transformers": {
@@ -1895,6 +1974,18 @@
         "provider-registration": {
           "$ref": "/schemas/trusted-match/provider-registration.json",
           "description": "TMP provider registration — endpoint, capabilities, and operational parameters for router configuration"
+        },
+        "provider-identity-match-response": {
+          "$ref": "/schemas/trusted-match/provider-identity-match-response.json",
+          "description": "Provider-to-router Identity Match response shape — carries ordered TMPX `{slot_id, value}` chunks with no publisher-local names"
+        },
+        "publisher-tmpx-config": {
+          "$ref": "/schemas/trusted-match/publisher-tmpx-config.json",
+          "description": "Publisher-owned deployment configuration that maps (provider_id, slot_id) to the ad-server macro name, GAM key-value, VAST substitution, or play-log field for that surface"
+        },
+        "tmpx-chunk": {
+          "$ref": "/schemas/trusted-match/tmpx-chunk.json",
+          "description": "A single TMPX chunk — provider-local slot_id and opaque URL-safe value; shared between provider→router and router→publisher hops"
         }
       },
       "operations": {

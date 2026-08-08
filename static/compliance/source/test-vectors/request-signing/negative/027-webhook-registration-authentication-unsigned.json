@@ -1,6 +1,7 @@
 {
   "name": "Webhook registration with push_notification_config.authentication over bearer (unsigned); seller supports request signing but operation is NOT in required_for",
   "spec_reference": "#webhook-security Downgrade and injection resistance — MUST require 9421 when authentication is present",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

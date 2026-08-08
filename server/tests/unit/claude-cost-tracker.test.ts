@@ -3,6 +3,7 @@ import {
   checkCostCap,
   recordCost,
   formatCapExceededMessage,
+  releaseCertificationReserve,
   resolveUserTier,
   buildSlackCostOptions,
   DAILY_BUDGET_USD,
@@ -36,6 +37,45 @@ describe('checkCostCap', () => {
     expect(result.ok).toBe(true);
     expect(result.remainingUsd).toBe(DAILY_BUDGET_USD.member_free);
     expect(result.spentCents).toBe(0);
+  });
+
+  it('uses a bounded certification reserve after the normal tier budget', async () => {
+    // $5.50 exceeds the free-member budget but stays within a $1 completion reserve.
+    await recordCost('u-certification', 'claude-sonnet-4-6', {
+      input_tokens: 1_833_334,
+      output_tokens: 0,
+    });
+
+    expect((await checkCostCap('u-certification', 'member_free')).ok).toBe(false);
+    const withReserve = await checkCostCap('u-certification', 'member_free', {
+      certificationReserveUsd: 1,
+    });
+    expect(withReserve.ok).toBe(true);
+    expect(withReserve.usedCertificationReserve).toBe(true);
+    expect(withReserve.remainingUsd).toBeCloseTo(0.5, 4);
+  });
+
+  it('admits only one concurrent completion-reserve call per user', async () => {
+    await recordCost('u-reserve-lease', 'claude-sonnet-4-6', {
+      input_tokens: 1_833_334,
+      output_tokens: 0,
+    });
+    const first = await checkCostCap('u-reserve-lease', 'member_free', {
+      certificationReserveUsd: 1,
+    });
+    const concurrent = await checkCostCap('u-reserve-lease', 'member_free', {
+      certificationReserveUsd: 1,
+    });
+
+    expect(first.ok).toBe(true);
+    expect(first.certificationLeaseId).toBeTruthy();
+    expect(concurrent.ok).toBe(false);
+    expect(concurrent.reserveBusy).toBe(true);
+
+    await releaseCertificationReserve('u-reserve-lease', first.certificationLeaseId);
+    expect((await checkCostCap('u-reserve-lease', 'member_free', {
+      certificationReserveUsd: 1,
+    })).ok).toBe(true);
   });
 
   it('blocks the call that crosses the daily budget', async () => {
@@ -180,7 +220,7 @@ describe('formatCapExceededMessage', () => {
       tier: 'member_free',
     });
     expect(msg).toContain('daily conversation limit');
-    expect(msg).toContain('try again tomorrow');
+    expect(msg).toContain('try again in about 1 hour');
     expect(msg).toContain('/dashboard/membership');
     expect(msg).toContain('Upgrade');
     expect(msg).not.toContain('$5.50');

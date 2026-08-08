@@ -1,6 +1,7 @@
 {
   "name": "Content-Digest header does not match SHA-256 of received body",
   "spec_reference": "#verifier-checklist-requests step 11",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

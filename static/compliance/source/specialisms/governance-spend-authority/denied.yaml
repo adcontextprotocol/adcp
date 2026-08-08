@@ -177,6 +177,7 @@ phases:
         sample_request:
           plan_id: "$context.plan_id"
           caller: "https://pinnacle-agency.example"
+          target_agent: "https://seller.example.com"
           tool: "create_media_buy"
           payload:
             idempotency_key: "$generate:uuid_v4#governance_spend_authority_denied_check_governance_denied_payload"

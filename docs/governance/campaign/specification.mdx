@@ -137,19 +137,32 @@ Callers MAY set `human_review_required: true` explicitly on a plan even when no 
 
 Buyer-side governance invocation is enforceable, not advisory. When a governance agent is configured on the plan, the buyer agent MUST invoke [`check_governance`](/docs/governance/campaign/tasks/check_governance) before sending any spend-commit request to a seller — full stop — producing an **intent-phase** `governance_context` token to attach to that request. The governance agent decides internally whether to auto-approve, apply conditions, deny, or escalate to human review per the plan's `budget.reallocation_threshold` and `human_review_required` fields. No dollar figures, no baseline arithmetic, no operator-declared floors appear in the invocation rule — those auto-approve fast-paths belong inside the governance agent's own policy, not in the buyer's decision about whether to call at all.
 
-#### Spend-commit tasks
+#### Governed commitment operations
 
-The invocation MUST applies to every AdCP task that attaches financial obligation at the moment of the request:
+Request schemas use `x-governed-commitment` to declare whether every invocation commits (`scope: always`) or only commitment-increasing effects do (`scope: conditional`). Conditional annotations list both triggers and fail-safe exemptions. Cancellation, pause, deactivation, and decrease-only changes MUST remain available during a governance outage or denial; governance must not prevent risk-reducing cleanup.
+
+For conditional tasks, services evaluate the **effective state delta**, not the presence of one request field in isolation. `trigger_overrides_exemption` is the mandatory precedence rule: an exemption applies only when the entire effective delta is risk-reducing or cost-free. If any part of a mixed request creates a trigger, the whole atomic request requires governance. Evaluation is task-specific:
+
+- `update_media_buy`: load the current buy at the requested revision and compare the atomic result. Any higher committed budget, later end, resume, new package, or movement into materially different delivery is a trigger. Cancel, pause, or a pure decrease is exempt only when no triggering change is bundled.
+- `update_rights`: load the current grant. Any higher price or cap, later end, resume, or pricing-option change is a trigger. Pause or a pure decrease is exempt only when no trigger is bundled.
+- `activate_signal`: `activate` triggers; `deactivate` is exempt.
+- `build_creative`: resolve the selected pricing option before execution. A positive vendor charge triggers; an estimate-only call or retrieval with zero vendor charge is exempt. If the service cannot establish zero cost before execution, it treats the request as triggering.
+
+The strings in `triggers` and `exemptions` are stable audit labels, not JSON paths. Implementations use the algorithms above and MUST evaluate against authoritative current resource state in the same concurrency boundary as the eventual write.
+
+The invocation requirement covers:
 
 - [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) — committed budget across packages
-- [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) — incremental commit delta (new budget − previously committed)
+- [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) — increases, extensions, resumptions, and reallocations; cancellation, pause, and decrease-only updates are exempt
 - [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights) — rights pricing
-- [`update_rights`](/docs/brand-protocol/tasks/update_rights) — incremental commit delta
-- [`activate_signal`](/docs/signals/tasks/activate_signal) — activation fees
-- [`build_creative`](/docs/creative/task-reference/build_creative) — creative generation fees
+- [`update_rights`](/docs/brand-protocol/tasks/update_rights) — increases, extensions, resumptions, and pricing changes; pause and decrease-only updates are exempt
+- [`activate_signal`](/docs/signals/tasks/activate_signal) — activation only; deactivation is exempt
+- [`build_creative`](/docs/creative/task-reference/build_creative) — executions that incur vendor cost; estimates and zero-cost retrieval are exempt
 - Any future spend-commit task
 
-Invocation is NOT required for discovery tasks (e.g., `get_products`, `get_signals`), reporting tasks (e.g., `get_media_buy_delivery`), or operational-status tasks. The MUST fires specifically at the moment of financial obligation.
+When a task payload contains its numeric commitment directly, the governance agent evaluates that field. `update_media_buy` is the important exception: the buyer computes the positive delta from its last confirmed revision and sends it as `proposed_commitment`; the governance agent treats that declaration as a ceiling and does not need access to seller-internal buy state. When a task identifies price only indirectly (for example a rights or signal `pricing_option_id`), the intent check likewise MUST include task-neutral `proposed_commitment: {amount, currency}`. Amount `0` is an explicit assertion that the resolved action is no-cost, not an omission. The intent separately names the exact downstream `target_agent`; that role-neutral routing field becomes the token audience and is not injected into the business payload. An approval signs the ceiling into `governance_context.authorized_commitment` and binds the exact task and business request with critical `authorized_task` and `authorized_payload_hash` claims. The payload hash is JCS/SHA-256 over the downstream task request excluding exactly the top-level governance/transport fields `governance_context` and `context`; `idempotency_key` and every business field remain bound. The downstream service recomputes that hash, compares its independently computed price or positive update delta and currency with the signed ceiling, and rejects any task, payload, amount, or currency mismatch. A governance agent that can resolve a pricing identifier itself MUST also reject a conflicting declaration. The approved ceiling is retained for outcome reconciliation; a lower report after execution cannot restore headroom.
+
+Invocation is NOT required for discovery tasks, reporting tasks, operational-status tasks, or the explicit risk-reducing exemptions above. The MUST fires specifically when an operation creates, increases, extends, reallocates, or resumes an obligation.
 
 When no governance agent is configured on the plan, `check_governance` invocation is neither required nor meaningful — there is nothing to call. Sellers MAY refuse to transact on plans lacking a configured governance agent as a matter of their own commercial policy (enterprise sellers typically will); the protocol does not mandate one, and the brand's published configuration is how a seller discovers whether one exists.
 
@@ -157,9 +170,15 @@ Orchestrators fanning out the same plan to multiple sellers produce one intent t
 
 #### Seller enforcement
 
-A seller receiving a spend-commit request for a plan with a configured governance agent MUST require a valid, in-date **intent-phase** `governance_context` token on the request, verified per the [seller verification checklist](/docs/building/by-layer/L1/security#seller-verification-checklist). The token MUST carry `phase: "intent"`, match the request's `plan_id` (via `sub`), and be addressed (`aud`) to this seller. A request without a token, with a token that fails verification, or with a token issued for a different plan, a different seller, or a non-intent phase MUST be rejected with `PERMISSION_DENIED`. The seller then performs its own execution check by calling `check_governance` with `planned_delivery` and the received `governance_context`; that call produces the `purchase`-phase token (bound to the seller-assigned `media_buy_id`) used for the remainder of the media buy lifecycle. This two-step flow is what makes the buyer-side MUST real: a buyer that skips `check_governance` cannot produce a valid intent token, and the spend-commit is rejected before the seller ever reaches its execution check.
+A service receiving a governed commitment MUST require a valid, in-date **intent-phase** `governance_context` token on the request, verified per the [verification checklist](/docs/building/by-layer/L1/security#seller-verification-checklist). The token MUST carry `phase: "intent"` and be addressed (`aud`) to this service. The service does not need the buyer's `plan_id`: the opaque token is the authoritative plan binding, and the issuing governance agent recovers the plan from it. A request without a token, with a token that fails verification, or with a token issued for a different audience or phase MUST be rejected with `PERMISSION_DENIED`.
 
-Sellers MUST persist the accepted intent token and any lifecycle tokens they subsequently hold, keyed at minimum by `jti` with `iss`, `aud`, `sub` (plan_id), `phase`, decision outcome, and the timestamp of acceptance. Retention follows the seller's regulatory retention period. Without seller-side retention, the audit log is single-sourced from the governance agent; independent reconciliation between seller records and `get_plan_audit_logs` is the cross-check that catches a compromised or misbehaving governance agent.
+Applicability is resolved from the commercial account, not from token presence. A service advertising `governance_enforcement` for a task MUST be able to resolve that invocation to an account: from `account` on a create/activation/build/acquisition, or from the authoritative resource owner on an update. If neither is possible, it rejects with `ACCOUNT_REQUIRED` rather than guessing whether governance applies. Once resolved, a registered governance agent means the applicable commitment requires a token; no registered agent means the operation may proceed without one. A supplied token is always verified even when registration lookup says none. This conditional account requirement is part of the experimental capability claim even where a legacy request schema keeps `account` optional for 3.x compatibility.
+
+For any task declared with `signed_context`, the service commits only after verifying the approved context. Media-buy tasks may additionally declare `online_execution_check`; those services follow **prepare → check → commit** by computing `planned_delivery` without externally committing it, calling `check_governance`, and committing atomically only after `approved`. Execution checks return `approved` or `denied`. Other roles do not claim online execution checking until AdCP defines a prepared-result contract for that role; they MUST NOT invent `planned_delivery` or `media_buy_id` values.
+
+Identity is role-specific. On the buyer's intent check, `caller` is the authenticated buyer-side principal and is evaluated against `delegations`; `approved_sellers` is evaluated against the target service that becomes the token `aud`, never against that buyer. Every later execution check resolves that original intent by its opaque action binding before evaluating delegation—the immediately prior check's caller may be the seller. On an execution check, the authenticated `caller` MUST equal the audience preserved from the approved intent, and that seller identity is evaluated against `approved_sellers`. The execution commitment may narrow the approved intent but MUST use the same currency and MUST NOT exceed the intent's `authorized_commitment`. For `update_media_buy`, the seller computes `max(0, new committed total − authoritative current total)` atomically with its revision check and write, enforces the signed intent ceiling, and reports that value as `execution_commitment`; the governance agent never infers a delta by reading seller state or subtracting from the seller's post-update total. A buyer/seller delta mismatch fails closed and requires a fresh intent.
+
+Sellers MUST persist the accepted intent token and any lifecycle tokens they subsequently hold, keyed at minimum by `jti` with `iss`, `aud`, the opaque action binding in `sub`, `phase`, decision outcome, and the timestamp of acceptance. They MUST NOT treat `sub` as a plan identifier. Retention follows the seller's regulatory retention period. Without seller-side retention, the audit log is single-sourced from the governance agent; independent reconciliation between seller records and `get_plan_audit_logs` is the cross-check that catches a compromised or misbehaving governance agent.
 
 Seller-side governance (if the seller itself has configured a governance agent on the account) is an **independent layer**. A buyer's successful `check_governance` does not obligate the seller to accept the request; the seller's own compliance policies MAY still reject the action via `PERMISSION_DENIED`.
 
@@ -175,11 +194,12 @@ Every `check_governance` invocation MUST produce an audit log entry — retrieva
 4. Human actor identity and authority, when a human signal was recorded
 5. `check_id` for cross-reference from the downstream spend-commit task's audit entry and from `report_plan_outcome`
 
-The buyer-side intent check and the seller-side execution check each produce a distinct `check_id`; `report_plan_outcome` correlates via `plan_id` rather than a single check identifier. Auditors reconstructing a spend-commit reconcile the buyer-side entry, the seller-side entry, and the seller's persisted token record.
+The buyer-side intent check and any seller-side execution check each produce a distinct `check_id`, while the opaque action binding in their signed `sub` remains stable. For completed or failed outcomes, `report_plan_outcome` MUST carry an exact `check_id`, `plan_id`, and `governance_context` tuple from an approved decision in that action lifecycle. The authenticated reporter MUST be the buyer-side caller from the original intent, and `purchase_type` MUST match that intent. The governance agent rejects mismatched tuples and permits only one terminal settlement per opaque action binding, regardless of whether a report names the intent or execution check (apart from an identical idempotent cached replay). Auditors reconcile that intent entry with any execution entry and the service's persisted token record. The report's monetary fields are reconciliation evidence: the governance agent derives ledger authority from its own intent record, narrowed by a matching purchase execution record when available.
 
 #### Interaction with idempotency
 
-- **Retry of an identical payload carrying the prior intent-phase `governance_context`:** no re-invocation. The cached governance response is reused; the token signature and freshness are re-validated. Seller-side replay-dedup keys (see the [verification checklist](/docs/building/by-layer/L1/security#seller-verification-checklist)) MUST treat a repeated `jti` carrying the same `idempotency_key` as a legitimate retry rather than a replay attack — this is the one narrow carve-out.
+- **Replay of an already-completed identical request within the seller's idempotency window:** return the cached outcome without re-executing side effects or re-authorizing. Token expiry after the original commit does not invalidate the historical cached success. This ordering is essential because the idempotency window is longer than the intent-token lifetime.
+- **Retry that has no completed cache entry and would execute the state transition:** verify a fresh, unexpired `governance_context` and run the normal enforcement path. A repeated `jti` is accepted only when tied to the same in-flight `idempotency_key`; otherwise it is a replay attack.
 - **Re-plan with a different payload (new `idempotency_key` per [Idempotency](/docs/building/by-layer/L1/security#idempotency)):** a fresh `check_governance` invocation is required. A new `governance_context` token is issued.
 
 A retry after a human approval does not re-invoke governance; the existing token remains the authorization until it expires. Post-execution lifecycle retries operate against the seller's `purchase`-phase token, which is a distinct artifact governed by the seller's execution check, not the buyer's intent check.
@@ -222,9 +242,13 @@ Authority levels:
 | `execute_only` | Can execute pre-approved actions but cannot initiate new campaigns or reallocate budget |
 | `propose_only` | Can propose actions for governance review but cannot execute without explicit approval |
 
-When delegations are present, the governance agent validates that the `caller` URL in `check_governance` matches a delegation's `agent_url` before approving actions. Matching is by exact URI comparison (case-sensitive, after normalization per RFC 3986). An agent requesting a media buy in France must have a delegation that includes France in its `markets`. An agent with `execute_only` authority cannot reallocate budget between channels.
+The governance agent resolves the authenticated transport credential to an agent URL and requires the request's `caller` assertion to match it. For a non-owner caller, it then compares that resolved URL with the delegation's `agent_url`. It MUST NOT authorize from the body assertion alone. Matching is exact and case-sensitive after normalization per RFC 3986. Every call fails closed when the credential has no agent-URL mapping. An agent requesting a media buy in France must have a delegation that includes France in its `markets`. An agent with `execute_only` authority cannot reallocate budget between channels.
 
-When delegations are absent, the governance agent does not restrict which agents can act on the plan.
+The authenticated buyer principal that synchronized the plan is its owner and
+always retains full authority. Delegations add explicitly scoped non-owner
+agents; they do not replace or constrain the owner. When delegations are
+absent, only that authenticated owner can initiate governed actions. A
+self-asserted `caller` value never grants plan access.
 
 <Note>
 `delegations.authority` governs what a delegated executor-agent can do on behalf of the plan. It is unrelated to the plan's budget autonomy (`budget.reallocation_threshold` / `budget.reallocation_unlimited`) and unrelated to `plan.human_review_required`. Three separate concerns: per-agent scope, budget ops, and per-decision review.
@@ -291,7 +315,7 @@ aggregate = sum(c.amount for c in commit_history
             + this.amount
 ```
 
-then evaluates `aggregate` against each applicable threshold. The current incoming commit is included in the sum. Commits that were denied outright do not contribute; commits approved or approved-with-conditions do. `now` is the governance agent's wall-clock time at evaluation; sliding-window boundaries are not snapped to plan or calendar boundaries.
+then evaluates `aggregate` against each applicable threshold. The current incoming commit is included in the sum. Denied commits and unresolved conditions do not contribute; only actions that ultimately receive `approved` and are confirmed count. `now` is the governance agent's wall-clock time at evaluation; sliding-window boundaries are not snapped to plan or calendar boundaries.
 
 **Commitments are sticky within the window.** `c.amount` is the amount committed at approval time, not the delivered amount. Under-delivery, cancellation, makegoods, and post-approval budget reductions MUST NOT decrement a commit's contribution to the aggregate before the trailing window rolls it off. Otherwise a buyer could free fragmentation headroom by cancelling an approved commit and immediately re-committing sub-threshold — full spend moves across the round trip, each leg passes in isolation. An `update_media_buy` that *increases* committed budget enters as a delta (new committed budget − prior committed); a decrease does not decrement.
 
@@ -417,7 +441,7 @@ The governance agent tracks state at two levels:
 - **Plan level**: Total budget committed, channel allocation percentages, plan status
 - **Campaign level**: Per-`governance_context` committed budget, active media buy references, validation history
 
-A single plan can span multiple campaigns. When [`check_governance`](/docs/governance/campaign/tasks/check_governance) checks budget authority, it considers all campaigns tied to the plan. When [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) reports a seller confirmation, the governance agent commits the budget from the seller's actual amount -- not the requested amount.
+A single plan can span multiple campaigns. When [`check_governance`](/docs/governance/campaign/tasks/check_governance) checks budget authority, it considers all campaigns tied to the plan. When [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) settles an approval, the ledger uses the governance agent's own approved amount. A matching purchase execution check may narrow that amount to the seller's checked `planned_delivery.total_budget`; an unauthenticated buyer report cannot.
 
 ### Plan status
 
@@ -435,9 +459,9 @@ Budget is committed based on **confirmed outcomes**, not validated actions. The 
 
 1. `check_governance` with `tool` + `payload` (intent check) checks whether the proposed spend fits within the plan. No budget is committed yet.
 2. The orchestrator executes the action with the seller.
-3. `report_plan_outcome` reports the seller's confirmed amount. The governance agent commits this amount to the plan budget.
+3. `report_plan_outcome` settles the exact approved check. The governance agent commits its own authorized amount, preferring the matching purchase execution check when present, and records the caller-reported seller amount only as reconciliation evidence.
 
-This ensures budget tracking reflects reality. If a seller reduces the budget from \$150K to \$120K, the governance agent commits \$120K and returns findings about the discrepancy. If the action fails entirely, the governance agent commits \$0.
+This prevents a compromised or mistaken orchestrator from restoring headroom by under-reporting. If a seller reduces a \$150K intent to \$120K, its pre-commit purchase execution check makes \$120K authoritative. Without that checked transition, governance conservatively reserves \$150K and records the \$120K report as a discrepancy. If the action fails, the governance agent commits \$0.
 
 An execution check approval validates the seller's planned delivery against the plan but does not commit budget. Budget is only committed when the orchestrator calls `report_plan_outcome` with the seller's confirmed response.
 
@@ -498,7 +522,7 @@ Calling `sync_plans` with an existing `plan_id` updates the plan (upsert). The g
 
 ## Validation logic
 
-The governance agent evaluates each [validation category](/docs/governance/campaign/index#validation-categories) independently:
+For intent checks, the governance agent evaluates each [validation category](/docs/governance/campaign/index#validation-categories) independently:
 
 - If **any** category has status `failed` and the failure is correctable, the status is `conditions` with suggested fixes
 - If **any** category has status `failed` and the failure is not correctable by the caller, the status is `denied`
@@ -506,6 +530,8 @@ The governance agent evaluates each [validation category](/docs/governance/campa
 - If all categories pass, the status is `approved`
 
 The `conditions` array is only present when the status is `conditions`. Each condition identifies a specific field, its current value, a suggested value, and the reason for the change.
+
+For execution and lifecycle checks, any failed category produces `denied`. Findings may explain a correctable failure, but the service has no authorization until it submits a new candidate and receives `approved`.
 
 ### Finding confidence
 
@@ -555,7 +581,48 @@ Governance agents declare their Campaign Governance support in `get_adcp_capabil
 
 ```json
 {
+  "adcp": {
+    "attestations": {
+      "accepted_claim_types": [
+        "https://claims.example/audience/population-stability"
+      ],
+      "accepted_proof_formats": [
+        "https://formats.example/jcs-signed-json"
+      ],
+      "supported_delivery_methods": [
+        "credential_uri",
+        "issuer_credential_id",
+        "embedded"
+      ],
+      "accepted_issuers": [
+        {
+          "issuer": {
+            "type": "origin",
+            "origin": "https://credentials.example"
+          },
+          "credential_origins": [
+            "https://credentials.example"
+          ],
+          "resolvers": [
+            {
+              "resolver_id": "primary",
+              "url": "https://resolver.credentials.example/v1/credentials",
+              "authentication": "evaluator_managed"
+            }
+          ]
+        }
+      ]
+    }
+  },
   "governance": {
+    "runtime_attestations": {
+      "signal_activation": {
+        "requirement": "required",
+        "claim_types": [
+          "https://claims.example/audience/population-stability"
+        ]
+      }
+    },
     "campaign_governance": {
       "categories": [
         {
@@ -590,15 +657,39 @@ Governance agents declare their Campaign Governance support in `get_adcp_capabil
 }
 ```
 
+`adcp.attestations` is the shared portable-attestation trust and delivery allowlist. `governance.runtime_attestations` is the action-specific policy: presence enables `check_governance.runtime_attestations[]` for signal activation, `requirement` controls whether omission is allowed, and `claim_types` MUST be a subset of the shared accepted claims. Governance capabilities do not duplicate resolver URLs or verifier trust; those remain centralized in the shared block.
+
+### Runtime signal-quality evaluation
+
+`runtime_attestations[]` is standardized per-check evidence for `purchase_type: signal_activation` when `tool` is `activate_signal` and `payload.action` is `activate` or omitted (the default). It MUST NOT be supplied for `payload.action: deactivate`, and a `requirement: required` policy applies only to activation: missing evidence MUST NOT block deactivation. The evidence is outside the campaign plan: it neither changes declared plan intent nor provides delegation authority. Plan-level `delegations[]` remains the only delegation-continuity mechanism.
+
+AdCP does not define a credential issuance API or an orchestrator-side discovery/retrieval API for attestation references. The orchestrator obtains references through an issuer-defined or other out-of-band mechanism before calling `check_governance`. Once presented, evaluator-side credential resolution follows the shared portable-attestation contract and the governance agent's published allowlist.
+
+For each presentation, the governance agent applies the shared [portable-attestation procedure](/docs/building/by-layer/L1/security#portable-attestations), then checks the complete typed subject against the governed signal and action. For `activate_signal`, `subject.id` matches `payload.signal_agent_segment_id`; `subject.namespace` and any richer signal identity are reconciled with the signals agent and plan state known to the governance agent. A matching opaque id under a different namespace is a subject mismatch.
+
+The response carries exactly one ordered `runtime_attestation_evaluations[]` result per presentation. Evaluation `outcome`, `confidence`, and `reason_codes` are produced by the governance agent; they are never authoritative buyer input. Every evaluation binds to the current `check_id` through `action_binding`.
+
+The governance agent also computes:
+
+```text
+attestation_bound_findings = findings filtered to entries with attestation_reference_digest
+runtime_attestation_binding_digest =
+  "sha256:" + lowercase_hex(SHA-256(JCS({
+    evaluations: runtime_attestation_evaluations,
+    findings: attestation_bound_findings
+  })))
+```
+
+Array order is preserved. Omitted optional fields remain omitted; implementations MUST NOT synthesize defaults before JCS canonicalization. The response, signed `governance_context`, and `get_plan_audit_logs` check entry carry the identical digest. Audit logs retain ordered `{ reference, evaluation }` pairs and the complete attestation-bound findings. Auditors MUST first verify that each evaluation's `reference_digest` equals SHA-256 of RFC 8785 JCS over its paired reference, then recompute the binding digest from the ordered evaluations and findings.
+
 ## Integration with `create_media_buy`
 
-The buyer includes `plan_id` on the `create_media_buy` request and `governance_context` on the protocol envelope. These fields tell the seller which governance plan applies, enabling seller-side governance checks.
+The buyer includes `governance_context` on the protocol envelope. It does not disclose `plan_id` to the seller; the context carries the opaque, signed binding needed for seller-side verification and for the governance agent to recover the plan.
 
 ```json
 {
   "tool": "create_media_buy",
   "arguments": {
-    "plan_id": "plan_q1_2026_launch",
     "account": { "agent_url": "https://seller.example.com", "id": "acc_123" },
     "brand": { "domain": "acmecorp.com" },
     "start_time": "2026-03-15T00:00:00Z",
@@ -633,20 +724,20 @@ The seller's response includes `planned_delivery` -- what the seller will actual
 1. **Governance checks** -- When the account has a governance agent configured, the seller sends `planned_delivery` to the governance agent for verification before confirming the media buy.
 2. **Transparency** -- The buyer can compare `planned_delivery` against what they requested to catch discrepancies early, before delivery begins.
 
-## Governance checks
+## Media-buy online execution checks
 
 Campaign Governance's buyer-side validation has a trust limitation: the buyer's orchestrator grades its own homework. An LLM agent could hallucinate governance approval, skip validation, or misrepresent what was validated. Seller-side governance checks close this gap by giving sellers an independent way to confirm that purchases are approved.
 
-The seller POSTs to the buyer's configured governance agent URL when governed action events occur. The governance agent maintains all state and correlates requests by `plan_id` + `governance_context` -- the seller does not need to track governance history or chain IDs across calls.
+The seller POSTs to the buyer's configured governance agent URL when governed action events occur. The governance agent maintains all state and correlates subsequent requests from `governance_context`; the seller does not need the plan ID or governance history.
 
 ### Both checks must pass
 
-Every governed action **MUST** pass both the buyer-side intent check and the seller-side planned-delivery check. Both calls hit the same authority (the buyer's governance agent), so there is no "two agents disagreeing" case — but the invariant that both calls must succeed is load-bearing:
+Every media-buy task whose capability entry includes `online_execution_check` **MUST** pass both the buyer-side intent check and the seller-side planned-delivery check. Both calls hit the same authority (the buyer's governance agent), so there is no "two agents disagreeing" case — but the invariant that both calls must succeed is load-bearing:
 
 - The buyer-side intent check confirms the *plan permits the spend in principle*.
 - The seller-side planned-delivery check confirms the *seller's actual delivery parameters are consistent with the approved plan*.
 
-These are not redundant. A buyer's intent check can pass (the plan allows $100K on premium video) while the seller's planned-delivery check fails (the seller's planned line-up includes inventory the plan excludes). If either returns `denied`, the action **MUST NOT** proceed. When both return `approved` with non-empty `conditions`, the applied set is the **union** of both responses' conditions. Contradictory conditions (one side requires X, the other requires NOT X) resolve to `denied` with a structured `finding` rather than silent precedence.
+These are not redundant. A buyer's intent check can pass (the plan allows $100K on premium video) while the seller's planned-delivery check fails (the seller's planned line-up includes inventory the plan excludes). Intent checks may return `conditions` as a counterproposal; the buyer applies them and re-checks. Execution checks are binary. If the concrete candidate is not allowed, the governance agent returns `denied` and the action **MUST NOT** proceed.
 
 A seller that rejects a trade for its own content-standards or commercial reasons is not participating in a governance conflict — that is a separate, commerce-layer rejection (e.g., `TERMS_REJECTED`) and follows the regular rejection path. Governance speaks only for the buyer's plan.
 
@@ -679,15 +770,15 @@ The buyer syncs governance agents via [`sync_governance`](/docs/accounts/tasks/s
 }
 ```
 
-The seller stores these endpoints and presents the credentials when calling `check_governance`. The governance agent MUST verify that the Bearer token matches a registered credential for the account associated with the `plan_id`, and MUST reject requests with unrecognized or mismatched credentials.
+The seller stores these endpoints and presents the credentials when calling `check_governance`. The governance agent MUST resolve the credential to the registered agent URL, require exact equality with `caller`, and use only the resolved URL for authorization, audit, and token issuance. It rejects unrecognized credentials, caller mismatches, and restricted-plan calls whose credential lacks an agent-URL mapping.
 
 ### Governance modes
 
-Governance mode (audit, advisory, enforce) is an internal implementation detail of the governance agent, not a protocol-level field. The caller sends `check_governance` and receives `approved`, `denied`, or `conditions` — it does not need to know what mode produced that decision.
+Governance mode (audit, advisory, enforce) is an internal implementation detail of the governance agent, not a protocol-level field. The caller sends `check_governance` and acts on the verdict without needing to know what mode produced it. Intent checks may return `approved`, `denied`, or `conditions`; execution checks return `approved` or `denied`.
 
 This means:
 - A governance agent in audit mode internally always returns `approved` with findings attached
-- A governance agent in advisory mode internally may return `denied` but the organization treats it as non-blocking
+- A governance agent in advisory mode returns `approved` with prominent findings and recommended corrections
 - A governance agent in enforce mode returns `denied` and expects the caller to stop
 
 Mode is configured by the buyer's policy team on the governance agent itself, not via the protocol. The governance agent MAY include mode information in its audit logs or `get_plan_audit_logs` response for post-hoc analysis, but callers MUST NOT branch behavior based on mode — they act on the status they receive.
@@ -743,6 +834,8 @@ None of these appear in the `sync_plans` request schema (`additionalProperties: 
 
 All other fields — including `ext`, `custom_policies`, `objectives`, `delegations`, `human_override`, and every field declared in the `sync_plans` plan-item schema — are IN the preimage. Caller guidance:
 
+`check_governance.runtime_attestations[]` is not a plan field and is therefore outside this preimage. Its omission or change does not alter `plan_hash`; the separate `runtime_attestation_binding_digest` binds that per-check evidence and evaluation to the signed governance decision.
+
 - **`ext` is part of the preimage.** Buyers MUST NOT place rotating tokens or retry-unstable values inside `ext` on a plan; a value that changes between re-syncs invalidates every outstanding governance_context token for the plan even when the buyer's declared intent is unchanged (consistent with idempotency's treatment of `ext`).
 - **`delegations[].expires_at`** is declared intent and SHOULD be stable across re-syncs of the same plan; regenerating it from "now + N days" on every sync causes hash churn.
 - **Array order** in `policy_ids`, `policy_categories`, `custom_policies`, `approved_sellers`, `delegations`, `countries`, `regions`, `channels.required`, `channels.allowed` is not semantically meaningful, but JCS preserves it. Buyers SHOULD emit these in stable order across re-syncs.
@@ -785,7 +878,7 @@ This path catches a misbehaving governance vendor without involving the seller, 
 
 #### Privacy considerations
 
-`plan_hash` changes across re-syncs reveal that the plan mutated, even without revealing *what* mutated. Parties retaining tokens long-term (sellers forwarding `governance_context` verbatim, auditors, regulators) can infer plan-mutation cadence from the sequence of distinct hashes they observe for a given `plan_id`. For most deployments this is acceptable or desired — mutation-cadence is part of the audit signal. Sensitive governance deployments where mutation frequency itself is commercially or operationally sensitive (e.g., a buyer does not want a seller to infer re-planning cadence across its campaign portfolio) SHOULD factor this into token-retention policy: shorter seller-side retention windows for `governance_context`, or periodic rotation of the plan's `jti` namespace to break cross-token linkability.
+The opaque `sub` does not disclose `plan_id`, but compact JWS is readable and `plan_hash` is stable for one plan revision. A seller can therefore correlate otherwise separate actions that carry the same hash, even though it cannot recover the plan ID or plan contents. This revision preserves that linkability because the hash is the durable audit receipt; deployments that consider same-revision correlation sensitive should use short retention and separate governance agents or audiences. A future auditor-only receipt could remove the signal, but 3.x does not claim plan unlinkability.
 
 #### Reference test vectors
 
@@ -803,18 +896,17 @@ Governance checks cover the full media buy lifecycle through three phases:
 
 The `phase` field defaults to `purchase` if omitted, so existing implementations continue to work without changes.
 
-The governance agent maintains all state and correlates requests by `plan_id` + `governance_context`. The seller does not chain check IDs or track conversation history -- it posts what happened, and the governance agent looks up context.
+The governance agent maintains all state and correlates service-side requests from `governance_context`. The seller does not receive `plan_id`, chain check IDs, or track governance history.
 
 ### Purchase phase
 
 When the seller receives a `create_media_buy` request on an account with `governance_agents`:
 
 1. The seller interprets the request and determines its `planned_delivery`.
-2. The seller calls `check_governance` with `phase: "purchase"`, the `plan_id`, and `planned_delivery`.
+2. Before committing, the seller calls `check_governance` with `phase: "purchase"`, `governance_context`, and `planned_delivery`.
 3. The governance agent validates the planned delivery against the campaign plan.
 4. If `approved`, the seller confirms the media buy.
 5. If `denied`, the seller rejects the media buy with an `GOVERNANCE_DENIED` error.
-6. If `conditions`, the seller adjusts its planned delivery to meet the conditions and re-verifies, or rejects.
 
 ```mermaid
 sequenceDiagram
@@ -822,7 +914,7 @@ sequenceDiagram
     participant S as Seller
     participant A as Governance Agent
 
-    O->>S: create_media_buy(plan_id, packages, ...)
+    O->>S: create_media_buy(packages, governance_context)
     S->>S: Interpret request → planned_delivery
     S->>A: POST check_governance(phase: purchase)
     A->>A: Validate against plan
@@ -836,9 +928,9 @@ When the seller receives an `update_media_buy` request:
 
 1. The seller interprets the update and determines the new `planned_delivery`.
 2. The seller calls `check_governance` with `phase: "modification"`, the updated `planned_delivery`, and a `modification_summary`.
-3. The governance agent looks up the governed action by `plan_id` + `governance_context` and evaluates the changes against the plan.
+3. The governance agent looks up the governed action from `governance_context` and evaluates the changes against the plan.
 4. If `approved`, the seller confirms the update.
-5. If `denied` or `conditions`, the seller follows the same flow as purchase phase.
+5. If `denied`, the seller does not commit the update.
 
 ```mermaid
 sequenceDiagram
@@ -864,7 +956,6 @@ The seller calls `check_governance` with `phase: "delivery"` periodically during
 2. The seller calls `check_governance` with `phase: "delivery"`, the current `planned_delivery`, and `delivery_metrics`.
 3. If `approved`, the response includes `next_check` -- when the seller should report again.
 4. If `denied`, the seller pauses delivery immediately.
-5. If `conditions`, the seller adjusts delivery (e.g., slow pacing, shift geo targeting) and re-verifies immediately.
 
 The governance agent opts in to delivery reporting by including `next_check` in the purchase approval response. If the purchase response has no `next_check`, the governance agent does not expect delivery reports.
 
@@ -881,13 +972,13 @@ sequenceDiagram
 
     Note over S,A: If drift detected
     S->>A: check_governance(phase: delivery, metrics)
-    A-->>S: conditions (slow pacing)
-    S->>S: Adjust delivery
-    S->>A: check_governance(phase: delivery, updated metrics)
+    A-->>S: denied (pacing drift)
+    S->>S: Pause and prepare corrected delivery
+    S->>A: check_governance(phase: delivery, corrected plan + metrics)
     A-->>S: approved (next_check: +3d)
 ```
 
-The governance agent controls the reporting cadence through `next_check`. It can tighten the cadence (shorter intervals) when it detects drift or conditions, and relax it (longer intervals) when delivery is stable. The governance agent MAY treat a missed `next_check` deadline as a finding on the next delivery check.
+The governance agent controls the reporting cadence through `next_check`. It can tighten the cadence after corrected drift and relax it when delivery is stable. The governance agent MAY treat a missed `next_check` deadline as a finding on the next delivery check.
 
 ### Verification examples
 
@@ -897,11 +988,11 @@ The governance agent controls the reporting cadence through `next_check`. It can
 {
   "tool": "check_governance",
   "arguments": {
-    "plan_id": "plan_q1_2026_launch",
     "caller": "https://seller.example.com",
     "governance_context": "gc_from_buyer_envelope",
     "phase": "purchase",
     "planned_delivery": {
+      "media_buy_id": "mb_seller_456",
       "geo": { "countries": ["US"] },
       "channels": ["olv"],
       "start_time": "2026-03-15T00:00:00Z",
@@ -921,10 +1012,11 @@ The governance agent controls the reporting cadence through `next_check`. It can
 ```json
 {
   "check_id": "auth_001",
+  "check_type": "execution",
   "verdict": "approved",
-  "plan_id": "plan_q1_2026_launch",
   "explanation": "Planned delivery is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
   "expires_at": "2026-03-15T01:00:00Z",
+  "governance_context": "eyJhbGciOiJFZERTQSIsInR5cCI6ImFkY3AtZ292K2p3cyJ9.purchase.signature",
   "next_check": "2026-03-22T00:00:00Z"
 }
 ```
@@ -936,8 +1028,8 @@ The `next_check` field signals that the governance agent expects delivery report
 ```json
 {
   "check_id": "auth_002",
+  "check_type": "execution",
   "verdict": "denied",
-  "plan_id": "plan_q1_2026_launch",
   "explanation": "Planned delivery targets CA (Canada) which is not an authorized market for this plan.",
   "findings": [
     {
@@ -958,9 +1050,11 @@ The `next_check` field signals that the governance agent expects delivery report
 ```json
 {
   "check_id": "auth_004",
+  "check_type": "execution",
   "verdict": "approved",
-  "plan_id": "plan_q1_2026_launch",
   "explanation": "Delivery on track. Week 1 spend: $12,500 of $150,000 (8.3%). Pacing is on target for 13-week flight.",
+  "expires_at": "2026-03-29T00:00:00Z",
+  "governance_context": "eyJhbGciOiJFZERTQSIsInR5cCI6ImFkY3AtZ292K2p3cyJ9.delivery.signature",
   "next_check": "2026-03-29T00:00:00Z"
 }
 ```
@@ -1043,7 +1137,6 @@ flowchart TD
     M --> O{Approved?}
     O -->|approved| N
     O -->|denied| P[Seller rejects media buy]
-    O -->|conditions| Q[Seller adjusts or rejects]
     N --> R[Receive seller response with planned_delivery]
     R --> S["report_plan_outcome(plan_id, check_id, outcome)"]
     S --> T{Status?}
@@ -1057,9 +1150,7 @@ flowchart TD
     Z -->|yes| AA["Seller calls check_governance (delivery) periodically"]
     AA --> AB{Delivery approved?}
     AB -->|approved| Z
-    AB -->|denied| AC[Seller pauses delivery]
-    AB -->|conditions| AD[Seller adjusts delivery]
-    AD --> Z
+    AB -->|denied| AC[Seller pauses; may correct and re-check]
 ```
 
 The governance check is a synchronous call in the orchestrator's action loop. The orchestrator calls `check_governance` with `tool` + `payload` (intent check) before sending requests to sellers. Seller-side execution checks are transparent to the orchestrator — the orchestrator sends the same `create_media_buy` request regardless of whether governance checks are configured. Modification and delivery phase checks happen between the seller and governance agent, independent of the orchestrator's governance loop.
@@ -1075,6 +1166,7 @@ Every plan maintains an ordered audit trail of all validated actions and reporte
 - Any internal escalations and their resolutions (recorded by the governance agent)
 - The human approver identity (when human review occurred internally)
 - Delivery metrics over time
+- Ordered runtime attestation `{ reference, evaluation }` pairs, their binding digest, and complete findings linked by `attestation_reference_digest`
 
 This audit trail serves compliance and reporting needs. For regulated categories (political advertising, financial services), the trail provides evidence that governance was applied to every transaction.
 

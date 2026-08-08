@@ -10,6 +10,138 @@
     },
     {
       "$ref": "/schemas/core/protocol-envelope.json"
+    },
+    {
+      "if": {
+        "allOf": [
+          {
+            "properties": {
+              "request_signing": {
+                "properties": {
+                  "supported": {
+                    "const": true
+                  }
+                },
+                "required": ["supported"]
+              }
+            },
+            "required": ["request_signing"]
+          },
+          {
+            "anyOf": [
+              {
+                "properties": {
+                  "adcp_version": {
+                    "type": "string",
+                    "pattern": "^(?:3\\.(?:[2-9]|[1-9][0-9]+)|(?:[4-9]|[1-9][0-9]+)\\.\\d+)(?:-[a-zA-Z0-9.-]+)?$"
+                  }
+                },
+                "required": ["adcp_version"]
+              },
+              {
+                "properties": {
+                  "adcp": {
+                    "properties": {
+                      "supported_versions": {
+                        "contains": {
+                          "type": "string",
+                          "pattern": "^(?:3\\.(?:[2-9]|[1-9][0-9]+)|(?:[4-9]|[1-9][0-9]+)\\.\\d+)(?:-[a-zA-Z0-9.-]+)?$"
+                        }
+                      }
+                    },
+                    "required": ["supported_versions"]
+                  }
+                },
+                "required": ["adcp"]
+              }
+            ]
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "request_signing": {
+            "properties": {
+              "covers_content_digest": {
+                "const": "required"
+              }
+            },
+            "required": ["covers_content_digest"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "governance": {
+            "required": ["runtime_attestations"]
+          }
+        },
+        "required": ["governance"]
+      },
+      "then": {
+        "properties": {
+          "adcp": {
+            "required": ["attestations"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "audience_evidence": {
+                "properties": {
+                  "supports_attestation_evaluation": {
+                    "const": true
+                  }
+                },
+                "required": ["supports_attestation_evaluation"]
+              }
+            },
+            "required": ["audience_evidence"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "adcp": {
+            "required": ["attestations"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "required": ["rights_attestations"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "adcp": {
+            "properties": {
+              "attestations": {
+                "properties": {
+                  "accepted_claim_types": {
+                    "contains": {
+                      "const": "https://adcontextprotocol.org/claims/rights/grant"
+                    }
+                  }
+                }
+              }
+            },
+            "required": ["attestations"]
+          }
+        }
+      }
     }
   ],
   "properties": {
@@ -19,6 +151,7 @@
       "properties": {
         "major_versions": {
           "type": "array",
+          "deprecated": true,
           "description": "DEPRECATED in favor of `supported_versions` (release-precision strings). Servers MUST continue to emit this field through 3.x for backwards compatibility. Removed in 4.0. Original semantics: AdCP major versions supported by this seller. Major versions indicate breaking changes.",
           "items": {
             "type": "integer",
@@ -31,7 +164,7 @@
           "description": "Release-precision (VERSION.RELEASE) AdCP versions this seller speaks. Authoritative for buyer-side release pinning — buyers SHOULD declare `adcp_version` (release-precision string) on each request. Sellers downshift to the highest supported release ≤ the buyer's pin within the same major; cross-major mismatch returns VERSION_UNSUPPORTED. Pre-release tags (e.g. `\"3.1-beta\"`) hang off release.",
           "items": {
             "type": "string",
-            "pattern": "^\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$"
+            "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
           },
           "minItems": 1,
           "examples": [["3.0"], ["3.0", "3.1"], ["3.0", "3.1-beta"]]
@@ -226,6 +359,113 @@
             }
           ],
           "additionalProperties": true
+        },
+        "governance_enforcement": {
+          "type": "object",
+          "description": "Cross-role declaration that this agent enforces buyer-provided governance authorization when performing consequential tasks. This is distinct from the top-level `governance` capability block, which describes an agent that provides governance services. An agent can enforce governance without implementing the governance protocol itself. Absence means the agent makes no governance-enforcement conformance claim.",
+          "properties": {
+            "tasks": {
+              "type": "array",
+              "description": "Task-scoped enforcement claims. The task field is a semantic uniqueness key: an agent MUST emit at most one entry per task and combine all supported modes in that entry. JSON Schema uniqueItems only rejects structurally identical objects, so producers and capability validators MUST enforce task-key uniqueness separately. Values correspond to request schemas annotated with x-governed-commitment. Online execution checks are currently defined only for media-buy tasks, whose prepared result has the PlannedDelivery contract; other roles can enforce signed intent authorization without inventing media-buy fields.",
+              "items": {
+                "oneOf": [
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "create_media_buy" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "contains": { "const": "signed_context" },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "update_media_buy" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "contains": { "const": "signed_context" },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "build_creative" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "const": "signed_context" },
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "activate_signal" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "const": "signed_context" },
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "acquire_rights" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "const": "signed_context" },
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "update_rights" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "const": "signed_context" },
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "required": ["tasks"],
+          "x-status": "experimental",
+          "additionalProperties": false
+        },
+        "attestations": {
+          "$ref": "/schemas/core/attestation-capabilities.json",
+          "description": "Portable-attestation trust and delivery capabilities for this evaluator. Present only when the agent accepts AttestationReference inputs on one or more domain task surfaces. This block is an allowlist: presenters cannot expand accepted issuers, resolver endpoints, verifier agents, claim types, or proof formats by supplying values in a request."
         }
       },
       "required": ["major_versions", "idempotency"]
@@ -420,7 +660,7 @@
         },
         "governance_aware": {
           "type": "boolean",
-          "description": "Conformance declaration that this seller consults a registered governance agent (via sync_governance plus an outbound check_governance call) before committing a media buy, and surfaces GOVERNANCE_DENIED when the governance agent denies. A declaration of true opts the seller into governance-denial grading (media_buy_seller/governance_denied, media_buy_seller/governance_denied_recovery). When false or absent, conformance runners skip those storyboards - a seller that does not implement outbound governance consultation is not expected to produce GOVERNANCE_DENIED. This is independent of baseline sync_governance registration, which remains gradeable on its own.",
+          "description": "Compatibility claim used by existing media-buy conformance runners. A value of true corresponds only to online governance consultation for create_media_buy, the historically graded surface. Agents use adcp.governance_enforcement for explicit task-scoped claims, including update_media_buy and cross-role signed-context enforcement.",
           "default": false
         },
         "propagation_surfaces": {
@@ -473,6 +713,7 @@
             },
             "axe_integrations": {
               "type": "array",
+              "deprecated": true,
               "description": "Deprecated. Legacy AXE integrations. Use trusted_match for new integrations.",
               "items": {
                 "type": "string",
@@ -636,6 +877,51 @@
               }
             }
           }
+        },
+        "audience_evidence": {
+          "type": "object",
+          "description": "Support for structured product audience evidence and buyer-authored evidence policy. Presence means the seller can publish Product.audience_evidence, preserve immutable snapshots through package readback, and evaluate the declared policy modes. It does not declare audience-targeting capability.",
+          "properties": {
+            "supported_requirement_modes": {
+              "type": "array",
+              "description": "Buyer policy modes the seller evaluates. A seller MUST NOT silently ignore a mode it does not list.",
+              "items": {
+                "type": "string",
+                "enum": ["required", "preferred"]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "supported_presence_modes": {
+              "type": "array",
+              "description": "Evidence-presence semantics the seller supports.",
+              "items": {
+                "type": "string",
+                "enum": ["required", "when_available"]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "supports_attestation_evaluation": {
+              "type": "boolean",
+              "description": "Whether the seller evaluates audience-evidence attestation_refs under its core adcp.attestations policy and returns the exact reference and AttestationEvaluation in package readback."
+            }
+          },
+          "required": ["supported_requirement_modes", "supported_presence_modes", "supports_attestation_evaluation"],
+          "additionalProperties": true
+        },
+        "rights_attestations": {
+          "type": "object",
+          "description": "Seller evaluation policy for portable rights-grant attestations carried on creative rights constraints. Presence requires adcp.attestations and the rights-grant claim URI in accepted_claim_types. The seller remains verifier-of-record and never treats verification_url or a buyer-authored evaluation as authorization.",
+          "properties": {
+            "requirement": {
+              "type": "string",
+              "enum": ["optional", "required"],
+              "description": "required means every applicable rights constraint needs at least one current verified attestation evaluation before the creative is eligible to serve. optional permits independent legacy contractual policy, but unattested constraints remain machine-unverified and verification_url is never a downgrade path."
+            }
+          },
+          "required": ["requirement"],
+          "additionalProperties": false
         },
         "audience_targeting": {
           "type": "object",
@@ -948,6 +1234,36 @@
       "type": "object",
       "description": "Governance protocol capabilities. Only present if governance is in supported_protocols. Governance agents provide property and creative data like compliance scores, brand safety ratings, sustainability metrics, and creative quality assessments.",
       "properties": {
+        "runtime_attestations": {
+          "type": "object",
+          "description": "Signal-activation policy for the portable attestation support declared in adcp.attestations. Presence means check_governance accepts runtime_attestations[] for purchase_type signal_activation. The claim_types list MUST be a subset of adcp.attestations.accepted_claim_types; issuer, resolver, verifier, proof-format, and delivery allowlists remain authoritative in the shared adcp.attestations block rather than being duplicated here.",
+          "properties": {
+            "signal_activation": {
+              "type": "object",
+              "properties": {
+                "requirement": {
+                  "type": "string",
+                  "enum": ["optional", "required"],
+              "description": "Whether an activate_signal activation check may omit runtime_attestations. When required, missing evidence fails an activation check. Deactivation and privacy-removal checks never require signal-quality evidence and remain available without it."
+                },
+                "claim_types": {
+                  "type": "array",
+                  "description": "Signal-quality claim identifiers accepted for this governed action. Values are open absolute URIs and MUST be a subset of adcp.attestations.accepted_claim_types.",
+                  "items": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                }
+              },
+              "required": ["requirement", "claim_types"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["signal_activation"],
+          "additionalProperties": false
+        },
         "aggregation_window_days": {
           "type": "integer",
           "minimum": 1,
@@ -1169,7 +1485,7 @@
         },
         "supports_transformation": {
           "type": "boolean",
-          "description": "When true, this agent can transform or resize existing manifests via build_creative. The buyer provides a creative_manifest and a target_format_id, and the agent adapts the creative to the new format.",
+          "description": "When true, this agent can transform or resize existing canonical manifests via build_creative. The buyer supplies a creative_manifest and an advertised target_capability_id.",
           "default": false
         },
         "supports_transformers": {
@@ -1263,22 +1579,60 @@
         },
         "supported_formats": {
           "type": "array",
-          "description": "Canonical-formats path: format declarations describing which canonical formats this creative agent can produce via `build_creative`. Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]` — `format_kind` discriminator + `params` (canonical's parameter schema including `slots`, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions). Replaces the v1 `list_creative_formats` discovery surface for creative agents.",
+          "description": "Canonical-format capability catalog for this creative agent. This is the 3.2 source of truth for discovering which format contracts the agent can build, validate, or preview; it replaces the deprecated `list_creative_formats` task. Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]`. New 3.2 producers MUST publish a stable agent-local `capability_id` and explicit `operations` for task routing. Every emitted `capability_id` MUST be unique within this catalog so a route selects exactly one entry. During the 3.x compatibility window, consumers MUST also accept legacy entries that omit either field; absent `operations` means `[\"build\"]`, while an absent `capability_id` means the entry is discoverable by canonical contract but cannot be selected through a capability-ID route.\n\n**Publisher-specific support.** To claim exact support for a publisher declaration, `format` carries the declaration's `{publisher_domain, format_option_id}` pair plus its canonical `format_kind` and narrowed `params`. Generic creative agents MAY instead advertise a canonical parameter envelope without publisher identity. A generic capability matches a target declaration only when the capability can satisfy every target constraint; matching canonical names alone is insufficient. Registries MAY reverse-index these entries by `format.format_kind`, `format.publisher_domain`, and `format.format_option_id`.\n\nThis catalog describes creative operations, not sales-agent inventory deliverability. Sales agents publish the purchasable closed set on each `Product.format_options[]`; publisher acceptance lives in `adagents.json.formats[]`.",
           "items": {
             "type": "object",
             "properties": {
               "capability_id": {
                 "type": "string",
-                "description": "Stable identifier for this format declaration within the agent (e.g., 'audiostack_audio_30s'). Optional but recommended for declarations that may be referenced over time."
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "description": "Stable identifier for this format capability within the creative agent (e.g., 'audio_narration_30s'). The value MUST be unique across this agent's supported_formats catalog. Route the advertised operation with this ID: build_creative.target_capability_id(s) for build, preview_creative.target_capability_id for preview, or validate_input targets[] kind capability for validate. Capability IDs are agent-local routes and do not appear on portable manifests or products."
               },
               "format": {
                 "$ref": "/schemas/core/product-format-declaration.json",
-                "description": "Format declaration this agent can produce. Same shape as a product's inline `format_options[i]`: `format_kind` + `params` + `slots`."
+                "description": "Format declaration on which this agent can perform the listed operations. Same shape as a product's inline format_options entry: format_kind plus params and slots."
+              },
+              "operations": {
+                "type": "array",
+                "description": "Creative operations this capability supports. `build` means the agent can produce a conforming manifest via build_creative; `validate` means it can evaluate inputs against the declaration; `preview` means it can render a preview. New 3.2 producers MUST emit this field so buyers and registries can distinguish producers, validators, and renderers without probing tasks. Consumers interpret omission from a legacy 3.x entry as `[\"build\"]`.",
+                "items": {
+                  "type": "string",
+                  "enum": ["build", "validate", "preview"]
+                },
+                "minItems": 1,
+                "uniqueItems": true,
+                "default": ["build"]
               }
             },
             "required": ["format"],
             "additionalProperties": true
           }
+        },
+        "localization": {
+          "type": "object",
+          "description": "Materialized creative-localization support for sync_creatives/list_creatives, including source-only monolingual topology. Presence opts the agent into exact locale-variant round-trip, strict RFC 4647 Lookup, optional buyer-declared language-family fallback rules, explicit final default/unmatched behavior, creative-wide review, transactional replacement, seller product-format locale-policy enforcement, and delivery attribution. This is a coarse structural capability, not a promise that every locale/format/account combination is accepted; sellers publish accepted ranges on product format declarations and validate each write before mutation. Omit this object when localization is unsupported.",
+          "properties": {
+            "max_target_variants": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50,
+              "description": "Maximum target locale variants accepted on one creative. Zero advertises source-only monolingual locale topology. Omit to inherit the protocol ceiling of 50."
+            },
+            "locale_matching": {
+              "type": "string",
+              "const": "rfc4647_lookup",
+              "description": "The required deterministic locale-matching algorithm."
+            }
+          },
+          "required": ["locale_matching"],
+          "not": {
+            "anyOf": [
+              { "required": ["supported_locales"] },
+              { "required": ["translation_modes"] },
+              { "required": ["review_scope"] }
+            ]
+          },
+          "additionalProperties": true
         },
         "bills_through_adcp": {
           "type": "boolean",
@@ -1291,11 +1645,24 @@
           "description": "Optional. The AdCP canonical-formats catalog version this agent's runtime is built against (e.g., `3.1`, `3.2.0`). Lets buyer SDKs detect canonical-catalog skew between their generated types and the seller's actual support. SDKs MAY declare the version they were generated against (typically the AdCP version they ship for); when seller and SDK versions disagree, SDKs SHOULD soft-warn rather than fail (the open-enum semantics on `canonical-format-kind.json` make unknown canonicals safe to retain, so skew is not a hard error — it just means the older side might not understand newer canonical values). Omitted by sellers who haven't yet generated against a versioned catalog; absence is interpreted as the AdCP version advertised by the broader capabilities response."
         }
       },
-      "additionalProperties": true
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "required": ["localization"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library"]
+          }
+        }
+      ]
     },
     "request_signing": {
       "type": "object",
-      "description": "RFC 9421 HTTP Signatures support for incoming requests. Optional in 3.0 — capability-advertised so counterparties can opt into signing selectively. Required for spend-committing operations in 4.0 (the next breaking-changes accumulation window). The full profile is defined in docs/building/implementation/security.mdx (Signed Requests (Transport Layer)).",
+      "description": "RFC 9421 HTTP Signatures support for incoming requests. Signing remains optional through 3.2, but every accepted 3.2 signature on a request with a body MUST cover content-digest. Request signing becomes required for spend-committing operations in 4.0. The full profile is defined in docs/building/by-layer/L1/security.mdx (Signed Requests (Transport Layer)).",
       "properties": {
         "supported": {
           "type": "boolean",
@@ -1304,12 +1671,11 @@
         "covers_content_digest": {
           "type": "string",
           "enum": ["required", "forbidden", "either"],
-          "description": "Policy for content-digest coverage in request signatures. 'required': signers MUST cover content-digest (body is bound to the signature); body-unbound signatures rejected with request_signature_components_incomplete. 'forbidden': signers MUST NOT cover content-digest; body-bound signatures rejected with request_signature_components_unexpected. This is an opt-out for the narrow case of legacy infrastructure that cannot preserve body bytes. 'either' (default): signer chooses per-request; verifier accepts both covered and uncovered forms. 'required' is recommended for spend-committing operations in production; 4.0 recommends 'required' for those operations.",
-          "default": "either"
+          "description": "Policy for content-digest coverage in request signatures. In AdCP 3.2 and later, an agent with request_signing.supported=true MUST explicitly emit 'required': every accepted signature on a request with a body covers content-digest, and a body-unbound signature is rejected with request_signature_components_incomplete. Omission retains the legacy effective default of 'either' only for a 3.0/3.1 response; 3.2 responses require this field explicitly. 'either' and 'forbidden' are deprecated legacy 3.0/3.1 postures retained only for version negotiation with pre-3.2 peers; they MUST NOT be advertised as a 3.2 signing posture and are removed in 4.0. A shared endpoint MUST select the verifier policy from trusted endpoint configuration and negotiated capabilities before dispatch, never from an unbound request-body version field."
         },
         "required_for": {
           "type": "array",
-          "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects unsigned requests with request_signature_required. Not MCP tool names, A2A skill names, or any transport-specific rename — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. JSON-RPC protocol method names like `tasks/cancel` belong in `protocol_methods_required_for`, not here. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Counterparties MUST sign any listed operation. Every operation listed MUST also appear in `supported_for` (an operation can't be required without being supported); see `x-adcp-validation`.",
+          "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects an unsigned request with request_signature_required unless an independently valid configured fallback authenticator succeeds. Not MCP tool names, A2A skill names, or any transport-specific rename — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. JSON-RPC protocol method names like `tasks/cancel` belong in `protocol_methods_required_for`, not here. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Every operation listed MUST also appear in `supported_for`; see `x-adcp-validation`.",
           "items": {
             "type": "string"
           },
@@ -1321,7 +1687,7 @@
         },
         "warn_for": {
           "type": "array",
-          "description": "AdCP protocol operation names for which this agent verifies signatures when present and logs failures but does NOT reject the request. Used as a shadow-mode bridge between supported_for and required_for: the verifier surfaces failure rates in monitoring before flipping an operation to required. Precedence: required_for > warn_for > supported_for. An operation in required_for ignores warn_for. Counterparties SHOULD sign operations in warn_for; verifiers MUST NOT reject if the signature is missing or invalid. An operation MUST NOT appear in both `warn_for` and `required_for`; see `x-adcp-validation`.",
+          "description": "AdCP protocol operation names for shadow-mode verification. The verifier records missing signatures and well-formed signatures that fail verification or body binding, but MUST NOT establish verified-signer identity from a failed signature; processing continues only when an independent bearer, API-key, or mTLS authenticator succeeds. A partial or malformed Signature / Signature-Input pair always hard-rejects. Used as a bridge between supported_for and required_for. Precedence: required_for > warn_for > supported_for. An operation MUST NOT appear in both warn_for and required_for; see x-adcp-validation.",
           "items": {
             "type": "string"
           },
@@ -1334,14 +1700,14 @@
         },
         "supported_for": {
           "type": "array",
-          "description": "AdCP protocol operation names for which this agent verifies signatures when present but does not require them. Counterparties SHOULD sign operations in this list. Typically a superset of required_for and warn_for.",
+          "description": "AdCP protocol operation names for which this agent verifies signatures when present but does not require them. Under the 3.2 profile, a presented signature on a body-bearing request without content-digest coverage rejects even though an unsigned request may use configured fallback authentication. Typically a superset of required_for and warn_for.",
           "items": {
             "type": "string"
           }
         },
         "protocol_methods_supported_for": {
           "type": "array",
-          "description": "JSON-RPC protocol method names (e.g., 'tasks/cancel', 'tasks/get') for which this agent verifies signatures when present. Disjoint from `supported_for`, which carries AdCP tool names only. Counterparties SHOULD sign listed methods. The `tasks/*` family enumerated here matches the A2A 0.3.0 task-lifecycle methods (§7.x); future protocol additions extend this list, not `supported_for`. Items MUST be wire-format JSON-RPC method strings (containing `/`); plain AdCP tool names belong in `supported_for`.",
+          "description": "JSON-RPC protocol method names (e.g., 'tasks/cancel', 'tasks/get') for which this agent verifies signatures when present. Under the 3.2 profile, a presented signature on a body-bearing request without content-digest coverage rejects. Disjoint from supported_for, which carries AdCP tool names only. Items MUST be wire-format JSON-RPC method strings containing `/`; plain AdCP tool names belong in supported_for.",
           "items": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"
@@ -1353,7 +1719,7 @@
         },
         "protocol_methods_warn_for": {
           "type": "array",
-          "description": "Protocol method names for which this agent verifies signatures when present and logs failures but does NOT reject. Shadow-mode bridge between `protocol_methods_supported_for` and `protocol_methods_required_for`, mirroring `warn_for` semantics in the AdCP-tool namespace. An item MUST NOT appear in both `protocol_methods_warn_for` and `protocol_methods_required_for`; see `x-adcp-validation`.",
+          "description": "Protocol method names for shadow-mode verification, mirroring warn_for in the AdCP-tool namespace. Missing signatures and well-formed signatures that fail verification or body binding are recorded but MUST NOT establish verified-signer identity; processing continues only when an independent authenticator succeeds. A partial or malformed Signature / Signature-Input pair always hard-rejects. An item MUST NOT appear in both protocol_methods_warn_for and protocol_methods_required_for; see x-adcp-validation.",
           "items": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"
@@ -1367,7 +1733,7 @@
         },
         "protocol_methods_required_for": {
           "type": "array",
-          "description": "JSON-RPC protocol method names for which this agent rejects unsigned requests with `request_signature_required`. Separate namespace from `required_for` (which carries AdCP tool names) so verifiers and storyboard runners don't conflate the two — an AdCP tool name and an A2A method name could in principle collide as bare strings, but the protocol_methods_* bucket binds the match against the JSON-RPC `method` field, not the `tools/call` `params.name`. Every method listed MUST also appear in `protocol_methods_supported_for`; see `x-adcp-validation`.",
+          "description": "JSON-RPC protocol method names for which this agent rejects an unsigned request with request_signature_required unless an independently valid configured fallback authenticator succeeds. Separate namespace from required_for: this bucket binds against the JSON-RPC method field, not tools/call params.name. Every listed method MUST also appear in protocol_methods_supported_for; see x-adcp-validation.",
           "items": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"
@@ -1436,6 +1802,7 @@
         },
         "legacy_hmac_fallback": {
           "type": "boolean",
+          "deprecated": true,
           "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, or sync_agent_notification_configs.notification_configs[].authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
           "default": false
         }

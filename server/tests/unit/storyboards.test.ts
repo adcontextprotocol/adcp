@@ -431,6 +431,13 @@ describe('compareAdcpVersions', () => {
     expect(compareAdcpVersions('3.99', '10.0')).toBeLessThan(0);
   });
 
+  it('treats prereleases as part of their target compliance feature line', () => {
+    expect(compareAdcpVersions('3.2', '3.2-beta.0')).toBe(0);
+    expect(compareAdcpVersions('3.2-beta.0', '3.2')).toBe(0);
+    expect(compareAdcpVersions('3.2-beta.0', '3.1')).toBeGreaterThan(0);
+    expect(compareAdcpVersions('3.1', '3.2-beta.0')).toBeLessThan(0);
+  });
+
   it('treats malformed values as 0.0 (sort first, fail loudly elsewhere)', () => {
     // Defensive: malformed values should not crash the comparator. The DB
     // CHECK constraint ensures they never reach the comparator in

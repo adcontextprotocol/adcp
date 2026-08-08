@@ -16,7 +16,7 @@
     },
     "language": {
       "type": "string",
-      "description": "Language code (e.g., 'en', 'es', 'fr')"
+      "description": "Optional language claim for this markdown. In a materialized creative localization variant, localized-creative-asset.json requires this value to use /schemas/core/locale-tag.json and conformance requires exact equality with the enclosing variant locale. General non-localized assets retain the legacy unconstrained string for compatibility."
     },
     "markdown_flavor": {
       "$ref": "/schemas/enums/markdown-flavor.json",
