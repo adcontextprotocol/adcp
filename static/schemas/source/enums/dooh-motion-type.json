@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/dooh-motion-type.json",
+  "title": "DOOH Motion Type",
+  "description": "Motion capability of a digital out-of-home screen. Determines which creative formats the screen can render.",
+  "type": "string",
+  "enum": [
+    "full_motion",
+    "partial_motion",
+    "static"
+  ],
+  "enumDescriptions": {
+    "full_motion": "Screen supports full-motion video playback (e.g., LED billboards, transit screens with video capability)",
+    "partial_motion": "Screen supports animated stills or limited motion (e.g., scrolling text, animated GIFs, HTML5 banners) but not full video",
+    "static": "Screen displays static images only (e.g., e-ink displays, printed poster replacements)"
+  },
+  "examples": [
+    "full_motion",
+    "static"
+  ]
+}

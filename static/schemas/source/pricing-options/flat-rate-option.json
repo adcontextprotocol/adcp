@@ -52,7 +52,7 @@
         },
         "loop_duration_seconds": {
           "type": "integer",
-          "description": "Duration of the ad loop rotation in seconds",
+          "description": "Duration of the ad loop rotation in seconds. NOTE: this pricing-layer field is superseded by the placement-level dooh_placement_attributes.loop_duration_seconds, which is the canonical source. Retain here for backward compatibility; new integrations should read the placement-level field.",
           "minimum": 1
         },
         "min_plays_per_hour": {
