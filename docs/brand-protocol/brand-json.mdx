@@ -442,6 +442,8 @@ Readers MUST resolve a localized field in this order:
 
 Readers MUST NOT select the first or any other arbitrary translation when none of those candidates exists. Before matching legacy underscore keys such as `fr_CA`, readers replace `_` with `-` and apply the AdCP locale-tag canonicalization profile.
 
+For the localized scalar and complete-list fields introduced in 3.2, producers MUST NOT repeat a locale after canonicalization. For example, one localized value cannot contain both `en-US` and `en_US`. This restriction does not apply to the legacy `names` and `tagline` alias arrays, which continue to allow multiple values for one language.
+
 Localized tone arrays are selected as a whole. Readers MUST NOT localize elements independently or combine entries from different languages; list ordering and language consistency are part of the published value. This 3.2 slice covers `tone.voice`, `tone.attributes`, `tone.dos`, `tone.donts`, and asset `name` and `description`. Logo and product-catalog fields remain unchanged.
 
 Each brand in the `brands` array:

@@ -32,6 +32,11 @@ function localeCandidates(requested, defaultLanguage = 'en') {
   ])];
 }
 
+function hasUniqueCanonicalLocales(value) {
+  const locales = value.map(entry => canonicalLocale(Object.keys(entry)[0]));
+  return new Set(locales).size === locales.length;
+}
+
 function resolveLocalized(value, requested, defaultLanguage = 'en') {
   const localized = Array.isArray(value)
     && value.length > 0
@@ -107,4 +112,10 @@ test('locale resolution returns a complete tone list without mixing languages', 
     { fr: ['accessible', 'optimiste'] },
   ];
   assert.deepEqual(resolveLocalized(attributes, 'fr-CA'), ['accessible', 'optimiste']);
+});
+
+test('localized 3.2 fields prohibit duplicate canonicalized locale tags', () => {
+  assert.equal(hasUniqueCanonicalLocales([{ 'en-US': 'Color' }, { fr: 'Couleur' }]), true);
+  assert.equal(hasUniqueCanonicalLocales([{ 'en-US': 'Color' }, { en_US: 'Colour' }]), false);
+  assert.equal(hasUniqueCanonicalLocales([{ 'pt-BR': ['claro'] }, { pt_BR: ['direto'] }]), false);
 });

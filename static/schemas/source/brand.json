@@ -102,7 +102,7 @@
       }
     },
     "localized_scalar": {
-      "description": "A legacy plain string or an ordered set of one-locale string maps. Readers resolve the requested locale using the document default_language fallback contract and MUST NOT choose an arbitrary available translation.",
+      "description": "A legacy plain string or an ordered set of one-locale string maps. Producers MUST NOT repeat a locale after replacing '_' with '-' and applying the AdCP locale-tag canonicalization profile. Readers resolve the requested locale using the document default_language fallback contract and MUST NOT choose an arbitrary available translation.",
       "oneOf": [
         {
           "type": "string"
@@ -126,7 +126,7 @@
       }
     },
     "localized_string_list": {
-      "description": "A legacy plain string list or an ordered set of one-locale maps whose values are complete string lists.",
+      "description": "A legacy plain string list or an ordered set of one-locale maps whose values are complete string lists. Producers MUST NOT repeat a locale after replacing '_' with '-' and applying the AdCP locale-tag canonicalization profile.",
       "oneOf": [
         {
           "type": "array",
