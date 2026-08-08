@@ -5,12 +5,26 @@ import { describe, expect, it } from 'vitest';
 
 const publicRoot = join(process.cwd(), 'server/public');
 const guardSource = readFileSync(join(publicRoot, 'external-url.js'), 'utf8');
+const slackCtaSource = readFileSync(join(publicRoot, 'slack-cta.js'), 'utf8');
 
 function loadGuard(): (value: unknown) => string {
   const context = vm.createContext({ window: {}, URL });
   vm.runInContext(guardSource, context);
   return (context.window as { safeExternalHttpUrl: (value: unknown) => string })
     .safeExternalHttpUrl;
+}
+
+function loadSlackCta(): (options: {
+  inviteUrl?: unknown;
+  channelUrl?: unknown;
+  isLinkedToSlack?: boolean;
+}) => { url: string; label: string } {
+  const context = vm.createContext({ window: {}, URL });
+  vm.runInContext(guardSource, context);
+  vm.runInContext(slackCtaSource, context);
+  return (context.window as {
+    resolveSlackCta: ReturnType<typeof loadSlackCta>;
+  }).resolveSlackCta;
 }
 
 describe('public external URL navigation guard', () => {
@@ -54,6 +68,48 @@ describe('public external URL navigation guard', () => {
     const source = readFileSync(join(publicRoot, 'admin-account-detail.html'), 'utf8');
     expect(source).toContain('linkedInSignalRow(a.enrichment.linkedin_url)');
     expect(source).toContain('getSafeLinkedInUrl(value)');
+  });
+
+  it('routes Slack CTAs by actual Slack linkage with safe fallbacks', () => {
+    const resolveSlackCta = loadSlackCta();
+    const inviteUrl = 'https://join.slack.com/t/agenticads/shared_invite/example';
+    const channelUrl = 'https://app.slack.com/client/workspace/channel';
+
+    expect(resolveSlackCta({ inviteUrl, channelUrl })).toEqual({
+      url: inviteUrl,
+      label: 'Join Slack Workspace',
+    });
+    expect(resolveSlackCta({ inviteUrl, channelUrl, isLinkedToSlack: false })).toEqual({
+      url: inviteUrl,
+      label: 'Join Slack Workspace',
+    });
+    expect(resolveSlackCta({ inviteUrl, channelUrl, isLinkedToSlack: true })).toEqual({
+      url: channelUrl,
+      label: 'Open Slack Channel',
+    });
+    expect(resolveSlackCta({ inviteUrl: 'javascript:alert(1)', channelUrl })).toEqual({
+      url: channelUrl,
+      label: 'Join Slack Workspace',
+    });
+    expect(resolveSlackCta({ inviteUrl, channelUrl: 'data:text/html,bad', isLinkedToSlack: true })).toEqual({
+      url: inviteUrl,
+      label: 'Join Slack Workspace',
+    });
+    expect(resolveSlackCta({ inviteUrl: '/relative', channelUrl: 'not a url' })).toEqual({
+      url: '',
+      label: 'Join Slack Workspace',
+    });
+  });
+
+  it('exposes Slack linkage and uses the shared CTA resolver', () => {
+    const source = readFileSync(join(publicRoot, 'working-groups/detail.html'), 'utf8');
+    const httpSource = readFileSync(join(process.cwd(), 'server/src/http.ts'), 'utf8');
+
+    expect(httpSource).toContain('slackInviteUrl: SLACK_INVITE_URL');
+    expect(httpSource).toContain('isLinkedToSlack,');
+    expect(source).toContain('isLinkedToSlack = config.user?.isLinkedToSlack === true');
+    expect(source).toContain('const slackCta = resolveSlackCta({');
+    expect(source).toContain('slackBtn.href = slackCta.url');
   });
 
   it.each([
