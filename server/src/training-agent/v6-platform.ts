@@ -117,13 +117,18 @@ function translateV5Result<T extends object>(result: unknown): T {
  * as `ctx.authInfo.clientId`, so prefer that when present.
  */
 function buildTrainingCtx(
-  ctx: { account?: { authInfo?: { principal?: string } }; authInfo?: { clientId?: string } } | undefined,
+  ctx: {
+    account?: { authInfo?: { principal?: string } };
+    authInfo?: { clientId?: string };
+    agent?: { agent_url: string };
+  } | undefined,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): TrainingContext {
   return {
     mode: 'open',
     tenantId: 'signals',
     principal: ctx?.authInfo?.clientId ?? ctx?.account?.authInfo?.principal ?? 'anonymous',
+    ...(ctx?.agent?.agent_url && { authenticatedAgentUrl: ctx.agent.agent_url }),
     ...(storyboardCompat && { storyboardCompat }),
   };
 }

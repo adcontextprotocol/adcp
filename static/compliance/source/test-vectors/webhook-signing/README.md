@@ -24,7 +24,7 @@ Webhook signing reuses most of the RFC 9421 profile from request signing:
 
 - **`@target-uri` canonicalization** is identical. The canonicalization cases live in [`test-vectors/request-signing/canonicalization.json`](../request-signing/canonicalization.json) and are not duplicated here — every rule an SDK verifies for request signing applies byte-for-byte to webhook signing.
 - **Signature parameters** (`created`, `expires`, `nonce`, `keyid`, `alg`) share semantics with request signing. The only divergence is `tag`: webhooks MUST use `adcp/webhook-signing/v1`.
-- **Binary value encoding** (`Signature`, `Content-Digest`) uses the same base64url-no-padding override as request signing.
+- **Binary value encoding** (`Signature`, `Content-Digest`) remains the webhook-v1 legacy Base64URL-without-padding profile throughout 3.x. It does not inherit the AdCP 3.2 request-signing migration to RFC 8941 padded Base64. Implementations select the webhook decoder from the trusted callback route/profile; they MUST NOT expose it as a retry path for failed 3.2 request parsing.
 
 The distinct surface is the purpose-discriminator chain: `adcp_use` MUST be `"request-signing"` on the verifying JWK (the deprecated `"webhook-signing"` is also accepted for backward compatibility), `tag` MUST be `"adcp/webhook-signing/v1"`, and `content-digest` MUST be covered (no `covers_content_digest: "forbidden"` opt-out — the body is the event).
 

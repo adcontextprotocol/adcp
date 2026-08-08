@@ -55,17 +55,18 @@ In v3, brand identity is a first-class parameter on tasks (`build_creative`, `sy
 }
 ```
 
-### After (v3)
+### After (v3.2 canonical)
 
 ```json
 {
   "$schema": "/schemas/core/creative-manifest.json",
-  "format_id": {
-    "agent_url": "https://creatives.example.com",
-    "id": "product_carousel"
+  "format_kind": "sponsored_placement",
+  "format_option_ref": {
+    "scope": "product",
+    "format_option_id": "product_carousel"
   },
   "assets": {
-    "product_catalog": {
+    "source_catalog": {
       "asset_type": "catalog",
       "type": "product",
       "catalog_id": "winter-products"
@@ -77,7 +78,8 @@ In v3, brand identity is a first-class parameter on tasks (`build_creative`, `sy
 Key differences:
 
 - **Brand identity** comes from the `brand` parameter on the task, not embedded in creative assets
-- **Catalogs** are `catalog` asset types in the `assets` map, keyed by a role name (e.g., `product_catalog`)
+- **Format identity** is portable canonical `format_kind` plus an optional product or publisher `format_option_ref`; compound `format_id` is deprecated in 3.2
+- **Catalogs** are `catalog` asset types in the `assets` map, keyed by the canonical slot name (for `sponsored_placement`, `source_catalog`)
 - **Catalog references synced data** by `catalog_id` instead of inlining items (though inline items are still supported for simple cases)
 
 ---
@@ -138,10 +140,10 @@ Key features:
 ### Workflow
 
 ```
-list_creative_formats → check catalog assets → sync_catalogs → sync_creatives with catalog assets
+get_products.format_options[] → resolve effective canonical catalog slots → sync_catalogs → sync_creatives with canonical manifests
 ```
 
-1. Discover what catalogs a format needs via `catalog` asset types in the format's `assets`
+1. Discover what catalogs a product contract needs by resolving the selected canonical's default slots plus any narrowing or override in `get_products.format_options[].params.slots`
 2. Sync those catalogs using `sync_catalogs`
 3. Wait for approval if the seller requires review
 4. Submit creatives that reference the synced `catalog_id`
@@ -348,7 +350,7 @@ Packages now accept a `catalog` field for catalog-driven campaigns. One budget e
     Remove the `promoted_offering` string from `create_media_buy` requests. Use the `brief` field to describe what's being promoted.
   </Step>
   <Step title="Discover catalog requirements">
-    Call `list_creative_formats` and check for `catalog` asset types in each format's `assets` to understand what catalog types and fields are needed.
+    Resolve the selected declaration's effective canonical slots — canonical defaults plus any `format_options[].params.slots` narrowing or override — and check for catalog inputs. Use `get_adcp_capabilities.creative.supported_formats[]` only when selecting a separate creative agent to build or validate the resulting manifest; `list_creative_formats` is deprecated in 3.2.
   </Step>
   <Step title="Sync catalogs before submitting creatives">
     Use the `sync_catalogs` task to push catalog data to sellers. Handle async approval if the seller requires review.

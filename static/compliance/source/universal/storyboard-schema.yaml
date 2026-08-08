@@ -402,7 +402,7 @@
 #       creatives:
 #         - creative_id: "campaign_hero_video"
 #           status: "approved"
-#           format_id: { id: "video_30s" }
+#           format_kind: "video_hosted"
 #       plans:
 #         - plan_id: "gov_acme_q2_2027"
 #           budget: { total: 30000, currency: "USD" }
@@ -639,6 +639,20 @@
 #   case where the SDK's per-task request builder discards a body field
 #   from `sample_request`, use `context_inputs:` (above) as the
 #   post-builder injection path.
+#
+#   Creative asset expansion: an `assets` object MAY contain the reserved
+#   `$build_assets_from_format` key with a `$context.<name>` value. The context
+#   value MUST be either canonical `FormatOption.params` captured from
+#   `get_products` or a legacy `FormatId` resolved against formats captured from
+#   `list_creative_formats`. Before request-schema validation or transport, the
+#   runner MUST replace the entire directive-bearing `assets` object with an
+#   asset map keyed by each required slot's canonical `asset_group_id` or legacy
+#   `asset_id`. Values come from the storyboard's test kit and MUST satisfy the
+#   slot contract. Image slots use an `assets.images[]` fixture satisfying the
+#   declared dimensions; URL slots use `assets.click_url`. If any required slot
+#   cannot be populated, the runner
+#   MUST fail the step before transport with `unresolved_substitution` rather
+#   than sending the directive or an incomplete manifest.
 # sample_response: object (optional — example expected response; also surfaces in published docs)
 #
 # auth: "none" | object (optional — overrides the transport's default credentials for this step)
@@ -1362,8 +1376,9 @@
 # Cross-step integrity — use `check: refs_resolve`:
 #   `refs_resolve` asserts every ref in a source set resolves to a member of a
 #   target set, matched on declared keys. Use it when one step's response
-#   contains references (e.g., `format_ids` on `products`) that MUST exist in
-#   another step's response (e.g., `formats` from `list_creative_formats`).
+#   contains references that MUST exist in another step's response. In 3.2,
+#   prefer direct canonical declarations and use this primitive for remaining
+#   cross-resource identifiers.
 #   Without this primitive, broken references are silent until a later call
 #   (e.g., `sync_creatives`) fails at runtime, after commitments are already
 #   made.
@@ -1413,9 +1428,9 @@
 #     on the projected tuple so one broken ref across 50 products shows up
 #     once — compliance reports stay readable.
 #
-#   Example — every `format_id` on products resolves to a format on this agent:
+#   Legacy 3.x example — every named format reference resolves:
 #     - check: refs_resolve
-#       description: "Every format_id on products resolves to a format returned by list_creative_formats"
+#       description: "Every deprecated format_id resolves in the compatibility catalog"
 #       source:
 #         from: context
 #         path: "products[*].format_ids[*]"
@@ -2104,12 +2119,11 @@
 # task: expect_webhook_signature_valid
 #   Assert that the inbound webhook passed the 9421 webhook-signing verifier
 #   checklist (see docs/building/implementation/security.mdx#verifier-checklist-for-webhooks).
-#   Runner delegates verification to the `@adcp/client` 9421 webhook verifier;
-#   this step is gated on the client library having that verifier available
-#   (see test-kit contract). Negative conformance — signatures that MUST be
-#   rejected with a specific webhook_signature_* code — is tested via static
-#   conformance vectors under /compliance/{version}/test-vectors/webhook-signing/
-#   when those land, not by this step type.
+#   Runner delegates verification to `verifyWebhookSignature` from
+#   `@adcp/sdk/signing` (see test-kit contract). Negative conformance —
+#   signatures that MUST be rejected with a specific webhook_signature_* code —
+#   is exercised through the published static conformance vectors under
+#   /compliance/{version}/test-vectors/webhook-signing/, not by this step type.
 #
 #   Cross-step replay dedup: the runner MUST share a single (keyid, nonce) replay
 #   store across ALL expect_webhook_signature_valid invocations (and all retry
@@ -2296,11 +2310,10 @@
 # --- Unresolved substitution behavior ---
 #
 # When a storyboard references a substitution variable the runner cannot
-# resolve — most commonly {{runner.webhook_base}} or {{runner.webhook_url:<id>}}
-# on a run with no webhook receiver configured — the runner MUST NOT ship the
-# literal `{{...}}` token to the agent under test. Shipping unresolved
-# substitutions is a conformance bug on the runner side, not a grading signal
-# about the agent.
+# resolve — whether a `$context.*` token or a `{{...}}` token, including tokens
+# nested in object properties or array elements — the runner MUST NOT ship the
+# literal token to the agent under test. Shipping unresolved substitutions is a
+# conformance bug on the runner side, not a grading signal about the agent.
 #
 # Runners MUST resolve substitutions at one of two preflight points:
 #   1. Before the storyboard run starts — if any step references an unresolvable
@@ -2311,4 +2324,4 @@
 #      (e.g., {{prior_step.<id>.task_id}}) fails to resolve, grade the
 #      step as failed with `unresolved_substitution`.
 #
-# Neither path may ship a literal `{{...}}` token on the wire.
+# Neither path may ship a literal `$context.*` or `{{...}}` token on the wire.

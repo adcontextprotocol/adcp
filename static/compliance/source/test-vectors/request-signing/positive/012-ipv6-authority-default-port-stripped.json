@@ -1,6 +1,7 @@
 {
   "name": "IPv6 literal authority with explicit :443; canonicalization strips port but preserves brackets",
   "spec_reference": "#adcp-rfc-9421-profile (@target-uri canonicalization step 2 + step 4: IPv6 brackets preserved AND default ports stripped)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

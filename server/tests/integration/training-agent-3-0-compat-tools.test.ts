@@ -169,7 +169,7 @@ describe('training-agent 3.0 compat tool visibility', () => {
     }
   });
 
-  it('serves validate_input on current tenant routes only on a 3.1 envelope', async () => {
+  it('serves validate_input on current tenant routes only on the current envelope', async () => {
     const { baseUrl, close } = await bootRouter();
     try {
       await expect(listTenantTools(baseUrl, 'sales')).resolves.toContain('validate_input');

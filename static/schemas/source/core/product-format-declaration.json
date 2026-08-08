@@ -2,14 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/product-format-declaration.json",
   "title": "Product Format Declaration",
-  "description": "Inline format declaration on a product. The `format_kind` discriminator names which canonical format the product narrows; `params` carries the canonical's parameter schema (slots, dimensions, durations, codecs, character limits, platform_extensions, etc.). Optional `format_option_id` (stable identifier for routing when a product's `format_options` contains multiple declarations sharing the same `format_kind`), optional `publisher_domain` (namespace for the format option when it comes from a publisher adagents.json catalog), `display_name` (seller-controlled human-readable label for dashboard and catalog UIs), and `applies_to_channels` (subset of the product's declared channels this declaration applies to — lets a multi-channel product carry distinct format_options per channel). Discriminated-union shape generates clean tagged unions in TypeScript and Pydantic codegen. Replaces v1's named-format pattern (where products referenced a separately-defined format file via compound `format_id`). v1 named formats remain supported through the deprecation cycle; v2 product-bound declarations are opt-in.\n\n**Closed-set semantics (normative).** `format_options[]` is the closed set of accepted formats for this product. Sellers MUST reject `create_media_buy` requests targeting any `format_kind` (or format option reference) not present in this list — typically with `UNSUPPORTED_FEATURE` or a seller-specific code; the rejection is structural, not negotiable. `seller_preference` modulates *within* the accepted set (a soft ranking hint between equally-acceptable options), it is NOT an enforcement axis. A product wanting to say 'this format is the only one that works' lists exactly that one entry in `format_options[]`; everything else falls outside the set and is rejected by the closed-set rule.\n\n**Format matching vs satisfaction (normative).** Legacy named formats MUST be normalized to canonical declarations before comparison; do not exact-match raw `(agent_url, id)` pairs once a `format_id` has been projected through `canonical`, `v1_format_ref`, or the canonical mapping registry. Equivalence matching can treat a legacy fixed-size display ID and `format_kind: \"image\"` with matching `width`/`height` as the same underlying shape. Product satisfaction is stricter and directional: when this declaration specifies fixed constraints such as `width`, `height`, `duration_ms_exact`, or `duration_ms_range`, a buyer request or creative manifest MUST declare and satisfy those constraints. A broad request with no dimensions or duration does not satisfy a fixed-size or fixed-duration product; a broad product MAY accept a more specific creative unless another product constraint excludes it. Duration precedence is `duration_ms_exact` > `duration_ms_range`. Range constraints use containment: a range-based request satisfies this declaration only when every value it permits falls within this declaration's accepted range; overlap alone is insufficient. An exact value satisfies a range when the exact value falls inside the accepted interval. For hosted audio/video, a null range endpoint is unbounded: [null, 60000] means up to 60s, and [15000, null] means at least 15s; [null, null] is invalid because at least one endpoint must be bounded.\n\n**Custom format_kind** (`format_kind: \"custom\"`): for adopter-defined shapes that don't fit the 12 canonicals (multi-placement takeover, roadblock, branded content, cross-screen sponsorship, sponsorship lockup, newsletter sponsorship, AR lens, playable, live event sponsorship). When `format_kind` is `custom`, the declaration MUST carry `format_shape` (recognized global pattern from the [format-shape vocabulary registry](/schemas/core/format-shape-vocabulary.json)) AND `format_schema` (URI+digest reference to a fetchable schema describing the actual `params` and `slots`). Buyer agents fetch the schema, validate manifests structurally, and reason about manifests without per-seller integration code. See [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666) for the canonical promotion queue.",
+  "description": "Inline format declaration on a product. The `format_kind` discriminator names which canonical format the product narrows; `params` carries the canonical's parameter schema (slots, dimensions, durations, codecs, character limits, platform_extensions, etc.). Optional `format_option_id` (stable identifier for routing when a product's `format_options` contains multiple declarations sharing the same `format_kind`), optional `publisher_domain` (namespace for the format option when it comes from a publisher adagents.json catalog), `display_name` (seller-controlled human-readable label for dashboard and catalog UIs), and `applies_to_channels` (subset of the product's declared channels this declaration applies to — lets a multi-channel product carry distinct format_options per channel). Discriminated-union shape generates clean tagged unions in TypeScript and Pydantic codegen. Replaces v1's named-format pattern (where products referenced a separately-defined format file via compound `format_id`). Canonical product-bound declarations are the AdCP 3.2 authoring path; v1 named formats remain only as deprecated 3.x compatibility projections.\n\n**Closed-set semantics (normative).** `format_options[]` is the closed set of accepted formats for this product. Sellers MUST reject `create_media_buy` requests targeting any `format_kind` (or format option reference) not present in this list — typically with `UNSUPPORTED_FEATURE` or a seller-specific code; the rejection is structural, not negotiable. `seller_preference` modulates *within* the accepted set (a soft ranking hint between equally-acceptable options), it is NOT an enforcement axis. A product wanting to say 'this format is the only one that works' lists exactly that one entry in `format_options[]`; everything else falls outside the set and is rejected by the closed-set rule.\n\n**Format matching vs satisfaction (normative).** Legacy named formats MUST be normalized to canonical declarations before comparison; do not exact-match raw `(agent_url, id)` pairs once a `format_id` has been projected through `canonical`, `v1_format_ref`, or the canonical mapping registry. Equivalence matching can treat a legacy fixed-size display ID and `format_kind: \"image\"` with matching `width`/`height` as the same underlying shape. Product satisfaction is stricter and directional: when this declaration specifies fixed constraints such as `width`, `height`, `duration_ms_exact`, or `duration_ms_range`, a buyer request or creative manifest MUST declare and satisfy those constraints. A broad request with no dimensions or duration does not satisfy a fixed-size or fixed-duration product; a broad product MAY accept a more specific creative unless another product constraint excludes it. Duration precedence is `duration_ms_exact` > `duration_ms_range`. Range constraints use containment: a range-based request satisfies this declaration only when every value it permits falls within this declaration's accepted range; overlap alone is insufficient. An exact value satisfies a range when the exact value falls inside the accepted interval. For hosted audio/video, a null range endpoint is unbounded: [null, 60000] means up to 60s, and [15000, null] means at least 15s; [null, null] is invalid because at least one endpoint must be bounded.\n\n**Custom format_kind** (`format_kind: \"custom\"`): for adopter-defined shapes that don't fit the 12 canonicals (multi-placement takeover, roadblock, branded content, cross-screen sponsorship, sponsorship lockup, newsletter sponsorship, AR lens, playable, live event sponsorship). When `format_kind` is `custom`, the declaration MUST carry `format_shape` (recognized global pattern from the [format-shape vocabulary registry](/schemas/core/format-shape-vocabulary.json)) AND `format_schema` (URI+digest reference to a fetchable schema describing the actual `params` and `slots`). Buyer agents fetch the schema, validate manifests structurally, and reason about manifests without per-seller integration code. See [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666) for the canonical promotion queue.",
   "type": "object",
   "required": ["format_kind", "params"],
   "discriminator": { "propertyName": "format_kind" },
   "properties": {
     "format_option_id": {
       "type": "string",
-      "description": "Stable identifier for this format declaration within its namespace. REQUIRED when the parent product's `format_options` contains multiple declarations sharing the same `format_kind` (so buyers can disambiguate which option a manifest targets via `manifest.format_option_ref`). SHOULD be set on EVERY `format_options[]` entry — not just when structurally required to break a `format_kind` collision — so V2-mental-model buyers can use the V2 authoring path (`PackageRequest.format_option_refs[]`, `creative-manifest.format_option_ref`) against the product. Publisher-catalog-backed options pair this with `publisher_domain`; product-local options omit `publisher_domain` and are selected by `format_option_id` within the target product. A product that ships without selectable `format_option_id` values on its `format_options[]` entries is structurally 3.1-conformant but is not V2-authorable: buyers fall back to v1 `format_ids[]` and lose the stable naming the V2 path was designed to provide. Sellers MUST reject V2 authoring against such products with `UNSUPPORTED_FEATURE` and `error.details.reason` set to `format_option_refs_not_published` per `package-request.json`. Format-internal (not a URI). Examples: 'display_image_300x250', 'responsive_search', 'daily_pulse_homepage_image'."
+      "description": "Stable identifier for this declaration within its namespace. REQUIRED when a product contains multiple declarations with the same format_kind and SHOULD be set on every entry. Publisher-backed options pair it with publisher_domain; product-local options omit publisher_domain. When a single declaration has a unique format_kind and no ID, buyers author canonically with format_kind plus params; they MUST NOT fall back to deprecated format_ids merely because this optional ID is absent. Examples: 'display_image_300x250', 'responsive_search', 'daily_pulse_homepage_image'."
     },
     "publisher_domain": {
       "type": "string",
@@ -37,6 +37,10 @@
       "enum": ["preferred", "accepted", "discouraged"],
       "description": "Optional soft routing hint *within* a product's accepted set of formats — NOT an enforcement axis. `preferred` — seller actively recommends this format (often because of measurement, viewability, or render-quality differences); `accepted` — supported on equal footing with other format_options (default when omitted); `discouraged` — supported but suboptimal (e.g., legacy 3p-tag where the seller would prefer html5 for OM-SDK coverage). Buyer agents picking between format_options SHOULD respect seller preferences when their own constraints don't override.\n\n**Not an enforcement axis (normative).** `seller_preference` does NOT carry the meaning of 'this format won't work / required-only'. That case is structural: `format_options[]` IS the closed set of accepted formats; anything outside the list is rejected at `create_media_buy` regardless of preference. A seller that accepts only one format lists exactly that one entry — the structural fact does the enforcement work, no enum value needed. There is intentionally no `required` value; preference is bounded to *ranking within the already-accepted set*, not gating into it."
     },
+    "locale_policy": {
+      "$ref": "/schemas/core/creative-locale-policy.json",
+      "description": "Optional seller-enforced creative-locale constraint for this format option. This is product/placement eligibility, not a new format kind or synthetic locale-specific format ID. Because legacy format_ids cannot preserve this constraint, declarations carrying locale_policy MUST set canonical_formats_only to true and MUST NOT carry v1_format_ref."
+    },
     "canonical_formats_only": {
       "type": "boolean",
       "default": false,
@@ -45,7 +49,7 @@
     "experimental": {
       "type": "boolean",
       "default": false,
-      "description": "When true, THIS seller's specific product declaration may not work as declared — even if the underlying canonical is stable. Use for beta runtime paths, forward-looking catalog entries the runtime doesn't yet honor, or experimental products where the seller wants buyer-side caution. Buyers reading `experimental: true` on a product declaration SHOULD prefer the legacy named-format path when a fallback exists for the same product (via `format_ids` on the parent product or via this declaration's `v1_format_ref`) and SHOULD validate via `validate_input` or a sandbox before routing production budget.\n\nIndependent of the canonical's own `experimental` flag — a stable canonical (e.g., `image`, `video_hosted`) can carry an experimental product declaration when the seller is shipping a new runtime path that isn't fully wired yet. Conversely, an experimental canonical (`sponsored_placement`, `responsive_creative`, `agent_placement`) MAY carry non-experimental product declarations where the seller's adopter contract is well-tested. Buyer SDKs SHOULD filter products with `experimental: true` from default views and offer an opt-in flag to surface them.\n\nReplaces the earlier `runtime_status` enum (`stable | preview | declared_only`) — same semantic ('use with caution') without the cognitive overhead of two stability axes."
+      "description": "When true, this seller's specific canonical declaration may not work as declared even if the underlying canonical is stable. Buyers SHOULD preflight it with validate_input or in a sandbox before routing production budget and SHOULD filter it from default views unless the caller opts in. Experimental status never makes the deprecated named-format path preferable. This field is independent of the canonical's own experimental flag and replaces the earlier runtime_status enum."
     },
     "format_shape": {
       "type": "string",
@@ -63,6 +67,15 @@
     }
   },
   "allOf": [
+    {
+      "$comment": "Publisher-scoped canonical declarations are addressable only by the complete {publisher_domain, format_option_id} identity pair.",
+      "if": {
+        "required": ["publisher_domain"]
+      },
+      "then": {
+        "required": ["format_option_id"]
+      }
+    },
     {
       "if": {
         "properties": { "format_kind": { "const": "custom" } },
@@ -101,6 +114,18 @@
       "$comment": "Canonical-format product declarations use format_option_id; capability_id belongs only to creative-agent build capabilities.",
       "not": {
         "required": ["capability_id"]
+      }
+    },
+    {
+      "$comment": "Locale policy is a v2-only hard constraint. Legacy format_ids cannot preserve it without allowing non-executable buys.",
+      "if": {
+        "required": ["locale_policy"]
+      },
+      "then": {
+        "properties": {
+          "canonical_formats_only": { "const": true }
+        },
+        "required": ["canonical_formats_only"]
       }
     }
   ],
@@ -252,6 +277,24 @@
           "ssl_required": true,
           "composition_model": "deterministic",
           "cta_values": ["LEARN_MORE", "SHOP_NOW", "GET_OFFER"]
+        }
+      }
+    },
+    {
+      "description": "Québec French-only display image — same image shape with a seller-enforced creative locale constraint",
+      "data": {
+        "format_kind": "image",
+        "format_option_id": "quebec_display_image",
+        "display_name": "Québec display image — French creative",
+        "canonical_formats_only": true,
+        "locale_policy": {
+          "accepted_language_ranges": ["fr"]
+        },
+        "params": {
+          "width": 300,
+          "height": 250,
+          "max_file_size_kb": 200,
+          "image_formats": ["jpg", "png"]
         }
       }
     },

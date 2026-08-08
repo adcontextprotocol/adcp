@@ -132,10 +132,8 @@ Changing governance agents on a live account affects all active campaigns. If a 
   "account": { "account_id": "acct_001" },
   "creatives": [{
     "creative_id": "product-carousel",
-    "format_id": {
-      "agent_url": "https://creative.retailer.com/adcp",
-      "id": "product_carousel_with_inventory"
-    },
+    "format_kind": "image_carousel",
+    "format_option_ref": { "scope": "product", "format_option_id": "product_carousel_with_inventory" },
     "catalogs": [{
       "catalog_id": "product-feed",
       "type": "product",
@@ -235,7 +233,7 @@ Not everything requires account state. Some tasks are stateless queries:
 | Stateless (no account needed) | Stateful (account required) |
 |---|---|
 | `get_products` — discover inventory | `create_media_buy` — buy inventory |
-| `list_creative_formats` — discover formats | `sync_creatives` — upload creatives |
+| `get_adcp_capabilities` — discover creative operations | `sync_creatives` — upload creatives |
 | `get_signals` — discover signals | `activate_signal` — activate signals |
 | `get_adcp_capabilities` — discover features | `sync_catalogs` — upload catalogs |
 

@@ -51,7 +51,7 @@ caller:
 
 prerequisites:
   description: |
-    The runner seeds two products under a unique format identifier so
+    The runner seeds two products under a unique canonical format option so
     wholesale pagination can be exercised against a deterministic filtered
     feed.
   test_kit: "test-kits/acme-outdoor.yaml"
@@ -66,9 +66,12 @@ fixtures:
       channels: ["display"]
       publisher_properties:
         - publisher_domain: "acmeoutdoor.example"
-      format_ids:
-        - agent_url: "https://compliance.adcontextprotocol.org"
-          id: "get_products_pagination_integrity_display"
+      format_options:
+        - format_option_id: "get_products_pagination_integrity_display"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
     - product_id: "get_products_pagination_product_2"
       name: "Get Products Pagination Test Product 2"
       description: "Compliance fixture for get_products pagination integrity."
@@ -76,9 +79,12 @@ fixtures:
       channels: ["display"]
       publisher_properties:
         - publisher_domain: "acmeoutdoor.example"
-      format_ids:
-        - agent_url: "https://compliance.adcontextprotocol.org"
-          id: "get_products_pagination_integrity_display"
+      format_options:
+        - format_option_id: "get_products_pagination_integrity_display"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
   pricing_options:
     - product_id: "get_products_pagination_product_1"
       pricing_option_id: "get_products_pagination_pricing_1"
@@ -165,9 +171,9 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           filters:
-            format_ids:
-              - agent_url: "https://compliance.adcontextprotocol.org"
-                id: "get_products_pagination_integrity_display"
+            format_option_refs:
+              - scope: "product"
+                format_option_id: "get_products_pagination_integrity_display"
           pagination:
             max_results: 1
 
@@ -186,10 +192,8 @@ phases:
               - "get_products_pagination_product_2"
             description: "The returned product is one of the seeded pagination fixtures"
           - check: field_contains
-            path: "products[0].format_ids[*]"
-            value:
-              agent_url: "https://compliance.adcontextprotocol.org"
-              id: "get_products_pagination_integrity_display"
+            path: "products[0].format_options[*].format_option_id"
+            value: "get_products_pagination_integrity_display"
             description: "The returned product satisfies the requested test format filter"
           - check: field_absent
             path: "products[1].product_id"
@@ -238,9 +242,9 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           filters:
-            format_ids:
-              - agent_url: "https://compliance.adcontextprotocol.org"
-                id: "get_products_pagination_integrity_display"
+            format_option_refs:
+              - scope: "product"
+                format_option_id: "get_products_pagination_integrity_display"
           pagination:
             cursor: "$context.products_next_cursor"
             max_results: 1
@@ -260,10 +264,8 @@ phases:
               - "get_products_pagination_product_2"
             description: "The terminal-page product is one of the seeded pagination fixtures"
           - check: field_contains
-            path: "products[0].format_ids[*]"
-            value:
-              agent_url: "https://compliance.adcontextprotocol.org"
-              id: "get_products_pagination_integrity_display"
+            path: "products[0].format_options[*].format_option_id"
+            value: "get_products_pagination_integrity_display"
             description: "The terminal-page product satisfies the requested test format filter"
           - check: field_absent
             path: "products[1].product_id"

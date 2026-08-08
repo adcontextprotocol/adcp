@@ -1,0 +1,153 @@
+id: creative/billing_out_of_band
+version: "1.0.0"
+title: "Creative report_usage rejects out-of-band billing"
+category: creative
+summary: "Verifies that a creative agent declaring bills_through_adcp: false rejects report_usage records with accepted: 0 and BILLING_OUT_OF_BAND."
+track: creative
+introduced_in: "3.1"
+required_tools:
+  - get_adcp_capabilities
+  - report_usage
+
+narrative: |
+  Creative agents that bill through an offline contract, SaaS license, or
+  bundled enterprise agreement should declare `creative.bills_through_adcp:
+  false`. Buyers use that capability as a pre-call discriminator and should
+  avoid sending AdCP billing records. If a buyer still probes with
+  `report_usage`, the agent must not silently accept a record it will not bill
+  on. It returns `accepted: 0` with `errors[0].code: BILLING_OUT_OF_BAND`.
+
+  `BILLING_OUT_OF_BAND` is terminal. The buyer must not auto-retry the same
+  `report_usage` record, because no request mutation will move the account onto
+  an AdCP billing surface. The recovery path is buyer-side routing: mark the
+  creative agent/account as out-of-band and reconcile from the native billing
+  export or offline contract.
+
+agent:
+  interaction_model: creative_agent
+  capabilities:
+    - has_creative_library
+    - bills_out_of_band
+  examples:
+    - "Ad servers licensed by flat SaaS contract"
+    - "Creative platforms bundled into an enterprise agreement"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The creative agent declares `creative.bills_through_adcp: false` in
+    `get_adcp_capabilities`. Agents that declare `true` are not exercising this
+    storyboard path; the rejection phase is skipped for them.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Discover creative billing mode"
+    narrative: |
+      The buyer reads `creative.bills_through_adcp` before sending usage
+      records. A false value means billing is out of band and `report_usage`
+      is not the billing source of truth.
+
+    steps:
+      - id: get_capabilities
+        title: "Read creative billing discriminator"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return a creative capability block with `bills_through_adcp`
+          declared. The report_usage rejection path below only runs when the
+          value is false.
+        sample_request:
+          context:
+            correlation_id: "creative_billing_out_of_band--get_capabilities"
+        context_outputs:
+          - key: "bills_through_adcp"
+            path: "creative.bills_through_adcp"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "creative.bills_through_adcp"
+            description: "Creative billing discriminator is declared"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_billing_out_of_band--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: reject_out_of_band_usage
+    title: "Reject report_usage for out-of-band billing"
+    optional: true
+    skip_if: "context.bills_through_adcp != false"
+    narrative: |
+      The buyer sends a well-formed creative usage record despite the declared
+      out-of-band billing mode. The creative agent returns a successful task
+      response with zero accepted records and a per-record
+      `BILLING_OUT_OF_BAND` error. This is not a transport failure and should
+      not use `expect_error: true`.
+
+    steps:
+      - id: report_usage_out_of_band
+        title: "Submit creative usage to an out-of-band agent"
+        task: report_usage
+        schema_ref: "account/report-usage-request.json"
+        response_schema_ref: "account/report-usage-response.json"
+        doc_ref: "/accounts/tasks/report_usage"
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Return:
+          - accepted: 0
+          - errors[0].code: BILLING_OUT_OF_BAND
+          - errors[0].recovery: terminal
+
+          The terminal recovery classification is the machine-readable
+          no-retry assertion: buyers must not re-issue the same report_usage
+          after this response.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "$generate:uuid_v4#creative_billing_out_of_band_report_usage"
+          reporting_period:
+            start: "2099-07-01T00:00:00Z"
+            end: "2099-07-31T23:59:59Z"
+          usage:
+            - account:
+                account_id: "acct_acme_creative"
+              creative_id: "campaign_hero_video"
+              pricing_option_id: "po_vast_30s_cpm"
+              impressions: 2400000
+              vendor_cost: 1200.00
+              currency: "USD"
+          context:
+            correlation_id: "creative_billing_out_of_band--report_usage"
+        validations:
+          - check: response_schema
+            description: "Response matches report-usage-response.json schema"
+          - check: field_value
+            path: "accepted"
+            value: 0
+            description: "No out-of-band creative usage records are accepted"
+          - check: field_value
+            path: "errors[0].code"
+            value: "BILLING_OUT_OF_BAND"
+            description: "Per-record error code is BILLING_OUT_OF_BAND"
+          - check: field_value
+            path: "errors[0].recovery"
+            value: "terminal"
+            description: "Terminal recovery tells buyers not to auto-retry report_usage"
+          - check: field_absent
+            path: "errors[0].details"
+            description: "BILLING_OUT_OF_BAND is discriminator-by-code; no details payload is defined"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_billing_out_of_band--report_usage"
+            description: "Context correlation_id returned unchanged"

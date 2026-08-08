@@ -44,8 +44,26 @@
         },
         "total_budget": {
           "type": "number",
-          "description": "Updated total budget amount across all packages, denominated in currency. Echoed when the update affects package budgets so buyers can verify the new aggregate without a round-trip to get_media_buys. Matches the total_budget field in subsequent get_media_buys responses.",
+          "description": "Updated hard aggregate lifetime budget, denominated in currency. Echoed when the update affects the shared total or package budgets so buyers can verify the new aggregate without a round-trip to get_media_buys.",
           "minimum": 0
+        },
+        "budget_allocation": {
+          "allOf": [
+            {
+              "$ref": "/schemas/core/budget-allocation.json"
+            }
+          ],
+          "description": "Post-update cross-package allocation configuration when affected by the update."
+        },
+        "pacing": {
+          "$ref": "/schemas/enums/pacing.json",
+          "description": "Post-update aggregate pacing when affected by the update."
+        },
+        "bidding": {
+          "allOf": [
+            { "$ref": "/schemas/core/bidding-policy.json" }
+          ],
+          "description": "Post-update media-buy-authored bidding policy when affected by the update, preserving explicit automatic mode, scope-specific goal binding, and media-buy-currency denomination. Omitted when the authored media-buy block was cleared."
         },
         "implementation_date": {
           "type": [
@@ -68,6 +86,7 @@
         },
         "valid_actions": {
           "type": "array",
+          "deprecated": true,
           "description": "Flat-vocabulary actions the buyer can perform after this update. Saves a round-trip to get_media_buys. Deprecated in favor of `available_actions[]`, which carries `mode`, optional SLA, and optional `terms_ref`. Sellers SHOULD populate both during the 3.x deprecation window; consumers MUST prefer `available_actions[]` when both are present. Removed in 4.0.",
           "items": {
             "$ref": "/schemas/enums/media-buy-valid-action.json"
