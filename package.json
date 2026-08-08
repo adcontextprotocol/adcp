@@ -144,6 +144,7 @@
   },
   "dependencies": {
     "@adcp/sdk": "12.1.1",
+    "@adcp/sdk-compliance": "npm:@adcp/sdk@13.0.0-rc.9",
     "@anthropic-ai/sdk": "^0.115.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.8.0",
