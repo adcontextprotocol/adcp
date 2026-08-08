@@ -332,6 +332,8 @@ Digital out-of-home advertising on electronic screens in public spaces.
 
 **Typical Formats**: display, video
 
+For product discovery, DOOH geography belongs on product and placement metadata rather than the property governance layer. Sellers can expose concrete disclosed screen or venue coordinates through `placements[].dooh_placement_attributes.location`, and aggregate network coverage through `dooh_inventory_summary.venue_counts[]`. Use `lat` / `lon` together for coordinates and the shared `geo_level` / `system` / `geo_code` vocabulary for aggregate rows. Aggregate rows declare `count_unit` so buyers know whether `count` represents venues, screens, frames, or faces.
+
 #### `ooh`
 
 Classic out-of-home advertising on physical (non-digital) surfaces.

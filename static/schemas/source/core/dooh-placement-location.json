@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/dooh-placement-location.json",
+  "title": "DOOH Placement Location",
+  "description": "Optional concrete location metadata for a DOOH product placement. Location describes where a disclosed screen, frame, or venue is; it is not a stable inventory identifier.",
+  "type": "object",
+  "properties": {
+    "lat": {
+      "type": "number",
+      "minimum": -90,
+      "maximum": 90,
+      "description": "Latitude in decimal degrees."
+    },
+    "lon": {
+      "type": "number",
+      "minimum": -180,
+      "maximum": 180,
+      "description": "Longitude in decimal degrees. Use `lon`, not `lng`, for consistency with OpenRTB and existing AdCP geo fields."
+    },
+    "address": {
+      "$ref": "/schemas/core/dooh-address.json",
+      "description": "Optional postal address for the disclosed placement location."
+    }
+  },
+  "dependencies": {
+    "lat": ["lon"],
+    "lon": ["lat"]
+  },
+  "minProperties": 1,
+  "additionalProperties": true
+}

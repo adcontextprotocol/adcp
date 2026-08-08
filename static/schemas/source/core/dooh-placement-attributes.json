@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/dooh-placement-attributes.json",
+  "title": "DOOH Placement Attributes",
+  "description": "Optional DOOH-specific metadata on a product placement. This object is scoped to buyer-facing discovery facts; do not use it for seller-private delivery mappings.",
+  "type": "object",
+  "properties": {
+    "location": {
+      "$ref": "/schemas/core/dooh-placement-location.json",
+      "description": "Concrete location metadata for a disclosed screen, frame, or venue. Omit for aggregate packages or inventory where the seller cannot disclose per-placement location."
+    }
+  },
+  "minProperties": 1,
+  "additionalProperties": true
+}

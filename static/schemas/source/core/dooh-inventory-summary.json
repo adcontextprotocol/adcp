@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/dooh-inventory-summary.json",
+  "title": "DOOH Inventory Summary",
+  "description": "Optional product-level aggregate geography for DOOH products. Use this for network, regional, or package products where per-screen disclosure is unavailable, impractical, or not useful at discovery time.",
+  "type": "object",
+  "properties": {
+    "venue_counts": {
+      "type": "array",
+      "description": "Aggregate counts by geography and optional venue type. Rows use the same geo_level/system/geo_code vocabulary as forecast geo dimensions.",
+      "items": {
+        "$ref": "/schemas/core/dooh-venue-count.json"
+      },
+      "minItems": 1
+    }
+  },
+  "minProperties": 1,
+  "additionalProperties": true
+}

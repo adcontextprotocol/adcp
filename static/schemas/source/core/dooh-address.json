@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/dooh-address.json",
+  "title": "DOOH Address",
+  "description": "Optional postal address details for a DOOH placement location. Use only when the seller can disclose a concrete venue or screen address for planning or verification.",
+  "type": "object",
+  "properties": {
+    "line1": {
+      "type": "string",
+      "description": "Street address or venue address line."
+    },
+    "line2": {
+      "type": "string",
+      "description": "Optional secondary address line, such as suite, terminal, concourse, or level."
+    },
+    "city": {
+      "type": "string",
+      "description": "City or locality."
+    },
+    "region": {
+      "type": "string",
+      "description": "Region, state, province, or ISO 3166-2 subdivision code."
+    },
+    "postal_code": {
+      "type": "string",
+      "description": "Postal or ZIP code."
+    },
+    "country": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$",
+      "description": "ISO 3166-1 alpha-2 country code."
+    }
+  },
+  "minProperties": 1,
+  "additionalProperties": true
+}
