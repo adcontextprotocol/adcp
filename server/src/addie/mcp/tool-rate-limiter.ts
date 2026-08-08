@@ -267,6 +267,16 @@ export async function checkToolRateLimit(
  * thrown error — the LLM needs to surface the message) when exceeded,
  * and otherwise delegates to the original handler.
  */
+function formatRateLimitWindow(windowMs: number): string {
+  if (windowMs < 60 * 60 * 1000) {
+    const minutes = Math.round(windowMs / 60000);
+    return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  }
+
+  const hours = Math.round(windowMs / 3600000);
+  return `${hours} hour${hours === 1 ? '' : 's'}`;
+}
+
 export function withToolRateLimit<T extends (input: Record<string, unknown>) => Promise<string>>(
   toolName: string,
   userId: string | undefined | null,
@@ -280,7 +290,7 @@ export function withToolRateLimit<T extends (input: Record<string, unknown>) => 
       let limit: string;
       if (check.scope === 'workspace') {
         const ws = WORKSPACE_CAPS[toolName];
-        limit = `workspace-wide ${toolName} limit (${ws.max} per ${Math.round(ws.windowMs / 3600000)} hour${ws.windowMs >= 7200000 ? 's' : ''})`;
+        limit = `workspace-wide ${toolName} limit (${ws.max} per ${formatRateLimitWindow(ws.windowMs)})`;
       } else if (check.scope === 'global') {
         limit = `overall Addie tool call limit (${GLOBAL_CAP.max} per ${GLOBAL_CAP.windowMs / 60000} minutes)`;
       } else {

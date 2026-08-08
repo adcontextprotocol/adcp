@@ -233,6 +233,18 @@ describe('withToolRateLimit', () => {
     expect(result).toMatch(/overall Addie tool call limit/i);
   });
 
+  it('renders sub-hour workspace windows in minutes', async () => {
+    for (let i = 0; i < 12; i++) {
+      const wrapped = withToolRateLimit('grade_agent_signing', `workspace-user-${i}`, async () => 'ok');
+      expect(await wrapped({})).toBe('ok');
+    }
+
+    const blocked = withToolRateLimit('grade_agent_signing', 'workspace-user-13', async () => 'ok');
+    const result = await blocked({});
+    expect(result).toMatch(/workspace-wide grade_agent_signing limit \(12 per 10 minutes\)/i);
+    expect(result).not.toMatch(/0 hour/i);
+  });
+
   it('passes through system: users without rate checks', async () => {
     let calls = 0;
     const wrapped = withToolRateLimit('generate_perspective_illustration', 'system:addie', async () => {
