@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { deriveStoryboardStatuses } from '../../src/addie/services/compliance-testing.js';
+import {
+  deriveStoryboardStatuses,
+  isNonExecutableCoverageGapScenario,
+} from '../../src/addie/services/compliance-testing.js';
 import type { ComplianceResult } from '@adcp/sdk/testing';
 
 /**
@@ -78,6 +81,16 @@ function makeResult(
 }
 
 describe('deriveStoryboardStatuses', () => {
+  it('classifies fixture-only UI scenarios as non-executable coverage gaps', () => {
+    expect(isNonExecutableCoverageGapScenario({
+      scenario: 'creative_fate_after_cancellation/fixture_preflight',
+      steps: [{
+        skipped: true,
+        skip_reason: 'fixture_unavailable',
+      }],
+    })).toBe(true);
+  });
+
   it('emits one entry per storyboard the runner produced data for', () => {
     const result = makeResult([
       { scenario: 'signal_owned/capability_discovery', passed: true, steps: [{ passed: true }] },
