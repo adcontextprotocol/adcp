@@ -11,7 +11,7 @@ import {
 } from '../certification/s2-canonical-formats-delta.js';
 import { S2_DELTA_DEFINITION, type DeltaDefinition } from '../config/recertification-deltas.js';
 import { getDeltaRelease } from './system-settings-db.js';
-import { resolveEffectiveMembership } from './org-filters.js';
+import { invalidateMembershipCache, resolveEffectiveMembership } from './org-filters.js';
 
 const logger = createLogger('certification-db');
 
@@ -1119,9 +1119,12 @@ export async function hasEffectiveMembershipForUser(userId: string): Promise<boo
      WHERE workos_user_id = $1`,
     [userId],
   );
-  const memberships = await Promise.all(
-    orgs.rows.map(row => resolveEffectiveMembership(row.workos_organization_id)),
-  );
+  const memberships = await Promise.all(orgs.rows.map(row => {
+    // Credential award/issuance is an authorization boundary. Force a fresh
+    // canonical lookup instead of accepting the normal five-minute cache.
+    invalidateMembershipCache(row.workos_organization_id);
+    return resolveEffectiveMembership(row.workos_organization_id);
+  }));
   return memberships.some(membership => membership.is_member);
 }
 
@@ -1133,12 +1136,15 @@ export async function checkAndAwardCredentials(
   // after performing Stripe lazy reconciliation. Background and admin callers
   // intentionally fall back to the canonical persisted membership resolver so
   // they cannot bypass the paid-tier gate by calling this low-level function.
-  let maxTier = options.maxTier;
-  if (maxTier === undefined) {
-    if (!(await hasEffectiveMembershipForUser(userId))) {
-      maxTier = 1;
-    }
-  }
+  const membershipMaxTier = await hasEffectiveMembershipForUser(userId)
+    ? Number.POSITIVE_INFINITY
+    : 1;
+  // A caller may narrow authorization (for example, free-only issuance), but
+  // it may never widen the fresh canonical membership decision.
+  const requestedMaxTier = Number.isNaN(options.maxTier)
+    ? 1
+    : options.maxTier ?? Number.POSITIVE_INFINITY;
+  const maxTier = Math.min(requestedMaxTier, membershipMaxTier);
 
   const [credentials, existing] = await Promise.all([
     getCredentials(),

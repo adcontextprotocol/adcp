@@ -1135,44 +1135,71 @@ export function createCertificationRouters() {
       }
 
       // Then: backfill badges for credentials missing them
-      const needsBadgeUrl = await query<{
+      type BadgeBackfillRow = {
         id: string; workos_user_id: string; credential_id: string;
         tier: number;
         certifier_credential_id: string | null; certifier_public_id: string | null;
-      }>(
-        `SELECT uc.id, uc.workos_user_id, uc.credential_id, cc.tier,
-                uc.certifier_credential_id, uc.certifier_public_id
-         FROM user_credentials uc
-         JOIN certification_credentials cc ON cc.id = uc.credential_id
-         WHERE uc.certifier_badge_url IS NULL
-           AND cc.certifier_group_id IS NOT NULL
-         LIMIT 50`
-      );
+      };
 
       let updated = 0;
       let skippedInactive = 0;
+      let examined = 0;
+      let processed = 0;
       const errors: string[] = [];
+      let cursor: string | null = null;
 
-      for (const row of needsBadgeUrl.rows) {
-        try {
-          if (row.tier > 1 && !(await certDb.hasEffectiveMembershipForUser(row.workos_user_id))) {
-            skippedInactive++;
-            continue;
+      // Keyset pagination prevents inactive paid rows (which intentionally
+      // retain a null badge URL) from occupying the same LIMIT 50 forever and
+      // starving eligible rows later in the result set.
+      while (processed < 50) {
+        const page: { rows: BadgeBackfillRow[] } = await query<BadgeBackfillRow>(
+          `SELECT uc.id, uc.workos_user_id, uc.credential_id, cc.tier,
+                  uc.certifier_credential_id, uc.certifier_public_id
+           FROM user_credentials uc
+           JOIN certification_credentials cc ON cc.id = uc.credential_id
+           WHERE uc.certifier_badge_url IS NULL
+             AND cc.certifier_group_id IS NOT NULL
+             AND ($1::uuid IS NULL OR uc.id > $1::uuid)
+           ORDER BY uc.id
+           LIMIT 50`,
+          [cursor],
+        );
+        if (page.rows.length === 0) break;
+
+        for (const row of page.rows as BadgeBackfillRow[]) {
+          cursor = row.id;
+          examined++;
+          let counted = false;
+          try {
+            if (row.tier > 1) {
+              const active = await certDb.hasEffectiveMembershipForUser(row.workos_user_id);
+              if (!active) {
+                skippedInactive++;
+                continue;
+              }
+            }
+            processed++;
+            counted = true;
+            const result = await ensureCertifierCredential({
+              userId: row.workos_user_id,
+              credentialId: row.credential_id,
+            });
+            if (result.badgeUrl) updated++;
+          } catch (err) {
+            // Membership lookup failures also consume one unit of the bounded
+            // batch, while known-inactive rows do not.
+            if (!counted) processed++;
+            const msg = err instanceof Error ? err.message : String(err);
+            errors.push(`${row.credential_id}/${row.workos_user_id}: ${msg}`);
+            logger.error({ error: err, row }, 'Backfill failed for credential');
           }
-          const result = await ensureCertifierCredential({
-            userId: row.workos_user_id,
-            credentialId: row.credential_id,
-          });
-          if (result.badgeUrl) updated++;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          errors.push(`${row.credential_id}/${row.workos_user_id}: ${msg}`);
-          logger.error({ error: err, row }, 'Backfill failed for credential');
+          if (processed >= 50) break;
         }
+        if (page.rows.length < 50) break;
       }
 
       res.json({
-        total: needsBadgeUrl.rows.length,
+        total: examined,
         updated,
         skipped_inactive: skippedInactive,
         errors,
@@ -1451,6 +1478,13 @@ export function createCertificationRouters() {
         if (!moduleId) {
           return res.status(409).json({ error: 'Attempt has no capstone module to reconcile' });
         }
+        const module = await certDb.getModule(moduleId);
+        if (!module) {
+          return res.status(409).json({ error: 'Attempt capstone module was not found' });
+        }
+        if (!module.is_free && !(await certDb.hasEffectiveMembershipForUser(attempt.workos_user_id))) {
+          return res.status(409).json({ error: 'Active membership is required to reconcile this paid attempt' });
+        }
 
         const warnings: string[] = [];
         try {
@@ -1484,6 +1518,16 @@ export function createCertificationRouters() {
         scoreValues.reduce((sum, s) => sum + s, 0) / scoreValues.length
       );
       const passing = scoreValues.every(s => s >= 70) && overallScore >= 70;
+
+      if (passing && attempt.module_id) {
+        const module = await certDb.getModule(attempt.module_id);
+        if (!module) {
+          return res.status(409).json({ error: 'Attempt module was not found' });
+        }
+        if (!module.is_free && !(await certDb.hasEffectiveMembershipForUser(attempt.workos_user_id))) {
+          return res.status(409).json({ error: 'Active membership is required to complete this paid attempt' });
+        }
+      }
 
       let updated;
       try {
@@ -1562,6 +1606,9 @@ export function createCertificationRouters() {
       const mod = await certDb.getModule(moduleId);
       if (!mod) {
         return res.status(404).json({ error: 'Module not found' });
+      }
+      if (!mod.is_free && !(await certDb.hasEffectiveMembershipForUser(userId))) {
+        return res.status(409).json({ error: 'Active membership is required to complete this paid module' });
       }
 
       const scoreResult = validateModuleCompletionScores(effectiveScores, mod.assessment_criteria);

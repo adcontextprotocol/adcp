@@ -609,12 +609,9 @@ function formatUtcDate(value: string | null): string {
 async function checkAndFormatCredentials(
   userId: string,
   memberContext: MemberContext | null,
-  allowPaidCredentials: boolean,
 ): Promise<string[]> {
-  const awarded = await certDb.checkAndAwardCredentials(
-    userId,
-    { maxTier: allowPaidCredentials ? Number.POSITIVE_INFINITY : 1 },
-  );
+  const allowPaidCredentials = await certDb.hasEffectiveMembershipForUser(userId);
+  const awarded = await certDb.checkAndAwardCredentials(userId);
 
   const creds = await certDb.getCredentials();
   const credMap = new Map(creds.map(c => [c.id, c]));
@@ -645,6 +642,12 @@ async function checkAndFormatCredentials(
   for (const credId of toProcess) {
     const cred = credMap.get(credId);
     if (cred) {
+      // External issuance is its own authorization boundary. Recheck directly
+      // before each paid badge call so membership ending during assessment or
+      // an earlier network request cannot reuse a stale positive decision.
+      if (cred.tier > 1 && !(await certDb.hasEffectiveMembershipForUser(userId))) {
+        continue;
+      }
       const result = await issueCertifierBadge(userId, credId, cred, memberContext);
       if (result === NAME_REQUIRED_MARKER) {
         nameRequired = true;
@@ -1585,9 +1588,20 @@ export function createCertificationToolHandlers(
    * trigger that surfaces the latent state — they never see the drift.
    */
   const ensureMembership = async (): Promise<boolean> => {
-    if (memberContext?.is_member) return true;
     const orgId = memberContext?.organization?.workos_organization_id;
-    if (!orgId || !stripe) return false;
+    const userId = getUserId();
+    if (!userId) return false;
+
+    // This is an authorization boundary, so do not trust the conversation's
+    // captured member context or the normal five-minute membership cache. Use
+    // the same user-level resolver as background issuance so membership via a
+    // second organization is handled consistently.
+    if (await certDb.hasEffectiveMembershipForUser(userId)) {
+      memberContext = memberContext ? { ...memberContext, is_member: true } : memberContext;
+      return true;
+    }
+    if (!orgId) return false;
+    if (!stripe) return false;
 
     const result = await attemptStripeReconciliation(orgId, {
       pool: getPool(),
@@ -1595,19 +1609,24 @@ export function createCertificationToolHandlers(
       logger,
     });
 
-    if (!result.healed) return false;
+    if (!result.healed && result.reason !== 'already_entitled') return false;
+
+    // Lazy reconciliation accepts a broader set of Stripe states for billing
+    // continuity. Certification uses the canonical membership rule (active,
+    // not canceled), so refresh and re-resolve instead of trusting `healed`.
+    const isMember = await certDb.hasEffectiveMembershipForUser(userId);
 
     if (memberContext?.organization) {
       memberContext = {
         ...memberContext,
-        is_member: true,
+        is_member: isMember,
         organization: {
           ...memberContext.organization,
-          subscription_status: result.subscriptionStatus,
+          ...(result.healed && { subscription_status: result.subscriptionStatus }),
         },
       };
     }
-    return true;
+    return isMember;
   };
 
   // ----- list_certification_tracks -----
@@ -1997,7 +2016,7 @@ export function createCertificationToolHandlers(
           'Congratulate them warmly — they earned this. Do NOT share any scores or percentages with the learner.',
         ];
         try {
-          lines.push(...await checkAndFormatCredentials(userId, memberContext, hasMembership));
+          lines.push(...await checkAndFormatCredentials(userId, memberContext));
         } catch (credError) {
           logger.error({ error: credError }, 'Failed to check credential eligibility');
         }
@@ -2074,7 +2093,7 @@ export function createCertificationToolHandlers(
 
       // Auto-check and award credentials
       try {
-        lines.push(...await checkAndFormatCredentials(userId, memberContext, hasMembership));
+        lines.push(...await checkAndFormatCredentials(userId, memberContext));
       } catch (credError) {
         logger.error({ error: credError }, 'Failed to check credential eligibility');
       }
@@ -2104,8 +2123,12 @@ export function createCertificationToolHandlers(
       const retrySeconds = Math.max(1, Math.ceil((rate.retryAfterMs ?? 60000) / 1000));
       return `Rate limit exceeded on check_credentials. Try again in ~${retrySeconds} seconds.`;
     }
-    const hasMembership = await ensureMembership();
-    const lines = await checkAndFormatCredentials(userId, memberContext, hasMembership);
+    // A deferred badge retry is also an entitlement recovery point. Give a
+    // Stripe-active organization with stale local state the same lazy-heal
+    // opportunity as the paid learning gates. The issuance path still
+    // revalidates membership immediately before every paid badge call.
+    await ensureMembership();
+    const lines = await checkAndFormatCredentials(userId, memberContext);
     if (lines.length === 0) {
       return 'No new credentials to issue. Your existing credentials are unchanged.';
     }
@@ -2296,7 +2319,7 @@ export function createCertificationToolHandlers(
 
       // Check for newly earned credentials
       try {
-        lines.push(...await checkAndFormatCredentials(userId, memberContext, hasMembership));
+        lines.push(...await checkAndFormatCredentials(userId, memberContext));
       } catch (credError) {
         logger.error({ error: credError }, 'Failed to check credential eligibility after test-out');
       }
@@ -2626,7 +2649,7 @@ export function createCertificationToolHandlers(
           lines.push('The capstone was already recorded, so I rechecked module completion and credential issuance.');
 
           try {
-            lines.push(...await checkAndFormatCredentials(userId, memberContext, true));
+            lines.push(...await checkAndFormatCredentials(userId, memberContext));
           } catch (credError) {
             logger.error({ error: credError, userId, attemptId: attempt.id }, 'Failed to reconcile credentials for already-passed capstone');
             return notCompleted(capstoneMod.id, 'state', `This capstone attempt is already passed, but credential issuance failed during reconciliation. Ask an admin to use Certification > Attempts needing attention for attempt ${attempt.id}.`);
@@ -2780,7 +2803,7 @@ export function createCertificationToolHandlers(
 
         // Auto-award credentials (including specialist)
         try {
-          lines.push(...await checkAndFormatCredentials(userId, memberContext, true));
+          lines.push(...await checkAndFormatCredentials(userId, memberContext));
         } catch (credError) {
           logger.error({ error: credError }, 'Failed to check credential eligibility');
         }

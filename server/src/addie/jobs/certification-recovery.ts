@@ -107,6 +107,34 @@ export async function runCertificationRecoveryJob(
         throw new Error('Passed attempt has no numeric scores to reconcile');
       }
 
+      // Recovery is still a paid completion mutation. Do not reconcile a
+      // historical passed attempt automatically after entitlement has ended;
+      // those cases require the human-reviewed historical audit path.
+      const module = await certDb.getModule(moduleId);
+      if (!module) {
+        throw new Error(`Certification module ${moduleId} was not found`);
+      }
+      if (!module.is_free && !(await certDb.hasEffectiveMembershipForUser(attempt.workos_user_id))) {
+        const escalation = await createEscalation({
+          workos_user_id: attempt.workos_user_id,
+          user_display_name: candidate.name,
+          user_email: candidate.email,
+          category: 'needs_human_action',
+          priority: 'high',
+          summary: `Historical entitlement review required for certification attempt ${candidate.id}`,
+          addie_context: [
+            `Certification recovery found passed module ${moduleId}, but the learner does not currently have active membership.`,
+            `Do not reconcile or revoke automatically; establish entitlement at the attempt timestamp under the certification access-entitlement review policy.`,
+          ].join(' '),
+          dedup_key: `certification-recovery-entitlement:${candidate.id}`,
+        });
+        result.escalated += 1;
+        const notified = await notifyEscalation(escalation, candidate.id, moduleId);
+        if (notified === true) result.notified += 1;
+        if (notified === 'no_channel') result.skipped_no_channel += 1;
+        continue;
+      }
+
       await certDb.reconcilePassedAttemptModule(attempt, moduleId, scores);
       const awarded = await certDb.checkAndAwardCredentials(attempt.workos_user_id);
       if (awarded.length > 0) {
