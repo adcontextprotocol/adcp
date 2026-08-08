@@ -8254,6 +8254,48 @@ paths:
                 required:
                   - success
                   - formats
+        "400":
+          description: Missing agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  retryAfter:
+                    type: integer
+                required:
+                  - error
+                  - message
+        "502":
+          description: Agent discovery failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Connection timeout
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
   /api/public/agent-publishers:
     get:
       operationId: getAgentPublishers
@@ -8283,6 +8325,48 @@ paths:
                 required:
                   - success
                   - properties
+        "400":
+          description: Missing agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  retryAfter:
+                    type: integer
+                required:
+                  - error
+                  - message
+        "502":
+          description: Agent discovery failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Connection timeout
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
   /api/public/agent-products:
     get:
       operationId: getAgentProducts
@@ -8312,6 +8396,48 @@ paths:
                 required:
                   - success
                   - products
+        "400":
+          description: Missing agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  retryAfter:
+                    type: integer
+                required:
+                  - error
+                  - message
+        "502":
+          description: Agent discovery failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Connection timeout
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
   /api/public/validate-publisher:
     get:
       operationId: validatePublisher

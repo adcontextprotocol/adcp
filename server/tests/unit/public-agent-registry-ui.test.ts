@@ -13,5 +13,12 @@ describe('public agent registry UI', () => {
 
   it('prefers the latest health tool count over stale capability metadata', () => {
     expect(agentsHtml).toContain('agent?.health?.tools_count ?? agent?.capabilities?.tools_count');
+    expect(agentsHtml).toContain('agentWithCaps?.capabilities?.tools || []');
+  });
+
+  it('allowlists verification links and escapes responsive format dimensions', () => {
+    expect(agentsHtml).toContain("parsed.protocol === 'https:'");
+    expect(agentsHtml).not.toContain('href="${escapeHtml(p.verification_url)}"');
+    expect(agentsHtml).toContain('escapeHtml(String(params.min_width || 0))');
   });
 });

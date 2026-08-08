@@ -7,6 +7,7 @@ const sdkMocks = vi.hoisted(() => ({
   agentExecuteTask: vi.fn(),
   getProducts: vi.fn(),
   singleExecuteTask: vi.fn(),
+  clientOptions: [] as unknown[],
 }));
 
 vi.mock('@adcp/sdk', async () => {
@@ -14,6 +15,9 @@ vi.mock('@adcp/sdk', async () => {
   return {
     ...actual,
     AdCPClient: class {
+      constructor(_agents: unknown, options: unknown) {
+        sdkMocks.clientOptions.push(options);
+      }
       agent() {
         return {
           getAdcpCapabilities: sdkMocks.getAdcpCapabilities,
@@ -22,6 +26,9 @@ vi.mock('@adcp/sdk', async () => {
       }
     },
     SingleAgentClient: class {
+      constructor(_agent: unknown, options: unknown) {
+        sdkMocks.clientOptions.push(options);
+      }
       getProducts = sdkMocks.getProducts;
       executeTask = sdkMocks.singleExecuteTask;
     },
@@ -58,6 +65,7 @@ describe('public agent discovery proxies', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    sdkMocks.clientOptions.length = 0;
     app = buildApp();
   });
 
@@ -65,7 +73,7 @@ describe('public agent discovery proxies', () => {
     const capability = {
       capability_id: 'preview_display',
       operations: ['preview'],
-      format: { format_kind: 'display', params: { width: 300, height: 250 } },
+      format: { format_kind: 'image', params: { width: 300, height: 250 } },
     };
     sdkMocks.getAdcpCapabilities.mockResolvedValue({
       data: { creative: { supported_formats: [capability] } },
@@ -75,6 +83,9 @@ describe('public agent discovery proxies', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ success: true, formats: [capability] });
+    expect(sdkMocks.clientOptions[0]).toMatchObject({
+      transport: { maxResponseBytes: 1024 * 1024, requestTimeoutMs: 10_000 },
+    });
     expect(sdkMocks.agentExecuteTask).not.toHaveBeenCalled();
   });
 
@@ -87,7 +98,7 @@ describe('public agent discovery proxies', () => {
       data: {
         formats: [{
           format_id: { agent_url: 'https://creative.example.com', id: 'display_300x250' },
-          canonical: { kind: 'display' },
+          canonical: { kind: 'image' },
           renders: [{ dimensions: { width: 300, height: 250 } }],
         }],
       },
@@ -100,8 +111,67 @@ describe('public agent discovery proxies', () => {
     expect(response.body.formats).toEqual([{
       capability_id: 'preview_display_300x250',
       operations: ['preview'],
-      format: { format_kind: 'display', params: { width: 300, height: 250 } },
+      format: { format_kind: 'image', params: { width: 300, height: 250 } },
     }]);
+  });
+
+  it('projects a 3.1 display catalog without optional canonical annotations', async () => {
+    sdkMocks.getAdcpCapabilities.mockResolvedValue({
+      data: { creative: { supported_formats: [] } },
+    });
+    sdkMocks.agentExecuteTask.mockResolvedValue({
+      success: true,
+      data: {
+        formats: [{
+          format_id: { agent_url: 'https://sales.example.com', id: 'display_300x250' },
+          name: 'Medium Rectangle',
+          type: 'display',
+          assets: [{
+            asset_type: 'image',
+            requirements: {
+              min_width: 300,
+              max_width: 300,
+              min_height: 250,
+              max_height: 250,
+            },
+          }],
+        }],
+      },
+    });
+
+    const response = await request(app).get('/api/public/agent-formats?url=https://sales.example.com/mcp');
+
+    expect(response.status).toBe(200);
+    expect(response.body.formats).toEqual([{
+      capability_id: 'preview_display_300x250',
+      operations: ['preview'],
+      description: 'Medium Rectangle',
+      format: { format_kind: 'image', params: { width: 300, height: 250 } },
+    }]);
+  });
+
+  it('drops hostile legacy format parameters before they reach the registry UI', async () => {
+    sdkMocks.getAdcpCapabilities.mockResolvedValue({
+      data: { creative: { supported_formats: [] } },
+    });
+    sdkMocks.agentExecuteTask.mockResolvedValue({
+      success: true,
+      data: {
+        formats: [{
+          format_id: { agent_url: 'https://creative.example.com', id: 'hostile' },
+          canonical: {
+            kind: 'image',
+            parameters: { min_width: '<img src=x onerror=alert(1)>' },
+          },
+        }],
+      },
+    });
+
+    const response = await request(app).get('/api/public/agent-formats?url=https://creative.example.com/mcp');
+
+    expect(response.status).toBe(200);
+    expect(response.body.formats).toEqual([]);
+    expect(JSON.stringify(response.body)).not.toContain('onerror');
   });
 
   it('returns a gateway error when legacy format discovery fails', async () => {
@@ -147,6 +217,32 @@ describe('public agent discovery proxies', () => {
 
     expect(response.status).toBe(502);
     expect(response.body).toEqual({ error: 'Failed to fetch publishers' });
+  });
+
+  it('strips peer-supplied publisher verification state and unsafe links', async () => {
+    sdkMocks.singleExecuteTask.mockResolvedValue({
+      success: true,
+      data: {
+        properties: [{
+          identifier: 'publisher.example.com',
+          domain: 'publisher.example.com',
+          type: 'domain',
+          verified: true,
+          verification_url: 'javascript:alert(1)',
+          verification_error: '<img src=x onerror=alert(1)>',
+          private_field: 'do not expose',
+        }],
+      },
+    });
+
+    const response = await request(app).get('/api/public/agent-publishers?url=https://sales.example.com/mcp');
+
+    expect(response.status).toBe(200);
+    expect(response.body.properties).toEqual([{
+      identifier: 'publisher.example.com',
+      domain: 'publisher.example.com',
+      type: 'domain',
+    }]);
   });
 
   it('returns the public product fields consumed by the registry UI', async () => {

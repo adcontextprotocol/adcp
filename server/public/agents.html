@@ -558,6 +558,15 @@
         return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
+    function safeHttpsUrl(value) {
+        try {
+            const parsed = new URL(String(value));
+            return parsed.protocol === 'https:' ? parsed.href : null;
+        } catch {
+            return null;
+        }
+    }
+
     function agentToolCount(agent) {
         return Number(agent?.health?.tools_count ?? agent?.capabilities?.tools_count) || 0;
     }
@@ -1159,7 +1168,7 @@
                 return;
             }
 
-            const tools = agentWithCaps.capabilities.tools || [];
+            const tools = agentWithCaps?.capabilities?.tools || [];
 
             if (tools.length === 0) {
                 section.innerHTML = `
@@ -1237,9 +1246,9 @@
                                             ${p.country ? ` | <strong>Country:</strong> ${escapeHtml(p.country)}` : ''}
                                         </div>
                                     </div>
-                                    <a href="${escapeHtml(p.verification_url)}" target="_blank" rel="noopener noreferrer" class="publisher-verify-link" title="View adagents.json">
+                                    ${safeHttpsUrl(p.verification_url) ? `<a href="${escapeHtml(safeHttpsUrl(p.verification_url))}" target="_blank" rel="noopener noreferrer" class="publisher-verify-link" title="View adagents.json">
                                         Verified
-                                    </a>
+                                    </a>` : '<span class="publisher-verify-link">Verified</span>'}
                                 </div>
                                 ${p.description ? `<div class="property-section-small" style="margin-top: var(--space-2);">${escapeHtml(p.description)}</div>` : ''}
                                 ${p.tags && p.tags.length > 0 ? `
@@ -1268,7 +1277,7 @@
                                         <div class="publisher-domain">${escapeHtml(p.identifier || p.domain || 'Unknown')}</div>
                                         <div class="property-section-small" style="margin-top: var(--space-1);">${escapeHtml(p.type || 'domain')}</div>
                                     </div>
-                                    ${p.verification_url ? `<a href="${escapeHtml(p.verification_url)}" target="_blank" rel="noopener noreferrer" class="publisher-verify-link publisher-verify-link--error" title="Check adagents.json">
+                                    ${safeHttpsUrl(p.verification_url) ? `<a href="${escapeHtml(safeHttpsUrl(p.verification_url))}" target="_blank" rel="noopener noreferrer" class="publisher-verify-link publisher-verify-link--error" title="Check adagents.json">
                                         Check
                                     </a>` : ''}
                                 </div>
@@ -1519,7 +1528,7 @@
                         <div><strong>Canonical kind:</strong> ${escapeHtml(format.format?.format_kind || '')}</div>
                         <div><strong>Operations:</strong> ${escapeHtml((format.operations || []).join(', '))}</div>
                         ${width && height ? `<div><strong>Dimensions:</strong> ${escapeHtml(String(width))}&times;${escapeHtml(String(height))}px</div>` : ''}
-                        ${params.min_width || params.min_height ? `<div><strong>Responsive:</strong> Yes (${params.min_width || 0}&times;${params.min_height || 0} to ${params.max_width || width}&times;${params.max_height || height})</div>` : ''}
+                        ${params.min_width || params.min_height ? `<div><strong>Responsive:</strong> Yes (${escapeHtml(String(params.min_width || 0))}&times;${escapeHtml(String(params.min_height || 0))} to ${escapeHtml(String(params.max_width || width || 0))}&times;${escapeHtml(String(params.max_height || height || 0))})</div>` : ''}
                     </div>
                 </div>
             </div>
