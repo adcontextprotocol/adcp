@@ -9155,6 +9155,46 @@ describe('update_media_buy budget validation', () => {
     expect((updated.affected_packages as Array<Record<string, unknown>>).map(pkg => pkg.budget)).toEqual([30000, 20000]);
   });
 
+  it('rejects proportional redistribution when an active package has no committed budget', async () => {
+    const catalog = buildCatalog();
+    const first = catalog[0].product;
+    const second = catalog[1].product;
+    const firstPricing = first.pricing_options as Array<Record<string, unknown>>;
+    const secondPricing = second.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'zero-share.example' }, operator: 'zero-share.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'zero-share.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [
+        { product_id: first.product_id, pricing_option_id: firstPricing[0].pricing_option_id, budget: 100000 },
+        { product_id: second.product_id, pricing_option_id: secondPricing[0].pricing_option_id, budget: 10000 },
+      ],
+    });
+
+    const packages = created.packages as Array<Record<string, unknown>>;
+    const { result: zeroed } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: created.media_buy_id,
+      revision: created.revision,
+      packages: [{ package_id: packages[1].package_id, budget: 0 }],
+    });
+    expect(zeroed.errors).toBeUndefined();
+
+    const { result: rejected } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: created.media_buy_id,
+      revision: zeroed.revision,
+      total_budget: { amount: 50000, currency: 'USD' },
+    });
+
+    expect(rejected.code).toBe('VALIDATION_ERROR');
+    expect(rejected.message).toContain('positive, finite committed budgets');
+  });
+
   it('rejects total_budget combined with package patches without mutation', async () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
