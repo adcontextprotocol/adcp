@@ -247,6 +247,7 @@ test('temporary snapshot redirects cover every available live page', () => {
     'docs/reference/migration/cross-role-governance-enforcement',
     'docs/protocol/language-and-localization',
     'docs/protocol/sync_agent_notification_configs',
+    'docs/creative/channels/radio',
   ];
   if (JSON.stringify(uncoveredPages) !== JSON.stringify(expectedUncoveredPages)) {
     throw new Error(
