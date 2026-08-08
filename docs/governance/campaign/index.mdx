@@ -187,6 +187,8 @@ Each phase builds on context from earlier phases. During **purchase**, the gover
 
 ## Validation categories
 
+The labels below are common agent-internal vocabulary for governance response and audit output. They are illustrative, not a protocol-level enum or a capability declaration. Consumers display them with their human-readable findings and MUST NOT pattern-match them as machine-level contracts.
+
 | Category | What it checks |
 |----------|---------------|
 | `budget_authority` | Spend within authorized limits, per-seller concentration, reallocation magnitude |
@@ -195,8 +197,11 @@ Each phase builds on context from earlier phases. During **purchase**, the gover
 | `regulatory_compliance` | Jurisdiction-specific regulations resolved from the brand's compliance configuration and the plan's authorized countries/regions |
 | `seller_verification` | Configuration accuracy, undisclosed changes, delivery plausibility |
 | `brand_policy` | Brand-level compliance policies resolved from the brand configuration and policy registry -- competitor separation, category adjacency, custom brand rules |
+| `accessibility_compliance` | Accessibility posture evaluated by the agent's own policy model, such as a brand- or plan-stated WCAG objective or accessible-asset expectation |
 
-Governance agents declare which categories they evaluate via `get_adcp_capabilities`.
+`accessibility_compliance` is documented response/audit vocabulary, not a policy-activation mechanism. Its presence does not make an agent evaluate accessibility, activate a policy, or establish a typed accessibility requirement on canonical formats or creative assets. The canonical 3.2 format schemas do not yet define that typed contract; legacy format accessibility hints do not fill that gap. A future protocol slice must define discovery, policy activation, typed requirements, and structured per-asset failures before clients can rely on accessibility enforcement.
+
+This label belongs to governance rather than Content Standards: Content Standards evaluates creative-content suitability, while a governance finding records the agent's evaluation of an applicable technical or policy obligation. An agent may surface `accessibility_compliance` only when its own policy model actually performed that review.
 
 ## Statuses
 

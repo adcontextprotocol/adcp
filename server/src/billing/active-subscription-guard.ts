@@ -15,6 +15,8 @@
 import { OrganizationDatabase, TIER_PRESERVING_STATUSES } from '../db/organization-db.js';
 import { createCustomerPortalSession } from './stripe-client.js';
 import { createLogger } from '../logger.js';
+import { canManageOrganizationBilling } from './billing-authorization.js';
+import type { UserOrgMembership } from '../utils/resolve-user-org-membership.js';
 
 const logger = createLogger('active-subscription-guard');
 
@@ -62,6 +64,8 @@ export interface BlockOptions {
    * over the org's subscription, payment method, and cancellation.
    */
   customerPortalReturnUrl?: string;
+  /** Active membership used to authorize billing-management access. */
+  requesterMembership?: Pick<UserOrgMembership, 'organizationId' | 'role' | 'status'>;
 }
 
 /**
@@ -71,11 +75,10 @@ export interface BlockOptions {
  *
  * @param orgId    workos_organization_id of the org being billed
  * @param orgDb    OrganizationDatabase instance (DI for testing)
- * @param options.customerPortalReturnUrl  When provided, the 409 includes a
- *   single-use Stripe Customer Portal URL the requester can follow to
- *   manage the existing subscription. Omit on routes where the requester
- *   does not have admin authority over the org (e.g., invite acceptance
- *   for a not-yet-member or a `member`-role user).
+ * @param options.customerPortalReturnUrl  When provided alongside an active
+ *   owner/admin membership for this exact org, the 409 includes a single-use
+ *   Stripe Customer Portal URL. Missing, inactive, mismatched, or ordinary
+ *   member authorization suppresses portal creation.
  */
 export async function blockIfActiveSubscription(
   orgId: string,
@@ -88,7 +91,10 @@ export async function blockIfActiveSubscription(
   }
 
   let portalUrl: string | undefined;
-  if (options.customerPortalReturnUrl) {
+  if (
+    options.customerPortalReturnUrl
+    && canManageOrganizationBilling(options.requesterMembership, orgId)
+  ) {
     const org = await orgDb.getOrganization(orgId);
     if (org?.stripe_customer_id) {
       try {

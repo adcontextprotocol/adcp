@@ -53,6 +53,7 @@ import {
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { notifyInvoiceSent } from "../notifications/billing.js";
 import { WorkOS } from "@workos-inc/node";
+import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
 
 const logger = createLogger("billing-public-routes");
 const orgDb = new OrganizationDatabase();
@@ -286,30 +287,21 @@ export function createPublicBillingRouter(): Router {
         });
       }
 
-      const isDevUserInvoice =
-        isDevModeEnabled() &&
-        Object.values(DEV_USERS).some((du) => du.id === user.id) &&
-        orgId.startsWith("org_dev_");
-
-      if (!isDevUserInvoice) {
-        const membership = await workos?.userManagement.listOrganizationMemberships({
-          userId: user.id,
-          organizationId: orgId,
+      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      if (!membership) {
+        return res.status(403).json({
+          error: "Access denied",
+          message: "You are not a member of this organization",
         });
-        if (!membership?.data?.length) {
-          return res.status(403).json({
-            error: "Access denied",
-            message: "You are not a member of this organization",
-          });
-        }
       }
 
       // Refuse if the org already has an active subscription. Tier changes go
       // through the Stripe Customer Portal, not this intake route. The
-      // requester is an authenticated member of the org (verified above), so
-      // it's safe to surface the portal URL.
+      // Ordinary members may still request an invoice, but only an active
+      // owner/admin membership may receive a billing-management portal URL.
       const activeBlock = await blockIfActiveSubscription(orgId, orgDb, {
         customerPortalReturnUrl: `${req.protocol}://${req.get('host')}/dashboard/membership`,
+        requesterMembership: membership,
       });
       if (activeBlock) {
         return res.status(activeBlock.status).json(activeBlock.body);
@@ -425,11 +417,18 @@ export function createPublicBillingRouter(): Router {
       // pass that early check before either has minted a sub.
       const intake = await withOrgIntakeLock<
         | { kind: 'block'; block: ActiveSubscriptionBlock }
+        | { kind: 'forbidden' }
         | { kind: 'invoiceFailed' }
         | { kind: 'success'; invoiceResult: NonNullable<Awaited<ReturnType<typeof createAndSendInvoice>>> }
       >(orgId, async () => {
+        // Re-resolve inside the lock: a membership can be revoked or
+        // downgraded after the early check while the request waits. Never use
+        // that stale snapshot to mint a billing-management portal session.
+        const currentMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+        if (!currentMembership) return { kind: 'forbidden' };
         const racedBlock = await blockIfActiveSubscription(orgId, orgDb, {
           customerPortalReturnUrl: `${req.protocol}://${req.get('host')}/dashboard/membership`,
+          requesterMembership: currentMembership,
         });
         if (racedBlock) return { kind: 'block', block: racedBlock };
         const invoiceResult = await createAndSendInvoice(invoiceData);
@@ -439,6 +438,12 @@ export function createPublicBillingRouter(): Router {
 
       if (intake.kind === 'block') {
         return res.status(intake.block.status).json(intake.block.body);
+      }
+      if (intake.kind === 'forbidden') {
+        return res.status(403).json({
+          error: 'Access denied',
+          message: 'You are no longer a member of this organization',
+        });
       }
       if (intake.kind === 'invoiceFailed') {
         return res.status(500).json({
@@ -522,9 +527,16 @@ export function createPublicBillingRouter(): Router {
           });
         }
 
-        // Validate that the requested product is available for this org type.
-        // This endpoint handles membership checkout only; event and sponsorship
-        // purchases use separate flows.
+        const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+        if (!membership) {
+          return res.status(403).json({
+            error: "Access denied",
+            message: "You are not a member of this organization",
+          });
+        }
+
+        // Product discovery can call Stripe, so authorize the exact active org
+        // membership first. Ordinary members remain eligible for checkout.
         const customerType = org.is_personal ? 'individual' : 'company';
         const eligibleProducts = await getProductsForCustomer({
           customerType,
@@ -537,25 +549,16 @@ export function createPublicBillingRouter(): Router {
           });
         }
 
-        // Dev mode: skip WorkOS membership check for dev orgs
-        const isDevUserCheckout =
-          isDevModeEnabled() &&
-          Object.values(DEV_USERS).some((du) => du.id === user.id) &&
-          orgId.startsWith("org_dev_");
-        if (!isDevUserCheckout) {
-          // Check user membership in organization
-          const membership =
-            await workos?.userManagement.listOrganizationMemberships({
-              userId: user.id,
-              organizationId: orgId,
-            });
-
-          if (!membership?.data?.length) {
-            return res.status(403).json({
-              error: "Access denied",
-              message: "You are not a member of this organization",
-            });
-          }
+        // Product discovery is an awaited Stripe-backed operation. Re-resolve
+        // afterwards so a membership revoked or downgraded while it was in
+        // flight cannot carry stale billing-management authority into the
+        // active-subscription guard.
+        const currentMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+        if (!currentMembership) {
+          return res.status(403).json({
+            error: "Access denied",
+            message: "You are no longer a member of this organization",
+          });
         }
 
         const host = req.get("host");
@@ -563,11 +566,12 @@ export function createPublicBillingRouter(): Router {
         const baseUrl = `${protocol}://${host}`;
 
         // Refuse if the org already has an active subscription. Tier changes go
-        // through the Stripe Customer Portal, not this checkout intake. The
-        // requester is a verified org member, so the portal URL is safe to
-        // include.
+        // through the Stripe Customer Portal, not this checkout intake.
+        // Ordinary members may still start checkout, but only an active
+        // owner/admin membership may receive a billing-management portal URL.
         const activeBlock = await blockIfActiveSubscription(orgId, orgDb, {
           customerPortalReturnUrl: `${baseUrl}/dashboard/membership`,
+          requesterMembership: currentMembership,
         });
         if (activeBlock) {
           return res.status(activeBlock.status).json(activeBlock.body);

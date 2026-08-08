@@ -5,7 +5,9 @@ const {
   mockCreateEscalation,
   mockGetAttempt,
   mockGetEscalationChannel,
+  mockGetModule,
   mockGetStuckAttempts,
+  mockHasEffectiveMembershipForUser,
   mockHasEligibleMissingCredentialForModule,
   mockMarkNotificationSent,
   mockReconcilePassedAttemptModule,
@@ -15,7 +17,9 @@ const {
   mockCreateEscalation: vi.fn<any>(),
   mockGetAttempt: vi.fn<any>(),
   mockGetEscalationChannel: vi.fn<any>(),
+  mockGetModule: vi.fn<any>(),
   mockGetStuckAttempts: vi.fn<any>(),
+  mockHasEffectiveMembershipForUser: vi.fn<any>(),
   mockHasEligibleMissingCredentialForModule: vi.fn<any>(),
   mockMarkNotificationSent: vi.fn<any>(),
   mockReconcilePassedAttemptModule: vi.fn<any>(),
@@ -25,7 +29,9 @@ const {
 vi.mock('../../server/src/db/certification-db.js', () => ({
   checkAndAwardCredentials: (...args: unknown[]) => mockCheckAndAwardCredentials(...args),
   getAttempt: (...args: unknown[]) => mockGetAttempt(...args),
+  getModule: (...args: unknown[]) => mockGetModule(...args),
   getStuckAttempts: (...args: unknown[]) => mockGetStuckAttempts(...args),
+  hasEffectiveMembershipForUser: (...args: unknown[]) => mockHasEffectiveMembershipForUser(...args),
   hasEligibleMissingCredentialForModule: (...args: unknown[]) => mockHasEligibleMissingCredentialForModule(...args),
   reconcilePassedAttemptModule: (...args: unknown[]) => mockReconcilePassedAttemptModule(...args),
 }));
@@ -78,7 +84,9 @@ beforeEach(() => {
   mockCreateEscalation.mockReset();
   mockGetAttempt.mockReset();
   mockGetEscalationChannel.mockReset();
+  mockGetModule.mockReset();
   mockGetStuckAttempts.mockReset();
+  mockHasEffectiveMembershipForUser.mockReset();
   mockHasEligibleMissingCredentialForModule.mockReset();
   mockMarkNotificationSent.mockReset();
   mockReconcilePassedAttemptModule.mockReset();
@@ -86,6 +94,8 @@ beforeEach(() => {
 
   mockGetStuckAttempts.mockResolvedValue([stuckAttempt()]);
   mockGetAttempt.mockResolvedValue(fullAttempt());
+  mockGetModule.mockResolvedValue({ id: 'module_a', is_free: false });
+  mockHasEffectiveMembershipForUser.mockResolvedValue(true);
   mockCheckAndAwardCredentials.mockResolvedValue([]);
   mockHasEligibleMissingCredentialForModule.mockResolvedValue(false);
   mockReconcilePassedAttemptModule.mockResolvedValue(undefined);

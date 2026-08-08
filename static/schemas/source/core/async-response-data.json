@@ -95,6 +95,11 @@
       "$ref": "/schemas/media-buy/build-creative-response.json"
     },
     {
+      "title": "PreviewCreativeResponse",
+      "description": "Terminal response for completed preview_creative",
+      "$ref": "/schemas/creative/preview-creative-response.json"
+    },
+    {
       "title": "BuildCreativeAsyncWorking",
       "description": "Progress data for working build_creative",
       "$ref": "/schemas/media-buy/build-creative-async-response-working.json"

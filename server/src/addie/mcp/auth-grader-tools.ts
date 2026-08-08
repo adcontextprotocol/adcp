@@ -8,9 +8,9 @@
  * surface — follow-up issue tracks promoting it. The same CLI is what users
  * would run locally, so shelling out also exercises the path they hit.
  *
- * Live-side-effect vectors (real `create_media_buy`, replay-cap flood) are
- * skipped by default; the caller must explicitly opt in to run them and
- * should only do so against a sandbox endpoint.
+ * Hosted Addie only probes public HTTPS endpoints and always skips the
+ * rate-abuse/live-side-effect path. Operators who need private dev loops or
+ * explicit live vectors must run the SDK CLI in their own trusted environment.
  */
 
 import { execFile } from 'node:child_process';
@@ -21,7 +21,14 @@ import { runAuthDiagnosis, type AuthDiagnosisReport } from '@adcp/sdk/auth';
 import type { AddieTool } from '../types.js';
 import type { AgentConfig } from '@adcp/sdk/types';
 import { createLogger } from '../../logger.js';
-import { sanitizeUrl, validateFetchUrl } from '../../utils/url-security.js';
+import { AsyncSemaphore, SemaphoreOverloadedError } from '../../utils/async-semaphore.js';
+import {
+  isPrivateHostname,
+  normalizeExternalHostname,
+  safeFetch,
+  validateFetchUrl,
+} from '../../utils/url-security.js';
+import { withToolRateLimit } from './tool-rate-limiter.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -44,6 +51,11 @@ const ADCP_CLIENT_BIN = (() => {
 })();
 
 const logger = createLogger('addie-auth-grader-tools');
+const signingGraderSemaphore = new AsyncSemaphore(2, 0);
+const HOSTED_ALWAYS_SKIPPED_VECTORS = [
+  '016-replayed-nonce',
+  '020-rate-abuse',
+] as const;
 
 type ContentDigestMode = 'either' | 'required' | 'forbidden';
 
@@ -61,15 +73,13 @@ const PROBE_BODY_CAP_BYTES = 64 * 1024;
  * Returns null (skip nothing) on any probe failure: better to over-report
  * than to silently swallow a real verifier bug.
  *
- * SSRF defense: `validateFetchUrl` resolves the hostname and rejects any URL
- * whose A/AAAA records land on private/link-local/loopback addresses before
- * we issue the fetch. Body is capped at PROBE_BODY_CAP_BYTES.
+ * SSRF defense: `safeFetch` validates DNS and pins the validated address at
+ * connect time. Redirects are disabled, the request is bounded to 10 seconds,
+ * and the response is streamed only up to PROBE_BODY_CAP_BYTES.
  */
 async function probeContentDigestMode(agentUrl: string): Promise<ContentDigestMode | null> {
   try {
-    const url = new URL(agentUrl);
-    await validateFetchUrl(url);
-    const res = await fetch(sanitizeUrl(url), {
+    const res = await safeFetch(agentUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify({
@@ -79,13 +89,32 @@ async function probeContentDigestMode(agentUrl: string): Promise<ContentDigestMo
         id: 'addie-capability-probe',
       }),
       signal: AbortSignal.timeout(10_000),
-      redirect: 'manual',
+      maxRedirects: 0,
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      await res.body?.cancel();
+      return null;
+    }
     const declared = Number(res.headers.get('content-length') ?? 0);
-    if (declared > PROBE_BODY_CAP_BYTES) return null;
-    const text = await res.text();
-    if (text.length > PROBE_BODY_CAP_BYTES) return null;
+    if (declared > PROBE_BODY_CAP_BYTES) {
+      await res.body?.cancel();
+      return null;
+    }
+    const reader = res.body?.getReader();
+    if (!reader) return null;
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > PROBE_BODY_CAP_BYTES) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+    const text = Buffer.concat(chunks).toString('utf8');
     const body = JSON.parse(text) as {
       result?: { content?: Array<{ text?: string }> };
     };
@@ -127,22 +156,40 @@ export function contentDigestSkipsForMode(mode: ContentDigestMode | null): strin
   return skip;
 }
 
-function validateAgentUrl(url: string): string | null {
+async function validateAgentUrl(url: string): Promise<string | null> {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
     return 'Invalid agent URL format.';
   }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    return 'Agent URL must use HTTP or HTTPS.';
+  if (parsed.protocol !== 'https:') {
+    return 'Hosted Addie can only probe public HTTPS agent URLs.';
   }
-  if (process.env.NODE_ENV === 'production' && parsed.protocol !== 'https:') {
-    return 'Agent URL must use HTTPS.';
+  if (parsed.username || parsed.password) {
+    return 'Agent URL must not contain credentials.';
   }
-  const hostname = parsed.hostname.toLowerCase();
-  if (hostname === '169.254.169.254' || hostname === 'metadata.google.internal') {
-    return 'Agent URL points to a blocked address.';
+  const hostname = normalizeExternalHostname(parsed.hostname);
+  if (!hostname || isPrivateHostname(hostname)) {
+    return 'Agent URL must point to a public network address.';
+  }
+  try {
+    await validateFetchUrl(parsed);
+  } catch {
+    return 'Agent URL must resolve only to public network addresses.';
+  }
+  return null;
+}
+
+function rejectLegacyUnsafeOptions(
+  input: Record<string, unknown>,
+  includeLiveSideEffects: boolean,
+): string | null {
+  if (input.allow_http === true) {
+    return '**Error:** Hosted Addie cannot probe HTTP or private-network targets. Run the SDK CLI locally for trusted development loops.';
+  }
+  if (includeLiveSideEffects && input.allow_live_side_effects === true) {
+    return '**Error:** Hosted Addie cannot enable live-side-effect vectors. Run the SDK CLI locally against a trusted sandbox.';
   }
   return null;
 }
@@ -151,7 +198,7 @@ export const AUTH_GRADER_TOOLS: AddieTool[] = [
   {
     name: 'grade_agent_signing',
     description:
-      "Run the RFC 9421 request-signing conformance grader against an agent. Tests whether the agent's verifier accepts valid signed requests and rejects unsigned, expired, replayed, wrong-key, etc. requests with the right error codes. Returns a per-vector pass/fail report with diagnostics. Preconditions: the agent declares `request_signing.supported: true` in get_adcp_capabilities and has its verifier preconfigured per `test-kits/signed-requests-runner.yaml` (accepts the runner's signing keyids `test-ed25519-2026` and `test-es256-2026`, has `test-revoked-2026` in its revocation list). Live-side-effect vectors (real `create_media_buy`, replay-cap flood) are skipped by default — pass `allow_live_side_effects: true` to run them, and only do that against a sandbox endpoint.",
+      "Run the safe-default RFC 9421 request-signing conformance grader against a public HTTPS agent. Tests whether the agent's verifier accepts valid signed requests and rejects unsigned, expired, replayed, wrong-key, etc. requests with the right error codes. Returns a per-vector pass/fail report with diagnostics. Preconditions: the agent declares `request_signing.supported: true` in get_adcp_capabilities and has its verifier preconfigured per `test-kits/signed-requests-runner.yaml` (accepts the runner's signing keyids `test-ed25519-2026` and `test-es256-2026`, has `test-revoked-2026` in its revocation list). Hosted Addie never probes private networks and always skips replay and rate-abuse live-side-effect vectors. Run the SDK CLI locally when testing trusted development endpoints or explicitly enabling live-side-effect vectors.",
     usage_hints:
       'use for "grade my request signing", "is my RFC 9421 setup correct?", "test my signing verifier". Sandbox-safe by default. Pair with diagnose_agent_auth when the user is troubleshooting end-to-end auth.',
     input_schema: {
@@ -159,17 +206,7 @@ export const AUTH_GRADER_TOOLS: AddieTool[] = [
       properties: {
         agent_url: {
           type: 'string',
-          description:
-            'The agent URL to grade. Should point at a sandbox or test-kit-declared endpoint unless `allow_live_side_effects` is set.',
-        },
-        allow_live_side_effects: {
-          type: 'boolean',
-          description:
-            'Run vectors that produce live agent-side effects (a real create_media_buy and a replay-cap flood). Default false. Only set true against a sandbox endpoint or one whose test-kit contract declares `endpoint_scope: sandbox`.',
-        },
-        allow_http: {
-          type: 'boolean',
-          description: 'Allow http:// and private-IP targets (dev loops only). Default false.',
+          description: 'The public HTTPS agent URL to grade.',
         },
         transport: {
           type: 'string',
@@ -188,36 +225,53 @@ export const AUTH_GRADER_TOOLS: AddieTool[] = [
   {
     name: 'diagnose_agent_auth',
     description:
-      "Diagnose an agent's OAuth handshake by probing RFC 9728 protected-resource metadata and RFC 8414 authorization-server metadata, decoding any access token in scope, and reporting ranked hypotheses about what's wrong (likely / possible / ruled out). Use when an agent returns 401/403 unexpectedly, when OAuth metadata might be misconfigured, or when validating an agent's OAuth setup before integrating. This is anonymous-mode diagnosis — token refresh and authenticated tool-call probes are skipped, so the report describes what the public surface advertises rather than whether a specific token works.",
+      "Diagnose a public HTTPS agent's OAuth handshake by probing RFC 9728 protected-resource metadata and RFC 8414 authorization-server metadata, decoding any access token in scope, and reporting ranked hypotheses about what's wrong (likely / possible / ruled out). Use when an agent returns 401/403 unexpectedly, when OAuth metadata might be misconfigured, or when validating an agent's OAuth setup before integrating. This is anonymous-mode diagnosis — token refresh and authenticated tool-call probes are skipped, so the report describes what the public surface advertises rather than whether a specific token works. Hosted Addie never probes private networks; use the SDK CLI locally for trusted development endpoints.",
     usage_hints:
-      'use for "diagnose OAuth on this agent", "why is the agent rejecting my token?", "is this agent\'s OAuth metadata correct?", "validate OAuth setup". For deeper diagnosis with a saved token the user can run `npx @adcp/sdk@latest diagnose-auth <alias>` locally — point them there if a token-aware probe is needed.',
+      'use for "diagnose OAuth on this agent", "why is the agent rejecting my token?", "is this agent\'s OAuth metadata correct?", "validate OAuth setup". For deeper diagnosis with a saved token or a trusted private development endpoint, point the user to the SDK CLI\'s local `adcp diagnose-auth <alias>` command.',
     input_schema: {
       type: 'object',
       properties: {
-        agent_url: { type: 'string', description: 'The agent URL to probe.' },
-        allow_http: {
-          type: 'boolean',
-          description: 'Allow http:// and private-IP targets (dev loops only). Default false.',
-        },
+        agent_url: { type: 'string', description: 'The public HTTPS agent URL to probe.' },
       },
       required: ['agent_url'],
     },
   },
 ];
 
-export function createAuthGraderToolHandlers(): Map<
+export type AuthGraderProcessRunner = (
+  args: readonly string[],
+  options: { timeout: number; maxBuffer: number },
+) => Promise<{ stdout: string }>;
+
+const defaultAuthGraderProcessRunner: AuthGraderProcessRunner = async (args, options) => {
+  const { stdout } = await execFileAsync(process.execPath, [...args], options);
+  return { stdout: String(stdout) };
+};
+
+let authGraderProcessRunner = defaultAuthGraderProcessRunner;
+
+/** Test-only process boundary override. Passing null restores production. */
+export function __setAuthGraderProcessRunnerForTests(
+  runner: AuthGraderProcessRunner | null,
+): void {
+  authGraderProcessRunner = runner ?? defaultAuthGraderProcessRunner;
+}
+
+export function createAuthGraderToolHandlers(callerId: string): Map<
   string,
   (args: Record<string, unknown>) => Promise<string>
 > {
+  if (typeof callerId !== 'string' || !callerId.trim()) {
+    throw new Error('createAuthGraderToolHandlers requires a stable caller ID');
+  }
+
   const handlers = new Map<string, (args: Record<string, unknown>) => Promise<string>>();
 
-  handlers.set('grade_agent_signing', async (input) => {
+  const gradeAgentSigning = async (input: Record<string, unknown>) => {
     const agentUrl = String(input.agent_url ?? '');
-    const allowLive = input.allow_live_side_effects === true;
-    const allowHttp = input.allow_http === true;
     const rawTransport = input.transport === 'raw';
 
-    const urlError = validateAgentUrl(agentUrl);
+    const urlError = await validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
     // Run the bundled @adcp/sdk CLI's `grade request-signing --json`.
@@ -246,26 +300,29 @@ export function createAuthGraderToolHandlers(): Map<
     const probedMode =
       explicitMode ?? (rawTransport ? null : await probeContentDigestMode(agentUrl));
     const autoSkip = contentDigestSkipsForMode(probedMode);
+    const skipVectors = [...new Set([...HOSTED_ALWAYS_SKIPPED_VECTORS, ...autoSkip])];
 
     const args = [ADCP_CLIENT_BIN, 'grade', 'request-signing', agentUrl, '--json'];
     args.push('--transport', rawTransport ? 'raw' : 'mcp');
-    if (allowLive) args.push('--allow-live-side-effects');
-    else args.push('--skip-rate-abuse');
-    if (allowHttp) args.push('--allow-http');
-    if (autoSkip.length > 0) args.push('--skip', autoSkip.join(','));
+    args.push('--skip-rate-abuse');
+    args.push('--skip', skipVectors.join(','));
 
     try {
-      // 90s is enough for the safe-default path (rate-abuse skipped, ~25
-      // vectors). When the caller opts into live side effects the cap-flood
-      // vector takes minutes — give it 5min.
-      const timeout = allowLive ? 5 * 60_000 : 90_000;
-      const { stdout } = await execFileAsync(process.execPath, args, {
-        timeout,
-        maxBuffer: 10 * 1024 * 1024,
-      });
+      // Only the child-process lifetime holds a semaphore permit. URL checks
+      // and the bounded capability probe happen before it; JSON formatting
+      // happens after the child exits and releases the permit.
+      const { stdout } = await signingGraderSemaphore.run(() =>
+        authGraderProcessRunner(args, {
+          timeout: 90_000,
+          maxBuffer: 10 * 1024 * 1024,
+        })
+      );
       const report = JSON.parse(stdout) as GradeReport;
       return formatGradeReport(report);
     } catch (err) {
+      if (err instanceof SemaphoreOverloadedError) {
+        return '**RFC 9421 grader capacity is busy.** Try again after an in-progress grade finishes.';
+      }
       // execFile rejects on non-zero exit. The grader exits 1 when at least
       // one vector failed but still emits the report on stdout — parse and
       // format it as a normal FAIL result. Other exit codes (2 = config
@@ -291,13 +348,12 @@ export function createAuthGraderToolHandlers(): Map<
         '- Agent URL unreachable from this server',
       ].join('\n');
     }
-  });
+  };
 
-  handlers.set('diagnose_agent_auth', async (input) => {
+  const diagnoseAgentAuth = async (input: Record<string, unknown>) => {
     const agentUrl = String(input.agent_url ?? '');
-    const allowHttp = input.allow_http === true;
 
-    const urlError = validateAgentUrl(agentUrl);
+    const urlError = await validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
     const agentConfig: AgentConfig = {
@@ -309,7 +365,7 @@ export function createAuthGraderToolHandlers(): Map<
 
     try {
       const report = await runAuthDiagnosis(agentConfig, {
-        allowPrivateIp: allowHttp,
+        allowPrivateIp: false,
         skipRefresh: true,
         skipToolCall: true,
       });
@@ -319,6 +375,20 @@ export function createAuthGraderToolHandlers(): Map<
       logger.error({ err: message, agentUrl }, 'diagnose_agent_auth failed');
       return `**Error running OAuth diagnosis:** ${message}`;
     }
+  };
+
+  const rateLimitedGrade = withToolRateLimit('grade_agent_signing', callerId, gradeAgentSigning);
+  handlers.set('grade_agent_signing', async (input) => {
+    const unsafeOptionError = rejectLegacyUnsafeOptions(input, true);
+    if (unsafeOptionError) return unsafeOptionError;
+    return rateLimitedGrade(input);
+  });
+
+  const rateLimitedDiagnosis = withToolRateLimit('diagnose_agent_auth', callerId, diagnoseAgentAuth);
+  handlers.set('diagnose_agent_auth', async (input) => {
+    const unsafeOptionError = rejectLegacyUnsafeOptions(input, false);
+    if (unsafeOptionError) return unsafeOptionError;
+    return rateLimitedDiagnosis(input);
   });
 
   return handlers;
@@ -330,8 +400,8 @@ export function createAuthGraderToolHandlers(): Map<
  * upstream type because the type lives behind the same internal subpath the
  * runtime export does. Keep field names in sync with
  * `@adcp/sdk/dist/lib/testing/storyboard/request-signing/grader.d.ts`.
- * Verified against @adcp/sdk@5.21.x; will move to a public type import
- * once the upstream PR promotes it.
+ * Verified against the package version pinned by this repository; move to a
+ * public type import once the upstream package promotes it.
  */
 interface VectorGradeResult {
   vector_id: string;
@@ -376,7 +446,7 @@ function formatGradeReport(report: GradeReport): string {
   if (report.live_endpoint_warning) {
     lines.push('');
     lines.push(
-      "Warning: this endpoint isn't declared as sandbox in its test-kit contract. If `allow_live_side_effects` was set, real side effects may have been produced."
+      "Warning: this endpoint isn't declared as sandbox in its test-kit contract. Hosted Addie skips rate-abuse and caller-enabled live-side-effect vectors; use the SDK CLI locally for explicit live testing."
     );
   }
 
@@ -451,7 +521,7 @@ function formatAuthDiagnosisReport(report: AuthDiagnosisReport): string {
 
   lines.push(
     '',
-    'This is anonymous-mode diagnosis (no token, no authenticated tool call). For a deeper probe with a saved token, run `npx @adcp/sdk@latest diagnose-auth <alias>` locally.'
+    'This is anonymous-mode diagnosis (no token, no authenticated tool call). For a deeper probe with a saved token, run `adcp diagnose-auth <alias>` locally.'
   );
   return lines.join('\n');
 }
