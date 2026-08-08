@@ -1,0 +1,195 @@
+id: media_buy_seller/total_budget_redistribution
+version: "1.0.0"
+title: "Atomic media-buy total budget redistribution"
+category: media_buy_seller
+summary: "Verifies that a fixed media-buy total_budget update proportionally rescales active packages, returns auditable package state, and rejects competing package patches atomically."
+track: media_buy
+
+required_tools:
+  - sync_accounts
+  - create_media_buy
+  - update_media_buy
+  - get_media_buys
+
+invariants:
+  - status.monotonic
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The controller seeds two fixed-budget products in one currency."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "total_budget_prospecting"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+    - product_id: "total_budget_retargeting"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+  pricing_options:
+    - product_id: "total_budget_prospecting"
+      pricing_option_id: "total_budget_prospecting_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 1.50
+    - product_id: "total_budget_retargeting"
+      pricing_option_id: "total_budget_retargeting_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 2.00
+
+phases:
+  - id: setup
+    title: "Create a fixed-allocation buy"
+    steps:
+      - id: sync_account
+        title: "Establish the buyer account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#total_budget_redistribution_sync"
+        validations:
+          - check: response_schema
+
+      - id: create_fixed_buy
+        title: "Commit a 60/40 package allocation"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          packages:
+            - product_id: "total_budget_prospecting"
+              pricing_option_id: "total_budget_prospecting_cpm"
+              budget: 60000
+            - product_id: "total_budget_retargeting"
+              pricing_option_id: "total_budget_retargeting_cpm"
+              budget: 40000
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#total_budget_redistribution_create"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+          - name: revision
+            path: "revision"
+          - name: first_package_id
+            path: "packages[0].package_id"
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "total_budget"
+            value: 100000
+
+  - id: redistribute
+    title: "Apply a media-buy-level total atomically"
+    steps:
+      - id: update_total_budget
+        title: "Scale the fixed allocation to 50,000"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          revision: "$context.revision"
+          total_budget:
+            amount: 50000
+            currency: "USD"
+          idempotency_key: "$generate:uuid_v4#total_budget_redistribution_update"
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "total_budget"
+            value: 50000
+          - check: field_value
+            path: "affected_packages[0].budget"
+            value: 30000
+          - check: field_value
+            path: "affected_packages[1].budget"
+            value: 20000
+
+      - id: read_redistributed_budget
+        title: "Verify the persisted package budgets"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        stateful: false
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "media_buys[0].total_budget"
+            value: 50000
+          - check: field_value
+            path: "media_buys[0].packages[0].budget"
+            value: 30000
+          - check: field_value
+            path: "media_buys[0].packages[1].budget"
+            value: 20000
+
+  - id: reject_ambiguous_update
+    title: "Reject a competing package patch"
+    steps:
+      - id: reject_total_with_packages
+        title: "Reject total_budget combined with packages"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        stateful: false
+        expect_error: true
+        negative_path: schema_invalid
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          total_budget:
+            amount: 60000
+            currency: "USD"
+          packages:
+            - package_id: "$context.first_package_id"
+              budget: 60000
+          idempotency_key: "$generate:uuid_v4#total_budget_redistribution_conflict"
+        validations:
+          - check: error_code
+            value: "VALIDATION_ERROR"
