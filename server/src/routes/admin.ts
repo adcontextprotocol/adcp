@@ -11,6 +11,7 @@ import { getPool } from "../db/client.js";
 import { createLogger } from "../logger.js";
 import { requireAuth, requireAdmin } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
+import { registerNetworkHealthAdminPage } from "./network-health.js";
 import { getMemberContext, getWebMemberContext } from "../addie/member-context.js";
 import { getMemberCapabilities } from "../db/outbound-db.js";
 import { canEngageSlackUser } from "../addie/services/relationship-orchestrator.js";
@@ -109,12 +110,7 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
     });
   });
 
-  pageRouter.get("/network-health", requireAuth, requireAdmin, (req, res) => {
-    serveHtmlWithConfig(req, res, "admin-network-health.html").catch((err) => {
-      logger.error({ err }, "Error serving network health page");
-      res.status(500).send("Internal server error");
-    });
-  });
+  registerNetworkHealthAdminPage(pageRouter);
 
   // Redirects from old newsletter admin URLs
   pageRouter.get("/digest", (_req, res) => res.redirect(301, "/admin/newsletters/the_prompt"));

@@ -350,6 +350,7 @@
                       "docs/creative/channels/broadcast",
                       "docs/creative/channels/display",
                       "docs/creative/channels/audio",
+                      "docs/creative/channels/radio",
                       "docs/creative/channels/dooh",
                       "docs/creative/channels/print",
                       "docs/creative/channels/carousels",
@@ -520,6 +521,7 @@
                   {
                     "group": "Tasks",
                     "pages": [
+                      "docs/brand-protocol/tasks/search_brands",
                       "docs/brand-protocol/tasks/get_brand_identity",
                       "docs/brand-protocol/tasks/verify_brand_claim",
                       "docs/brand-protocol/tasks/verify_brand_claims",

@@ -7,6 +7,7 @@ const mockCertDb = vi.hoisted(() => ({
   getLatestCheckpointForThread: vi.fn(),
   adminCompleteModule: vi.fn(),
   checkAndAwardCredentials: vi.fn(),
+  hasEffectiveMembershipForUser: vi.fn(),
 }));
 
 vi.hoisted(() => {
@@ -36,6 +37,7 @@ import { createCertificationRouters } from '../../src/routes/certification.js';
 
 const moduleFixture = {
   id: 'A1',
+  is_free: true,
   assessment_criteria: {
     passing_threshold: 70,
     dimensions: [
@@ -69,6 +71,7 @@ describe('admin certification module completion route', () => {
     vi.clearAllMocks();
     mockCertDb.getModule.mockResolvedValue(moduleFixture);
     mockCertDb.checkAndAwardCredentials.mockResolvedValue([]);
+    mockCertDb.hasEffectiveMembershipForUser.mockResolvedValue(true);
   });
 
   it('refuses to write without a checkpoint for the supplied Addie thread', async () => {
@@ -170,6 +173,23 @@ describe('admin certification module completion route', () => {
 
     expect(response.status).toBe(409);
     expect(response.body.error).toContain('>20 points');
+    expect(mockCertDb.adminCompleteModule).not.toHaveBeenCalled();
+  });
+
+  it('refuses to admin-complete a paid module for an inactive learner', async () => {
+    mockCertDb.getModule.mockResolvedValue({ ...moduleFixture, id: 'B1', is_free: false });
+    mockCertDb.hasEffectiveMembershipForUser.mockResolvedValue(false);
+    const app = buildApp();
+
+    const response = await request(app)
+      .post('/api/admin/certification/learners/user_learner/modules/B1/complete')
+      .send({
+        addie_thread_id: 'thread_123',
+        scores: { protocol_mastery: 82, practical_application: 80 },
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toContain('Active membership');
     expect(mockCertDb.adminCompleteModule).not.toHaveBeenCalled();
   });
 });

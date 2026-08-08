@@ -1660,6 +1660,18 @@
         }
       ]
     },
+    "oauth": {
+      "type": "object",
+      "description": "Introduced in AdCP 3.2. OAuth 2.0 protected-resource support for inbound transport authentication. This is a capability claim, not a requirement that every caller use OAuth: `supported: true` means the agent publishes RFC 9728 protected-resource metadata for its advertised endpoint and RFC 8414 metadata for every referenced authorization server, and opts into the universal `oauth_setup` conformance storyboard. Agents that use only static Bearer, Basic, mTLS, or RFC 9421 authentication omit this block or declare `supported: false`. Operator credential acquisition remains separately described by `account.authorization_endpoint` when applicable.",
+      "properties": {
+        "supported": {
+          "type": "boolean",
+          "description": "Whether this agent accepts OAuth access tokens and publishes the discovery metadata needed to obtain and validate them. A true value is an explicit conformance claim: the RFC 9728 protected-resource document and every RFC 8414 authorization-server document it references MUST be reachable, internally consistent, and safe for clients to follow. False or absent means the OAuth metadata storyboard is not applicable; it does not weaken the universal requirement to implement at least one authentication mechanism."
+        }
+      },
+      "required": ["supported"],
+      "additionalProperties": true
+    },
     "request_signing": {
       "type": "object",
       "description": "RFC 9421 HTTP Signatures support for incoming requests. Signing remains optional through 3.2, but every accepted 3.2 signature on a request with a body MUST cover content-digest. Request signing becomes required for spend-committing operations in 4.0. The full profile is defined in docs/building/by-layer/L1/security.mdx (Signed Requests (Transport Layer)).",
