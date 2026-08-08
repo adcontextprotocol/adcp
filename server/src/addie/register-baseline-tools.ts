@@ -14,6 +14,7 @@ import {
   initializeKnowledgeSearch,
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
+  isSlackKnowledgeTool,
 } from "./mcp/knowledge-search.js";
 import {
   BILLING_TOOLS,
@@ -60,7 +61,13 @@ function registerToolsFromMap(
 export async function registerBaselineTools(client: AddieClaudeClient): Promise<void> {
   await initializeKnowledgeSearch();
 
-  registerToolsFromMap(client, KNOWLEDGE_TOOLS, createKnowledgeToolHandlers());
+  // Slack history is request-scoped because private-channel visibility depends
+  // on the current caller. Never install these handlers on the shared client.
+  registerToolsFromMap(
+    client,
+    KNOWLEDGE_TOOLS.filter((tool) => !isSlackKnowledgeTool(tool)),
+    createKnowledgeToolHandlers({ slackAccess: { kind: 'public-only' } }),
+  );
   registerToolsFromMap(client, BILLING_TOOLS, createBillingToolHandlers());
   registerToolsFromMap(client, SCHEMA_TOOLS, createSchemaToolHandlers());
   registerToolsFromMap(client, DIRECTORY_TOOLS, createDirectoryToolHandlers());

@@ -105,7 +105,10 @@ function getChatClient(): AddieClaudeClient {
     // callers here are treated as anonymous — handlers are scoped to exclude
     // user-bookmarked URLs and strip Addie-generated notes that could carry
     // prompt-injection text from arbitrary fetched content.
-    const knowledgeHandlers = createKnowledgeToolHandlers(undefined, { anonymous: true });
+    const knowledgeHandlers = createKnowledgeToolHandlers({
+      anonymous: true,
+      slackAccess: { kind: 'public-only' },
+    });
     for (const tool of KNOWLEDGE_TOOLS) {
       if (ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.has(tool.name)) {
         const handler = knowledgeHandlers.get(tool.name);
