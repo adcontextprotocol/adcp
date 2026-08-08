@@ -183,7 +183,7 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
       {
         track: 'creative',
         label: 'Creative',
-        status: 'silent',
+        status: 'pass',
         duration_ms: 1000,
         skipped_scenarios: [],
         observations: [],
@@ -208,7 +208,7 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
           },
         ],
       },
-    ] as any);
+    ] as any, 'passing');
 
     const out = complianceResultToDbInput(
       result as any,
@@ -221,7 +221,7 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
       expect.objectContaining({ track: 'core', has_coverage_gap_skip: false }),
       expect.objectContaining({
         track: 'creative',
-        status: 'silent',
+        status: 'pass',
         has_coverage_gap_skip: true,
       }),
     ]);

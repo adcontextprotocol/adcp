@@ -622,10 +622,18 @@ function effectiveRunStatus(result: ComplianceResult): {
   // e.g. a signals-only agent skipping controller-gated media-buy pagination
   // storyboards with `missing_test_controller` — are expected and must not
   // degrade an otherwise all-pass run (#5429, regression of #5328).
-  const hasCoverageGapSkip = result.tracks.some((track: TrackResult) =>
-    trackHasFixtureUnavailableSkip(track) ||
-    (track.status === 'skip' && trackHasCoverageGapSkip(track))
-  );
+  const hasFixtureUnavailable = result.tracks.some(trackHasFixtureUnavailableSkip);
+  const hasCoverageGapSkip = hasFixtureUnavailable || result.tracks
+    .filter((track: TrackResult) => track.status === 'skip')
+    .some(trackHasCoverageGapSkip);
+  if (hasFixtureUnavailable) {
+    return {
+      overall_status: 'partial',
+      tracks_passed: result.summary.tracks_passed,
+      tracks_failed: result.summary.tracks_failed,
+      tracks_partial: result.summary.tracks_partial,
+    };
+  }
   if (
     !hasCoverageGapSkip &&
     activeTracks.length > 0 &&
