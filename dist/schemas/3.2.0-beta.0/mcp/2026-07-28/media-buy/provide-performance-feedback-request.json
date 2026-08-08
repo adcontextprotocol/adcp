@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/mcp/2026-07-28/media-buy/provide-performance-feedback-request.json",
+  "title": "Provide Performance Feedback Request",
+  "description": "Request payload for provide_performance_feedback task",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    }
+  ],
+  "x-mutates-state": true,
+  "properties": {
+    "media_buy_id": {
+      "type": "string",
+      "description": "Seller's media buy identifier",
+      "minLength": 1,
+      "x-entity": "media_buy"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. Prevents duplicate feedback submissions on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "measurement_period": {
+      "$ref": "#/$defs/external:core~1datetime-range.json",
+      "description": "Time period for performance measurement"
+    },
+    "performance_index": {
+      "type": "number",
+      "description": "Normalized performance score (0.0 = no value, 1.0 = expected, >1.0 = above expected)",
+      "minimum": 0
+    },
+    "package_id": {
+      "type": "string",
+      "description": "Specific package within the media buy (if feedback is package-specific)",
+      "minLength": 1,
+      "x-entity": "package"
+    },
+    "creative_id": {
+      "type": "string",
+      "description": "Specific creative asset (if feedback is creative-specific)",
+      "minLength": 1,
+      "x-entity": "creative"
+    },
+    "metric_type": {
+      "$ref": "#/$defs/external:enums~1metric-type.json",
+      "description": "The business metric being measured",
+      "default": "overall_performance"
+    },
+    "feedback_source": {
+      "$ref": "#/$defs/external:enums~1feedback-source.json",
+      "description": "Source of the performance data",
+      "default": "buyer_attribution"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "media_buy_id",
+    "measurement_period",
+    "performance_index"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "title": "AdCP Version Envelope",
+      "description": "Release-precision AdCP protocol version negotiation fields. Composed via `allOf` into every AdCP request and response schema so the version semantics live in exactly one place. Distinct from `core/protocol-envelope.json`, which wraps responses at the transport layer (context_id / task_id / status / payload). This envelope is part of the payload itself.",
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+          "examples": [
+            "3.0",
+            "3.1",
+            "3.1-beta",
+            "3.1-rc.1"
+          ]
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/datetime-range.json": {
+      "title": "Datetime Range",
+      "description": "A datetime range with inclusive start and end timestamps (ISO 8601 with timezone). Used for measurement windows, reporting periods, and other sub-day precision boundaries.",
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Start timestamp (inclusive), ISO 8601"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time",
+          "description": "End timestamp (inclusive), ISO 8601"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/metric-type.json": {
+      "title": "Metric Type",
+      "deprecated": true,
+      "description": "**Deprecated as of this minor.** Legacy free-form enum mixing metrics, verification, and attribution into one list with no layer alignment. New implementations SHOULD use `performance-feedback.metric` (the discriminated `(scope, metric_id, qualifier)` row shape) instead. This enum is retained for one-minor backwards compatibility on `performance-feedback.metric_type` and is removed at the next major. Migration guidance:\n\n- `viewability` → `{ scope: 'standard', metric_id: 'viewable_rate', qualifier: { viewability_standard: 'mrc' | 'groupm' } }` (or `viewable_impressions` / `measurable_impressions` depending on what's being fed back)\n- `click_through_rate` → `{ scope: 'standard', metric_id: 'ctr' }`\n- `completion_rate` → `{ scope: 'standard', metric_id: 'completion_rate', qualifier: { completion_source: 'seller_attested' | 'vendor_attested' } }`\n- `conversion_rate` → no clean direct target. `conversions` (count) is not the same as `conversion_rate` (ratio); senders feeding back conversion-rate effectively are encouraged either to feed back `{ scope: 'standard', metric_id: 'conversions' }` with the rate in the response narrative, or to use a vendor-scope entry for an MMM/MTA conversion-rate variant. Native `conversion_rate` may graduate to `available-metric.json` in a future minor if demand materializes.\n- `brand_lift` → `{ scope: 'vendor', vendor: { domain: '...' }, metric_id: '<vendor brand lift metric>' }`\n- `brand_safety` → typically `{ scope: 'vendor', vendor: { domain: 'doubleverify.com' \\| 'integralads.com' \\| 'humansecurity.com' \\| ... } }` with `metric_id` from the vendor's measurement-agent capabilities catalog. If the buyer doesn't know the vendor's specific `metric_id`, they MAY populate the top-level `vendor` field instead and OMIT `metric` entirely — the feedback row remains attributable via `feedback_source` + `vendor` even without a structured metric reference.\n- `overall_performance` → **omit `metric` entirely**. This was a meta-bucket without defined dispatch semantics — holistic campaign feedback (a trader flagging a campaign as underperforming without a specific metric) is now expressed by populating `performance_index` and the response narrative without setting `metric`. Same for general optimization signals.\n- `cost_efficiency` → **omit `metric` entirely** for general efficiency feedback. For specific cost-per concerns, use `{ scope: 'standard', metric_id: 'cost_per_acquisition' \\| 'cost_per_click' \\| 'cost_per_completed_view' \\| 'roas' }`.",
+      "type": "string",
+      "enum": [
+        "overall_performance",
+        "conversion_rate",
+        "brand_lift",
+        "click_through_rate",
+        "completion_rate",
+        "viewability",
+        "brand_safety",
+        "cost_efficiency"
+      ]
+    },
+    "external:enums/feedback-source.json": {
+      "title": "Feedback Source",
+      "description": "Source of performance feedback data",
+      "type": "string",
+      "enum": [
+        "buyer_attribution",
+        "third_party_measurement",
+        "platform_analytics",
+        "verification_partner"
+      ]
+    },
+    "external:core/context.json": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

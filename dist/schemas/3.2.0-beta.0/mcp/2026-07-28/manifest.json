@@ -1,0 +1,269 @@
+{
+  "mcp_protocol_version": "2026-07-28",
+  "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+  "source_schema_dialect": "http://json-schema.org/draft-07/schema#",
+  "compatibility": "semantics-preserving projection; no 4.0 strictness rules applied",
+  "delivery": "downloadable schema artifacts; servers choose which schemas to embed in tools/list",
+  "tools": {
+    "acquire_rights": {
+      "inputSchema": "brand/acquire-rights-request.json",
+      "outputSchema": "brand/acquire-rights-response.json"
+    },
+    "activate_signal": {
+      "inputSchema": "signals/activate-signal-request.json",
+      "outputSchema": "signals/activate-signal-response.json"
+    },
+    "build_creative": {
+      "inputSchema": "media-buy/build-creative-request.json",
+      "outputSchema": "media-buy/build-creative-response.json"
+    },
+    "calibrate_content": {
+      "inputSchema": "content-standards/calibrate-content-request.json",
+      "outputSchema": "content-standards/calibrate-content-response.json"
+    },
+    "check_governance": {
+      "inputSchema": "governance/check-governance-request.json",
+      "outputSchema": "governance/check-governance-response.json"
+    },
+    "comply_test_controller": {
+      "inputSchema": "compliance/comply-test-controller-request.json",
+      "outputSchema": "compliance/comply-test-controller-response.json"
+    },
+    "create_collection_list": {
+      "inputSchema": "collection/create-collection-list-request.json",
+      "outputSchema": "collection/create-collection-list-response.json"
+    },
+    "create_content_standards": {
+      "inputSchema": "content-standards/create-content-standards-request.json",
+      "outputSchema": "content-standards/create-content-standards-response.json"
+    },
+    "create_media_buy": {
+      "inputSchema": "media-buy/create-media-buy-request.json",
+      "outputSchema": "media-buy/create-media-buy-response.json"
+    },
+    "create_property_list": {
+      "inputSchema": "property/create-property-list-request.json",
+      "outputSchema": "property/create-property-list-response.json"
+    },
+    "creative_approval": {
+      "inputSchema": "brand/creative-approval-request.json",
+      "outputSchema": "brand/creative-approval-response.json"
+    },
+    "delete_collection_list": {
+      "inputSchema": "collection/delete-collection-list-request.json",
+      "outputSchema": "collection/delete-collection-list-response.json"
+    },
+    "delete_property_list": {
+      "inputSchema": "property/delete-property-list-request.json",
+      "outputSchema": "property/delete-property-list-response.json"
+    },
+    "get_account_financials": {
+      "inputSchema": "account/get-account-financials-request.json",
+      "outputSchema": "account/get-account-financials-response.json"
+    },
+    "get_adcp_capabilities": {
+      "inputSchema": "protocol/get-adcp-capabilities-request.json",
+      "outputSchema": "protocol/get-adcp-capabilities-response.json"
+    },
+    "get_brand_identity": {
+      "inputSchema": "brand/get-brand-identity-request.json",
+      "outputSchema": "brand/get-brand-identity-response.json"
+    },
+    "get_collection_list": {
+      "inputSchema": "collection/get-collection-list-request.json",
+      "outputSchema": "collection/get-collection-list-response.json"
+    },
+    "get_content_standards": {
+      "inputSchema": "content-standards/get-content-standards-request.json",
+      "outputSchema": "content-standards/get-content-standards-response.json"
+    },
+    "get_creative_delivery": {
+      "inputSchema": "creative/get-creative-delivery-request.json",
+      "outputSchema": "creative/get-creative-delivery-response.json"
+    },
+    "get_creative_features": {
+      "inputSchema": "creative/get-creative-features-request.json",
+      "outputSchema": "creative/get-creative-features-response.json"
+    },
+    "get_media_buy_artifacts": {
+      "inputSchema": "content-standards/get-media-buy-artifacts-request.json",
+      "outputSchema": "content-standards/get-media-buy-artifacts-response.json"
+    },
+    "get_media_buy_delivery": {
+      "inputSchema": "media-buy/get-media-buy-delivery-request.json",
+      "outputSchema": "media-buy/get-media-buy-delivery-response.json"
+    },
+    "get_media_buys": {
+      "inputSchema": "media-buy/get-media-buys-request.json",
+      "outputSchema": "media-buy/get-media-buys-response.json"
+    },
+    "get_plan_audit_logs": {
+      "inputSchema": "governance/get-plan-audit-logs-request.json",
+      "outputSchema": "governance/get-plan-audit-logs-response.json"
+    },
+    "get_products": {
+      "inputSchema": "media-buy/get-products-request.json",
+      "outputSchema": "media-buy/get-products-response.json"
+    },
+    "get_property_list": {
+      "inputSchema": "property/get-property-list-request.json",
+      "outputSchema": "property/get-property-list-response.json"
+    },
+    "get_rights": {
+      "inputSchema": "brand/get-rights-request.json",
+      "outputSchema": "brand/get-rights-response.json"
+    },
+    "get_signals": {
+      "inputSchema": "signals/get-signals-request.json",
+      "outputSchema": "signals/get-signals-response.json"
+    },
+    "get_task_status": {
+      "inputSchema": "protocol/get-task-status-request.json",
+      "outputSchema": "protocol/get-task-status-response.json"
+    },
+    "list_accounts": {
+      "inputSchema": "account/list-accounts-request.json",
+      "outputSchema": "account/list-accounts-response.json"
+    },
+    "list_collection_lists": {
+      "inputSchema": "collection/list-collection-lists-request.json",
+      "outputSchema": "collection/list-collection-lists-response.json"
+    },
+    "list_content_standards": {
+      "inputSchema": "content-standards/list-content-standards-request.json",
+      "outputSchema": "content-standards/list-content-standards-response.json"
+    },
+    "list_creative_formats": {
+      "inputSchema": "media-buy/list-creative-formats-request.json",
+      "outputSchema": "media-buy/list-creative-formats-response.json"
+    },
+    "list_creatives": {
+      "inputSchema": "creative/list-creatives-request.json",
+      "outputSchema": "creative/list-creatives-response.json"
+    },
+    "list_property_lists": {
+      "inputSchema": "property/list-property-lists-request.json",
+      "outputSchema": "property/list-property-lists-response.json"
+    },
+    "list_tasks": {
+      "inputSchema": "protocol/list-tasks-request.json",
+      "outputSchema": "protocol/list-tasks-response.json"
+    },
+    "list_transformers": {
+      "inputSchema": "creative/list-transformers-request.json",
+      "outputSchema": "creative/list-transformers-response.json"
+    },
+    "log_event": {
+      "inputSchema": "media-buy/log-event-request.json",
+      "outputSchema": "media-buy/log-event-response.json"
+    },
+    "preview_creative": {
+      "inputSchema": "creative/preview-creative-request.json",
+      "outputSchema": "creative/preview-creative-response.json"
+    },
+    "provide_performance_feedback": {
+      "inputSchema": "media-buy/provide-performance-feedback-request.json",
+      "outputSchema": "media-buy/provide-performance-feedback-response.json"
+    },
+    "report_plan_outcome": {
+      "inputSchema": "governance/report-plan-outcome-request.json",
+      "outputSchema": "governance/report-plan-outcome-response.json"
+    },
+    "report_usage": {
+      "inputSchema": "account/report-usage-request.json",
+      "outputSchema": "account/report-usage-response.json"
+    },
+    "search_brands": {
+      "inputSchema": "brand/search-brands-request.json",
+      "outputSchema": "brand/search-brands-response.json"
+    },
+    "si_get_offering": {
+      "inputSchema": "sponsored-intelligence/si-get-offering-request.json",
+      "outputSchema": "sponsored-intelligence/si-get-offering-response.json"
+    },
+    "si_initiate_session": {
+      "inputSchema": "sponsored-intelligence/si-initiate-session-request.json",
+      "outputSchema": "sponsored-intelligence/si-initiate-session-response.json"
+    },
+    "si_send_message": {
+      "inputSchema": "sponsored-intelligence/si-send-message-request.json",
+      "outputSchema": "sponsored-intelligence/si-send-message-response.json"
+    },
+    "si_terminate_session": {
+      "inputSchema": "sponsored-intelligence/si-terminate-session-request.json",
+      "outputSchema": "sponsored-intelligence/si-terminate-session-response.json"
+    },
+    "sync_accounts": {
+      "inputSchema": "account/sync-accounts-request.json",
+      "outputSchema": "account/sync-accounts-response.json"
+    },
+    "sync_agent_notification_configs": {
+      "inputSchema": "protocol/sync-agent-notification-configs-request.json",
+      "outputSchema": "protocol/sync-agent-notification-configs-response.json"
+    },
+    "sync_audiences": {
+      "inputSchema": "media-buy/sync-audiences-request.json",
+      "outputSchema": "media-buy/sync-audiences-response.json"
+    },
+    "sync_catalogs": {
+      "inputSchema": "media-buy/sync-catalogs-request.json",
+      "outputSchema": "media-buy/sync-catalogs-response.json"
+    },
+    "sync_creatives": {
+      "inputSchema": "creative/sync-creatives-request.json",
+      "outputSchema": "creative/sync-creatives-response.json"
+    },
+    "sync_event_sources": {
+      "inputSchema": "media-buy/sync-event-sources-request.json",
+      "outputSchema": "media-buy/sync-event-sources-response.json"
+    },
+    "sync_governance": {
+      "inputSchema": "account/sync-governance-request.json",
+      "outputSchema": "account/sync-governance-response.json"
+    },
+    "sync_plans": {
+      "inputSchema": "governance/sync-plans-request.json",
+      "outputSchema": "governance/sync-plans-response.json"
+    },
+    "update_collection_list": {
+      "inputSchema": "collection/update-collection-list-request.json",
+      "outputSchema": "collection/update-collection-list-response.json"
+    },
+    "update_content_standards": {
+      "inputSchema": "content-standards/update-content-standards-request.json",
+      "outputSchema": "content-standards/update-content-standards-response.json"
+    },
+    "update_media_buy": {
+      "inputSchema": "media-buy/update-media-buy-request.json",
+      "outputSchema": "media-buy/update-media-buy-response.json"
+    },
+    "update_property_list": {
+      "inputSchema": "property/update-property-list-request.json",
+      "outputSchema": "property/update-property-list-response.json"
+    },
+    "update_rights": {
+      "inputSchema": "brand/update-rights-request.json",
+      "outputSchema": "brand/update-rights-response.json"
+    },
+    "validate_content_delivery": {
+      "inputSchema": "content-standards/validate-content-delivery-request.json",
+      "outputSchema": "content-standards/validate-content-delivery-response.json"
+    },
+    "validate_input": {
+      "inputSchema": "creative/validate-input-request.json",
+      "outputSchema": "creative/validate-input-response.json"
+    },
+    "validate_property_delivery": {
+      "inputSchema": "property/validate-property-delivery-request.json",
+      "outputSchema": "property/validate-property-delivery-response.json"
+    },
+    "verify_brand_claim": {
+      "inputSchema": "brand/verify-brand-claim-request.json",
+      "outputSchema": "brand/verify-brand-claim-response.json"
+    },
+    "verify_brand_claims": {
+      "inputSchema": "brand/verify-brand-claims-request.json",
+      "outputSchema": "brand/verify-brand-claims-response.json"
+    }
+  }
+}

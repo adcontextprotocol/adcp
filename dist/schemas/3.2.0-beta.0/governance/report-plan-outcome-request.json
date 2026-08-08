@@ -1,0 +1,228 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/governance/report-plan-outcome-request.json",
+  "title": "Report Plan Outcome Request",
+  "description": "Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side agent) after a seller responds. The authenticated reporter must match the caller on the original approved intent, purchase_type must match that intent, and only one terminal settlement is allowed across all lifecycle checks sharing the opaque action binding. This is the 'after' half of the governance loop. Sellers do not call this task -- they report delivery data via check_governance with phase 'delivery'.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/version-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "completed"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "check_id",
+          "governance_context",
+          "seller_response"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "check_id",
+          "governance_context",
+          "error"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "delivery"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "delivery"
+        ],
+        "dependencies": {
+          "check_id": [
+            "governance_context"
+          ],
+          "governance_context": [
+            "check_id"
+          ]
+        }
+      }
+    }
+  ],
+  "x-status": "experimental",
+  "x-mutates-state": true,
+  "properties": {
+    "plan_id": {
+      "type": "string",
+      "description": "The plan this outcome is for. The plan is owned by the authenticated buyer that synchronized it; plan_id is an identifier, not an account credential. Completed and failed settlements inherit their commercial binding from the exact approved check tuple.",
+      "x-entity": "governance_plan"
+    },
+    "check_id": {
+      "type": "string",
+      "description": "The check_id from check_governance. Required for completed and failed outcomes, where it must form an exact tuple with plan_id and governance_context. A deprecated delivery snapshot must provide both check_id and governance_context or neither; when provided, the pair is validated.",
+      "x-entity": "governance_check"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Buyer-generated unique key for this outcome report. An identical retry returns the cached response without another settlement; reuse with a different canonical payload returns IDEMPOTENCY_CONFLICT. Use a fresh UUID v4 for each distinct report.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "purchase_type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/purchase-type.json",
+      "description": "The type of financial commitment this outcome is for. Must equal the original approved intent's purchase_type. Determines which budget allocation (if any) to charge against. Defaults to 'media_buy' when omitted.",
+      "default": "media_buy"
+    },
+    "outcome": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/outcome-type.json",
+      "description": "Outcome type."
+    },
+    "seller_response": {
+      "type": "object",
+      "description": "The seller's full response. Required when outcome is 'completed'.",
+      "properties": {
+        "seller_reference": {
+          "type": "string",
+          "description": "The seller's identifier for the created resource (e.g., media_buy_id, rights_grant_id, deployment_id). Not interpreted by the governance agent — included in audit logs for human-readable traceability alongside the opaque governance_context.",
+          "maxLength": 255
+        },
+        "committed_budget": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Buyer-reported seller amount retained for reconciliation and audit. It is never ledger authority: the governance agent derives the reserved commitment from its own approved intent check, or from the matching purchase execution check when one exists. A report above that authorized amount is rejected; a lower report does not restore headroom."
+        },
+        "packages": {
+          "type": "array",
+          "description": "Confirmed packages with actual budget and targeting.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "budget": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "planned_delivery": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/planned-delivery.json",
+          "description": "What the seller said it will deliver. When seller-side governance is not configured, this is the governance agent's only view of the seller's delivery parameters."
+        },
+        "creative_deadline": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 deadline for creative submission."
+        }
+      },
+      "additionalProperties": true
+    },
+    "delivery": {
+      "type": "object",
+      "deprecated": true,
+      "description": "Deprecated buyer-reported delivery snapshot. Required when outcome is 'delivery'. It is audit evidence only and MUST NOT increase committed obligation; sellers use check_governance phase 'delivery' for authoritative monitoring.",
+      "properties": {
+        "reporting_period": {
+          "type": "object",
+          "description": "Start and end timestamps for the reporting window.",
+          "properties": {
+            "start": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "end": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "additionalProperties": false
+        },
+        "impressions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Impressions delivered in the period."
+        },
+        "spend": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Finite, non-negative spend in the period. Audit evidence only; it does not add a second commitment."
+        },
+        "cpm": {
+          "type": "number",
+          "description": "Effective CPM for the period."
+        },
+        "viewability_rate": {
+          "type": "number",
+          "description": "Viewability rate (0-1)."
+        },
+        "completion_rate": {
+          "type": "number",
+          "description": "Video completion rate (0-1)."
+        }
+      },
+      "additionalProperties": true
+    },
+    "error": {
+      "type": "object",
+      "description": "Error details. Required when outcome is 'failed'.",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Error code from the seller."
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable error description."
+        }
+      },
+      "additionalProperties": false
+    },
+    "governance_context": {
+      "type": "string",
+      "description": "Opaque governance context from the check_governance response that authorized this action. Required with check_id for completed and failed outcomes. A deprecated delivery snapshot must provide both fields or neither.",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "plan_id",
+    "outcome"
+  ],
+  "additionalProperties": true
+}
