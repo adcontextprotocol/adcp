@@ -617,8 +617,8 @@ export const ResolvedBrandSchema = z
     }),
     brand_agent_url: z.string().optional(),
     brand_manifest: z.record(z.string(), z.unknown()).optional(),
-    source: z.enum(["hosted", "brand_json", "community", "enriched"]).openapi({
-      description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment.",
+    source: z.enum(["hosted", "brand_json", "community", "enriched", "stub"]).openapi({
+      description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched` > `stub`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment. `stub`: a minimal organization-derived placeholder awaiting stronger evidence.",
     }),
     live_brand_json: LiveBrandJsonValidationSchema.optional().openapi({
       description: "This request's origin-validation diagnostics when `fresh=true` falls back to a stored registry record. Presence means the response is stored evidence, not a successful live-origin read.",
@@ -684,7 +684,7 @@ export const BrandRegistryItemSchema = z
   .object({
     domain: z.string().openapi({ example: "acmecorp.com" }),
     brand_name: z.string().optional().openapi({ example: "Acme Corp" }),
-    source: z.enum(["hosted", "brand_json", "community", "enriched"]),
+    source: z.enum(["hosted", "brand_json", "community", "enriched", "stub"]),
     has_manifest: z.boolean(),
     verified: z.boolean(),
     house_domain: z.string().optional(),

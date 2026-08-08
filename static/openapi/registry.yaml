@@ -144,7 +144,8 @@ components:
             - brand_json
             - community
             - enriched
-          description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment."
+            - stub
+          description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched` > `stub`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment. `stub`: a minimal organization-derived placeholder awaiting stronger evidence."
         live_brand_json:
           type: object
           properties:
@@ -223,6 +224,7 @@ components:
             - brand_json
             - community
             - enriched
+            - stub
         has_manifest:
           type: boolean
         verified:
@@ -5425,9 +5427,10 @@ paths:
               - brand_json
               - enriched
               - community
-            description: "Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed."
+              - stub
+            description: "Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed; stub = organization-derived placeholder awaiting stronger evidence."
           required: false
-          description: "Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed."
+          description: "Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed; stub = organization-derived placeholder awaiting stronger evidence."
           name: source
           in: query
       responses:
@@ -5455,6 +5458,8 @@ paths:
                         type: integer
                       enriched:
                         type: integer
+                      stub:
+                        type: integer
                       houses:
                         type: integer
                       sub_brands:
@@ -5467,6 +5472,7 @@ paths:
                       - brand_json
                       - community
                       - enriched
+                      - stub
                       - houses
                       - sub_brands
                       - with_manifest
@@ -7189,6 +7195,148 @@ paths:
                 required:
                   - error
                   - retry_after
+  /api/registry/brand/{domain}/force-crawl:
+    post:
+      operationId: forceBrandCrawl
+      summary: Force a synchronous brand.json crawl
+      description: |-
+        Admin-only support endpoint that fetches a domain's live `/.well-known/brand.json`, persists valid origin evidence, and returns the before/after state. A verified owner remains labeled `source: hosted` because that field describes identity provenance; `new_source_type: brand_json` and `promoted: true` confirm that live origin evidence was adopted.
+
+        **Rate limits:** 5 minutes per domain, 30 requests per user per hour.
+      tags:
+        - Brand Discovery
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            example: brand.example
+          required: true
+          name: domain
+          in: path
+      responses:
+        "200":
+          description: Synchronous crawl result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domain:
+                    type: string
+                  previous_source:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - hosted
+                      - brand_json
+                      - community
+                      - enriched
+                      - stub
+                      - null
+                  new_source:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - hosted
+                      - brand_json
+                      - community
+                      - enriched
+                      - stub
+                      - null
+                  previous_source_type:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - brand_json
+                      - community
+                      - enriched
+                      - stub
+                      - null
+                  new_source_type:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - brand_json
+                      - community
+                      - enriched
+                      - stub
+                      - null
+                  promoted:
+                    type: boolean
+                    description: True when the crawl replaced lower-trust stored evidence with live brand.json evidence.
+                  brand_json_found:
+                    type: boolean
+                  live_variant:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - authoritative_location
+                      - house_redirect
+                      - brand_agent
+                      - house_portfolio
+                      - brand_canonical
+                      - null
+                  has_manifest:
+                    type: boolean
+                  checked_at:
+                    type: string
+                    format: date-time
+                required:
+                  - domain
+                  - previous_source
+                  - new_source
+                  - previous_source_type
+                  - new_source_type
+                  - promoted
+                  - brand_json_found
+                  - live_variant
+                  - has_manifest
+                  - checked_at
+        "400":
+          description: Invalid domain format, private IP, or unresolvable domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - retry_after
+        "500":
+          description: Crawl failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/publisher/authorization:
     get:
       operationId: lookupPublisherAgentAuthorization

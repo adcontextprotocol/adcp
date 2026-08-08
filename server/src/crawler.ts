@@ -4,7 +4,7 @@ import { sanitizeAdagentsProperty } from "./discovery/property-index-guard.js";
 import { FederatedIndexService } from "./federated-index.js";
 import type { DiscoveredAgent } from "./db/federated-index-db.js";
 import { AdAgentsManager, type AdAgentsValidationResult } from "./adagents-manager.js";
-import { BrandManager } from "./brand-manager.js";
+import { BrandManager, type BrandValidationResult } from "./brand-manager.js";
 import { BrandDatabase } from "./db/brand-db.js";
 import { PublisherDatabase, adagentsChangedFields, canonicalizeAgentUrl, type AdagentsManifest, type AdagentsAuthorizedAgent } from "./db/publisher-db.js";
 import { canonicalizePublisherDomain } from "./services/publisher-domain.js";
@@ -367,9 +367,23 @@ export class CrawlerService {
   /**
    * Scan a single domain for brand.json and upsert discovered/verified brand data.
    */
-  async scanBrandForDomain(domain: string): Promise<void> {
+  async scanBrandForDomain(domain: string): Promise<{
+    found: boolean;
+    valid: boolean;
+    variant: BrandValidationResult['variant'] | null;
+    manifestPersisted: boolean;
+  }> {
     const result = await this.brandManager.validateDomain(domain, { skipCache: true });
-    if (!result.valid || !result.raw_data) return;
+    if (!result.valid || !result.raw_data) {
+      return {
+        found: result.status_code !== undefined && result.status_code !== 404,
+        valid: false,
+        variant: result.variant ?? null,
+        manifestPersisted: false,
+      };
+    }
+
+    let manifestPersisted = false;
 
     if (result.variant === 'authoritative_location') {
       const data = result.raw_data as { authoritative_location: string };
@@ -394,6 +408,7 @@ export class CrawlerService {
       const manifest = result.variant === 'house_portfolio' || result.variant === 'brand_canonical'
         ? this.stripLegacyCompatibilityMetadata(result.raw_data as Record<string, unknown>)
         : undefined;
+      manifestPersisted = Boolean(manifest);
       await this.brandDb.upsertDiscoveredBrand({
         domain,
         brand_name: brandName,
@@ -407,6 +422,13 @@ export class CrawlerService {
         await this.upsertBrandProperties(domain, result.raw_data as Record<string, unknown>);
       }
     }
+
+    return {
+      found: true,
+      valid: true,
+      variant: result.variant ?? null,
+      manifestPersisted,
+    };
   }
 
   /**

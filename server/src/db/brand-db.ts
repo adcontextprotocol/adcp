@@ -290,7 +290,7 @@ export interface ListBrandsOptions {
   // response round-trip: ?source=hosted returns rows a verified owner
   // registered, ?source=brand_json returns crawler-discovered rows with a
   // live /.well-known/brand.json, etc.
-  source?: 'hosted' | 'brand_json' | 'community' | 'enriched';
+  source?: 'hosted' | 'brand_json' | 'community' | 'enriched' | 'stub';
   has_manifest?: boolean;
   house_domain?: string;
   search?: string;
@@ -697,7 +697,8 @@ export class BrandDatabase {
    * not a self-reference). See issue #3467.
    */
   async upsertDiscoveredBrand(input: UpsertDiscoveredBrandInput): Promise<DiscoveredBrand> {
-    const canonicalDomain = input.domain.toLowerCase();
+    const canonicalDomain = canonicalizeBrandDomain(input.domain);
+    assertValidBrandDomain(canonicalDomain);
     const canonicalHouseDomain = validateHouseDomainArg(input.house_domain, canonicalDomain);
     const sanitized = sanitizeBrandManifest(input.brand_manifest);
     const persistedManifest = input.classification
@@ -1053,6 +1054,7 @@ export class BrandDatabase {
     brand_json: number;
     community: number;
     enriched: number;
+    stub: number;
     houses: number;
     sub_brands: number;
     with_manifest: number;
@@ -1082,20 +1084,22 @@ export class BrandDatabase {
       brand_json: string;
       community: string;
       enriched: string;
+      stub: string;
       houses: string;
       sub_brands: string;
       with_manifest: string;
     }>(
       // Bucket counts use the same predicates as the response labels in
       // getAllBrandsForRegistry, so stats round-trip with the four ?source
-      // filter values. hosted+brand_json+community+enriched (excluding
-      // 'stub') reconciles to total.
+      // filter values. hosted+brand_json+community+enriched+stub
+      // reconciles to total.
       `SELECT
         COUNT(*) AS total,
         COUNT(*) FILTER (WHERE ${OWNER_HOSTED_SQL}) AS hosted,
         COUNT(*) FILTER (WHERE brands.source_type = 'brand_json' AND NOT ${OWNER_HOSTED_SQL}) AS brand_json,
         COUNT(*) FILTER (WHERE brands.source_type = 'community' AND NOT ${OWNER_HOSTED_SQL}) AS community,
         COUNT(*) FILTER (WHERE brands.source_type = 'enriched' AND NOT ${OWNER_HOSTED_SQL}) AS enriched,
+        COUNT(*) FILTER (WHERE brands.source_type = 'stub' AND NOT ${OWNER_HOSTED_SQL}) AS stub,
         COUNT(*) FILTER (WHERE keller_type IN ('master', 'independent') OR keller_type IS NULL) AS houses,
         COUNT(*) FILTER (WHERE keller_type IN ('sub_brand', 'endorsed')) AS sub_brands,
         COUNT(*) FILTER (WHERE ${HAS_MANIFEST_SQL}) AS with_manifest
@@ -1111,6 +1115,7 @@ export class BrandDatabase {
       brand_json: parseInt(row.brand_json, 10),
       community: parseInt(row.community, 10),
       enriched: parseInt(row.enriched, 10),
+      stub: parseInt(row.stub, 10),
       houses: parseInt(row.houses, 10),
       sub_brands: parseInt(row.sub_brands, 10),
       with_manifest: parseInt(row.with_manifest, 10),
@@ -1131,7 +1136,8 @@ export class BrandDatabase {
     input: UpsertDiscoveredBrandInput,
     editor: { user_id: string; email?: string; name?: string }
   ): Promise<DiscoveredBrand> {
-    const canonicalDomain = input.domain.toLowerCase();
+    const canonicalDomain = canonicalizeBrandDomain(input.domain);
+    assertValidBrandDomain(canonicalDomain);
     const canonicalHouseDomain = validateHouseDomainArg(input.house_domain, canonicalDomain);
     const sanitizedManifest = sanitizeBrandManifest(input.brand_manifest);
 
