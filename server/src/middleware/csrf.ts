@@ -69,6 +69,8 @@ const EXEMPT_EXACT = [
   "/mcp-strict-forbidden",
   "/stripe-webhook",     // Stripe webhook (raw body route)
   "/auth/bridge-callback", // Cross-domain session bridge (origin-validated)
+  "/auth/native/start",    // Native public client; protected by state + PKCE
+  "/auth/native/token",    // One-time PKCE-bound authorization grant
   "/token",              // OAuth token endpoint (mcpAuthRouter)
   "/register",           // OAuth dynamic client registration (mcpAuthRouter)
   "/verify-email-link",  // Email link verification (token-authenticated form POST from email)

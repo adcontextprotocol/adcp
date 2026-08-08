@@ -1,5 +1,8 @@
 const SMALL_BODY_JSON_ROUTES = new Set([
   '/api/brands/resolve/bulk',
+  // Native OAuth v2 carries only fixed-size state, PKCE, and grant fields.
+  '/auth/native/start',
+  '/auth/native/token',
 ]);
 
 /** Select a transport-level JSON cap before route handlers run. */

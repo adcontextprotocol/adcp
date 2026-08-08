@@ -1,14 +1,20 @@
 //! Addie App - Tauri backend (Desktop + Mobile)
 //!
 //! Handles:
-//! - OAuth deep link authentication (addie://auth/callback)
+//! - State- and PKCE-bound OAuth deep link authentication
 //! - Secure session storage via system keychain
 //! - API communication with AgenticAdvertising.org
 
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager, State};
 
 mod auth;
+mod auth_flow;
+
+#[derive(Default)]
+pub struct AuthRuntime {
+    flow_lock: tokio::sync::Mutex<()>,
+}
 
 /// User session data stored securely
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,19 +74,50 @@ async fn get_session_token() -> Result<Option<String>, String> {
 
 /// Start OAuth login flow - opens system browser
 #[tauri::command]
-async fn start_login(app: AppHandle) -> Result<(), String> {
-    auth::start_oauth_flow(&app).map_err(|e| e.to_string())
+async fn start_login(app: AppHandle, runtime: State<'_, AuthRuntime>) -> Result<(), String> {
+    auth::start_oauth_flow(&app, &runtime)
+        .await
+        .map_err(|_| "Failed to start authentication".to_string())
 }
 
 /// Log out - clear stored session
 #[tauri::command]
-async fn logout() -> Result<(), String> {
+async fn logout(runtime: State<'_, AuthRuntime>) -> Result<(), String> {
+    let _guard = runtime.flow_lock.lock().await;
     auth::clear_session().map_err(|e| e.to_string())
+}
+
+fn dispatch_deep_link(app: AppHandle, raw_url: String) {
+    tauri::async_runtime::spawn(async move {
+        let runtime = app.state::<AuthRuntime>();
+        if auth::handle_deep_link(&app, &runtime, &raw_url)
+            .await
+            .is_err()
+        {
+            let _ = tauri::Emitter::emit(&app, "auth-error", "authentication_failed");
+        }
+    });
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    #[cfg(desktop)]
+    {
+        // Deep links on Windows and Linux may launch a second process. This
+        // plugin must be registered first so the URL is forwarded to the
+        // primary process before any auth handler runs.
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }));
+    }
+
+    builder
+        .manage(AuthRuntime::default())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_deep_link::init())
@@ -91,34 +128,20 @@ pub fn run() {
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
 
-                println!("Setting up deep link handler...");
-
                 // Check if app was launched via deep link (covers cold start case)
                 if let Ok(Some(urls)) = app.deep_link().get_current() {
-                    println!("App launched with deep link URLs: {:?}", urls);
                     for url in urls {
-                        println!("Processing startup URL: {}", url.as_str());
-                        if let Err(e) = auth::handle_deep_link(&handle, url.as_str()) {
-                            eprintln!("Failed to handle startup deep link: {}", e);
-                        }
+                        dispatch_deep_link(handle.clone(), url.as_str().to_string());
                     }
                 }
 
                 // Handle deep links while app is running
                 let handle_clone = handle.clone();
                 app.deep_link().on_open_url(move |event| {
-                    println!("Deep link received while running!");
-                    let urls = event.urls();
-                    println!("URLs: {:?}", urls);
-                    for url in urls {
-                        println!("Processing URL: {}", url.as_str());
-                        if let Err(e) = auth::handle_deep_link(&handle_clone, url.as_str()) {
-                            eprintln!("Failed to handle deep link: {}", e);
-                        }
+                    for url in event.urls() {
+                        dispatch_deep_link(handle_clone.clone(), url.as_str().to_string());
                     }
                 });
-
-                println!("Deep link handler registered");
             }
 
             Ok(())
