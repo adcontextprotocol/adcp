@@ -1359,6 +1359,54 @@ describe('get_products handler', () => {
     expect((result.products as unknown[]).length).toBeGreaterThan(0);
   });
 
+  it('warns when a custom format shape has been promoted in 3.2', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'promoted-format-shape.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    const seeded = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'legacy_takeover_shape',
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'non_guaranteed',
+          format_options: [{
+            format_option_id: 'legacy_takeover',
+            format_kind: 'custom',
+            format_shape: 'multi_placement_takeover',
+            canonical_formats_only: true,
+            format_schema: {
+              uri: 'https://ads.streamhaus.example/schemas/formats/legacy_takeover_v1',
+              digest: `sha256:${'a'.repeat(64)}`,
+            },
+            params: {},
+          }],
+        },
+      },
+    });
+    expect(seeded.result.success).toBe(true);
+
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+    });
+
+    expect(result).toMatchObject({
+      code: 'FORMAT_SHAPE_PROMOTED',
+      field: expect.stringContaining('format_options'),
+      details: {
+        format_shape: 'multi_placement_takeover',
+        promoted_to: 'page_takeover',
+        promotion_release: '3.2',
+        transition_end: '2027-01-31',
+      },
+    });
+  });
+
   it('returns wholesale feed metadata and honors unchanged product probes', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: first } = await simulateCallTool(server, 'get_products', {
@@ -2329,6 +2377,402 @@ describe('validate_input handler', () => {
     expect(withLogo.result.results).toEqual([
       { target: { kind: 'canonical', id: 'responsive_creative' }, result_kind: 'validated_pass' },
     ]);
+  });
+
+  it('validates multi-state canvas coverage and dimensions against product breakpoints', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'premium-display.example' }, operator: 'pinnacle-agency.example' };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'premium-display.example' },
+      scenario: 'seed_product',
+      params: {
+        product_id: 'validate_input_multi_state_display',
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'guaranteed',
+          format_options: [{
+            format_kind: 'multi_state_display',
+            format_option_id: 'sticky_leaderboard',
+            canonical_formats_only: true,
+            params: {
+              states: [
+                {
+                  state_id: 'expanded',
+                  trigger: 'on_load',
+                  anchoring: 'inline',
+                  close_affordance: true,
+                  breakpoints: [
+                    { breakpoint_id: 'desktop', width: 640, height: 210 },
+                    { breakpoint_id: 'mobile', width: 320, height: 210 },
+                  ],
+                },
+                {
+                  state_id: 'collapsed',
+                  trigger: 'auto_collapse',
+                  anchoring: 'sticky_top',
+                  close_affordance: true,
+                  breakpoints: [
+                    { breakpoint_id: 'desktop', width: 640, height: 70 },
+                    { breakpoint_id: 'mobile', width: 320, height: 70 },
+                  ],
+                },
+              ],
+              user_controls: { dismissible: true, user_collapsible: true },
+              duration_ms_range: [5000, 15000],
+              aspect_ratio: '16:9',
+              containers: ['mp4'],
+            },
+          }],
+        },
+      },
+    });
+
+    const canvases = [
+      ['expanded', 'desktop', 640, 210],
+      ['expanded', 'mobile', 320, 210],
+      ['collapsed', 'desktop', 640, 70],
+      ['collapsed', 'mobile', 320, 70],
+    ].map(([stateId, breakpointId, width, height]) => ({
+      asset_type: 'image',
+      url: `https://cdn.acme.example/${stateId}-${breakpointId}.png`,
+      state_id: stateId,
+      breakpoint_id: breakpointId,
+      width,
+      height,
+    }));
+    const manifest = {
+      format_kind: 'multi_state_display',
+      assets: {
+        state_canvases: canvases,
+        landing_page_url: { asset_type: 'url', url: 'https://acme.example/launch' },
+      },
+    };
+    const valid = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'validate_input_multi_state_display' }],
+    });
+    expect(valid.result.results).toEqual([{
+      target: { kind: 'product', id: 'validate_input_multi_state_display' },
+      result_kind: 'validated_pass',
+    }]);
+
+    const invalidOptionalVideo = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        ...manifest,
+        assets: {
+          ...manifest.assets,
+          video_main: {
+            asset_type: 'video',
+            url: 'https://cdn.acme.example/embedded.webm',
+            width: 640,
+            height: 640,
+            duration_ms: 30000,
+            container_format: 'webm',
+          },
+        },
+      },
+      targets: [{ kind: 'product', id: 'validate_input_multi_state_display' }],
+    });
+    expect(invalidOptionalVideo.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'multi_state_display_video_params', field: 'assets.video_main' }),
+      ]),
+    });
+
+    const splitVideoConstraints = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        ...manifest,
+        assets: {
+          ...manifest.assets,
+          video_main: [
+            {
+              asset_type: 'video',
+              url: 'https://cdn.acme.example/right-duration.mp4',
+              width: 640,
+              height: 640,
+              duration_ms: 10000,
+              container_format: 'mp4',
+            },
+            {
+              asset_type: 'video',
+              url: 'https://cdn.acme.example/right-ratio.webm',
+              width: 1600,
+              height: 900,
+              duration_ms: 30000,
+              container_format: 'webm',
+            },
+          ],
+        },
+      },
+      targets: [{ kind: 'product', id: 'validate_input_multi_state_display' }],
+    });
+    expect(splitVideoConstraints.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'multi_state_display_video_params' }),
+      ]),
+    });
+
+    const invalid = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        ...manifest,
+        assets: {
+          ...manifest.assets,
+          state_canvases: [{ ...canvases[0], width: 641 }, ...canvases.slice(1, -1)],
+        },
+      },
+      targets: [{ kind: 'product', id: 'validate_input_multi_state_display' }],
+    });
+    expect(invalid.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'state_canvas_width' }),
+        expect.objectContaining({ rule: 'state_canvas_required_pair' }),
+      ]),
+    });
+  });
+
+  it('rejects unresolved and nested page-takeover component references', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'takeover-validation.example' }, operator: 'pinnacle-agency.example' };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'takeover-validation.example' },
+      scenario: 'seed_product',
+      params: {
+        product_id: 'validate_input_page_takeover',
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'guaranteed',
+          format_options: [{
+            format_kind: 'page_takeover',
+            format_option_id: 'takeover',
+            canonical_formats_only: true,
+            params: {
+              components: [{
+                component_id: 'nested',
+                placement_role: 'skin',
+                required: true,
+                format_option_ref: { scope: 'product', format_option_id: 'takeover' },
+              }],
+              exclusivity: 'all_slots',
+            },
+          }],
+        },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: { format_kind: 'page_takeover', assets: {}, component_assets: {} },
+      targets: [{ kind: 'product', id: 'validate_input_page_takeover' }],
+    });
+    expect(result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({
+          rule: 'takeover_component_format_kind',
+          predicted: 'page_takeover',
+        }),
+      ]),
+    });
+  });
+
+  it('validates page-takeover component assets and inline canonical params', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'component-assets.example' }, operator: 'pinnacle-agency.example' };
+    const baseFixture = {
+      channels: ['display'],
+      delivery_type: 'guaranteed',
+      format_options: [
+        {
+          format_kind: 'image',
+          format_option_id: 'masthead_image',
+          canonical_formats_only: true,
+          params: { width: 970, height: 250 },
+        },
+        {
+          format_kind: 'page_takeover',
+          format_option_id: 'takeover',
+          canonical_formats_only: true,
+          params: {
+            components: [
+              {
+                component_id: 'masthead',
+                placement_role: 'masthead',
+                required: true,
+                format_option_ref: { scope: 'product', format_option_id: 'masthead_image' },
+              },
+              {
+                component_id: 'skin',
+                placement_role: 'skin',
+                required: true,
+                format_kind: 'image',
+                params: { width: 2560, height: 1440 },
+              },
+            ],
+            shared_slots: [{
+              asset_group_id: 'cta',
+              asset_type: 'text',
+              required: true,
+              consumed_by: ['masthead', 'skin'],
+            }],
+            exclusivity: 'all_slots',
+          },
+        },
+      ],
+    };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: { product_id: 'component_asset_takeover', fixture: baseFixture },
+    });
+
+    const manifest = {
+      format_kind: 'page_takeover',
+      assets: { cta: { asset_type: 'text', content: 'Watch now' } },
+      component_assets: {
+        masthead: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/masthead.png',
+            width: 970,
+            height: 250,
+          },
+        },
+        skin: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/skin.png',
+            width: 2560,
+            height: 1440,
+          },
+        },
+      },
+    };
+    const valid = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'component_asset_takeover' }],
+    });
+    expect(valid.result.results).toEqual([{
+      target: { kind: 'product', id: 'component_asset_takeover' },
+      result_kind: 'validated_pass',
+    }]);
+
+    const wrongComponentDimensions = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        ...manifest,
+        component_assets: {
+          ...manifest.component_assets,
+          skin: {
+            image_main: { ...manifest.component_assets.skin.image_main, width: 2559 },
+          },
+        },
+      },
+      targets: [{ kind: 'product', id: 'component_asset_takeover' }],
+    });
+    expect(wrongComponentDimensions.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'takeover_component_params_satisfied', field: 'component_assets.skin' }),
+      ]),
+    });
+
+    const sizedConstraintFixture = structuredClone(baseFixture);
+    const sizedTakeover = sizedConstraintFixture.format_options[1] as Record<string, any>;
+    sizedTakeover.params.components[1].params = { sizes: [{ width: 2560, height: 1440 }] };
+    sizedTakeover.params.components[1].canvas_constraints = [{
+      constraint: 'safe_area',
+      region: { unit: 'px', x: 2500, y: 0, width: 100, height: 100 },
+    }];
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: { product_id: 'sized_constraint_takeover', fixture: sizedConstraintFixture },
+    });
+    const overflowingSizedConstraint = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'sized_constraint_takeover' }],
+    });
+    expect(overflowingSizedConstraint.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'canvas_constraint_region_bounds' }),
+      ]),
+    });
+
+    const missingComponent = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        ...manifest,
+        component_assets: { masthead: manifest.component_assets.masthead },
+      },
+      targets: [{ kind: 'product', id: 'component_asset_takeover' }],
+    });
+    expect(missingComponent.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'takeover_component_assets_required', field: 'component_assets.skin' }),
+      ]),
+    });
+
+    const incompatibleSharedFixture = structuredClone(baseFixture);
+    const incompatibleTakeover = incompatibleSharedFixture.format_options[1] as Record<string, any>;
+    incompatibleTakeover.params.shared_slots = [{
+      asset_group_id: 'video_main',
+      asset_type: 'video',
+      required: false,
+      consumed_by: ['skin'],
+    }];
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: { product_id: 'incompatible_shared_takeover', fixture: incompatibleSharedFixture },
+    });
+    const incompatibleShared = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: { ...manifest, assets: {} },
+      targets: [{ kind: 'product', id: 'incompatible_shared_takeover' }],
+    });
+    expect(incompatibleShared.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'takeover_shared_slot_compatibility' }),
+      ]),
+    });
+
+    const invalidInlineFixture = structuredClone(baseFixture);
+    const takeover = invalidInlineFixture.format_options[1] as Record<string, any>;
+    takeover.params.components[1].params = { width: 2560 };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: { product_id: 'invalid_inline_takeover', fixture: invalidInlineFixture },
+    });
+    const invalidInline = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'invalid_inline_takeover' }],
+    });
+    expect(invalidInline.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'takeover_component_params_schema' }),
+      ]),
+    });
   });
 
   it('returns unvalidatable_nondeterministic for a seeded product with nondeterministic synthesis', async () => {
@@ -5048,6 +5492,42 @@ describe('sync_creatives handler', () => {
     // Per sync-creatives-response.json, each item requires creative_id and action
     expect(creatives[0].creative_id).toBe('cr_test_001');
     expect(creatives[0].action).toBe('created');
+  });
+
+  it('preserves page-takeover component assets through creative-library readback', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'takeover-library.example' }, operator: 'takeover-library.example' };
+    const componentAssets = {
+      skin: {
+        image_main: {
+          asset_type: 'image',
+          url: 'https://cdn.takeover-library.example/skin.png',
+          width: 2560,
+          height: 1440,
+        },
+      },
+    };
+    const { result: synced } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_takeover_library',
+        format_kind: 'page_takeover',
+        name: 'Takeover library creative',
+        assets: {},
+        component_assets: componentAssets,
+      }],
+    });
+    expect(synced.errors).toBeUndefined();
+
+    const { result: listed } = await simulateCallTool(server, 'list_creatives', {
+      account,
+      filters: { format_kinds: ['page_takeover'] },
+    });
+    expect((listed.creatives as Array<Record<string, unknown>>)[0]).toMatchObject({
+      creative_id: 'cr_takeover_library',
+      format_kind: 'page_takeover',
+      component_assets: componentAssets,
+    });
   });
 
   it('preserves canonical identity through sync, list, build, and preview', async () => {

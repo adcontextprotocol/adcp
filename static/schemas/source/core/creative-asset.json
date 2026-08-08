@@ -44,6 +44,14 @@
       },
       "additionalProperties": true
     },
+    "component_assets": {
+      "type": "object",
+      "description": "Component-addressed canonical asset maps for a `page_takeover`. Keys match takeover component IDs. This field is preserved by creative-library sync and list readback; it MUST be absent for every other format kind.",
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*$": { "$ref": "/schemas/core/creative-assets.json" }
+      },
+      "additionalProperties": false
+    },
     "inputs": {
       "type": "array",
       "description": "Preview contexts for generative formats - defines what scenarios to generate previews for",
@@ -136,6 +144,16 @@
       { "required": ["capability_ref"] }
     ]
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "format_kind": { "const": "page_takeover" } },
+        "required": ["format_kind"]
+      },
+      "then": { "required": ["component_assets"] },
+      "else": { "not": { "required": ["component_assets"] } }
+    }
+  ],
   "oneOf": [
     {
       "title": "v1 creative (named-format reference)",

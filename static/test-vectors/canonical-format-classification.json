@@ -44,11 +44,19 @@
       "id": "coordinated_multi_surface_takeover",
       "publisher_spec": "One sold unit coordinates a masthead, two side rails, and a collapsed scroll state. The buyer supplies separate artwork for each state and a shared landing URL.",
       "expected": {
-        "format_kind": "custom",
-        "format_shape": "multi_state_display"
+        "format_kind": "multi_state_display"
       },
-      "must_not_classify_as": ["image", "responsive_creative"],
-      "reason": "The buyer deliverable has multiple coordinated states and surfaces, which cannot be represented by one current canonical payload."
+      "must_not_classify_as": ["image", "responsive_creative", "custom"],
+      "reason": "The buyer deliverable has multiple deterministic seller-rendered states, which AdCP 3.2 represents directly as multi_state_display."
+    },
+    {
+      "id": "coordinated_page_takeover",
+      "publisher_spec": "One guaranteed buy reserves a masthead, page skin, and preroll for the same advertiser. The buyer supplies component-specific artwork plus a shared video and call to action.",
+      "expected": {
+        "format_kind": "page_takeover"
+      },
+      "must_not_classify_as": ["image", "multi_state_display", "custom"],
+      "reason": "Several coordinated placements with shared assets and one exclusivity contract form a page_takeover rather than one multi-state display unit."
     },
     {
       "id": "buyer_html_bundle",

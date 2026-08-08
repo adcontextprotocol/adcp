@@ -86,7 +86,7 @@ function reportErrors(label, errors) {
   console.log(`  ${RED}✗${RESET} ${label}`);
   // No truncation — full error list reported. SDK validators (AJV, Pydantic)
   // emit one entry per non-matching oneOf branch when validating against the
-  // 12-branch product-format-declaration; downstream consumers need the full
+  // product-format-declaration tagged union; downstream consumers need the full
   // set to see WHICH branch (or which `allOf` step) actually failed.
   for (const err of errors || []) {
     const ip = err.instancePath || '(root)';
@@ -117,6 +117,7 @@ function main() {
     'image', 'html5', 'display_tag', 'image_carousel',
     'video_hosted', 'video_vast', 'audio_hosted', 'audio_daast',
     'sponsored_placement', 'responsive_creative', 'agent_placement',
+    'multi_state_display', 'page_takeover',
   ];
   const strictAjv = new Ajv({ allErrors: true, strict: false });
   addFormats(strictAjv);

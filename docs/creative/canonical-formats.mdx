@@ -8,13 +8,13 @@ testable: true
 # Canonical Formats
 
 > **TL;DR for adopters reading cold:**
-> - **9 of 12 canonical formats ship non-experimental at 3.1 GA** (`image`, `html5`, `display_tag`, `image_carousel`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `native_in_feed`). 3 canonicals stay experimental past GA (`sponsored_placement`, `responsive_creative`, `agent_placement`), and the `custom` escape-hatch `format_kind` is inherently experimental until a shape is promoted.
+> - **9 of 14 canonical formats are non-experimental in 3.2** (`image`, `html5`, `display_tag`, `image_carousel`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `native_in_feed`). Five canonicals are experimental (`sponsored_placement`, `responsive_creative`, `agent_placement`, `multi_state_display`, `page_takeover`), and the `custom` escape-hatch is inherently experimental until a shape is promoted.
 > - **AdCP 3.2 is canonical-first end to end.** New publisher catalogs, products, manifests, creative-agent capabilities, and build requests use canonical declarations. Named `format_id` values and `list_creative_formats` are deprecated compatibility surfaces.
 > - **Legacy support is read/project only.** Implementations MAY derive named-format responses for older 3.x peers, but MUST NOT make a legacy catalog the source of truth for newly-authored 3.2 data.
 > - **Exact plural `format_ids` fields end at 4.0.** This deadline does not itself remove singular `format_id`, named-format definitions, or `list_creative_formats`; those compatibility surfaces have separate schedules.
 > - **SDK codegen is the gating dependency for ergonomic adopter consumption.** Schemas are shippable today; the typed-tagged-union ergonomics this design earns land fully only with codegen. The runtime Ajv validator is the load-bearing gate — generated TS/Pydantic types lose `if/then` narrowing on `format_kind: "custom"` and `result_kind`.
 
-> **Status:** Canonical formats were introduced in AdCP 3.1 and are the required authoring and discovery model in AdCP 3.2. Three canonicals plus `custom` remain marked `experimental` until adopter evidence supports promotion. Historical design context lives in [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) and [#3307](https://github.com/adcontextprotocol/adcp/pull/3307).
+> **Status:** Canonical formats were introduced in AdCP 3.1 and are the required authoring and discovery model in AdCP 3.2. Five canonicals plus `custom` remain marked `experimental` until adopter evidence supports stabilization. Historical design context lives in [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) and [#3307](https://github.com/adcontextprotocol/adcp/pull/3307).
 >
 > *Naming note*: This work was originally drafted as "creative formats v2" — the v1↔v2 contrast describes the two format-authoring models (legacy named-format registry vs new canonical formats on products). To avoid collision with AdCP-the-protocol's own version numbering (currently 3.x), file paths, identifiers, and the body of this doc use **canonical formats** terminology. The v1↔v2 contrast is reserved as schema-description shorthand where it disambiguates the two authoring paths on `Product.format_ids` vs `Product.format_options`.
 
@@ -26,7 +26,7 @@ For hands-on authoring practice, use the [S2 creative specialist module](/docs/l
 
 | Term | One-line definition |
 |---|---|
-| **Canonical format** | One of 12 AdCP-defined format archetypes that products narrow (e.g., `image`, `video_vast`, `audio_hosted`, `native_in_feed`). The buyer's stable validation target. |
+| **Canonical format** | One of 14 AdCP-defined format archetypes that products narrow (e.g., `image`, `video_vast`, `multi_state_display`, `page_takeover`). The buyer's stable validation target. |
 | **`format_kind`** | Discriminator value naming a canonical format (e.g., `"image"`). Selects which canonical's parameter schema applies. |
 | **`format_options`** | On a product, an array of full `ProductFormatDeclaration`s. The 90% case is single-element; multi-element declares "accepts any of." Product entries are declarations, not bare references. |
 | **`ProductFormatDeclaration`** | Inline format declaration: required `format_kind` + required `params` + optional `format_option_id` (REQUIRED when entries share `format_kind`; SHOULD be set on every entry per 3.1 so V2 buyers can author against the product via `PackageRequest.format_option_refs[]`) + optional `publisher_domain` for publisher-catalog-backed options + optional human-facing `sample_render_url` + optional `applies_to_channels` + optional `locale_policy` + optional `experimental` + optional `v1_format_ref[]` (always array — see below). Even when catalog-backed, the product still carries the full declaration. |
@@ -54,7 +54,7 @@ For hands-on authoring practice, use the [S2 creative specialist module](/docs/l
 | **`brand_kit_override`** | Inline override on `BrandRef` for per-call brand-kit tweaks (logo, colors, voice, tagline) where `brand.json` is missing, stale, or inappropriate. Same pattern as `industries` and `data_subject_contestation` on BrandRef. |
 | **`fanout_mode`** | On `sponsored_placement`: how items map to delivery — `per_item`, `multi_item_in_creative`, `single_item`. |
 | **`item_production_model`** | On `sponsored_placement`: how each per-item creative is produced. Captures multi-output generative (1 brief × N items → N creatives). |
-| **`format_kind: "custom"`** | Adopter-defined shape that doesn't fit the 12 canonicals (multi-placement takeover, branded content, AR lens, etc.). Requires `format_shape` (registry classifier) and `format_schema` (URI+digest reference to a fetchable schema). |
+| **`format_kind: "custom"`** | Adopter-defined shape that doesn't fit the 14 canonicals (branded content, AR lens, etc.). Requires `format_shape` (registry classifier) and `format_schema` (URI+digest reference to a fetchable schema). |
 | **`format_shape`** | Recognized global pattern from the [format-shape vocabulary registry](https://adcontextprotocol.org/schemas/v3/core/format-shape-vocabulary.json). Required when `format_kind: "custom"`. |
 | **`format_schema`** | URI+digest reference to the fetchable schema describing a custom shape's `params` and `slots`. Required when `format_kind: "custom"`. Same hosting model as `platform_extensions`. |
 
@@ -69,9 +69,9 @@ For hands-on authoring practice, use the [S2 creative specialist module](/docs/l
 | Tracking | Mixed across asset types and format definitions | Baked into each canonical format (VAST events for `video_vast`, MRAID+OM-SDK for `html5`, impression pixel for `image`) |
 | Brand identity | Sometimes redeclared as format slots | Implicit via `brand` (a [`BrandRef`](https://adcontextprotocol.org/schemas/v3/core/brand-ref.json) — `domain` plus optional `brand_id` for house-of-brands) resolving brand.json; explicit override via `brand_kit_override` inline on the BrandRef itself |
 
-## The 12 canonical formats
+## The 14 canonical formats
 
-Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model is **format-specific** (split by tracking model is why we have 12 instead of, say, 5).
+Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model is **format-specific** (split by tracking model is why we have 14 instead of, say, 5).
 
 | Canonical | What it is | Tracking |
 |---|---|---|
@@ -87,18 +87,78 @@ Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model
 | `native_in_feed` | IAB-shaped in-feed native and content-recommendation widgets (Taboola, Outbrain, Yahoo Native, AdMob Native, in-feed sponsored cards). Slots map 1:1 to IAB OpenRTB Native 1.2. | Renderer-fired `pixel_tracker` (impression / viewability / click) |
 | `responsive_creative` | Buyer asset pool, surface composes combinations (Google Responsive Display/Search Ads, Performance Max, Demand Gen; Meta Advantage+ creative) | Per-asset performance breakdown |
 | `agent_placement` | Sponsored placement composed by an AI surface in response to a user query (ChatGPT, Perplexity, voice assistants, sponsored search snippets). Distinct from `si_chat` (brand-owned conversation; user → brand's agent). | Mention-level impression + attribution |
+| `multi_state_display` | Seller-rendered premium web unit with deterministic state × breakpoint canvases (expandable, adhesion, sticky, scroll-docking). No buyer tag. | Unit impression/click; sellers may additionally report by state, but 3.2 does not standardize state event names |
+| `page_takeover` | Coordinated multi-placement ownership sold as one buy, with inline or sibling-referenced component formats and shared assets. | Component and takeover reporting are seller-defined in 3.2; no new event vocabulary is implied |
+
+### Premium display in 3.2
+
+Both premium-display canonicals are `experimental: true` in 3.2.
+
+- Use `multi_state_display` only when the seller renders the unit and the buyer can know the exact state layouts before launch. The manifest carries exactly one `state_canvases` image for every declared state × breakpoint pair; each image binds with `state_id` and `breakpoint_id` and must match the declared dimensions.
+- Use `responsive_creative` when the surface chooses or rearranges components per impression. The boundary is predictability: fixed templates are `multi_state_display`; algorithmic composition is `responsive_creative`.
+- Use `display_tag` whenever the buyer delivers a tag, regardless of how rich, expandable, or stateful the rendered experience is.
+- Use `page_takeover` when several placements are coordinated under one buy. Each component either declares one inline canonical or references a sibling `format_options[]` entry. `custom` and nested `page_takeover` components are forbidden. The manifest supplies component-specific slots under `component_assets.<component_id>` and supplies each declared shared slot once under top-level `assets`.
+
+For Better Ads compatibility, fullscreen and overlay states SHOULD declare user-initiated triggers. The `trigger` field is the machine-readable answer to “does this auto-expand?” A seller can therefore reject or route an auto-expanding declaration without inferring behavior from prose.
+
+The worked product declarations are [`streamhaus_expandable_sticky_leaderboard.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/examples/products/canonical/streamhaus_expandable_sticky_leaderboard.json) and [`streamhaus_page_takeover.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/examples/products/canonical/streamhaus_page_takeover.json). The first declares expanded 640/320×210 canvases that auto-collapse to 640/320×70 sticky canvases with an optional 15-second 16:9 video. The second references that leaderboard as a sibling component, adds a 2560×1440 skin with a safe area, and shares video/CTA assets where the consuming component accepts those slots.
+
+A matching multi-state manifest binds every canvas explicitly:
+
+```json test=false
+{
+  "format_kind": "multi_state_display",
+  "assets": {
+    "state_canvases": [
+      { "asset_type": "image", "url": "https://cdn.streamhaus.example/expanded-desktop.png", "state_id": "expanded", "breakpoint_id": "desktop", "width": 640, "height": 210 },
+      { "asset_type": "image", "url": "https://cdn.streamhaus.example/expanded-mobile.png", "state_id": "expanded", "breakpoint_id": "mobile", "width": 320, "height": 210 },
+      { "asset_type": "image", "url": "https://cdn.streamhaus.example/collapsed-desktop.png", "state_id": "collapsed", "breakpoint_id": "desktop", "width": 640, "height": 70 },
+      { "asset_type": "image", "url": "https://cdn.streamhaus.example/collapsed-mobile.png", "state_id": "collapsed", "breakpoint_id": "mobile", "width": 320, "height": 70 }
+    ],
+    "landing_page_url": { "asset_type": "url", "url": "https://streamhaus.example/premiere" }
+  }
+}
+```
+
+For the takeover declaration, shared assets stay flat while component assets are namespaced:
+
+```json test=false
+{
+  "format_kind": "page_takeover",
+  "assets": {
+    "video_main": { "asset_type": "video", "url": "https://cdn.streamhaus.example/spot.mp4", "duration_ms": 15000 },
+    "cta": { "asset_type": "text", "content": "Watch now" }
+  },
+  "component_assets": {
+    "leaderboard": {
+      "state_canvases": [
+        { "asset_type": "image", "url": "https://cdn.streamhaus.example/expanded-desktop.png", "state_id": "expanded", "breakpoint_id": "desktop", "width": 640, "height": 210 },
+        { "asset_type": "image", "url": "https://cdn.streamhaus.example/expanded-mobile.png", "state_id": "expanded", "breakpoint_id": "mobile", "width": 320, "height": 210 },
+        { "asset_type": "image", "url": "https://cdn.streamhaus.example/collapsed-desktop.png", "state_id": "collapsed", "breakpoint_id": "desktop", "width": 640, "height": 70 },
+        { "asset_type": "image", "url": "https://cdn.streamhaus.example/collapsed-mobile.png", "state_id": "collapsed", "breakpoint_id": "mobile", "width": 320, "height": 70 }
+      ],
+      "landing_page_url": { "asset_type": "url", "url": "https://streamhaus.example/premiere" }
+    },
+    "skin": {
+      "image_main": { "asset_type": "image", "url": "https://cdn.streamhaus.example/skin.png", "width": 2560, "height": 1440 }
+    }
+  }
+}
+```
 
 ### `experimental` — one field, both axes
 
 A canonical (or a seller's specific product declaration) carries a single `experimental: boolean` flag. Same semantics as `experimental` on protocols: 'this is shipping but may break, evolve, or fail.' Buyers reading `experimental: true` SHOULD validate via `validate_input` or a sandbox before routing production budget. This replaces the earlier two-axis design (`status` + `runtime_status` enums) — collapsed because what buyers actually care about is binary: do I treat this as production-stable, or as use-at-your-own-risk.
 
-`experimental: true` is set at 3.1 GA on three canonicals plus the `custom` escape hatch:
+`experimental: true` applies to five canonicals in 3.2 plus the `custom` escape hatch:
 
 | Format kind | Why experimental | Promotion gated on |
 |---|---|---|
 | `sponsored_placement` | Four meaningfully different retail-media adapter contracts (Amazon SP, Criteo SP / CitrusAd SP, Pinterest Collection, generative-per-SKU) under one canonical — see [Sponsored Placement adapter contracts](/docs/creative/sponsored-placement-adapter-contracts) | Two adopters with `format_schema` evidence |
 | `responsive_creative` | Algorithmic composition (surface picks combinations); no clean v1-translatable equivalent | Adopter evidence + per-surface conformance |
 | `agent_placement` | Tracking macro vocabulary / postback shape / cross-surface dedup intentionally underspecified for 3.1 | 3.2 tracking-contract spec |
+| `multi_state_display` | State/breakpoint canvas contract is new in 3.2 and needs cross-seller evidence | Two interoperable seller implementations plus manifest-validation evidence |
+| `page_takeover` | Cross-placement composition, shared slots, and exclusivity need implementation evidence | Two interoperable sellers plus sibling-reference validation evidence |
 | `custom` | Inherently experimental — adopter-defined shape until promoted to a first-class `format_kind` | Per-shape promotion via the #3666 queue |
 
 The 7 IAB / VAST / DAAST / IAB-Native re-encodings (`image`, `display_tag`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `native_in_feed`) plus `html5` and `image_carousel` ship non-experimental — they're settled industry standards being re-encoded in canonical-formats vocabulary.
@@ -137,7 +197,7 @@ When `asset_source` is `buyer_uploaded`, the buyer ships rendered assets and any
 
 ## What `format_kind` is NOT for
 
-`format_kind` names the creative ASSET shape — what the buyer ships, what the surface accepts. It's not for delivery medium, measurement model, or targeting context. Conflating these is the most common architectural mistake a 3.2 contributor will be tempted to make. Three concrete examples:
+`format_kind` names the creative contract shape — either one asset/asset pool or a bounded composition graph such as `page_takeover`. It describes what the buyer ships and what the surface accepts. It is not a delivery medium, measurement model, or targeting context. Conflating these is the most common architectural mistake a 3.2 contributor will be tempted to make. Four concrete examples:
 
 | Tempting (wrong) | Right answer | Why |
 |---|---|---|
@@ -147,7 +207,7 @@ When `asset_source` is `buyer_uploaded`, the buyer ships rendered assets and any
 | `format_kind: "published_post_video"` | `format_kind: "video_hosted"` + `asset_source: "publisher_owned_reference"` + `slots_override: [{ published_post: published_post }]` | Same canonical TYPE; the buyer ships a reference to an existing post instead of uploaded bytes. Authorization/review state lives on the creative lifecycle, not in a new format family. |
 
 **Rule of thumb.** Before reaching for a new `format_kind`, check whether the difference is:
-1. **Creative type** (image vs video vs audio vs html5 vs 3p-tag) → `format_kind`, the only knob it controls.
+1. **Creative contract** (image vs video vs html5 vs a bounded multi-component takeover) → `format_kind`.
 2. **Production model** (who renders, when) → `asset_source` on the format declaration.
 3. **Slot shape** (what assets the buyer ships) → `slots_override` on the projection ref (catalog side) or on the v2 product's `format_options[]` declaration.
 4. **Delivery medium / channel** (TV vs streaming vs DOOH vs social) → `applies_to_channels` on the v2 product.
@@ -156,7 +216,7 @@ When `asset_source` is `buyer_uploaded`, the buyer ships rendered assets and any
    - **Conversion pixels** (fire on the advertiser's site post-click — Meta Pixel, GA4 server-side, custom postbacks) → `sync_event_sources` / `event_log`. Campaign-scoped, NOT creative-asset-scoped. The same pixel fires for every ad in the campaign.
 6. **Targeting context** (audience vs geo vs daypart) → media-buy targeting overlay, not the format.
 
-New `format_kind` only when the CREATIVE ASSET itself is structurally different (e.g., DAI's ad-stitched continuous audio stream is structurally different from `audio_hosted`'s file-per-impression). All 50 ad formats in the v1 catalog at GA project to canonicals via this rule; broadcast TV, DOOH, and generative all stay on existing canonicals (sibling refinement via `applies_to_channels` / `asset_source` / `slots_override`). The one exception is `native_in_feed`: IAB OpenRTB Native 1.2 in-feed and content-recommendation units have an asset-bundle composition shape (title + image + body + CTA assembled by the renderer) that isn't expressible as sibling refinement on `image` or `responsive_creative` and isn't catalog-keyed like `sponsored_placement` — a buyer agent needs the `format_kind` discriminator to route to the right assembly logic. The 12-canonical line is held *because* native_in_feed cleared this bar; it's not a precedent for every channel asking for its own canonical.
+Add a new `format_kind` only when the buyer-facing asset contract or bounded renderer assembly is structurally different. Broadcast TV, DOOH, and generative production stay on existing canonicals because channel and production source do not change that contract. `native_in_feed`, `multi_state_display`, and `page_takeover` clear the higher bar: each requires distinct assembly and validation logic that cannot be expressed as sibling refinement through `applies_to_channels`, `asset_source`, or `slots_override`. This is not precedent for every channel to request its own canonical.
 
 ## When to use `slots_override` (and when to leave it off)
 
@@ -176,11 +236,11 @@ New `format_kind` only when the CREATIVE ASSET itself is structurally different 
 
 The rule applies symmetrically: if you're tempted to add `slots_override` only to declare measurement pixels, delivery-medium flags, or targeting context, you're using it wrong — those don't belong in slots at all (see "What `format_kind` is NOT for" above).
 
-## Custom formats — shapes the 12 canonicals don't cover
+## Custom formats — shapes the 14 canonicals don't cover
 
-The 12 canonicals cover atomic creative shapes (one image, one video, one display tag, one carousel, one native in-feed unit, one catalog placement, one AI-surface mention). They don't cover composed / coordinated / sponsorship shapes that high-end publishers and broadcast networks sell as headline products: multi-placement takeover, roadblock, branded content, cross-screen sponsorship, sponsorship lockup, newsletter sponsorship, AR lens, playable, live event sponsorship.
+The 14 canonicals now include deterministic multi-state display and coordinated page takeovers. Custom remains the path for structures that have not been promoted, including branded content, cross-screen sponsorship, sponsorship lockup, newsletter sponsorship, AR lenses, playables, and live-event sponsorships.
 
-These shapes are real ad-industry product types — but they're either multi-canonical compositions (takeover = image + video + display_tag + lockup, sold as a unit) or genuinely novel structures (branded content's editorial-sponsorship production model isn't a composition of the 12). v2 handles them via a structured custom mechanism that buyer agents can reason about, NOT via free-form `ext`.
+These are real ad-industry product types with structures that have not yet converged enough for a shared canonical. AdCP handles them through a structured custom mechanism that buyer agents can reason about, not through free-form `ext`. Coordinated takeovers are no longer an example of this category in 3.2; they use `page_takeover`.
 
 ### The mechanism
 
@@ -190,20 +250,16 @@ These shapes are real ad-industry product types — but they're either multi-can
     {
       "format_kind": "custom",
       "canonical_formats_only": true,
-      "format_shape": "multi_placement_takeover",
+      "format_shape": "branded_content",
       "format_schema": {
-        "uri": "https://nytimes.example/schemas/formats/homepage_takeover_v3",
+        "uri": "https://streamhaus.example/schemas/formats/branded_feature_v1",
         "digest": "sha256:e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0a3"
       },
-      "format_option_id": "nytimes_homepage_takeover_premium",
-      "applies_to_channels": ["display", "olv"],
+      "format_option_id": "streamhaus_branded_feature",
+      "applies_to_channels": ["display"],
       "params": {
-        "components": [
-          { "placement_type": "homepage_skin", "required": true },
-          { "placement_type": "preroll_video", "required": true },
-          { "placement_type": "sponsorship_lockup", "required": true }
-        ],
-        "exclusivity_window_hours": 24
+        "sections": ["hero", "article_body", "sponsor_lockup"],
+        "editorial_review_required": true
       }
     }
   ]
@@ -212,7 +268,7 @@ These shapes are real ad-industry product types — but they're either multi-can
 
 Three required pieces when `format_kind: "custom"`:
 
-1. **`format_shape`** — recognized global pattern from the [format-shape vocabulary registry](https://adcontextprotocol.org/schemas/v3/core/format-shape-vocabulary.json). Tells buyer agents what kind of pattern they're looking at (`multi_placement_takeover`, `branded_content`, `ar_lens`, etc.). The registry currently lists 9 shapes; non-canonical values are valid (validators MAY soft-warn) so adopters CAN ship a shape that isn't yet in the registry — adding entries is a vocabulary PR, not a major-version bump.
+1. **`format_shape`** — recognized global pattern from the [format-shape vocabulary registry](https://adcontextprotocol.org/schemas/v3/core/format-shape-vocabulary.json). Tells buyer agents what kind of pattern they're looking at (`branded_content`, `ar_lens`, etc.). Promoted entries remain in the registry only through their migration windows so SDKs can warn on legacy custom declarations; non-canonical values remain valid and may soft-warn.
 2. **`format_schema`** — URI+digest reference to a fetchable schema describing the shape's actual `params` and `slots`. **Same hosting model as `platform_extensions`**: open-ecosystem publishers host the artifact at the canonical URI on their subdomain; closed-platform / walled-garden shapes resolve through the AAO mirror at `https://creative.adcontextprotocol.org/translated/...`. Buyer agents fetch by `uri@digest` (immutable per digest, aggressive caching), validate `params` and `slots` against the fetched schema, and reason about manifests structurally.
 3. **`params`** — the actual structure, governed by the schema fetched from `format_schema.uri`. AdCP doesn't bake the params shape; the seller's schema does.
 
@@ -248,12 +304,12 @@ A `format_shape` entry is promoted to a first-class `format_kind` when:
 3. The shape has a defined tracking model (which signals fire, which trackers attach, what the impression contract is)
 4. The working group opens a per-canonical promotion issue, drafts a canonical schema (`/schemas/formats/canonical/<name>.json`), lands a fixture, and ships in the next minor release
 
-Same governance pattern that produced the 12 canonicals from the v1 audit. The promotion queue lives at [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666); current candidates are the 9 entries in the format-shape registry.
+Same governance pattern that produced the original 12 canonicals from the v1 audit. The promotion queue lives at [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666). AdCP 3.2 is the first promotion event: `multi_state_display` promotes its matching custom shape, while `page_takeover` promotes `multi_placement_takeover` and `roadblock`.
 
 **Promotion is a wire-shape change for consumer code.** Any client branching on `format_kind == "custom"` silently stops matching publishers that ship a promoted shape — the seller's product now arrives as `format_kind: "<promoted_name>"`. The normative migration contract (in `format-shape-vocabulary.json`'s description):
 
 1. **Transition window** (≥90 days): sellers MAY emit both shapes simultaneously — `format_options[]` carrying one `format_kind: "custom"` + `format_shape: "<name>"` declaration AND one `format_kind: "<promoted_name>"` declaration.
-2. **Consumer-SDK deprecation warning**: SDKs SHOULD emit a structured deprecation warning via their lint channel (same surface as `FORMAT_PROJECTION_FAILED`) when they see `format_kind: "custom"` with a `format_shape` that's been promoted. Payload: `{ format_shape, promoted_to, promotion_release, transition_end }`.
+2. **Consumer-SDK deprecation warning**: SDKs SHOULD augment the containing response's `errors[]` with `FORMAT_SHAPE_PROMOTED` (the same cross-boundary surface pattern as `FORMAT_PROJECTION_FAILED`) when they see `format_kind: "custom"` with a promoted `format_shape`. Details: `{ format_shape, promoted_to, promotion_release, transition_end }`.
 3. **`promotion_status` lifecycle**: the registry entry's `promotion_status` updates from `tracking — see adcp#3666` to `promoted to <format_kind> in <version>; transition ends <date>` when the working group schedules promotion. SDKs MAY read this at codegen / runtime.
 4. **Post-transition**: sellers SHOULD drop the legacy `format_kind: "custom"` declaration. Buyers MAY then assume `format_kind == "custom"` is a long-tail / non-promoted shape.
 
@@ -586,7 +642,7 @@ The `{publisher_domain, format_option_id}` pair lets buyer agents recognize this
 - **Campaign / event-log surfaces** — conversion tracking (Meta Pixel, GA4, server-side events). These belong on `sync_event_sources` / `event_log` (campaign-scoped, fires per impression regardless of creative). Format declarations carry creative shape; event-log declarations carry tracking configuration. Don't put `pixel_id` in `platform_extensions` on a creative format.
 - **Media-buy surfaces** — placement selection (Feed vs Reels vs Stories). Pick the right format on the publisher catalog (`meta_reels` vs `meta_stories_video` vs `meta_feed_image`); not a per-creative extension knob.
 
-This separation — canonical params + canonical slots + extensions only for net-new fields + BrandRef for brand context + event_log for tracking — is what keeps the 12 canonicals from accumulating per-platform fields. The lint at `tests/canonical-format-conventions.test.cjs` enforces the `v1_format_ref.agent_url` AAO-hosted convention and the slot/param consistency rule.
+This separation — canonical params + canonical slots + extensions only for net-new fields + BrandRef for brand context + event_log for tracking — is what keeps the 14 canonicals from accumulating per-platform fields. The lint at `tests/canonical-format-conventions.test.cjs` enforces the `v1_format_ref.agent_url` AgenticAdvertising.org-hosted convention and the slot/param consistency rule.
 
 ## Worked example — IAB display (flexible multi-format, multi-size)
 
@@ -1433,9 +1489,9 @@ SDKs project `width` and `height` as canonical logical dimensions and project a 
 ```json test=false
 {
   "format_kind": "custom",
-  "format_shape": "multi_placement_takeover",
-  "format_schema": { "uri": "https://nytimes.example/schemas/formats/homepage_takeover_v3", "digest": "sha256:..." },
-  "v1_format_ref": [{ "agent_url": "https://nytimes.example", "id": "homepage_takeover" }],
+  "format_shape": "branded_content",
+  "format_schema": { "uri": "https://ads.streamhaus.example/schemas/formats/branded_feature_v1", "digest": "sha256:..." },
+  "v1_format_ref": [{ "agent_url": "https://ads.streamhaus.example", "id": "branded_feature" }],
   "params": { ... }
 }
 ```
@@ -1469,7 +1525,7 @@ By design, v2 doesn't introduce new vocabulary for things AdCP already handles o
 
 ### Channels covered by sibling refinement (no new canonical)
 
-The 12 canonicals cover display, video, audio, native in-feed, retail-media, AI-surface, and responsive-creative archetypes. Several channels look like they want their own canonical but don't — they're covered by **sibling refinement**: the same canonical's `asset_source`, `slots_override`, or `applies_to_channels` axis handles the difference.
+The 14 canonicals cover display, premium multi-state display, page takeovers, video, audio, native in-feed, retail-media, AI-surface, and responsive-creative archetypes. Several channels look like they want their own canonical but don't — they're covered by **sibling refinement**: the same canonical's `asset_source`, `slots_override`, or `applies_to_channels` axis handles the difference.
 
 - **Linear / addressable TV** — `video_hosted` + `applies_to_channels: ["linear_tv"]`. Asset is still a video file with size/codec/duration constraints. The GRP/spot transaction model and addressable household targeting are media-buy + measurement concerns, not creative-format concerns.
 - **OOH / DOOH** — `image` (or `video_hosted`) + `applies_to_channels: ["dooh"]`. Asset is still a still image (or short video) with size constraints. Location-keyed measurement (Geopath, COMMB) belongs on `sync_event_sources` / `event_log`, not on the format.

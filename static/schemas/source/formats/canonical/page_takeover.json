@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/page_takeover.json",
+  "title": "Canonical Format: Page Takeover",
+  "description": "Coordinated ownership of multiple placements sold as one buy. Each component either declares an inline non-custom, non-takeover canonical format or references a sibling format option on the same product. Components cannot nest page takeovers. The creative manifest supplies each component's canonical slots under `component_assets.<component_id>` so repeated slot names cannot collide; `shared_slots` assets are supplied once in top-level `assets` and injected only into compatible consuming components. Semantic validators resolve sibling references, validate component params and required assets against their canonical schemas, enforce unique component IDs, and validate shared-slot consumers and types.",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "experimental": {
+      "default": true,
+      "description": "Experimental in AdCP 3.2 while the creative working group gathers implementation evidence for cross-placement composition and exclusivity."
+    },
+    "v1_translatable": {
+      "default": false,
+      "description": "No v1 named-format equivalent can express a coordinated multi-placement buy."
+    },
+    "since_version": { "default": "3.2" },
+    "composition_model": { "default": "deterministic" },
+    "components": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "component_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "Stable takeover-local component identifier. Values MUST be unique within `components[]`."
+          },
+          "placement_role": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Seller-defined semantic placement role, such as `masthead`, `skin`, or `preroll`."
+          },
+          "required": { "type": "boolean" },
+          "canvas_constraints": {
+            "type": "array",
+            "items": { "$ref": "/schemas/core/canvas-constraint.json" },
+            "description": "Artwork constraints applied to this component, including safe areas and seller-reserved regions."
+          },
+          "format_option_ref": {
+            "$ref": "/schemas/core/format-option-ref.json",
+            "description": "Reference to a sibling `format_options[]` entry on the same product. It MUST NOT resolve to `custom` or `page_takeover`."
+          },
+          "format_kind": {
+            "type": "string"
+          },
+          "params": { "type": "object" }
+        },
+        "required": ["component_id", "placement_role", "required"],
+        "anyOf": [
+          {
+            "required": ["format_option_ref"],
+            "not": { "anyOf": [{ "required": ["format_kind"] }, { "required": ["params"] }] }
+          },
+          {
+            "required": ["format_kind", "params"],
+            "not": { "required": ["format_option_ref"] },
+            "discriminator": { "propertyName": "format_kind" },
+            "oneOf": [
+              { "properties": { "format_kind": { "type": "string", "const": "image" }, "params": { "$ref": "/schemas/formats/canonical/image.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "html5" }, "params": { "$ref": "/schemas/formats/canonical/html5.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "display_tag" }, "params": { "$ref": "/schemas/formats/canonical/display_tag.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "image_carousel" }, "params": { "$ref": "/schemas/formats/canonical/image_carousel.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "video_hosted" }, "params": { "$ref": "/schemas/formats/canonical/video_hosted.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "video_vast" }, "params": { "$ref": "/schemas/formats/canonical/video_vast.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "audio_hosted" }, "params": { "$ref": "/schemas/formats/canonical/audio_hosted.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "audio_daast" }, "params": { "$ref": "/schemas/formats/canonical/audio_daast.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "sponsored_placement" }, "params": { "$ref": "/schemas/formats/canonical/sponsored_placement.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "native_in_feed" }, "params": { "$ref": "/schemas/formats/canonical/native_in_feed.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "responsive_creative" }, "params": { "$ref": "/schemas/formats/canonical/responsive_creative.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "agent_placement" }, "params": { "$ref": "/schemas/formats/canonical/agent_placement.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "multi_state_display" }, "params": { "$ref": "/schemas/formats/canonical/multi_state_display.json" } }, "required": ["format_kind"] }
+            ]
+          }
+        ],
+        "additionalProperties": true
+      }
+    },
+    "shared_slots": {
+      "type": "array",
+      "description": "Manifest slots supplied once and consumed by one or more takeover components.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "asset_group_id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+          "asset_type": {
+            "type": "string",
+            "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "webhook", "brief", "catalog", "published_post", "zip", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"]
+          },
+          "required": { "type": "boolean", "default": false },
+          "min": { "type": "integer", "minimum": 0 },
+          "max": { "type": "integer", "minimum": 1 },
+          "consumed_by": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string" },
+            "description": "Component IDs that consume this shared asset. Every value MUST resolve to `components[].component_id`."
+          }
+        },
+        "required": ["asset_group_id", "asset_type", "consumed_by"],
+        "additionalProperties": true
+      }
+    },
+    "exclusivity": {
+      "type": "string",
+      "enum": ["named_slots", "all_slots"],
+      "description": "`named_slots` reserves only the declared components; `all_slots` is roadblock semantics for every eligible slot in the takeover scope."
+    }
+  },
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "component_id_uniqueness": "components[].component_id values must be unique",
+      "format_option_ref_resolution": "component references resolve only against sibling format_options entries on the same product",
+      "component_kind": "resolved and inline components cannot be custom or page_takeover",
+      "inline_params": "inline params validate against the schema selected by inline format_kind",
+      "component_assets": "required components have a component_assets entry satisfying their resolved canonical slots",
+      "shared_slot_consumers": "every shared_slots[].consumed_by value resolves to a declared component_id whose canonical slots accept the shared asset_group_id and asset_type"
+    },
+    "spec": "docs/creative/canonical-formats.mdx#premium-display-in-32"
+  },
+  "required": ["components", "exclusivity"],
+  "additionalProperties": true
+}
