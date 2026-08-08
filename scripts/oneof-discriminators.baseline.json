@@ -191,11 +191,6 @@
       "variants": 3,
       "note": "0:[exemplars] | 1:[evaluator_id] | 2:[agent_url]"
     },
-    "core/format.json##/properties/assets/items/oneOf": {
-      "kind": "dangerous",
-      "variants": 16,
-      "note": "shared-required=[∅]; 0:req=[∅] | 1:req=[∅] | 2:req=[∅] | 3:req=[∅] | 4:req=[∅] | 5:req=[∅] | 6:req=[∅] | 7:req=[∅] | 8:req=[∅] | 9:req=[∅] | 10:req=[∅] | 11:req=[∅] | 12:req=[∅] | 13:req=[∅] | 14:req=[∅] | 15:req=[item_type,asset_group_id,required,min_count,max_count,assets]"
-    },
     "core/format.json##/properties/renders/items/oneOf": {
       "kind": "narrowable",
       "variants": 2,
