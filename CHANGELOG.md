@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased experimental-surface notices
+## 3.1.12
 
-- Cross-role governance enforcement: the experimental `governance.campaign` surface will add typed `target_agent`, task-scoped `adcp.governance_enforcement`, critical task/payload/commitment JWS bindings, intent-only conditions negotiation, and governance-authoritative settlement. The implementation may merge during 3.2 development; the beta-to-GA period provides the experimental-surface notice window. See the 3.2 release notes and migration guide.
+### Patch Changes
+
+- d156fae: Remove hard-coded request-signing conformance vector counts from the compliance runner header and request-signing documentation. The guidance now describes the vector directories without totals, so future fixture additions cannot make the prose stale. Comment and documentation text only — no schema, runner logic, or generated artifact is affected.
 
 ## 3.1.11
 
