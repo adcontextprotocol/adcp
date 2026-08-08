@@ -56,6 +56,7 @@ The buyer agent responds with an offer:
 
 ```json
 {
+  "status": "completed",
   "type": "context_match_response",
   "request_id": "ctx-a1b2c3d4",
   "offers": [
@@ -83,6 +84,8 @@ The buyer agent responds with an offer:
   }
 }
 ```
+
+This buyer response uses the provider-hop `provider-context-match-response.json` shape, where `signals.targeting_kvs` contains provider-local keys. The router moves those pairs unchanged into its router-authored `signals_by_provider` buckets; it never forwards this flattened list to the publisher.
 
 The buyer's offer includes `package_id` (required) along with optional fields: `brand`, `price`, `summary`, `creative_manifest`, and `macros`. For an AI assistant, the creative manifest is small enough to send inline in the real-time path. The manifest carries the text the platform can weave into the conversation and the catalog items to reference. The `summary` helps the platform judge relevance before deciding whether to incorporate the sponsored content.
 

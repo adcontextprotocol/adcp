@@ -1975,9 +1975,17 @@
           "$ref": "/schemas/trusted-match/provider-registration.json",
           "description": "TMP provider registration — endpoint, capabilities, and operational parameters for router configuration"
         },
+        "provider-context-match-response": {
+          "$ref": "/schemas/trusted-match/provider-context-match-response.json",
+          "description": "Provider-to-router Context Match response shape — carries provider-local targeting key-values and forbids router-authored attribution buckets"
+        },
         "provider-identity-match-response": {
           "$ref": "/schemas/trusted-match/provider-identity-match-response.json",
           "description": "Provider-to-router Identity Match response shape — carries ordered TMPX `{slot_id, value}` chunks with no publisher-local names"
+        },
+        "publisher-targeting-kv-config": {
+          "$ref": "/schemas/trusted-match/publisher-targeting-kv-config.json",
+          "description": "Publisher-owned deployment configuration that maps (provider_id, provider-local targeting key) to the ad-server targeting destination for that surface"
         },
         "publisher-tmpx-config": {
           "$ref": "/schemas/trusted-match/publisher-tmpx-config.json",
@@ -1996,7 +2004,7 @@
           },
           "response": {
             "$ref": "/schemas/trusted-match/context-match-response.json",
-            "description": "Offers for matched packages with optional brand, price, summary, creative manifest, and targeting signals"
+            "description": "Router-to-publisher offers for matched packages with provider-attributed targeting signals"
           }
         },
         "identity-match": {

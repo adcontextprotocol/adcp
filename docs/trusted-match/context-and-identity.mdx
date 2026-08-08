@@ -56,6 +56,7 @@ The buyer agent evaluates each package against the context. Package B is homepag
 
 ```json
 {
+  "status": "completed",
   "type": "context_match_response",
   "request_id": "ctx-7f3a",
   "offers": [
@@ -100,7 +101,7 @@ The buyer agent evaluates each package against the context. Package B is homepag
 }
 ```
 
-The buyer returns an offer per matched package. Each offer carries a `package_id` and optionally a `brand`, `price`, `summary`, `creative_manifest`, and `macros`. The `summary` gives the publisher enough to judge relevance. When the creative manifest is present inline, the publisher has everything needed to render. For large creatives (e.g., VAST video), the manifest references external assets via URLs rather than embedding them. The response also includes enrichment signals — audience segments and targeting key-values — that the publisher can pass to their ad server.
+The buyer returns an offer per matched package. Each offer carries a `package_id` and optionally a `brand`, `price`, `summary`, `creative_manifest`, and `macros`. The `summary` gives the publisher enough to judge relevance. When the creative manifest is present inline, the publisher has everything needed to render. For large creatives (e.g., VAST video), the manifest references external assets via URLs rather than embedding them. This provider-hop response validates against `provider-context-match-response.json`. Targeting pairs use `signals.targeting_kvs`; the router preserves them unchanged under `signals_by_provider[provider_id].targeting_kvs` in the `context-match-response.json` shape returned to the publisher.
 
 ### What Context Match never carries
 
@@ -186,7 +187,7 @@ For each offer from Context Match:
     → Skip this offer for this user.
 
 Result: Accept Package A.
-Set targeting KVs: category_affinity=beverages, seasonal_relevance=high.
+Resolve the provider-attributed targeting tuples through the publisher's [`targeting_kv_mapping`](/docs/trusted-match/specification#publisher-targeting-kv-mapping), then set the mapped ad-server keys. Drop any tuple without a mapping.
 ```
 
 The publisher already knows how to render Package A — it maps to a sponsored carousel slot. The inline creative manifest carries the catalog items and assets needed. The publisher handled the rest.
@@ -195,7 +196,7 @@ The publisher already knows how to render Package A — it maps to a sponsored c
 
 TMP's response model is the offer. An offer carries a `package_id` (required) and optional fields: `brand`, `price`, `summary`, `creative_manifest`, and `macros` (a key-value map for dynamic values).
 
-**Simple case (GAM/Prebid)**: The offer carries `package_id`. The publisher flows `package_id` via `targeting_kvs` signals to GAM for line item matching. The `macros` map carries dynamic values (e.g., sponsor labels, promo text) that GAM can insert into the creative at render time.
+**Simple case (GAM/Prebid)**: The offer carries `package_id`. The provider may return a provider-local package targeting pair in `signals.targeting_kvs`; the router attributes it in `signals_by_provider`, and the publisher maps `(provider_id, key)` to its GAM key for line item matching. The `macros` map carries dynamic values (e.g., sponsor labels, promo text) that GAM can insert into the creative at render time.
 
 **Rich case (AI assistants, dynamic retail)**: The offer includes a `summary` ("50% off cold brew — recipe integration") so the publisher can judge relevance, and an inline `creative_manifest` with everything needed to render. For large creatives (e.g., VAST video), the manifest references external assets via URLs rather than embedding the full payload.
 
@@ -212,7 +213,7 @@ Per-user exposure tracking flows through the TMPX macro — an encrypted token f
 Context Match responses can include enrichment signals alongside package activation:
 
 - **Segments**: Audience or contextual segments (e.g., "coffee_enthusiast", "high_purchase_intent") that flow into the publisher's ad server as targeting signals.
-- **Targeting key-values**: Arbitrary key-value pairs (e.g., `category_affinity=beverages`) that the publisher can use for line item targeting, reporting breakdowns, or real-time decisioning.
+- **Targeting key-values**: Provider-local key-value pairs (e.g., `category_affinity=beverages`). The router attributes them under the provider's registered `provider_id`; the publisher maps `(provider_id, key)` to its local destination before using the value for line item targeting, reporting breakdowns, or real-time decisioning. Unmapped tuples are dropped.
 
 Enrichment signals are additive — they are not tied to specific packages. A buyer agent might return enrichment signals even when it activates no packages, providing value as a data provider rather than a demand source.
 

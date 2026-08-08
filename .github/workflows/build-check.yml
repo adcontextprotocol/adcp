@@ -88,6 +88,9 @@ jobs:
       - name: Validate schemas
         run: npm run test:schemas && npm run test:json-schema && npm run test:adagents-catalog-only && npm run test:extension-schemas && npm run test:composed
 
+      - name: Trusted Match Context merge conformance vectors
+        run: npm run test:tmp-context-merge
+
       - name: Validate MCP schema projection
         run: npm run test:mcp-schema-projection
 
