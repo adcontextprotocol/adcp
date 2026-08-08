@@ -124,7 +124,7 @@ describe('member profile admin route authorization', () => {
     expect(mocks.listProfiles).toHaveBeenCalledOnce();
   });
 
-  it('writes safe profile fields for same-tenant admin keys', async () => {
+  it('denies same-tenant admin keys before profile mutation', async () => {
     const response = await request(app)
       .put('/api/admin/member-profiles/profile_tenant')
       .set('Authorization', 'Bearer sk_tenant_full')
@@ -133,12 +133,10 @@ describe('member profile admin route authorization', () => {
         linkedin_url: 'https://www.linkedin.com/company/acme-media',
       });
 
-    expect(response.status).toBe(200);
-    expect(mocks.getProfileById).toHaveBeenCalledWith('profile_tenant');
-    expect(mocks.updateProfile).toHaveBeenCalledWith('profile_tenant', {
-      tagline: 'Tenant-owned update',
-      linkedin_url: 'https://www.linkedin.com/company/acme-media',
-    });
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe('global_admin_required');
+    expect(mocks.getProfileById).not.toHaveBeenCalled();
+    expect(mocks.updateProfile).not.toHaveBeenCalled();
   });
 });
 
