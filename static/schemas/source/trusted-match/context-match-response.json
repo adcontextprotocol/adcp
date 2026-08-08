@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/trusted-match/context-match-response.json",
-  "title": "Context Match Response",
-  "description": "Response from router or provider with offers for matched packages. An empty offers array means no packages matched. For simple GAM integration, package_id flows as a macro via signals. For rich integrations, the offer includes brand, price, summary, and optionally an inline creative manifest. Extension fields (ext, context) are intentionally omitted — extension data in the context path could inadvertently carry or correlate user identity signals.",
+  "title": "Context Match Response (Router → Publisher)",
+  "description": "Router-to-publisher shape of the Context Match response. The router collects offers and non-keyed signals from provider responses, and preserves provider-local targeting pairs under signals_by_provider using the publisher-assigned provider_id from registration. Flattened signals.targeting_kvs is a provider-hop field and MUST NOT appear on this shape. Publisher-local targeting destination names never travel on either protocol hop; the publisher resolves each (provider_id, key) tuple through deployment configuration and drops tuples without a mapping. Envelope extension fields (ext, context) are intentionally omitted and forbidden because extension data in the context path could inadvertently carry or correlate user identity signals.",
   "type": "object",
   "allOf": [
     {
@@ -13,6 +13,30 @@
     }
   ],
   "x-status": "experimental",
+  "definitions": {
+    "targeting_kvs": {
+      "type": "array",
+      "description": "Provider-local key-value pairs for ad-server targeting. The router preserves each pair unchanged and attributes it by provider_id; the publisher maps the tuple (provider_id, key) to a local ad-server destination.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Provider-local targeting key. Publishers resolve this together with provider_id; it is not a globally unique or publisher-owned ad-server key."
+          },
+          "value": {
+            "type": "string",
+            "description": "Targeting value preserved unchanged by the router."
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
   "properties": {
     "type": {
       "type": "string",
@@ -21,56 +45,56 @@
     },
     "request_id": {
       "type": "string",
-      "description": "Echoed request identifier from the context match request"
+      "description": "Echoed request identifier from the context match request."
     },
     "offers": {
       "type": "array",
-      "description": "Offers from the buyer, one per activated package. An empty array means no packages matched. For simple activation, each offer has just package_id. For richer responses, offers include brand, price, summary, and creative manifest.",
+      "description": "Offers collected across the provider fan-out, one per activated package. An empty array means no packages matched. For simple activation, each offer has just package_id. For richer responses, offers include brand, price, summary, and creative manifest.",
       "items": {
         "$ref": "/schemas/trusted-match/offer.json"
       }
     },
-    "cache_ttl": {
-      "type": "integer",
-      "description": "Optional override for the default 5-minute cache TTL, in seconds. When present, the router MUST use this value instead of its default. Set to 0 to disable caching (e.g., when targeting configuration has just changed).",
-      "minimum": 0,
-      "maximum": 86400
-    },
     "signals": {
       "type": "object",
-      "description": "Response-level targeting signals for ad server pass-through. In the GAM case, these carry the key-value pairs that trigger line items. Not per-offer — applies to the response as a whole.",
+      "description": "Merged non-keyed response-level signals. Provider-local targeting pairs do not pass through this object; the router emits them only in signals_by_provider.",
       "properties": {
         "segments": {
           "type": "array",
-          "description": "Contextual segment identifiers",
+          "description": "Contextual segment identifiers combined across provider responses.",
           "items": {
             "type": "string"
-          }
-        },
-        "targeting_kvs": {
-          "type": "array",
-          "description": "Key-value pairs for ad server targeting",
-          "items": {
-            "type": "object",
-            "properties": {
-              "key": {
-                "type": "string",
-                "description": "Targeting key"
-              },
-              "value": {
-                "type": "string",
-                "description": "Targeting value"
-              }
-            },
-            "required": [
-              "key",
-              "value"
-            ],
-            "additionalProperties": false
           }
         }
       },
       "additionalProperties": true
+    },
+    "signals_by_provider": {
+      "type": "object",
+      "description": "Router-authored map of provider targeting pairs, keyed by the publisher-assigned provider_id from provider registration. For every provider response containing a non-empty signals.targeting_kvs list, the router copies the complete list unchanged into that provider's bucket. The router derives the map key from its registration and MUST ignore or reject provider-supplied signals_by_provider data. A provider with no targeting pairs is omitted. Publishers resolve each (provider_id, key) tuple to a local ad-server destination and drop tuples that have no local mapping.",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_]+$",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "targeting_kvs": {
+            "allOf": [
+              {
+                "$ref": "#/definitions/targeting_kvs"
+              }
+            ],
+            "minItems": 1
+          }
+        },
+        "required": [
+          "targeting_kvs"
+        ],
+        "additionalProperties": false
+      },
+      "minProperties": 1
     }
   },
   "required": [
@@ -78,5 +102,31 @@
     "request_id",
     "offers"
   ],
+  "not": {
+    "anyOf": [
+      {
+        "properties": {
+          "signals": {
+            "required": [
+              "targeting_kvs"
+            ]
+          }
+        },
+        "required": [
+          "signals"
+        ]
+      },
+      {
+        "required": [
+          "context"
+        ]
+      },
+      {
+        "required": [
+          "ext"
+        ]
+      }
+    ]
+  },
   "additionalProperties": true
 }
