@@ -10,13 +10,13 @@ concurrency:
   group: build-check-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+permissions:
+  contents: read
+
 jobs:
-  build:
-    name: TypeScript Build
+  build-worker:
+    name: Build and static checks
     runs-on: ubuntu-latest
-    # 15-min default was right at the edge; adding the OpenAPI freshness
-    # step (which re-runs the schema generator) tipped it over. 20 gives
-    # headroom without masking real regressions.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
@@ -26,13 +26,16 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Check immutable release artifacts
         run: |
@@ -45,66 +48,16 @@ jobs:
               BASE_REF="HEAD^"
             fi
           fi
-          npm run test:immutable-release-artifacts
           node scripts/check-immutable-release-artifacts.cjs "${BASE_REF}"
 
       - name: Build
         run: npm run build
 
-      - name: Storyboard lint tests
-        run: >
-          npm run test:storyboard-sample-request-schema &&
-          npm run test:storyboard-response-schema &&
-          npm run test:storyboard-context-output-paths &&
-          npm run test:storyboard-validations-paths &&
-          npm run test:refine-finalize-validation-ids &&
-          npm run test:update-media-buy-affected-packages &&
-          npm run test:compliance-source-authority
-
       - name: Assert dist/ contains every server/src runtime asset
-        # PR #4769 root cause: ui-element-formats.json was added to source
-        # and `require()`d by task-handlers.ts, but the build script didn't
-        # copy it into dist/, so the runtime image crashlooped with
-        # `Cannot find module './ui-element-formats.json'`. Prod was down
-        # ~75 min. This assertion fails CI the moment a referenced asset
-        # would be missing in the shipping artifact.
         run: node scripts/copy-server-assets.cjs --check
-
-      - name: Server unit tests
-        run: npm run test:server-unit
-
-      - name: Repo unit tests
-        run: npm run test:unit
-
-      - name: Storyboard raw-mode-required lint tests
-        run: npm run test:storyboard-raw-mode-required
-
-      - name: Storyboard upstream-traffic path lint tests
-        run: npm run test:storyboard-upstream-traffic-paths
 
       - name: Schema link plugin tests
         run: npm run test:schema-links
-
-      - name: Validate schemas
-        run: npm run test:schemas && npm run test:json-schema && npm run test:adagents-catalog-only && npm run test:extension-schemas && npm run test:composed
-
-      - name: Validate MCP schema projection
-        run: npm run test:mcp-schema-projection
-
-      - name: Canonical reference resolver fixtures
-        run: npm run test:canonical-reference-resolver
-
-      - name: OpenAPI freshness (static/openapi/registry.yaml regenerated from Zod source)
-        # generate-openapi.ts transitively imports auth middleware which
-        # constructs WorkOS at module load. CI doesn't ship those secrets
-        # and doesn't need them — the script never makes a network call.
-        # Dummy values just satisfy constructor validation.
-        env:
-          WORKOS_API_KEY: sk_dummy_ci_only
-          WORKOS_CLIENT_ID: client_dummy_ci_only
-          STRIPE_SECRET_KEY: sk_dummy_ci_only
-          RESEND_API_KEY: re_dummy_ci_only
-        run: npm run test:openapi
 
       - name: Fetch 3.0.x for error-code drift comparison
         if: github.ref != 'refs/heads/3.0.x' && github.base_ref != '3.0.x'
@@ -114,27 +67,106 @@ jobs:
         if: github.ref != 'refs/heads/3.0.x' && github.base_ref != '3.0.x'
         run: npm run test:error-code-drift
 
-      - name: Check oneOf discriminator baseline (adcp#3917)
-        run: npm run test:oneof-discriminators
-
       - name: Check policy registry publication completeness
         run: npm run check:registry
 
-      - name: Check platform-agnosticism (no vendor tokens in normative field names)
-        run: npm run test:platform-agnostic
+  canonical-tests:
+    name: Canonical tests (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
 
-      - name: Webhook conformance (HMAC + RFC 9421 vectors)
-        run: npm run test:hmac-vectors && npm run test:hmac-signer-conformance && npm run test:webhook-signing-vectors
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
 
-  server-integration:
-    name: Server integration tests
+      - name: Install dependencies
+        run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+
+      - name: Run canonical test stages
+        env:
+          # generate-openapi.ts constructs these clients at module load but
+          # does not make network calls during its freshness check.
+          WORKOS_API_KEY: sk_dummy_ci_only
+          WORKOS_CLIENT_ID: client_dummy_ci_only
+          STRIPE_SECRET_KEY: sk_dummy_ci_only
+          RESEND_API_KEY: re_dummy_ci_only
+        run: >-
+          node scripts/run-test-stage-shard.mjs
+          --shard ${{ matrix.shard }}/4
+          --exclude test:server-unit
+
+  server-unit-worker:
+    name: Server unit tests (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+
+      - name: Run server unit test shard
+        run: npm run test:server-unit -- --shard=${{ matrix.shard }}/4
+
+  # Keep the existing required-check context stable while worker jobs fan out.
+  build:
+    name: TypeScript Build
+    if: always()
+    needs: [build-worker, canonical-tests, server-unit-worker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every build and test shard
+        env:
+          BUILD_RESULT: ${{ needs.build-worker.result }}
+          CANONICAL_RESULT: ${{ needs.canonical-tests.result }}
+          SERVER_UNIT_RESULT: ${{ needs.server-unit-worker.result }}
+        run: |
+          if [ "${BUILD_RESULT}" != "success" ] || \
+             [ "${CANONICAL_RESULT}" != "success" ] || \
+             [ "${SERVER_UNIT_RESULT}" != "success" ]; then
+            echo "Build worker: ${BUILD_RESULT}"
+            echo "Canonical test shards: ${CANONICAL_RESULT}"
+            echo "Server unit shards: ${SERVER_UNIT_RESULT}"
+            exit 1
+          fi
+
+  server-integration-worker:
+    name: Server integration tests (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     services:
       postgres:
-        # Throwaway service container; credentials live for the job only and are
-        # never reachable from outside the runner. Long literal value below is to
-        # satisfy GitGuardian's generic-password heuristic — not a real secret.
+        # Each matrix job gets its own isolated service container.
         image: postgres:16
         env:
           POSTGRES_USER: ci_runner
@@ -151,11 +183,13 @@ jobs:
       DATABASE_URL: postgresql://ci_runner:ci_runner_throwaway_no_secret_value@127.0.0.1:5432/adcp_test
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -166,5 +200,21 @@ jobs:
       - name: Apply migrations to test database
         run: npx tsx server/src/db/migrate.ts
 
-      - name: Run server integration tests
-        run: npm run test:server-integration
+      - name: Run server integration test shard
+        run: npm run test:server-integration -- --shard=${{ matrix.shard }}/4
+
+  # Keep the existing required-check context stable while worker jobs fan out.
+  server-integration:
+    name: Server integration tests
+    if: always()
+    needs: server-integration-worker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every integration shard
+        env:
+          INTEGRATION_RESULT: ${{ needs.server-integration-worker.result }}
+        run: |
+          if [ "${INTEGRATION_RESULT}" != "success" ]; then
+            echo "Server integration test shards: ${INTEGRATION_RESULT}"
+            exit 1
+          fi
