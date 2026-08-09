@@ -35,6 +35,10 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
       - name: Audit production dependencies
+        # Keep newly published advisories visible without making the live
+        # advisory service an availability dependency for emergency deploys.
+        # Dependency Review separately reports dependency changes on PRs.
+        continue-on-error: true
         run: npm audit --omit=dev --audit-level=high
 
       - name: Check immutable release artifacts
