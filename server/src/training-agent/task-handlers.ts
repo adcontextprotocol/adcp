@@ -103,6 +103,10 @@ type GetProductsRejectedResponse = {
   suggestions?: string[];
   context?: Record<string, unknown>;
 };
+type GetProductsReadDirectives = {
+  rejection?: { reason: string; suggestions?: string[] };
+  staleDirective?: { tool: string; upstreamName?: string; createdAt: string };
+};
 type PricingOption = Product['pricing_options'][number];
 type PricingStructure = 'fixed' | 'auction' | 'contingent';
 type PricingOptionView = {
@@ -3899,16 +3903,32 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     };
   }
 
-  // Session persistence is whole-document last-writer-wins, so every
-  // get_products execution must share one session-scoped mutex. Locking only
-  // finalized proposal IDs still lets a concurrent brief/wholesale request
-  // overwrite the committed proposal written by a finalization request.
+  const buyingMode = req.buying_mode ?? 'brief';
   const sessionScope = getProductsSessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
   const sessionHash = createHash('sha256').update(sessionScope).digest('hex');
   const principal = 'get-products-session-mutex';
   const key = `get-products-session:${sessionHash}`;
   const store = getIdempotencyStore();
-  const claim = await store.check({ principal, key, payload: { session: sessionHash } });
+  let claim = await store.check({ principal, key, payload: { session: sessionHash } });
+
+  // Read discovery only needs the mutex for a short directive-consumption
+  // preflight. Queue behind an active writer/preflight instead of surfacing a
+  // spurious CONFLICT to compare_media_kit-style fan-out. Refine requests keep
+  // the existing non-blocking conflict behavior because the whole operation
+  // mutates proposal/pricing state.
+  const readLockDeadline = Date.now() + 1_000;
+  let readLockBackoffMs = 5;
+  while (buyingMode !== 'refine' && claim.kind !== 'miss') {
+    const remainingMs = readLockDeadline - Date.now();
+    if (remainingMs <= 0) break;
+    const jitterMs = Math.floor(Math.random() * Math.max(1, readLockBackoffMs / 2));
+    await new Promise(resolve => setTimeout(
+      resolve,
+      Math.min(readLockBackoffMs + jitterMs, remainingMs),
+    ));
+    claim = await store.check({ principal, key, payload: { session: sessionHash } });
+    readLockBackoffMs = Math.min(readLockBackoffMs * 2, 100);
+  }
   if (claim.kind !== 'miss') {
     return {
       errors: [{
@@ -3918,10 +3938,39 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
       }],
     };
   }
+
+  if (buyingMode !== 'refine') {
+    let directives: GetProductsReadDirectives = {};
+    try {
+      const session = await getSession(
+        sessionScope,
+        controllerFixtureSessionKey(req, ctx),
+      );
+      const directivePrincipal = ctx.principal ?? 'anonymous';
+      const rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
+        ? session.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
+        : undefined;
+      const staleDirective = session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
+        ? session.complyExtensions.forcedUpstreamUnavailable
+        : undefined;
+      if (rejection) {
+        session.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
+      }
+      if (staleDirective) {
+        session.complyExtensions.forcedUpstreamUnavailable = undefined;
+      }
+      directives = { rejection, staleDirective };
+      if (rejection || staleDirective) await flushDirtySessions();
+    } finally {
+      await store.release({ principal, key, claimToken: claim.claimToken });
+    }
+    return handleGetProductsUnlocked(args, ctx, paginationOffset, directives);
+  }
+
   try {
     const result = await handleGetProductsUnlocked(args, ctx, paginationOffset);
-    // Keep the mutex until every mutation made by discovery is durable. This
-    // includes context changes on non-finalize calls, not just proposal holds.
+    // Keep the mutex until every refine mutation is durable, not just proposal
+    // holds, so a following refine request observes the committed context.
     await flushDirtySessions();
     return result;
   } finally {
@@ -3933,6 +3982,7 @@ async function handleGetProductsUnlocked(
   args: ToolArgs,
   ctx: TrainingContext,
   paginationOffset?: number,
+  readDirectives?: GetProductsReadDirectives,
 ): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
@@ -3994,11 +4044,15 @@ async function handleGetProductsUnlocked(
   const contextEcho = req.context ? { context: req.context } : {};
 
   const directivePrincipal = ctx.principal ?? 'anonymous';
-  const rejection = buyingMode === 'brief' || buyingMode === 'refine'
-    ? session.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
-    : undefined;
+  const rejection = readDirectives
+    ? readDirectives.rejection
+    : buyingMode === 'brief' || buyingMode === 'refine'
+      ? session.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
+      : undefined;
   if (rejection && supportsGetProductsRejected(ctx.servedAdcpVersion)) {
-    session.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
+    if (!readDirectives) {
+      session.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
+    }
     return {
       status: 'rejected',
       adcp_version: ctx.servedAdcpVersion!,
@@ -4498,10 +4552,12 @@ async function handleGetProductsUnlocked(
       };
     });
   const canonicalFormatAdvisories = collectCanonicalFormatAdvisories(products);
-  const staleDirective = session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
-    ? session.complyExtensions.forcedUpstreamUnavailable
-    : undefined;
-  if (staleDirective) {
+  const staleDirective = readDirectives
+    ? readDirectives.staleDirective
+    : session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
+      ? session.complyExtensions.forcedUpstreamUnavailable
+      : undefined;
+  if (staleDirective && !readDirectives) {
     session.complyExtensions.forcedUpstreamUnavailable = undefined;
   }
 
@@ -4519,10 +4575,15 @@ async function handleGetProductsUnlocked(
   for (const proposal of retainedCommittedProposals.values()) {
     if (!persistedProposalIds.has(proposal.proposal_id)) persistedProposals.push(proposal);
   }
-  session.lastGetProductsContext = {
-    products: responseProducts,
-    proposals: persistedProposals,
-  };
+  // Only refine requests establish durable context for later refinements.
+  // Brief/wholesale discovery must remain read-only so concurrent reads cannot
+  // overwrite a proposal committed by a serialized refine request.
+  if (buyingMode === 'refine') {
+    session.lastGetProductsContext = {
+      products: responseProducts,
+      proposals: persistedProposals,
+    };
+  }
   let pageProducts = responseProducts;
   let pagination: { has_more: boolean; total_count: number; cursor?: string } | undefined;
   if (req.pagination) {

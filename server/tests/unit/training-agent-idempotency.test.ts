@@ -652,6 +652,81 @@ describe('training agent idempotency middleware', () => {
       expect(freshProposal).toEqual(firstProposal);
     });
 
+    it('allows parallel brief discovery reads in the same session', async () => {
+      const account = { brand: { domain: 'idem-concurrent-brief.example' }, operator: 'idem-op' };
+      const payloads = [
+        'cross-channel news video and display',
+        'podcast audio inventory',
+        'premium streaming video',
+      ].map((brief, index) => ({
+        idempotency_key: `products-brief-${index}-${randomUUID()}`,
+        buying_mode: 'brief',
+        brief,
+        account,
+      }));
+
+      const outcomes = await Promise.all(payloads.map(payload => call(server, 'get_products', payload)));
+
+      expect(outcomes.every(outcome => outcome.isError !== true)).toBe(true);
+      expect(outcomes.every(outcome => Array.isArray(outcome.parsed.products))).toBe(true);
+    });
+
+    it('does not let concurrent brief discovery conflict with or erase finalization', async () => {
+      const account = { brand: { domain: 'idem-concurrent-read-finalize.example' }, operator: 'idem-op' };
+      const finalizePayload = {
+        idempotency_key: `products-finalize-${randomUUID()}`,
+        buying_mode: 'refine',
+        account,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' }],
+      };
+      const briefPayload = {
+        idempotency_key: `products-brief-${randomUUID()}`,
+        buying_mode: 'brief',
+        brief: 'cross-channel news video and display',
+        account,
+      };
+
+      const [finalized, discovered] = await Promise.all([
+        call(server, 'get_products', finalizePayload),
+        call(server, 'get_products', briefPayload),
+      ]);
+
+      expect(finalized.isError).toBeFalsy();
+      expect(discovered.isError).toBeFalsy();
+      const persisted = (await getSession(getProductsSessionKeyFromArgs({ account }, 'open')))
+        .lastGetProductsContext?.proposals?.find(proposal => proposal.proposal_id === 'pinnacle_cross_channel');
+      expect(persisted).toMatchObject({ proposal_status: 'committed' });
+    });
+
+    it('does not let concurrent wholesale discovery conflict with or erase finalization', async () => {
+      const account = { brand: { domain: 'idem-concurrent-wholesale-finalize.example' }, operator: 'idem-op' };
+      const finalizePayload = {
+        idempotency_key: `products-finalize-${randomUUID()}`,
+        buying_mode: 'refine',
+        account,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' }],
+      };
+      const wholesalePayload = {
+        idempotency_key: `products-wholesale-${randomUUID()}`,
+        buying_mode: 'wholesale',
+        account,
+      };
+
+      const [finalized, discovered] = await Promise.all([
+        call(server, 'get_products', finalizePayload),
+        call(server, 'get_products', wholesalePayload),
+      ]);
+
+      expect(finalized.isError).toBeFalsy();
+      expect(discovered.isError).toBeFalsy();
+      const finalizedProposal = (finalized.parsed.proposals as Array<Record<string, unknown>>)
+        .find(proposal => proposal.proposal_id === 'pinnacle_cross_channel');
+      const persisted = (await getSession(getProductsSessionKeyFromArgs({ account }, 'open')))
+        .lastGetProductsContext?.proposals?.find(proposal => proposal.proposal_id === 'pinnacle_cross_channel');
+      expect(persisted).toEqual(finalizedProposal);
+      expect(persisted).toMatchObject({ proposal_status: 'committed' });
+    });
+
     it('serializes parallel proposal-finalize retries into one execution and one replay', async () => {
       const account = { brand: { domain: 'idem-concurrent-finalize.example' }, operator: 'idem-op' };
       await call(server, 'get_products', {

@@ -121,6 +121,34 @@ describe('get_products rejected compliance arm', () => {
     expect(consumed.data).not.toMatchObject({ status: 'rejected' });
   });
 
+  it('atomically consumes a one-shot rejection across parallel brief reads', async () => {
+    const primaryAccount = account('parallel-rejection-account');
+    const reason = 'Only one concurrent request may consume this rejection.';
+    const forced = await call('comply_test_controller', {
+      adcp_version: '3.2-beta.0',
+      account: primaryAccount,
+      scenario: 'force_get_products_arm',
+      params: { arm: 'rejected', reason },
+    });
+    expect(forced.success).toBe(true);
+
+    const outcomes = await Promise.all([0, 1].map(index => call('get_products', {
+      adcp_version: '3.2-beta.0',
+      idempotency_key: `parallel-rejection-${index}-0001`,
+      account: primaryAccount,
+      buying_mode: 'brief',
+      brief: 'Premium video',
+    })));
+
+    expect(outcomes.every(outcome => outcome.success)).toBe(true);
+    expect(outcomes.filter(outcome => (
+      outcome.data as { status?: string; reason?: string }
+    ).status === 'rejected')).toHaveLength(1);
+    expect(outcomes.find(outcome => (
+      outcome.data as { status?: string }
+    ).status === 'rejected')?.data).toMatchObject({ reason });
+  });
+
   it('rejects empty suggestion arrays instead of emitting a schema-invalid response', async () => {
     const result = await call('comply_test_controller', {
       adcp_version: '3.2-beta.0',
