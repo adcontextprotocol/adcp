@@ -178,7 +178,7 @@ export class RegistrySync extends EventEmitter {
             categories: (payload.categories as string[]) ?? [],
             tags: (payload.tags as string[]) ?? [],
             delivery_types: (payload.delivery_types as string[]) ?? [],
-            format_ids: [],
+            format_kinds: (payload.format_kinds as string[]) ?? [],
             property_count: (payload.property_count as number) ?? 0,
             publisher_count: (payload.publisher_count as number) ?? 0,
             has_tmp: (payload.has_tmp as boolean) ?? false,

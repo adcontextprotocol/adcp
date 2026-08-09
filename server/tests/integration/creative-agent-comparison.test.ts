@@ -43,7 +43,7 @@ describe.skipIf(SKIP)('comparison: local vs live reference agent', () => {
       agentUrl: STANDARD_CREATIVE_AGENTS.ADCP_REFERENCE,
     });
 
-    const liveFormats = await client.listFormats();
+    const liveFormats = await client.listFormatsLegacy();
     const localFormats = buildReferenceFormats(TEST_AGENT_URL);
 
     console.log(`Live agent: ${liveFormats.length} formats`);
@@ -68,7 +68,7 @@ describe.skipIf(SKIP)('comparison: local vs live reference agent', () => {
       agentUrl: STANDARD_CREATIVE_AGENTS.ADCP_REFERENCE,
     });
 
-    const liveFormats = await client.listFormats();
+    const liveFormats = await client.listFormatsLegacy();
     const localFormats = buildReferenceFormats(TEST_AGENT_URL);
 
     const localByIdMap = new Map(
@@ -105,7 +105,7 @@ describe.skipIf(SKIP)('comparison: local vs live reference agent', () => {
       agentUrl: STANDARD_CREATIVE_AGENTS.ADCP_REFERENCE,
     });
 
-    const liveFormats = await client.listFormats();
+    const liveFormats = await client.listFormatsLegacy();
     const localResult = handleListCreativeFormats({}, buildReferenceFormats(TEST_AGENT_URL));
     const localFormats = localResult.formats as Array<Record<string, unknown>>;
 

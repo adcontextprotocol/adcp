@@ -40,9 +40,19 @@ test('ledger entries include removal conditions and upstream asks', () => {
 });
 
 test('scanner finds the expected high-risk SDK reach-ins', () => {
+  const ledger = loadLedger();
   const findings = collectFindings();
   assert.ok(findings.some((f) => f.file === 'scripts/stage-sdk-schema-bundle.sh' && f.term.includes('schemas-data')));
   assert.ok(findings.some((f) => f.file === 'scripts/overlay-compliance-cache.sh' && f.term.includes('schemas.generated.js')));
+  assert.ok(findings.some((f) => f.file === 'scripts/patch-sdk-rc11.mjs' && f.term.includes('task-map')));
+  const patchEntry = ledger.find(entry => entry.id === 'sdk-rc11-storyboard-product-wire');
+  assert.ok(patchEntry, 'missing rc.11 patch ledger entry');
+  for (const term of patchEntry.terms) {
+    assert.ok(
+      findings.some(finding => finding.file === 'scripts/patch-sdk-rc11.mjs' && finding.term.includes(term)),
+      `rc.11 patch no longer references required artifact: ${term}`,
+    );
+  }
 });
 
 test('matchingPrivateTerm ignores comment-only lines but catches private SDK code', () => {

@@ -11,8 +11,17 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import type { TrainingContext } from '../types.js';
 import { clearAccountStore } from '../account-handlers.js';
-import { clearSessions, stopSessionCleanup } from '../state.js';
+import {
+  clearSessions,
+  flushDirtySessions,
+  getSession,
+  runWithSessionContext,
+  sessionKeyFromArgs,
+  stopSessionCleanup,
+} from '../state.js';
 import { clearSiSessions } from '../si-handlers.js';
+import { getAgentUrl } from '../config.js';
+import { projectV1ProductToV2 } from '@adcp/sdk/v2/projection';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
@@ -334,6 +343,665 @@ describe('tenant routing smoke', () => {
     }
   }, 15000);
 
+  it('serves the AdCP 3.1 dual product shape through the explicit legacy facade', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const body = await callTenantTool(url, 2, 'get_products', {
+        adcp_version: '3.1',
+        buying_mode: 'wholesale',
+        account: {
+          brand: { domain: 'legacy-product-facade.example' },
+          operator: 'pinnacle-agency.example',
+        },
+      }) as {
+        result?: {
+          structuredContent?: {
+            errors?: Array<{ code?: string }>;
+            products?: Array<{
+              format_ids?: unknown[];
+              format_options?: Array<{
+                format_kind?: string;
+                canonical_formats_only?: boolean;
+                v1_format_ref?: unknown;
+              }>;
+            }>;
+          };
+        };
+      };
+      const payload = body.result?.structuredContent;
+      expect(payload?.errors).toBeUndefined();
+      expect(payload?.products?.length).toBeGreaterThan(0);
+      expect(payload?.products?.every(product =>
+        Array.isArray(product.format_ids) && product.format_ids.length > 0
+        && Array.isArray(product.format_options) && product.format_options.length > 0
+      )).toBe(true);
+      const carousel = payload?.products
+        ?.flatMap(product => product.format_options ?? [])
+        .find(option => option.format_kind === 'image_carousel');
+      expect(carousel).toEqual(expect.objectContaining({ canonical_formats_only: true }));
+      expect(carousel).not.toHaveProperty('v1_format_ref');
+
+      const legacy = await callTenantTool(url, 3, 'get_products', {
+        adcp_version: '3.1',
+        buying_mode: 'wholesale',
+        account: {
+          brand: { domain: 'legacy-product-wire.example' },
+          operator: 'pinnacle-agency.example',
+        },
+        ext: { adcp: { creative_wire: 'legacy' } },
+      }) as {
+        result?: { structuredContent?: { products?: Array<Record<string, unknown>> } };
+      };
+      if (!legacy.result?.structuredContent?.products) throw new Error(JSON.stringify(legacy));
+      expect(legacy.result.structuredContent.products.length).toBeGreaterThan(0);
+      expect(legacy.result?.structuredContent?.products?.every(product =>
+        Array.isArray(product.format_ids) && !Object.hasOwn(product, 'format_options')
+      )).toBe(true);
+
+      const canonical = await callTenantTool(url, 4, 'get_products', {
+        adcp_version: '3.1',
+        buying_mode: 'wholesale',
+        account: {
+          brand: { domain: 'canonical-product-wire.example' },
+          operator: 'pinnacle-agency.example',
+        },
+        ext: { adcp: { creative_wire: 'canonical' } },
+      }) as {
+        result?: { structuredContent?: { products?: Array<Record<string, unknown>> } };
+      };
+      expect(canonical.result?.structuredContent?.products?.length).toBeGreaterThan(0);
+      expect(canonical.result?.structuredContent?.products?.every(product =>
+        Array.isArray(product.format_options) && !Object.hasOwn(product, 'format_ids')
+      )).toBe(true);
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('preserves canonical creative identity on every creative-capable tenant route', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      for (const [index, tenant] of ['sales', 'creative'].entries()) {
+        const url = `${baseUrl}/${tenant}/mcp`;
+        await initializeTenant(url);
+        const account = {
+          brand: { domain: `canonical-${tenant}.example` },
+          operator: 'pinnacle-agency.example',
+        };
+        const creativeId = `cr_canonical_${tenant}`;
+        const formatOptionRef = {
+          scope: 'publisher',
+          publisher_domain: 'publisher.example',
+          format_option_id: 'homepage_image',
+        };
+        const sync = await callTenantTool(url, 10 + index * 2, 'sync_creatives', {
+          adcp_version: '3.1',
+          idempotency_key: `canonical-${tenant}-sync-0001`,
+          account,
+          creatives: [{
+            creative_id: creativeId,
+            format_kind: 'image',
+            format_option_ref: formatOptionRef,
+            name: `Canonical ${tenant} creative`,
+          }],
+        }) as {
+          result?: {
+            structuredContent?: {
+              errors?: Array<{ code?: string }>;
+              creatives?: Array<{ creative_id?: string; action?: string }>;
+            };
+          };
+        };
+        expect(sync.result?.structuredContent?.errors).toBeUndefined();
+        expect(sync.result?.structuredContent?.creatives).toEqual([
+          expect.objectContaining({ creative_id: creativeId, action: 'created' }),
+        ]);
+
+        const listed = await callTenantTool(url, 11 + index * 2, 'list_creatives', {
+          adcp_version: '3.1',
+          account,
+          creative_ids: [creativeId],
+        }) as {
+          result?: {
+            structuredContent?: {
+              errors?: Array<{ code?: string }>;
+              creatives?: Array<Record<string, unknown>>;
+            };
+          };
+        };
+        const creative = listed.result?.structuredContent?.creatives?.[0];
+        expect(listed.result?.structuredContent?.errors).toBeUndefined();
+        expect(creative).toEqual(expect.objectContaining({
+          creative_id: creativeId,
+          format_kind: 'image',
+          format_option_ref: formatOptionRef,
+        }));
+        expect(creative).not.toHaveProperty('format_id');
+      }
+
+      const crossDialectUrl = `${baseUrl}/sales/mcp`;
+      const crossDialectAccount = {
+        brand: { domain: 'cross-dialect-creative.example' },
+        operator: 'pinnacle-agency.example',
+      };
+      const legacyRef = { agent_url: getAgentUrl(), id: 'display_300x250' };
+      await callTenantTool(crossDialectUrl, 18, 'sync_creatives', {
+        adcp_version: '3.1',
+        idempotency_key: 'cross-dialect-legacy-sync-0001',
+        account: crossDialectAccount,
+        creatives: [{ creative_id: 'cr_legacy_to_canonical', format_id: legacyRef }],
+        ext: { adcp: { creative_wire: 'legacy' } },
+      });
+      const canonicalRead = await callTenantTool(crossDialectUrl, 19, 'list_creatives', {
+        adcp_version: '3.1',
+        account: crossDialectAccount,
+        filters: {
+          creative_ids: ['cr_legacy_to_canonical'],
+          format_kinds: ['image'],
+        },
+        ext: { adcp: { creative_wire: 'canonical' } },
+      }) as {
+        result?: {
+          structuredContent?: {
+            errors?: Array<{ code?: string }>;
+            creatives?: Array<Record<string, unknown>>;
+          };
+        };
+      };
+      expect(canonicalRead.result?.structuredContent?.errors).toBeUndefined();
+      expect(canonicalRead.result?.structuredContent?.creatives?.[0]).toEqual(
+        expect.objectContaining({ creative_id: 'cr_legacy_to_canonical', format_kind: 'image' }),
+      );
+      expect(canonicalRead.result?.structuredContent?.creatives?.[0]).not.toHaveProperty('format_id');
+
+      await callTenantTool(crossDialectUrl, 20, 'sync_creatives', {
+        adcp_version: '3.1',
+        idempotency_key: 'cross-dialect-canonical-sync-0001',
+        account: crossDialectAccount,
+        creatives: [{
+          creative_id: 'cr_canonical_to_legacy',
+          format_kind: 'image',
+          format_option_ref: { scope: 'product', format_option_id: 'display_300x250_image' },
+        }],
+      });
+      const legacyRead = await callTenantTool(crossDialectUrl, 21, 'list_creatives', {
+        adcp_version: '3.1',
+        account: crossDialectAccount,
+        filters: {
+          creative_ids: ['cr_canonical_to_legacy'],
+          format_ids: [legacyRef],
+        },
+        ext: { adcp: { creative_wire: 'legacy' } },
+      }) as {
+        result?: {
+          structuredContent?: {
+            errors?: Array<{ code?: string }>;
+            creatives?: Array<Record<string, unknown>>;
+          };
+        };
+      };
+      expect(legacyRead.result?.structuredContent?.errors).toBeUndefined();
+      expect(legacyRead.result?.structuredContent?.creatives?.[0]).toEqual(
+        expect.objectContaining({
+          creative_id: 'cr_canonical_to_legacy',
+          format_id: expect.objectContaining({ id: 'display_300x250' }),
+        }),
+      );
+      expect(legacyRead.result?.structuredContent?.creatives?.[0]).not.toHaveProperty('format_kind');
+
+      const builderUrl = `${baseUrl}/creative-builder/mcp`;
+      await initializeTenant(builderUrl);
+      const builderSync = await callTenantTool(builderUrl, 20, 'sync_creatives', {
+        adcp_version: '3.1',
+        idempotency_key: 'canonical-creative-builder-sync-0001',
+        account: {
+          brand: { domain: 'canonical-creative-builder.example' },
+          operator: 'pinnacle-agency.example',
+        },
+        creatives: [{
+          creative_id: 'cr_canonical_creative_builder',
+          format_kind: 'image',
+          format_option_ref: {
+            scope: 'publisher',
+            publisher_domain: 'publisher.example',
+            format_option_id: 'homepage_image',
+          },
+          name: 'Canonical creative-builder creative',
+        }],
+      }) as {
+        result?: {
+          structuredContent?: {
+            errors?: Array<{ code?: string }>;
+            creatives?: Array<{ creative_id?: string; action?: string }>;
+          };
+        };
+      };
+      expect(builderSync.result?.structuredContent?.errors).toBeUndefined();
+      expect(builderSync.result?.structuredContent?.creatives).toEqual([
+        expect.objectContaining({ creative_id: 'cr_canonical_creative_builder', action: 'created' }),
+      ]);
+      const builderRead = await callTenantTool(builderUrl, 22, 'build_creative', {
+        adcp_version: '3.1',
+        idempotency_key: 'canonical-creative-builder-read-0001',
+        account: {
+          brand: { domain: 'canonical-creative-builder.example' },
+          operator: 'pinnacle-agency.example',
+        },
+        creative_id: 'cr_canonical_creative_builder',
+      }) as {
+        result?: { structuredContent?: { creative_manifest?: Record<string, unknown> } };
+      };
+      expect(builderRead.result?.structuredContent?.creative_manifest).toEqual(
+        expect.objectContaining({
+          format_kind: 'image',
+          format_option_ref: {
+            scope: 'publisher',
+            publisher_domain: 'publisher.example',
+            format_option_id: 'homepage_image',
+          },
+        }),
+      );
+      expect(builderRead.result?.structuredContent?.creative_manifest).not.toHaveProperty('format_id');
+
+      const builderTransform = await callTenantTool(builderUrl, 23, 'build_creative', {
+        adcp_version: '3.1',
+        idempotency_key: 'canonical-creative-builder-transform-0001',
+        account: {
+          brand: { domain: 'canonical-creative-builder.example' },
+          operator: 'pinnacle-agency.example',
+        },
+        creative_id: 'cr_canonical_creative_builder',
+        target_capability_id: 'audio_vo',
+      }) as {
+        result?: { structuredContent?: { creative_manifest?: Record<string, unknown> } };
+      };
+      expect(builderTransform.result?.structuredContent?.creative_manifest).toEqual(
+        expect.objectContaining({ format_kind: 'audio_hosted' }),
+      );
+      expect(builderTransform.result?.structuredContent?.creative_manifest).not.toHaveProperty('format_option_ref');
+      expect(builderTransform.result?.structuredContent?.creative_manifest).not.toHaveProperty('format_id');
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('preserves 3.0 creative identity through explicit legacy handler seams', async () => {
+    stageLatestThreeZeroSchemaBundle();
+    const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
+    try {
+      const legacySalesUrl = `${baseUrl}/sales/mcp`;
+      await initializeTenant(legacySalesUrl);
+      const legacyProducts = await callTenantTool(legacySalesUrl, 25, 'get_products', {
+        adcp_version: '3.0',
+        buying_mode: 'wholesale',
+        account: {
+          brand: { domain: 'three-zero-product-wire.example' },
+          operator: 'pinnacle-agency.example',
+        },
+        ext: { adcp: { creative_wire: 'legacy' } },
+      }) as {
+        result?: { structuredContent?: { products?: Array<Record<string, unknown>> } };
+      };
+      expect(legacyProducts.result?.structuredContent?.products?.length).toBeGreaterThan(0);
+      expect(legacyProducts.result?.structuredContent?.products?.every(product =>
+        Array.isArray(product.format_ids) && !Object.hasOwn(product, 'format_options')
+      )).toBe(true);
+
+      const localFormat = {
+        agent_url: getAgentUrl(),
+        id: 'display_image',
+        width: 300,
+        height: 250,
+      };
+      const externalFormat = {
+        agent_url: 'https://creative.partner.example',
+        id: 'video_30s',
+        duration_ms: 30_000,
+      };
+      for (const [index, tenant] of ['sales', 'creative'].entries()) {
+        const url = `${baseUrl}/${tenant}/mcp`;
+        await initializeTenant(url);
+        const account = {
+          brand: { domain: `legacy-creative-${tenant}.example` },
+          operator: 'pinnacle-agency.example',
+        };
+        const localCreativeId = `cr_legacy_${tenant}`;
+        const externalCreativeId = `cr_external_legacy_${tenant}`;
+        const sync = await callTenantTool(url, 30 + index * 3, 'sync_creatives', {
+          adcp_version: '3.0',
+          idempotency_key: `legacy-creative-${tenant}-sync-0001`,
+          account,
+          creatives: [
+            {
+              creative_id: localCreativeId,
+              format_id: localFormat,
+              name: `Legacy ${tenant} creative`,
+            },
+            {
+              creative_id: externalCreativeId,
+              format_id: externalFormat,
+              name: `External legacy ${tenant} creative`,
+            },
+          ],
+          ext: { adcp: { creative_wire: 'legacy' } },
+        }) as {
+          result?: {
+            structuredContent?: {
+              errors?: Array<{ code?: string }>;
+              creatives?: Array<{ creative_id?: string; action?: string }>;
+            };
+          };
+        };
+        expect(sync.result?.structuredContent?.errors).toBeUndefined();
+        expect(sync.result?.structuredContent?.creatives).toEqual([
+          expect.objectContaining({ creative_id: localCreativeId, action: 'created' }),
+          expect.objectContaining({ creative_id: externalCreativeId, action: 'created' }),
+        ]);
+
+        const listed = await callTenantTool(url, 31 + index * 3, 'list_creatives', {
+          adcp_version: '3.0',
+          account,
+          filters: { format_ids: [localFormat] },
+          ext: { adcp: { creative_wire: 'legacy' } },
+        }) as {
+          result?: {
+            structuredContent?: {
+              errors?: Array<{ code?: string }>;
+              creatives?: Array<{
+                creative_id?: string;
+                format_id?: {
+                  agent_url?: string;
+                  id?: string;
+                  width?: number;
+                  height?: number;
+                  duration_ms?: number;
+                };
+                format_kind?: string;
+              }>;
+            };
+          };
+        };
+        const payload = listed.result?.structuredContent;
+        expect(payload).toEqual(expect.objectContaining({
+          creatives: [
+            expect.objectContaining({
+              creative_id: localCreativeId,
+              format_id: localFormat,
+            }),
+          ],
+        }));
+        expect(payload?.creatives?.[0]?.format_kind).toBeUndefined();
+
+        const external = await callTenantTool(url, 32 + index * 3, 'list_creatives', {
+          adcp_version: '3.0',
+          account,
+          creative_ids: [externalCreativeId],
+          ext: { adcp: { creative_wire: 'legacy' } },
+        }) as {
+          result?: { structuredContent?: { creatives?: Array<{ format_id?: unknown }> } };
+        };
+        expect(external.result?.structuredContent?.creatives?.[0]?.format_id).toEqual(externalFormat);
+      }
+
+      const builderUrl = `${baseUrl}/creative-builder/mcp`;
+      await initializeTenant(builderUrl);
+      const builderSync = await callTenantTool(builderUrl, 40, 'sync_creatives', {
+        adcp_version: '3.0',
+        idempotency_key: 'legacy-creative-builder-sync-0001',
+        account: {
+          brand: { domain: 'legacy-creative-builder.example' },
+          operator: 'pinnacle-agency.example',
+        },
+        creatives: [{
+          creative_id: 'cr_legacy_creative_builder',
+          format_id: localFormat,
+          name: 'Legacy creative-builder creative',
+        }],
+        ext: { adcp: { creative_wire: 'legacy' } },
+      }) as {
+        result?: {
+          structuredContent?: {
+            errors?: Array<{ code?: string }>;
+            creatives?: Array<{ creative_id?: string; action?: string }>;
+          };
+        };
+      };
+      expect(builderSync.result?.structuredContent?.errors).toBeUndefined();
+      expect(builderSync.result?.structuredContent?.creatives).toEqual([
+        expect.objectContaining({ creative_id: 'cr_legacy_creative_builder', action: 'created' }),
+      ]);
+      const builderRead = await callTenantTool(builderUrl, 41, 'build_creative', {
+        adcp_version: '3.0',
+        idempotency_key: 'legacy-creative-builder-read-0001',
+        account: {
+          brand: { domain: 'legacy-creative-builder.example' },
+          operator: 'pinnacle-agency.example',
+        },
+        creative_id: 'cr_legacy_creative_builder',
+        ext: { adcp: { creative_wire: 'legacy' } },
+      }) as {
+        result?: { structuredContent?: { creative_manifest?: Record<string, unknown> } };
+      };
+      expect(
+        builderRead.result?.structuredContent?.creative_manifest,
+        JSON.stringify(builderRead),
+      ).toEqual(
+        expect.objectContaining({ format_id: localFormat }),
+      );
+      expect(builderRead.result?.structuredContent?.creative_manifest).not.toHaveProperty('format_kind');
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('round-trips legacy-only package selectors through the native sales facade', async () => {
+    stageLatestThreeZeroSchemaBundle();
+    const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'legacy-only-native-package.example' },
+        operator: 'pinnacle-agency.example',
+      };
+      const productId = 'legacy_only_native_package';
+      const pricingOptionId = 'legacy_only_native_package_cpm';
+      const legacyFormat = {
+        agent_url: 'https://creative.adcontextprotocol.org/',
+        id: 'display_300x250_image',
+        width: 300,
+        height: 250,
+      };
+
+      await callTenantTool(url, 70, 'comply_test_controller', {
+        adcp_version: '3.0',
+        account,
+        brand: account.brand,
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            name: 'Legacy-only native package',
+            description: 'No canonical declarations',
+            delivery_type: 'guaranteed',
+            channels: ['display'],
+            format_ids: [legacyFormat],
+          },
+        },
+      });
+      await callTenantTool(url, 71, 'comply_test_controller', {
+        adcp_version: '3.0',
+        account,
+        brand: account.brand,
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 12 },
+        },
+      });
+
+      const created = await callTenantTool(url, 72, 'create_media_buy', {
+        adcp_version: '3.0',
+        idempotency_key: 'legacy-only-native-create-0001',
+        account,
+        brand: account.brand,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          budget: 10_000,
+          format_ids: [legacyFormat],
+        }],
+      }) as {
+        result?: { structuredContent?: { media_buy_id?: string; packages?: Array<Record<string, unknown>>; adcp_error?: unknown } };
+      };
+      expect(created.result?.structuredContent?.adcp_error, JSON.stringify(created)).toBeUndefined();
+      expect(created.result?.structuredContent?.packages?.[0]?.format_ids).toEqual([legacyFormat]);
+      expect(created.result?.structuredContent?.packages?.[0]).not.toHaveProperty('format_option_refs');
+      const mediaBuyId = created.result?.structuredContent?.media_buy_id;
+
+      const updated = await callTenantTool(url, 73, 'update_media_buy', {
+        adcp_version: '3.0',
+        idempotency_key: 'legacy-only-native-update-0001',
+        account,
+        media_buy_id: mediaBuyId,
+        new_packages: [{
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          budget: 5_000,
+          format_ids: [legacyFormat],
+        }],
+      }) as {
+        result?: {
+          structuredContent?: {
+            packages?: Array<Record<string, unknown>>;
+            affected_packages?: Array<Record<string, unknown>>;
+            adcp_error?: unknown;
+          };
+        };
+      };
+      expect(updated.result?.structuredContent?.adcp_error, JSON.stringify(updated)).toBeUndefined();
+      const added = updated.result?.structuredContent?.packages?.find(pkg => pkg.package_id === 'pkg-1');
+      expect(added?.format_ids).toEqual([legacyFormat]);
+      expect(added).not.toHaveProperty('format_option_refs');
+      const affected = updated.result?.structuredContent?.affected_packages
+        ?.find(pkg => pkg.package_id === 'pkg-1');
+      expect(affected?.format_ids).toEqual([legacyFormat]);
+      expect(affected).not.toHaveProperty('format_option_refs');
+      expect(JSON.stringify(updated.result?.structuredContent)).not.toContain('__selected_legacy_format_ids');
+
+      const read = await callTenantTool(url, 74, 'get_media_buys', {
+        adcp_version: '3.0',
+        account,
+        media_buy_ids: [mediaBuyId],
+      }) as {
+        result?: { structuredContent?: { media_buys?: Array<{ packages?: Array<Record<string, unknown>> }> } };
+      };
+      const packages = read.result?.structuredContent?.media_buys?.[0]?.packages;
+      expect(packages).toHaveLength(2);
+      expect(packages?.every(pkg => JSON.stringify(pkg.format_ids) === JSON.stringify([legacyFormat]))).toBe(true);
+      expect(packages?.every(pkg => !Object.hasOwn(pkg, 'format_option_refs'))).toBe(true);
+      expect(JSON.stringify(read.result?.structuredContent)).not.toContain('__selected_legacy_format_ids');
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('projects the selected legacy tuple rather than its informational echo at the native sales boundary', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'selected-legacy-native-package.example' },
+        operator: 'pinnacle-agency.example',
+      };
+      const productId = 'selected_legacy_native_package';
+      const pricingOptionId = 'selected_legacy_native_package_cpm';
+      const mediaBuyId = 'mb_selected_legacy_native_package';
+      const selectedLegacyFormat = {
+        agent_url: 'https://creative.adcontextprotocol.org/',
+        id: 'display_300x250_image',
+        width: 300,
+        height: 250,
+      };
+      const informationalLegacyFormat = {
+        agent_url: 'https://creative.adcontextprotocol.org/',
+        id: 'display_728x90_image',
+        width: 728,
+        height: 90,
+      };
+      const selectedOptionId = projectV1ProductToV2({
+        product_id: productId,
+        name: productId,
+        description: productId,
+        format_ids: [selectedLegacyFormat],
+      }).v2.format_options?.[0]?.format_option_id;
+      expect(selectedOptionId).toBeTypeOf('string');
+
+      // Persist the compatibility handler's intentionally divergent state
+      // directly. The native request projector correctly drops informational
+      // format_ids when option refs are also present, so a routed create cannot
+      // manufacture this legacy record for the read-boundary regression.
+      await runWithSessionContext(async () => {
+        const session = await getSession(sessionKeyFromArgs({ account }, 'open'));
+        session.mediaBuys.set(mediaBuyId, {
+          mediaBuyId,
+          accountRef: account,
+          brandRef: account.brand,
+          status: 'active',
+          currency: 'USD',
+          packages: [{
+            packageId: 'pkg-divergent-legacy-selector',
+            productId,
+            pricingOptionId,
+            budget: 10_000,
+            paused: false,
+            startTime: '2027-06-01T00:00:00Z',
+            endTime: '2027-07-01T00:00:00Z',
+            formatIds: [informationalLegacyFormat],
+            selectedLegacyFormatIds: [selectedLegacyFormat],
+            creativeAssignments: [],
+          }],
+          startTime: '2027-06-01T00:00:00Z',
+          endTime: '2027-07-01T00:00:00Z',
+          revision: 1,
+          confirmedAt: '2027-05-01T00:00:00Z',
+          createdAt: '2027-05-01T00:00:00Z',
+          updatedAt: '2027-05-01T00:00:00Z',
+          history: [],
+        });
+        await flushDirtySessions();
+      });
+
+      const read = await callTenantTool(url, 77, 'get_media_buys', {
+        account,
+        media_buy_ids: [mediaBuyId],
+      }) as {
+        result?: {
+          structuredContent?: {
+            media_buys?: Array<{ packages?: Array<Record<string, unknown>> }>;
+            adcp_error?: unknown;
+          };
+        };
+      };
+      expect(read.result?.structuredContent?.adcp_error, JSON.stringify(read)).toBeUndefined();
+      const readPackage = read.result?.structuredContent?.media_buys?.[0]?.packages?.[0];
+      expect(readPackage?.format_option_refs).toEqual([
+        { scope: 'product', format_option_id: selectedOptionId },
+      ]);
+      expect(readPackage).not.toHaveProperty('format_ids');
+      expect(JSON.stringify(read.result?.structuredContent)).not.toContain('__selected_legacy_format_ids');
+      expect(JSON.stringify(read.result?.structuredContent)).not.toContain(informationalLegacyFormat.id);
+    } finally {
+      await close();
+    }
+  }, 30000);
+
   it('discovers and dispatches seed_measurement_catalog on /sales/mcp', async () => {
     const { baseUrl, close } = await bootServer();
     try {
@@ -642,7 +1310,7 @@ describe('tenant routing smoke', () => {
     } finally {
       await close();
     }
-  }, 15000);
+  }, 30000);
 
   it('advertises creative billing + transformer discriminators on the current creative tenant', async () => {
     const { baseUrl, close } = await bootServer();

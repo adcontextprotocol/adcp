@@ -2,7 +2,7 @@ name: Training Agent Storyboards
 
 on:
   pull_request:
-    branches: [main, '3.0.x']
+    branches: [main, '3.1.x', '3.0.x']
     paths:
       - 'server/src/training-agent/**'
       - 'server/src/services/hosted-compliance-version.ts'
@@ -11,6 +11,7 @@ on:
       - 'package-lock.json'
       - 'scripts/build-compliance.cjs'
       - 'scripts/overlay-compliance-cache.sh'
+      - 'scripts/patch-sdk-rc11.mjs'
       - 'scripts/run-storyboards-matrix.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
       - 'scripts/stage-sdk-schema-bundle.sh'
@@ -20,7 +21,7 @@ on:
       - 'dist/schemas/**'
       - '.github/workflows/training-agent-storyboards.yml'
   push:
-    branches: [main, '3.0.x']
+    branches: [main, '3.1.x', '3.0.x']
     paths:
       - 'server/src/training-agent/**'
       - 'server/src/services/hosted-compliance-version.ts'
@@ -29,6 +30,7 @@ on:
       - 'package-lock.json'
       - 'scripts/build-compliance.cjs'
       - 'scripts/overlay-compliance-cache.sh'
+      - 'scripts/patch-sdk-rc11.mjs'
       - 'scripts/run-storyboards-matrix.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
       - 'scripts/stage-sdk-schema-bundle.sh'
@@ -403,6 +405,26 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Enforce released 3.0 sales identity lifecycle
+        if: matrix.surface == '3.0-compat' && matrix.tenant == 'sales'
+        run: |
+          set -euo pipefail
+          if ! grep -E '^[[:space:]]+media_buy_seller[[:space:]]+✓' /tmp/storyboards.log >/dev/null; then
+            echo "::error::Required-clean storyboard did not pass on /sales 3.0 surface: media_buy_seller"
+            grep -F 'media_buy_seller' /tmp/storyboards.log || true
+            exit 1
+          fi
+
+      - name: Enforce released 3.0 creative identity lifecycle
+        if: matrix.surface == '3.0-compat' && matrix.tenant == 'creative'
+        run: |
+          set -euo pipefail
+          if ! grep -E '^[[:space:]]+creative_lifecycle[[:space:]]+✓' /tmp/storyboards.log >/dev/null; then
+            echo "::error::Required-clean storyboard did not pass on /creative 3.0 surface: creative_lifecycle"
+            grep -F 'creative_lifecycle' /tmp/storyboards.log || true
+            exit 1
+          fi
 
       - name: Enforce sponsored-intelligence required-clean storyboards
         if: matrix.surface == 'current' && matrix.tenant == 'si'

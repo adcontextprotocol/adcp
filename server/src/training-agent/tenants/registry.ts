@@ -49,6 +49,7 @@ import { buildSiTenantConfig } from './si.js';
 import { createLogger } from '../../logger.js';
 import type { TrainingContext } from '../types.js';
 import { getCanonicalBase } from '../canonical-base.js';
+import { creativeProjectionAdapters } from '../task-handlers.js';
 
 export { getCanonicalBase } from '../canonical-base.js';
 
@@ -180,6 +181,7 @@ function pickStateStore(): AdcpStateStore {
 }
 
 function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboardCompat']): CreateAdcpServerFromPlatformOptions {
+  const projectionAdapters = creativeProjectionAdapters();
   return {
     name: 'adcp-training-agent',
     version: '1.0.0',
@@ -189,9 +191,19 @@ function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboar
     taskWebhookEmitter: {
       emit: emitFrameworkTaskWebhook,
     },
+    // SDK 13 no longer emits webhooks for terminal inline responses by
+    // default. Preserve the training agent's existing integration contract
+    // while its consumers migrate to inline-terminal handling.
+    autoEmitCompletionWebhooks: true,
     taskRegistry: pickTaskRegistry(),
     stateStore: pickStateStore(),
     mergeSeam: 'log-once',
+    // Keep the SDK facade's legacy and canonical wire projections on the
+    // same catalog-backed identity map used by the raw compatibility handlers.
+    // This survives multi-step flows without making legacy identity a
+    // current-path persistence primitive.
+    legacyCreativeFormatConverter: projectionAdapters.legacyFormatConverter,
+    canonicalFormatLegacyResolver: projectionAdapters.canonicalFormatLegacyResolver,
     // The repository's experimental 3.2 governance schemas intentionally lead
     // the pinned SDK codegen. Keep MCP registration passthrough and validate in
     // the source-aligned handlers until a compatible SDK bundle is published.

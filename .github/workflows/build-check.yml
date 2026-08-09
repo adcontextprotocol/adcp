@@ -60,6 +60,9 @@ jobs:
       - name: Assert dist/ contains every server/src runtime asset
         run: node scripts/copy-server-assets.cjs --check
 
+      - name: Routed tenant smoke tests
+        run: npm run test:tenant-routing
+
       - name: Schema link plugin tests
         run: npm run test:schema-links
 
