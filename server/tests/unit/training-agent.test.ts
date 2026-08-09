@@ -26,6 +26,7 @@ import {
   canonicalParamsSatisfied,
   invalidateCache,
   clearTaskStore,
+  projectListCreativesCompatibilityWire,
 } from '../../src/training-agent/task-handlers.js';
 import {
   MUTATING_TOOLS,
@@ -5838,6 +5839,37 @@ describe('list_creatives handler', () => {
 
   afterEach(() => {
     clearSessions();
+  });
+
+  it('keeps projectable records when one creative cannot cross the requested wire boundary', () => {
+    const result = projectListCreativesCompatibilityWire({
+      creatives: [
+        {
+          creative_id: 'legacy-projectable',
+          format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        },
+        {
+          creative_id: 'canonical-only',
+          format_kind: 'audio_vo',
+        },
+      ],
+      errors: [{ code: 'EXISTING_WARNING', message: 'preserve me' }],
+      query_summary: { total_matching: 2, returned: 2 },
+    }, {
+      ext: { adcp: { creative_wire: 'legacy' } },
+    });
+
+    expect(result.creatives).toEqual([
+      {
+        creative_id: 'legacy-projectable',
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+      },
+    ]);
+    expect(result.errors).toEqual([
+      { code: 'EXISTING_WARNING', message: 'preserve me' },
+      expect.objectContaining({ code: 'FORMAT_PROJECTION_FAILED', recovery: 'correctable' }),
+    ]);
+    expect(result.query_summary).toEqual({ total_matching: 2, returned: 1 });
   });
 
   it('returns synced creatives', async () => {

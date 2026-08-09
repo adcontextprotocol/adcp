@@ -2555,53 +2555,69 @@ export function projectGetProductsCompatibilityWire(
 export function projectListCreativesCompatibilityWire<T extends {
   creatives?: Array<Record<string, unknown>>;
   errors?: unknown[];
+  query_summary?: Record<string, unknown>;
 }>(response: T, args: Record<string, unknown>): T {
   const wireMode = requestedCreativeWireMode(args);
   if (wireMode === 'unknown' || !Array.isArray(response.creatives)) return response;
 
-  try {
-    return { ...response, creatives: projectCreativeRecordsForWire(response.creatives, wireMode) };
-  } catch (error) {
-    return {
-      ...response,
-      creatives: [],
-      errors: [
-        ...(response.errors ?? []),
-        {
-          code: 'FORMAT_PROJECTION_FAILED',
-          message: error instanceof Error ? error.message : 'Creative format projection failed',
-          recovery: 'correctable',
-        },
-      ],
-    };
+  const adapters = creativeProjectionAdapters();
+  const projected: Array<Record<string, unknown>> = [];
+  const projectionErrors: unknown[] = [];
+  for (const creative of response.creatives) {
+    try {
+      projected.push(projectCreativeRecordForWire(creative, wireMode, adapters));
+    } catch (error) {
+      projectionErrors.push({
+        code: 'FORMAT_PROJECTION_FAILED',
+        message: error instanceof Error ? error.message : 'Creative format projection failed',
+        recovery: 'correctable',
+      });
+    }
   }
+  return {
+    ...response,
+    creatives: projected,
+    ...(response.query_summary && {
+      query_summary: { ...response.query_summary, returned: projected.length },
+    }),
+    ...(projectionErrors.length > 0 && { errors: [...(response.errors ?? []), ...projectionErrors] }),
+  };
 }
 
-function projectCreativeRecordsForWire(
-  creatives: Array<Record<string, unknown>>,
-  wireMode: Exclude<CreativeFormatWireMode, 'unknown'>,
-): Array<Record<string, unknown>> {
+type CreativeProjectionAdapters = {
+  legacyFormatConverter: ReturnType<typeof legacyFormatConverterFromCatalogSnapshots>;
+  canonicalFormatLegacyResolver: ReturnType<typeof canonicalFormatLegacyResolverFromCatalogSnapshots>;
+};
+
+function creativeProjectionAdapters(): CreativeProjectionAdapters {
   const catalogs = formatProjectionCatalogs();
-  const legacyFormatConverter = legacyFormatConverterFromCatalogSnapshots(catalogs);
-  const canonicalFormatLegacyResolver = canonicalFormatLegacyResolverFromCatalogSnapshots(
-    catalogs,
-    trainingCatalogLegacyResolver,
-  );
-  return creatives.map(creative => {
-    if (wireMode === 'legacy' && isRecord(creative.format_id)) return creative;
-    if (wireMode === 'canonical' && typeof creative.format_kind === 'string') return creative;
-    return projectCreativeForDelivery(
-      creative as never,
-      {
-        ...(typeof creative.format_kind === 'string' && { format_kind: creative.format_kind }),
-        ...(isRecord(creative.format_option_ref) && { format_option_refs: [creative.format_option_ref] }),
-      },
-      wireMode,
-      'list_creatives',
-      legacyFormatConverter,
-      canonicalFormatLegacyResolver,
-    ) as Record<string, unknown>;
-  });
+  return {
+    legacyFormatConverter: legacyFormatConverterFromCatalogSnapshots(catalogs),
+    canonicalFormatLegacyResolver: canonicalFormatLegacyResolverFromCatalogSnapshots(
+      catalogs,
+      trainingCatalogLegacyResolver,
+    ),
+  };
+}
+
+function projectCreativeRecordForWire(
+  creative: Record<string, unknown>,
+  wireMode: Exclude<CreativeFormatWireMode, 'unknown'>,
+  adapters: CreativeProjectionAdapters,
+): Record<string, unknown> {
+  if (wireMode === 'legacy' && isRecord(creative.format_id)) return creative;
+  if (wireMode === 'canonical' && typeof creative.format_kind === 'string') return creative;
+  return projectCreativeForDelivery(
+    creative as never,
+    {
+      ...(typeof creative.format_kind === 'string' && { format_kind: creative.format_kind }),
+      ...(isRecord(creative.format_option_ref) && { format_option_refs: [creative.format_option_ref] }),
+    },
+    wireMode,
+    'list_creatives',
+    adapters.legacyFormatConverter,
+    adapters.canonicalFormatLegacyResolver,
+  ) as Record<string, unknown>;
 }
 
 /** Invalidate cached catalog/formats (for tests or hot-reload) */
@@ -7063,10 +7079,14 @@ function storedCreativeFormatRecord(creative: CreativeState): Record<string, unk
   };
 }
 
-function creativeMatchesAnyFormatId(creative: CreativeState, requested: FormatID[]): boolean {
+function creativeMatchesAnyFormatId(
+  creative: CreativeState,
+  requested: FormatID[],
+  adapters: CreativeProjectionAdapters,
+): boolean {
   let projected: Record<string, unknown>;
   try {
-    [projected] = projectCreativeRecordsForWire([storedCreativeFormatRecord(creative)], 'legacy');
+    projected = projectCreativeRecordForWire(storedCreativeFormatRecord(creative), 'legacy', adapters);
   } catch {
     return false;
   }
@@ -7084,10 +7104,14 @@ function creativeMatchesAnyFormatId(creative: CreativeState, requested: FormatID
   });
 }
 
-function creativeMatchesAnyFormatKind(creative: CreativeState, requested: Set<string>): boolean {
+function creativeMatchesAnyFormatKind(
+  creative: CreativeState,
+  requested: Set<string>,
+  adapters: CreativeProjectionAdapters,
+): boolean {
   let projected: Record<string, unknown>;
   try {
-    [projected] = projectCreativeRecordsForWire([storedCreativeFormatRecord(creative)], 'canonical');
+    projected = projectCreativeRecordForWire(storedCreativeFormatRecord(creative), 'canonical', adapters);
   } catch {
     return false;
   }
@@ -7157,12 +7181,15 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     creatives = creatives.filter(c => statuses.has(c.status));
   }
   const formatKinds = (req.filters as unknown as { format_kinds?: string[] } | undefined)?.format_kinds;
+  const filterProjectionAdapters = formatKinds?.length || filters.format_ids?.length
+    ? creativeProjectionAdapters()
+    : undefined;
   if (formatKinds?.length) {
     const wantedKinds = new Set(formatKinds);
-    creatives = creatives.filter(c => creativeMatchesAnyFormatKind(c, wantedKinds));
+    creatives = creatives.filter(c => creativeMatchesAnyFormatKind(c, wantedKinds, filterProjectionAdapters!));
   }
   if (filters.format_ids?.length) {
-    creatives = creatives.filter(c => creativeMatchesAnyFormatId(c, filters.format_ids!));
+    creatives = creatives.filter(c => creativeMatchesAnyFormatId(c, filters.format_ids!, filterProjectionAdapters!));
   }
   if (filters.asset_types?.length) {
     const assetTypes = new Set(filters.asset_types);
