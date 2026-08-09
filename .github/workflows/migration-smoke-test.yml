@@ -11,7 +11,7 @@ on:
       - 'server/src/config.ts'
       - 'server/tsconfig.json'
       - 'Dockerfile'
-      - 'scripts/patch-sdk-rc10.mjs'
+      - 'scripts/patch-sdk-rc11.mjs'
   push:
     branches: [main]
     paths:
@@ -22,7 +22,7 @@ on:
       - 'server/src/config.ts'
       - 'server/tsconfig.json'
       - 'Dockerfile'
-      - 'scripts/patch-sdk-rc10.mjs'
+      - 'scripts/patch-sdk-rc11.mjs'
 
 jobs:
   migrate:

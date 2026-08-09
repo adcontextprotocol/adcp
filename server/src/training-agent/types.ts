@@ -565,8 +565,8 @@ export interface CreativeState {
   creativeId: string;
   accountId?: string;
   accountRef?: AccountRef;
-  /** Internal legacy-shaped lookup key. Canonical rows emit formatKind instead. */
-  formatId: FormatID;
+  /** @deprecated Present only for creatives received through the AdCP 3.x compatibility facade. */
+  formatId?: FormatID;
   formatKind?: string;
   formatOptionRef?: Record<string, unknown>;
   assets?: Record<string, ManifestAsset | ManifestAsset[]>;

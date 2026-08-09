@@ -27,6 +27,8 @@ import {
   invalidateCache,
   clearTaskStore,
   projectListCreativesCompatibilityWire,
+  trainingCatalogLegacyResolver,
+  creativeProjectionAdapters,
 } from '../../src/training-agent/task-handlers.js';
 import {
   MUTATING_TOOLS,
@@ -45,7 +47,11 @@ import { TrainingSalesPlatform } from '../../src/training-agent/v6-sales-platfor
 import { TrainingCreativePlatform } from '../../src/training-agent/v6-creative-platform.js';
 import { TrainingCreativeBuilderPlatform } from '../../src/training-agent/v6-creative-builder-platform.js';
 import { clearAudienceStore } from '../../src/training-agent/audience-handlers.js';
-import { projectV1ProductToV2 } from '@adcp/sdk/v2/projection';
+import {
+  projectCreativeForDelivery,
+  projectMediaBuyCreativesForDelivery,
+  projectV1ProductToV2,
+} from '@adcp/sdk/v2/projection';
 
 const projectV1ProductToV2Spy = vi.hoisted(() => vi.fn());
 vi.mock('@adcp/sdk/v2/projection', async importOriginal => {
@@ -5323,10 +5329,17 @@ describe('sync_creatives handler', () => {
       }],
     });
     expect(synced.errors).toBeUndefined();
+    const persisted = (await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode))).creatives.get('cr_canonical_lifecycle');
+    expect(persisted).toMatchObject({
+      formatKind: 'image',
+      formatOptionRef: { scope: 'publisher', publisher_domain: 'publisher.example', format_option_id: 'homepage_image' },
+    });
+    expect(persisted?.formatId).toBeUndefined();
 
     const { result: listed } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'list_creatives', {
       account,
       filters: { format_kinds: ['image'] },
+      include_pricing: true,
     });
     const listedCreative = (listed.creatives as Array<Record<string, unknown>>)[0];
     expect(listedCreative).toMatchObject({
@@ -5335,6 +5348,9 @@ describe('sync_creatives handler', () => {
       format_option_ref: { scope: 'publisher', publisher_domain: 'publisher.example', format_option_id: 'homepage_image' },
     });
     expect(listedCreative.format_id).toBeUndefined();
+    expect(listedCreative.pricing_options).toEqual([
+      expect.objectContaining({ pricing_option_id: 'po_image_cpm' }),
+    ]);
 
     const { result: built } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'build_creative', {
       account,
@@ -5830,6 +5846,90 @@ describe('get_media_buys handler', () => {
 });
 
 // ── list_creatives handler ─────────────────────────────────────────
+
+describe('training creative format resolver', () => {
+  it('uses request-scoped canonical declaration sidecars for legacy response projection', () => {
+    const legacyRef = {
+      agent_url: 'https://test-agent.adcontextprotocol.org',
+      id: 'video_preroll_video_vast',
+      duration_ms: 30000,
+    };
+    expect(trainingCatalogLegacyResolver({
+      source: 'selector',
+      selector: {
+        product_id: 'seeded-product',
+        format_option_refs: [{ scope: 'product', format_option_id: 'authored-preroll-vast' }],
+        formats_to_provide: [{
+          format_kind: 'video_vast',
+          params: { duration: { max_ms: 30000 } },
+          format_option_id: 'authored-preroll-vast',
+          v1_format_ref: [legacyRef],
+        }],
+      },
+      operation: 'create_media_buy',
+      field: '(package selector)',
+    })).toEqual([legacyRef]);
+  });
+
+  it('fails closed when any selected request-scoped declaration is canonical-only', () => {
+    const legacyRef = {
+      agent_url: 'https://creative.adcontextprotocol.org/',
+      id: 'display_300x250_image',
+    };
+    const selector = {
+      product_id: 'mixed-product',
+      format_option_refs: [
+        { scope: 'product' as const, format_option_id: 'mapped-image' },
+        { scope: 'product' as const, format_option_id: 'canonical-carousel' },
+      ],
+      formats_to_provide: [
+        { format_kind: 'image', format_option_id: 'mapped-image', v1_format_ref: [legacyRef] },
+        { format_kind: 'image_carousel', format_option_id: 'canonical-carousel', canonical_formats_only: true },
+      ],
+    };
+    const adapters = creativeProjectionAdapters();
+
+    expect(() => projectMediaBuyCreativesForDelivery(
+      { packages: [selector] },
+      'legacy',
+      'create_media_buy',
+      adapters.legacyFormatConverter,
+      adapters.canonicalFormatLegacyResolver,
+    )).toThrow(/no complete legacy representation/i);
+  });
+
+  it('narrows a creative to its selected route within a multi-format package', () => {
+    const refs = [
+      { agent_url: 'https://creative.adcontextprotocol.org/', id: 'display_300x250_image' },
+      { agent_url: 'https://creative.adcontextprotocol.org/', id: 'display_728x90_image' },
+    ];
+    const formatOptionIds = ['image-mrec', 'image-leaderboard'];
+    const selector = {
+      product_id: 'multi-format-product',
+      format_option_refs: formatOptionIds.map(format_option_id => ({ scope: 'product' as const, format_option_id })),
+      formats_to_provide: refs.map((ref, index) => ({
+        format_kind: 'image',
+        format_option_id: formatOptionIds[index],
+        v1_format_ref: [ref],
+      })),
+    };
+    const adapters = creativeProjectionAdapters();
+    const result = projectCreativeForDelivery(
+      {
+        creative_id: 'selected-creative',
+        format_kind: 'image',
+        format_option_ref: { scope: 'product', format_option_id: formatOptionIds[0] },
+      },
+      selector,
+      'legacy',
+      'sync_creatives',
+      adapters.legacyFormatConverter,
+      adapters.canonicalFormatLegacyResolver,
+    );
+
+    expect(result.format_id).toEqual(refs[0]);
+  });
+});
 
 describe('list_creatives handler', () => {
   beforeEach(() => {

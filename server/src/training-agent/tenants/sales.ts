@@ -86,9 +86,10 @@ export function buildSalesTenantConfig(host: string, options: { storyboardCompat
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       platform: new TrainingSalesPlatform(options.storyboardCompat) as any,
       serverOptions: {
-        // These three operations must preserve the caller's complete legacy
-        // identity tuple across persistence. rc.10's canonical facade drops
-        // that route metadata, so keep only this compatibility surface raw.
+        // These operations intentionally remain the legacy wire facade for
+        // AdCP 3.0 callers. Current application paths use canonical format
+        // identity; the raw seam preserves exact legacy tuples at the wire and
+        // persistence boundary without leaking legacy identity into current paths.
         legacyHandlers: {
           mediaBuy: {
             getProducts: legacyGetProductsHandler(options.storyboardCompat),

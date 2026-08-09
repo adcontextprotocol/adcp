@@ -20,13 +20,18 @@ import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks'
 import { PostgresTaskStore } from '@adcp/sdk';
 import {
   canonicalFormatLegacyResolverFromCatalogSnapshots,
+  canonicalFormatLegacyResolverFromRoutes,
+  legacyRoutesForProduct,
   legacyFormatConverterFromCatalogSnapshots,
   projectCreativeForDelivery,
   projectV1ProductToV2,
   toCanonicalOnlyResponse,
   type CreativeFormatWireMode,
   type CanonicalFormatLegacyResolver,
+  type CanonicalFormatLegacyRoute,
+  type CanonicalFormatKind,
   type ProjectionCatalogSnapshot,
+  type V2ProductFormatDeclaration,
 } from '@adcp/sdk/v2/projection';
 import { mergeSeedProductLegacy as mergeSeedProduct } from '@adcp/sdk/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
@@ -766,8 +771,8 @@ function creativeCoversPackageFormat(
   const requiredKind = requirement.format_kind;
 
   const legacyRefs = Array.isArray(requirement.v1_format_ref) ? requirement.v1_format_ref : [];
-  if (legacyRefs.some(ref => ref?.id === creative.formatId.id
-    && (!ref.agent_url || !creative.formatId.agent_url || ref.agent_url === creative.formatId.agent_url))) {
+  if (creative.formatId && legacyRefs.some(ref => ref?.id === creative.formatId?.id
+    && (!ref.agent_url || !creative.formatId?.agent_url || ref.agent_url === creative.formatId.agent_url))) {
     return true;
   }
   if (!requiredKind || creativeKind !== requiredKind) return false;
@@ -2504,7 +2509,88 @@ function formatProjectionCatalogs(): ProjectionCatalogSnapshot[] {
   }];
 }
 
-const trainingCatalogLegacyResolver: CanonicalFormatLegacyResolver = context => {
+function legacyFormatRef(value: unknown): FormatID | undefined {
+  if (!isRecord(value) || typeof value.agent_url !== 'string' || typeof value.id !== 'string') return undefined;
+  return {
+    agent_url: value.agent_url,
+    id: value.id,
+    ...(typeof value.width === 'number' && Number.isFinite(value.width) && { width: value.width }),
+    ...(typeof value.height === 'number' && Number.isFinite(value.height) && { height: value.height }),
+    ...(typeof value.duration_ms === 'number' && Number.isFinite(value.duration_ms) && { duration_ms: value.duration_ms }),
+  };
+}
+
+function canonicalFormatKind(value: unknown): CanonicalFormatKind | undefined {
+  switch (value) {
+    case 'image':
+    case 'html5':
+    case 'display_tag':
+    case 'image_carousel':
+    case 'video_hosted':
+    case 'video_vast':
+    case 'audio_hosted':
+    case 'audio_daast':
+    case 'sponsored_placement':
+    case 'native_in_feed':
+    case 'responsive_creative':
+    case 'agent_placement':
+    case 'custom':
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+function requestScopedLegacyRoutes(selector: Readonly<Record<string, unknown>>): CanonicalFormatLegacyRoute[] | undefined {
+  const productId = typeof selector.product_id === 'string' ? selector.product_id : undefined;
+  let hasRequestScopedDeclarations = false;
+  const mappedDeclarations: V2ProductFormatDeclaration[] = [];
+  for (const field of ['formats_to_provide', 'formats_pending'] as const) {
+    const declarations = selector[field];
+    if (!Array.isArray(declarations)) continue;
+    hasRequestScopedDeclarations = true;
+    for (const declaration of declarations) {
+      if (
+        !isRecord(declaration)
+        || declaration.canonical_formats_only === true
+        || !Array.isArray(declaration.v1_format_ref)
+      ) continue;
+      const formatKind = canonicalFormatKind(declaration.format_kind);
+      const formatOptionId = typeof declaration.format_option_id === 'string'
+        ? declaration.format_option_id
+        : undefined;
+      if (!formatKind || !formatOptionId) continue;
+      const refs: FormatID[] = [];
+      for (const value of declaration.v1_format_ref) {
+        const ref = legacyFormatRef(value);
+        if (!ref) continue;
+        refs.push(ref);
+      }
+      if (refs.length === 0) continue;
+      mappedDeclarations.push({
+        format_kind: formatKind,
+        params: isRecord(declaration.params) ? declaration.params : {},
+        format_option_id: formatOptionId,
+        ...(typeof declaration.publisher_domain === 'string' && { publisher_domain: declaration.publisher_domain }),
+        v1_format_ref: refs,
+      });
+    }
+  }
+  if (!hasRequestScopedDeclarations) return undefined;
+  return productId ? legacyRoutesForProduct(productId, mappedDeclarations) : [];
+}
+
+export const trainingCatalogLegacyResolver: CanonicalFormatLegacyResolver = context => {
+  if (context.source !== 'product') {
+    // The platform response carries the exact declarations selected for this
+    // package. Prefer their serializable v1_format_ref sidecars over a global
+    // catalog lookup: seeded storyboard products are request-scoped and may
+    // not exist in the configured training catalog.
+    const requestScopedRoutes = requestScopedLegacyRoutes(context.selector);
+    if (requestScopedRoutes !== undefined) {
+      return canonicalFormatLegacyResolverFromRoutes(requestScopedRoutes)(context);
+    }
+  }
   const candidate = context.source === 'creative'
     ? context.creative.format_option_ref
     : context.source === 'selector'
@@ -2589,7 +2675,7 @@ type CreativeProjectionAdapters = {
   canonicalFormatLegacyResolver: ReturnType<typeof canonicalFormatLegacyResolverFromCatalogSnapshots>;
 };
 
-function creativeProjectionAdapters(): CreativeProjectionAdapters {
+export function creativeProjectionAdapters(): CreativeProjectionAdapters {
   const catalogs = formatProjectionCatalogs();
   return {
     legacyFormatConverter: legacyFormatConverterFromCatalogSnapshots(catalogs),
@@ -6959,15 +7045,11 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     const existingCreative = session.creatives.get(creativeId);
 
     if (!isDryRun) {
-      const internalFormatId = formatId ?? {
-        agent_url: getAgentUrl(),
-        id: formatKind!,
-      };
       session.creatives.set(creativeId, {
         creativeId,
         accountId: accountId ?? existingCreative?.accountId,
         accountRef: req.account ?? existingCreative?.accountRef,
-        formatId: internalFormatId,
+        ...(formatId && { formatId }),
         formatKind,
         formatOptionRef,
         assets: creativeShape.assets as CreativeState['assets'],
@@ -6984,7 +7066,9 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
                 format_kind: formatKind,
                 ...(formatOptionRef && { format_option_ref: formatOptionRef }),
               }
-              : { format_id: internalFormatId }),
+              : formatId
+                ? { format_id: formatId }
+                : {}),
             assets: (creative as unknown as { assets: Record<string, unknown> }).assets as CreativeManifest['assets'],
           } : existingCreative?.manifest),
         pricingOptionId: existingCreative?.pricingOptionId,
@@ -7071,12 +7155,14 @@ function storedCreativeFormatRecord(creative: CreativeState): Record<string, unk
       ...(creative.formatOptionRef && { format_option_ref: creative.formatOptionRef }),
     };
   }
-  return {
-    format_id: {
-      ...creative.formatId,
-      agent_url: creative.formatId.agent_url ?? getAgentUrl(),
-    },
-  };
+  return creative.formatId
+    ? {
+      format_id: {
+        ...creative.formatId,
+        agent_url: creative.formatId.agent_url ?? getAgentUrl(),
+      },
+    }
+    : {};
 }
 
 function creativeMatchesAnyFormatId(
@@ -7239,10 +7325,6 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       ...(hasMore && { cursor: encodeCreativeCursor(pageEnd) }),
     },
     creatives: pageCreatives.map(c => {
-      const formatId = {
-        ...c.formatId,
-        agent_url: c.formatId.agent_url ?? agentUrl,
-      };
       const base: Record<string, unknown> = {
         creative_id: c.creativeId,
         ...(c.formatKind
@@ -7250,14 +7332,21 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
             format_kind: c.formatKind,
             ...(c.formatOptionRef && { format_option_ref: c.formatOptionRef }),
           }
-          : { format_id: formatId }),
+          : c.formatId
+            ? {
+              format_id: {
+                ...c.formatId,
+                agent_url: c.formatId.agent_url ?? agentUrl,
+              },
+            }
+            : {}),
         name: c.name ?? c.creativeId,
         status: c.status,
         created_date: c.syncedAt,
         updated_date: c.syncedAt,
         ...(c.manifest?.assets && (!selectedFields || selectedFields.has('assets')) && { assets: c.manifest.assets }),
       };
-      if (emitPricing && c.formatId?.id && (!selectedFields || selectedFields.has('pricing_options'))) {
+      if (emitPricing && (c.formatKind || c.formatId?.id) && (!selectedFields || selectedFields.has('pricing_options'))) {
         base.pricing_options = [getCreativePricing(req.account!, c)];
       }
       if (req.include_snapshot) {
@@ -7307,11 +7396,12 @@ function decodeTransformerOptionCursor(cursor: string | undefined): number | nul
 function getCreativePricing(account: { account_id?: string }, creative: import('./types.js').CreativeState) {
   // Two sandbox rate cards: "premium" accounts get lower CPM
   const isPremium = account.account_id?.includes('premium');
-  const isVideo = creative.formatId.id.includes('video') || creative.formatId.id.includes('vast');
+  const pricingIdentity = creative.formatKind ?? creative.formatId?.id ?? 'creative';
+  const isVideo = pricingIdentity.includes('video') || pricingIdentity.includes('vast');
   const cpm = isPremium
     ? (isVideo ? 0.25 : 0.10)
     : (isVideo ? 0.50 : 0.20);
-  const pricingOptionId = `po_${creative.formatId.id}_cpm`;
+  const pricingOptionId = `po_${pricingIdentity}_cpm`;
   return {
     pricing_option_id: pricingOptionId,
     model: 'cpm',
@@ -8481,12 +8571,7 @@ export async function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingCon
           device_class: devices[i % devices.length],
         },
         manifest: {
-          ...(creative.formatKind
-            ? {
-                format_kind: creative.formatKind,
-                ...(creative.formatOptionRef && { format_option_ref: creative.formatOptionRef }),
-              }
-            : { format_id: creative.formatId || { agent_url: agentUrl, id: 'display_300x250' } }),
+          ...storedCreativeFormatRecord(creative),
           assets: {
             headline: { asset_type: 'text', content: `Generated variant ${i + 1} for ${creative.name || cid}` },
             hero_image: { asset_type: 'image', url: `https://cdn.example.com/generated/${cid}_v${i}.jpg`, width: 300, height: 250 },
@@ -8502,12 +8587,7 @@ export async function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingCon
     creatives.push({
       creative_id: cid,
       media_buy_id: creativeToBuy.get(cid) || matchingBuys[0]?.mediaBuyId,
-      ...(creative.formatKind
-        ? {
-            format_kind: creative.formatKind,
-            ...(creative.formatOptionRef && { format_option_ref: creative.formatOptionRef }),
-          }
-        : { format_id: creative.formatId }),
+      ...storedCreativeFormatRecord(creative),
       totals: {
         impressions: totalImpressions,
         spend: totalSpend,
@@ -8884,19 +8964,26 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     }
 
     const requestedTarget = targetIds[0];
-    const resolved = requestedTarget
-      ? resolveTarget(requestedTarget, targetField())
-      : creative.formatKind
-        ? {
-            target: {
-              requested: { agent_url: agentUrl, id: creative.formatKind },
-              formatKind: creative.formatKind as NonNullable<AdcpCreativeManifest['format_kind']>,
-            },
-          }
-        : resolveTarget(creative.formatId, targetField());
+    let resolved;
+    if (requestedTarget) {
+      resolved = resolveTarget(requestedTarget, targetField());
+    } else if (creative.formatKind) {
+      resolved = {
+        target: {
+          requested: { agent_url: agentUrl, id: creative.formatKind },
+          formatKind: creative.formatKind as NonNullable<AdcpCreativeManifest['format_kind']>,
+        },
+      };
+    } else if (creative.formatId) {
+      resolved = resolveTarget(creative.formatId, targetField());
+    } else {
+      return buildCreativeCompleted({
+        errors: [{ code: 'INVALID_REQUEST', message: `Creative "${req.creative_id}" has no format identity.` }],
+      });
+    }
     if (resolved.error) return buildCreativeCompleted({ errors: [resolved.error] });
     const { w, h } = getDimensions(resolved.target!.format);
-    const targetLabel = requestedTarget?.id ?? creative.formatKind ?? creative.formatId.id;
+    const targetLabel = requestedTarget?.id ?? creative.formatKind ?? creative.formatId?.id ?? 'unknown';
 
     const builtManifest = buildManifest(resolved.target!, `<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(targetLabel)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`);
     const base = {

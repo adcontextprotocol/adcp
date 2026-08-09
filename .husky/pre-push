@@ -46,7 +46,7 @@ DOC_PATHS='^(docs/|dist/docs/|mintlify-docs/|docs\.json|mint\.json|README\.md|se
 
 CHANGED=$(git diff --name-only "$RANGE" 2>/dev/null || echo "")
 
-STORYBOARD_PATHS='^(server/src/training-agent/|server/src/services/hosted-compliance-version\.ts|server/tests/manual/run-storyboards\.ts|static/compliance/source/|dist/compliance/|scripts/build-compliance\.cjs|scripts/overlay-compliance-cache\.sh|scripts/patch-sdk-rc10\.mjs|scripts/run-storyboards-matrix\.sh|scripts/run-storyboards-3-0-compat\.sh|package\.json|package-lock\.json)'
+STORYBOARD_PATHS='^(server/src/training-agent/|server/src/services/hosted-compliance-version\.ts|server/tests/manual/run-storyboards\.ts|static/compliance/source/|dist/compliance/|scripts/build-compliance\.cjs|scripts/overlay-compliance-cache\.sh|scripts/patch-sdk-rc11\.mjs|scripts/run-storyboards-matrix\.sh|scripts/run-storyboards-3-0-compat\.sh|package\.json|package-lock\.json)'
 
 if echo "$CHANGED" | grep -Eq "$STORYBOARD_PATHS"; then
   echo "🔍 Training-agent or compliance source changed — running storyboard matrix (~3min)..."
