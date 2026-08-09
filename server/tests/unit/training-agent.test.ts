@@ -3650,17 +3650,68 @@ describe('create_media_buy handler', () => {
           publisher_domain: 'publisher.example',
           format_option_id: projected.format_option_id,
         }],
+        // Informational echo only: option refs have protocol precedence.
+        format_kind: 'audio_hosted',
       }],
     });
 
     expect(publisherScoped.isError).not.toBe(true);
     const publisherPackage = (publisherScoped.result.packages as Array<{
       formats_to_provide?: Array<{ format_option_id?: string }>;
+      format_ids?: Array<Record<string, unknown>>;
+      format_option_refs?: Array<Record<string, unknown>>;
+      format_kind?: string;
     }>)[0];
     expect(publisherPackage.formats_to_provide?.map(format => format.format_option_id)).toEqual([
       'stable_publisher_mrec',
     ]);
+    expect(publisherPackage.format_option_refs).toEqual([{
+      scope: 'publisher',
+      publisher_domain: 'publisher.example',
+      format_option_id: 'stable_publisher_mrec',
+    }]);
+    expect(publisherPackage.format_ids).toEqual([legacyRef]);
+    expect(publisherPackage.format_kind).toBe('audio_hosted');
+    const mediaBuyId = publisherScoped.result.media_buy_id as string;
+    const persistedPackage = (await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode)))
+      .mediaBuys.get(mediaBuyId)?.packages[0];
+    expect(persistedPackage?.formatIds).toEqual([legacyRef]);
+    expect(persistedPackage?.formatOptionRefs).toEqual(publisherPackage.format_option_refs);
+    expect(persistedPackage?.formatKind).toBe('audio_hosted');
+    // Each declaration is projected once while building the product index;
+    // alias recovery reuses its indexed legacy tuple.
     expect(projectV1ProductToV2Spy).toHaveBeenCalledTimes(3);
+
+    const added = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      new_packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 5000,
+        format_option_refs: [{
+          scope: 'publisher',
+          publisher_domain: 'publisher.example',
+          format_option_id: projected.format_option_id,
+        }],
+      }],
+    });
+    expect(added.isError).not.toBe(true);
+    const addedPackage = (added.result.packages as Array<{
+      package_id?: string;
+      format_ids?: Array<Record<string, unknown>>;
+      format_option_refs?: Array<Record<string, unknown>>;
+    }>).find(pkg => pkg.package_id === 'pkg-1')!;
+    expect(addedPackage.format_ids).toEqual([legacyRef]);
+    expect(addedPackage.format_option_refs).toEqual([{
+      scope: 'publisher',
+      publisher_domain: 'publisher.example',
+      format_option_id: 'stable_publisher_mrec',
+    }]);
+    const addedPersistedPackage = (await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode)))
+      .mediaBuys.get(mediaBuyId)?.packages[1];
+    expect(addedPersistedPackage?.formatIds).toEqual([legacyRef]);
+    expect(addedPersistedPackage?.formatOptionRefs).toEqual(addedPackage.format_option_refs);
 
     const ambiguousProductScope = await simulateCallTool(server, 'create_media_buy', {
       account,
@@ -3703,6 +3754,303 @@ describe('create_media_buy handler', () => {
     });
     expect(rejected.isError).toBe(true);
     expect(rejected.result.code).toBe('UNSUPPORTED_FEATURE');
+  });
+
+  it('reverses SDK migrated aliases for legacy-only products on create and add-package', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'legacy-only-package.example' }, operator: 'legacy-only-package.example' };
+    const productId = 'legacy_only_package_product';
+    const pricingOptionId = 'legacy_only_package_cpm';
+    const legacyRef = {
+      agent_url: 'https://creative.adcontextprotocol.org/',
+      id: 'display_300x250_image',
+      width: 300,
+      height: 250,
+    };
+    const informationalLegacyRef = {
+      agent_url: 'https://legacy-info.example/',
+      id: 'informational_legacy_only',
+    };
+    const migratedRef = projectV1ProductToV2({
+      product_id: productId,
+      name: 'Legacy-only package',
+      description: 'Legacy-only projection probe',
+      format_ids: [legacyRef],
+    }).v2.format_options![0]!;
+
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: account.brand.domain },
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          name: 'Legacy-only package',
+          description: 'No canonical format declarations',
+          delivery_type: 'guaranteed',
+          channels: ['display'],
+          format_ids: [legacyRef],
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: account.brand.domain },
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 12 },
+      },
+    });
+
+    const wrongPublisherScope = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: account.brand.domain },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 10000,
+        format_option_refs: [{
+          scope: 'publisher',
+          publisher_domain: 'wrong-publisher.example',
+          format_option_id: migratedRef.format_option_id,
+        }],
+      }],
+    });
+    expect(wrongPublisherScope.isError).toBe(true);
+    expect(wrongPublisherScope.result.code).toBe('UNSUPPORTED_FEATURE');
+    expect(wrongPublisherScope.result.message).toContain('product scope');
+
+    const create = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: account.brand.domain },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: migratedRef.format_option_id }],
+        format_ids: [informationalLegacyRef],
+      }],
+    });
+    expect(create.isError).not.toBe(true);
+    const createdPackage = (create.result.packages as Array<Record<string, unknown>>)[0];
+    expect(createdPackage.format_ids).toEqual([informationalLegacyRef]);
+    expect(createdPackage).not.toHaveProperty('format_option_refs');
+    expect(createdPackage).not.toHaveProperty('formats_to_provide');
+
+    const mediaBuyId = create.result.media_buy_id as string;
+    const update = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      new_packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 5000,
+        format_option_refs: [{ scope: 'product', format_option_id: migratedRef.format_option_id }],
+        format_ids: [informationalLegacyRef],
+      }],
+    });
+    expect(update.isError).not.toBe(true);
+    const addedPackage = (update.result.packages as Array<Record<string, unknown>>)
+      .find(pkg => pkg.package_id === 'pkg-1')!;
+    expect(addedPackage.format_ids).toEqual([informationalLegacyRef]);
+    expect(addedPackage).not.toHaveProperty('format_option_refs');
+    const persisted = (await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode)))
+      .mediaBuys.get(mediaBuyId)?.packages;
+    expect(persisted?.map(pkg => pkg.formatIds)).toEqual([
+      [informationalLegacyRef],
+      [informationalLegacyRef],
+    ]);
+    expect(persisted?.map(pkg => pkg.selectedLegacyFormatIds)).toEqual([[legacyRef], [legacyRef]]);
+    expect(persisted?.every(pkg => pkg.formatOptionRefs === undefined)).toBe(true);
+  });
+
+  it('never persists migrated aliases and only rejects cross-declaration alias collisions', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'unaddressable-format.example' }, operator: 'unaddressable-format.example' };
+    const legacyRef = {
+      agent_url: 'https://creative.adcontextprotocol.org/',
+      id: 'display_300x250_image',
+      width: 300,
+      height: 250,
+    };
+    const migratedId = projectV1ProductToV2({
+      product_id: 'projection_probe',
+      name: 'Projection probe',
+      description: 'Projection probe',
+      format_ids: [legacyRef],
+    }).v2.format_options![0]!.format_option_id;
+    if (!migratedId) throw new Error('Expected migrated legacy option id');
+    const seedProduct = async (
+      productId: string,
+      pricingOptionId: string,
+      formatOptionId?: string,
+      crossDeclarationCollision = false,
+      publisherNamespacedCollision = false,
+    ) => {
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: { domain: account.brand.domain },
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            name: productId,
+            description: 'Legacy-linked declaration',
+            delivery_type: 'guaranteed',
+            channels: ['display'],
+            format_ids: [legacyRef],
+            format_options: publisherNamespacedCollision
+              ? [{
+                format_option_id: formatOptionId,
+                publisher_domain: 'publisher-a.example',
+                format_kind: 'image',
+                params: { width: 300, height: 250 },
+              }, {
+                format_option_id: 'publisher_b_stable_declaration',
+                publisher_domain: 'publisher-b.example',
+                format_kind: 'image',
+                params: { width: 300, height: 250 },
+                v1_format_ref: [legacyRef],
+              }]
+              : crossDeclarationCollision
+              ? [{
+                format_option_id: formatOptionId,
+                format_kind: 'image',
+                params: { width: 300, height: 250 },
+              }, {
+                format_option_id: 'different_stable_declaration',
+                format_kind: 'image',
+                params: { width: 300, height: 250 },
+                v1_format_ref: [legacyRef],
+              }]
+              : [{
+                ...(formatOptionId && { format_option_id: formatOptionId }),
+                format_kind: 'image',
+                params: { width: 300, height: 250 },
+                v1_format_ref: [legacyRef],
+              }],
+          },
+        },
+      });
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: { domain: account.brand.domain },
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 12 },
+        },
+      });
+    };
+
+    const productId = 'unaddressable_legacy_link';
+    const pricingOptionId = 'unaddressable_legacy_link_cpm';
+    await seedProduct(productId, pricingOptionId);
+    const create = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: account.brand.domain },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: migratedId }],
+      }],
+    });
+    expect(create.isError).not.toBe(true);
+    const createdPackage = (create.result.packages as Array<Record<string, unknown>>)[0];
+    expect(createdPackage.format_ids).toEqual([legacyRef]);
+    expect(createdPackage).not.toHaveProperty('format_option_refs');
+    const mediaBuyId = create.result.media_buy_id as string;
+
+    const update = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      new_packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 5000,
+        format_option_refs: [{ scope: 'product', format_option_id: migratedId }],
+      }],
+    });
+    expect(update.isError).not.toBe(true);
+    const persisted = (await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode)))
+      .mediaBuys.get(mediaBuyId)?.packages;
+    expect(persisted?.map(pkg => pkg.formatIds)).toEqual([[legacyRef], [legacyRef]]);
+    expect(persisted?.every(pkg => pkg.formatOptionRefs === undefined)).toBe(true);
+
+    const selfAliasProductId = 'stable_self_alias';
+    const selfAliasPricingId = 'stable_self_alias_cpm';
+    await seedProduct(selfAliasProductId, selfAliasPricingId, migratedId);
+    const selfAlias = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: account.brand.domain },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: selfAliasProductId,
+        pricing_option_id: selfAliasPricingId,
+        budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: migratedId }],
+      }],
+    });
+    expect(selfAlias.isError).not.toBe(true);
+    expect((selfAlias.result.packages as Array<Record<string, unknown>>)[0]?.format_option_refs).toEqual([
+      { scope: 'product', format_option_id: migratedId },
+    ]);
+
+    const collisionProductId = 'cross_declaration_alias_collision';
+    const collisionPricingId = 'cross_declaration_alias_collision_cpm';
+    await seedProduct(collisionProductId, collisionPricingId, migratedId, true);
+    const collision = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: account.brand.domain },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: collisionProductId,
+        pricing_option_id: collisionPricingId,
+        budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: migratedId }],
+      }],
+    });
+    expect(collision.isError).toBe(true);
+    expect(collision.result.code).toBe('UNSUPPORTED_FEATURE');
+    expect(collision.result.message).toContain('collides with a migrated legacy alias');
+
+    const namespacedProductId = 'publisher_namespaced_alias_collision';
+    const namespacedPricingId = 'publisher_namespaced_alias_collision_cpm';
+    await seedProduct(namespacedProductId, namespacedPricingId, migratedId, false, true);
+    const namespaced = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: account.brand.domain },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: namespacedProductId,
+        pricing_option_id: namespacedPricingId,
+        budget: 10000,
+        format_option_refs: [{
+          scope: 'publisher',
+          publisher_domain: 'publisher-b.example',
+          format_option_id: migratedId,
+        }],
+      }],
+    });
+    expect(namespaced.isError).not.toBe(true);
+    expect((namespaced.result.packages as Array<Record<string, unknown>>)[0]?.format_option_refs).toEqual([{
+      scope: 'publisher',
+      publisher_domain: 'publisher-b.example',
+      format_option_id: 'publisher_b_stable_declaration',
+    }]);
   });
 
   it('echoes satisfied direct canonical format selectors on create and read surfaces', async () => {
@@ -5369,6 +5717,55 @@ describe('sync_creatives handler', () => {
     expect((previewed.previews as unknown[])).toHaveLength(1);
   });
 
+  it('normalizes a same-ID legacy creative to canonical identity on resync', async () => {
+    const account = { brand: { domain: 'canonical-resync.example' }, operator: 'canonical-resync.example' };
+    const legacyFormatId = { agent_url: 'https://legacy.example', id: 'display_image' };
+    const { result: legacySynced } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_identity_transition',
+        format_id: legacyFormatId,
+        name: 'Legacy creative',
+        assets: { image_main: { asset_type: 'image', url: 'https://cdn.example/legacy.png' } },
+      }],
+    });
+    expect(legacySynced.errors).toBeUndefined();
+    const legacyState = (await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode))).creatives.get('cr_identity_transition');
+    expect(legacyState?.formatId).toEqual(legacyFormatId);
+    expect(legacyState?.manifest).toMatchObject({ format_id: legacyFormatId });
+
+    const { result: synced } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_identity_transition',
+        format_kind: 'image',
+        name: 'Canonical creative',
+        manifest: {
+          format_id: legacyFormatId,
+          assets: { image_main: { asset_type: 'image', url: 'https://cdn.example/canonical.png' } },
+          provenance: { source: 'buyer' },
+          rights: [{ kind: 'territory', territories: ['US'] }],
+          brand: { domain: 'canonical-resync.example' },
+          ext: { source_system: 'buyer-dam' },
+        },
+      }],
+    });
+    expect(synced.errors).toBeUndefined();
+
+    const persisted = (await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode))).creatives.get('cr_identity_transition');
+    expect(persisted?.formatKind).toBe('image');
+    expect(persisted?.formatId).toBeUndefined();
+    expect(persisted?.manifest).toMatchObject({
+      format_kind: 'image',
+      assets: { image_main: { asset_type: 'image', url: 'https://cdn.example/canonical.png' } },
+      provenance: { source: 'buyer' },
+      rights: [{ kind: 'territory', territories: ['US'] }],
+      brand: { domain: 'canonical-resync.example' },
+      ext: { source_system: 'buyer-dam' },
+    });
+    expect(persisted?.manifest?.format_id).toBeUndefined();
+  });
+
   it('returns "updated" action for existing creative', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const args = {
@@ -5403,6 +5800,17 @@ describe('sync_creatives handler', () => {
     expect(isError).toBe(true);
     expect(result.code).toBeDefined();
     expect(result.message).toContain('creative_id is required');
+  });
+
+  it.each([
+    ['both branches', { format_kind: 'image', format_id: { agent_url: 'https://legacy.example', id: 'display_image' } }],
+    ['an unknown canonical kind', { format_kind: 'not_a_canonical_format' }],
+    ['invalid legacy parameters', { format_id: { agent_url: 'https://legacy.example', id: 'display_image', pixel_ratio: 2 } }],
+  ])('rejects sync_creatives identity with %s', async (_label, identity) => {
+    const { result } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      creatives: [{ creative_id: 'cr_invalid_identity', name: 'Invalid identity', assets: {}, ...identity }],
+    });
+    expect(result.code).toBe('INVALID_REQUEST');
   });
 
   it('returns error for empty creatives array', async () => {
@@ -5456,7 +5864,7 @@ describe('sync_creatives handler', () => {
     expect(creatives?.[0]?.creative_id).toBe('cr_remote_format');
   });
 
-  it('validates a local format_id when agent_url is omitted', async () => {
+  it('rejects a legacy format_id when required agent_url is omitted', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'sync_creatives', {
       creatives: [{
@@ -5465,7 +5873,7 @@ describe('sync_creatives handler', () => {
       }],
     });
     expect(result.code).toBe('INVALID_REQUEST');
-    expect(result.message).toContain('Unknown format_id');
+    expect(result.message).toContain('invalid legacy format_id');
   });
 
   it('treats a trailing-slash / uppercase local agent_url as local for format validation', async () => {
@@ -7470,7 +7878,67 @@ describe('update_media_buy handler', () => {
     expect(updateResult.media_buy_status).toBe('pending_creatives');
   });
 
-  it('accepts inline package creatives on create and update without sync_creatives', async () => {
+  it('rejects inline package creatives without canonical or legacy format identity', async () => {
+    const product = buildCatalog()[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'inline-identity-required.example' }, operator: 'inline-identity-required.example' };
+
+    const { result } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'create_media_buy', {
+      account,
+      brand: { domain: 'inline-identity-required.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+        creatives: [{ creative_id: 'inline_without_identity', name: 'Missing identity', assets: {} }],
+      }],
+    });
+
+    expect(result).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      field: 'packages[0].creatives[0]',
+    });
+    expect(result.message).toMatch(/requires exactly one of format_id or format_kind/);
+  });
+
+  it.each([
+    ['a string format_id', { format_id: 'not-an-object' }],
+    ['an empty format_id', { format_id: {} }],
+    ['an empty format_kind', { format_kind: '' }],
+    ['an unknown format_kind', { format_kind: 'not_a_canonical_format' }],
+    ['both identity branches', { format_kind: 'image', format_id: { agent_url: 'https://legacy.example', id: 'display_image' } }],
+    ['an unpaired legacy width', { format_id: { agent_url: 'https://legacy.example', id: 'display_image', width: 300 } }],
+    ['fractional legacy dimensions', { format_id: { agent_url: 'https://legacy.example', id: 'display_image', width: 300.5, height: 250 } }],
+    ['a non-positive legacy pixel ratio', { format_id: { agent_url: 'https://legacy.example', id: 'display_image', width: 300, height: 250, pixel_ratio: -1 } }],
+    ['a legacy pixel ratio without dimensions', { format_id: { agent_url: 'https://legacy.example', id: 'display_image', pixel_ratio: 2 } }],
+    ['a whitespace-padded legacy agent URL', { format_id: { agent_url: ' https://legacy.example ', id: 'display_image' } }],
+  ])('rejects inline package creatives with %s', async (_label, identity) => {
+    const product = buildCatalog()[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'inline-invalid-identity.example' }, operator: 'inline-invalid-identity.example' };
+
+    const { result } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'create_media_buy', {
+      account,
+      brand: { domain: 'inline-invalid-identity.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+        creatives: [{ creative_id: 'inline_invalid_identity', name: 'Invalid identity', assets: {}, ...identity }],
+      }],
+    });
+
+    expect(result).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      field: 'packages[0].creatives[0]',
+    });
+  });
+
+  it('accepts canonical inline package creatives on create and update without sync_creatives', async () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
@@ -7486,21 +7954,35 @@ describe('update_media_buy handler', () => {
         product_id: product.product_id,
         pricing_option_id: pricingOptions[0].pricing_option_id,
         budget: 10000,
-        creatives: [{ creative_id: 'inline_cr_v1', name: 'Inline v1' }],
+        creatives: [{ creative_id: 'inline_cr_v1', name: 'Inline v1', format_kind: 'image', assets: {} }],
       }],
     });
     expect(createResult.code).toBeUndefined();
     const mediaBuyId = createResult.media_buy_id as string;
     const pkgId = ((createResult.packages as Array<Record<string, unknown>>)[0]).package_id as string;
+    const session = await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode));
+    expect(session.creatives.get('inline_cr_v1')).toMatchObject({ formatKind: 'image' });
+    expect(session.creatives.get('inline_cr_v1')?.formatId).toBeUndefined();
 
     const { result: updateResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
       account,
       media_buy_id: mediaBuyId,
-      packages: [{ package_id: pkgId, creatives: [{ creative_id: 'inline_cr_v2', name: 'Inline v2' }] }],
+      packages: [{ package_id: pkgId, creatives: [{ creative_id: 'inline_cr_v2', name: 'Inline v2', format_kind: 'image', assets: {} }] }],
     });
     expect(updateResult.code).toBeUndefined();
     expect(updateResult.media_buy_id).toBe(mediaBuyId);
     expect(((updateResult.affected_packages as Array<Record<string, unknown>>)[0]).package_id).toBe(pkgId);
+    const updatedSession = await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode));
+    expect(updatedSession.creatives.get('inline_cr_v2')).toMatchObject({ formatKind: 'image' });
+    expect(updatedSession.creatives.get('inline_cr_v2')?.formatId).toBeUndefined();
+
+    const { result: listedResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'list_creatives', {
+      account,
+      creative_ids: ['inline_cr_v2'],
+    });
+    const listedCreative = (listedResult.creatives as Array<Record<string, unknown>>)[0];
+    expect(listedCreative).toMatchObject({ creative_id: 'inline_cr_v2', format_kind: 'image' });
+    expect(listedCreative.format_id).toBeUndefined();
 
     const { result: buyResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'get_media_buys', {
       account,
@@ -7511,6 +7993,126 @@ describe('update_media_buy handler', () => {
     const approvals = pkg.creative_approvals as Array<Record<string, unknown>>;
     expect(approvals[0].creative_id).toBe('inline_cr_v2');
     expect(approvals[0].approval_status).toBe('approved');
+  });
+
+  it('rejects invalid inline identity atomically on update_media_buy', async () => {
+    const product = buildCatalog()[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'inline-invalid-update.example' }, operator: 'inline-invalid-update.example' };
+    const { result: createResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'create_media_buy', {
+      account,
+      brand: { domain: 'inline-invalid-update.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [
+        { product_id: product.product_id, pricing_option_id: pricingOptions[0].pricing_option_id, budget: 10000 },
+        { product_id: product.product_id, pricing_option_id: pricingOptions[0].pricing_option_id, budget: 10000 },
+      ],
+    });
+    const mediaBuyId = createResult.media_buy_id as string;
+    const createdPackages = createResult.packages as Array<Record<string, unknown>>;
+    const validPkgId = createdPackages[0].package_id as string;
+    const invalidPkgId = createdPackages[1].package_id as string;
+
+    const { result: updateResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [
+        { package_id: validPkgId, budget: 20000 },
+        {
+          package_id: invalidPkgId,
+          creatives: [{
+            creative_id: 'inline_invalid_update',
+            name: 'Invalid update creative',
+            format_id: { agent_url: 'https://legacy.example', id: 'display_image', width: 300 },
+            assets: {},
+          }],
+        },
+      ],
+    });
+    expect(updateResult).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      field: `packages[${invalidPkgId}].creatives[0]`,
+    });
+    const session = await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode));
+    expect(session.creatives.has('inline_invalid_update')).toBe(false);
+    expect(session.mediaBuys.get(mediaBuyId)?.packages.find(pkg => pkg.packageId === validPkgId)?.budget).toBe(10000);
+  });
+
+  it('keeps legacy inline identity at the facade and removes it on a same-ID canonical update', async () => {
+    const product = buildCatalog()[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'inline-legacy-transition.example' }, operator: 'inline-legacy-transition.example' };
+    const legacyFormatId = { agent_url: 'https://legacy.example', id: 'display_image' };
+    const legacyOptionRef = { scope: 'publisher', publisher_domain: 'legacy.example', format_option_id: 'display_image' };
+
+    const { result: createResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'create_media_buy', {
+      account,
+      brand: { domain: 'inline-legacy-transition.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+        creatives: [{
+          creative_id: 'inline_identity_transition',
+          name: 'Legacy inline creative',
+          format_id: legacyFormatId,
+          format_option_ref: legacyOptionRef,
+          assets: { image_main: { asset_type: 'image', url: 'https://cdn.example/legacy.png' } },
+        }],
+      }],
+    });
+    expect(createResult.code).toBeUndefined();
+    const mediaBuyId = createResult.media_buy_id as string;
+    const pkgId = ((createResult.packages as Array<Record<string, unknown>>)[0]).package_id as string;
+    const legacyState = (await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode))).creatives.get('inline_identity_transition');
+    expect(legacyState?.formatId).toEqual(legacyFormatId);
+    expect(legacyState?.formatOptionRef).toEqual(legacyOptionRef);
+    expect(legacyState?.formatKind).toBeUndefined();
+    expect(legacyState?.manifest).toMatchObject({ format_id: legacyFormatId, format_option_ref: legacyOptionRef });
+
+    const { result: legacyListedResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'list_creatives', {
+      account,
+      creative_ids: ['inline_identity_transition'],
+    });
+    expect((legacyListedResult.creatives as Array<Record<string, unknown>>)[0]).toMatchObject({
+      creative_id: 'inline_identity_transition',
+      format_id: legacyFormatId,
+      format_option_ref: legacyOptionRef,
+    });
+
+    const { result: updateResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{
+        package_id: pkgId,
+        creatives: [{
+          creative_id: 'inline_identity_transition',
+          name: 'Canonical inline creative',
+          format_kind: 'image',
+        }],
+      }],
+    });
+    expect(updateResult.code).toBeUndefined();
+
+    const canonicalState = (await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode))).creatives.get('inline_identity_transition');
+    expect(canonicalState?.formatKind).toBe('image');
+    expect(canonicalState?.formatId).toBeUndefined();
+    expect(canonicalState?.manifest).toMatchObject({
+      format_kind: 'image',
+      assets: { image_main: { asset_type: 'image', url: 'https://cdn.example/legacy.png' } },
+    });
+    expect(canonicalState?.manifest?.format_id).toBeUndefined();
+
+    const { result: listedResult } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'list_creatives', {
+      account,
+      creative_ids: ['inline_identity_transition'],
+    });
+    const listedCreative = (listedResult.creatives as Array<Record<string, unknown>>)[0];
+    expect(listedCreative).toMatchObject({ creative_id: 'inline_identity_transition', format_kind: 'image' });
+    expect(listedCreative.format_id).toBeUndefined();
   });
 
   it('limits affected_packages to packages changed by inline creative updates', async () => {
@@ -7530,13 +8132,13 @@ describe('update_media_buy handler', () => {
           product_id: product.product_id,
           pricing_option_id: pricingOptions[0].pricing_option_id,
           budget: 10000,
-          creatives: [{ creative_id: 'inline_affected_pkg0_v1', name: 'Inline package 0 v1' }],
+          creatives: [{ creative_id: 'inline_affected_pkg0_v1', name: 'Inline package 0 v1', format_kind: 'image', assets: {} }],
         },
         {
           product_id: product.product_id,
           pricing_option_id: pricingOptions[0].pricing_option_id,
           budget: 10000,
-          creatives: [{ creative_id: 'inline_affected_pkg1_v1', name: 'Inline package 1 v1' }],
+          creatives: [{ creative_id: 'inline_affected_pkg1_v1', name: 'Inline package 1 v1', format_kind: 'image', assets: {} }],
         },
       ],
     });
@@ -7552,7 +8154,7 @@ describe('update_media_buy handler', () => {
       media_buy_id: mediaBuyId,
       packages: [{
         package_id: changedPkgId,
-        creatives: [{ creative_id: 'inline_affected_pkg1_v2', name: 'Inline package 1 v2' }],
+        creatives: [{ creative_id: 'inline_affected_pkg1_v2', name: 'Inline package 1 v2', format_kind: 'image', assets: {} }],
       }],
     });
 

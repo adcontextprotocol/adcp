@@ -22,6 +22,10 @@ import {
   type AudienceStatus,
 } from '@adcp/sdk/server';
 import {
+  packageRefsForFormatOptions,
+  projectV1ProductToV2,
+} from '@adcp/sdk/v2/projection';
+import {
   handleGetProducts,
   handleCreateMediaBuy,
   handleUpdateMediaBuy,
@@ -167,6 +171,76 @@ function translateV5Result<T extends object>(result: unknown, options: { allowAd
     });
   }
   return result as T;
+}
+
+/** The DecisioningPlatform contract is canonical even when the outer SDK
+ * negotiates a legacy wire. Keep legacy selector echo metadata in our state,
+ * but let the SDK reconstruct the 3.0 response from stable canonical refs.
+ * Remove this adapter when adcontextprotocol/adcp-client#2497 ships. */
+function canonicalMediaBuyPlatformResult<T>(result: T): T {
+  const withoutLegacyPackageSelector = (value: unknown): unknown => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const {
+      format_ids: _legacyFormatIds,
+      __selected_legacy_format_ids: _selectedLegacyFormatIds,
+      ...canonical
+    } = value as Record<string, unknown>;
+    const legacyFormatIds = Array.isArray(_legacyFormatIds) ? _legacyFormatIds : [];
+    const selectedLegacyFormatIds = Array.isArray(_selectedLegacyFormatIds)
+      ? _selectedLegacyFormatIds
+      : legacyFormatIds;
+    if (
+      selectedLegacyFormatIds.length > 0
+      && (!Array.isArray(canonical.format_option_refs) || canonical.format_option_refs.length === 0)
+    ) {
+      const productId = typeof canonical.product_id === 'string'
+        ? canonical.product_id
+        : 'legacy_package_projection';
+      const projected = projectV1ProductToV2({
+        product_id: productId,
+        name: productId,
+        description: 'Ephemeral native-platform legacy package projection',
+        format_ids: selectedLegacyFormatIds as Parameters<typeof projectV1ProductToV2>[0]['format_ids'],
+      });
+      const options = projected.v2.format_options ?? [];
+      const optionIds = options.flatMap(option =>
+        typeof option.format_option_id === 'string' ? [option.format_option_id] : []
+      );
+      if (projected.diagnostics.length === 0 && optionIds.length === selectedLegacyFormatIds.length) {
+        return {
+          ...canonical,
+          ...packageRefsForFormatOptions(
+            projected.v2 as unknown as Parameters<typeof packageRefsForFormatOptions>[0],
+            optionIds,
+          ),
+          ...(!Array.isArray(canonical.formats_to_provide) && { formats_to_provide: options }),
+        };
+      }
+    }
+    return canonical;
+  };
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return result;
+  const record = result as Record<string, unknown>;
+  const next = { ...record };
+  if (Array.isArray(record.packages)) {
+    next.packages = record.packages.map(withoutLegacyPackageSelector);
+  }
+  if (Array.isArray(record.affected_packages)) {
+    next.affected_packages = record.affected_packages.map(withoutLegacyPackageSelector);
+  }
+  if (Array.isArray(record.media_buys)) {
+    next.media_buys = record.media_buys.map(mediaBuy => {
+      if (!mediaBuy || typeof mediaBuy !== 'object' || Array.isArray(mediaBuy)) return mediaBuy;
+      const buy = mediaBuy as Record<string, unknown>;
+      return {
+        ...buy,
+        ...(Array.isArray(buy.packages) && {
+          packages: buy.packages.map(withoutLegacyPackageSelector),
+        }),
+      };
+    });
+  }
+  return next as T;
 }
 
 /**
@@ -318,7 +392,7 @@ export class TrainingSalesPlatform
           { task_id: submitted.task_id },
         ) as any;
       }
-      return translateV5Result(v5Result);
+      return translateV5Result(canonicalMediaBuyPlatformResult(v5Result));
     },
 
     updateMediaBuy: async (buyId, patch, ctx) => {
@@ -329,7 +403,7 @@ export class TrainingSalesPlatform
         ? { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
         : { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>) };
       const v5Result = await handleUpdateMediaBuy(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
-      return translateV5Result(v5Result);
+      return translateV5Result(canonicalMediaBuyPlatformResult(v5Result));
     },
 
     getMediaBuyDelivery: async (filter, ctx) => {
@@ -348,7 +422,7 @@ export class TrainingSalesPlatform
         ? { ...(req as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
         : req;
       const result = await handleGetMediaBuys(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
-      return translateV5Result(result);
+      return translateV5Result(canonicalMediaBuyPlatformResult(result));
     },
 
     listCreativeFormatsLegacy: async (req, ctx) => {

@@ -20,6 +20,7 @@ const LEGACY_FORMAT_BOUNDARIES = new Set([
   'server/src/training-agent/product-factory.ts',
   'server/src/training-agent/task-handlers.ts',
   'server/src/training-agent/types.ts',
+  'server/src/training-agent/v6-sales-platform.ts',
   'server/src/training-agent/tenants/creative-tools.ts',
   'server/src/training-agent/tenants/list-transformers-tool.ts',
 ]);

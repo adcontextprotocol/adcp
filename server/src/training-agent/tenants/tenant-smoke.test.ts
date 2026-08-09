@@ -11,9 +11,17 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import type { TrainingContext } from '../types.js';
 import { clearAccountStore } from '../account-handlers.js';
-import { clearSessions, stopSessionCleanup } from '../state.js';
+import {
+  clearSessions,
+  flushDirtySessions,
+  getSession,
+  runWithSessionContext,
+  sessionKeyFromArgs,
+  stopSessionCleanup,
+} from '../state.js';
 import { clearSiSessions } from '../si-handlers.js';
 import { getAgentUrl } from '../config.js';
+import { projectV1ProductToV2 } from '@adcp/sdk/v2/projection';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
@@ -783,6 +791,212 @@ describe('tenant routing smoke', () => {
         expect.objectContaining({ format_id: localFormat }),
       );
       expect(builderRead.result?.structuredContent?.creative_manifest).not.toHaveProperty('format_kind');
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('round-trips legacy-only package selectors through the native sales facade', async () => {
+    stageLatestThreeZeroSchemaBundle();
+    const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'legacy-only-native-package.example' },
+        operator: 'pinnacle-agency.example',
+      };
+      const productId = 'legacy_only_native_package';
+      const pricingOptionId = 'legacy_only_native_package_cpm';
+      const legacyFormat = {
+        agent_url: 'https://creative.adcontextprotocol.org/',
+        id: 'display_300x250_image',
+        width: 300,
+        height: 250,
+      };
+
+      await callTenantTool(url, 70, 'comply_test_controller', {
+        adcp_version: '3.0',
+        account,
+        brand: account.brand,
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            name: 'Legacy-only native package',
+            description: 'No canonical declarations',
+            delivery_type: 'guaranteed',
+            channels: ['display'],
+            format_ids: [legacyFormat],
+          },
+        },
+      });
+      await callTenantTool(url, 71, 'comply_test_controller', {
+        adcp_version: '3.0',
+        account,
+        brand: account.brand,
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 12 },
+        },
+      });
+
+      const created = await callTenantTool(url, 72, 'create_media_buy', {
+        adcp_version: '3.0',
+        idempotency_key: 'legacy-only-native-create-0001',
+        account,
+        brand: account.brand,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          budget: 10_000,
+          format_ids: [legacyFormat],
+        }],
+      }) as {
+        result?: { structuredContent?: { media_buy_id?: string; packages?: Array<Record<string, unknown>>; adcp_error?: unknown } };
+      };
+      expect(created.result?.structuredContent?.adcp_error, JSON.stringify(created)).toBeUndefined();
+      expect(created.result?.structuredContent?.packages?.[0]?.format_ids).toEqual([legacyFormat]);
+      expect(created.result?.structuredContent?.packages?.[0]).not.toHaveProperty('format_option_refs');
+      const mediaBuyId = created.result?.structuredContent?.media_buy_id;
+
+      const updated = await callTenantTool(url, 73, 'update_media_buy', {
+        adcp_version: '3.0',
+        idempotency_key: 'legacy-only-native-update-0001',
+        account,
+        media_buy_id: mediaBuyId,
+        new_packages: [{
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          budget: 5_000,
+          format_ids: [legacyFormat],
+        }],
+      }) as {
+        result?: {
+          structuredContent?: {
+            packages?: Array<Record<string, unknown>>;
+            affected_packages?: Array<Record<string, unknown>>;
+            adcp_error?: unknown;
+          };
+        };
+      };
+      expect(updated.result?.structuredContent?.adcp_error, JSON.stringify(updated)).toBeUndefined();
+      const added = updated.result?.structuredContent?.packages?.find(pkg => pkg.package_id === 'pkg-1');
+      expect(added?.format_ids).toEqual([legacyFormat]);
+      expect(added).not.toHaveProperty('format_option_refs');
+      const affected = updated.result?.structuredContent?.affected_packages
+        ?.find(pkg => pkg.package_id === 'pkg-1');
+      expect(affected?.format_ids).toEqual([legacyFormat]);
+      expect(affected).not.toHaveProperty('format_option_refs');
+      expect(JSON.stringify(updated.result?.structuredContent)).not.toContain('__selected_legacy_format_ids');
+
+      const read = await callTenantTool(url, 74, 'get_media_buys', {
+        adcp_version: '3.0',
+        account,
+        media_buy_ids: [mediaBuyId],
+      }) as {
+        result?: { structuredContent?: { media_buys?: Array<{ packages?: Array<Record<string, unknown>> }> } };
+      };
+      const packages = read.result?.structuredContent?.media_buys?.[0]?.packages;
+      expect(packages).toHaveLength(2);
+      expect(packages?.every(pkg => JSON.stringify(pkg.format_ids) === JSON.stringify([legacyFormat]))).toBe(true);
+      expect(packages?.every(pkg => !Object.hasOwn(pkg, 'format_option_refs'))).toBe(true);
+      expect(JSON.stringify(read.result?.structuredContent)).not.toContain('__selected_legacy_format_ids');
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('projects the selected legacy tuple rather than its informational echo at the native sales boundary', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'selected-legacy-native-package.example' },
+        operator: 'pinnacle-agency.example',
+      };
+      const productId = 'selected_legacy_native_package';
+      const pricingOptionId = 'selected_legacy_native_package_cpm';
+      const mediaBuyId = 'mb_selected_legacy_native_package';
+      const selectedLegacyFormat = {
+        agent_url: 'https://creative.adcontextprotocol.org/',
+        id: 'display_300x250_image',
+        width: 300,
+        height: 250,
+      };
+      const informationalLegacyFormat = {
+        agent_url: 'https://creative.adcontextprotocol.org/',
+        id: 'display_728x90_image',
+        width: 728,
+        height: 90,
+      };
+      const selectedOptionId = projectV1ProductToV2({
+        product_id: productId,
+        name: productId,
+        description: productId,
+        format_ids: [selectedLegacyFormat],
+      }).v2.format_options?.[0]?.format_option_id;
+      expect(selectedOptionId).toBeTypeOf('string');
+
+      // Persist the compatibility handler's intentionally divergent state
+      // directly. The native request projector correctly drops informational
+      // format_ids when option refs are also present, so a routed create cannot
+      // manufacture this legacy record for the read-boundary regression.
+      await runWithSessionContext(async () => {
+        const session = await getSession(sessionKeyFromArgs({ account }, 'open'));
+        session.mediaBuys.set(mediaBuyId, {
+          mediaBuyId,
+          accountRef: account,
+          brandRef: account.brand,
+          status: 'active',
+          currency: 'USD',
+          packages: [{
+            packageId: 'pkg-divergent-legacy-selector',
+            productId,
+            pricingOptionId,
+            budget: 10_000,
+            paused: false,
+            startTime: '2027-06-01T00:00:00Z',
+            endTime: '2027-07-01T00:00:00Z',
+            formatIds: [informationalLegacyFormat],
+            selectedLegacyFormatIds: [selectedLegacyFormat],
+            creativeAssignments: [],
+          }],
+          startTime: '2027-06-01T00:00:00Z',
+          endTime: '2027-07-01T00:00:00Z',
+          revision: 1,
+          confirmedAt: '2027-05-01T00:00:00Z',
+          createdAt: '2027-05-01T00:00:00Z',
+          updatedAt: '2027-05-01T00:00:00Z',
+          history: [],
+        });
+        await flushDirtySessions();
+      });
+
+      const read = await callTenantTool(url, 77, 'get_media_buys', {
+        account,
+        media_buy_ids: [mediaBuyId],
+      }) as {
+        result?: {
+          structuredContent?: {
+            media_buys?: Array<{ packages?: Array<Record<string, unknown>> }>;
+            adcp_error?: unknown;
+          };
+        };
+      };
+      expect(read.result?.structuredContent?.adcp_error, JSON.stringify(read)).toBeUndefined();
+      const readPackage = read.result?.structuredContent?.media_buys?.[0]?.packages?.[0];
+      expect(readPackage?.format_option_refs).toEqual([
+        { scope: 'product', format_option_id: selectedOptionId },
+      ]);
+      expect(readPackage).not.toHaveProperty('format_ids');
+      expect(JSON.stringify(read.result?.structuredContent)).not.toContain('__selected_legacy_format_ids');
+      expect(JSON.stringify(read.result?.structuredContent)).not.toContain(informationalLegacyFormat.id);
     } finally {
       await close();
     }

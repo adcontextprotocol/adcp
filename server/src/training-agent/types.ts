@@ -502,6 +502,9 @@ export interface PackageState {
   startTime: string;
   endTime: string;
   formatIds?: FormatID[];
+  /** Resolved winning legacy selector for legacy-only compatibility records.
+   * Kept separate from formatIds, which is the caller's informational echo. */
+  selectedLegacyFormatIds?: FormatID[];
   formatOptionRefs?: unknown[];
   formatKind?: string;
   params?: Record<string, unknown>;

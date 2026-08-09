@@ -61,7 +61,7 @@ import type {
   LegacyBuildCreativeResponse as BuildCreativeResponse,
   LegacyCreativeManifest as AdcpCreativeManifest,
 } from '@adcp/sdk';
-import { CreativeManifestSchema } from '@adcp/sdk/schemas';
+import { CreativeAssetSchema, CreativeManifestSchema } from '@adcp/sdk/schemas';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getCanonicalBase } from './canonical-base.js';
 
@@ -96,6 +96,14 @@ type InlineCreativeInput = {
   format_option_ref?: Record<string, unknown>;
   assets?: Record<string, unknown>;
   manifest?: CreativeManifest;
+};
+type InlineCreativeIdentity =
+  | { kind: 'canonical'; formatKind: CanonicalFormatKind; formatOptionRef?: Record<string, unknown> }
+  | { kind: 'legacy'; formatId: FormatID; formatOptionRef?: Record<string, unknown> };
+type ValidatedInlineCreative = {
+  creative: InlineCreativeInput;
+  creativeId: string;
+  identity: InlineCreativeIdentity;
 };
 type PackageUpdate = NonNullable<UpdateMediaBuyRequest['packages']>[number];
 type PackageUpdateExt = PackageUpdate & {
@@ -340,10 +348,11 @@ interface CreativeAssignmentInput {
 function collectInlineCreativeIds(
   rawCreatives: InlineCreativeInput[] | undefined,
   fieldPrefix: string,
-): { creativeIds: string[]; errors: TaskError[] } {
+): { creativeIds: string[]; validatedCreatives: ValidatedInlineCreative[]; errors: TaskError[] } {
   const creativeIds: string[] = [];
+  const validatedCreatives: ValidatedInlineCreative[] = [];
   const errors: TaskError[] = [];
-  if (!Array.isArray(rawCreatives)) return { creativeIds, errors };
+  if (!Array.isArray(rawCreatives)) return { creativeIds, validatedCreatives, errors };
 
   for (let i = 0; i < rawCreatives.length; i++) {
     const creativeId = rawCreatives[i]?.creative_id;
@@ -355,54 +364,49 @@ function collectInlineCreativeIds(
       });
       continue;
     }
+    const identity = validatedCreativeIdentity(rawCreatives[i]);
+    if (!identity.ok) {
+      errors.push({
+        code: 'VALIDATION_ERROR',
+        message: `${fieldPrefix}[${i}] ${identity.message}`,
+        field: `${fieldPrefix}[${i}]`,
+      });
+      continue;
+    }
     creativeIds.push(creativeId);
+    validatedCreatives.push({ creative: rawCreatives[i], creativeId, identity: identity.identity });
   }
-  return { creativeIds, errors };
-}
-
-function formatIdForInlineCreative(creative: InlineCreativeInput): FormatID {
-  if (creative.format_id && typeof creative.format_id === 'object') {
-    return creative.format_id;
-  }
-  return {
-    agent_url: getAgentUrl(),
-    id: creative.format_kind || 'inline_creative',
-  };
+  return { creativeIds, validatedCreatives, errors };
 }
 
 function persistInlineCreatives(
   session: SessionState,
-  rawCreatives: InlineCreativeInput[] | undefined,
+  validatedCreatives: ValidatedInlineCreative[],
   accountRef: AccountRef | undefined,
   accountId: string | undefined,
   syncedAt: string,
 ) {
-  if (!Array.isArray(rawCreatives)) return;
-
-  for (const creative of rawCreatives) {
-    if (!creative.creative_id) continue;
-    const creativeId = creative.creative_id;
+  for (const { creative, creativeId, identity } of validatedCreatives) {
     const existing = session.creatives.get(creativeId);
-    const formatId = formatIdForInlineCreative(creative);
+    const manifest = normalizedCreativeManifest(creative, existing, identity);
     session.creatives.set(creativeId, {
       creativeId,
       accountId: accountId ?? existing?.accountId,
       accountRef: accountRef ?? existing?.accountRef,
-      formatId,
-      formatKind: creative.format_kind,
-      formatOptionRef: creative.format_option_ref,
+      ...(identity.kind === 'legacy'
+        ? {
+          formatId: identity.formatId,
+          ...(identity.formatOptionRef && { formatOptionRef: identity.formatOptionRef }),
+        }
+        : {
+          formatKind: identity.formatKind,
+          ...(identity.formatOptionRef && { formatOptionRef: identity.formatOptionRef }),
+        }),
+      ...(manifest && { assets: manifest.assets }),
       name: creative.name ?? existing?.name,
       status: existing?.status ?? 'approved',
       syncedAt,
-      manifest: creative.manifest ?? (creative.assets ? {
-        ...(creative.format_kind
-          ? {
-            format_kind: creative.format_kind,
-            ...(creative.format_option_ref && { format_option_ref: creative.format_option_ref }),
-          }
-          : { format_id: formatId }),
-        assets: creative.assets as CreativeManifest['assets'],
-      } : existing?.manifest),
+      manifest,
       pricingOptionId: existing?.pricingOptionId,
       purge: existing?.purge,
       webhookActivity: existing?.webhookActivity,
@@ -478,12 +482,47 @@ type CanonicalPackageFormat = Record<string, unknown> & {
   v1_format_ref?: FormatID[];
 };
 
-type IndexedDeclarations = { stable: CanonicalPackageFormat[]; legacyAlias: CanonicalPackageFormat[] };
+type IndexedLegacyDeclaration = {
+  declaration: CanonicalPackageFormat;
+  legacyFormat: FormatID;
+};
+
+type IndexedDeclarations = {
+  stable: CanonicalPackageFormat[];
+  legacyAlias: IndexedLegacyDeclaration[];
+};
 type ProductFormatOptionIndex = Map<string, IndexedDeclarations>;
 type ProductFormatOptionIndexCache = WeakMap<Product, ProductFormatOptionIndex>;
 
 function cloneCanonicalFormat(format: CanonicalPackageFormat): CanonicalPackageFormat {
   return JSON.parse(JSON.stringify(format)) as CanonicalPackageFormat;
+}
+
+function cloneLegacyFormatId(formatId: FormatID): FormatID {
+  return JSON.parse(JSON.stringify(formatId)) as FormatID;
+}
+
+function migratedOptionIdForLegacyFormat(formatId: FormatID): string | undefined {
+  const projected = projectV1ProductToV2({
+    product_id: 'legacy_request_projection',
+    name: 'Legacy request projection',
+    description: 'Ephemeral compatibility projection',
+    format_ids: [{
+      ...formatId,
+      agent_url: formatId.agent_url ?? 'https://creative.adcontextprotocol.org/',
+    }],
+  });
+  return projected.v2.format_options?.[0]?.format_option_id;
+}
+
+function legacyFormatsByMigratedOption(legacyFormats: FormatID[]): Map<string, FormatID[]> {
+  const indexed = new Map<string, FormatID[]>();
+  for (const format of legacyFormats) {
+    const optionId = migratedOptionIdForLegacyFormat(format);
+    if (!optionId) continue;
+    indexed.set(optionId, [...(indexed.get(optionId) ?? []), cloneLegacyFormatId(format)]);
+  }
+  return indexed;
 }
 
 function flattenedManifestAssets(manifest: CreativeManifest): Array<Record<string, unknown>> {
@@ -616,10 +655,84 @@ function snapshotPackageFormats(
   product: Product,
   packageIndex: number,
   optionIndexCache: ProductFormatOptionIndexCache,
-): { formats?: CanonicalPackageFormat[]; error?: TaskError } {
+): {
+  formats?: CanonicalPackageFormat[];
+  legacyFormatIds?: FormatID[];
+  selectedLegacyFormatIds?: FormatID[];
+  error?: TaskError;
+} {
   const declarations = (Array.isArray(product.format_options) ? product.format_options : [])
     .filter(isRecord) as CanonicalPackageFormat[];
-  if (declarations.length === 0) return {};
+  const advertisedLegacyIds = Array.isArray(product.format_ids) ? product.format_ids : [];
+
+  if (declarations.length === 0) {
+    if (Array.isArray(pkg.format_option_refs) && pkg.format_option_refs.length > 0) {
+      const selectedLegacyIds: FormatID[] = [];
+      const legacyIdsByAlias = legacyFormatsByMigratedOption(advertisedLegacyIds);
+      for (let i = 0; i < pkg.format_option_refs.length; i++) {
+        const ref = pkg.format_option_refs[i];
+        if (!isRecord(ref) || typeof ref.format_option_id !== 'string') {
+          return {
+            error: {
+              code: 'UNSUPPORTED_FEATURE',
+              message: `Package ${packageIndex}: format_option_refs[${i}] is not a resolvable legacy format option`,
+              field: `packages[${packageIndex}].format_option_refs[${i}]`,
+              recovery: 'correctable',
+            },
+          };
+        }
+        if (ref.scope !== 'product' || ref.publisher_domain !== undefined) {
+          return {
+            error: {
+              code: 'UNSUPPORTED_FEATURE',
+              message: `Package ${packageIndex}: legacy-only format option "${ref.format_option_id}" must use product scope`,
+              field: `packages[${packageIndex}].format_option_refs[${i}]`,
+              recovery: 'correctable',
+            },
+          };
+        }
+        const matches = legacyIdsByAlias.get(ref.format_option_id) ?? [];
+        if (matches.length !== 1) {
+          return {
+            error: {
+              code: 'UNSUPPORTED_FEATURE',
+              message: `Package ${packageIndex}: format option "${ref.format_option_id}" is not an unambiguous legacy format advertised by product ${pkg.product_id}`,
+              field: `packages[${packageIndex}].format_option_refs[${i}]`,
+              recovery: 'correctable',
+            },
+          };
+        }
+        selectedLegacyIds.push(matches[0]!);
+      }
+      return {
+        legacyFormatIds: Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0
+          ? pkg.format_ids.map(cloneLegacyFormatId)
+          : selectedLegacyIds,
+        selectedLegacyFormatIds: selectedLegacyIds,
+      };
+    }
+    if (Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0) {
+      const unavailable = pkg.format_ids.filter(requested => !advertisedLegacyIds.some(advertised =>
+        advertised.id === requested.id
+        && (requested.agent_url === undefined || advertised.agent_url === requested.agent_url)
+      ));
+      if (unavailable.length > 0) {
+        return {
+          error: {
+            code: 'UNSUPPORTED_FEATURE',
+            message: `Package ${packageIndex}: deprecated format_ids are not advertised by product ${pkg.product_id}`,
+            field: `packages[${packageIndex}].format_ids`,
+            recovery: 'correctable',
+          },
+        };
+      }
+      return {
+        legacyFormatIds: pkg.format_ids.map(cloneLegacyFormatId),
+        selectedLegacyFormatIds: pkg.format_ids.map(cloneLegacyFormatId),
+      };
+    }
+    return {};
+  }
 
   if (Array.isArray(pkg.format_option_refs) && pkg.format_option_refs.length > 0) {
     let declarationsByOptionId = optionIndexCache.get(product);
@@ -628,39 +741,32 @@ function snapshotPackageFormats(
       declarationsByOptionId = new Map<string, IndexedDeclarations>();
       optionIndexCache.set(product, declarationsByOptionId);
     }
-    const indexDeclaration = (
-      optionId: string,
-      declaration: CanonicalPackageFormat,
-      identity: keyof IndexedDeclarations,
-    ) => {
+    const declarationsFor = (optionId: string): IndexedDeclarations => {
       const indexed = declarationsByOptionId.get(optionId) ?? { stable: [], legacyAlias: [] };
-      indexed[identity].push(declaration);
       declarationsByOptionId.set(optionId, indexed);
+      return indexed;
     };
     if (shouldBuildIndex) {
       for (const declaration of declarations) {
         if (typeof declaration.format_option_id === 'string') {
-          indexDeclaration(declaration.format_option_id, declaration, 'stable');
+          declarationsFor(declaration.format_option_id).stable.push(declaration);
         }
         for (const legacyRef of Array.isArray(declaration.v1_format_ref) ? declaration.v1_format_ref : []) {
           if (typeof legacyRef?.id !== 'string') continue;
-          const projected = projectV1ProductToV2({
-            product_id: 'legacy_request_projection',
-            name: 'Legacy request projection',
-            description: 'Ephemeral compatibility projection',
-            format_ids: [{
-              ...legacyRef,
-              agent_url: legacyRef.agent_url ?? 'https://creative.adcontextprotocol.org/',
-            }],
-          });
-          const migratedId = projected.v2.format_options?.[0]?.format_option_id;
-          if (typeof migratedId === 'string') indexDeclaration(migratedId, declaration, 'legacyAlias');
+          const migratedId = migratedOptionIdForLegacyFormat(legacyRef);
+          if (typeof migratedId === 'string') {
+            declarationsFor(migratedId).legacyAlias.push({
+              declaration,
+              legacyFormat: cloneLegacyFormatId(legacyRef),
+            });
+          }
         }
       }
     }
 
     const selected: CanonicalPackageFormat[] = [];
     const selectedSet = new Set<CanonicalPackageFormat>();
+    const projectedLegacyIds: FormatID[] = [];
     for (let i = 0; i < pkg.format_option_refs.length; i++) {
       const ref = pkg.format_option_refs[i];
       if (!isRecord(ref) || typeof ref.format_option_id !== 'string') {
@@ -683,9 +789,27 @@ function snapshotPackageFormats(
         return ref.publisher_domain === undefined
           || declaration.publisher_domain === ref.publisher_domain;
       };
-      const candidates = indexed?.stable.length
-        ? indexed.stable.filter(matchesScope)
-        : [...new Set(indexed?.legacyAlias ?? [])].filter(matchesScope);
+      const scopedStable = (indexed?.stable ?? []).filter(matchesScope);
+      const scopedLegacyAliases = (indexed?.legacyAlias ?? [])
+        .filter(entry => matchesScope(entry.declaration));
+      const scopedDeclarations = new Set([
+        ...scopedStable,
+        ...scopedLegacyAliases.map(entry => entry.declaration),
+      ]);
+      if (scopedStable.length && scopedLegacyAliases.length && scopedDeclarations.size > 1) {
+        return {
+          error: {
+            code: 'UNSUPPORTED_FEATURE',
+            message: `Package ${packageIndex}: format option "${ref.format_option_id}" collides with a migrated legacy alias`,
+            field: `packages[${packageIndex}].format_option_refs[${i}]`,
+            recovery: 'correctable',
+          },
+        };
+      }
+      const selectedByLegacyAlias = scopedStable.length === 0;
+      const candidates = scopedStable.length
+        ? scopedStable
+        : [...new Set(scopedLegacyAliases.map(entry => entry.declaration))];
       if (candidates.length > 1) {
         return {
           error: {
@@ -708,22 +832,26 @@ function snapshotPackageFormats(
         };
       }
       for (const match of matches) {
+        if (selectedByLegacyAlias) {
+          projectedLegacyIds.push(...scopedLegacyAliases
+            .filter(entry => entry.declaration === match)
+            .map(entry => cloneLegacyFormatId(entry.legacyFormat)));
+        }
         if (selectedSet.has(match)) continue;
         selectedSet.add(match);
         selected.push(cloneCanonicalFormat(match));
       }
     }
-    return { formats: selected };
-  }
-
-  if (typeof pkg.format_kind === 'string') {
     return {
-      formats: [{
-        format_kind: pkg.format_kind,
-        params: isRecord(pkg.params)
-          ? JSON.parse(JSON.stringify(pkg.params)) as Record<string, unknown>
-          : {},
-      }],
+      formats: selected,
+      ...(projectedLegacyIds.length > 0 && {
+        selectedLegacyFormatIds: projectedLegacyIds.map(cloneLegacyFormatId),
+      }),
+      ...((Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0)
+        ? { legacyFormatIds: pkg.format_ids.map(cloneLegacyFormatId) }
+        : projectedLegacyIds.length > 0
+          ? { legacyFormatIds: projectedLegacyIds }
+          : {}),
     };
   }
 
@@ -735,7 +863,6 @@ function snapshotPackageFormats(
         && (requested.agent_url === undefined || ref.agent_url === requested.agent_url)
       ));
     });
-    const advertisedLegacyIds = Array.isArray(product.format_ids) ? product.format_ids : [];
     const unavailable = pkg.format_ids.filter(requested => !advertisedLegacyIds.some(advertised =>
       advertised.id === requested.id
       && (requested.agent_url === undefined || advertised.agent_url === requested.agent_url)
@@ -754,11 +881,89 @@ function snapshotPackageFormats(
     // intentionally non-equivalent (`canonical_formats_only`). Validate and
     // accept that independent legacy selector above, but do not fabricate a
     // canonical declaration for formats_to_provide.
-    return { formats: selected.map(cloneCanonicalFormat) };
+    return {
+      formats: selected.map(cloneCanonicalFormat),
+      legacyFormatIds: pkg.format_ids.map(cloneLegacyFormatId),
+      selectedLegacyFormatIds: pkg.format_ids.map(cloneLegacyFormatId),
+    };
+  }
+
+  if (typeof pkg.format_kind === 'string') {
+    return {
+      formats: [{
+        format_kind: pkg.format_kind,
+        params: isRecord(pkg.params)
+          ? JSON.parse(JSON.stringify(pkg.params)) as Record<string, unknown>
+          : {},
+      }],
+    };
   }
 
   // Omitting selectors means every product format option is active.
   return { formats: declarations.map(cloneCanonicalFormat) };
+}
+
+function packageFormatSelectorForState(
+  pkg: PackageInput,
+  formats: CanonicalPackageFormat[] | undefined,
+  legacyFormatIds: FormatID[] | undefined,
+  selectedLegacyFormatIds: FormatID[] | undefined,
+): Pick<PackageState, 'formatIds' | 'formatOptionRefs' | 'formatKind' | 'selectedLegacyFormatIds'> {
+  const selector: Pick<PackageState, 'formatIds' | 'formatOptionRefs' | 'formatKind' | 'selectedLegacyFormatIds'> = {};
+  if (typeof pkg.format_kind === 'string') selector.formatKind = pkg.format_kind;
+  if (legacyFormatIds?.length) selector.formatIds = legacyFormatIds.map(cloneLegacyFormatId);
+  if (selectedLegacyFormatIds?.length) {
+    selector.selectedLegacyFormatIds = selectedLegacyFormatIds.map(cloneLegacyFormatId);
+  }
+  if (
+    (Array.isArray(pkg.format_option_refs) && pkg.format_option_refs.length > 0)
+    || (Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0)
+  ) {
+    const canonicalRefs = (formats ?? []).flatMap(format => {
+      if (typeof format.format_option_id !== 'string') return [];
+      return [typeof format.publisher_domain === 'string'
+        ? {
+          scope: 'publisher',
+          publisher_domain: format.publisher_domain,
+          format_option_id: format.format_option_id,
+        }
+        : { scope: 'product', format_option_id: format.format_option_id }];
+    });
+    if (formats?.length && canonicalRefs.length === formats.length) {
+      // A legacy request selected concrete canonical declarations. Persist
+      // their stable canonical refs; the SDK facade re-projects them for a
+      // legacy caller from formats_to_provide[].v1_format_ref.
+      selector.formatOptionRefs = canonicalRefs;
+      return selector;
+    }
+  }
+  if (selector.formatIds) {
+    // The SDK canonical facade represents a recognized legacy-only selector
+    // as a temporary migrated option ref. Retain the reversible legacy tuple,
+    // never the facade-local alias, when the product has no canonical option.
+    return selector;
+  }
+  if (Array.isArray(pkg.format_option_refs) && pkg.format_option_refs.length > 0) {
+    selector.formatOptionRefs = pkg.format_option_refs;
+    return selector;
+  }
+  if (!selector.formatIds && Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0) {
+    // Truly legacy-only products have no canonical declaration to retain.
+    selector.formatIds = pkg.format_ids.map(cloneLegacyFormatId);
+  }
+  return selector;
+}
+
+function packageFormatSelectorForWire(pkg: PackageState, ctx: TrainingContext): Record<string, unknown> {
+  return {
+    ...(pkg.formatIds && { format_ids: pkg.formatIds }),
+    ...(pkg.formatOptionRefs && { format_option_refs: pkg.formatOptionRefs }),
+    ...(pkg.formatKind && { format_kind: pkg.formatKind }),
+    ...(pkg.params && { params: pkg.params }),
+    ...(ctx.tenantId === 'sales' && pkg.selectedLegacyFormatIds?.length && {
+      __selected_legacy_format_ids: pkg.selectedLegacyFormatIds,
+    }),
+  };
 }
 
 function creativeCoversPackageFormat(
@@ -1702,6 +1907,138 @@ export function resolveServedAdcpVersionForTool(toolName: string, args: Record<s
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function validatedCreativeIdentity(
+  creative: Pick<InlineCreativeInput, 'format_id' | 'format_kind' | 'format_option_ref'>,
+): { ok: true; identity: InlineCreativeIdentity } | { ok: false; message: string } {
+  const hasLegacyIdentity = creative.format_id !== undefined;
+  const hasCanonicalIdentity = creative.format_kind !== undefined;
+  if (hasLegacyIdentity === hasCanonicalIdentity) {
+    return {
+      ok: false,
+      message: hasLegacyIdentity
+        ? 'must provide exactly one of format_id or format_kind, not both'
+        : 'requires exactly one of format_id or format_kind',
+    };
+  }
+
+  if (hasCanonicalIdentity) {
+    const formatKind = canonicalFormatKind(creative.format_kind);
+    const parsed = CreativeAssetSchema.safeParse({
+      creative_id: '__identity_validation__',
+      name: 'Identity validation',
+      assets: {},
+      format_kind: creative.format_kind,
+      ...(creative.format_option_ref !== undefined && { format_option_ref: creative.format_option_ref }),
+    });
+    if (!formatKind || !parsed.success) {
+      return { ok: false, message: 'has an invalid canonical format_kind or format_option_ref' };
+    }
+    return {
+      ok: true,
+      identity: {
+        kind: 'canonical',
+        formatKind,
+        ...(isRecord(creative.format_option_ref) && { formatOptionRef: creative.format_option_ref }),
+      },
+    };
+  }
+
+  const parsed = CreativeAssetSchema.safeParse({
+    creative_id: '__identity_validation__',
+    name: 'Identity validation',
+    assets: {},
+    format_id: creative.format_id,
+    ...(creative.format_option_ref !== undefined && { format_option_ref: creative.format_option_ref }),
+  });
+  if (!parsed.success || !isRecord(creative.format_id)) {
+    return { ok: false, message: 'has an invalid legacy format_id' };
+  }
+  const agentUrl = creative.format_id.agent_url;
+  if (
+    typeof agentUrl !== 'string'
+    || agentUrl.length === 0
+    || agentUrl.length > MAX_URL_LEN
+    || agentUrl !== agentUrl.trim()
+  ) {
+    return { ok: false, message: `has an invalid legacy format_id.agent_url (expected a URL up to ${MAX_URL_LEN} characters)` };
+  }
+  try {
+    const url = new URL(agentUrl);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return { ok: false, message: 'has an invalid legacy format_id.agent_url (expected http:// or https://)' };
+    }
+  } catch {
+    return { ok: false, message: 'has an invalid legacy format_id.agent_url' };
+  }
+  const width = creative.format_id.width;
+  const height = creative.format_id.height;
+  const durationMs = creative.format_id.duration_ms;
+  const pixelRatio = creative.format_id.pixel_ratio;
+  if (
+    (width !== undefined && (typeof width !== 'number' || !Number.isInteger(width) || width < 1))
+    || (height !== undefined && (typeof height !== 'number' || !Number.isInteger(height) || height < 1))
+    || (width === undefined) !== (height === undefined)
+    || (durationMs !== undefined && (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs < 1))
+    || (pixelRatio !== undefined && (typeof pixelRatio !== 'number' || !Number.isFinite(pixelRatio) || pixelRatio <= 0))
+    || (pixelRatio !== undefined && (width === undefined || height === undefined))
+  ) {
+    return { ok: false, message: 'has invalid legacy format_id dimensions, duration_ms, or pixel_ratio parameters' };
+  }
+  return {
+    ok: true,
+    identity: {
+      kind: 'legacy',
+      formatId: creative.format_id as unknown as FormatID,
+      ...(isRecord(creative.format_option_ref) && { formatOptionRef: creative.format_option_ref }),
+    },
+  };
+}
+
+function normalizedCreativeManifest(
+  creative: InlineCreativeInput,
+  existing: CreativeState | undefined,
+  identity: InlineCreativeIdentity,
+): CreativeManifest | undefined {
+  const inlineAssets = isRecord(creative.assets)
+    ? creative.assets as CreativeManifest['assets']
+    : undefined;
+  const manifestAssets = isRecord(creative.manifest) && isRecord(creative.manifest.assets)
+    ? creative.manifest.assets as CreativeManifest['assets']
+    : undefined;
+  const assets = inlineAssets
+    ?? manifestAssets
+    ?? existing?.manifest?.assets
+    ?? existing?.assets;
+  if (!assets) return undefined;
+
+  const sourceManifest = isRecord(creative.manifest)
+    ? creative.manifest
+    : isRecord(existing?.manifest)
+      ? existing.manifest
+      : undefined;
+  const {
+    format_id: _staleFormatId,
+    format_kind: _staleFormatKind,
+    format_option_ref: _staleFormatOptionRef,
+    assets: _staleAssets,
+    ...manifestMetadata
+  } = sourceManifest ?? {};
+
+  return identity.kind === 'canonical'
+    ? {
+      ...manifestMetadata,
+      format_kind: identity.formatKind,
+      ...(identity.formatOptionRef && { format_option_ref: identity.formatOptionRef }),
+      assets,
+    }
+    : {
+      ...manifestMetadata,
+      format_id: identity.formatId,
+      ...(identity.formatOptionRef && { format_option_ref: identity.formatOptionRef }),
+      assets,
+    };
 }
 
 function mcpErrorMessage(error: unknown): string {
@@ -6031,7 +6368,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   const confirmedAt = new Date().toISOString();
   const errors: TaskError[] = [];
   const createdPackages: PackageState[] = [];
-  const inlineCreativesToPersist: InlineCreativeInput[] = [];
+  const inlineCreativesToPersist: ValidatedInlineCreative[] = [];
   const productFormatOptionIndexes: ProductFormatOptionIndexCache = new WeakMap();
   for (let i = 0; i < req.packages.length; i++) {
     const pkg = req.packages[i] as unknown as PackageInput;
@@ -6228,8 +6565,14 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     creativeAssignments.push(...inlineCreatives.creativeIds);
     if (errors.length > 0) continue;
     if (Array.isArray(pkg.creatives)) {
-      inlineCreativesToPersist.push(...pkg.creatives);
+      inlineCreativesToPersist.push(...inlineCreatives.validatedCreatives);
     }
+    const formatSelector = packageFormatSelectorForState(
+      pkg,
+      formatSnapshot.formats,
+      formatSnapshot.legacyFormatIds,
+      formatSnapshot.selectedLegacyFormatIds,
+    );
 
     createdPackages.push({
       packageId: `pkg-${i}`,
@@ -6241,9 +6584,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       paused: pkg.paused || false,
       startTime: resolvedStart,
       endTime,
-      formatIds: pkg.format_ids,
-      formatOptionRefs: pkg.format_option_refs,
-      formatKind: pkg.format_kind,
+      ...formatSelector,
       params: pkg.params,
       ...(!isThreeZeroStoryboardCompat(ctx) && formatSnapshot.formats?.length && {
         formatsToProvide: formatSnapshot.formats,
@@ -6353,10 +6694,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       paused: pkg.paused,
       start_time: pkg.startTime,
       end_time: pkg.endTime,
-      ...(pkg.formatIds && { format_ids: pkg.formatIds }),
-      ...(pkg.formatOptionRefs && { format_option_refs: pkg.formatOptionRefs }),
-      ...(pkg.formatKind && { format_kind: pkg.formatKind }),
-      ...(pkg.params && { params: pkg.params }),
+      ...packageFormatSelectorForWire(pkg, ctx),
       ...packageReadinessFields(pkg, session),
       ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
       ...(pkg.context && { context: pkg.context }),
@@ -6487,10 +6825,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             paused: pkg.paused,
             start_time: pkg.startTime,
             end_time: pkg.endTime,
-            ...(pkg.formatIds && { format_ids: pkg.formatIds }),
-            ...(pkg.formatOptionRefs && { format_option_refs: pkg.formatOptionRefs }),
-            ...(pkg.formatKind && { format_kind: pkg.formatKind }),
-            ...(pkg.params && { params: pkg.params }),
+            ...packageFormatSelectorForWire(pkg, ctx),
             ...packageReadinessFields(pkg, session),
             creative_approvals: pkg.creativeAssignments.map(cid => ({
               creative_id: cid,
@@ -6986,16 +7321,18 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       format_kind?: string;
       format_option_ref?: Record<string, unknown>;
       assets?: Record<string, unknown>;
+      manifest?: CreativeManifest;
     };
-    const formatId = creativeShape.format_id;
-    const formatKind = typeof creativeShape.format_kind === 'string' ? creativeShape.format_kind : undefined;
-    const formatOptionRef = creativeShape.format_option_ref;
-
-    if (!formatId && !formatKind) {
+    const identityResult = validatedCreativeIdentity(creativeShape);
+    if (!identityResult.ok) {
       return {
-        errors: [{ code: 'INVALID_REQUEST', message: 'Each creative requires either format_id or format_kind.' }] as TaskError[],
+        errors: [{ code: 'INVALID_REQUEST', message: `Each creative ${identityResult.message}.` }] as TaskError[],
       };
     }
+    const identity = identityResult.identity;
+    const formatId = identity.kind === 'legacy' ? identity.formatId : undefined;
+    const formatKind = identity.kind === 'canonical' ? identity.formatKind : undefined;
+    const formatOptionRef = identity.formatOptionRef;
 
     // Enforce creative_policy.provenance_required / provenance_requirements /
     // accepted_verifiers BEFORE persisting the creative. Per-creative failure
@@ -7009,17 +7346,6 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
         errors: [policyResult.error],
       });
       continue;
-    }
-
-    // Reject clearly-malformed agent_urls before we persist them. Prevents
-    // javascript:/data: or overlong URLs landing in JSONB via the pointer.
-    if (creativeShape.format_id && formatId?.agent_url !== undefined) {
-      if (typeof formatId.agent_url !== 'string' || formatId.agent_url.length === 0 || formatId.agent_url.length > MAX_URL_LEN) {
-        return { errors: [{ code: 'INVALID_REQUEST', message: `format_id.agent_url: must be a non-empty string up to ${MAX_URL_LEN} chars` }] as TaskError[] };
-      }
-      if (!/^https?:\/\//i.test(formatId.agent_url)) {
-        return { errors: [{ code: 'INVALID_REQUEST', message: 'format_id.agent_url: must use http:// or https://' }] as TaskError[] };
-      }
     }
 
     // Validate format_id only when the format is claimed against this agent.
@@ -7045,32 +7371,28 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     const existingCreative = session.creatives.get(creativeId);
 
     if (!isDryRun) {
+      const manifest = normalizedCreativeManifest(creativeShape, existingCreative, identity);
       session.creatives.set(creativeId, {
         creativeId,
         accountId: accountId ?? existingCreative?.accountId,
         accountRef: req.account ?? existingCreative?.accountRef,
-        ...(formatId && { formatId }),
-        formatKind,
-        formatOptionRef,
-        assets: creativeShape.assets as CreativeState['assets'],
+        ...(identity.kind === 'legacy'
+          ? {
+            formatId: identity.formatId,
+            ...(identity.formatOptionRef && { formatOptionRef: identity.formatOptionRef }),
+          }
+          : {
+            formatKind: identity.formatKind,
+            ...(identity.formatOptionRef && { formatOptionRef: identity.formatOptionRef }),
+          }),
+        ...(manifest && { assets: manifest.assets }),
         name: creative.name,
         status: existingCreative?.status ?? 'approved',
         syncedAt: new Date().toISOString(),
         // manifest is a training-agent extension, not in SDK CreativeAsset type.
-        // Preserve direct assets too: list_creatives asset-type filtering must
-        // inspect the same library payload accepted by sync_creatives.
-        manifest: (creative as unknown as { manifest?: CreativeManifest }).manifest
-          ?? ((creative as unknown as { assets?: Record<string, unknown> }).assets ? {
-            ...(formatKind
-              ? {
-                format_kind: formatKind,
-                ...(formatOptionRef && { format_option_ref: formatOptionRef }),
-              }
-              : formatId
-                ? { format_id: formatId }
-                : {}),
-            assets: (creative as unknown as { assets: Record<string, unknown> }).assets as CreativeManifest['assets'],
-          } : existingCreative?.manifest),
+        // Normalize its identity from the validated top-level union so a
+        // canonical update cannot retain a nested legacy format_id.
+        manifest,
         pricingOptionId: existingCreative?.pricingOptionId,
         purge: existingCreative?.purge,
         webhookActivity: existingCreative?.webhookActivity,
@@ -7161,6 +7483,7 @@ function storedCreativeFormatRecord(creative: CreativeState): Record<string, unk
         ...creative.formatId,
         agent_url: creative.formatId.agent_url ?? getAgentUrl(),
       },
+      ...(creative.formatOptionRef && { format_option_ref: creative.formatOptionRef }),
     }
     : {};
 }
@@ -7307,7 +7630,6 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   // emission-on-omit behaviour here is deliberate per the has_creative_library
   // gate in #2847 and tracks the spec-side clarification referenced there.
   const emitPricing = creativeBillsThroughAdcp(ctx) && Boolean(req.account) && req.include_pricing !== false;
-  const agentUrl = getAgentUrl();
   const selectedFields = req.fields?.length ? new Set(req.fields) : undefined;
 
   return {
@@ -7327,19 +7649,7 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     creatives: pageCreatives.map(c => {
       const base: Record<string, unknown> = {
         creative_id: c.creativeId,
-        ...(c.formatKind
-          ? {
-            format_kind: c.formatKind,
-            ...(c.formatOptionRef && { format_option_ref: c.formatOptionRef }),
-          }
-          : c.formatId
-            ? {
-              format_id: {
-                ...c.formatId,
-                agent_url: c.formatId.agent_url ?? agentUrl,
-              },
-            }
-            : {}),
+        ...storedCreativeFormatRecord(c),
         name: c.name ?? c.creativeId,
         status: c.status,
         created_date: c.syncedAt,
@@ -7688,10 +7998,11 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'creative_assignments_updated', summary: `Package ${pkgId} creative assignments replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
       if (update.creatives !== undefined) {
-        const creativeIds = collectInlineCreativeIds(update.creatives, `packages[${pkgId}].creatives`).creativeIds;
+        const inlineCreatives = collectInlineCreativeIds(update.creatives, `packages[${pkgId}].creatives`);
+        const creativeIds = inlineCreatives.creativeIds;
         persistInlineCreatives(
           session,
-          update.creatives,
+          inlineCreatives.validatedCreatives,
           req.account as AccountRef | undefined,
           resolveAccountIdForRef(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId), ctx.principal, req.account),
           now,
@@ -7744,6 +8055,12 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       if (directFormatError) return { errors: [directFormatError] };
       const formatSnapshot = snapshotPackageFormats(npkg, product, i, productFormatOptionIndexes);
       if (formatSnapshot.error) return { errors: [formatSnapshot.error] };
+      const formatSelector = packageFormatSelectorForState(
+        npkg,
+        formatSnapshot.formats,
+        formatSnapshot.legacyFormatIds,
+        formatSnapshot.selectedLegacyFormatIds,
+      );
 
       const pkgId = `pkg-${mb.packages.length + i}`;
       const newTargeting = npkg.targeting_overlay ?? npkg.targeting;
@@ -7761,9 +8078,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         paused: npkg.paused || false,
         startTime: npkg.start_time || mb.startTime,
         endTime: npkg.end_time || mb.endTime,
-        formatIds: npkg.format_ids,
-        formatOptionRefs: npkg.format_option_refs,
-        formatKind: npkg.format_kind,
+        ...formatSelector,
         params: npkg.params,
         ...(!isThreeZeroStoryboardCompat(ctx) && formatSnapshot.formats?.length && {
           formatsToProvide: formatSnapshot.formats,
@@ -7818,10 +8133,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     paused: pkg.paused,
     start_time: pkg.startTime,
     end_time: pkg.endTime,
-    ...(pkg.formatIds && { format_ids: pkg.formatIds }),
-    ...(pkg.formatOptionRefs && { format_option_refs: pkg.formatOptionRefs }),
-    ...(pkg.formatKind && { format_kind: pkg.formatKind }),
-    ...(pkg.params && { params: pkg.params }),
+    ...packageFormatSelectorForWire(pkg, ctx),
     ...packageReadinessFields(pkg, session),
     ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
     ...(pkg.context && { context: pkg.context }),
