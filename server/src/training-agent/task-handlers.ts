@@ -7331,8 +7331,6 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     }
     const identity = identityResult.identity;
     const formatId = identity.kind === 'legacy' ? identity.formatId : undefined;
-    const formatKind = identity.kind === 'canonical' ? identity.formatKind : undefined;
-    const formatOptionRef = identity.formatOptionRef;
 
     // Enforce creative_policy.provenance_required / provenance_requirements /
     // accepted_verifiers BEFORE persisting the creative. Per-creative failure
