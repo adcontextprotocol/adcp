@@ -243,7 +243,7 @@ phases:
             correlation_id: "get_products_async--get_products_submitted"
         validations:
           - check: error_code
-            allowed_values: ["IDEMPOTENCY_CONFLICT", "CONFLICT"]
+            allowed_values: ["IDEMPOTENCY_CONFLICT"]
             description: "Changed payload under the submitted request key is rejected"
 
       - id: list_products_task

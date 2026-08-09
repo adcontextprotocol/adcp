@@ -15,7 +15,9 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash } from 'node:crypto';
 import type { SessionState, AccountRef, BrandRef, CreativeState, MediaBuyState, PackageState } from './types.js';
+import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
 import { cleanupExpiredTasks } from '@adcp/sdk';
 import {
   InMemoryStateStore,
@@ -111,10 +113,11 @@ export function runWithSessionContext<T>(fn: () => Promise<T>): Promise<T> {
  * `StateError('INVALID_ID')` automatically. Failures bubble to the MCP
  * transport layer so operators notice in alert pipelines.
  *
- * Known limitation: concurrent requests against the same session key use
- * last-writer-wins semantics. Acceptable for the sandbox training agent where
- * storyboards are sequential. Production sellers should use per-entity
- * collections via @adcp/sdk's createAdcpServer instead.
+ * Concurrent requests merge disjoint top-level session fields. Requests that
+ * mutate the same top-level field still use last-writer-wins semantics, which
+ * is acceptable for the sandbox training agent where storyboards are
+ * sequential. Production sellers should use per-entity collections via
+ * @adcp/sdk's createAdcpServer instead.
  */
 export async function flushDirtySessions(): Promise<void> {
   const ctx = requestCtx.getStore();
@@ -127,8 +130,17 @@ export async function flushDirtySessions(): Promise<void> {
     const snapshotJson = ctx.snapshots.get(key);
     if (snapshotJson === currentJson) continue;
     try {
-      await store.put(SESSIONS_COLLECTION, key, current);
-      ctx.snapshots.set(key, currentJson);
+      // Merge top-level fields against the newest durable document. This
+      // prevents a get_products proposal write from erasing an unrelated
+      // media-buy/creative mutation (and vice versa) when both requests
+      // loaded the same older snapshot. Same-field conflicts remain
+      // last-writer-wins, which is sufficient for this sandbox store.
+      const snapshot = snapshotJson
+        ? JSON.parse(snapshotJson) as Record<string, unknown>
+        : {};
+      const merged = await persistMergedSession(store, key, snapshot, current);
+      ctx.snapshots.set(key, stableStringify(merged));
+      ctx.sessions.set(key, deserializeSession(merged));
     } catch (err) {
       // The response has already been sent, so we can't surface to the
       // caller. Collect for an aggregate throw so the MCP transport
@@ -142,6 +154,51 @@ export async function flushDirtySessions(): Promise<void> {
       `Failed to flush ${errors.length} session(s): ${errors.map(e => e.key).join(', ')}`,
     );
   }
+}
+
+async function persistMergedSession(
+  store: AdcpStateStore,
+  key: string,
+  snapshot: Record<string, unknown>,
+  current: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  if (!store.getWithVersion || !store.putIfMatch) {
+    const latest = await store.get<Record<string, unknown>>(SESSIONS_COLLECTION, key);
+    const merged = latest ? mergeTopLevelSessionChanges(snapshot, current, latest) : current;
+    await store.put(SESSIONS_COLLECTION, key, merged);
+    return merged;
+  }
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const latest = await store.getWithVersion<Record<string, unknown>>(SESSIONS_COLLECTION, key);
+    const merged = latest
+      ? mergeTopLevelSessionChanges(snapshot, current, latest.data)
+      : current;
+    const result = await store.putIfMatch(
+      SESSIONS_COLLECTION,
+      key,
+      merged,
+      latest?.version ?? null,
+    );
+    if (result.ok) return merged;
+  }
+  throw new Error(`Concurrent session update did not converge after 5 attempts: ${key}`);
+}
+
+function mergeTopLevelSessionChanges(
+  snapshot: Record<string, unknown>,
+  current: Record<string, unknown>,
+  latest: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = {};
+  const keys = new Set([...Object.keys(snapshot), ...Object.keys(current), ...Object.keys(latest)]);
+  for (const key of keys) {
+    const changedLocally = stableStringify({ value: current[key] })
+      !== stableStringify({ value: snapshot[key] });
+    const value = changedLocally ? current[key] : latest[key];
+    if (value !== undefined) merged[key] = value;
+  }
+  return merged;
 }
 
 /**
@@ -477,6 +534,26 @@ function safeKey(value: string | undefined, max: number, pattern: RegExp): strin
   return value;
 }
 
+function principalDigest(principal: string): string {
+  return createHash('sha256').update(principal).digest('hex');
+}
+
+function principalScopedOpenKey(principal: string, scope: string): string {
+  const prefix = `open:p:${principalDigest(principal)}:`;
+  const candidate = `${prefix}${scope}`;
+  // The SDK state store caps IDs at 256 characters. Preserve readable scopes
+  // when possible and hash only the canonical scope when a maximal pair of
+  // domains (or an opaque seller account id) would exceed that limit.
+  if (candidate.length <= 256 && /^[A-Za-z0-9_.\-:]+$/.test(candidate)) return candidate;
+  return `${prefix}h:${createHash('sha256').update(scope).digest('hex')}`;
+}
+
+function canonicalOpenKey(scope: string, preferred?: string): string {
+  const candidate = preferred ?? `open:${scope}`;
+  if (candidate.length <= 256 && /^[A-Za-z0-9_.\-:]+$/.test(candidate)) return candidate;
+  return `open:h:${createHash('sha256').update(scope).digest('hex')}`;
+}
+
 /** Derive a session key from the request context.
  *
  * Rejects malformed domain/account_id values — they become part of a Postgres
@@ -508,6 +585,7 @@ export function sessionKeyFromArgs(
   mode: 'open' | 'training',
   userId?: string,
   moduleId?: string,
+  principal?: string,
 ): string {
   if (mode === 'training' && userId) {
     const safeUser = safeKey(userId, 128, SAFE_ACCOUNT_ID_RE) ?? 'default';
@@ -515,6 +593,49 @@ export function sessionKeyFromArgs(
     return `training:${safeUser}:${safeModule}`;
   }
   const account = args.account;
+  if (account !== undefined) {
+    try {
+      const canonical = canonicalizeAccountRef(account);
+      const scope = accountScopeFromRef(account);
+      if (principal) return principalScopedOpenKey(principal, scope);
+      if (canonical.kind === 'account_id') {
+        return canonicalOpenKey(scope);
+      }
+      if (
+        canonical.brand.brand_id === undefined
+        && canonical.operator === canonical.brand.domain
+        && canonical.sandbox === false
+      ) {
+        return canonicalOpenKey(scope, `open:${canonical.brand.domain}`);
+      }
+      return canonicalOpenKey(scope);
+    } catch (error) {
+      if (principal) throw error;
+      // Legacy training fixtures predate AccountRef and may carry only a
+      // brand, or combine account_id with the storyboard brand invariant.
+      // Production dispatch validates get_products before reaching here.
+    }
+  }
+  // Dispatcher paths that opt into authenticated scoping also partition
+  // brand/plans fallbacks. Callers without a principal retain legacy keys.
+  if (principal) {
+    const fallbackDomain = args.brand?.domain
+      ?? (Array.isArray(args.plans) && args.plans.length > 0
+        ? (args.plans[0] as { brand?: BrandRef } | undefined)?.brand?.domain
+        : undefined)
+      ?? (Array.isArray(args.accounts) && args.accounts.length > 0
+        ? ((args.accounts[0] as { brand?: BrandRef; account?: AccountRef } | undefined)?.brand?.domain
+          ?? (args.accounts[0] as { account?: AccountRef } | undefined)?.account?.brand?.domain)
+        : undefined);
+    const safeFallback = safeKey(fallbackDomain, MAX_DOMAIN_LEN, SAFE_DOMAIN_RE);
+    if (safeFallback) {
+      return principalScopedOpenKey(principal, `b:${safeFallback.toLowerCase()}`);
+    }
+    if (fallbackDomain) {
+      logger.debug({ domain: fallbackDomain }, 'Rejected fallback brand.domain as session key; falling back');
+    }
+    return principalScopedOpenKey(principal, 'default');
+  }
   const domain = account?.brand?.domain ?? args.brand?.domain;
   const safeDomain = safeKey(domain, MAX_DOMAIN_LEN, SAFE_DOMAIN_RE);
   if (safeDomain) {
@@ -547,6 +668,16 @@ export function sessionKeyFromArgs(
     }
   }
   return 'open:default';
+}
+
+/** Canonical account partition for get_products proposal and replay state. */
+export function getProductsSessionKeyFromArgs(
+  args: { account?: AccountRef; brand?: BrandRef },
+  mode: 'open' | 'training',
+  userId?: string,
+  moduleId?: string,
+): string {
+  return sessionKeyFromArgs(args, mode, userId, moduleId);
 }
 
 // ── TTL cleanup ──────────────────────────────────────────────────

@@ -5,9 +5,6 @@ import type { TrainingContext } from '../../src/training-agent/types.js';
 
 const account = (accountId: string) => ({
   account_id: accountId,
-  brand: { domain: `${accountId}.example` },
-  operator: 'test-operator',
-  sandbox: true,
 });
 
 const call = async (

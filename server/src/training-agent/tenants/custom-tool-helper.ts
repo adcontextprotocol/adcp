@@ -15,6 +15,7 @@ import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
 import type { ToolArgs, TrainingContext } from '../types.js';
+import { AccountRefValidationError, accountScopeFromRef } from '../account-scope.js';
 import {
   getIdempotencyStore,
   scopedPrincipal,
@@ -50,6 +51,7 @@ interface IdempotencyClaim {
   principal: string;
   key: string;
   payloadHash: string;
+  claimToken: string;
 }
 
 function toAdaptedResponse(result: unknown, callerContext: unknown, options: CustomToolOptions): AdaptedResponse {
@@ -103,33 +105,32 @@ function serviceUnavailable(err: unknown, callerContext: unknown): AdaptedRespon
 
 type LegacyHandler = (args: ToolArgs, ctx: TrainingContext) => object | Promise<object>;
 
-function deriveAccountScope(params: Record<string, unknown>): string | undefined {
+export function deriveAccountScope(params: Record<string, unknown>): string | undefined {
   const usageAccount = Array.isArray(params.usage)
     ? (params.usage[0] as { account?: unknown } | undefined)?.account
     : undefined;
-  const account = (params.account ?? usageAccount) as { account_id?: string; brand?: { domain?: string } } | undefined;
-  if (account?.account_id && typeof account.account_id === 'string') {
-    return `a:${account.account_id}`;
-  }
-  const domain = account?.brand?.domain
-    ?? (params.brand as { domain?: string } | undefined)?.domain;
-  if (typeof domain === 'string' && domain.length > 0) {
-    return `b:${domain.toLowerCase()}`;
-  }
-  return undefined;
+  const account = Object.prototype.hasOwnProperty.call(params, 'account')
+    ? params.account
+    : usageAccount;
+  if (account !== undefined) return accountScopeFromRef(account);
+  const domain = (params.brand as { domain?: unknown } | undefined)?.domain;
+  return typeof domain === 'string' && domain.length > 0
+    ? `b:${domain.toLowerCase()}`
+    : undefined;
 }
 
 function idempotencyError(
   code: string,
   message: string,
   callerContext: unknown,
-  options: { field?: string; recovery?: string } = {},
+  options: { field?: string; recovery?: string; retry_after?: number } = {},
 ): AdaptedResponse {
   const errorObj: Record<string, unknown> = {
     code,
     message,
     ...(options.field && { field: options.field }),
     ...(options.recovery && { recovery: options.recovery }),
+    ...(options.retry_after !== undefined && { retry_after: options.retry_after }),
   };
   const body = wrapEnvelope({ adcp_error: errorObj }, { context: callerContext });
   return {
@@ -144,6 +145,7 @@ async function releaseClaim(claim: IdempotencyClaim | null): Promise<void> {
   await getIdempotencyStore().release({
     principal: claim.principal,
     key: claim.key,
+    claimToken: claim.claimToken,
   });
 }
 
@@ -193,10 +195,19 @@ export function customToolFor(
               { field: 'idempotency_key', recovery: 'correctable' },
             );
           }
-          const principal = scopedPrincipal(
-            trainingCtx.principal ?? 'anonymous',
-            deriveAccountScope(handlerArgs),
-          );
+          let accountScope: string | undefined;
+          try {
+            accountScope = deriveAccountScope(handlerArgs);
+          } catch (err) {
+            if (!(err instanceof AccountRefValidationError)) throw err;
+            return idempotencyError(
+              'INVALID_REQUEST',
+              err.message,
+              callerContext,
+              { field: err.field, recovery: 'correctable' },
+            );
+          }
+          const principal = scopedPrincipal(trainingCtx.principal ?? 'anonymous', accountScope);
           const outcome = await getIdempotencyStore().check({
             principal,
             key: idempotencyKey,
@@ -219,10 +230,10 @@ export function customToolFor(
           }
           if (outcome.kind === 'in-flight') {
             return idempotencyError(
-              'RATE_LIMITED',
+              'IDEMPOTENCY_IN_FLIGHT',
               'A concurrent request with this idempotency_key is already in progress. Retry after a short delay.',
               callerContext,
-              { recovery: 'transient' },
+              { recovery: 'transient', retry_after: outcome.retryAfterSeconds },
             );
           }
           if (outcome.kind === 'replay') {
@@ -234,6 +245,7 @@ export function customToolFor(
             principal,
             key: idempotencyKey,
             payloadHash: outcome.payloadHash,
+            claimToken: outcome.claimToken,
           };
         }
         let result: unknown;
@@ -261,6 +273,7 @@ export function customToolFor(
               key: claim.key,
               payloadHash: claim.payloadHash,
               response: result as Record<string, unknown>,
+              claimToken: claim.claimToken,
             });
           } else {
             await releaseClaim(claim);

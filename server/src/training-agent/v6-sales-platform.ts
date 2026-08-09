@@ -30,6 +30,7 @@ import {
   handleListCreatives,
   handleListCreativeFormats,
   hasAdcpSuccessPayload,
+  resolveServedAdcpVersion,
 } from './task-handlers.js';
 import {
   handleProvidePerformanceFeedback,
@@ -192,18 +193,24 @@ function throwGetProductsExecutionError(message: string): never {
     ? 'IDEMPOTENCY_CONFLICT'
     : message.includes('IDEMPOTENCY_EXPIRED')
       ? 'IDEMPOTENCY_EXPIRED'
-      : message.includes('RATE_LIMITED')
-        ? 'RATE_LIMITED'
-        : invalidRequest
-          ? 'INVALID_REQUEST'
-          : 'SERVICE_UNAVAILABLE';
+      : message.includes('IDEMPOTENCY_IN_FLIGHT')
+        ? 'IDEMPOTENCY_IN_FLIGHT'
+        : message.includes('RATE_LIMITED')
+          ? 'RATE_LIMITED'
+          : invalidRequest
+            ? 'INVALID_REQUEST'
+            : 'SERVICE_UNAVAILABLE';
   const field = validationMatch?.[1]
     ?? (message.startsWith('brief must be a string') ? 'brief' : undefined)
     ?? (message.includes('idempotency_key') ? 'idempotency_key' : undefined);
+  const retryAfterMatch = message.match(/retry_after=(\d+)/);
   throw new AdcpError(code, {
-    recovery: code === 'RATE_LIMITED' || code === 'SERVICE_UNAVAILABLE' ? 'transient' : 'correctable',
+    recovery: code === 'RATE_LIMITED' || code === 'IDEMPOTENCY_IN_FLIGHT' || code === 'SERVICE_UNAVAILABLE'
+      ? 'transient'
+      : 'correctable',
     message,
     ...(code === 'INVALID_REQUEST' && field && { field }),
+    ...(retryAfterMatch && { retry_after: Number(retryAfterMatch[1]) }),
   });
 }
 
@@ -277,10 +284,20 @@ export class TrainingSalesPlatform
       // mutating the SDK's global task classification: validation, session
       // durability, and replay publication then share the same ordering as v5
       // and direct Addie dispatch.
+      const versionResolution = resolveServedAdcpVersion(req as unknown as Record<string, unknown>);
+      if (!versionResolution.ok) {
+        throw new AdcpError('VERSION_UNSUPPORTED', {
+          message: versionResolution.message,
+          field: versionResolution.field,
+          details: versionResolution.details as unknown as Record<string, unknown>,
+        });
+      }
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat);
+      trainingCtx.servedAdcpVersion = versionResolution.servedVersion;
       const executed = await executeTrainingAgentTool(
         'get_products',
         req as ToolArgs,
-        buildTrainingCtx(ctx, this.storyboardCompat),
+        trainingCtx,
       );
       if (!executed.success) throwGetProductsExecutionError(executed.error ?? 'get_products failed');
       return translateV5Result(executed.data, { allowAdvisories: true });

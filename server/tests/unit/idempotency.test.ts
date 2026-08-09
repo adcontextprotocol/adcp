@@ -158,6 +158,7 @@ describe('idempotency facade', () => {
           key: 'shared-key-uuuuu01',
           payloadHash: firstCheck.payloadHash,
           response: { id: 'acme' },
+          claimToken: firstCheck.claimToken,
         });
       }
 
@@ -165,7 +166,11 @@ describe('idempotency facade', () => {
       const otherAccount = await store.check({ principal: b, key: 'shared-key-uuuuu01', payload });
       expect(otherAccount.kind).toBe('miss');
       if (otherAccount.kind === 'miss') {
-        await store.release({ principal: b, key: 'shared-key-uuuuu01' });
+        await store.release({
+          principal: b,
+          key: 'shared-key-uuuuu01',
+          claimToken: otherAccount.claimToken,
+        });
       }
 
       // Same key under account A replays.

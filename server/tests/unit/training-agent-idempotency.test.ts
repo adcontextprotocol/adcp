@@ -19,7 +19,7 @@ import {
   invalidateCache,
   clearTaskStore,
 } from '../../src/training-agent/task-handlers.js';
-import { clearSessions, getSession } from '../../src/training-agent/state.js';
+import { clearSessions, getProductsSessionKeyFromArgs, getSession } from '../../src/training-agent/state.js';
 import {
   MUTATING_TOOLS,
   REPLAY_TTL_SECONDS,
@@ -451,7 +451,7 @@ describe('training agent idempotency middleware', () => {
       }));
       const failedIndex = firstResults.findIndex(({ result }) => result.isError === true);
       expect(failedIndex).toBeGreaterThanOrEqual(0);
-      expect((firstResults[failedIndex]!.result.structuredContent as any)?.adcp_error?.code).toBe('RATE_LIMITED');
+      expect((firstResults[failedIndex]!.result.structuredContent as any)?.adcp_error?.code).toBe('CONFLICT');
 
       const recovered = await callAsTask(server, 'get_products', payloads[failedIndex]!);
       const recoveredTaskId = (recovered.parsed.task as { taskId: string }).taskId;
@@ -512,7 +512,7 @@ describe('training agent idempotency middleware', () => {
         const originalMediaBuyId = (recoveredResult.structuredContent as { media_buy_id?: string })?.media_buy_id;
         expect(originalMediaBuyId).toBeTruthy();
 
-        const persistedSession = await getSession('open:idem-test.example');
+        const persistedSession = await getSession(getProductsSessionKeyFromArgs({ account: ACCOUNT }, 'open'));
         expect(persistedSession.mediaBuys.size).toBe(1);
         expect([...persistedSession.mediaBuys.keys()]).toEqual([originalMediaBuyId]);
         expect(saveFailure).toHaveBeenCalledTimes(2);
@@ -572,6 +572,86 @@ describe('training agent idempotency middleware', () => {
       expect((conflict.parsed as any).adcp_error?.code).toBe('IDEMPOTENCY_CONFLICT');
     });
 
+    it('preserves the exact committed proposal across later brief, wholesale, and refine discovery', async () => {
+      const account = { brand: { domain: 'idem-finalize-discovery.example' }, operator: 'idem-op' };
+      const finalize = (idempotencyKey: string) => call(server, 'get_products', {
+        idempotency_key: idempotencyKey,
+        buying_mode: 'refine',
+        account,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' }],
+      });
+
+      const first = await finalize(`products-finalize-first-${randomUUID()}`);
+      const firstProposal = (first.parsed.proposals as Array<Record<string, unknown>>)
+        .find(proposal => proposal.proposal_id === 'pinnacle_cross_channel');
+      expect(firstProposal).toMatchObject({ proposal_status: 'committed' });
+
+      await call(server, 'get_products', {
+        idempotency_key: `products-later-brief-${randomUUID()}`,
+        buying_mode: 'brief',
+        brief: 'podcast audio inventory',
+        account,
+      });
+      const wholesale = await call(server, 'get_products', {
+        idempotency_key: `products-later-wholesale-${randomUUID()}`,
+        buying_mode: 'wholesale',
+        account,
+      });
+      expect(wholesale.parsed.proposals).toBeUndefined();
+      await call(server, 'get_products', {
+        idempotency_key: `products-later-refine-${randomUUID()}`,
+        buying_mode: 'refine',
+        account,
+        refine: [{
+          scope: 'proposal',
+          action: 'include',
+          proposal_id: 'pinnacle_cross_channel',
+          ask: 'Use concrete fixed CPM pricing',
+        }],
+      });
+
+      const freshFinalize = await finalize(`products-finalize-fresh-${randomUUID()}`);
+      const freshProposal = (freshFinalize.parsed.proposals as Array<Record<string, unknown>>)
+        .find(proposal => proposal.proposal_id === 'pinnacle_cross_channel');
+      expect(freshProposal).toEqual(firstProposal);
+      expect(freshProposal?.expires_at).toBe(firstProposal?.expires_at);
+      expect(freshProposal?.insertion_order).toEqual(firstProposal?.insertion_order);
+    });
+
+    it('rejects a malformed product cursor without changing committed proposal state', async () => {
+      const domain = 'idem-finalize-cursor.example';
+      const account = { brand: { domain }, operator: 'idem-op' };
+      const finalize = (idempotencyKey: string) => call(server, 'get_products', {
+        idempotency_key: idempotencyKey,
+        buying_mode: 'refine',
+        account,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' }],
+      });
+      const first = await finalize(`products-cursor-finalize-${randomUUID()}`);
+      const firstProposal = (first.parsed.proposals as Array<Record<string, unknown>>)
+        .find(proposal => proposal.proposal_id === 'pinnacle_cross_channel');
+      const sessionKey = getProductsSessionKeyFromArgs({ account }, 'open');
+      const before = (await getSession(sessionKey)).lastGetProductsContext?.proposals;
+
+      const malformed = await call(server, 'get_products', {
+        idempotency_key: `products-malformed-cursor-${randomUUID()}`,
+        buying_mode: 'wholesale',
+        account,
+        pagination: { cursor: 'not-a-products-cursor', max_results: 1 },
+      });
+      expect(malformed.isError).toBe(true);
+      expect((malformed.parsed as any).adcp_error).toMatchObject({
+        code: 'INVALID_REQUEST',
+        field: 'pagination.cursor',
+      });
+      expect((await getSession(sessionKey)).lastGetProductsContext?.proposals).toEqual(before);
+
+      const freshFinalize = await finalize(`products-cursor-refinalize-${randomUUID()}`);
+      const freshProposal = (freshFinalize.parsed.proposals as Array<Record<string, unknown>>)
+        .find(proposal => proposal.proposal_id === 'pinnacle_cross_channel');
+      expect(freshProposal).toEqual(firstProposal);
+    });
+
     it('serializes parallel proposal-finalize retries into one execution and one replay', async () => {
       const account = { brand: { domain: 'idem-concurrent-finalize.example' }, operator: 'idem-op' };
       await call(server, 'get_products', {
@@ -595,7 +675,10 @@ describe('training agent idempotency middleware', () => {
       expect(outcomes.filter((outcome) => outcome.isError !== true)).toHaveLength(1);
       const successful = outcomes.find((outcome) => outcome.isError !== true)!;
       const limited = outcomes.find((outcome) => outcome.isError === true)!;
-      expect((limited.parsed as any).adcp_error?.code).toBe('RATE_LIMITED');
+      expect((limited.parsed as any).adcp_error).toMatchObject({
+        code: 'IDEMPOTENCY_IN_FLIGHT',
+        retry_after: expect.any(Number),
+      });
 
       const replay = await call(server, 'get_products', payload);
       expect(replay.parsed.replayed).toBe(true);
@@ -628,7 +711,7 @@ describe('training agent idempotency middleware', () => {
       const limitedIndex = outcomes.findIndex(outcome => outcome.isError === true);
       expect(successful).toBeTruthy();
       expect(limitedIndex).toBeGreaterThanOrEqual(0);
-      expect((outcomes[limitedIndex]!.parsed as any).adcp_error?.code).toBe('RATE_LIMITED');
+      expect((outcomes[limitedIndex]!.parsed as any).adcp_error?.code).toBe('CONFLICT');
 
       const retry = await call(server, 'get_products', payloads[limitedIndex]!);
       expect(retry.isError).toBeFalsy();
@@ -638,6 +721,39 @@ describe('training agent idempotency middleware', () => {
         .find(proposal => proposal.proposal_id === 'pinnacle_cross_channel');
       expect(retryProposal?.insertion_order).toEqual(successfulProposal?.insertion_order);
       expect(retryProposal?.expires_at).toBe(successfulProposal?.expires_at);
+    });
+
+    it('retains both proposals when concurrent disjoint finalizations retry after a session conflict', async () => {
+      const domain = 'idem-disjoint-finalize.example';
+      const account = { brand: { domain }, operator: 'idem-op' };
+      const proposalIds = ['pinnacle_cross_channel', 'viewpoint_multi_screen'];
+      const payloads = proposalIds.map((proposalId, index) => ({
+        idempotency_key: `products-disjoint-finalize-${index}-${randomUUID()}`,
+        buying_mode: 'refine',
+        account,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: proposalId }],
+      }));
+
+      const outcomes = await Promise.all(payloads.map(payload => call(server, 'get_products', payload)));
+      const successfulIndex = outcomes.findIndex(outcome => outcome.isError !== true);
+      const conflictedIndex = outcomes.findIndex(outcome => outcome.isError === true);
+      expect(successfulIndex).toBeGreaterThanOrEqual(0);
+      expect(conflictedIndex).toBeGreaterThanOrEqual(0);
+      expect((outcomes[conflictedIndex]!.parsed as any).adcp_error?.code).toBe('CONFLICT');
+
+      const successfulProposal = (outcomes[successfulIndex]!.parsed.proposals as Array<Record<string, unknown>>)
+        .find(proposal => proposal.proposal_id === proposalIds[successfulIndex]);
+      outcomes[conflictedIndex] = await call(server, 'get_products', payloads[conflictedIndex]!);
+      expect(outcomes[conflictedIndex]!.isError).toBeFalsy();
+
+      const persistedProposals = (await getSession(getProductsSessionKeyFromArgs({ account }, 'open')))
+        .lastGetProductsContext?.proposals ?? [];
+      for (const proposalId of proposalIds) {
+        expect(persistedProposals.find(proposal => proposal.proposal_id === proposalId))
+          .toMatchObject({ proposal_status: 'committed' });
+      }
+      expect(persistedProposals.find(proposal => proposal.proposal_id === proposalIds[successfulIndex]))
+        .toEqual(successfulProposal);
     });
 
     it('serializes overlapping proposal-finalize sets without double-committing either proposal', async () => {
@@ -663,7 +779,7 @@ describe('training agent idempotency middleware', () => {
       const outcomes = await Promise.all(payloads.map(payload => call(server, 'get_products', payload)));
       const limitedIndex = outcomes.findIndex(outcome => outcome.isError === true);
       expect(limitedIndex).toBeGreaterThanOrEqual(0);
-      expect((outcomes[limitedIndex]!.parsed as any).adcp_error?.code).toBe('RATE_LIMITED');
+      expect((outcomes[limitedIndex]!.parsed as any).adcp_error?.code).toBe('CONFLICT');
 
       outcomes[limitedIndex] = await call(server, 'get_products', payloads[limitedIndex]!);
       expect(outcomes.every(outcome => outcome.isError !== true)).toBe(true);

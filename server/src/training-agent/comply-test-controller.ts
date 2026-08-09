@@ -34,7 +34,7 @@ import type {
   ComplyBudgetSimulation,
 } from './types.js';
 import { supportsGetProductsRejected } from './types.js';
-import { getSession, sessionKeyFromArgs } from './state.js';
+import { getProductsSessionKeyFromArgs, getSession, sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
 import { getAccountNotificationSubscribers, seedAccountFixture } from './account-handlers.js';
@@ -1124,13 +1124,17 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     };
   }
 
-  const sessionKey = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
+  const scenario = rawArgs.scenario;
+  const targetsGetProductsState = scenario === 'force_get_products_arm'
+    || (scenario === 'force_upstream_unavailable' && params.tool === 'get_products');
+  const sessionKey = targetsGetProductsState
+    ? getProductsSessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId)
+    : sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
   const session = await getSession(sessionKey);
 
   // Pre-dispatch local scenarios the SDK doesn't know about yet. The SDK's
   // dispatcher would return UNKNOWN_SCENARIO for these, so handle them before
   // we delegate. New scenarios from spec PRs land here until adopted upstream.
-  const scenario = rawArgs.scenario;
   if (scenario === 'force_create_media_buy_arm') {
     return handleForceCreateMediaBuyArm(session, rawArgs);
   }

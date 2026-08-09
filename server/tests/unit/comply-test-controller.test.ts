@@ -1347,7 +1347,7 @@ describe('comply_test_controller', () => {
 
     it('blocks create_media_buy when account is suspended', async () => {
       const accountId = 'acct-gated';
-      const ACCT_WITH_ID = { ...ACCOUNT, account_id: accountId };
+      const ACCT_WITH_ID = { account_id: accountId };
 
       // Suspend the account
       await simulateCallTool(server, 'comply_test_controller', {

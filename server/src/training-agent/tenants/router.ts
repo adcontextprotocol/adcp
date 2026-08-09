@@ -21,10 +21,64 @@ import { handleComplyTestController } from '../comply-test-controller.js';
 import { adcpError, resolveServedAdcpVersion, supportedCanonicalFormatsCapability } from '../task-handlers.js';
 import { GET_PRODUCTS_REJECTED_ADCP_VERSION, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
+import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
 const SIGNAL_WHOLESALE_EVENTS = ['signal.created', 'signal.updated', 'signal.priced', 'signal.removed'] as const;
+
+function installConflictEnvelopeRedaction(res: Response): void {
+  const originalWriteHead = res.writeHead.bind(res);
+  const originalWrite = res.write.bind(res);
+  const originalEnd = res.end.bind(res);
+  let bufferedHead: unknown[] | undefined;
+  const chunks: Buffer[] = [];
+  const toBuffer = (chunk: unknown, encoding?: BufferEncoding): Buffer => {
+    if (Buffer.isBuffer(chunk)) return chunk;
+    if (typeof chunk === 'string') return Buffer.from(chunk, encoding);
+    if (chunk instanceof Uint8Array) return Buffer.from(chunk);
+    return Buffer.from(String(chunk), encoding);
+  };
+
+  res.writeHead = ((...args: unknown[]) => {
+    const headers = (typeof args[1] === 'string' ? args[2] : args[1]) as Record<string, unknown> | undefined;
+    const contentType = Object.entries(headers ?? {}).find(([key]) => key.toLowerCase() === 'content-type')?.[1];
+    if (typeof contentType === 'string' && contentType.includes('application/json')) {
+      const clonedHeaders = { ...headers };
+      bufferedHead = typeof args[1] === 'string'
+        ? [args[0], args[1], clonedHeaders]
+        : [args[0], clonedHeaders];
+      return res;
+    }
+    return Reflect.apply(originalWriteHead, res, args);
+  }) as typeof res.writeHead;
+
+  res.write = ((chunk: unknown, ...args: unknown[]) => {
+    if (!bufferedHead) return Reflect.apply(originalWrite, res, [chunk, ...args]);
+    const encoding = typeof args[0] === 'string' ? args[0] as BufferEncoding : undefined;
+    chunks.push(toBuffer(chunk, encoding));
+    const callback = args.find(value => typeof value === 'function') as (() => void) | undefined;
+    callback?.();
+    return true;
+  }) as typeof res.write;
+
+  res.end = ((chunk?: unknown, ...args: unknown[]) => {
+    if (!bufferedHead) return Reflect.apply(originalEnd, res, [chunk, ...args]);
+    if (chunk !== undefined && chunk !== null) {
+      const encoding = typeof args[0] === 'string' ? args[0] as BufferEncoding : undefined;
+      chunks.push(toBuffer(chunk, encoding));
+    }
+    const rewritten = redactConflictEnvelopeInBody(Buffer.concat(chunks).toString('utf8'));
+    const headersIndex = typeof bufferedHead[1] === 'string' ? 2 : 1;
+    const headers = bufferedHead[headersIndex] as Record<string, unknown>;
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === 'content-length') delete headers[key];
+    }
+    headers['content-length'] = Buffer.byteLength(rewritten);
+    Reflect.apply(originalWriteHead, res, bufferedHead);
+    return Reflect.apply(originalEnd, res, [rewritten, ...args]);
+  }) as typeof res.end;
+}
 
 const SALES_LEGACY_CAPABILITY_SCENARIOS = [
   'force_creative_status',
@@ -311,6 +365,7 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCo
       try {
         await resolved.server.connect(transport);
         logger.debug({ tenantId: resolved.tenantId, method: req.body?.method }, 'tenant MCP request');
+        installConflictEnvelopeRedaction(res);
         await runWithSessionContext(async () => {
           await transport.handleRequest(req, res, req.body);
           await flushDirtySessions();
@@ -502,23 +557,29 @@ function projectTenantToolDiscovery(
         const required = Array.isArray(inputSchema.required)
           ? inputSchema.required.filter((value): value is string => typeof value === 'string')
           : [];
+        const properties = { ...(inputSchema.properties ?? {}) };
+        const isThreeZeroCompat = storyboardCompat?.version === '3.0';
+        if (isThreeZeroCompat) {
+          delete properties.idempotency_key;
+        } else {
+          properties.idempotency_key = {
+            type: 'string',
+            minLength: 16,
+            maxLength: 255,
+            pattern: '^[A-Za-z0-9_.:-]{16,255}$',
+            description: 'Client-generated key for this logical request. Reuse it unchanged for retries.',
+          };
+        }
         getProducts.inputSchema = {
           ...inputSchema,
-          properties: {
-            ...(inputSchema.properties ?? {}),
-            idempotency_key: {
-              type: 'string',
-              minLength: 16,
-              maxLength: 255,
-              pattern: '^[A-Za-z0-9_.:-]{16,255}$',
-              description: 'Client-generated key for this logical request. Reuse it unchanged for retries.',
-            },
-          },
-          required: [...new Set([...required, 'idempotency_key'])],
+          properties,
+          required: isThreeZeroCompat
+            ? required.filter(field => field !== 'idempotency_key')
+            : [...new Set([...required, 'idempotency_key'])],
         };
         getProducts.annotations = {
           ...(getProducts.annotations ?? {}),
-          readOnlyHint: false,
+          readOnlyHint: isThreeZeroCompat,
           idempotentHint: true,
         };
       }

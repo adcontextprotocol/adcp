@@ -888,6 +888,39 @@ describe('session state', () => {
       });
     });
 
+    it('preserves disjoint mutations from overlapping requests', async () => {
+      const { InMemoryStateStore } = await import('@adcp/sdk/server');
+      const store = new InMemoryStateStore();
+      setStateStore(store);
+      const key = 'overlapping-disjoint-writes';
+      try {
+        let loaded = 0;
+        let releaseBoth!: () => void;
+        const bothLoaded = new Promise<void>(resolve => { releaseBoth = resolve; });
+        const mutate = (field: 'mediaBuys' | 'creatives') => runWithSessionContext(async () => {
+          const session = await getSession(key);
+          if (field === 'mediaBuys') {
+            session.mediaBuys.set('mb1', { mediaBuyId: 'mb1', status: 'active' } as any);
+          } else {
+            session.creatives.set('creative1', { creativeId: 'creative1', status: 'approved' } as any);
+          }
+          loaded++;
+          if (loaded === 2) releaseBoth();
+          await bothLoaded;
+          await flushDirtySessions();
+        });
+        await Promise.all([mutate('mediaBuys'), mutate('creatives')]);
+
+        await runWithSessionContext(async () => {
+          const persisted = await getSession(key);
+          expect(persisted.mediaBuys.has('mb1')).toBe(true);
+          expect(persisted.creatives.has('creative1')).toBe(true);
+        });
+      } finally {
+        setStateStore(null);
+      }
+    });
+
     it('returns different sessions for different keys', async () => {
       await runWithSessionContext(async () => {
         const s1 = await getSession('key-a');
@@ -1089,7 +1122,7 @@ describe('session state', () => {
         { account: { account_id: 'acc_acme_001' } },
         'open',
       );
-      expect(key).toBe('open:acc_acme_001');
+      expect(key).toBe('open:a:acc_acme_001');
     });
 
     it('uses top-level brand domain when account is absent', () => {

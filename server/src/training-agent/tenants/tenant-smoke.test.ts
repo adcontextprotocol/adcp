@@ -897,8 +897,13 @@ describe('tenant routing smoke', () => {
         ...payload,
         buying_mode: 'brief',
         brief: 'different logical request',
-      }) as { result?: { structuredContent?: { adcp_error?: { code?: string } } } };
-      expect(conflict.result?.structuredContent?.adcp_error?.code).toBe('IDEMPOTENCY_CONFLICT');
+      }) as { result?: { structuredContent?: { adcp_error?: Record<string, unknown> } } };
+      const conflictEnvelope = conflict.result?.structuredContent?.adcp_error;
+      expect(conflictEnvelope?.code).toBe('IDEMPOTENCY_CONFLICT');
+      expect(conflictEnvelope).not.toHaveProperty('recovery');
+      expect(Object.keys(conflictEnvelope ?? {}).every(key => [
+        'code', 'message', 'status', 'retry_after', 'correlation_id', 'request_id', 'operation_id',
+      ].includes(key))).toBe(true);
     } finally {
       await close();
     }
@@ -909,15 +914,41 @@ describe('tenant routing smoke', () => {
     try {
       const url = `${baseUrl}/sales/mcp`;
       await initializeTenant(url);
+      const listResponse = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+          authorization: 'Bearer test-token',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+      });
+      const listBody = await listResponse.json() as {
+        result?: {
+          tools?: Array<{
+            name?: string;
+            inputSchema?: {
+              properties?: Record<string, unknown>;
+              required?: string[];
+            };
+            annotations?: Record<string, unknown>;
+          }>;
+        };
+      };
+      const discovered = listBody.result?.tools?.find(tool => tool.name === 'get_products');
+      expect(discovered?.inputSchema?.properties).not.toHaveProperty('idempotency_key');
+      expect(discovered?.inputSchema?.required).not.toContain('idempotency_key');
+      expect(discovered?.annotations).toMatchObject({ readOnlyHint: true, idempotentHint: true });
+
       const account = {
         brand: { domain: 'tenant-products-legacy.example' },
         operator: 'tenant-products-legacy.example',
       };
       const payload = { buying_mode: 'wholesale', account };
-      const first = await callTenantTool(url, 2, 'get_products', payload) as {
+      const first = await callTenantTool(url, 3, 'get_products', payload) as {
         result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
       };
-      const replay = await callTenantTool(url, 3, 'get_products', payload) as {
+      const replay = await callTenantTool(url, 4, 'get_products', payload) as {
         result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
       };
       expect(first.result?.structuredContent?.products?.length).toBeGreaterThan(0);
@@ -925,7 +956,7 @@ describe('tenant routing smoke', () => {
       expect(replay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);
       expect(replay.result?.structuredContent?.replayed).toBe(true);
 
-      const changed = await callTenantTool(url, 4, 'get_products', {
+      const changed = await callTenantTool(url, 5, 'get_products', {
         buying_mode: 'brief',
         brief: 'A different frozen 3.0 request',
         account,

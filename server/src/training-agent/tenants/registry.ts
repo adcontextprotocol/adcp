@@ -36,7 +36,7 @@ import {
   type CreateAdcpServerFromPlatformOptions,
 } from '@adcp/sdk/server';
 import { getPool } from '../../db/client.js';
-import { getIdempotencyStore, scopedPrincipal } from '../idempotency.js';
+import { getSdkIdempotencyStore, scopedPrincipal } from '../idempotency.js';
 import { emitFrameworkTaskWebhook, getWebhookSigningMaterial } from '../webhooks.js';
 import { isWebhookTestOrDevelopment } from '../webhook-fetch.js';
 import { buildSignalsTenantConfig } from './signals.js';
@@ -184,7 +184,7 @@ function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboar
     name: 'adcp-training-agent',
     version: '1.0.0',
     ...(storyboardCompat?.version === '3.0' && { adcpVersion: '3.0' }),
-    idempotency: getIdempotencyStore(),
+    idempotency: getSdkIdempotencyStore(),
     webhooks: getWebhookSigningMaterial(),
     taskWebhookEmitter: {
       emit: emitFrameworkTaskWebhook,

@@ -23,6 +23,7 @@ import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetchAxiosLike } from '../utils/url-security.js';
 import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type SessionState } from './types.js';
+import { AccountRefValidationError, accountScopeFromRef } from './account-scope.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
   Product,
@@ -56,7 +57,7 @@ function escapeHtmlAttr(s: string): string {
 }
 
 /** Build a structured MCP error response for tool calls (L3 error compliance). */
-export function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string; field?: string }, context?: unknown, adcpVersion?: string) {
+export function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string; field?: string; retry_after?: number }, context?: unknown, adcpVersion?: string) {
   const errorObj = { code, ...opts };
   const body = context !== undefined
     ? { adcp_error: errorObj, context }
@@ -1334,7 +1335,7 @@ import { buildCatalog, buildShowsForProducts, buildProposals } from './product-f
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import {
-  getSession, sessionKeyFromArgs,
+  getSession, getProductsSessionKeyFromArgs, sessionKeyFromArgs,
   findSessionMatching,
   runWithSessionContext, flushDirtySessions,
   getComplianceCreatives, getComplianceCreative,
@@ -1781,20 +1782,32 @@ function toolSupportsTask(toolName: string): boolean {
  * its only job is to keep two different buyers on the same shared token
  * from seeing each other's idempotency outcomes.
  */
-function deriveAccountScope(args: Record<string, unknown>): string | undefined {
+function deriveAccountScope(args: Record<string, unknown>, strictAccountRef = true): string | undefined {
   const usageAccount = Array.isArray(args.usage)
     ? (args.usage[0] as { account?: unknown } | undefined)?.account
     : undefined;
-  const account = (args.account ?? usageAccount) as { account_id?: string; brand?: { domain?: string } } | undefined;
-  if (account?.account_id && typeof account.account_id === 'string') {
-    return `a:${account.account_id}`;
+  const account = Object.prototype.hasOwnProperty.call(args, 'account')
+    ? args.account
+    : usageAccount;
+  if (account !== undefined) {
+    try {
+      return accountScopeFromRef(account);
+    } catch (error) {
+      if (strictAccountRef || !(error instanceof AccountRefValidationError)) throw error;
+      const legacy = account as { account_id?: unknown; brand?: { domain?: unknown } };
+      if (typeof legacy.account_id === 'string' && legacy.account_id.length > 0) {
+        return `a:${legacy.account_id}`;
+      }
+      if (typeof legacy.brand?.domain === 'string' && legacy.brand.domain.length > 0) {
+        return `b:${legacy.brand.domain.toLowerCase()}`;
+      }
+      return undefined;
+    }
   }
-  const domain = account?.brand?.domain
-    ?? (args.brand as { domain?: string } | undefined)?.domain;
-  if (typeof domain === 'string' && domain.length > 0) {
-    return `b:${domain.toLowerCase()}`;
-  }
-  return undefined;
+  const domain = (args.brand as { domain?: unknown } | undefined)?.domain;
+  return typeof domain === 'string' && domain.length > 0
+    ? `b:${domain.toLowerCase()}`
+    : undefined;
 }
 
 function withUsageAccountScope<T extends Record<string, unknown>>(req: T): T {
@@ -3782,11 +3795,23 @@ const TOOLS = [
 ];
 
 function visibleToolsForContext(ctx: TrainingContext): typeof TOOLS {
-  return TOOLS.filter(tool => {
-    if (tool.name !== 'validate_input') return true;
-    if (isThreeZeroStoryboardCompat(ctx)) return false;
-    return true;
-  }) as typeof TOOLS;
+  const threeZero = isThreeZeroStoryboardCompat(ctx);
+  return TOOLS
+    .filter(tool => tool.name !== 'validate_input' || !threeZero)
+    .map(tool => {
+      if (!threeZero || tool.name !== 'get_products') return tool;
+      const properties = { ...tool.inputSchema.properties };
+      delete (properties as Record<string, unknown>).idempotency_key;
+      return {
+        ...tool,
+        annotations: { ...tool.annotations, readOnlyHint: true, idempotentHint: true },
+        inputSchema: {
+          ...tool.inputSchema,
+          properties,
+          required: tool.inputSchema.required?.filter(field => field !== 'idempotency_key'),
+        },
+      };
+    }) as typeof TOOLS;
 }
 
 export function visibleTrainingToolNamesForContext(ctx: TrainingContext): string[] {
@@ -3799,70 +3824,52 @@ function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: 
 
 // ── Task handler implementations ──────────────────────────────────
 
-function finalizedProposalIds(args: ToolArgs): string[] {
-  const refine = (args as unknown as { refine?: unknown }).refine;
-  if (!Array.isArray(refine)) return [];
-  return [...new Set(refine
-    .filter((entry): entry is { scope: 'proposal'; proposal_id: string; action: 'finalize' } => (
-      typeof entry === 'object'
-      && entry !== null
-      && (entry as { scope?: unknown }).scope === 'proposal'
-      && (entry as { action?: unknown }).action === 'finalize'
-      && typeof (entry as { proposal_id?: unknown }).proposal_id === 'string'
-    ))
-    .map(entry => entry.proposal_id))]
-    .sort();
-}
-
 export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
-  const proposalIds = finalizedProposalIds(args);
-  if (proposalIds.length === 0) return handleGetProductsUnlocked(args, ctx);
+  const req = args as unknown as GetProductsRequest & ToolArgs;
+  const paginationOffset = req.pagination
+    ? decodeOffsetCursor('products', req.pagination.cursor)
+    : undefined;
+  if (paginationOffset === null) {
+    return {
+      errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] as TaskError[],
+    };
+  }
 
-  // Serialize proposal commits independently of the buyer's request key.
-  // Distinct idempotency keys must not be able to create competing holds for
-  // the same proposal. The normal idempotency store gives us a distributed,
-  // expiring put-if-absent claim across Fly machines; the claim is always
-  // released after the commit so a later retry can observe the committed
-  // proposal and return its original IO/expiry.
-  const sessionScope = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
-  const principal = `proposal-finalize-lock:${createHash('sha256').update(sessionScope).digest('hex')}`;
+  // Session persistence is whole-document last-writer-wins, so every
+  // get_products execution must share one session-scoped mutex. Locking only
+  // finalized proposal IDs still lets a concurrent brief/wholesale request
+  // overwrite the committed proposal written by a finalization request.
+  const sessionScope = getProductsSessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
+  const sessionHash = createHash('sha256').update(sessionScope).digest('hex');
+  const principal = 'get-products-session-mutex';
+  const key = `get-products-session:${sessionHash}`;
   const store = getIdempotencyStore();
-  const acquiredKeys: string[] = [];
-  for (const proposalId of proposalIds) {
-    const key = `proposal-finalize:${createHash('sha256').update(proposalId).digest('hex')}`;
-    const claim = await store.check({ principal, key, payload: { proposal_id: proposalId } });
-    if (claim.kind !== 'miss') {
-      await Promise.all(acquiredKeys.map(acquiredKey => store.release({ principal, key: acquiredKey })));
-      return {
-        errors: [{
-          code: 'RATE_LIMITED',
-          message: 'A proposal finalization is already in progress. Retry after a short delay.',
-          recovery: 'transient',
-        }],
-      };
-    }
-    acquiredKeys.push(key);
+  const claim = await store.check({ principal, key, payload: { session: sessionHash } });
+  if (claim.kind !== 'miss') {
+    return {
+      errors: [{
+        code: 'CONFLICT',
+        message: 'Another get_products request is already updating this session. Retry after a short delay.',
+        recovery: 'transient',
+      }],
+    };
   }
   try {
-    const result = await handleGetProductsUnlocked(args, ctx);
-    const hasErrors = Array.isArray((result as { errors?: unknown }).errors)
-      && (result as { errors: unknown[] }).errors.length > 0;
-    const hasSuccessPayload = Array.isArray((result as { products?: unknown }).products)
-      || Array.isArray((result as { proposals?: unknown }).proposals);
-    if (!hasErrors || hasSuccessPayload) {
-      // Keep the proposal-level claim until the committed proposal is durable.
-      // Releasing immediately after the in-memory mutation would let a second
-      // process acquire the lock, reload the still-draft row, and mint a
-      // competing IO before the outer dispatcher reached its flush step.
-      await flushDirtySessions();
-    }
+    const result = await handleGetProductsUnlocked(args, ctx, paginationOffset);
+    // Keep the mutex until every mutation made by discovery is durable. This
+    // includes context changes on non-finalize calls, not just proposal holds.
+    await flushDirtySessions();
     return result;
   } finally {
-    await Promise.all(acquiredKeys.map(key => store.release({ principal, key })));
+    await store.release({ principal, key, claimToken: claim.claimToken });
   }
 }
 
-async function handleGetProductsUnlocked(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
+async function handleGetProductsUnlocked(
+  args: ToolArgs,
+  ctx: TrainingContext,
+  paginationOffset?: number,
+): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
   const brief = (req as Record<string, unknown>).brief;
@@ -3908,7 +3915,12 @@ async function handleGetProductsUnlocked(args: ToolArgs, ctx: TrainingContext): 
       };
     }
   }
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(getProductsSessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const committedProposals = new Map(
+    (session.lastGetProductsContext?.proposals ?? [])
+      .filter(proposal => proposalLifecycle(proposal).proposal_status === 'committed')
+      .map(proposal => [proposal.proposal_id, proposal]),
+  );
   const wholesaleMeta = buyingMode === 'wholesale'
     ? productWholesaleFeedMeta(req as WholesaleFeedRequest, session)
     : undefined;
@@ -4212,6 +4224,15 @@ async function handleGetProductsUnlocked(args: ToolArgs, ctx: TrainingContext): 
         } else if (action === 'include') {
           explicitlySelectedProposals.set(proposal.proposal_id, proposal);
           for (const allocation of proposal.allocations) includeIds.add(allocation.product_id);
+          if (proposalLifecycle(proposal).proposal_status === 'committed' && op.ask) {
+            refinementApplied.push({
+              scope: 'proposal',
+              proposal_id: op.proposal_id,
+              status: 'unable',
+              notes: 'Proposal is already committed and cannot be refined. Discover or select a draft proposal instead.',
+            });
+            continue;
+          }
           const concreteCpmAsk = parseConcreteCpmAsk(op.ask);
           if (concreteCpmAsk) {
             const stagedProducts = new Map<string, ReturnType<typeof concreteCpmPricing>>();
@@ -4372,10 +4393,12 @@ async function handleGetProductsUnlocked(args: ToolArgs, ctx: TrainingContext): 
     }
   }
 
-  // In refine mode, use session proposals (which may include finalized versions)
+  // In refine mode, use session proposals (which may include finalized
+  // versions). In other discovery modes, replace registry drafts with the
+  // exact committed object already held by this session.
   const contextualProposals = (buyingMode === 'refine' && session.lastGetProductsContext?.proposals)
     ? session.lastGetProductsContext.proposals
-    : getProposals();
+    : getProposals().map(proposal => committedProposals.get(proposal.proposal_id) ?? proposal);
   const sourceProposals = [
     ...contextualProposals,
     ...Array.from(explicitlySelectedProposals.values()).filter(selected =>
@@ -4390,18 +4413,23 @@ async function handleGetProductsUnlocked(args: ToolArgs, ctx: TrainingContext): 
       proposal.allocations.every(a => productIds.has(a.product_id)) &&
       !proposalOmitIds.has(proposal.proposal_id),
     )
-    .map(proposal => ({
-      ...proposal,
-      allocations: proposal.allocations.map(alloc => {
-        const pricingOptions = productsById.get(alloc.product_id)?.pricing_options;
-        const selectedPricing = pricingOptions?.find(
-          option => option.pricing_option_id === alloc.pricing_option_id,
-        ) ?? pricingOptions?.[0];
-        return selectedPricing
-          ? { ...alloc, pricing_option_id: selectedPricing.pricing_option_id }
-          : alloc;
-      }),
-    }));
+    .map(proposal => {
+      // A committed proposal is a receipt for a specific inventory hold.
+      // Later catalog/pricing discovery must not rewrite any part of it.
+      if (proposalLifecycle(proposal).proposal_status === 'committed') return proposal;
+      return {
+        ...proposal,
+        allocations: proposal.allocations.map(alloc => {
+          const pricingOptions = productsById.get(alloc.product_id)?.pricing_options;
+          const selectedPricing = pricingOptions?.find(
+            option => option.pricing_option_id === alloc.pricing_option_id,
+          ) ?? pricingOptions?.[0];
+          return selectedPricing
+            ? { ...alloc, pricing_option_id: selectedPricing.pricing_option_id }
+            : alloc;
+        }),
+      };
+    });
   const canonicalFormatAdvisories = collectCanonicalFormatAdvisories(products);
   const staleDirective = session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
     ? session.complyExtensions.forcedUpstreamUnavailable
@@ -4414,19 +4442,26 @@ async function handleGetProductsUnlocked(args: ToolArgs, ctx: TrainingContext): 
   const responseProducts = isThreeZeroStoryboardCompat(ctx)
     ? products.map(productForThreeZeroStoryboardCompat)
     : products;
+  const retainedCommittedProposals = new Map(
+    (session.lastGetProductsContext?.proposals ?? [])
+      .filter(proposal => proposalLifecycle(proposal).proposal_status === 'committed')
+      .map(proposal => [proposal.proposal_id, proposal]),
+  );
+  const persistedProposals = buyingMode === 'wholesale' ? [] : [...proposals];
+  const persistedProposalIds = new Set(persistedProposals.map(proposal => proposal.proposal_id));
+  for (const proposal of retainedCommittedProposals.values()) {
+    if (!persistedProposalIds.has(proposal.proposal_id)) persistedProposals.push(proposal);
+  }
   session.lastGetProductsContext = {
     products: responseProducts,
-    proposals: buyingMode === 'wholesale' ? [] : proposals,
+    proposals: persistedProposals,
   };
   let pageProducts = responseProducts;
   let pagination: { has_more: boolean; total_count: number; cursor?: string } | undefined;
   if (req.pagination) {
-    const offset = decodeOffsetCursor('products', req.pagination.cursor);
-    if (offset === null) {
-      return {
-        errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] as TaskError[],
-      };
-    }
+    // The exported handler validates this before acquiring the mutex or
+    // loading session state.
+    const offset = paginationOffset ?? 0;
     const maxResults = Math.min(
       typeof req.pagination.max_results === 'number' && req.pagination.max_results >= 1
         ? req.pagination.max_results
@@ -9685,6 +9720,9 @@ function validateIdempotencyProtectedInput(
       ...(field && { field }),
     };
   }
+  if (parsed.data.pagination && decodeOffsetCursor('products', parsed.data.pagination.cursor) === null) {
+    return { message: 'pagination.cursor is malformed', field: 'pagination.cursor' };
+  }
 
   // Finalization is a commit boundary, not another refinement. Reject mixed
   // arrays before the idempotency store is consulted so an invalid request
@@ -9790,7 +9828,15 @@ async function executeTrainingAgentToolInContext(
     return { success: false, error: `Unknown tool: ${toolName}` };
   }
   const authPrincipal = ctx.principal ?? ctx.userId ?? 'anonymous';
-  const accountScope = deriveAccountScope(initialHandlerArgs);
+  let accountScope: string | undefined;
+  try {
+    accountScope = toolName === 'comply_test_controller'
+      ? undefined
+      : deriveAccountScope(initialHandlerArgs, toolName === 'get_products');
+  } catch (error) {
+    if (!(error instanceof AccountRefValidationError)) throw error;
+    return { success: false, error: `Invalid ${toolName} request at account: ${error.message}` };
+  }
   const principal = scopedPrincipal(authPrincipal, accountScope);
   const handlerArgs = applyThreeZeroGetProductsIdempotencyCompatibility(
     toolName,
@@ -9799,7 +9845,7 @@ async function executeTrainingAgentToolInContext(
     ctx.storyboardCompat?.version === '3.0' || initialHandlerArgs.adcp_version === '3.0',
   );
   const idempotencyKey = handlerArgs.idempotency_key;
-  let claim: { payloadHash: string } | undefined;
+  let claim: { payloadHash: string; claimToken: string } | undefined;
 
   if (isMutatingTool(toolName)) {
     if (idempotencyKey === undefined || idempotencyKey === null) {
@@ -9834,9 +9880,12 @@ async function executeTrainingAgentToolInContext(
       return { success: false, error: 'IDEMPOTENCY_CONFLICT' };
     }
     if (outcome.kind === 'in-flight') {
-      return { success: false, error: 'RATE_LIMITED: matching request is already in progress' };
+      return {
+        success: false,
+        error: `IDEMPOTENCY_IN_FLIGHT: matching request is already in progress; retry_after=${outcome.retryAfterSeconds}`,
+      };
     }
-    claim = { payloadHash: outcome.payloadHash };
+    claim = { payloadHash: outcome.payloadHash, claimToken: outcome.claimToken };
   }
   try {
     const result = await Promise.resolve(handler(
@@ -9849,21 +9898,34 @@ async function executeTrainingAgentToolInContext(
       const hasErrors = Array.isArray(cacheResponse.errors) && cacheResponse.errors.length > 0;
       const hasAdvisorySuccessPayload = permitsAdvisoryErrors(toolName, cacheResponse);
       if (hasErrors && !hasAdvisorySuccessPayload) {
-        await getIdempotencyStore().release({ principal, key: idempotencyKey });
+        await getIdempotencyStore().release({
+          principal,
+          key: idempotencyKey,
+          claimToken: claim.claimToken,
+        });
       } else {
-        await flushDirtySessions();
+        // get_products finalization state must be durable before its replay is
+        // published. Other tools retain the historical save-then-flush order;
+        // moving every synchronous mutation to flush-first creates a new
+        // duplicate-execution window if cache publication fails.
+        if (toolName === 'get_products') await flushDirtySessions();
         await getIdempotencyStore().save({
           principal,
           key: idempotencyKey,
           payloadHash: claim.payloadHash,
           response: cacheResponse,
+          claimToken: claim.claimToken,
         });
       }
     }
     return { success: true, data: response };
   } catch (error) {
     if (claim && typeof idempotencyKey === 'string') {
-      await getIdempotencyStore().release({ principal, key: idempotencyKey });
+      await getIdempotencyStore().release({
+        principal,
+        key: idempotencyKey,
+        claimToken: claim.claimToken,
+      });
     }
     logger.error({ error, tool: toolName }, 'Training agent in-process tool error');
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
@@ -9969,7 +10031,22 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // callers can already enumerate their own account's keys — so the
     // scoping adds no useful probing surface while closing the cross-caller
     // leak.
-    const accountScope = deriveAccountScope(initialHandlerArgs);
+    let accountScope: string | undefined;
+    try {
+      accountScope = name === 'comply_test_controller'
+        ? undefined
+        : deriveAccountScope(initialHandlerArgs, name === 'get_products');
+    } catch (error) {
+      if (!(error instanceof AccountRefValidationError)) throw error;
+      return {
+        result: adcpError('INVALID_REQUEST', {
+          message: error.message,
+          field: error.field,
+          recovery: 'correctable',
+        }, callerContext, servedAdcpVersion),
+        flushable: true,
+      };
+    }
     const idempotencyPrincipal = scopedPrincipal(authPrincipal, accountScope);
     const handlerArgs = applyThreeZeroGetProductsIdempotencyCompatibility(
       name,
@@ -9985,6 +10062,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     let skipHandler = false;
     let idempotencyPayloadHash: string | undefined;
     let idempotencyClaimed = false;
+    let idempotencyClaimToken: string | undefined;
     let idempotencyReplayed = false;
     let idempotencyReplayResponse: Record<string, unknown> | undefined;
 
@@ -10050,13 +10128,11 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         };
       }
       if (outcome.kind === 'in-flight') {
-        // A parallel request with the same key is executing. Retries should
-        // back off and see 'replay' once the in-flight handler saves. Return
-        // a transient error so the caller retries after a brief delay.
         return {
-          result: adcpError('RATE_LIMITED', {
+          result: adcpError('IDEMPOTENCY_IN_FLIGHT', {
             message: 'A concurrent request with this idempotency_key is already in progress. Retry after a short delay.',
             recovery: 'transient',
+            retry_after: outcome.retryAfterSeconds,
           }, callerContext, servedAdcpVersion),
           flushable: true,
         };
@@ -10086,6 +10162,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // call save() on success or release() on any other path so the
         // placeholder doesn't leak.
         idempotencyPayloadHash = outcome.payloadHash;
+        idempotencyClaimToken = outcome.claimToken;
         idempotencyClaimed = true;
 
         // A previous task execution may have durably stored both its domain
@@ -10104,46 +10181,59 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
             const recoveredTask = await getIdempotentTask(taskStore, naturalKey);
             if (recoveredTask) {
               if (recoveredTask.status !== 'completed') {
-                throw new Error(`Prior idempotent task ${recoveredTask.taskId} is not recoverable in status ${recoveredTask.status}`);
-              }
-              const recoveredResult = await taskStore.getTaskResult(recoveredTask.taskId) as CallToolResult;
-              const recoveredBody = isRecord(recoveredResult.structuredContent)
-                ? recoveredResult.structuredContent
-                : undefined;
-              if (recoveredResult.isError || !recoveredBody) {
-                throw new Error(`Prior idempotent task ${recoveredTask.taskId} has no successful structured result`);
-              }
+                // get_products commits converge on the exact stored proposal
+                // (including IO and expiry), so it is safe to repair an
+                // orphaned deterministic task by rerunning the handler and
+                // storing the result into the same task below. Other mutators
+                // may have non-reconstructable random IDs and must fail closed.
+                if (name !== 'get_products') {
+                  throw new Error(`Prior idempotent task ${recoveredTask.taskId} is not recoverable in status ${recoveredTask.status}`);
+                }
+              } else {
+                const recoveredResult = await taskStore.getTaskResult(recoveredTask.taskId) as CallToolResult;
+                const recoveredBody = isRecord(recoveredResult.structuredContent)
+                  ? recoveredResult.structuredContent
+                  : undefined;
+                if (recoveredResult.isError || !recoveredBody) {
+                  throw new Error(`Prior idempotent task ${recoveredTask.taskId} has no successful structured result`);
+                }
 
-              const taskResponse = { task: recoveredTask, adcp_version: servedAdcpVersion };
-              await store.save({
-                principal: idempotencyPrincipal,
-                key: idempotencyKey,
-                payloadHash: idempotencyPayloadHash,
-                response: taskResponse,
-              });
-              const {
-                context: _cachedContext,
-                replayed: _cachedReplayMarker,
-                ...notificationResponse
-              } = recoveredBody;
-              maybeEmitCompletionWebhook({
-                toolName: name,
-                args: handlerArgs,
-                response: notificationResponse,
-                requestIdempotencyKey: idempotencyKey,
-                principal: idempotencyPrincipal,
-              });
-              return {
-                result: {
-                  ...taskResponse,
-                  replayed: true,
-                  ...(callerContext !== undefined && { context: callerContext }),
-                },
-                flushable: false,
-              };
+                const taskResponse = { task: recoveredTask, adcp_version: servedAdcpVersion };
+                await store.save({
+                  principal: idempotencyPrincipal,
+                  key: idempotencyKey,
+                  payloadHash: idempotencyPayloadHash,
+                  response: taskResponse,
+                  claimToken: idempotencyClaimToken,
+                });
+                const {
+                  context: _cachedContext,
+                  replayed: _cachedReplayMarker,
+                  ...notificationResponse
+                } = recoveredBody;
+                maybeEmitCompletionWebhook({
+                  toolName: name,
+                  args: handlerArgs,
+                  response: notificationResponse,
+                  requestIdempotencyKey: idempotencyKey,
+                  principal: idempotencyPrincipal,
+                });
+                return {
+                  result: {
+                    ...taskResponse,
+                    replayed: true,
+                    ...(callerContext !== undefined && { context: callerContext }),
+                  },
+                  flushable: false,
+                };
+              }
             }
           } catch (error) {
-            await store.release({ principal: idempotencyPrincipal, key: idempotencyKey });
+            await store.release({
+              principal: idempotencyPrincipal,
+              key: idempotencyKey,
+              claimToken: idempotencyClaimToken,
+            });
             throw error;
           }
         }
@@ -10254,24 +10344,38 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     const resolveIdempotencyClaim = async (
       responseToCache: Record<string, unknown> | null,
     ): Promise<boolean> => {
-      if (!idempotencyClaimed || typeof idempotencyKey !== 'string') return false;
+      if (
+        !idempotencyClaimed
+        || typeof idempotencyKey !== 'string'
+        || typeof idempotencyClaimToken !== 'string'
+      ) return false;
       const store = getIdempotencyStore();
       const shouldSave = responseToCache !== null && !toolResult!.isError && !handlerThrew;
       if (!shouldSave || !idempotencyPayloadHash) {
-        await store.release({ principal: idempotencyPrincipal, key: idempotencyKey });
+        await store.release({
+          principal: idempotencyPrincipal,
+          key: idempotencyKey,
+          claimToken: idempotencyClaimToken,
+        });
         return false;
       }
       try {
-        await flushDirtySessions();
+        const flushedBeforeSave = name === 'get_products';
+        if (flushedBeforeSave) await flushDirtySessions();
         await store.save({
           principal: idempotencyPrincipal,
           key: idempotencyKey,
           payloadHash: idempotencyPayloadHash,
           response: responseToCache,
+          claimToken: idempotencyClaimToken,
         });
-        return true;
+        return flushedBeforeSave;
       } catch (error) {
-        await store.release({ principal: idempotencyPrincipal, key: idempotencyKey });
+        await store.release({
+          principal: idempotencyPrincipal,
+          key: idempotencyKey,
+          claimToken: idempotencyClaimToken,
+        });
         throw error;
       }
     };
