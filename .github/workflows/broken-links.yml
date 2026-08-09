@@ -2,7 +2,7 @@ name: Check for Broken Links
 
 on:
   push:
-    branches: [ main, develop, '2.6.x' ]
+    branches: [ main, develop ]
     paths:
       - 'docs/**'
       - 'dist/docs/**'
@@ -15,7 +15,7 @@ on:
       - '.markdown-link-check.json'
       - '.github/workflows/broken-links.yml'
   pull_request:
-    branches: [ main, develop, '2.6.x' ]
+    branches: [ main, develop ]
     paths:
       - 'docs/**'
       - 'dist/docs/**'

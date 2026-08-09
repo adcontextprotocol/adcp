@@ -197,6 +197,13 @@ function getReleaseMetadata(version, knownVersions = []) {
       published: false,
     };
   }
+  if (String(version).startsWith('2.')) {
+    return {
+      stability: 'stable',
+      prerelease: false,
+      deprecated: true,
+    };
+  }
 
   const match = String(version).match(/^\d+\.\d+\.\d+(?:-([0-9A-Za-z.-]+))?$/);
   if (!match) {
