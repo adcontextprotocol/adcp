@@ -68,6 +68,26 @@ export {
 // ── Store factory ────────────────────────────────────────────────
 
 let storeInstance: AdcpStateStore | null = null;
+const knownSessionKeys = new Set<string>();
+const MAX_KNOWN_IN_MEMORY_SESSION_KEYS = 10_000;
+const projectedFixtureMaps = new WeakMap<SessionState, {
+  seededProducts: SessionState['complyExtensions']['seededProducts'];
+  seededPricingOptions: SessionState['complyExtensions']['seededPricingOptions'];
+  seededMeasurementCatalogs: SessionState['complyExtensions']['seededMeasurementCatalogs'];
+}>();
+
+function trackInMemorySessionKey(key: string): void {
+  if (isDatabaseInitialized()) return;
+  // Refresh insertion order so the bounded index behaves as an LRU. The
+  // backing in-memory/custom store remains authoritative; this index only
+  // supports keyed cross-session scans where the SDK list API omits IDs.
+  knownSessionKeys.delete(key);
+  knownSessionKeys.add(key);
+  if (knownSessionKeys.size > MAX_KNOWN_IN_MEMORY_SESSION_KEYS) {
+    const oldest = knownSessionKeys.values().next().value as string | undefined;
+    if (oldest) knownSessionKeys.delete(oldest);
+  }
+}
 
 function getStore(): AdcpStateStore {
   if (storeInstance) return storeInstance;
@@ -83,6 +103,7 @@ export function setStateStore(store: AdcpStateStore | null): void {
     throw new Error('setStateStore is not allowed in production');
   }
   storeInstance = store;
+  knownSessionKeys.clear();
 }
 
 // ── Per-request cache via AsyncLocalStorage ──────────────────────
@@ -407,8 +428,15 @@ export function getComplianceMediaBuy(id: string): MediaBuyState | undefined {
  * envelopes for Map/Date). Returns a JSON-safe Record.
  */
 function serializeSession(session: SessionState): Record<string, unknown> {
+  const localFixtures = projectedFixtureMaps.get(session);
   const persisted = {
     ...session,
+    ...(localFixtures && {
+      complyExtensions: {
+        ...session.complyExtensions,
+        ...localFixtures,
+      },
+    }),
     // `products` is deterministic from the catalog — dropped from persistence
     // so callers re-derive on the next request. Only `proposals` (session-
     // specific drafts from refine workflows) ride along.
@@ -490,7 +518,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
  * Between requests, a fresh read from the store happens, so different Fly
  * machines see each other's writes.
  */
-export async function getSession(key: string): Promise<SessionState> {
+export async function getSession(key: string, controllerFixtureSessionKey?: string): Promise<SessionState> {
   const ctx = requestCtx.getStore();
   if (ctx) {
     const cached = ctx.sessions.get(key);
@@ -498,8 +526,24 @@ export async function getSession(key: string): Promise<SessionState> {
   }
 
   let storedShape: Record<string, unknown> | null;
+  let sharedFixtureShape: Record<string, unknown> | null = null;
   try {
-    storedShape = await getStore().get<Record<string, unknown>>(SESSIONS_COLLECTION, key);
+    const store = getStore();
+    storedShape = await store.get<Record<string, unknown>>(SESSIONS_COLLECTION, key);
+
+    // Callers may opt into one exact, principal-bound controller fixture
+    // session after validating the target is an authorized sandbox account.
+    // Only the explicitly tagged fixture maps are projected; no account state,
+    // proposals, media buys, or force directives cross the boundary.
+    if (controllerFixtureSessionKey && controllerFixtureSessionKey !== key) {
+      const cached = ctx?.sessions.get(controllerFixtureSessionKey);
+      sharedFixtureShape = cached
+        ? serializeSession(cached)
+        : await store.get<Record<string, unknown>>(
+          SESSIONS_COLLECTION,
+          controllerFixtureSessionKey,
+        );
+    }
   } catch (err) {
     // Never turn an unavailable durable store into an apparent cache miss.
     // Creating and later flushing a fresh session here could overwrite the
@@ -510,7 +554,26 @@ export async function getSession(key: string): Promise<SessionState> {
 
   // Only an authoritative missing-row result creates a fresh session.
   const session = storedShape ? deserializeSession(storedShape) : createSession();
+  if (sharedFixtureShape) {
+    const shared = deserializeSession(sharedFixtureShape).complyExtensions;
+    const local = session.complyExtensions;
+    projectedFixtureMaps.set(session, {
+      seededProducts: local.seededProducts,
+      seededPricingOptions: local.seededPricingOptions,
+      seededMeasurementCatalogs: local.seededMeasurementCatalogs,
+    });
+    local.seededProducts = new Map([...shared.seededProducts, ...local.seededProducts]);
+    local.seededPricingOptions = new Map([
+      ...shared.seededPricingOptions,
+      ...local.seededPricingOptions,
+    ]);
+    local.seededMeasurementCatalogs = new Map([
+      ...shared.seededMeasurementCatalogs,
+      ...local.seededMeasurementCatalogs,
+    ]);
+  }
   session.lastAccessedAt = new Date();
+  trackInMemorySessionKey(key);
 
   if (ctx) {
     ctx.sessions.set(key, session);
@@ -536,6 +599,11 @@ function safeKey(value: string | undefined, max: number, pattern: RegExp): strin
 
 function principalDigest(principal: string): string {
   return createHash('sha256').update(principal).digest('hex');
+}
+
+/** Public/demo static keys all address the same non-production sandbox. */
+export function controllerFixturePrincipal(principal: string | undefined): string | undefined {
+  return principal?.startsWith('static:') ? 'static:sandbox-fixtures' : principal;
 }
 
 function principalScopedOpenKey(principal: string, scope: string): string {
@@ -744,16 +812,40 @@ export async function findSessionMatching(predicate: (s: SessionState) => boolea
       if (predicate(session)) return session;
     }
   }
-  const store = storeInstance;
-  if (!store) return null;
   try {
-    const page = await store.list<Record<string, unknown>>(SESSIONS_COLLECTION, { limit: 100 });
-    for (const row of page.items ?? []) {
-      const session = deserializeSession(row);
+    if (isDatabaseInitialized()) {
+      // The generic SDK list API intentionally omits document IDs. Query the
+      // training store directly so legacy/pre-deploy rows remain attachable
+      // to RequestSessionCtx and mutations are durably flushed. Keyset paging
+      // avoids the old first-100-sessions blind spot.
+      let afterId = '';
+      for (;;) {
+        const { rows } = await getPool().query<{ id: string; data: Record<string, unknown> }>(
+          `SELECT id, data
+             FROM adcp_state
+            WHERE collection = $1 AND id > $2
+            ORDER BY id
+            LIMIT 100`,
+          [SESSIONS_COLLECTION, afterId],
+        );
+        for (const row of rows) {
+          if (predicate(deserializeSession(row.data))) return getSession(row.id);
+        }
+        if (rows.length < 100) break;
+        afterId = rows[rows.length - 1].id;
+      }
+      return null;
+    }
+
+    // In-memory/custom stores are process-local in the training agent. Track
+    // every key opened through getSession so lookups keep the real key and are
+    // never performed on a detached deserialized copy.
+    for (const key of [...knownSessionKeys]) {
+      const session = await getSession(key);
       if (predicate(session)) return session;
     }
   } catch (err) {
-    logger.warn({ err }, 'findSessionMatching: store list failed');
+    logger.warn({ err }, 'findSessionMatching: keyed session scan failed');
   }
   return null;
 }
@@ -774,6 +866,7 @@ export async function clearSessions(): Promise<void> {
     ctx.sessions.clear();
     ctx.snapshots.clear();
   }
+  knownSessionKeys.clear();
   const store = storeInstance;
   if (!store) return;
   if (store instanceof InMemoryStateStore) {

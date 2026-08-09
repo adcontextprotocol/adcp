@@ -160,6 +160,32 @@ function findAccountByIdAcrossSessions(accountId: string, principal?: string): A
   return undefined;
 }
 
+/** Resolve a principal-owned sandbox account id to its trusted brand domain. */
+export function sandboxBrandDomainForAccountId(
+  accountId: string,
+  principal: string | undefined,
+): string | undefined {
+  const account = findAccountByIdAcrossSessions(accountId, principal);
+  return account?.sandbox === true ? account.brand.domain.toLowerCase() : undefined;
+}
+
+/** Resolve a principal-owned account id to its complete sandbox identity. */
+export function sandboxAccountRefForId(
+  accountId: string,
+  principal: string | undefined,
+): AccountRef | undefined {
+  const account = findAccountByIdAcrossSessions(accountId, principal);
+  if (!account?.sandbox) return undefined;
+  return {
+    brand: {
+      domain: account.brand.domain.toLowerCase(),
+      ...(account.brand.brand_id && { brand_id: account.brand.brand_id }),
+    },
+    operator: account.operator.toLowerCase(),
+    sandbox: true,
+  };
+}
+
 function accountsForPrincipal(principal?: string): AccountState[] {
   const prefix = `${principalScope(principal)}\u001F`;
   const accounts: AccountState[] = [];

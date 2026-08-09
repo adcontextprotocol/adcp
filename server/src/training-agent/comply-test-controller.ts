@@ -34,10 +34,21 @@ import type {
   ComplyBudgetSimulation,
 } from './types.js';
 import { supportsGetProductsRejected } from './types.js';
-import { getProductsSessionKeyFromArgs, getSession, sessionKeyFromArgs } from './state.js';
+import {
+  findSessionMatching,
+  controllerFixturePrincipal,
+  getProductsSessionKeyFromArgs,
+  getSession,
+  sessionKeyFromArgs,
+} from './state.js';
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
-import { getAccountNotificationSubscribers, seedAccountFixture } from './account-handlers.js';
+import {
+  getAccountNotificationSubscribers,
+  sandboxAccountRefForId,
+  seedAccountFixture,
+} from './account-handlers.js';
+import { canonicalizeAccountRef, type CanonicalAccountRef } from './account-scope.js';
 import { verifyGovernanceToken, mintRevokedDemoToken, mintWrongAudDemoToken } from './governance-verify.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
 import { buildCatalog } from './product-factory.js';
@@ -50,6 +61,46 @@ import {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+type NaturalAccountIdentity = Extract<CanonicalAccountRef, { kind: 'natural' }>;
+
+function mediaBuySandboxIdentity(
+  mediaBuy: MediaBuyState,
+  principal: string | undefined,
+): NaturalAccountIdentity | undefined {
+  const ref = mediaBuy.accountRef;
+  if (!ref) return undefined;
+  try {
+    const account = canonicalizeAccountRef(ref);
+    if (account.kind === 'account_id') {
+      const resolved = sandboxAccountRefForId(account.account_id, principal);
+      if (!resolved) return undefined;
+      const identity = canonicalizeAccountRef(resolved);
+      return identity.kind === 'natural' ? identity : undefined;
+    }
+    return account.sandbox ? account : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function sameBrandIdentity(a: NaturalAccountIdentity, b: NaturalAccountIdentity): boolean {
+  return a.brand.domain === b.brand.domain
+    && a.brand.brand_id === b.brand.brand_id;
+}
+
+function controllerCanMutateMediaBuy(
+  controller: NaturalAccountIdentity,
+  mediaBuy: MediaBuyState,
+  principal: string | undefined,
+): boolean {
+  const owner = mediaBuySandboxIdentity(mediaBuy, principal);
+  if (!owner || !sameBrandIdentity(controller, owner)) return false;
+  // Public/demo static credentials intentionally address one shared training
+  // sandbox. Real principals must match the complete canonical account,
+  // including operator and optional brand_id.
+  return principal?.startsWith('static:') === true || controller.operator === owner.operator;
 }
 
 // ── State machine transition tables ───────────────────────────────
@@ -1127,10 +1178,42 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   const scenario = rawArgs.scenario;
   const targetsGetProductsState = scenario === 'force_get_products_arm'
     || (scenario === 'force_upstream_unavailable' && params.tool === 'get_products');
+  const targetsControllerFixtureState = scenario === 'seed_product'
+    || scenario === 'seed_pricing_option'
+    || scenario === 'seed_measurement_catalog';
   const sessionKey = targetsGetProductsState
     ? getProductsSessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId)
-    : sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
-  const session = await getSession(sessionKey);
+    : sessionKeyFromArgs(
+      args,
+      ctx.mode,
+      ctx.userId,
+      ctx.moduleId,
+      targetsControllerFixtureState ? controllerFixturePrincipal(ctx.principal) : undefined,
+    );
+  let session = await getSession(sessionKey);
+  if (scenario === 'simulate_delivery') {
+    const mediaBuyId = isRecord(rawArgs.params) && typeof rawArgs.params.media_buy_id === 'string'
+      ? rawArgs.params.media_buy_id
+      : undefined;
+    if (mediaBuyId && !session.mediaBuys.has(mediaBuyId)) {
+      let controllerAccount: NaturalAccountIdentity | undefined;
+      try {
+        const canonical = canonicalizeAccountRef(args.account);
+        if (canonical.kind === 'natural' && canonical.sandbox) {
+          controllerAccount = canonical;
+        }
+      } catch {
+        controllerAccount = undefined;
+      }
+      if (controllerAccount) {
+        session = await findSessionMatching(candidate => {
+          const mediaBuy = candidate.mediaBuys.get(mediaBuyId);
+          return mediaBuy !== undefined
+            && controllerCanMutateMediaBuy(controllerAccount, mediaBuy, ctx.principal);
+        }) ?? session;
+      }
+    }
+  }
 
   // Pre-dispatch local scenarios the SDK doesn't know about yet. The SDK's
   // dispatcher would return UNKNOWN_SCENARIO for these, so handle them before

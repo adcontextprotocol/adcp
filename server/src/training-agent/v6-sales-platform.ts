@@ -136,20 +136,26 @@ function brandDomainFromCtx(account: unknown): string | undefined {
 }
 
 function accountRefFromCtx(account: unknown): ToolArgs['account'] | undefined {
-  const acct = account as { id?: unknown; operator?: unknown; ctx_metadata?: TrainingSalesMeta } | undefined;
+  const acct = account as {
+    id?: unknown;
+    mode?: unknown;
+    operator?: unknown;
+    ctx_metadata?: TrainingSalesMeta;
+  } | undefined;
   const brandDomain = acct?.ctx_metadata?.brand_domain;
   const accountId = typeof acct?.id === 'string' && !acct.id.startsWith('synthetic_') && acct.id !== 'public_sandbox'
     ? acct.id
     : undefined;
   if (!accountId && !brandDomain) return undefined;
+  if (accountId) return { account_id: accountId };
   return {
-    ...(accountId && { account_id: accountId }),
     ...(brandDomain && { brand: { domain: brandDomain } }),
     ...(typeof acct?.ctx_metadata?.operator === 'string'
       ? { operator: acct.ctx_metadata.operator }
       : typeof acct?.operator === 'string'
         ? { operator: acct.operator }
         : {}),
+    ...(acct?.mode === 'sandbox' && { sandbox: true }),
   };
 }
 
@@ -277,14 +283,19 @@ export class TrainingSalesPlatform
   agentRegistry = trainingBuyerAgentRegistry;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sales: SalesPlatform<TrainingSalesMeta> = {
+    sales: SalesPlatform<TrainingSalesMeta> = {
     getProducts: async (req, ctx) => {
       // The installed SDK predates polymorphic get_products idempotency. Route
       // this one method through the shared schema-first dispatcher rather than
       // mutating the SDK's global task classification: validation, session
       // durability, and replay publication then share the same ordering as v5
       // and direct Addie dispatch.
-      const versionResolution = resolveServedAdcpVersion(req as unknown as Record<string, unknown>);
+      const accountRef = accountRefFromCtx(ctx.account);
+      const normalizedReq = {
+        ...(req as unknown as Record<string, unknown>),
+        ...(accountRef && { account: accountRef }),
+      } as ToolArgs;
+      const versionResolution = resolveServedAdcpVersion(normalizedReq as unknown as Record<string, unknown>);
       if (!versionResolution.ok) {
         throw new AdcpError('VERSION_UNSUPPORTED', {
           message: versionResolution.message,
@@ -296,7 +307,7 @@ export class TrainingSalesPlatform
       trainingCtx.servedAdcpVersion = versionResolution.servedVersion;
       const executed = await executeTrainingAgentTool(
         'get_products',
-        req as ToolArgs,
+        normalizedReq,
         trainingCtx,
       );
       if (!executed.success) throwGetProductsExecutionError(executed.error ?? 'get_products failed');
@@ -304,7 +315,14 @@ export class TrainingSalesPlatform
     },
 
     createMediaBuy: async (req, ctx) => {
-      const v5Result = await handleCreateMediaBuy(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
+      const accountRef = accountRefFromCtx(ctx.account);
+      const brandDomain = brandDomainFromCtx(ctx.account);
+      const args = {
+        ...(req as unknown as Record<string, unknown>),
+        ...(accountRef && { account: accountRef }),
+        ...(brandDomain && { brand: { domain: brandDomain } }),
+      } as ToolArgs;
+      const v5Result = await handleCreateMediaBuy(args, buildTrainingCtx(ctx, this.storyboardCompat));
       // Detect the submitted-arm envelope the v5 handler returns when the
       // `force_create_media_buy_arm` test-controller directive is set.
       // The framework's projector rejects hand-rolled
@@ -341,11 +359,12 @@ export class TrainingSalesPlatform
 
     updateMediaBuy: async (buyId, patch, ctx) => {
       const brandDomain = brandDomainFromCtx(ctx.account);
+      const accountRef = accountRefFromCtx(ctx.account);
       // brand placed after patch spread so it takes precedence over any brand
       // field the SDK might include in patch.
       const args = brandDomain
-        ? { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
-        : { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>) };
+        ? { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>), ...(accountRef && { account: accountRef }), brand: { domain: brandDomain } }
+        : { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>), ...(accountRef && { account: accountRef }) };
       const v5Result = await handleUpdateMediaBuy(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(v5Result);
     },
@@ -376,9 +395,10 @@ export class TrainingSalesPlatform
 
     getMediaBuyDelivery: async (filter, ctx) => {
       const brandDomain = brandDomainFromCtx(ctx.account);
+      const accountRef = accountRefFromCtx(ctx.account);
       const args = brandDomain
-        ? { ...(filter as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
-        : filter;
+        ? { ...(filter as unknown as Record<string, unknown>), ...(accountRef && { account: accountRef }), brand: { domain: brandDomain } }
+        : { ...(filter as unknown as Record<string, unknown>), ...(accountRef && { account: accountRef }) };
       const result = await handleGetMediaBuyDelivery(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
@@ -386,9 +406,10 @@ export class TrainingSalesPlatform
     // Optional read-side methods.
     getMediaBuys: async (req, ctx) => {
       const brandDomain = brandDomainFromCtx(ctx.account);
+      const accountRef = accountRefFromCtx(ctx.account);
       const args = brandDomain
-        ? { ...(req as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
-        : req;
+        ? { ...(req as unknown as Record<string, unknown>), ...(accountRef && { account: accountRef }), brand: { domain: brandDomain } }
+        : { ...(req as unknown as Record<string, unknown>), ...(accountRef && { account: accountRef }) };
       const result = await handleGetMediaBuys(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },

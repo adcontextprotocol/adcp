@@ -11,12 +11,14 @@ import {
   stopSessionCleanup,
   runWithSessionContext,
   flushDirtySessions,
+  findMediaBuyAcrossSessions,
   MAX_MEDIA_BUYS_PER_SESSION,
   MAX_CREATIVES_PER_SESSION,
   SESSION_RETENTION_MS,
   SESSION_STORE_UNAVAILABLE_MESSAGE,
   sessionRetentionCutoff,
   setStateStore,
+  controllerFixturePrincipal,
 } from '../../src/training-agent/state.js';
 import {
   createTrainingAgentServer,
@@ -841,6 +843,13 @@ describe('session state', () => {
   });
 
   describe('getSession', () => {
+    it('shares fixture identity only across explicit static sandbox principals', () => {
+      expect(controllerFixturePrincipal('static:public')).toBe('static:sandbox-fixtures');
+      expect(controllerFixturePrincipal('static:demo:one')).toBe('static:sandbox-fixtures');
+      expect(controllerFixturePrincipal('workos:org-one')).toBe('workos:org-one');
+      expect(controllerFixturePrincipal('workos:org-two')).toBe('workos:org-two');
+    });
+
     it('retains resources beyond the complete idempotency replay window', () => {
       const replayTtlMs = REPLAY_TTL_SECONDS * 1000;
       const cleanupAndSkewMarginMs = 60 * 60 * 1000;
@@ -928,6 +937,112 @@ describe('session state', () => {
         s1.mediaBuys.set('mb1', {} as any);
         expect(s2.mediaBuys.has('mb1')).toBe(false);
       });
+    });
+
+    it('shares only controller fixture maps with account-scoped sandbox sessions', async () => {
+      const { InMemoryStateStore } = await import('@adcp/sdk/server');
+      const store = new InMemoryStateStore();
+      setStateStore(store);
+      try {
+        const fixtureKey = sessionKeyFromArgs({
+          account: {
+            brand: { domain: 'brand.example' },
+            operator: 'brand.example',
+            sandbox: true,
+          },
+        }, 'open', undefined, undefined, 'principal-one');
+        await runWithSessionContext(async () => {
+          const controller = await getSession(fixtureKey);
+          controller.complyExtensions.seededProducts.set('seeded-product', {
+            product_id: 'seeded-product',
+          });
+          controller.complyExtensions.seededPricingOptions.set('seeded-product:cpm', {
+            product_id: 'seeded-product',
+            pricing_option_id: 'cpm',
+          });
+          controller.mediaBuys.set('private-buy', { mediaBuyId: 'private-buy' } as any);
+          controller.complyExtensions.forcedUpstreamUnavailable = {
+            tool: 'get_products',
+            createdAt: new Date().toISOString(),
+          };
+          await flushDirtySessions();
+        });
+
+        await runWithSessionContext(async () => {
+          const account = await getSession('open:a:account-one', fixtureKey);
+          expect(account.complyExtensions.seededProducts.has('seeded-product')).toBe(true);
+          expect(account.complyExtensions.seededPricingOptions.has('seeded-product:cpm')).toBe(true);
+          expect(account.mediaBuys.has('private-buy')).toBe(false);
+          expect(account.complyExtensions.forcedUpstreamUnavailable).toBeUndefined();
+          await flushDirtySessions();
+        });
+
+        // Inherited fixtures are a read-through view and do not create an
+        // account row until that account makes a real mutation.
+        expect(await store.get('training_sessions', 'open:a:account-one')).toBeNull();
+
+        await runWithSessionContext(async () => {
+          const account = await getSession('open:a:account-one', fixtureKey);
+          account.mediaBuys.set('account-buy', { mediaBuyId: 'account-buy' } as any);
+          await flushDirtySessions();
+        });
+        await runWithSessionContext(async () => {
+          const reloaded = await getSession('open:a:account-one');
+          expect(reloaded.mediaBuys.has('account-buy')).toBe(true);
+          expect(reloaded.complyExtensions.seededProducts.size).toBe(0);
+          expect(reloaded.complyExtensions.seededPricingOptions.size).toBe(0);
+        });
+      } finally {
+        setStateStore(null);
+      }
+    });
+
+    it('persists mutations made through a cross-session media-buy lookup', async () => {
+      const { InMemoryStateStore } = await import('@adcp/sdk/server');
+      const store = new InMemoryStateStore();
+      setStateStore(store);
+      try {
+        await runWithSessionContext(async () => {
+          const owner = await getSession('open:a:media-buy-owner');
+          owner.mediaBuys.set('indexed-buy', {
+            mediaBuyId: 'indexed-buy',
+            status: 'active',
+          } as any);
+          await flushDirtySessions();
+        });
+
+        await runWithSessionContext(async () => {
+          const found = await findMediaBuyAcrossSessions('indexed-buy');
+          expect(found).not.toBeNull();
+          found!.mediaBuys.get('indexed-buy')!.status = 'paused';
+          await flushDirtySessions();
+        });
+
+        await runWithSessionContext(async () => {
+          const owner = await getSession('open:a:media-buy-owner');
+          expect(owner.mediaBuys.get('indexed-buy')?.status).toBe('paused');
+        });
+      } finally {
+        setStateStore(null);
+      }
+    });
+
+    it('terminates an in-memory cross-session lookup miss', async () => {
+      const { InMemoryStateStore } = await import('@adcp/sdk/server');
+      const store = new InMemoryStateStore();
+      setStateStore(store);
+      try {
+        await runWithSessionContext(async () => {
+          const session = await getSession('open:a:known-session');
+          session.mediaBuys.set('known-buy', { mediaBuyId: 'known-buy' } as any);
+          await flushDirtySessions();
+        });
+        await runWithSessionContext(async () => {
+          await expect(findMediaBuyAcrossSessions('missing-buy')).resolves.toBeNull();
+        });
+      } finally {
+        setStateStore(null);
+      }
     });
 
     it('updates lastAccessedAt on every access', async () => {

@@ -1724,6 +1724,43 @@ describe('comply_test_controller', () => {
       expect(result.error).toBe('NOT_FOUND');
     });
 
+    it('does not mutate a media buy through a mismatched sandbox account', async () => {
+      const mediaBuyId = await createMediaBuy(server);
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: { media_buy_id: mediaBuyId, impressions: 100 },
+        account: {
+          brand: { domain: 'other-brand.example' },
+          operator: 'other-operator.example',
+          sandbox: true,
+        },
+        brand: { domain: 'other-brand.example' },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      const owner = await getSession(sessionKeyFromArgs({ account: ACCOUNT }, 'open'));
+      expect(owner.complyExtensions.deliverySimulations.has(mediaBuyId)).toBe(false);
+    });
+
+    it('requires a full account match for non-static principals', async () => {
+      const scopedServer = createTrainingAgentServer({ mode: 'open', principal: 'workos:org-one' });
+      const mediaBuyId = await createMediaBuy(scopedServer);
+      const { result } = await simulateCallTool(scopedServer, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: { media_buy_id: mediaBuyId, impressions: 100 },
+        account: {
+          brand: { domain: ACCOUNT.brand.domain },
+          operator: 'different-operator.example',
+          sandbox: true,
+        },
+        brand: BRAND,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+    });
+
     it('rejects delivery simulation for terminal media buy', async () => {
       const mediaBuyId = await createMediaBuyWithCreatives(server);
 

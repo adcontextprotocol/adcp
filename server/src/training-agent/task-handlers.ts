@@ -23,7 +23,11 @@ import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetchAxiosLike } from '../utils/url-security.js';
 import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type SessionState } from './types.js';
-import { AccountRefValidationError, accountScopeFromRef } from './account-scope.js';
+import {
+  AccountRefValidationError,
+  accountScopeFromRef,
+  canonicalizeAccountRef,
+} from './account-scope.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
   Product,
@@ -1335,7 +1339,7 @@ import { buildCatalog, buildShowsForProducts, buildProposals } from './product-f
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import {
-  getSession, getProductsSessionKeyFromArgs, sessionKeyFromArgs,
+  controllerFixturePrincipal, getSession, getProductsSessionKeyFromArgs, sessionKeyFromArgs,
   findSessionMatching,
   runWithSessionContext, flushDirtySessions,
   getComplianceCreatives, getComplianceCreative,
@@ -1380,6 +1384,7 @@ import {
   ACCOUNT_TOOLS,
   SUPPORTED_BILLINGS,
   handleListAccounts,
+  sandboxBrandDomainForAccountId,
   resolveAccountIdForRef,
   resolveGovernanceAgentsForAccount,
   handleSyncAccounts,
@@ -1808,6 +1813,40 @@ function deriveAccountScope(args: Record<string, unknown>, strictAccountRef = tr
   return typeof domain === 'string' && domain.length > 0
     ? `b:${domain.toLowerCase()}`
     : undefined;
+}
+
+/**
+ * Resolve the one principal-bound controller fixture session that an
+ * authenticated sandbox request may read. Account-id requests must prove the
+ * id was synced for the same principal and brand before a fixture key is
+ * returned; production/nonsandbox and malformed refs never bridge.
+ */
+function controllerFixtureSessionKey(
+  args: ToolArgs,
+  ctx: TrainingContext,
+): string | undefined {
+  if (!args.account) return undefined;
+  let domain: string | undefined;
+  try {
+    const account = canonicalizeAccountRef(args.account);
+    if (account.kind === 'natural') {
+      if (!account.sandbox) return undefined;
+      domain = account.brand.domain;
+    } else {
+      domain = sandboxBrandDomainForAccountId(account.account_id, ctx.principal);
+      if (!domain) return undefined;
+    }
+  } catch {
+    return undefined;
+  }
+
+  return sessionKeyFromArgs({
+    account: {
+      brand: { domain },
+      operator: domain,
+      sandbox: true,
+    },
+  }, ctx.mode, ctx.userId, ctx.moduleId, controllerFixturePrincipal(ctx.principal));
 }
 
 function withUsageAccountScope<T extends Record<string, unknown>>(req: T): T {
@@ -3915,7 +3954,10 @@ async function handleGetProductsUnlocked(
       };
     }
   }
-  const session = await getSession(getProductsSessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(
+    getProductsSessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+    controllerFixtureSessionKey(req, ctx),
+  );
   const committedProposals = new Map(
     (session.lastGetProductsContext?.proposals ?? [])
       .filter(proposal => proposalLifecycle(proposal).proposal_status === 'committed')
@@ -5395,7 +5437,10 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
   const productTargets = targets.filter(target => target.kind === 'product');
   const productsById = new Map<string, Product>();
   if (productTargets.length > 0) {
-    const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+    const session = await getSession(
+      sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+      controllerFixtureSessionKey(req as unknown as ToolArgs, ctx),
+    );
     for (const catalogProduct of getCatalog()) {
       productsById.set(catalogProduct.product.product_id, { ...catalogProduct.product });
     }
@@ -5420,7 +5465,10 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
 
 export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as CreateMediaBuyRequest & ToolArgs & { paused?: boolean };
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(
+    sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+    controllerFixtureSessionKey(req, ctx),
+  );
 
   // Consume any single-shot directive registered by
   // comply_test_controller.force_create_media_buy_arm. Runs before all other
