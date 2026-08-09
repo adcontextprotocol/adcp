@@ -25,7 +25,11 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type { Pool } from 'pg';
-import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
+import {
+  initializeDatabase,
+  closeDatabase,
+  withDatabaseDeadline,
+} from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { FederatedIndexDatabase } from '../../src/db/federated-index-db.js';
 import { PropertyDatabase } from '../../src/db/property-db.js';
@@ -124,6 +128,11 @@ describe('Registry reader baseline — properties + publisher-side reads', () =>
       expect(props).toEqual([]);
     });
 
+    it('getPropertiesForAgentDomain returns [] for an unaffected empty domain', async () => {
+      const props = await fedDb.getPropertiesForAgentDomain(AGENT_X, PUB_A);
+      expect(props).toEqual([]);
+    });
+
     it('getPublisherDomainsForAgent returns [] for an unknown agent', async () => {
       const domains = await fedDb.getPublisherDomainsForAgent(AGENT_X);
       expect(domains).toEqual([]);
@@ -145,6 +154,24 @@ describe('Registry reader baseline — properties + publisher-side reads', () =>
     it('getAllPropertiesForRegistry filtered to our prefix returns []', async () => {
       const rows = await propDb.getAllPropertiesForRegistry({ search: DOMAIN_PREFIX });
       expect(rows).toEqual([]);
+    });
+
+    it('allows crawler-style writes under a bounded writable DB deadline', async () => {
+      await withDatabaseDeadline(
+        Date.now() + 5_000,
+        () => fedDb.upsertProperty({
+          property_id: 'deadline-write',
+          publisher_domain: PUB_A,
+          property_type: 'website',
+          name: 'Deadline Write Fixture',
+          identifiers: [{ type: 'domain', value: PUB_A }],
+        }),
+        { readOnly: false },
+      );
+
+      const properties = await fedDb.getPropertiesForDomain(PUB_A);
+      expect(properties).toHaveLength(1);
+      expect(properties[0].property_id).toBe('deadline-write');
     });
   });
 
@@ -194,6 +221,15 @@ describe('Registry reader baseline — properties + publisher-side reads', () =>
       expect(props.length).toBe(1);
       expect(props[0].publisher_domain).toBe(PUB_A);
       expect(props[0].name).toBe('Acme Homepage');
+    });
+
+    it('getPropertiesForAgentDomain returns only the requested publisher', async () => {
+      const props = await fedDb.getPropertiesForAgentDomain(AGENT_X, PUB_A);
+      expect(props).toHaveLength(1);
+      expect(props[0]).toMatchObject({
+        publisher_domain: PUB_A,
+        name: 'Acme Homepage',
+      });
     });
 
     it('getPublisherDomainsForAgent returns the publisher', async () => {

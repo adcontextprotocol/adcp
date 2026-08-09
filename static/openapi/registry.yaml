@@ -7055,6 +7055,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: Publisher lookup exceeded its bounded read deadline
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - publisher_lookup_timeout
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - code
+                  - retry_after
   /api/registry/publisher/{domain}/adagents/revalidate:
     post:
       operationId: revalidatePublisherAdagents
@@ -7424,6 +7443,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: Publisher authorization lookup exceeded its bounded read deadline
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - publisher_lookup_timeout
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - code
+                  - retry_after
   /api/registry/validate/product-authorization:
     post:
       operationId: validateProductAuthorization
@@ -9703,7 +9741,7 @@ paths:
       operationId: requestCrawl
       summary: Request domain re-crawl
       description: |-
-        Trigger an immediate re-crawl of a publisher domain after updating adagents.json. The crawl runs asynchronously — returns 202 immediately.
+        Trigger an immediate re-crawl of a publisher domain after updating adagents.json. The crawl runs asynchronously in the accepting process — returns 202 immediately. The response `crawl_request_id` correlates accepted, running, completed, skipped, and failed lifecycle logs; a 202 does not by itself mean the mirror write completed.
 
         **Rate limits:** 5 minutes per domain, 30 requests per user per hour.
       tags:
@@ -9737,9 +9775,14 @@ paths:
                       - Crawl request accepted
                   domain:
                     type: string
+                  crawl_request_id:
+                    type: string
+                    format: uuid
+                    description: Correlation ID for crawl lifecycle logs; acceptance is not completion.
                 required:
                   - message
                   - domain
+                  - crawl_request_id
         "400":
           description: Invalid domain format, private IP, or unresolvable domain
           content:
@@ -9766,6 +9809,25 @@ paths:
                     description: Seconds to wait before retrying
                 required:
                   - error
+                  - retry_after
+        "503":
+          description: A full crawl is active; the request was not accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - crawl_temporarily_unavailable
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - code
                   - retry_after
   /api/registry/manager-revalidation-request:
     post:

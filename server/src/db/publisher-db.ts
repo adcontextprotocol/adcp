@@ -8,6 +8,8 @@ import { createLogger } from '../logger.js';
 import type { PoolClient } from 'pg';
 
 const log = createLogger('publisher-db');
+const ADAGENTS_CACHE_LOCK_TIMEOUT_MS = 5_000;
+const ADAGENTS_CACHE_STATEMENT_TIMEOUT_MS = 30_000;
 
 /**
  * Property as it appears inside an adagents.json file. The manifest body is
@@ -1115,6 +1117,12 @@ export class PublisherDatabase {
     const collectionEvents: CollectionProjectionEvent[] = [];
     try {
       await client.query('BEGIN');
+      await client.query("SELECT set_config('lock_timeout', $1, true)", [
+        `${ADAGENTS_CACHE_LOCK_TIMEOUT_MS}ms`,
+      ]);
+      await client.query("SELECT set_config('statement_timeout', $1, true)", [
+        `${ADAGENTS_CACHE_STATEMENT_TIMEOUT_MS}ms`,
+      ]);
 
       // Serialize writers for one publisher, including first discovery where
       // no row exists yet. A row lock alone cannot prevent concurrent first
