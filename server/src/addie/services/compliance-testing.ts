@@ -1026,6 +1026,7 @@ export interface VerificationResult {
     specialisms: string[];
     passing: string[];
     failing: string[];
+    untested: string[];
   }>;
 }
 
@@ -1115,10 +1116,13 @@ export function deriveVerificationStatus(
   for (const [role, specialisms] of protocolSpecialisms) {
     const passing: string[] = [];
     const failing: string[] = [];
+    const untested: string[] = [];
     for (const specialism of specialisms) {
       const info = SPECIALISM_CATALOG[specialism];
       const status = info ? statusMap.get(info.storyboard_id) : undefined;
-      if (status?.status === 'passing') {
+      if (status?.steps_total === 0) {
+        untested.push(specialism);
+      } else if (status?.status === 'passing') {
         passing.push(specialism);
       } else {
         failing.push(specialism);
@@ -1126,10 +1130,11 @@ export function deriveVerificationStatus(
     }
     roles.push({
       role,
-      verified: failing.length === 0 && passing.length > 0,
+      verified: failing.length === 0 && untested.length === 0 && passing.length > 0,
       specialisms,
       passing,
       failing,
+      untested,
     });
   }
 
