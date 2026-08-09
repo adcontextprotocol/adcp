@@ -43,6 +43,9 @@ export interface TrainingContext {
    * mapping. Never populate this from request arguments or principal text.
    */
   authenticatedAgentUrl?: string;
+  /** Validated wire input before SDK account extraction; used only to verify
+   * governance payload bindings against the exact buyer-authorized request. */
+  requestInput?: Record<string, unknown>;
   /** Release selected by protocol negotiation for this request. */
   servedAdcpVersion?: string;
   /** Route is the grader-targeted `/mcp-strict` endpoint. Advertises

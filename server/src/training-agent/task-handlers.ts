@@ -1936,6 +1936,13 @@ async function governedCommitmentError(
   };
 }
 
+function governedRequestPayload(
+  ctx: TrainingContext,
+  fallback: Record<string, unknown>,
+): Record<string, unknown> {
+  return ctx.requestInput ?? fallback;
+}
+
 function projectedPackageBudgetTotal(mb: MediaBuyState, req: UpdateMediaBuyArgs): number {
   const currentBudgets = new Map(
     mb.packages.map(pkg => [pkg.packageId, pkg.canceled ? 0 : pkg.budget]),
@@ -5553,7 +5560,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       ctx.authenticatedAgentUrl,
       'create_media_buy',
       `${getCanonicalBase()}/sales`,
-      req as unknown as Record<string, unknown>,
+      governedRequestPayload(ctx, req as unknown as Record<string, unknown>),
       buyBudget ?? 0,
       req.total_budget?.currency ?? 'USD',
     );
@@ -7396,7 +7403,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       ctx.authenticatedAgentUrl,
       'update_media_buy',
       `${getCanonicalBase()}/sales`,
-      req as unknown as Record<string, unknown>,
+      governedRequestPayload(ctx, req as unknown as Record<string, unknown>),
       updateDelta,
       mb.currency,
     );
@@ -8284,7 +8291,7 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
       ctx.authenticatedAgentUrl,
       'activate_signal',
       `${getCanonicalBase()}/signals`,
-      req as unknown as Record<string, unknown>,
+      governedRequestPayload(ctx, req as unknown as Record<string, unknown>),
       signalCommitment,
       signalCurrency,
     );
@@ -8596,7 +8603,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
       ctx.authenticatedAgentUrl,
       'build_creative',
       `${getCanonicalBase()}/${ctx.tenantId === 'creative-builder' ? 'creative-builder' : 'creative'}`,
-      req as unknown as Record<string, unknown>,
+      governedRequestPayload(ctx, req as unknown as Record<string, unknown>),
       0,
       'USD',
     );

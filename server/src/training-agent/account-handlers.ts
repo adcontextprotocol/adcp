@@ -540,9 +540,13 @@ export function resolveAccountIdForRef(
   ref: AccountRef | undefined,
 ): string | undefined {
   if (!ref) return undefined;
-  const account = findAccountByRef(getAccountMap(sessionKey, principal), ref)
-    ?? (ref.account_id ? findAccountByIdAcrossSessions(ref.account_id, principal) : undefined);
-  return account?.accountId;
+  for (const accounts of accountMapsForPrincipal(sessionKey, principal)) {
+    const account = findAccountByRef(accounts, ref);
+    if (account) return account.accountId;
+  }
+  return ref.account_id
+    ? findAccountByIdAcrossSessions(ref.account_id, principal)?.accountId
+    : undefined;
 }
 
 export function resolveGovernanceAgentsForAccount(

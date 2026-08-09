@@ -646,7 +646,7 @@ describe('Training Agent webhook emission', () => {
       });
 
       await callTool(12, 'comply_test_controller', {
-        account: { sandbox: true },
+        account: { ...account, sandbox: true },
         brand: account.brand,
         scenario: 'force_creative_status',
         params: {
@@ -788,7 +788,7 @@ describe('Training Agent webhook emission', () => {
       });
 
       await callTool(22, 'comply_test_controller', {
-        account: { sandbox: true },
+        account: { brand, operator: 'agency-one.example', sandbox: true },
         brand,
         scenario: 'force_creative_status',
         params: {

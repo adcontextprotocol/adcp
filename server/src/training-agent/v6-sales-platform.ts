@@ -111,6 +111,7 @@ function buildTrainingCtx(
     account?: { authInfo?: { principal?: string } };
     authInfo?: { clientId?: string };
     agent?: { agent_url: string };
+    input?: unknown;
   } | undefined,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): TrainingContext {
@@ -119,6 +120,9 @@ function buildTrainingCtx(
     tenantId: 'sales',
     principal: ctx?.authInfo?.clientId ?? ctx?.account?.authInfo?.principal ?? 'anonymous',
     ...(ctx?.agent?.agent_url && { authenticatedAgentUrl: ctx.agent.agent_url }),
+    ...(ctx?.input && typeof ctx.input === 'object' && !Array.isArray(ctx.input)
+      ? { requestInput: ctx.input as Record<string, unknown> }
+      : {}),
     ...(storyboardCompat && { storyboardCompat }),
   };
 }
