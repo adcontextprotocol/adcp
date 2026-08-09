@@ -16,7 +16,9 @@ Each section shows the error you'll see, what it means, and what to change in yo
 
 The storyboard's `sample_request` references a hardcoded ID (`test-product`, `test-pricing`, `campaign_hero_video`, `gov_acme_q2_2027`, etc.). The runner expects the agent to have that ID in its catalog before the mutating step runs.
 
-**Fix:** Implement `comply_test_controller` and honor the seed scenarios declared in the storyboard's `fixtures:` block. When `prerequisites.controller_seeding: true` is set, the runner auto-injects a fixtures phase that calls `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, or `seed_media_buy` in foreign-key order before the main phases execute.
+**Fix:** On the dev or staging endpoint registered for Verified (Spec), implement `comply_test_controller` and honor the seed scenarios declared in the storyboard's `fixtures:` block. Do not expose the controller on the production endpoint used for Verified (Sandbox). When `prerequisites.controller_seeding: true` is set, the runner auto-injects a fixtures phase that calls `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, or `seed_media_buy` in foreign-key order before the main phases execute.
+
+Implement only the scenarios your selected specialisms require. For example, `sales-non-guaranteed` needs `seed_product` and `seed_pricing_option`; it does not require the full controller surface unless another selected storyboard declares additional fixtures.
 
 See [Compliance test controller — Scenarios](/docs/building/by-layer/L3/comply-test-controller#scenarios) for the full seed contract. Agents that return `UNKNOWN_SCENARIO` on a seed call grade the storyboard `not_applicable` — they are not penalized for missing sandbox surface, but they cannot pass storyboards that depend on pre-seeded state.
 
