@@ -51,13 +51,13 @@ jobs:
       fail-fast: false
       matrix:
         surface: [current, 3.0-compat]
-        # The training agent is split into six per-specialism tenants; each
+        # The training agent is split into seven per-specialism tenants; each
         # tenant runs the full conformance suite and is graded against its
         # own floors per compliance surface. Current-source floors are the
         # post-migration baseline (PR #3713, SDK 6.0.0); 3.0-compat floors
         # are the frozen latest dist/compliance/3.0.x bundle baseline.
         # Rising is fine; regressing fails CI.
-        tenant: [signals, sales, governance, creative, creative-builder, brand]
+        tenant: [signals, sales, governance, creative, creative-builder, brand, si]
         include:
           # #3965 Class C closed by per-tenant /<tenant>/mcp-strict route
           # restoration. The 6.0.0 multi-tenant migration (#3713) dropped the
@@ -100,6 +100,14 @@ jobs:
             tenant: brand
             min_clean_storyboards: 73
             min_passing_steps: 96
+          # /si runs through the SDK's first-class SponsoredIntelligencePlatform.
+          # Observed current baseline: 95 clean / 100 passing; floors retain
+          # the matrix's one-count tolerance while required-clean gates below
+          # protect both graded SI protocol storyboards directly.
+          - surface: current
+            tenant: si
+            min_clean_storyboards: 94
+            min_passing_steps: 99
           - surface: 3.0-compat
             tenant: signals
             min_clean_storyboards: 65
@@ -124,6 +132,14 @@ jobs:
             tenant: brand
             min_clean_storyboards: 65
             min_passing_steps: 80
+          # 3.0 predates the sponsored-intelligence specialism enum and its
+          # response projection omits the current offering context output.
+          # Keep the frozen surface as a non-regression floor, not a claim of
+          # current SI conformance. Observed: 63 clean / 85 passing.
+          - surface: 3.0-compat
+            tenant: si
+            min_clean_storyboards: 62
+            min_passing_steps: 84
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -220,9 +236,11 @@ jobs:
             echo "::error::Schema bundle not found at ${SCHEMA_DIR}"
             exit 1
           fi
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "dir=${DIR}" >> "$GITHUB_OUTPUT"
-          echo "schema_dir=${SCHEMA_DIR}" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=${VERSION}"
+            echo "dir=${DIR}"
+            echo "schema_dir=${SCHEMA_DIR}"
+          } >> "$GITHUB_OUTPUT"
           echo "Using ${DIR}"
 
       - name: Run storyboards against /${{ matrix.tenant }}
@@ -248,8 +266,10 @@ jobs:
             echo "::error::Failed to parse storyboard count from log — the runner's output format may have changed. Download the storyboards-log-${{ matrix.surface }}-${{ matrix.tenant }} artifact from this run to inspect the raw output and update the grep patterns in this workflow."
             exit 1
           fi
-          echo "clean=${clean}" >> "$GITHUB_OUTPUT"
-          echo "passed=${passed}" >> "$GITHUB_OUTPUT"
+          {
+            echo "clean=${clean}"
+            echo "passed=${passed}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Upload storyboards log on failure
         if: failure()
@@ -378,6 +398,25 @@ jobs:
               echo "Required-clean storyboard passed: ${storyboard_id}"
             else
               echo "::error::Required-clean storyboard did not pass on /creative-builder current surface: ${storyboard_id}"
+              echo "Last matching log lines:"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done
+
+      - name: Enforce sponsored-intelligence required-clean storyboards
+        if: matrix.surface == 'current' && matrix.tenant == 'si'
+        run: |
+          set -euo pipefail
+          required_clean=(
+            "si_baseline"
+            "si_sponsored_context_accountability"
+          )
+          for storyboard_id in "${required_clean[@]}"; do
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then
+              echo "Required-clean storyboard passed: ${storyboard_id}"
+            else
+              echo "::error::Required-clean storyboard did not pass on /si current surface: ${storyboard_id}"
               echo "Last matching log lines:"
               grep -F "${storyboard_id}" /tmp/storyboards.log || true
               exit 1

@@ -1,8 +1,8 @@
 /**
  * Training agent route setup — multi-tenant.
  *
- * Mounts six per-specialism tenants under `/api/training-agent/`:
- *   /sales, /signals, /governance, /creative, /creative-builder, /brand
+ * Mounts seven per-specialism tenants under `/api/training-agent/`:
+ *   /sales, /signals, /governance, /creative, /creative-builder, /brand, /si
  *
  * Each tenant exposes its own MCP endpoint (`/<tenant>/mcp`) with bearer
  * auth + rate limiting. Health, JWKS, and adagents.json discovery live
@@ -295,7 +295,7 @@ function getBaseUrl(req: Request): string {
   return `${proto}://${host}`;
 }
 
-const TENANT_IDS = ['signals', 'sales', 'governance', 'creative', 'creative-builder', 'brand'] as const;
+const TENANT_IDS = ['signals', 'sales', 'governance', 'creative', 'creative-builder', 'brand', 'si'] as const;
 
 /** Specialisms each tenant declares — surfaced in the adagents.json
  *  `_training_agent_tenants` discovery extension. Mirrors the per-tenant
@@ -313,6 +313,7 @@ const TENANT_SPECIALISMS: Record<typeof TENANT_IDS[number], readonly string[]> =
   creative: ['creative-ad-server'],
   'creative-builder': ['creative-template', 'creative-generative'],
   brand: ['brand-rights'],
+  si: ['sponsored-intelligence'],
 };
 
 /** Maps each tenant to its brand-agent type for brand.json `agents[]`.
@@ -326,6 +327,7 @@ const TENANT_BRAND_AGENT_TYPE: Record<typeof TENANT_IDS[number], 'sales' | 'sign
   creative: 'creative',
   'creative-builder': 'creative',
   brand: 'brand',
+  si: 'sales',
 };
 
 const TENANT_BRAND_AGENT_DESCRIPTION: Record<typeof TENANT_IDS[number], string> = {
@@ -335,6 +337,7 @@ const TENANT_BRAND_AGENT_DESCRIPTION: Record<typeof TENANT_IDS[number], string> 
   creative: 'Training-agent creative tenant — creative ad server',
   'creative-builder': 'Training-agent creative-builder tenant — creative template + generative',
   brand: 'Training-agent brand tenant — brand rights and discovery',
+  si: 'Training-agent SI tenant — SI Chat Protocol (si_get_offering, si_initiate_session, si_send_message, si_terminate_session)',
 };
 
 export function createTrainingAgentRouter(options: {
