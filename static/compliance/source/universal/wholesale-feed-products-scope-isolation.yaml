@@ -64,6 +64,7 @@ phases:
         expected: |
           Return public-scope product rows with the public feed token.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#wholesale_feed_products_scope_isolation_scope_isolation_bootstrap_public"
           buying_mode: "wholesale"
           account:
             brand:
@@ -100,6 +101,7 @@ phases:
           An account-scope request that echoes the public token MUST NOT return
           unchanged; it MUST return the full account feed for its own scope.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#wholesale_feed_products_scope_isolation_scope_isolation_cross_scope_probe_not_unchanged"
           buying_mode: "wholesale"
           account:
             brand:
