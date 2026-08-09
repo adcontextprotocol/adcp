@@ -9757,7 +9757,11 @@ export async function executeTrainingAgentTool(
   args: ToolArgs,
   ctx: TrainingContext,
 ): Promise<{ success: boolean; data?: object; error?: string }> {
-  return runWithSessionContext(() => executeTrainingAgentToolInContext(toolName, args, ctx));
+  return runWithSessionContext(async () => {
+    const result = await executeTrainingAgentToolInContext(toolName, args, ctx);
+    if (result.success) await flushDirtySessions();
+    return result;
+  });
 }
 
 async function executeTrainingAgentToolInContext(

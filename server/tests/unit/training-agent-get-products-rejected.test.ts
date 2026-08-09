@@ -71,6 +71,7 @@ describe('get_products rejected compliance arm', () => {
 
     const otherAccountResult = await call('get_products', {
       adcp_version: '3.2-beta.0',
+      idempotency_key: 'rejected-other-account-0001',
       account: otherAccount,
       buying_mode: 'brief',
       brief: 'Premium video',
@@ -79,6 +80,7 @@ describe('get_products rejected compliance arm', () => {
 
     const otherPrincipalResult = await call('get_products', {
       adcp_version: '3.2-beta.0',
+      idempotency_key: 'rejected-other-principal-0001',
       account: primaryAccount,
       buying_mode: 'brief',
       brief: 'Premium video',
@@ -87,6 +89,7 @@ describe('get_products rejected compliance arm', () => {
 
     const wholesaleResult = await call('get_products', {
       adcp_version: '3.2-beta.0',
+      idempotency_key: 'rejected-wholesale-0001',
       account: primaryAccount,
       buying_mode: 'wholesale',
     });
@@ -94,6 +97,7 @@ describe('get_products rejected compliance arm', () => {
 
     const rejected = await call('get_products', {
       adcp_version: '3.2-beta.0',
+      idempotency_key: 'rejected-primary-0001',
       account: primaryAccount,
       buying_mode: 'brief',
       brief: 'Premium video',
@@ -112,6 +116,7 @@ describe('get_products rejected compliance arm', () => {
 
     const consumed = await call('get_products', {
       adcp_version: '3.2-beta.0',
+      idempotency_key: 'rejected-consumed-0001',
       account: primaryAccount,
       buying_mode: 'brief',
       brief: 'Premium video',
