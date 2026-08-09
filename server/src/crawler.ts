@@ -2306,6 +2306,9 @@ export class CrawlerService {
             await this.crawlSingleDomain(row.publisher_domain);
             return { row, ok: true as const };
           } catch (err) {
+            if (err instanceof Error && (err as Error & { code?: string }).code === 'crawl_deferred') {
+              return { row, ok: null };
+            }
             return {
               row,
               ok: false as const,
@@ -2321,9 +2324,14 @@ export class CrawlerService {
         if (result.ok) {
           await this.publisherDb.markRevalidationSucceeded(result.row.publisher_domain);
           succeeded++;
-        } else {
+        } else if (result.ok === false) {
           await this.publisherDb.markRevalidationFailed(result.row.publisher_domain, result.error);
           failed++;
+        } else {
+          log.info(
+            { publisherDomain: result.row.publisher_domain, reason: 'full_crawl_in_progress' },
+            'Manager revalidation deferred without advancing failure backoff',
+          );
         }
       }
 

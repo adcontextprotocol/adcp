@@ -65,6 +65,34 @@ describe('CrawlerService single-domain profile rebuild', () => {
     })).toBeNull();
   });
 
+  it('does not advance manager revalidation failure backoff when a full crawl defers the item', async () => {
+    const { CrawlerService } = await import('../../src/crawler.js');
+    const ctx = Object.create((CrawlerService as any).prototype);
+    const deferredError = Object.assign(new Error('Full crawl in progress'), {
+      code: 'crawl_deferred',
+    });
+    const publisherDb = {
+      dequeueRevalidationBatch: vi.fn().mockResolvedValue([
+        { publisher_domain: 'publisher.example', manager_domain: 'manager.example', attempts: 0 },
+      ]),
+      markRevalidationSucceeded: vi.fn(),
+      markRevalidationFailed: vi.fn(),
+    };
+    Object.assign(ctx, {
+      managerRevalidationProcessing: false,
+      publisherDb,
+      crawlSingleDomain: vi.fn().mockRejectedValue(deferredError),
+    });
+
+    await expect(ctx.processManagerRevalidationQueue()).resolves.toEqual({
+      processed: 1,
+      succeeded: 0,
+      failed: 0,
+    });
+    expect(publisherDb.markRevalidationSucceeded).not.toHaveBeenCalled();
+    expect(publisherDb.markRevalidationFailed).not.toHaveBeenCalled();
+  });
+
   it('releases full-crawl ownership when setup fails', async () => {
     const { CrawlerService } = await import('../../src/crawler.js');
     const ctx = Object.create((CrawlerService as any).prototype);

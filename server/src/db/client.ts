@@ -176,7 +176,6 @@ export async function queryWithTimeout<T extends QueryResultRow = any>(
     ]);
     const result = await client.query<T>(text, params);
     await client.query('COMMIT');
-    transactionStarted = false;
     return result;
   } catch (error) {
     if (transactionStarted) {
