@@ -1825,7 +1825,25 @@ function controllerFixtureSessionKey(
   args: ToolArgs,
   ctx: TrainingContext,
 ): string | undefined {
-  if (!args.account) return undefined;
+  if (!args.account) {
+    // Frozen 3.0 natural-account adapters intentionally project the SDK's
+    // synthetic account back to its legacy brand session. Permit that one
+    // static sandbox surface to read the principal-bound fixture projection;
+    // real principals and ordinary brand-only requests remain ineligible.
+    const compatBrandDomain = ctx.storyboardCompat?.version === '3.0'
+      && ctx.principal?.startsWith('static:')
+      && typeof args.brand?.domain === 'string'
+      ? args.brand.domain
+      : undefined;
+    if (!compatBrandDomain) return undefined;
+    return sessionKeyFromArgs(
+      { brand: { domain: compatBrandDomain } },
+      ctx.mode,
+      ctx.userId,
+      ctx.moduleId,
+      controllerFixturePrincipal(ctx.principal),
+    );
+  }
   let domain: string | undefined;
   try {
     const account = canonicalizeAccountRef(args.account);

@@ -1181,10 +1181,23 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   const targetsControllerFixtureState = scenario === 'seed_product'
     || scenario === 'seed_pricing_option'
     || scenario === 'seed_measurement_catalog';
+  // The frozen 3.0 runner injects a synthetic natural account into controller
+  // and fixture calls, sometimes without copying its brand to the top level.
+  // Platform methods on that compatibility surface historically key by brand.
+  // Preserve opaque account IDs, but project natural refs back to their brand
+  // so directives and fixtures reach the same legacy session.
+  const legacyNaturalBrandDomain = ctx.storyboardCompat?.version === '3.0'
+    && args.account
+    && !args.account.account_id
+    ? args.brand?.domain ?? args.account.brand?.domain
+    : undefined;
+  const sessionArgs = legacyNaturalBrandDomain
+    ? { ...args, account: undefined, brand: { domain: legacyNaturalBrandDomain } }
+    : args;
   const sessionKey = targetsGetProductsState
-    ? getProductsSessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId)
+    ? getProductsSessionKeyFromArgs(sessionArgs, ctx.mode, ctx.userId, ctx.moduleId)
     : sessionKeyFromArgs(
-      args,
+      sessionArgs,
       ctx.mode,
       ctx.userId,
       ctx.moduleId,

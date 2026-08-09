@@ -135,7 +135,14 @@ function brandDomainFromCtx(account: unknown): string | undefined {
   return (account as { ctx_metadata?: TrainingSalesMeta } | undefined)?.ctx_metadata?.brand_domain;
 }
 
-function accountRefFromCtx(account: unknown): ToolArgs['account'] | undefined {
+function accountRefFromCtx(
+  account: unknown,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): ToolArgs['account'] | undefined {
+  // The v6 framework removes the envelope account before invoking platform
+  // methods. Frozen 3.0 storyboards and their controller steps historically
+  // shared the remaining top-level brand session; re-injecting the resolved
+  // account only on platform methods splits that compatibility-only flow.
   const acct = account as {
     id?: unknown;
     mode?: unknown;
@@ -146,8 +153,9 @@ function accountRefFromCtx(account: unknown): ToolArgs['account'] | undefined {
   const accountId = typeof acct?.id === 'string' && !acct.id.startsWith('synthetic_') && acct.id !== 'public_sandbox'
     ? acct.id
     : undefined;
-  if (!accountId && !brandDomain) return undefined;
   if (accountId) return { account_id: accountId };
+  if (storyboardCompat?.version === '3.0') return undefined;
+  if (!accountId && !brandDomain) return undefined;
   return {
     ...(brandDomain && { brand: { domain: brandDomain } }),
     ...(typeof acct?.ctx_metadata?.operator === 'string'
@@ -157,6 +165,22 @@ function accountRefFromCtx(account: unknown): ToolArgs['account'] | undefined {
         : {}),
     ...(acct?.mode === 'sandbox' && { sandbox: true }),
   };
+}
+
+function withResolvedAccountScope(
+  input: Record<string, unknown>,
+  account: unknown,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): ToolArgs {
+  const { account: _legacyAccount, ...withoutAccount } = input;
+  const base = storyboardCompat?.version === '3.0' ? withoutAccount : input;
+  const accountRef = accountRefFromCtx(account, storyboardCompat);
+  const brandDomain = brandDomainFromCtx(account);
+  return {
+    ...base,
+    ...(accountRef && { account: accountRef }),
+    ...(brandDomain && { brand: { domain: brandDomain } }),
+  } as ToolArgs;
 }
 
 /**
@@ -283,18 +307,18 @@ export class TrainingSalesPlatform
   agentRegistry = trainingBuyerAgentRegistry;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    sales: SalesPlatform<TrainingSalesMeta> = {
+  sales: SalesPlatform<TrainingSalesMeta> = {
     getProducts: async (req, ctx) => {
       // The installed SDK predates polymorphic get_products idempotency. Route
       // this one method through the shared schema-first dispatcher rather than
       // mutating the SDK's global task classification: validation, session
       // durability, and replay publication then share the same ordering as v5
       // and direct Addie dispatch.
-      const accountRef = accountRefFromCtx(ctx.account);
-      const normalizedReq = {
-        ...(req as unknown as Record<string, unknown>),
-        ...(accountRef && { account: accountRef }),
-      } as ToolArgs;
+      const normalizedReq = withResolvedAccountScope(
+        req as unknown as Record<string, unknown>,
+        ctx.account,
+        this.storyboardCompat,
+      );
       const versionResolution = resolveServedAdcpVersion(normalizedReq as unknown as Record<string, unknown>);
       if (!versionResolution.ok) {
         throw new AdcpError('VERSION_UNSUPPORTED', {
@@ -315,13 +339,11 @@ export class TrainingSalesPlatform
     },
 
     createMediaBuy: async (req, ctx) => {
-      const accountRef = accountRefFromCtx(ctx.account);
-      const brandDomain = brandDomainFromCtx(ctx.account);
-      const args = {
-        ...(req as unknown as Record<string, unknown>),
-        ...(accountRef && { account: accountRef }),
-        ...(brandDomain && { brand: { domain: brandDomain } }),
-      } as ToolArgs;
+      const args = withResolvedAccountScope(
+        req as unknown as Record<string, unknown>,
+        ctx.account,
+        this.storyboardCompat,
+      );
       const v5Result = await handleCreateMediaBuy(args, buildTrainingCtx(ctx, this.storyboardCompat));
       // Detect the submitted-arm envelope the v5 handler returns when the
       // `force_create_media_buy_arm` test-controller directive is set.
@@ -358,19 +380,16 @@ export class TrainingSalesPlatform
     },
 
     updateMediaBuy: async (buyId, patch, ctx) => {
-      const brandDomain = brandDomainFromCtx(ctx.account);
-      const accountRef = accountRefFromCtx(ctx.account);
-      // brand placed after patch spread so it takes precedence over any brand
-      // field the SDK might include in patch.
-      const args = brandDomain
-        ? { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>), ...(accountRef && { account: accountRef }), brand: { domain: brandDomain } }
-        : { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>), ...(accountRef && { account: accountRef }) };
-      const v5Result = await handleUpdateMediaBuy(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
+      const args = withResolvedAccountScope(
+        { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>) },
+        ctx.account,
+        this.storyboardCompat,
+      );
+      const v5Result = await handleUpdateMediaBuy(args, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(v5Result);
     },
 
     syncCreatives: async (creatives, ctx) => {
-      const brandDomain = brandDomainFromCtx(ctx.account);
       // `dry_run` and `assignments[]` are dropped from the v6 typed
       // signature (adcp-client#1842). Lift them back off `ctx.input` so
       // the v5 handler honors dry-run mode and writes inline
@@ -379,14 +398,11 @@ export class TrainingSalesPlatform
       // `assignments[]` are observable via subsequent `get_media_buys`,
       // not in the sync_creatives response itself.
       const fromInput = pickFromInput(ctx.input, ['assignments', 'dry_run', 'account'] as const);
-      const accountRef = (fromInput as { account?: ToolArgs['account'] }).account ?? accountRefFromCtx(ctx.account);
-      const args = {
+      const args = withResolvedAccountScope({
         creatives,
         ...fromInput,
-        ...(accountRef && { account: accountRef }),
-        ...(brandDomain && { brand: { domain: brandDomain } }),
-      };
-      const v5Result = await handleSyncCreatives(args as unknown as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
+      }, ctx.account, this.storyboardCompat);
+      const v5Result = await handleSyncCreatives(args, buildTrainingCtx(ctx, this.storyboardCompat));
       // v5 returns wire-wrapped `{ creatives: [...] }`; v6 SalesPlatform
       // wants rows directly — framework re-wraps.
       const wrapped = translateV5Result<{ creatives?: unknown[] }>(v5Result);
@@ -394,23 +410,23 @@ export class TrainingSalesPlatform
     },
 
     getMediaBuyDelivery: async (filter, ctx) => {
-      const brandDomain = brandDomainFromCtx(ctx.account);
-      const accountRef = accountRefFromCtx(ctx.account);
-      const args = brandDomain
-        ? { ...(filter as unknown as Record<string, unknown>), ...(accountRef && { account: accountRef }), brand: { domain: brandDomain } }
-        : { ...(filter as unknown as Record<string, unknown>), ...(accountRef && { account: accountRef }) };
-      const result = await handleGetMediaBuyDelivery(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
+      const args = withResolvedAccountScope(
+        filter as unknown as Record<string, unknown>,
+        ctx.account,
+        this.storyboardCompat,
+      );
+      const result = await handleGetMediaBuyDelivery(args, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
 
     // Optional read-side methods.
     getMediaBuys: async (req, ctx) => {
-      const brandDomain = brandDomainFromCtx(ctx.account);
-      const accountRef = accountRefFromCtx(ctx.account);
-      const args = brandDomain
-        ? { ...(req as unknown as Record<string, unknown>), ...(accountRef && { account: accountRef }), brand: { domain: brandDomain } }
-        : { ...(req as unknown as Record<string, unknown>), ...(accountRef && { account: accountRef }) };
-      const result = await handleGetMediaBuys(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
+      const args = withResolvedAccountScope(
+        req as unknown as Record<string, unknown>,
+        ctx.account,
+        this.storyboardCompat,
+      );
+      const result = await handleGetMediaBuys(args, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
 
@@ -420,11 +436,12 @@ export class TrainingSalesPlatform
     },
 
     listCreatives: async (req, ctx) => {
-      const brandDomain = brandDomainFromCtx(ctx.account);
-      const args = brandDomain
-        ? { ...(req as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
-        : req;
-      const result = await handleListCreatives(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
+      const args = withResolvedAccountScope(
+        req as unknown as Record<string, unknown>,
+        ctx.account,
+        this.storyboardCompat,
+      );
+      const result = await handleListCreatives(args, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
 

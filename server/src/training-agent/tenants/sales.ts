@@ -120,7 +120,7 @@ export function buildSalesTenantConfig(host: string, options: { storyboardCompat
             }),
           }),
         },
-        complyTest: buildSalesComplyConfig(),
+        complyTest: buildSalesComplyConfig(options.storyboardCompat),
       },
     },
   };

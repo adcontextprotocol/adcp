@@ -140,7 +140,26 @@ export class TrainingCreativePlatform
 
   creative: CreativeAdServerPlatform<TrainingCreativeMeta> = {
     buildCreative: async (req, ctx) => {
-      const result = await handleBuildCreative(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
+      // Frozen 3.0 build_creative schemas omit account, while sync_creatives
+      // still resolves the caller account through the v6 context. Restore the
+      // resolved brand fallback so both calls address the same legacy session.
+      const brandDomain = (ctx.account as { ctx_metadata?: { brand_domain?: string } } | undefined)
+        ?.ctx_metadata?.brand_domain;
+      const resolvedAccountId = (ctx.account as { id?: unknown } | undefined)?.id;
+      const accountId = typeof resolvedAccountId === 'string'
+        && !resolvedAccountId.startsWith('synthetic_')
+        && resolvedAccountId !== 'public_sandbox'
+        ? resolvedAccountId
+        : undefined;
+      const input = req as unknown as Record<string, unknown>;
+      const { account: _legacyAccount, ...withoutAccount } = input;
+      const base = this.storyboardCompat?.version === '3.0' ? withoutAccount : input;
+      const args = {
+        ...base,
+        ...(this.storyboardCompat?.version === '3.0' && accountId && { account: { account_id: accountId } }),
+        ...(brandDomain && { brand: { domain: brandDomain } }),
+      };
+      const result = await handleBuildCreative(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       // F16 (`bca20dfb`) — framework's discriminator passes through
       // pre-shaped BuildCreativeSuccess / BuildCreativeMultiSuccess
       // envelopes. v5 returns the envelope shape directly.
