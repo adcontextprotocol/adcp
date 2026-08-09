@@ -545,7 +545,7 @@
       "version": "2.5.3",
       "stability": "stable",
       "prerelease": false,
-      "deprecated": false,
+      "deprecated": true,
       "path": "/schemas/2.5.3/",
       "index": "/schemas/2.5.3/index.json"
     },
@@ -553,7 +553,7 @@
       "version": "2.5.2",
       "stability": "stable",
       "prerelease": false,
-      "deprecated": false,
+      "deprecated": true,
       "path": "/schemas/2.5.2/",
       "index": "/schemas/2.5.2/index.json"
     },
@@ -561,7 +561,7 @@
       "version": "2.5.1",
       "stability": "stable",
       "prerelease": false,
-      "deprecated": false,
+      "deprecated": true,
       "path": "/schemas/2.5.1/",
       "index": "/schemas/2.5.1/index.json"
     },
@@ -569,7 +569,7 @@
       "version": "2.5.0",
       "stability": "stable",
       "prerelease": false,
-      "deprecated": false,
+      "deprecated": true,
       "path": "/schemas/2.5.0/",
       "index": "/schemas/2.5.0/index.json"
     }

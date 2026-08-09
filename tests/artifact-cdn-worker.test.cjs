@@ -95,6 +95,14 @@ async function loadWorker() {
 function env() {
   return {
     ARTIFACTS: new MockBucket([
+      object('schemas/2.5.3/index.json', '{"version":"2.5.3"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
+      object('schemas/2.5.3/foo.json', '{"version":"2.5.3"}', {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=31536000, immutable',
+      }),
       object('schemas/3.0.12/index.json', '{"version":"3.0.12"}', {
         contentType: 'application/json; charset=utf-8',
         cacheControl: 'public, max-age=31536000, immutable',
@@ -587,8 +595,17 @@ describe('artifact CDN Worker', () => {
         deprecated: false,
         path: '/schemas/3.0.12/',
       },
+      {
+        version: '2.5.3',
+        stability: 'stable',
+        prerelease: false,
+        deprecated: true,
+        path: '/schemas/2.5.3/',
+      },
     ]);
     assert.deepEqual(body.aliases, [
+      { alias: 'v2', resolves_to: '2.5.3', path: '/schemas/v2/' },
+      { alias: 'v2.5', resolves_to: '2.5.3', path: '/schemas/v2.5/' },
       { alias: 'v3', resolves_to: '3.1.2', path: '/schemas/v3/' },
       { alias: 'v3.0', resolves_to: '3.0.12', path: '/schemas/v3.0/' },
       { alias: 'v3.1', resolves_to: '3.1.2', path: '/schemas/v3.1/' },
@@ -598,6 +615,25 @@ describe('artifact CDN Worker', () => {
       path: '/schemas/latest/',
       note: 'Development version, may differ from released versions',
     });
+  });
+
+  it('keeps deprecated v2 aliases resolvable', async () => {
+    const alias = await fetchPath('/schemas/v2.5/foo.json');
+    const discovery = await fetchPath('/schemas/');
+    const body = await discovery.json();
+
+    assert.equal(alias.status, 200);
+    assert.deepEqual(await alias.json(), { version: '2.5.3' });
+    assert.deepEqual(
+      body.versions.find((entry) => entry.version === '2.5.3'),
+      {
+        version: '2.5.3',
+        stability: 'stable',
+        prerelease: false,
+        deprecated: true,
+        path: '/schemas/2.5.3/',
+      },
+    );
   });
 
   it('applies release overrides consistently to compliance aliases', async () => {

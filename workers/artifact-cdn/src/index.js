@@ -461,6 +461,9 @@ function releaseStatusMetadata(version) {
   if (status === "unpublished") {
     return { stability: "unpublished", deprecated: false, published: false };
   }
+  if (version.startsWith("2.")) {
+    return { deprecated: true };
+  }
   return {};
 }
 

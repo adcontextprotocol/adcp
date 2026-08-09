@@ -7,6 +7,15 @@ const assert = require('assert');
 const repoRoot = path.join(__dirname, '..');
 const workflowPath = path.join(repoRoot, '.github/workflows/release.yml');
 const workflow = fs.readFileSync(workflowPath, 'utf8');
+const eolReleaseBranches = ['2.5-maintenance', '2.6.x'];
+const activeWorkflowPaths = [
+  'apps-web-check.yml',
+  'broken-links.yml',
+  'build-check.yml',
+  'changeset-check.yml',
+  'check-testable-snippets.yml',
+  'release.yml',
+];
 const forwardMergeWorkflows = ['3.0', '3.1'].map((line) => ({
   line,
   source: fs.readFileSync(
@@ -26,6 +35,19 @@ const releaseRelevance = extractStep('Detect release-relevant push');
 const artifactDetection = extractStep('Detect committed release artifacts');
 const changesetsStep = extractStep('Create Release Pull Request or Tag Release');
 const uploadStep = extractStep('Upload protocol tarball to GitHub Release');
+
+for (const branch of eolReleaseBranches) {
+  for (const workflowName of activeWorkflowPaths) {
+    const source = fs.readFileSync(
+      path.join(repoRoot, '.github/workflows', workflowName),
+      'utf8'
+    );
+    assert(
+      !source.includes(branch),
+      `${workflowName} must not target end-of-life v2 branch ${branch}.`
+    );
+  }
+}
 
 assert(
   !releaseRelevance.includes('Release ${TAG} is missing ${asset}; running repair path.'),
