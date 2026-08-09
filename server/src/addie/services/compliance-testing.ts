@@ -1063,7 +1063,9 @@ export function computeSpecialismStatus(
       result[specialism] = 'untested';
       continue;
     }
-    if (sbStatus.status === 'passing') {
+    if (sbStatus.steps_total === 0) {
+      result[specialism] = 'untested';
+    } else if (sbStatus.status === 'passing') {
       result[specialism] = 'passing';
     } else if (sbStatus.status === 'failing' || sbStatus.status === 'partial') {
       result[specialism] = 'failing';

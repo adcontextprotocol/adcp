@@ -39,6 +39,14 @@ describe('computeSpecialismStatus', () => {
     expect(result).toEqual({ 'sales-broadcast-tv': 'untested' });
   });
 
+  it('returns untested for a legacy failing row with no executable steps', () => {
+    const result = computeSpecialismStatus(
+      ['sales-broadcast-tv'],
+      [{ storyboard_id: 'sales_broadcast_tv', status: 'failing', steps_passed: 0, steps_total: 0 }],
+    );
+    expect(result).toEqual({ 'sales-broadcast-tv': 'untested' });
+  });
+
   it('returns unknown for specialisms not in SPECIALISM_CATALOG', () => {
     const result = computeSpecialismStatus(
       ['some-future-specialism'],
