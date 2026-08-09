@@ -76,6 +76,9 @@ jobs:
       - name: Repo unit tests
         run: npm run test:unit
 
+      - name: SDK compatibility ratchets and routed tenant smoke tests
+        run: npm run test:sdk-shims && npm run test:format-identity-boundaries && npm run test:tenant-routing
+
       - name: Storyboard raw-mode-required lint tests
         run: npm run test:storyboard-raw-mode-required
 

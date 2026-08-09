@@ -18,37 +18,48 @@ import {
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
 import { PostgresTaskStore } from '@adcp/sdk';
-import { mergeSeedProduct } from '@adcp/sdk/testing';
+import {
+  canonicalFormatLegacyResolverFromCatalogSnapshots,
+  legacyFormatConverterFromCatalogSnapshots,
+  projectCreativeForDelivery,
+  projectV1ProductToV2,
+  toCanonicalOnlyResponse,
+  type CreativeFormatWireMode,
+  type CanonicalFormatLegacyResolver,
+  type ProjectionCatalogSnapshot,
+} from '@adcp/sdk/v2/projection';
+import { mergeSeedProductLegacy as mergeSeedProduct } from '@adcp/sdk/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetchAxiosLike } from '../utils/url-security.js';
 import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type SessionState } from './types.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
-  Product,
+  LegacyProduct as Product,
   Proposal,
-  FormatID,
-  CreateMediaBuyRequest,
-  UpdateMediaBuyRequest,
-  GetProductsRequest,
-  GetProductsResponse,
+  LegacyFormatID as FormatID,
+  LegacyCreateMediaBuyRequest as CreateMediaBuyRequest,
+  LegacyUpdateMediaBuyRequest as UpdateMediaBuyRequest,
+  LegacyGetProductsRequest as GetProductsRequest,
+  LegacyGetProductsResponse as GetProductsResponse,
   GetMediaBuysRequest,
   GetMediaBuyDeliveryRequest,
-  ListCreativeFormatsRequest,
-  SyncCreativesRequest,
-  ListCreativesRequest,
+  LegacyListCreativeFormatsRequest as ListCreativeFormatsRequest,
+  LegacySyncCreativesRequest as SyncCreativesRequest,
+  LegacyListCreativesRequest as ListCreativesRequest,
   GetSignalsRequest,
   ActivateSignalRequest,
   GetCreativeDeliveryRequest,
   GetAdCPCapabilitiesRequest,
-  ListCreativesResponse,
-  PreviewCreativeResponse,
-  BuildCreativeResponse,
-  CreativeManifest as AdcpCreativeManifest,
+  LegacyListCreativesResponse as ListCreativesResponse,
+  LegacyPreviewCreativeResponse as PreviewCreativeResponse,
+  LegacyBuildCreativeResponse as BuildCreativeResponse,
+  LegacyCreativeManifest as AdcpCreativeManifest,
 } from '@adcp/sdk';
 import { CreativeManifestSchema } from '@adcp/sdk/schemas';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getCanonicalBase } from './canonical-base.js';
+
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
 function escapeHtmlAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -462,6 +473,10 @@ type CanonicalPackageFormat = Record<string, unknown> & {
   v1_format_ref?: FormatID[];
 };
 
+type IndexedDeclarations = { stable: CanonicalPackageFormat[]; legacyAlias: CanonicalPackageFormat[] };
+type ProductFormatOptionIndex = Map<string, IndexedDeclarations>;
+type ProductFormatOptionIndexCache = WeakMap<Product, ProductFormatOptionIndex>;
+
 function cloneCanonicalFormat(format: CanonicalPackageFormat): CanonicalPackageFormat {
   return JSON.parse(JSON.stringify(format)) as CanonicalPackageFormat;
 }
@@ -595,13 +610,52 @@ function snapshotPackageFormats(
   pkg: PackageInput,
   product: Product,
   packageIndex: number,
+  optionIndexCache: ProductFormatOptionIndexCache,
 ): { formats?: CanonicalPackageFormat[]; error?: TaskError } {
   const declarations = (Array.isArray(product.format_options) ? product.format_options : [])
     .filter(isRecord) as CanonicalPackageFormat[];
   if (declarations.length === 0) return {};
 
   if (Array.isArray(pkg.format_option_refs) && pkg.format_option_refs.length > 0) {
+    let declarationsByOptionId = optionIndexCache.get(product);
+    const shouldBuildIndex = declarationsByOptionId === undefined;
+    if (!declarationsByOptionId) {
+      declarationsByOptionId = new Map<string, IndexedDeclarations>();
+      optionIndexCache.set(product, declarationsByOptionId);
+    }
+    const indexDeclaration = (
+      optionId: string,
+      declaration: CanonicalPackageFormat,
+      identity: keyof IndexedDeclarations,
+    ) => {
+      const indexed = declarationsByOptionId.get(optionId) ?? { stable: [], legacyAlias: [] };
+      indexed[identity].push(declaration);
+      declarationsByOptionId.set(optionId, indexed);
+    };
+    if (shouldBuildIndex) {
+      for (const declaration of declarations) {
+        if (typeof declaration.format_option_id === 'string') {
+          indexDeclaration(declaration.format_option_id, declaration, 'stable');
+        }
+        for (const legacyRef of Array.isArray(declaration.v1_format_ref) ? declaration.v1_format_ref : []) {
+          if (typeof legacyRef?.id !== 'string') continue;
+          const projected = projectV1ProductToV2({
+            product_id: 'legacy_request_projection',
+            name: 'Legacy request projection',
+            description: 'Ephemeral compatibility projection',
+            format_ids: [{
+              ...legacyRef,
+              agent_url: legacyRef.agent_url ?? 'https://creative.adcontextprotocol.org/',
+            }],
+          });
+          const migratedId = projected.v2.format_options?.[0]?.format_option_id;
+          if (typeof migratedId === 'string') indexDeclaration(migratedId, declaration, 'legacyAlias');
+        }
+      }
+    }
+
     const selected: CanonicalPackageFormat[] = [];
+    const selectedSet = new Set<CanonicalPackageFormat>();
     for (let i = 0; i < pkg.format_option_refs.length; i++) {
       const ref = pkg.format_option_refs[i];
       if (!isRecord(ref) || typeof ref.format_option_id !== 'string') {
@@ -614,8 +668,8 @@ function snapshotPackageFormats(
           },
         };
       }
-      const match = declarations.find(declaration => {
-        if (declaration.format_option_id !== ref.format_option_id) return false;
+      const indexed = declarationsByOptionId.get(ref.format_option_id);
+      const matchesScope = (declaration: CanonicalPackageFormat) => {
         if (ref.scope === 'publisher') {
           return typeof ref.publisher_domain === 'string'
             && declaration.publisher_domain === ref.publisher_domain;
@@ -623,8 +677,22 @@ function snapshotPackageFormats(
         if (ref.scope === 'product') return declaration.publisher_domain === undefined;
         return ref.publisher_domain === undefined
           || declaration.publisher_domain === ref.publisher_domain;
-      });
-      if (!match) {
+      };
+      const candidates = indexed?.stable.length
+        ? indexed.stable.filter(matchesScope)
+        : [...new Set(indexed?.legacyAlias ?? [])].filter(matchesScope);
+      if (candidates.length > 1) {
+        return {
+          error: {
+            code: 'UNSUPPORTED_FEATURE',
+            message: `Package ${packageIndex}: format option "${ref.format_option_id}" is ambiguous without a narrower scope`,
+            field: `packages[${packageIndex}].format_option_refs[${i}]`,
+            recovery: 'correctable',
+          },
+        };
+      }
+      const matches = candidates.slice(0, 1);
+      if (matches.length === 0) {
         return {
           error: {
             code: 'UNSUPPORTED_FEATURE',
@@ -634,7 +702,11 @@ function snapshotPackageFormats(
           },
         };
       }
-      selected.push(cloneCanonicalFormat(match));
+      for (const match of matches) {
+        if (selectedSet.has(match)) continue;
+        selectedSet.add(match);
+        selected.push(cloneCanonicalFormat(match));
+      }
     }
     return { formats: selected };
   }
@@ -658,16 +730,25 @@ function snapshotPackageFormats(
         && (requested.agent_url === undefined || ref.agent_url === requested.agent_url)
       ));
     });
-    if (selected.length === 0) {
+    const advertisedLegacyIds = Array.isArray(product.format_ids) ? product.format_ids : [];
+    const unavailable = pkg.format_ids.filter(requested => !advertisedLegacyIds.some(advertised =>
+      advertised.id === requested.id
+      && (requested.agent_url === undefined || advertised.agent_url === requested.agent_url)
+    ));
+    if (unavailable.length > 0) {
       return {
         error: {
           code: 'UNSUPPORTED_FEATURE',
-          message: `Package ${packageIndex}: deprecated format_ids do not resolve to a canonical declaration on product ${pkg.product_id}`,
+          message: `Package ${packageIndex}: deprecated format_ids are not advertised by product ${pkg.product_id}`,
           field: `packages[${packageIndex}].format_ids`,
           recovery: 'correctable',
         },
       };
     }
+    // A legacy product may advertise a named format whose canonical kind is
+    // intentionally non-equivalent (`canonical_formats_only`). Validate and
+    // accept that independent legacy selector above, but do not fabricate a
+    // canonical declaration for formats_to_provide.
     return { formats: selected.map(cloneCanonicalFormat) };
   }
 
@@ -2400,6 +2481,129 @@ function getFormats(): ReturnType<typeof buildFormats> {
   return cachedFormats;
 }
 
+function requestedCreativeWireMode(args: Record<string, unknown>): CreativeFormatWireMode {
+  const ext = args.ext as { adcp?: { creative_wire?: unknown } } | undefined;
+  const explicit = ext?.adcp?.creative_wire;
+  if (explicit === 'canonical' || explicit === 'legacy') return explicit;
+  return typeof args.adcp_version === 'string' && args.adcp_version.startsWith('3.0')
+    ? 'legacy'
+    : 'unknown';
+}
+
+function formatProjectionCatalogs(): ProjectionCatalogSnapshot[] {
+  const declarations = new Map<string, Record<string, unknown>>();
+  for (const catalogProduct of getCatalog()) {
+    for (const rawDeclaration of catalogProduct.product.format_options ?? []) {
+      if (!isRecord(rawDeclaration)) continue;
+      declarations.set(JSON.stringify(rawDeclaration), rawDeclaration);
+    }
+  }
+  return [{
+    source: 'configured',
+    formats: [...declarations.values()] as unknown as ProjectionCatalogSnapshot['formats'],
+  }];
+}
+
+const trainingCatalogLegacyResolver: CanonicalFormatLegacyResolver = context => {
+  const candidate = context.source === 'creative'
+    ? context.creative.format_option_ref
+    : context.source === 'selector'
+      ? context.selector.format_option_ref
+      : undefined;
+  if (!isRecord(candidate) || typeof candidate.format_option_id !== 'string') return undefined;
+
+  const matches = new Map<string, FormatID>();
+  for (const catalogProduct of getCatalog()) {
+    for (const rawDeclaration of catalogProduct.product.format_options ?? []) {
+      if (!isRecord(rawDeclaration) || rawDeclaration.format_option_id !== candidate.format_option_id) continue;
+      if (candidate.scope === 'publisher') {
+        if (rawDeclaration.publisher_domain !== candidate.publisher_domain) continue;
+      } else if (candidate.scope === 'product' && rawDeclaration.publisher_domain !== undefined) {
+        continue;
+      }
+      for (const ref of Array.isArray(rawDeclaration.v1_format_ref) ? rawDeclaration.v1_format_ref : []) {
+        if (!isRecord(ref) || typeof ref.id !== 'string') continue;
+        const typedRef = ref as FormatID;
+        matches.set(JSON.stringify(typedRef), typedRef);
+      }
+    }
+  }
+  return matches.size === 1 ? [...matches.values()][0] : undefined;
+};
+
+/** Project a raw compatibility response to the wire arm explicitly requested by the caller. */
+export function projectGetProductsCompatibilityWire(
+  response: { products?: Product[]; [key: string]: unknown },
+  args: Record<string, unknown>,
+): unknown {
+  const wireMode = requestedCreativeWireMode(args);
+  if (wireMode === 'unknown') return response;
+  if (wireMode === 'canonical') return toCanonicalOnlyResponse(response as never).response;
+
+  const products = (response.products ?? []).flatMap(product => {
+    if (!Array.isArray(product.format_ids) || product.format_ids.length === 0) return [];
+    const { format_options: _formatOptions, ...legacyProduct } = product as Product & { format_options?: unknown };
+    return [legacyProduct as Product];
+  });
+  return { ...response, products };
+}
+
+/**
+ * Preserve stored identity for ambiguous 3.1 callers, and use exact catalog
+ * aliases only when a caller explicitly asks for the other wire generation.
+ */
+export function projectListCreativesCompatibilityWire<T extends {
+  creatives?: Array<Record<string, unknown>>;
+  errors?: unknown[];
+}>(response: T, args: Record<string, unknown>): T {
+  const wireMode = requestedCreativeWireMode(args);
+  if (wireMode === 'unknown' || !Array.isArray(response.creatives)) return response;
+
+  try {
+    return { ...response, creatives: projectCreativeRecordsForWire(response.creatives, wireMode) };
+  } catch (error) {
+    return {
+      ...response,
+      creatives: [],
+      errors: [
+        ...(response.errors ?? []),
+        {
+          code: 'FORMAT_PROJECTION_FAILED',
+          message: error instanceof Error ? error.message : 'Creative format projection failed',
+          recovery: 'correctable',
+        },
+      ],
+    };
+  }
+}
+
+function projectCreativeRecordsForWire(
+  creatives: Array<Record<string, unknown>>,
+  wireMode: Exclude<CreativeFormatWireMode, 'unknown'>,
+): Array<Record<string, unknown>> {
+  const catalogs = formatProjectionCatalogs();
+  const legacyFormatConverter = legacyFormatConverterFromCatalogSnapshots(catalogs);
+  const canonicalFormatLegacyResolver = canonicalFormatLegacyResolverFromCatalogSnapshots(
+    catalogs,
+    trainingCatalogLegacyResolver,
+  );
+  return creatives.map(creative => {
+    if (wireMode === 'legacy' && isRecord(creative.format_id)) return creative;
+    if (wireMode === 'canonical' && typeof creative.format_kind === 'string') return creative;
+    return projectCreativeForDelivery(
+      creative as never,
+      {
+        ...(typeof creative.format_kind === 'string' && { format_kind: creative.format_kind }),
+        ...(isRecord(creative.format_option_ref) && { format_option_refs: [creative.format_option_ref] }),
+      },
+      wireMode,
+      'list_creatives',
+      legacyFormatConverter,
+      canonicalFormatLegacyResolver,
+    ) as Record<string, unknown>;
+  });
+}
+
 /** Invalidate cached catalog/formats (for tests or hot-reload) */
 export function invalidateCache(): void {
   cachedCatalog = null;
@@ -2790,7 +2994,7 @@ async function enforceProvenancePolicy(
  */
 function overlaySeededProducts(
   session: import('./types.js').SessionState,
-  productMap: Map<string, import('@adcp/sdk').Product>,
+  productMap: Map<string, import('@adcp/sdk').LegacyProduct>,
 ): void {
   const { seededProducts, seededPricingOptions } = session.complyExtensions;
   if (seededProducts.size === 0 && seededPricingOptions.size === 0) return;
@@ -5726,6 +5930,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   const errors: TaskError[] = [];
   const createdPackages: PackageState[] = [];
   const inlineCreativesToPersist: InlineCreativeInput[] = [];
+  const productFormatOptionIndexes: ProductFormatOptionIndexCache = new WeakMap();
   for (let i = 0; i < req.packages.length; i++) {
     const pkg = req.packages[i] as unknown as PackageInput;
     const pkgLabel = `Package ${i}`;
@@ -5773,7 +5978,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       errors.push(directFormatError);
       continue;
     }
-    const formatSnapshot = snapshotPackageFormats(pkg, product, i);
+    const formatSnapshot = snapshotPackageFormats(pkg, product, i, productFormatOptionIndexes);
     if (formatSnapshot.error) {
       errors.push(formatSnapshot.error);
       continue;
@@ -6623,7 +6828,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   };
 }
 
-function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/sdk').Product>): { model: string; rate: number } {
+function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/sdk').LegacyProduct>): { model: string; rate: number } {
   const product = productMap.get(pkg.productId);
   const pricing = product?.pricing_options.find(po => po.pricing_option_id === pkg.pricingOptionId);
   const view = pricing as unknown as PricingOptionView | undefined;
@@ -6843,9 +7048,29 @@ type CreativeListFilters = {
   asset_types?: string[];
 };
 
+function storedCreativeFormatRecord(creative: CreativeState): Record<string, unknown> {
+  if (creative.formatKind) {
+    return {
+      format_kind: creative.formatKind,
+      ...(creative.formatOptionRef && { format_option_ref: creative.formatOptionRef }),
+    };
+  }
+  return {
+    format_id: {
+      ...creative.formatId,
+      agent_url: creative.formatId.agent_url ?? getAgentUrl(),
+    },
+  };
+}
+
 function creativeMatchesAnyFormatId(creative: CreativeState, requested: FormatID[]): boolean {
-  if (creative.formatKind) return false;
-  const actual = creative.formatId;
+  let projected: Record<string, unknown>;
+  try {
+    [projected] = projectCreativeRecordsForWire([storedCreativeFormatRecord(creative)], 'legacy');
+  } catch {
+    return false;
+  }
+  const actual = isRecord(projected.format_id) ? projected.format_id as unknown as FormatID : undefined;
   if (!actual?.id) return false;
   const actualAgentUrl = actual.agent_url ?? getAgentUrl();
   return requested.some(wanted => {
@@ -6857,6 +7082,16 @@ function creativeMatchesAnyFormatId(creative: CreativeState, requested: FormatID
     }
     return true;
   });
+}
+
+function creativeMatchesAnyFormatKind(creative: CreativeState, requested: Set<string>): boolean {
+  let projected: Record<string, unknown>;
+  try {
+    [projected] = projectCreativeRecordsForWire([storedCreativeFormatRecord(creative)], 'canonical');
+  } catch {
+    return false;
+  }
+  return typeof projected.format_kind === 'string' && requested.has(projected.format_kind);
 }
 
 function creativeHasAnyTopLevelAssetType(creative: CreativeState, requested: Set<string>): boolean {
@@ -6924,7 +7159,7 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   const formatKinds = (req.filters as unknown as { format_kinds?: string[] } | undefined)?.format_kinds;
   if (formatKinds?.length) {
     const wantedKinds = new Set(formatKinds);
-    creatives = creatives.filter(c => Boolean(c.formatKind && wantedKinds.has(c.formatKind)));
+    creatives = creatives.filter(c => creativeMatchesAnyFormatKind(c, wantedKinds));
   }
   if (filters.format_ids?.length) {
     creatives = creatives.filter(c => creativeMatchesAnyFormatId(c, filters.format_ids!));
@@ -7375,6 +7610,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // Add new packages
   const newPackages = req.new_packages;
   if (newPackages?.length) {
+    const productFormatOptionIndexes: ProductFormatOptionIndexCache = new WeakMap();
     if (mb.packages.length + newPackages.length > MAX_PACKAGES_PER_BUY) {
       return {
         errors: [{ code: 'LIMIT_EXCEEDED', message: `Adding ${newPackages.length} packages would exceed the per-buy limit of ${MAX_PACKAGES_PER_BUY}.` }] as TaskError[],
@@ -7389,7 +7625,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       }
       const directFormatError = validateDirectCanonicalPackageSelector(npkg, product, i);
       if (directFormatError) return { errors: [directFormatError] };
-      const formatSnapshot = snapshotPackageFormats(npkg, product, i);
+      const formatSnapshot = snapshotPackageFormats(npkg, product, i, productFormatOptionIndexes);
       if (formatSnapshot.error) return { errors: [formatSnapshot.error] };
 
       const pkgId = `pkg-${mb.packages.length + i}`;
@@ -8450,7 +8686,10 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
       } as AdcpCreativeManifest;
     }
     return {
-      format_id: { agent_url: agentUrl, id: target.requested.id },
+      format_id: {
+        ...target.requested,
+        agent_url: target.requested.agent_url ?? agentUrl,
+      },
       assets: buildHtmlAssets(label),
     } as AdcpCreativeManifest;
   };
@@ -8632,8 +8871,14 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     const { w, h } = getDimensions(resolved.target!.format);
     const targetLabel = requestedTarget?.id ?? creative.formatKind ?? creative.formatId.id;
 
+    const builtManifest = buildManifest(resolved.target!, `<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(targetLabel)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`);
     const base = {
-      creative_manifest: buildManifest(resolved.target!, `<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(targetLabel)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`),
+      creative_manifest: !requestedTarget && creative.formatKind && creative.formatOptionRef
+        ? {
+          ...builtManifest,
+          format_option_ref: creative.formatOptionRef as unknown as NonNullable<AdcpCreativeManifest['format_option_ref']>,
+        }
+        : builtManifest,
     };
 
     // Return pricing when account is provided (paid creative agent mode)

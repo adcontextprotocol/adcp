@@ -94,7 +94,7 @@ import {
 import { MemberDatabase } from '../../db/member-db.js';
 import { ensureMemberProfileExists } from '../../services/member-profile-autopublish.js';
 import { updateBrandIdentity, BrandIdentityError } from '../../services/brand-identity.js';
-import { canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
+import { assertValidBrandDomain, canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
 import { isOrgOwnerOfAgent } from '../../services/agent-ownership.js';
 import { getBrandPrimaryDomain } from '../../services/brand-domain-resolver.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
@@ -946,6 +946,41 @@ const PRICING_ALIASES: Record<string, string> = {
 function normalizeChannel(ch: string): string {
   const key = ch.toLowerCase().trim();
   return CHANNEL_ALIASES[key] ?? key;
+}
+
+/**
+ * Return searchable format labels from the canonical product declaration.
+ * Legacy aliases remain useful search terms during the 3.x migration, but
+ * canonical-only options must remain visible even when they have no alias.
+ */
+function productFormatLabels(product: Record<string, unknown>): string[] {
+  const labels = new Set<string>();
+  if (Array.isArray(product.format_options)) {
+    for (const rawOption of product.format_options) {
+      if (!rawOption || typeof rawOption !== 'object' || Array.isArray(rawOption)) continue;
+      const option = rawOption as Record<string, unknown>;
+      if (typeof option.format_kind === 'string') labels.add(option.format_kind);
+      if (typeof option.format_option_id === 'string') labels.add(option.format_option_id);
+      const params = option.params as Record<string, unknown> | undefined;
+      if (typeof params?.width === 'number' && typeof params?.height === 'number') {
+        labels.add(`${params.width}x${params.height}`);
+      }
+      if (Array.isArray(option.v1_format_ref)) {
+        for (const rawRef of option.v1_format_ref) {
+          const ref = rawRef as Record<string, unknown> | undefined;
+          if (typeof ref?.id === 'string') labels.add(ref.id);
+        }
+      }
+    }
+  }
+  // Tolerate dual/older peers without making the legacy arm authoritative.
+  if (Array.isArray(product.format_ids)) {
+    for (const rawRef of product.format_ids) {
+      const ref = rawRef as Record<string, unknown> | undefined;
+      if (typeof ref?.id === 'string') labels.add(ref.id);
+    }
+  }
+  return [...labels];
 }
 
 const GITHUB_SEARCH_BANNED_QUALIFIERS = /(^|\s)(repo|org|user|is)\s*:/i;
@@ -1941,6 +1976,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
           minItems: 1,
         },
         advertiser: { type: 'string', description: 'Advertiser name from the IO' },
+        advertiser_domain: { type: 'string', description: 'Advertiser brand domain (for example, brand.example). Required to construct or execute create_media_buy.' },
+        account_id: { type: 'string', description: 'Seller-assigned advertiser account ID. Required to construct or execute create_media_buy.' },
         currency: { type: 'string', description: 'Currency for all line items (default: USD)' },
         execute: { type: 'boolean', description: 'If true, actually call create_media_buy on the agent. If false (default), only construct the JSON.', default: false },
       },
@@ -5657,10 +5694,9 @@ export function createMemberToolHandlers(
       }
       const briefResults: BriefResult[] = await Promise.all(briefsToRun.map(async (brief): Promise<BriefResult> => {
         try {
-          const result = await client.executeTask('get_products', {
+          const result = await client.getProducts({
             buying_mode: 'brief',
             brief: brief.brief,
-            brand: { name: 'Test Brand', url: 'https://example.com' },
           });
 
           if (!result.success) {
@@ -5683,12 +5719,7 @@ export function createMemberToolHandlers(
             if (Array.isArray(p.channels)) {
               for (const ch of p.channels) if (typeof ch === 'string') channelsFound.add(ch);
             }
-            if (Array.isArray(p.format_ids)) {
-              for (const fid of p.format_ids) {
-                const f = fid as Record<string, unknown>;
-                if (typeof f.id === 'string') formatsFound.add(f.id);
-              }
-            }
+            for (const label of productFormatLabels(p)) formatsFound.add(label);
             if (Array.isArray(p.pricing_options)) {
               for (const po of p.pricing_options) {
                 const pricing = po as Record<string, unknown>;
@@ -5882,10 +5913,9 @@ export function createMemberToolHandlers(
       const client = multiClient.agent('target');
 
       const result = await Promise.race([
-        client.executeTask('get_products', {
+        client.getProducts({
           buying_mode: 'brief',
           brief,
-          brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
         }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Agent did not respond within 30 seconds')), 30000)),
       ]);
@@ -5917,13 +5947,8 @@ export function createMemberToolHandlers(
         if (Array.isArray(p.channels)) {
           for (const ch of p.channels) if (typeof ch === 'string') { channels.push(ch); allChannels.add(ch); }
         }
-        const formatIds: string[] = [];
-        if (Array.isArray(p.format_ids)) {
-          for (const fid of p.format_ids) {
-            const f = fid as Record<string, unknown>;
-            if (typeof f.id === 'string') { formatIds.push(f.id); allFormats.add(f.id); }
-          }
-        }
+        const formatIds = productFormatLabels(p);
+        for (const label of formatIds) allFormats.add(label);
         const pricingOpts: Array<{ pricing_option_id: string; pricing_model: string; price?: number; currency?: string; minimum_spend?: number }> = [];
         if (Array.isArray(p.pricing_options)) {
           for (const po of p.pricing_options) {
@@ -6095,10 +6120,30 @@ export function createMemberToolHandlers(
     const agentUrl = input.agent_url as string;
     const lineItems = ((input.line_items as Array<Record<string, unknown>>) || []).slice(0, 20);
     const advertiser = input.advertiser as string | undefined;
+    const advertiserDomainInput = input.advertiser_domain as string | undefined;
+    const accountId = typeof input.account_id === 'string' && input.account_id.trim()
+      ? input.account_id.trim()
+      : undefined;
     const currency = (input.currency as string) || 'USD';
     const shouldExecute = (input.execute as boolean) || false;
 
     if (!lineItems.length) return '**Error:** line_items array is required and must have at least one item.';
+
+    let advertiserDomain: string | undefined;
+    if (advertiserDomainInput) {
+      try {
+        advertiserDomain = canonicalizeBrandDomain(advertiserDomainInput);
+        assertValidBrandDomain(advertiserDomain);
+      } catch {
+        return '**Error:** advertiser_domain must be a valid public brand domain.';
+      }
+    }
+    if (shouldExecute && !advertiserDomain) {
+      return '**Error:** advertiser_domain is required when execute is true.';
+    }
+    if (shouldExecute && !accountId) {
+      return '**Error:** account_id is required when execute is true.';
+    }
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
@@ -6119,9 +6164,10 @@ export function createMemberToolHandlers(
 
       // Get full catalog via wholesale mode
       const result = await Promise.race([
-        client.executeTask('get_products', {
+        client.getProducts({
           buying_mode: 'wholesale',
-          brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
+          ...(advertiserDomain && { brand: { domain: advertiserDomain } }),
+          ...(accountId && { account: { account_id: accountId } }),
         }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Agent did not respond within 30 seconds')), 30000)),
       ]);
@@ -6155,7 +6201,14 @@ export function createMemberToolHandlers(
         matched_product?: { product_id: string; name: string; match_quality: string; match_reasons: string[] };
         matched_pricing?: { pricing_option_id: string; pricing_model: string; agent_rate?: number; io_rate?: number; rate_context: { label: string; context: string } };
         unmapped_reasons?: string[];
-        proposed_package?: Record<string, unknown>;
+        proposed_package?: {
+          product_id: string;
+          pricing_option_id: string;
+          budget: number;
+          bid_price?: number;
+          start_time?: string;
+          end_time?: string;
+        };
       }
 
       const lineItemResults: LineItemResult[] = [];
@@ -6220,11 +6273,9 @@ export function createMemberToolHandlers(
           }
 
           // Format match (+2)
-          if (liFormat && Array.isArray(p.format_ids)) {
+          if (liFormat) {
             const liFormatLower = liFormat.toLowerCase();
-            const matched = (p.format_ids as Array<Record<string, unknown>>).some(fid =>
-              ((fid.id as string) || '').toLowerCase().includes(liFormatLower)
-            );
+            const matched = productFormatLabels(p).some(label => label.toLowerCase().includes(liFormatLower));
             if (matched) {
               score += 2;
               reasons.push(`format:${liFormat}`);
@@ -6308,7 +6359,7 @@ export function createMemberToolHandlers(
         if (liBudget && (status === 'mapped' || status === 'partial')) mappableBudget += liBudget;
 
         const proposedPackage = bestPricing ? {
-          product_id: bestProduct.product_id,
+          product_id: bestProduct.product_id as string,
           pricing_option_id: bestPricing.pricing_option_id,
           budget: liBudget || 0,
           ...(!['flat_rate', 'revenue_share'].includes(bestPricing.pricing_model) && liRate ? { bid_price: liRate } : {}),
@@ -6335,10 +6386,10 @@ export function createMemberToolHandlers(
       const earliestStart = allStartDates.length > 0 ? allStartDates.sort()[0] : new Date().toISOString();
       const latestEnd = allEndDates.length > 0 ? allEndDates.sort().reverse()[0] : new Date(Date.now() + 30 * 86400000).toISOString();
 
-      const proposedRequest = mappedPackages.length > 0 ? {
+      const proposedRequest = mappedPackages.length > 0 && advertiserDomain && accountId ? {
         idempotency_key: randomUUID(),
-        brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
-        account: { account_id: advertiser || 'test-account' },
+        brand: { domain: advertiserDomain },
+        account: { account_id: accountId },
         start_time: earliestStart,
         end_time: latestEnd,
         packages: mappedPackages,
@@ -6434,6 +6485,13 @@ export function createMemberToolHandlers(
         output += `### Proposed create_media_buy Request\n\n`;
         output += `This is the exact JSON a buyer agent would send to execute the mapped line items:\n\n`;
         output += '```json\n' + JSON.stringify(proposedRequest, null, 2) + '\n```\n\n';
+      } else if (mappedPackages.length > 0) {
+        output += `### Proposed create_media_buy Request\n\n`;
+        const missingFields = [
+          !advertiserDomain && '`advertiser_domain`',
+          !accountId && '`account_id`',
+        ].filter(Boolean).join(' and ');
+        output += `Provide ${missingFields} to construct the exact buyer request. Real identifiers are required; the tool will not fabricate them.\n\n`;
       }
 
       if (executeResult) {

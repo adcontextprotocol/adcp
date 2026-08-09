@@ -12,6 +12,11 @@ RUN npm ci --ignore-scripts
 # Copy source code
 COPY . .
 
+# rc.10 always registers the canonical sync_creatives stub, preventing the
+# documented raw compatibility seam from filling an omitted platform method.
+# Apply the version-pinned patch explicitly because installs disable scripts.
+RUN npm run patch:sdk-rc10
+
 # Build the TypeScript server (increase heap for large tsc compilation)
 RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
 
@@ -155,6 +160,9 @@ COPY package*.json ./
 RUN npm ci --omit=dev --ignore-scripts \
  && npm rebuild sharp \
  && npm cache clean --force
+
+COPY --from=builder /app/scripts/patch-sdk-rc10.mjs ./scripts/patch-sdk-rc10.mjs
+RUN node scripts/patch-sdk-rc10.mjs
 
 # Copy built files from builder. Runtime assets under server/src/** (JSON
 # format catalogs, SQL migrations, Addie rule markdown, etc.) are mirrored

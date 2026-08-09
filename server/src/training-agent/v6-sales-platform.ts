@@ -15,6 +15,7 @@ import {
   AdcpError,
   type DecisioningPlatform,
   type SalesPlatform,
+  type LegacyMediaBuyHandlers,
   type AccountStore,
   type AudiencePlatform,
   type SyncAudiencesRow,
@@ -30,6 +31,8 @@ import {
   handleListCreatives,
   handleListCreativeFormats,
   hasAdcpSuccessPayload,
+  projectGetProductsCompatibilityWire,
+  projectListCreativesCompatibilityWire,
   resolveServedAdcpVersion,
 } from './task-handlers.js';
 import {
@@ -39,7 +42,6 @@ import {
 } from './catalog-event-handlers.js';
 import { handleSyncAudiences } from './audience-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
-import { pickFromInput } from './v6-input-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
@@ -108,16 +110,17 @@ export function salesCapabilityProjection() {
 /** Build a TrainingContext from the v6 request context auth bridge. */
 function buildTrainingCtx(
   ctx: {
-    account?: { authInfo?: { principal?: string } };
+    account?: unknown;
     authInfo?: { clientId?: string };
     agent?: { agent_url: string };
   } | undefined,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): TrainingContext {
+  const account = ctx?.account as { authInfo?: { principal?: string } } | undefined;
   return {
     mode: 'open',
     tenantId: 'sales',
-    principal: ctx?.authInfo?.clientId ?? ctx?.account?.authInfo?.principal ?? 'anonymous',
+    principal: ctx?.authInfo?.clientId ?? account?.authInfo?.principal ?? 'anonymous',
     ...(ctx?.agent?.agent_url && { authenticatedAgentUrl: ctx.agent.agent_url }),
     ...(storyboardCompat && { storyboardCompat }),
   };
@@ -133,24 +136,6 @@ function buildTrainingCtx(
  */
 function brandDomainFromCtx(account: unknown): string | undefined {
   return (account as { ctx_metadata?: TrainingSalesMeta } | undefined)?.ctx_metadata?.brand_domain;
-}
-
-function accountRefFromCtx(account: unknown): ToolArgs['account'] | undefined {
-  const acct = account as { id?: unknown; operator?: unknown; ctx_metadata?: TrainingSalesMeta } | undefined;
-  const brandDomain = acct?.ctx_metadata?.brand_domain;
-  const accountId = typeof acct?.id === 'string' && !acct.id.startsWith('synthetic_') && acct.id !== 'public_sandbox'
-    ? acct.id
-    : undefined;
-  if (!accountId && !brandDomain) return undefined;
-  return {
-    ...(accountId && { account_id: accountId }),
-    ...(brandDomain && { brand: { domain: brandDomain } }),
-    ...(typeof acct?.ctx_metadata?.operator === 'string'
-      ? { operator: acct.ctx_metadata.operator }
-      : typeof acct?.operator === 'string'
-        ? { operator: acct.operator }
-        : {}),
-  };
 }
 
 /**
@@ -235,6 +220,58 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
   upsert: syncAccountsUpsert,
 };
 
+/**
+ * Temporary raw-wire compatibility adapters for creative identity surfaces.
+ *
+ * AdCP 3.1's canonical-format conformance scenarios deliberately exercise
+ * the migration-window dual shape (legacy + canonical creative identities). The SDK
+ * v13 DecisioningPlatform facade canonicalizes platform results and then
+ * emits exactly one creative wire representation and does not retain the full
+ * legacy route across persistence. Keep these handlers isolated on the SDK's
+ * explicit legacy seam until the upstream facade exposes a durable projection
+ * route and the 3.1 scenarios negotiate canonical and legacy views separately.
+ */
+export function legacyGetProductsHandler(
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): NonNullable<LegacyMediaBuyHandlers['getProducts']> {
+  return async (req, ctx) => {
+    const versionResolution = resolveServedAdcpVersion(req as unknown as Record<string, unknown>);
+    const trainingCtx = buildTrainingCtx(ctx, storyboardCompat);
+    if (versionResolution.ok) trainingCtx.servedAdcpVersion = versionResolution.servedVersion;
+    const response = await handleGetProducts(req as ToolArgs, trainingCtx);
+    return projectGetProductsCompatibilityWire(
+      response as { products?: import('@adcp/sdk').LegacyProduct[] },
+      req as unknown as Record<string, unknown>,
+    ) as Awaited<ReturnType<NonNullable<LegacyMediaBuyHandlers['getProducts']>>>;
+  };
+}
+
+export function legacySyncCreativesHandler(
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): NonNullable<LegacyMediaBuyHandlers['syncCreatives']> {
+  return async (req, ctx) => {
+    return await handleSyncCreatives(
+      req as unknown as ToolArgs,
+      buildTrainingCtx(ctx, storyboardCompat),
+    ) as unknown as Awaited<ReturnType<NonNullable<LegacyMediaBuyHandlers['syncCreatives']>>>;
+  };
+}
+
+export function legacyListCreativesHandler(
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): NonNullable<LegacyMediaBuyHandlers['listCreatives']> {
+  return async (req, ctx) => {
+    const response = await handleListCreatives(
+      req as ToolArgs,
+      buildTrainingCtx(ctx, storyboardCompat),
+    );
+    return projectListCreativesCompatibilityWire(
+      response as { creatives?: Array<Record<string, unknown>>; errors?: unknown[] },
+      req as unknown as Record<string, unknown>,
+    ) as unknown as Awaited<ReturnType<NonNullable<LegacyMediaBuyHandlers['listCreatives']>>>;
+  };
+}
+
 export class TrainingSalesPlatform
   implements DecisioningPlatform<TrainingSalesConfig, TrainingSalesMeta>
 {
@@ -248,14 +285,6 @@ export class TrainingSalesPlatform
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sales: SalesPlatform<TrainingSalesMeta> = {
-    getProducts: async (req, ctx) => {
-      const versionResolution = resolveServedAdcpVersion(req as unknown as Record<string, unknown>);
-      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat);
-      if (versionResolution.ok) trainingCtx.servedAdcpVersion = versionResolution.servedVersion;
-      const result = await handleGetProducts(req as ToolArgs, trainingCtx);
-      return translateV5Result(result, { allowAdvisories: true });
-    },
-
     createMediaBuy: async (req, ctx) => {
       const v5Result = await handleCreateMediaBuy(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       // Detect the submitted-arm envelope the v5 handler returns when the
@@ -303,30 +332,6 @@ export class TrainingSalesPlatform
       return translateV5Result(v5Result);
     },
 
-    syncCreatives: async (creatives, ctx) => {
-      const brandDomain = brandDomainFromCtx(ctx.account);
-      // `dry_run` and `assignments[]` are dropped from the v6 typed
-      // signature (adcp-client#1842). Lift them back off `ctx.input` so
-      // the v5 handler honors dry-run mode and writes inline
-      // package-binding side effects to session storage. The v6
-      // response signature returns only `SyncCreativesRow[]`, so
-      // `assignments[]` are observable via subsequent `get_media_buys`,
-      // not in the sync_creatives response itself.
-      const fromInput = pickFromInput(ctx.input, ['assignments', 'dry_run', 'account'] as const);
-      const accountRef = (fromInput as { account?: ToolArgs['account'] }).account ?? accountRefFromCtx(ctx.account);
-      const args = {
-        creatives,
-        ...fromInput,
-        ...(accountRef && { account: accountRef }),
-        ...(brandDomain && { brand: { domain: brandDomain } }),
-      };
-      const v5Result = await handleSyncCreatives(args as unknown as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
-      // v5 returns wire-wrapped `{ creatives: [...] }`; v6 SalesPlatform
-      // wants rows directly — framework re-wraps.
-      const wrapped = translateV5Result<{ creatives?: unknown[] }>(v5Result);
-      return (wrapped.creatives ?? []) as Awaited<ReturnType<NonNullable<SalesPlatform['syncCreatives']>>>;
-    },
-
     getMediaBuyDelivery: async (filter, ctx) => {
       const brandDomain = brandDomainFromCtx(ctx.account);
       const args = brandDomain
@@ -346,17 +351,8 @@ export class TrainingSalesPlatform
       return translateV5Result(result);
     },
 
-    listCreativeFormats: async (req, ctx) => {
+    listCreativeFormatsLegacy: async (req, ctx) => {
       const result = await handleListCreativeFormats(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
-      return translateV5Result(result);
-    },
-
-    listCreatives: async (req, ctx) => {
-      const brandDomain = brandDomainFromCtx(ctx.account);
-      const args = brandDomain
-        ? { ...(req as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
-        : req;
-      const result = await handleListCreatives(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
 
@@ -387,7 +383,7 @@ export class TrainingSalesPlatform
       const result = await handleLogEvent(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
-  };
+  } as SalesPlatform<TrainingSalesMeta>;
 
   // Audience-targeting capability is declared above; expose sync_audiences
   // so audience_buy_flow can register audiences before referencing them in

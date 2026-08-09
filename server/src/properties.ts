@@ -55,7 +55,7 @@ export class PropertiesService {
         withSdkSafeTransport({ userAgent: AAO_UA_DISCOVERY }),
       );
       const client = multiClient.agent(agent.name);
-      const result = await client.executeTask("list_authorized_properties", {});
+      const result = await client.executeTaskLegacy("list_authorized_properties", {});
 
       if (result.success && result.data) {
         const response = result.data as Record<string, unknown>;

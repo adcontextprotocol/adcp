@@ -46,6 +46,7 @@ export interface SearchQuery {
   categories?: string[];
   tags?: string[];
   delivery_types?: string[];
+  format_kinds?: string[];
   has_tmp?: boolean;
   min_properties?: number;
   cursor?: string;
@@ -80,7 +81,7 @@ export interface SearchResponse {
 // ─── Filter dimensions for relevance scoring ─────────────────────────────────
 
 const ARRAY_FILTER_COLUMNS = [
-  'channels', 'property_types', 'markets', 'categories', 'tags', 'delivery_types',
+  'channels', 'property_types', 'markets', 'categories', 'tags', 'delivery_types', 'format_kinds',
 ] as const;
 
 type ArrayFilterColumn = typeof ARRAY_FILTER_COLUMNS[number];
@@ -145,12 +146,13 @@ export class AgentInventoryProfilesDatabase {
     );
   }
 
-  async upsertProfiles(inputs: ProfileUpsertInput[]): Promise<void> {
-    if (inputs.length === 0) return;
+  async upsertProfiles(inputs: ProfileUpsertInput[]): Promise<AgentInventoryProfile[]> {
+    if (inputs.length === 0) return [];
 
     // Batch upserts in a single transaction to avoid N round-trips
     const { getClient } = await import('./client.js');
     const client = await getClient();
+    let persistedProfiles: AgentInventoryProfile[] = [];
     try {
       await client.query('BEGIN');
       for (const input of inputs) {
@@ -206,6 +208,11 @@ export class AgentInventoryProfilesDatabase {
           input.format_kinds ?? null,
         ]);
       }
+      const persisted = await client.query<AgentInventoryProfile>(
+        'SELECT * FROM agent_inventory_profiles WHERE agent_url = ANY($1)',
+        [inputs.map(input => input.agent_url)],
+      );
+      persistedProfiles = persisted.rows;
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');
@@ -213,6 +220,7 @@ export class AgentInventoryProfilesDatabase {
     } finally {
       client.release();
     }
+    return persistedProfiles;
   }
 
   async getProfile(agentUrl: string): Promise<AgentInventoryProfile | null> {

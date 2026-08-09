@@ -91,7 +91,7 @@ describe('RegistrySync', () => {
         .mockReturnValueOnce(mockJsonResponse({
           results: [
             { agent_url: 'https://a.example.com', channels: ['ctv'], property_types: [], markets: [],
-              categories: [], tags: [], delivery_types: [], format_ids: [], property_count: 10,
+              categories: [], tags: [], delivery_types: [], format_kinds: ['video'], property_count: 10,
               publisher_count: 1, has_tmp: true, category_taxonomy: null, updated_at: '2026-01-01' },
           ],
         }))
@@ -102,7 +102,7 @@ describe('RegistrySync', () => {
       await sync.start();
 
       expect(sync.agents!.size).toBe(1);
-      expect(sync.agents!.get('https://a.example.com')).toBeDefined();
+      expect(sync.agents!.get('https://a.example.com')?.format_kinds).toEqual(['video']);
       sync.stop();
     });
 
@@ -213,14 +213,14 @@ describe('RegistrySync', () => {
       const event = {
         event_id: 'e1', event_type: 'agent.discovered', entity_type: 'agent',
         entity_id: 'https://new.example.com',
-        payload: { agent_url: 'https://new.example.com' },
+        payload: { agent_url: 'https://new.example.com', format_kinds: ['image'] },
         actor: 'pipeline:crawler', created_at: new Date(),
       };
 
       // Emit via internal method
       (sync as any).applyEvents([event]);
 
-      expect(sync.agents!.get('https://new.example.com')).toBeDefined();
+      expect(sync.agents!.get('https://new.example.com')?.format_kinds).toEqual(['image']);
     });
 
     it('handles agent.removed event', () => {
@@ -228,7 +228,7 @@ describe('RegistrySync', () => {
       sync.agents!.upsert({
         agent_url: 'https://remove-me.example.com',
         channels: [], property_types: [], markets: [], categories: [],
-        tags: [], delivery_types: [], format_ids: [], property_count: 0,
+        tags: [], delivery_types: [], format_kinds: [], property_count: 0,
         publisher_count: 0, has_tmp: false, category_taxonomy: null,
         updated_at: '2026-01-01',
       });

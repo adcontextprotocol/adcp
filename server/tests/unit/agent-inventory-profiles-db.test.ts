@@ -133,6 +133,18 @@ describe('AgentInventoryProfilesDatabase', () => {
       expect(sql).toContain('markets && $2');
     });
 
+    it('filters and scores canonical format kinds', async () => {
+      mockedQuery.mockResolvedValueOnce(mockResult([]));
+
+      await db.search({ format_kinds: ['image', 'video_hosted'] });
+
+      const sql = mockedQuery.mock.calls[0][0] as string;
+      const params = mockedQuery.mock.calls[0][1] as unknown[];
+      expect(sql).toContain('format_kinds && $1');
+      expect(sql).toContain('CASE WHEN format_kinds &&');
+      expect(params[0]).toEqual(['image', 'video_hosted']);
+    });
+
     it('applies has_tmp boolean filter', async () => {
       mockedQuery.mockResolvedValueOnce(mockResult([]));
 

@@ -38,5 +38,28 @@
       "node_modules/@adcp/sdk/dist/lib/types/schemas.generated.mjs",
       "schemas.generated.js"
     ]
+  },
+  {
+    "id": "sdk-rc10-conditional-sync-creatives",
+    "title": "SDK rc.10 compatibility facade and storyboard routing fixes",
+    "kind": "installed_sdk_runtime_patch",
+    "status": "temporary",
+    "owner": "training-agent",
+    "upstream": "adcontextprotocol/adcp-client#2491",
+    "problem": "The rc.10 DecisioningPlatform runtime always registers its canonical sync_creatives handler, its syncCreativesLegacy client method delegates back to canonical projection, and the 3.1 storyboard task map forces get_products onto a legacy-only wire even though migration-window scenarios grade the dual response.",
+    "localBehavior": "Patch both compiled SDK module formats after installation so sync_creatives is platform-derived only when sales.syncCreatives exists, the explicit legacy client entry point executes unprojected, and the storyboard runner leaves get_products wire selection unspecified while retaining legacy routing for other creative tasks.",
+    "removalCondition": "Remove the patch script, Docker invocations, ledger entry, and raw sync override after an SDK release containing adcontextprotocol/adcp-client#2491 is pinned and both current and released-3.0 storyboard matrices pass without the patch.",
+    "paths": [
+      "scripts/patch-sdk-rc10.mjs",
+      "tests/patch-sdk-rc10.test.cjs"
+    ],
+    "terms": [
+      "node_modules/@adcp/sdk/dist/lib/server/decisioning/runtime/from-platform.js",
+      "node_modules/@adcp/sdk/dist/lib/server/decisioning/runtime/from-platform.mjs",
+      "node_modules/@adcp/sdk/dist/lib/core/SingleAgentClient.js",
+      "node_modules/@adcp/sdk/dist/lib/core/SingleAgentClient.mjs",
+      "node_modules/@adcp/sdk/dist/lib/testing/storyboard/task-map.js",
+      "node_modules/@adcp/sdk/dist/lib/testing/storyboard/task-map.mjs"
+    ]
   }
 ]

@@ -4,9 +4,9 @@ import request from 'supertest';
 
 const sdkMocks = vi.hoisted(() => ({
   getAdcpCapabilities: vi.fn(),
-  agentExecuteTask: vi.fn(),
+  listCreativeFormatsLegacy: vi.fn(),
   getProducts: vi.fn(),
-  singleExecuteTask: vi.fn(),
+  singleExecuteTaskLegacy: vi.fn(),
   clientOptions: [] as unknown[],
 }));
 
@@ -21,7 +21,7 @@ vi.mock('@adcp/sdk', async () => {
       agent() {
         return {
           getAdcpCapabilities: sdkMocks.getAdcpCapabilities,
-          executeTask: sdkMocks.agentExecuteTask,
+          listCreativeFormatsLegacy: sdkMocks.listCreativeFormatsLegacy,
         };
       }
     },
@@ -30,7 +30,7 @@ vi.mock('@adcp/sdk', async () => {
         sdkMocks.clientOptions.push(options);
       }
       getProducts = sdkMocks.getProducts;
-      executeTask = sdkMocks.singleExecuteTask;
+      executeTaskLegacy = sdkMocks.singleExecuteTaskLegacy;
     },
   };
 });
@@ -86,14 +86,14 @@ describe('public agent discovery proxies', () => {
     expect(sdkMocks.clientOptions[0]).toMatchObject({
       transport: { maxResponseBytes: 1024 * 1024, requestTimeoutMs: 10_000 },
     });
-    expect(sdkMocks.agentExecuteTask).not.toHaveBeenCalled();
+    expect(sdkMocks.listCreativeFormatsLegacy).not.toHaveBeenCalled();
   });
 
   it('projects legacy list_creative_formats data when canonical capabilities are empty', async () => {
     sdkMocks.getAdcpCapabilities.mockResolvedValue({
       data: { creative: { supported_formats: [] } },
     });
-    sdkMocks.agentExecuteTask.mockResolvedValue({
+    sdkMocks.listCreativeFormatsLegacy.mockResolvedValue({
       success: true,
       data: {
         formats: [{
@@ -107,8 +107,7 @@ describe('public agent discovery proxies', () => {
     const response = await request(app).get('/api/public/agent-formats?url=https://creative.example.com/mcp');
 
     expect(response.status).toBe(200);
-    expect(sdkMocks.agentExecuteTask).toHaveBeenCalledWith(
-      'list_creative_formats',
+    expect(sdkMocks.listCreativeFormatsLegacy).toHaveBeenCalledWith(
       {},
       undefined,
       { timeout: 10_000 },
@@ -124,7 +123,7 @@ describe('public agent discovery proxies', () => {
     sdkMocks.getAdcpCapabilities.mockResolvedValue({
       data: { creative: { supported_formats: [] } },
     });
-    sdkMocks.agentExecuteTask.mockResolvedValue({
+    sdkMocks.listCreativeFormatsLegacy.mockResolvedValue({
       success: true,
       data: {
         formats: [{
@@ -159,7 +158,7 @@ describe('public agent discovery proxies', () => {
     sdkMocks.getAdcpCapabilities.mockResolvedValue({
       data: { creative: { supported_formats: [] } },
     });
-    sdkMocks.agentExecuteTask.mockResolvedValue({
+    sdkMocks.listCreativeFormatsLegacy.mockResolvedValue({
       success: true,
       data: {
         formats: [{
@@ -181,7 +180,7 @@ describe('public agent discovery proxies', () => {
 
   it('returns a gateway error when legacy format discovery fails', async () => {
     sdkMocks.getAdcpCapabilities.mockRejectedValue(new Error('capability discovery failed'));
-    sdkMocks.agentExecuteTask.mockResolvedValue({
+    sdkMocks.listCreativeFormatsLegacy.mockResolvedValue({
       success: false,
       error: 'legacy discovery failed',
     });
@@ -193,7 +192,7 @@ describe('public agent discovery proxies', () => {
   });
 
   it('normalizes publisher_domains from list_authorized_properties', async () => {
-    sdkMocks.singleExecuteTask.mockResolvedValue({
+    sdkMocks.singleExecuteTaskLegacy.mockResolvedValue({
       success: true,
       data: { publisher_domains: ['publisher.example.com'] },
     });
@@ -201,7 +200,7 @@ describe('public agent discovery proxies', () => {
     const response = await request(app).get('/api/public/agent-publishers?url=https://sales.example.com/mcp');
 
     expect(response.status).toBe(200);
-    expect(sdkMocks.singleExecuteTask).toHaveBeenCalledWith(
+    expect(sdkMocks.singleExecuteTaskLegacy).toHaveBeenCalledWith(
       'list_authorized_properties',
       {},
       undefined,
@@ -218,7 +217,7 @@ describe('public agent discovery proxies', () => {
   });
 
   it('returns a gateway error when publisher discovery fails', async () => {
-    sdkMocks.singleExecuteTask.mockResolvedValue({
+    sdkMocks.singleExecuteTaskLegacy.mockResolvedValue({
       success: false,
       error: 'publisher discovery failed',
     });
@@ -230,7 +229,7 @@ describe('public agent discovery proxies', () => {
   });
 
   it('strips peer-supplied publisher verification state and unsafe links', async () => {
-    sdkMocks.singleExecuteTask.mockResolvedValue({
+    sdkMocks.singleExecuteTaskLegacy.mockResolvedValue({
       success: true,
       data: {
         properties: [{

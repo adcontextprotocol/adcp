@@ -143,15 +143,15 @@ export class TrainingBrandPlatform
       const result = await handleGetBrandIdentity(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
-    getRights: async (req, ctx) => {
+    getRightsLegacy: async (req, ctx) => {
       const result = await handleGetRights(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
-    acquireRights: async (req, ctx) => {
+    acquireRightsLegacy: async (req, ctx) => {
       const result = await handleAcquireRights(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
-    updateRights: async (req, ctx) => {
+    updateRightsLegacy: async (req, ctx) => {
       const result = await handleUpdateRights(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },

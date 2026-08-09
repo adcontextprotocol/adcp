@@ -2,7 +2,14 @@
  * Internal types for the training agent.
  * Schema-level types (Product, Format, etc.) come from @adcp/sdk.
  */
-import type { Product, Proposal, BrandReference, FormatID, CreateMediaBuyRequest, EventType } from '@adcp/sdk';
+import type {
+  LegacyProduct as Product,
+  Proposal,
+  BrandReference,
+  LegacyFormatID as FormatID,
+  LegacyCreateMediaBuyRequest as CreateMediaBuyRequest,
+  EventType,
+} from '@adcp/sdk';
 
 // SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/sdk types
 type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' | 'crossover' | 'championship';
@@ -176,7 +183,7 @@ export interface PricingTemplate {
 }
 
 export interface CatalogProduct {
-  product: import('@adcp/sdk').Product;
+  product: import('@adcp/sdk').LegacyProduct;
   publisherId: string;
   trainingTier: 'basics' | 'practitioner' | 'specialist';
   scenarioTags: string[];

@@ -291,6 +291,12 @@ REQUIRED_CLEAN_CURRENT_SI=(
   "si_baseline"
   "si_sponsored_context_accountability"
 )
+REQUIRED_CLEAN_THREE_ZERO_SALES=(
+  "media_buy_seller"
+)
+REQUIRED_CLEAN_THREE_ZERO_CREATIVE=(
+  "creative_lifecycle"
+)
 
 storyboard_passed() {
   local storyboard_id="$1"
@@ -439,6 +445,28 @@ for entry in "${TENANTS[@]}"; do
         else
           failed_floor="required-clean ${storyboard_id} did not pass"
         fi
+      fi
+    done
+  fi
+
+  if [ "${FLOOR_SET}" = "3.0-compat" ] && [ "${tenant}" = "sales" ]; then
+    for storyboard_id in "${REQUIRED_CLEAN_THREE_ZERO_SALES[@]}"; do
+      if storyboard_passed "${storyboard_id}" "${log}"; then
+        echo "  ✓ required-clean ${storyboard_id}"
+      else
+        status="✗"
+        failed_floor="${failed_floor:+${failed_floor}; }required-clean ${storyboard_id} did not pass"
+      fi
+    done
+  fi
+
+  if [ "${FLOOR_SET}" = "3.0-compat" ] && [ "${tenant}" = "creative" ]; then
+    for storyboard_id in "${REQUIRED_CLEAN_THREE_ZERO_CREATIVE[@]}"; do
+      if storyboard_passed "${storyboard_id}" "${log}"; then
+        echo "  ✓ required-clean ${storyboard_id}"
+      else
+        status="✗"
+        failed_floor="${failed_floor:+${failed_floor}; }required-clean ${storyboard_id} did not pass"
       fi
     done
   fi

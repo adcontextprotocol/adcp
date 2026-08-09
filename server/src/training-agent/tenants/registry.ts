@@ -189,6 +189,10 @@ function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboar
     taskWebhookEmitter: {
       emit: emitFrameworkTaskWebhook,
     },
+    // SDK 13 no longer emits webhooks for terminal inline responses by
+    // default. Preserve the training agent's existing integration contract
+    // while its consumers migrate to inline-terminal handling.
+    autoEmitCompletionWebhooks: true,
     taskRegistry: pickTaskRegistry(),
     stateStore: pickStateStore(),
     mergeSeam: 'log-once',

@@ -44,6 +44,14 @@ import { TrainingSalesPlatform } from '../../src/training-agent/v6-sales-platfor
 import { TrainingCreativePlatform } from '../../src/training-agent/v6-creative-platform.js';
 import { TrainingCreativeBuilderPlatform } from '../../src/training-agent/v6-creative-builder-platform.js';
 import { clearAudienceStore } from '../../src/training-agent/audience-handlers.js';
+import { projectV1ProductToV2 } from '@adcp/sdk/v2/projection';
+
+const projectV1ProductToV2Spy = vi.hoisted(() => vi.fn());
+vi.mock('@adcp/sdk/v2/projection', async importOriginal => {
+  const actual = await importOriginal<typeof import('@adcp/sdk/v2/projection')>();
+  projectV1ProductToV2Spy.mockImplementation(actual.projectV1ProductToV2);
+  return { ...actual, projectV1ProductToV2: projectV1ProductToV2Spy };
+});
 
 // Valid channels per the enum schema at static/schemas/source/enums/channels.json
 const VALID_CHANNELS = [
@@ -324,19 +332,34 @@ describe('buildCatalog', () => {
       }
     });
 
-    it('authors every product canonically and links every compatibility format', () => {
+    it('authors every product canonically without false legacy equivalences', () => {
+      const canonicalOnlyKinds = new Set([
+        'image_carousel',
+        'sponsored_placement',
+        'responsive_creative',
+        'agent_placement',
+      ]);
       for (const cp of catalog) {
         const formatIds = cp.product.format_ids as Array<{ agent_url: string; id: string }>;
         const formatOptions = cp.product.format_options as Array<{
           format_kind: string;
           format_option_id: string;
           params: Record<string, unknown>;
-          v1_format_ref: Array<{ agent_url: string; id: string }>;
+          canonical_formats_only?: boolean;
+          v1_format_ref?: Array<{ agent_url: string; id: string }>;
         }>;
 
         expect(formatOptions, `${cp.product.product_id} missing canonical format_options`).toHaveLength(formatIds.length);
         expect(formatOptions.every(option => option.format_kind && option.format_option_id && option.params)).toBe(true);
-        expect(formatOptions.flatMap(option => option.v1_format_ref)).toEqual(expect.arrayContaining(formatIds));
+        formatOptions.forEach((option, index) => {
+          if (canonicalOnlyKinds.has(option.format_kind)) {
+            expect(option.canonical_formats_only).toBe(true);
+            expect(option.v1_format_ref).toBeUndefined();
+          } else {
+            expect(option.canonical_formats_only).toBeUndefined();
+            expect(option.v1_format_ref).toEqual([formatIds[index]]);
+          }
+        });
       }
     });
 
@@ -2797,6 +2820,53 @@ describe('create_media_buy handler', () => {
     expect(result.errors).toBeUndefined();
   });
 
+  it('accepts every advertised legacy selector whose canonical kind is intentionally non-equivalent', async () => {
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, storyboardCompat: { version: '3.0' } });
+    const cases = buildCatalog().flatMap(({ product }) => {
+      const formatIds = product.format_ids ?? [];
+      const formatOptions = product.format_options ?? [];
+      return formatOptions.flatMap((option, index) => option.canonical_formats_only === true
+        ? [{ product, formatId: formatIds[index] }]
+        : []);
+    });
+    expect(cases.length).toBeGreaterThan(0);
+
+    for (const [index, { product, formatId }] of cases.entries()) {
+      expect(formatId, `${product.product_id} canonical-only option lacks its independent legacy selector`).toBeDefined();
+      const account = {
+        brand: { domain: `legacy-canonical-only-${index}.example` },
+        operator: 'pinnacle-agency.example',
+      };
+      const pricing = product.pricing_options[0] as unknown as {
+        pricing_option_id: string;
+        floor_price?: number;
+        min_spend_per_package?: number;
+      };
+      const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+        adcp_version: '3.0',
+        account,
+        brand: account.brand,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{
+          product_id: product.product_id,
+          pricing_option_id: pricing.pricing_option_id,
+          budget: Math.max(100000, pricing.min_spend_per_package ?? 0),
+          ...(typeof pricing.floor_price === 'number' && { bid_price: pricing.floor_price }),
+          format_ids: [formatId],
+        }],
+      });
+
+      expect(
+        isError,
+        `${product.product_id}/${formatId?.id}: ${JSON.stringify(result)}`,
+      ).not.toBe(true);
+      const formats = ((result.packages as Array<{ formats_to_provide?: Array<Record<string, unknown>> }>)[0]
+        ?.formats_to_provide ?? []);
+      expect(formats.every(format => typeof format.format_kind === 'string' && format.params !== undefined)).toBe(true);
+    }
+  });
+
   it('snapshots canonical requirements and tracks readiness per package format', async () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
@@ -3494,6 +3564,138 @@ describe('create_media_buy handler', () => {
     expect(result.field).toBe('packages[0].params');
     expect(result.message).toContain('format selector');
     expect(result.message).toContain('width');
+  });
+
+  it('scopes SDK-projected legacy aliases without widening ambiguous selections', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'legacy-projection.example' }, operator: 'legacy-projection.example' };
+    const productId = 'legacy_projection_mrec';
+    const pricingOptionId = 'legacy_projection_mrec_cpm';
+    const legacyRef = {
+      agent_url: 'https://creative.adcontextprotocol.org/',
+      id: 'display_300x250_image',
+      width: 300,
+      height: 250,
+    };
+    const projected = projectV1ProductToV2({
+      product_id: productId,
+      name: 'Legacy projection MREC',
+      description: 'Projection probe',
+      format_ids: [legacyRef],
+    }).v2.format_options![0]!;
+    expect(projected.format_option_id).toMatch(/^migrated_/);
+    projectV1ProductToV2Spy.mockClear();
+
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: account.brand.domain },
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          name: 'Legacy projection MREC',
+          description: 'Fixed 300x250 image product',
+          delivery_type: 'guaranteed',
+          channels: ['display'],
+          format_options: [{
+            format_option_id: 'stable_product_mrec',
+            format_kind: 'image',
+            params: { width: 300, height: 250 },
+            v1_format_ref: [legacyRef],
+          }, {
+            format_option_id: 'stable_publisher_mrec',
+            format_kind: 'image',
+            publisher_domain: 'publisher.example',
+            params: { width: 300, height: 250 },
+            v1_format_ref: [legacyRef],
+          }, {
+            format_option_id: 'stable_product_mrec_alternate',
+            format_kind: 'image',
+            params: { width: 300, height: 250 },
+            v1_format_ref: [legacyRef],
+          }],
+          format_ids: [legacyRef],
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: account.brand.domain },
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 12 },
+      },
+    });
+
+    const publisherScoped = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: account.brand.domain },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 10000,
+        format_option_refs: [{
+          scope: 'publisher',
+          publisher_domain: 'publisher.example',
+          format_option_id: projected.format_option_id,
+        }],
+      }],
+    });
+
+    expect(publisherScoped.isError).not.toBe(true);
+    const publisherPackage = (publisherScoped.result.packages as Array<{
+      formats_to_provide?: Array<{ format_option_id?: string }>;
+    }>)[0];
+    expect(publisherPackage.formats_to_provide?.map(format => format.format_option_id)).toEqual([
+      'stable_publisher_mrec',
+    ]);
+    expect(projectV1ProductToV2Spy).toHaveBeenCalledTimes(3);
+
+    const ambiguousProductScope = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: account.brand.domain },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: projected.format_option_id }],
+      }],
+    });
+    expect(ambiguousProductScope.isError).toBe(true);
+    expect(ambiguousProductScope.result.code).toBe('UNSUPPORTED_FEATURE');
+    expect(ambiguousProductScope.result.message).toContain('ambiguous');
+
+    const otherProjection = projectV1ProductToV2({
+      product_id: productId,
+      name: 'Different legacy projection',
+      description: 'Negative projection probe',
+      format_ids: [{
+        agent_url: legacyRef.agent_url,
+        id: 'display_728x90_image',
+        width: 728,
+        height: 90,
+      }],
+    }).v2.format_options![0]!;
+    const rejected = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: account.brand.domain },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 10000,
+        format_option_refs: [{ scope: 'product', format_option_id: otherProjection.format_option_id }],
+      }],
+    });
+    expect(rejected.isError).toBe(true);
+    expect(rejected.result.code).toBe('UNSUPPORTED_FEATURE');
   });
 
   it('echoes satisfied direct canonical format selectors on create and read surfaces', async () => {
@@ -6236,7 +6438,7 @@ describe('canonical creative build capabilities', () => {
       new TrainingCreativePlatform(),
       new TrainingCreativeBuilderPlatform(),
     ]) {
-      await expect(currentPlatform.creative.previewCreative(request as any, platformContext as any))
+      await expect(currentPlatform.creative.previewCreativeLegacy(request as any, platformContext as any))
         .rejects.toThrow(/no unique matching advertised preview capability/i);
     }
 
@@ -6244,7 +6446,7 @@ describe('canonical creative build capabilities', () => {
       new TrainingCreativePlatform({ version: '3.0' }),
       new TrainingCreativeBuilderPlatform({ version: '3.0' }),
     ]) {
-      const result = await compatPlatform.creative.previewCreative(request as any, platformContext as any);
+      const result = await compatPlatform.creative.previewCreativeLegacy(request as any, platformContext as any);
       expect((result as any).response_type).toBe('single');
     }
   });

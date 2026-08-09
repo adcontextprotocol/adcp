@@ -21,7 +21,7 @@ import {
 } from '../../server/src/addie/services/compliance-testing.js';
 
 describe('hosted compliance SDK transport', () => {
-  it('runs rc.9 compliance requests through the SSRF-safe fetch boundary', async () => {
+  it('runs hosted compliance requests through the SSRF-safe fetch boundary', async () => {
     const result = await comply(
       'http://127.0.0.1:1/mcp',
       { allow_http: true, timeout_ms: 1_000 },

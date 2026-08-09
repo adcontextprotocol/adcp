@@ -7,7 +7,12 @@
 
 import { z } from 'zod';
 import type { TenantConfig } from '@adcp/sdk/server';
-import { TrainingSalesPlatform } from '../v6-sales-platform.js';
+import {
+  TrainingSalesPlatform,
+  legacyGetProductsHandler,
+  legacyListCreativesHandler,
+  legacySyncCreativesHandler,
+} from '../v6-sales-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildSalesComplyConfig } from './comply.js';
 import { listAccountsTool } from './account-tools.js';
@@ -81,6 +86,16 @@ export function buildSalesTenantConfig(host: string, options: { storyboardCompat
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       platform: new TrainingSalesPlatform(options.storyboardCompat) as any,
       serverOptions: {
+        // These three operations must preserve the caller's complete legacy
+        // identity tuple across persistence. rc.10's canonical facade drops
+        // that route metadata, so keep only this compatibility surface raw.
+        legacyHandlers: {
+          mediaBuy: {
+            getProducts: legacyGetProductsHandler(options.storyboardCompat),
+            listCreatives: legacyListCreativesHandler(options.storyboardCompat),
+            syncCreatives: legacySyncCreativesHandler(options.storyboardCompat),
+          },
+        },
         customTools: {
           list_accounts: listAccountsTool(options.storyboardCompat),
           report_usage: reportUsageTool({ creativeBillsThroughAdcp: false }),
