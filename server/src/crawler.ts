@@ -137,7 +137,7 @@ export class CrawlerService {
    */
   private async resolveProbeAuth(agentUrl: string): Promise<SdkAuth | undefined> {
     try {
-      const ownerOrgId = await this.agentContextDb.findOrgWithSavedAuth(agentUrl);
+      const ownerOrgId = await this.agentContextDb.findOwnerOrgWithSavedAuth(agentUrl);
       if (!ownerOrgId) return undefined;
       const auth = await resolveUserAgentAuth(this.agentContextDb, ownerOrgId, agentUrl, log);
       return await adaptAuthForSdk(auth, { tokenEndpointLabel: `crawler:${agentUrl}` });
