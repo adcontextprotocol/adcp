@@ -18,7 +18,7 @@ import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { createLogger } from "./logger.js";
 import type { CatalogEventsDatabase, WriteEventInput } from "./db/catalog-events-db.js";
 import type { AgentInventoryProfilesDatabase, ProfileUpsertInput } from "./db/agent-inventory-profiles-db.js";
-import { query } from "./db/client.js";
+import { query, withDatabaseDeadline } from "./db/client.js";
 import { PropertyDatabase } from "./db/property-db.js";
 import { verifyHostedPropertyOrigin } from "./services/hosted-property-origin-verifier.js";
 import { insertTypeReclassification } from "./db/type-reclassification-log-db.js";
@@ -26,6 +26,12 @@ import { resolveUserAgentAuth } from "./routes/helpers/resolve-user-agent-auth.j
 import { adaptAuthForSdk, type SdkAuth } from "./services/sdk-auth-adapter.js";
 
 const log = createLogger('crawler');
+// Inventory profiles are a derived search projection, not the authorization
+// source of truth. Avoid a registry-wide property expansion for network agents
+// during a crawl; the publisher/auth rows have already been persisted by this
+// point. A dedicated aggregate profile query can replace this guard later.
+const INVENTORY_PROFILE_PUBLISHER_FANOUT_CAP = 1_000;
+const SINGLE_DOMAIN_CRAWL_DB_DEADLINE_MS = 60_000;
 
 function unknownClassificationProbeDue(
   snapshot: AgentCapabilitiesSnapshotRow | undefined,
@@ -92,6 +98,11 @@ export interface PublisherAdagentsRevalidationResult {
   manager_domain?: string;
 }
 
+export interface SingleDomainCrawlContext {
+  requestId?: string;
+  source?: string;
+}
+
 export class CrawlerService {
   private crawler: PropertyCrawler;
   private crawling: boolean = false;
@@ -155,6 +166,8 @@ export class CrawlerService {
 
     this.crawling = true;
 
+    try {
+
     // Filter out agents whose owners have paused monitoring
     const pausedUrls = await this.getPausedAgentUrls();
     const activeAgents = agents.filter(a => !pausedUrls.has(a.url));
@@ -215,13 +228,10 @@ export class CrawlerService {
       log.warn({ err }, 'Failed to fetch sales_candidate agents; proceeding without candidate probes');
     }
 
-    try {
       const result = await this.crawler.crawlAgents(agentInfos);
 
       this.lastCrawl = new Date();
       this.lastResult = result;
-      this.crawling = false;
-
       log.info({
         totalProperties: result.totalProperties,
         successfulAgents: result.successfulAgents,
@@ -289,8 +299,9 @@ export class CrawlerService {
       return result;
     } catch (error) {
       log.error({ err: error }, 'Crawl failed');
-      this.crawling = false;
       throw error;
+    } finally {
+      this.crawling = false;
     }
   }
 
@@ -1223,7 +1234,7 @@ export class CrawlerService {
       eventActor?: string;
       eventSource?: string;
     },
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       // The database writer locks this publisher and atomically compares,
       // caches, and emits the revision event. The returned fields gate the
@@ -1252,8 +1263,10 @@ export class CrawlerService {
           'Manager adagents.json changed; enqueued delegating publishers for re-validation',
         );
       }
+      return true;
     } catch (err) {
       log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Publisher cache write failed');
+      return false;
     }
   }
 
@@ -1396,7 +1409,7 @@ export class CrawlerService {
     }
 
     const manifest = validation.raw_data as AdagentsManifest;
-    await this.cacheAdagentsManifest(
+    const cachePersisted = await this.cacheAdagentsManifest(
       domain,
       manifest,
       {
@@ -1409,6 +1422,9 @@ export class CrawlerService {
         eventSource: 'publisher_revalidation',
       },
     );
+    if (!cachePersisted) {
+      throw new Error(`Publisher cache write failed for ${domain}`);
+    }
     await this.federatedIndex.markPublisherHasValidAdagents(domain);
 
     for (const authorizedAgent of manifest.authorized_agents ?? []) {
@@ -1859,6 +1875,7 @@ export class CrawlerService {
     const agentUrlFilter = options.agentUrls ? new Set(options.agentUrls) : null;
     const profiles: ProfileUpsertInput[] = [];
     const emptyAgentUrls: string[] = [];
+    const preservedAgentUrls: string[] = [];
 
     for (const agent of agents) {
       if (agentUrlFilter && !agentUrlFilter.has(agent.url)) continue;
@@ -1866,6 +1883,18 @@ export class CrawlerService {
       const domains = await this.federatedIndex.getDomainsForAgent(agent.url);
       if (domains.length === 0) {
         if (agentUrlFilter) emptyAgentUrls.push(agent.url);
+        continue;
+      }
+      if (domains.length > INVENTORY_PROFILE_PUBLISHER_FANOUT_CAP) {
+        preservedAgentUrls.push(agent.url);
+        log.warn(
+          {
+            agent_url: agent.url,
+            publisher_count: domains.length,
+            publisher_fanout_cap: INVENTORY_PROFILE_PUBLISHER_FANOUT_CAP,
+          },
+          'Inventory profile refresh skipped for high-fanout agent',
+        );
         continue;
       }
 
@@ -1920,7 +1949,12 @@ export class CrawlerService {
         }
       }
       if (options.deleteStale !== false && !agentUrlFilter) {
-        const currentUrls = profiles.map(p => p.agent_url);
+        // A high-fanout profile was deliberately not recomputed, so preserve
+        // its last-known-good projection during full-crawl stale cleanup.
+        const currentUrls = [
+          ...profiles.map(p => p.agent_url),
+          ...preservedAgentUrls,
+        ];
         const staleDeleted = await this.profilesDb.deleteStaleProfiles(currentUrls);
         if (staleDeleted > 0) {
           log.info({ deleted: staleDeleted }, 'Stale inventory profiles cleaned up');
@@ -1940,28 +1974,78 @@ export class CrawlerService {
 
   // ── Single Domain Crawl ──────────────────────────────────────────
 
-  async crawlSingleDomain(domain: string): Promise<void> {
+  /**
+   * Atomically admit a fire-and-forget single-domain crawl.
+   *
+   * Returning null lets HTTP callers reject the request before emitting a
+   * misleading 202 while a full crawl owns the crawler. There is no await
+   * between this check and crawlSingleDomain's own admission check.
+   */
+  tryStartSingleDomainCrawl(
+    domain: string,
+    context: SingleDomainCrawlContext = {},
+  ): Promise<void> | null {
+    if (this.crawling) return null;
+    return this.crawlSingleDomain(domain, context);
+  }
+
+  async crawlSingleDomain(
+    domain: string,
+    context: SingleDomainCrawlContext = {},
+  ): Promise<void> {
+    const startedAt = Date.now();
+    let stage = 'admission';
+    const lifecycleContext = {
+      domain,
+      crawl_request_id: context.requestId,
+      crawl_source: context.source,
+    };
     if (this.crawling) {
-      log.warn({ domain }, 'Full crawl in progress, skipping single domain crawl');
-      return;
+      log.warn(
+        {
+          ...lifecycleContext,
+          crawl_status: 'skipped',
+          crawl_stage: stage,
+          reason: 'full_crawl_in_progress',
+          duration_ms: Date.now() - startedAt,
+        },
+        'Single domain crawl skipped',
+      );
+      throw Object.assign(new Error('Full crawl in progress; single-domain crawl deferred'), {
+        code: 'crawl_deferred',
+      });
     }
 
-    log.info({ domain }, 'Single domain crawl requested');
+    log.info(
+      { ...lifecycleContext, crawl_status: 'running', crawl_stage: stage },
+      'Single domain crawl started',
+    );
 
     try {
+      await withDatabaseDeadline(Date.now() + SINGLE_DOMAIN_CRAWL_DB_DEADLINE_MS, async () => {
+      stage = 'origin_validation';
       const validation = await this.adAgentsManager.validateDomain(domain);
 
       if (!validation.valid || !validation.raw_data?.authorized_agents) {
-        log.warn({ domain }, 'No valid adagents.json for domain');
         await this.recordFailedAdagentsFetch(domain, {
           statusCode: validation.status_code,
           responseBytes: validation.response_bytes,
           resolvedUrl: validation.resolved_url,
         });
+        log.warn(
+          {
+            ...lifecycleContext,
+            crawl_status: 'completed_invalid',
+            crawl_stage: stage,
+            duration_ms: Date.now() - startedAt,
+          },
+          'No valid adagents.json for domain',
+        );
         return;
       }
 
-      await this.cacheAdagentsManifest(
+      stage = 'publisher_cache_write';
+      const cachePersisted = await this.cacheAdagentsManifest(
         domain,
         validation.raw_data as AdagentsManifest,
         {
@@ -1974,7 +2058,11 @@ export class CrawlerService {
           eventSource: 'crawl_request',
         },
       );
+      if (!cachePersisted) {
+        throw new Error(`Publisher cache write failed for ${domain}`);
+      }
 
+      stage = 'authorization_projection';
       const affectedAgentUrls = new Set<string>();
       const existingAuthorizations = await this.federatedIndex.getAuthorizationsForDomain(domain);
       for (const auth of existingAuthorizations) {
@@ -2010,6 +2098,7 @@ export class CrawlerService {
       await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
 
       // Scan brand.json for this domain
+      stage = 'brand_scan';
       try {
         await this.scanBrandForDomain(domain);
       } catch (err) {
@@ -2017,14 +2106,33 @@ export class CrawlerService {
       }
 
       // Rebuild profiles for affected agents
+      stage = 'inventory_profile_refresh';
       await this.buildInventoryProfiles({
         agentUrls: [...affectedAgentUrls],
         deleteStale: false,
       });
 
-      log.info({ domain }, 'Single domain crawl complete');
+      log.info(
+        {
+          ...lifecycleContext,
+          crawl_status: 'completed',
+          crawl_stage: 'complete',
+          duration_ms: Date.now() - startedAt,
+        },
+        'Single domain crawl complete',
+      );
+      }, { readOnly: false });
     } catch (err) {
-      log.error({ domain, err }, 'Single domain crawl failed');
+      log.error(
+        {
+          ...lifecycleContext,
+          crawl_status: 'failed',
+          crawl_stage: stage,
+          duration_ms: Date.now() - startedAt,
+          err,
+        },
+        'Single domain crawl failed',
+      );
       throw err;
     }
   }

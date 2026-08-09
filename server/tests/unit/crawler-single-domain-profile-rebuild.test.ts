@@ -30,13 +30,52 @@ describe('CrawlerService single-domain profile rebuild', () => {
         recordAgentFromAdagentsJson: vi.fn().mockResolvedValue(undefined),
         reconcileAdagentsAuthorizations: vi.fn().mockResolvedValue(undefined),
       },
-      cacheAdagentsManifest: vi.fn().mockResolvedValue(undefined),
+      cacheAdagentsManifest: vi.fn().mockResolvedValue(true),
       scanBrandForDomain: vi.fn().mockResolvedValue(undefined),
       buildInventoryProfiles: vi.fn().mockResolvedValue(new Map()),
     });
 
     return ctx;
   }
+
+  it('rejects visibly when a full crawl owns the crawler', async () => {
+    const { CrawlerService } = await import('../../src/crawler.js');
+    const ctx = Object.create((CrawlerService as any).prototype);
+    const validateDomain = vi.fn();
+    Object.assign(ctx, {
+      crawling: true,
+      adAgentsManager: { validateDomain },
+    });
+
+    await expect(ctx.crawlSingleDomain('publisher.example', {
+      requestId: 'crawl-request-id',
+      source: 'test',
+    })).rejects.toMatchObject({ code: 'crawl_deferred' });
+    expect(validateDomain).not.toHaveBeenCalled();
+  });
+
+  it('does not admit an HTTP-style crawl request while a full crawl is active', async () => {
+    const { CrawlerService } = await import('../../src/crawler.js');
+    const ctx = Object.create((CrawlerService as any).prototype);
+    Object.assign(ctx, { crawling: true });
+
+    expect(ctx.tryStartSingleDomainCrawl('publisher.example', {
+      requestId: 'crawl-request-id',
+      source: 'api:crawl-request',
+    })).toBeNull();
+  });
+
+  it('releases full-crawl ownership when setup fails', async () => {
+    const { CrawlerService } = await import('../../src/crawler.js');
+    const ctx = Object.create((CrawlerService as any).prototype);
+    Object.assign(ctx, {
+      crawling: false,
+      getPausedAgentUrls: vi.fn().mockRejectedValue(new Error('database unavailable')),
+    });
+
+    await expect(ctx.crawlAllAgents([])).rejects.toThrow('database unavailable');
+    expect(ctx.crawling).toBe(false);
+  });
 
   it('rebuilds profiles for agents removed from the prior manifest', async () => {
     const ctx = await makeCrawlerContext({
@@ -105,7 +144,7 @@ describe('CrawlerService single-domain profile rebuild', () => {
       publisherDb: {
         recordAdagentsValidationFailure: vi.fn().mockResolvedValue(undefined),
       },
-      cacheAdagentsManifest: vi.fn().mockResolvedValue(undefined),
+      cacheAdagentsManifest: vi.fn().mockResolvedValue(true),
       recordPropertiesForAgent: vi.fn().mockResolvedValue(undefined),
       fanOutPublisherPropertiesAuthorizations: vi.fn().mockResolvedValue(undefined),
       reconcileLegacyAdagentsAgents: vi.fn().mockResolvedValue(undefined),
@@ -170,7 +209,7 @@ describe('CrawlerService single-domain profile rebuild', () => {
         reconcileAdagentsAuthorizations: vi.fn().mockResolvedValue(undefined),
       },
       publisherDb: {},
-      cacheAdagentsManifest: vi.fn().mockResolvedValue(undefined),
+      cacheAdagentsManifest: vi.fn().mockResolvedValue(true),
       recordPropertiesForAgent: vi.fn().mockResolvedValue(undefined),
       fanOutPublisherPropertiesAuthorizations: vi.fn().mockResolvedValue(undefined),
       reconcileLegacyAdagentsAgents: vi.fn().mockResolvedValue(undefined),

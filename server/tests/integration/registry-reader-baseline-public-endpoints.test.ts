@@ -96,6 +96,8 @@ import { HTTPServer } from '../../src/http.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { FederatedIndexDatabase } from '../../src/db/federated-index-db.js';
+import { FederatedIndexService } from '../../src/federated-index.js';
+import { CrawlerService } from '../../src/crawler.js';
 
 // `endpoint-` prefix scopes this file's fixtures away from the sibling
 // baseline files (prop-, auth-, mcp-) so concurrent file execution can't
@@ -223,6 +225,38 @@ describe('Registry reader baseline — public endpoints', () => {
     it('GET /api/registry/publisher returns 400 when domain query is missing', async () => {
       const res = await request(app).get('/api/registry/publisher');
       expect(res.status).toBe(400);
+    });
+
+    it('does not consume crawl rate limits when a full crawl rejects admission', async () => {
+      const admission = vi.spyOn(
+        CrawlerService.prototype,
+        'tryStartSingleDomainCrawl',
+      )
+        .mockReturnValueOnce(null)
+        .mockReturnValueOnce(Promise.resolve());
+
+      try {
+        const busy = await request(app)
+          .post('/api/registry/crawl-request')
+          .send({ domain: 'example.com' });
+        expect(busy.status).toBe(503);
+        expect(busy.headers['retry-after']).toBe('5');
+        expect(busy.body.code).toBe('crawl_temporarily_unavailable');
+
+        const admitted = await request(app)
+          .post('/api/registry/crawl-request')
+          .send({ domain: 'example.com' });
+        expect(admitted.status).toBe(202);
+        expect(admitted.body).toMatchObject({
+          message: 'Crawl request accepted',
+          domain: 'example.com',
+        });
+        expect(admitted.body.crawl_request_id).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+        );
+      } finally {
+        admission.mockRestore();
+      }
     });
   });
 
@@ -354,6 +388,29 @@ describe('Registry reader baseline — public endpoints', () => {
       });
     });
 
+    it('GET /api/registry/publisher returns a typed temporary error for a bounded DB timeout', async () => {
+      const timeoutError = Object.assign(new Error('statement timeout'), { code: '57014' });
+      const scopedRead = vi.spyOn(
+        FederatedIndexService.prototype,
+        'getPropertiesForAgentDomain',
+      ).mockRejectedValue(timeoutError);
+
+      try {
+        const res = await request(app).get(
+          `/api/registry/publisher?domain=${encodeURIComponent(PUB_A)}`
+        );
+        expect(res.status).toBe(503);
+        expect(res.headers['retry-after']).toBe('5');
+        expect(res.body).toEqual({
+          error: 'Publisher lookup temporarily unavailable',
+          code: 'publisher_lookup_timeout',
+          retry_after: 5,
+        });
+      } finally {
+        scopedRead.mockRestore();
+      }
+    });
+
     it('GET /api/registry/publisher reports publisher-wide auth as N of N', async () => {
       // Drop AGENT_X's property-level row so only the publisher-wide
       // authorization remains. The rollup should collapse to "all".
@@ -400,6 +457,29 @@ describe('Registry reader baseline — public endpoints', () => {
       expect(res.body.unauthorized_properties[0]).toMatchObject({
         name: 'Endpoint Mobile',
       });
+    });
+
+    it('GET /api/registry/publisher/authorization returns a typed temporary error for a lock timeout', async () => {
+      const timeoutError = Object.assign(new Error('lock timeout'), { code: '55P03' });
+      const scopedRead = vi.spyOn(
+        FederatedIndexService.prototype,
+        'getPropertiesForAgentDomain',
+      ).mockRejectedValue(timeoutError);
+
+      try {
+        const res = await request(app).get(
+          `/api/registry/publisher/authorization?domain=${encodeURIComponent(PUB_A)}&agent=${encodeURIComponent(AGENT_X)}`
+        );
+        expect(res.status).toBe(503);
+        expect(res.headers['retry-after']).toBe('5');
+        expect(res.body).toEqual({
+          error: 'Publisher authorization lookup temporarily unavailable',
+          code: 'publisher_lookup_timeout',
+          retry_after: 5,
+        });
+      } finally {
+        scopedRead.mockRestore();
+      }
     });
 
     it('GET /api/registry/publisher/authorization reports publisher-wide as N of N with no unauthorized list', async () => {

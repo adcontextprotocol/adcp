@@ -1,4 +1,5 @@
 import { Client, Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { DatabaseConfig } from "../config.js";
 import { createLogger } from "../logger.js";
 
@@ -8,6 +9,12 @@ const SLOW_QUERY_THRESHOLD_MS = 500;
 
 let pool: Pool | null = null;
 let poolConfig: DatabaseConfig | null = null;
+interface QueryDeadlineContext {
+  deadlineMs: number;
+  readOnly: boolean;
+}
+
+const queryDeadline = new AsyncLocalStorage<QueryDeadlineContext>();
 
 /** Callback invoked on pool-level errors (set via onPoolError). */
 let poolErrorCallback: ((err: Error) => void) | null = null;
@@ -103,6 +110,10 @@ export async function query<T extends QueryResultRow = any>(
   text: string,
   params?: any[]
 ): Promise<QueryResult<T>> {
+  const deadline = queryDeadline.getStore();
+  if (deadline !== undefined) {
+    return queryWithTimeout<T>(text, params, deadline.deadlineMs - Date.now());
+  }
   const p = getPool();
   const start = process.hrtime.bigint();
   try {
@@ -118,6 +129,64 @@ export async function query<T extends QueryResultRow = any>(
     if (durationMs > SLOW_QUERY_THRESHOLD_MS) {
       logger.warn({ duration_ms: Math.round(durationMs) }, "Slow database query");
     }
+  }
+}
+
+/** Apply one absolute datastore deadline to all query() calls in work. */
+export function withDatabaseDeadline<T>(
+  deadlineMs: number,
+  work: () => Promise<T>,
+  options: { readOnly?: boolean } = {},
+): Promise<T> {
+  return queryDeadline.run({ deadlineMs, readOnly: options.readOnly ?? true }, work);
+}
+
+/**
+ * Execute one query with server-enforced statement and lock deadlines.
+ *
+ * Use this for public read paths whose inputs can select unusually large
+ * registry fan-outs. The transaction-local settings ensure PostgreSQL stops
+ * the work at the same deadline as the caller instead of leaving an orphaned
+ * backend query consuming a pool slot.
+ */
+export async function queryWithTimeout<T extends QueryResultRow = any>(
+  text: string,
+  params: any[] | undefined,
+  timeoutMs: number,
+): Promise<QueryResult<T>> {
+  const inheritedDeadline = queryDeadline.getStore();
+  const deadlineMs = Math.min(
+    Date.now() + timeoutMs,
+    inheritedDeadline?.deadlineMs ?? Number.POSITIVE_INFINITY,
+  );
+  const client = await getClient();
+  let transactionStarted = false;
+  try {
+    const effectiveTimeoutMs = deadlineMs - Date.now();
+    if (effectiveTimeoutMs <= 0) {
+      throw Object.assign(new Error('Database query deadline exceeded'), { code: '57014' });
+    }
+    await client.query(inheritedDeadline?.readOnly === false ? 'BEGIN' : 'BEGIN READ ONLY');
+    transactionStarted = true;
+    await client.query("SELECT set_config('statement_timeout', $1, true)", [
+      `${effectiveTimeoutMs}ms`,
+    ]);
+    await client.query("SELECT set_config('lock_timeout', $1, true)", [
+      `${Math.min(effectiveTimeoutMs, 2_000)}ms`,
+    ]);
+    const result = await client.query<T>(text, params);
+    await client.query('COMMIT');
+    transactionStarted = false;
+    return result;
+  } catch (error) {
+    if (transactionStarted) {
+      await client.query('ROLLBACK').catch((rollbackError) => {
+        logger.warn({ err: rollbackError }, 'Timed query rollback failed');
+      });
+    }
+    throw error;
+  } finally {
+    client.release();
   }
 }
 

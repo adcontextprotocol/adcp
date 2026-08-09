@@ -20,7 +20,7 @@ import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, te
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
-import { query } from "../db/client.js";
+import { query, withDatabaseDeadline } from "../db/client.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
@@ -463,6 +463,63 @@ function summarizePlacements(
 import { AAO_UA_COMPLIANCE } from "../config/user-agents.js";
 
 const logger = createLogger("registry-api");
+const PUBLISHER_LOOKUP_TIMEOUT_MS = 8_000;
+const PUBLISHER_LOOKUP_SLOW_PHASE_MS = 500;
+
+class PublisherLookupTimeoutError extends Error {
+  constructor(readonly phase: string) {
+    super(`Publisher lookup timed out during ${phase}`);
+    this.name = "PublisherLookupTimeoutError";
+  }
+}
+
+async function publisherLookupPhase<T>(
+  work: () => Promise<T>,
+  deadlineMs: number,
+  domain: string,
+  phase: string,
+): Promise<T> {
+  const startedAt = Date.now();
+  const remainingMs = deadlineMs - startedAt;
+  if (remainingMs <= 0) throw new PublisherLookupTimeoutError(phase);
+
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      withDatabaseDeadline(deadlineMs, work),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new PublisherLookupTimeoutError(phase)),
+          remainingMs,
+        );
+        timeout.unref();
+      }),
+    ]);
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error
+      ? String(error.code)
+      : "";
+    const message = error instanceof Error ? error.message : "";
+    if (
+      code === "57014" // statement_timeout
+      || code === "55P03" // lock_timeout
+      || message.includes("timeout exceeded when trying to connect")
+    ) {
+      throw new PublisherLookupTimeoutError(phase);
+    }
+    throw error;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    const durationMs = Date.now() - startedAt;
+    if (durationMs >= PUBLISHER_LOOKUP_SLOW_PHASE_MS) {
+      logger.warn(
+        { domain, phase, duration_ms: durationMs },
+        "Slow publisher lookup phase",
+      );
+    }
+  }
+}
+
 const complianceTarget = hostedComplianceTarget();
 const complianceOptions = hostedComplianceOptions(complianceTarget);
 const badgeEligibilityMetadata = (eligibleVersions: readonly string[]) => ({
@@ -1687,6 +1744,14 @@ registry.registerPath({
   responses: {
     200: { description: "Publisher lookup result", content: { "application/json": { schema: PublisherLookupResultSchema } } },
     400: { description: "Missing domain", content: { "application/json": { schema: ErrorSchema } } },
+    503: {
+      description: "Publisher lookup exceeded its bounded read deadline",
+      content: { "application/json": { schema: z.object({
+        error: z.string(),
+        code: z.literal("publisher_lookup_timeout"),
+        retry_after: z.number().int(),
+      }) } },
+    },
   },
 });
 
@@ -1839,6 +1904,14 @@ registry.registerPath({
     },
     400: { description: "Missing domain or agent", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "No authorization record for this agent on this publisher", content: { "application/json": { schema: ErrorSchema } } },
+    503: {
+      description: "Publisher authorization lookup exceeded its bounded read deadline",
+      content: { "application/json": { schema: z.object({
+        error: z.string(),
+        code: z.literal("publisher_lookup_timeout"),
+        retry_after: z.number().int(),
+      }) } },
+    },
   },
 });
 
@@ -2988,7 +3061,7 @@ registry.registerPath({
   operationId: "requestCrawl",
   summary: "Request domain re-crawl",
   description:
-    "Trigger an immediate re-crawl of a publisher domain after updating adagents.json. The crawl runs asynchronously — returns 202 immediately.\n\n**Rate limits:** 5 minutes per domain, 30 requests per user per hour.",
+    "Trigger an immediate re-crawl of a publisher domain after updating adagents.json. The crawl runs asynchronously in the accepting process — returns 202 immediately. The response `crawl_request_id` correlates accepted, running, completed, skipped, and failed lifecycle logs; a 202 does not by itself mean the mirror write completed.\n\n**Rate limits:** 5 minutes per domain, 30 requests per user per hour.",
   tags: ["Agent Discovery"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -3010,12 +3083,27 @@ registry.registerPath({
           schema: z.object({
             message: z.literal("Crawl request accepted"),
             domain: z.string(),
+            crawl_request_id: z.string().uuid().openapi({
+              description: "Correlation ID for crawl lifecycle logs; acceptance is not completion.",
+            }),
           }),
         },
       },
     },
     400: { description: "Invalid domain format, private IP, or unresolvable domain", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    503: {
+      description: "A full crawl is active; the request was not accepted",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            code: z.literal("crawl_temporarily_unavailable"),
+            retry_after: z.number().int(),
+          }),
+        },
+      },
+    },
     429: {
       description: "Rate limit exceeded",
       content: {
@@ -8593,15 +8681,18 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       return res.status(400).json({ error: "Invalid include value; expected placements" });
     }
 
+    const lookupDeadlineMs = Date.now() + PUBLISHER_LOOKUP_TIMEOUT_MS;
+    let publisherLookupDomain = rawDomain;
     try {
       const domain = extractDomain(rawDomain);
+      publisherLookupDomain = domain;
       if (!isValidDomain(domain)) {
         return res.status(400).json({ error: "Invalid domain" });
       }
       const memberDb = new MemberDatabase();
       const federatedIndex = crawler.getFederatedIndex();
 
-      const [profile, properties, authorizations, adagentsValid, hostedProperty, brandRow, cachedAdagentsRow] = await Promise.all([
+      const [profile, properties, authorizations, adagentsValid, hostedProperty, brandRow, cachedAdagentsRow] = await publisherLookupPhase(() => Promise.all([
         memberDb.getProfileByDomain(domain),
         federatedIndex.getPropertiesForDomain(domain),
         federatedIndex.getAuthorizationsForDomain(domain),
@@ -8640,7 +8731,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
              FROM publishers WHERE domain = $1 LIMIT 1`,
           [domain],
         ).then(r => r.rows[0] ?? null),
-      ]);
+      ]), lookupDeadlineMs, domain, "initial_record_load");
       const cachedAdagentsManifest = cachedAdagentsRow?.adagents_json ?? null;
       const cachedAdagentsLastValidated = cachedAdagentsRow?.last_validated ?? null;
       const cachedHttpStatus = cachedAdagentsRow?.last_http_status ?? null;
@@ -8764,9 +8855,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         // already validated — any rewrite would mean a discrepancy.
         let crawlSafe = false;
         try {
-          const validated = await validateCrawlDomain(domain);
+          const validated = await publisherLookupPhase(
+            () => validateCrawlDomain(domain),
+            lookupDeadlineMs,
+            domain,
+            "auto_crawl_domain_validation",
+          );
           crawlSafe = validated === domain;
         } catch (err) {
+          if (err instanceof PublisherLookupTimeoutError) throw err;
           logger.debug({ err, domain }, 'Auto-crawl skipped — validateCrawlDomain rejected');
         }
         if (crawlSafe) {
@@ -8956,7 +9053,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         };
       });
 
-      const hostedBrand = await brandDb.getHostedBrandByDomain(domain);
+      const hostedBrand = await publisherLookupPhase(
+        () => brandDb.getHostedBrandByDomain(domain),
+        lookupDeadlineMs,
+        domain,
+        "hosted_brand_load",
+      );
       const brandManifest = hostedBrand?.brand_json
         ?? (brandRow?.brand_manifest as Record<string, unknown> | null | undefined)
         ?? null;
@@ -9029,15 +9131,21 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           ? authorizations.slice(0, PER_AGENT_ROLLUP_CAP)
           : authorizations;
       const agentPropertyCounts = new Map<string, number>();
-      await Promise.all(
-        agentsToRollup.map(async a => {
-          const agentProps = await federatedIndex.getPropertiesForAgent(a.agent_url);
-          const matching = agentProps.filter(
-            p => p.publisher_domain === domain && p.id && propertyDbIdSet.has(p.id),
-          );
-          agentPropertyCounts.set(a.agent_url, matching.length);
-        }),
-      );
+      await publisherLookupPhase(async () => {
+        const concurrency = 4;
+        for (let i = 0; i < agentsToRollup.length; i += concurrency) {
+          await Promise.all(agentsToRollup.slice(i, i + concurrency).map(async a => {
+            const agentProps = await federatedIndex.getPropertiesForAgentDomain(
+              a.agent_url,
+              domain,
+            );
+            const matching = agentProps.filter(
+              p => p.publisher_domain === domain && p.id && propertyDbIdSet.has(p.id),
+            );
+            agentPropertyCounts.set(a.agent_url, matching.length);
+          }));
+        }
+      }, lookupDeadlineMs, domain, "per_agent_property_rollup");
 
       // What-we-have summary. The page leads with "you have an
       // adagents.json" / "you have a brand.json" — this block exposes
@@ -9128,6 +9236,22 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         auto_crawl_triggered: autoCrawlTriggered || undefined,
       });
     } catch (error) {
+      if (error instanceof PublisherLookupTimeoutError) {
+        logger.warn(
+          {
+            domain: publisherLookupDomain,
+            phase: error.phase,
+            timeout_ms: PUBLISHER_LOOKUP_TIMEOUT_MS,
+          },
+          "Publisher lookup deadline exceeded",
+        );
+        res.setHeader("Retry-After", "5");
+        return res.status(503).json({
+          error: "Publisher lookup temporarily unavailable",
+          code: "publisher_lookup_timeout",
+          retry_after: 5,
+        });
+      }
       logger.error({ err: error, path: req.path }, "Publisher lookup failed");
       res.status(500).json({ error: "Publisher lookup failed" });
     }
@@ -9139,8 +9263,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     if (!rawDomain || !rawAgent) {
       return res.status(400).json({ error: "Missing required query params: domain, agent" });
     }
+    const lookupDeadlineMs = Date.now() + PUBLISHER_LOOKUP_TIMEOUT_MS;
+    let publisherLookupDomain = rawDomain;
     try {
       const domain = extractDomain(rawDomain);
+      publisherLookupDomain = domain;
       if (!isValidDomain(domain)) {
         return res.status(400).json({ error: "Invalid domain" });
       }
@@ -9152,10 +9279,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       }
       const federatedIndex = crawler.getFederatedIndex();
 
-      const [properties, authorizations] = await Promise.all([
+      const [properties, authorizations] = await publisherLookupPhase(() => Promise.all([
         federatedIndex.getPropertiesForDomain(domain),
         federatedIndex.getAuthorizationsForDomain(domain),
-      ]);
+      ]), lookupDeadlineMs, domain, "authorization_record_load");
 
       const auth = authorizations.find(a => canonicalizeAgentUrl(a.agent_url) === agentUrl);
       if (!auth) {
@@ -9170,7 +9297,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       const propertyDbIdSet = new Set(
         properties.map(p => p.id).filter((id): id is string => Boolean(id)),
       );
-      const agentProps = await federatedIndex.getPropertiesForAgent(agentUrl);
+      const agentProps = await publisherLookupPhase(
+        () => federatedIndex.getPropertiesForAgentDomain(agentUrl, domain),
+        lookupDeadlineMs,
+        domain,
+        "authorization_property_rollup",
+      );
       const matched = agentProps.filter(
         p => p.publisher_domain === domain && p.id && propertyDbIdSet.has(p.id),
       );
@@ -9195,6 +9327,22 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         unauthorized_properties: unauthorized,
       });
     } catch (error) {
+      if (error instanceof PublisherLookupTimeoutError) {
+        logger.warn(
+          {
+            domain: publisherLookupDomain,
+            phase: error.phase,
+            timeout_ms: PUBLISHER_LOOKUP_TIMEOUT_MS,
+          },
+          "Publisher authorization lookup deadline exceeded",
+        );
+        res.setHeader("Retry-After", "5");
+        return res.status(503).json({
+          error: "Publisher authorization lookup temporarily unavailable",
+          code: "publisher_lookup_timeout",
+          retry_after: 5,
+        });
+      }
       logger.error({ err: error, path: req.path }, "Publisher authorization lookup failed");
       return res.status(500).json({ error: "Publisher authorization lookup failed" });
     }
@@ -10994,6 +11142,19 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     return normalizedDomain;
   }
 
+  /** Release the reservation when synchronous crawler admission rejects. */
+  function releaseCrawlRateLimit(req: import('express').Request, rateLimitKey: string): void {
+    crawlRequestRateLimits.delete(rateLimitKey);
+    const memberId = req.user?.id || 'anonymous';
+    const memberState = memberCrawlCounts.get(memberId);
+    if (!memberState) return;
+    if (memberState.count <= 1) {
+      memberCrawlCounts.delete(memberId);
+    } else {
+      memberState.count--;
+    }
+  }
+
   if (!authMiddleware) throw new Error('requireAuth middleware is required for crawl-request endpoint');
 
   router.post("/registry/publisher/:domain/adagents/revalidate", authMiddleware, async (req, res) => {
@@ -11078,14 +11239,57 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.post("/registry/crawl-request", authMiddleware, async (req, res) => {
     try {
-      const normalizedDomain = await validateAndRateLimitCrawl(req, res, req.body?.domain?.toLowerCase?.()?.trim?.() || '');
+      const rateLimitKey = req.body?.domain?.toLowerCase?.()?.trim?.() || '';
+      const normalizedDomain = await validateAndRateLimitCrawl(req, res, rateLimitKey);
       if (!normalizedDomain) return;
 
-      crawler.crawlSingleDomain(normalizedDomain).catch((err: Error) => {
-        logger.error({ err, domain: normalizedDomain }, "Crawl request failed");
+      const crawlRequestId = randomUUID();
+      const crawlTask = crawler.tryStartSingleDomainCrawl(normalizedDomain, {
+        requestId: crawlRequestId,
+        source: "api:crawl-request",
+      });
+      if (!crawlTask) {
+        releaseCrawlRateLimit(req, rateLimitKey);
+        logger.warn(
+          {
+            domain: normalizedDomain,
+            crawl_request_id: crawlRequestId,
+            crawl_status: "not_accepted",
+            reason: "full_crawl_in_progress",
+          },
+          "Crawl request not accepted",
+        );
+        res.setHeader("Retry-After", "5");
+        return res.status(503).json({
+          error: "A full crawl is in progress; retry the crawl request",
+          code: "crawl_temporarily_unavailable",
+          retry_after: 5,
+        });
+      }
+      logger.info(
+        {
+          domain: normalizedDomain,
+          crawl_request_id: crawlRequestId,
+          crawl_status: "accepted",
+        },
+        "Crawl request accepted",
+      );
+      crawlTask.catch((err: Error) => {
+        logger.debug(
+          {
+            err,
+            domain: normalizedDomain,
+            crawl_request_id: crawlRequestId,
+          },
+          "Accepted crawl task settled with error",
+        );
       });
 
-      return res.status(202).json({ message: "Crawl request accepted", domain: normalizedDomain });
+      return res.status(202).json({
+        message: "Crawl request accepted",
+        domain: normalizedDomain,
+        crawl_request_id: crawlRequestId,
+      });
     } catch (error) {
       logger.error({ error }, "Failed to process crawl request");
       return res.status(500).json({ error: "Failed to process crawl request" });
