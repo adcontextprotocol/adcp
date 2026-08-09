@@ -8,9 +8,44 @@ vi.mock('../../../src/training-agent/task-handlers.js', () => ({
 import {
   ADCP_TASK_REGISTRY,
   ADCP_TOOLS,
+  CANONICAL_ADCP_TASK_NAMES,
+  CUSTOM_ADCP_TASK_NAMES,
+  LEGACY_ADCP_TASK_NAMES,
+  adcpExecutionMode,
   createAdcpToolHandlers,
   validateAccountRefParam,
 } from '../../../src/addie/mcp/adcp-tools.js';
+
+describe('AdCP SDK execution boundaries', () => {
+  it('classifies every registered task in exactly one explicit SDK boundary', () => {
+    const classifications = [
+      ...CANONICAL_ADCP_TASK_NAMES,
+      ...LEGACY_ADCP_TASK_NAMES,
+      ...CUSTOM_ADCP_TASK_NAMES,
+    ].filter(task => task !== 'get_adcp_capabilities');
+
+    expect(classifications.sort()).toEqual(Object.keys(ADCP_TASK_REGISTRY).sort());
+    expect(new Set(classifications).size).toBe(classifications.length);
+  });
+
+  it('uses canonical execution for primary v13 tasks', () => {
+    expect(adcpExecutionMode('get_products')).toBe('canonical');
+    expect(adcpExecutionMode('create_media_buy')).toBe('canonical');
+    expect(adcpExecutionMode('sync_creatives')).toBe('canonical');
+  });
+
+  it('reserves legacy execution for compatibility-only standard tasks', () => {
+    expect(adcpExecutionMode('list_creative_formats')).toBe('legacy');
+    expect(adcpExecutionMode('build_creative')).toBe('legacy');
+    expect(adcpExecutionMode('get_rights')).toBe('legacy');
+  });
+
+  it('routes unknown extension tasks through the custom-task boundary', () => {
+    expect(adcpExecutionMode('sync_catalogs')).toBe('custom');
+    expect(adcpExecutionMode('create_collection_list')).toBe('custom');
+    expect(adcpExecutionMode('vendor_custom_task')).toBe('custom');
+  });
+});
 
 describe('validateAccountRefParam', () => {
   it('accepts the account_id variant', () => {

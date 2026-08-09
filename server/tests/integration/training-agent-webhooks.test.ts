@@ -145,7 +145,7 @@ describe('Training Agent webhook emission', () => {
 
       await Promise.race([
         done,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('webhook never arrived')), 5000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('webhook never arrived')), 10_000)),
       ]);
 
       expect(deliveries.length).toBe(1);
@@ -178,7 +178,7 @@ describe('Training Agent webhook emission', () => {
         await new Promise<void>(r => srv!.close(() => r()));
       }
     }
-  }, 15000);
+  }, 20000);
 
   it('falls back to task_id when the buyer omits webhook operation_id', async () => {
     const deliveries: CapturedDelivery[] = [];

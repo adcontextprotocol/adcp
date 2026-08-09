@@ -9381,12 +9381,25 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         if (agentType === 'creative') {
           try {
-            const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
-            const formats = await creativeClient.listFormats();
-            stats.format_count = formats.length;
+            const capabilities = await client.getAdcpCapabilities({});
+            const canonicalFormats = capabilities.data?.creative?.supported_formats;
+            if (Array.isArray(canonicalFormats) && canonicalFormats.length > 0) {
+              stats.format_count = canonicalFormats.length;
+            } else {
+              const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
+              const formats = await creativeClient.listFormatsLegacy();
+              stats.format_count = formats.length;
+            }
           } catch (statsError) {
-            logger.debug({ err: statsError, url }, 'Failed to fetch creative formats');
-            stats.format_count = 0;
+            logger.debug({ err: statsError, url }, 'Canonical creative capability discovery failed; trying legacy formats');
+            try {
+              const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
+              const formats = await creativeClient.listFormatsLegacy();
+              stats.format_count = formats.length;
+            } catch (legacyStatsError) {
+              logger.debug({ err: legacyStatsError, url }, 'Failed to fetch legacy creative formats');
+              stats.format_count = 0;
+            }
           }
         } else if (agentType === 'sales') {
           // Always show product and publisher counts for sales agents

@@ -15,9 +15,9 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@ladle/react": ["./src/ladle-types.d.ts"]
     }
   },
   "include": ["src", "src/routeTree.gen.ts"],

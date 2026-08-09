@@ -2,7 +2,14 @@
  * Internal types for the training agent.
  * Schema-level types (Product, Format, etc.) come from @adcp/sdk.
  */
-import type { Product, Proposal, BrandReference, FormatID, CreateMediaBuyRequest, EventType } from '@adcp/sdk';
+import type {
+  LegacyProduct as Product,
+  Proposal,
+  BrandReference,
+  LegacyFormatID as FormatID,
+  LegacyCreateMediaBuyRequest as CreateMediaBuyRequest,
+  EventType,
+} from '@adcp/sdk';
 
 // SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/sdk types
 type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' | 'crossover' | 'championship';
@@ -46,6 +53,14 @@ export interface TrainingContext {
   /** Validated wire input before SDK account extraction; used only to verify
    * governance payload bindings against the exact buyer-authorized request. */
   requestInput?: Record<string, unknown>;
+  /** Trusted account reference reconstructed from the SDK-resolved platform
+   * context. Used to authorize principal-bound sandbox fixture projection
+   * after the SDK removes the envelope account from domain-level arguments. */
+  resolvedAccount?: AccountRef;
+  /** Frozen 3.0 creative-library session scope. Legacy requests historically
+   * shared creative state by brand even when the SDK retained a natural
+   * account envelope on some creative operations. */
+  legacySessionBrandDomain?: string;
   /** Release selected by protocol negotiation for this request. */
   servedAdcpVersion?: string;
   /** Route is the grader-targeted `/mcp-strict` endpoint. Advertises
@@ -179,7 +194,7 @@ export interface PricingTemplate {
 }
 
 export interface CatalogProduct {
-  product: import('@adcp/sdk').Product;
+  product: import('@adcp/sdk').LegacyProduct;
   publisherId: string;
   trainingTier: 'basics' | 'practitioner' | 'specialist';
   scenarioTags: string[];
@@ -498,6 +513,9 @@ export interface PackageState {
   startTime: string;
   endTime: string;
   formatIds?: FormatID[];
+  /** Resolved winning legacy selector for legacy-only compatibility records.
+   * Kept separate from formatIds, which is the caller's informational echo. */
+  selectedLegacyFormatIds?: FormatID[];
   formatOptionRefs?: unknown[];
   formatKind?: string;
   params?: Record<string, unknown>;
@@ -561,8 +579,8 @@ export interface CreativeState {
   creativeId: string;
   accountId?: string;
   accountRef?: AccountRef;
-  /** Internal legacy-shaped lookup key. Canonical rows emit formatKind instead. */
-  formatId: FormatID;
+  /** @deprecated Present only for creatives received through the AdCP 3.x compatibility facade. */
+  formatId?: FormatID;
   formatKind?: string;
   formatOptionRef?: Record<string, unknown>;
   assets?: Record<string, ManifestAsset | ManifestAsset[]>;

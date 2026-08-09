@@ -8,9 +8,6 @@
 import {
   SAMPLE_BRIEFS,
   getBriefsByVertical,
-  type ComplyOptions as StableComplyOptions,
-} from '@adcp/sdk/testing';
-import {
   setAgentTesterLogger,
   comply as sdkComply,
   loadComplianceIndex as sdkLoadComplianceIndex,
@@ -22,7 +19,7 @@ import {
   type TrackResult,
   type AdvisoryObservation,
   type SampleBrief,
-} from '@adcp/sdk-compliance/testing';
+} from '@adcp/sdk/testing';
 import {
   hostedComplianceTarget,
   hostedAuthProbeTaskForProfile,
@@ -50,29 +47,6 @@ import type {
 
 const logger = createLogger('addie-compliance-testing');
 const DEFAULT_TARGET_DISCOVERY_TIMEOUT_MS = 10_000;
-
-// The application remains on the stable SDK while hosted grading consumes the
-// release candidate. These helpers only add transport/cache options that are
-// structurally identical across both versions; keep the cast at this boundary
-// rather than forcing the RC's expanded types into stable-SDK helper signatures.
-// Remove the package alias and these adapters when the application moves to SDK 13.
-function withComplianceSdkTransport(options: ComplyOptions): ComplyOptions {
-  return withSdkSafeTransport(options as unknown as StableComplyOptions) as unknown as ComplyOptions;
-}
-
-function withHostedRcOptions(
-  options: ComplyOptions,
-  target: HostedComplianceTarget,
-  probeTask?: string,
-  apiKey?: string,
-): ComplyOptions {
-  return withHostedComplianceRunOptions(
-    options as unknown as StableComplyOptions,
-    target,
-    probeTask,
-    apiKey,
-  ) as unknown as ComplyOptions;
-}
 
 export interface ComplianceTargetSelection {
   target: HostedComplianceTarget;
@@ -148,12 +122,12 @@ export async function comply(
   options: ComplyOptions,
   target: HostedComplianceTarget,
 ): Promise<ComplianceResult> {
-  const safeOptions = withComplianceSdkTransport(options);
+  const safeOptions = withSdkSafeTransport(options);
   const authDefaults = await hostedAuthDefaultsForRun(agentUrl, safeOptions);
   const result = await sdkComply(
     agentUrl,
-    withComplianceSdkTransport(
-      withHostedRcOptions(safeOptions, target, authDefaults.probeTask, authDefaults.apiKey),
+    withSdkSafeTransport(
+      withHostedComplianceRunOptions(safeOptions, target, authDefaults.probeTask, authDefaults.apiKey),
     ),
   );
   result.adcp_version ??= target.version;
@@ -163,7 +137,7 @@ export async function comply(
 
 export function loadComplianceIndex(target: HostedComplianceTarget, options: ComplyOptions = {}) {
   return sdkLoadComplianceIndex(
-    withComplianceSdkTransport(withHostedRcOptions(options, target)),
+    withSdkSafeTransport(withHostedComplianceRunOptions(options, target)),
   );
 }
 
@@ -178,7 +152,7 @@ export async function selectComplianceTargetForAgentSelection(
   mode: 'preferred' | 'canonical' = 'preferred',
 ): Promise<ComplianceTargetSelection> {
   try {
-    const safeOptions = withComplianceSdkTransport(options);
+    const safeOptions = withSdkSafeTransport(options);
     const discovery = await withTimeout(
       testCapabilityDiscovery(agentUrl, safeOptions),
       complianceTargetDiscoveryTimeoutMs(safeOptions),

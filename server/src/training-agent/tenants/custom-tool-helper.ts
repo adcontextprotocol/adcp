@@ -10,7 +10,7 @@
 
 import { z } from 'zod';
 import { wrapEnvelope } from '@adcp/sdk/server';
-import type { AdcpCustomToolConfig } from '@adcp/sdk/server';
+import type { LegacyAdcpCustomToolConfig as AdcpCustomToolConfig } from '@adcp/sdk/server';
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';

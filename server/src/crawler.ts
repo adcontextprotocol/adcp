@@ -1785,6 +1785,7 @@ export class CrawlerService {
               categories: profile.categories,
               tags: profile.tags,
               delivery_types: profile.delivery_types,
+              format_kinds: profile.format_kinds,
               property_count: profile.property_count,
               publisher_count: profile.publisher_count,
               has_tmp: profile.has_tmp,
@@ -1908,7 +1909,16 @@ export class CrawlerService {
     }
 
     if (profiles.length > 0) {
-      await this.profilesDb.upsertProfiles(profiles);
+      const persistedProfiles = await this.profilesDb.upsertProfiles(profiles);
+      for (const persisted of persistedProfiles) {
+        const profile = profileMap.get(persisted.agent_url);
+        if (profile) {
+          profileMap.set(persisted.agent_url, {
+            ...profile,
+            format_kinds: persisted.format_kinds ?? [],
+          });
+        }
+      }
       if (options.deleteStale !== false && !agentUrlFilter) {
         const currentUrls = profiles.map(p => p.agent_url);
         const staleDeleted = await this.profilesDb.deleteStaleProfiles(currentUrls);

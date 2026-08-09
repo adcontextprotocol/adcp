@@ -11,6 +11,7 @@ on:
       - 'server/src/config.ts'
       - 'server/tsconfig.json'
       - 'Dockerfile'
+      - 'scripts/patch-sdk-rc11.mjs'
   push:
     branches: [main]
     paths:
@@ -21,6 +22,7 @@ on:
       - 'server/src/config.ts'
       - 'server/tsconfig.json'
       - 'Dockerfile'
+      - 'scripts/patch-sdk-rc11.mjs'
 
 jobs:
   migrate:
@@ -47,7 +49,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -67,3 +69,13 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/adcp_test
         run: node dist/db/migrate.js
+
+  docker-build:
+    name: Production Docker build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Build production image with lifecycle scripts disabled
+        run: docker build --build-arg SKIP_PRECLONE_REPOS=true --tag adcp-migration-smoke .

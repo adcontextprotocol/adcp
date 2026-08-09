@@ -103,6 +103,36 @@ function controllerCanMutateMediaBuy(
   return principal?.startsWith('static:') === true || controller.operator === owner.operator;
 }
 
+function creativeSandboxIdentity(
+  creative: CreativeState,
+  principal: string | undefined,
+): NaturalAccountIdentity | undefined {
+  const ref = creative.accountRef;
+  if (!ref) return undefined;
+  try {
+    const account = canonicalizeAccountRef(ref);
+    if (account.kind === 'account_id') {
+      const resolved = sandboxAccountRefForId(account.account_id, principal);
+      if (!resolved) return undefined;
+      const identity = canonicalizeAccountRef(resolved);
+      return identity.kind === 'natural' ? identity : undefined;
+    }
+    return account.sandbox ? account : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function controllerCanMutateCreative(
+  controller: NaturalAccountIdentity,
+  creative: CreativeState,
+  principal: string | undefined,
+): boolean {
+  const owner = creativeSandboxIdentity(creative, principal);
+  if (!owner || !sameBrandIdentity(controller, owner)) return false;
+  return principal?.startsWith('static:') === true || controller.operator === owner.operator;
+}
+
 // ── State machine transition tables ───────────────────────────────
 
 const CREATIVE_TRANSITIONS: Record<string, string[]> = {
@@ -886,14 +916,15 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
       enforceMapCap(session.creatives, creativeId, 'creatives');
       const existing = session.creatives.get(creativeId);
       const now = new Date().toISOString();
-      const formatKind = (fx.format_kind as string | undefined) ?? existing?.formatKind;
+      const fixtureFormatId = fx.format_id as CreativeState['formatId'];
+      const formatKind = (fx.format_kind as string | undefined)
+        ?? existing?.formatKind
+        ?? (fixtureFormatId || existing?.formatId ? undefined : 'image');
       const formatOptionRef = (fx.format_option_ref as Record<string, unknown> | undefined) ?? existing?.formatOptionRef;
-      const formatId = (fx.format_id as CreativeState['formatId'])
-        ?? existing?.formatId
-        ?? { agent_url: getAgentUrl(), id: formatKind ?? 'image' };
+      const formatId = fixtureFormatId ?? existing?.formatId;
       session.creatives.set(creativeId, {
         creativeId,
-        formatId,
+        ...(formatId && { formatId }),
         formatKind,
         formatOptionRef,
         name: (fx.name as string | undefined) ?? existing?.name,
@@ -1194,7 +1225,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   const sessionArgs = legacyNaturalBrandDomain
     ? { ...args, account: undefined, brand: { domain: legacyNaturalBrandDomain } }
     : args;
-  const sessionKey = targetsGetProductsState
+  let sessionKey = targetsGetProductsState
     ? getProductsSessionKeyFromArgs(sessionArgs, ctx.mode, ctx.userId, ctx.moduleId)
     : sessionKeyFromArgs(
       sessionArgs,
@@ -1224,6 +1255,43 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
           return mediaBuy !== undefined
             && controllerCanMutateMediaBuy(controllerAccount, mediaBuy, ctx.principal);
         }) ?? session;
+      }
+    }
+  }
+  if (scenario === 'force_creative_status') {
+    const creativeId = typeof params.creative_id === 'string' ? params.creative_id : undefined;
+    if (creativeId && !session.creatives.has(creativeId)) {
+      let controllerAccount: NaturalAccountIdentity | undefined;
+      try {
+        const canonical = canonicalizeAccountRef(args.account);
+        if (canonical.kind === 'natural' && canonical.sandbox) {
+          controllerAccount = canonical;
+        }
+      } catch {
+        controllerAccount = undefined;
+      }
+      if (controllerAccount) {
+        const ownerSession = await findSessionMatching(candidate => {
+          const creative = candidate.creatives.get(creativeId);
+          return creative !== undefined
+            && controllerCanMutateCreative(controllerAccount, creative, ctx.principal);
+        });
+        if (ownerSession) {
+          session = ownerSession;
+          const ownerRef = ownerSession.creatives.get(creativeId)?.accountRef;
+          if (ownerRef) {
+            const ownerSessionArgs = ctx.storyboardCompat?.version === '3.0'
+              && ownerRef.brand?.domain
+              ? { brand: { domain: ownerRef.brand.domain } }
+              : { account: ownerRef };
+            sessionKey = sessionKeyFromArgs(
+              ownerSessionArgs,
+              ctx.mode,
+              ctx.userId,
+              ctx.moduleId,
+            );
+          }
+        }
       }
     }
   }

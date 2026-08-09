@@ -9832,8 +9832,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       if (formats.length === 0) {
         try {
-          const legacyResult = await capabilityClient.executeTask(
-            "list_creative_formats",
+          const legacyResult = await capabilityClient.listCreativeFormatsLegacy(
             {},
             undefined,
             { timeout: PUBLIC_AGENT_TIMEOUT_MS },
@@ -9888,7 +9887,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         agent_uri: url,
         protocol: "mcp",
       }, publicAgentTransportOptions());
-      const result = await client.executeTask(
+      const result = await client.executeTaskLegacy(
         "list_authorized_properties",
         {},
         undefined,
@@ -10852,6 +10851,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           categories: parseCSV(req.query.categories as string),
           tags: parseCSV(req.query.tags as string),
           delivery_types: parseCSV(req.query.delivery_types as string),
+          format_kinds: parseCSV(req.query.format_kinds as string),
           has_tmp: req.query.has_tmp !== undefined ? req.query.has_tmp === 'true' : undefined,
           min_properties: rawMinProps,
           cursor: (req.query.cursor as string) || undefined,

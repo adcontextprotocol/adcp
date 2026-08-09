@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim@sha256:f3a68cf41a855d227d1b0ab832bed9749469ef38cf4f58182fb8c893bc462383 AS builder
+FROM node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03 AS builder
 
 # Set working directory
 WORKDIR /app
@@ -11,6 +11,11 @@ RUN npm ci --ignore-scripts
 
 # Copy source code
 COPY . .
+
+# rc.11's storyboard runner forces get_products onto the legacy-only wire,
+# hiding the transitional 3.1 dual response. Apply the exact-version patch
+# explicitly because installs disable scripts.
+RUN npm run patch:sdk-rc11
 
 # Build the TypeScript server (increase heap for large tsc compilation)
 RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
@@ -137,7 +142,7 @@ RUN if [ "$SKIP_PRECLONE_REPOS" = "true" ]; then \
     fi
 
 # Production stage
-FROM node:22-bookworm-slim@sha256:f3a68cf41a855d227d1b0ab832bed9749469ef38cf4f58182fb8c893bc462383
+FROM node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03
 
 WORKDIR /app
 
@@ -155,6 +160,9 @@ COPY package*.json ./
 RUN npm ci --omit=dev --ignore-scripts \
  && npm rebuild sharp \
  && npm cache clean --force
+
+COPY --from=builder /app/scripts/patch-sdk-rc11.mjs ./scripts/patch-sdk-rc11.mjs
+RUN node scripts/patch-sdk-rc11.mjs
 
 # Copy built files from builder. Runtime assets under server/src/** (JSON
 # format catalogs, SQL migrations, Addie rule markdown, etc.) are mirrored

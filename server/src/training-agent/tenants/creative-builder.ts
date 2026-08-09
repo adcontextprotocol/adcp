@@ -6,7 +6,10 @@
  */
 
 import type { TenantConfig } from '@adcp/sdk/server';
-import { TrainingCreativeBuilderPlatform } from '../v6-creative-builder-platform.js';
+import {
+  TrainingCreativeBuilderPlatform,
+  legacyCreativeBuilderSyncHandler,
+} from '../v6-creative-builder-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildCreativeComplyConfig } from './comply.js';
 import { listAccountsTool } from './account-tools.js';
@@ -30,6 +33,11 @@ export function buildCreativeBuilderTenantConfig(host: string, options: { storyb
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       platform: new TrainingCreativeBuilderPlatform(options.storyboardCompat) as any,
       serverOptions: {
+        legacyHandlers: {
+          creative: {
+            syncCreatives: legacyCreativeBuilderSyncHandler(options.storyboardCompat),
+          },
+        },
         customTools: {
           list_accounts: listAccountsTool(options.storyboardCompat),
           ...(options.storyboardCompat?.version === '3.0' ? {} : {

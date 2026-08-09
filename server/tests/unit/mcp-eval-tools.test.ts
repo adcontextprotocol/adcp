@@ -17,7 +17,10 @@ vi.mock('@adcp/sdk', async (importOriginal) => {
     ...actual,
     AdCPClient: class MockAdCPClient {
       agent() {
-        return { executeTask };
+        return {
+          executeTask,
+          getProducts: (params: unknown) => executeTask('get_products', params),
+        };
       }
     },
   };
@@ -129,6 +132,8 @@ describe('EVAL_TOOL_DEFINITIONS', () => {
     expect(tool!.inputSchema.required).toContain('line_items');
     expect(tool!.inputSchema.required).toContain('idempotency_key');
     expect(tool!.inputSchema.required).toContain('create_media_buy_idempotency_key');
+    expect(tool!.inputSchema.properties).toHaveProperty('advertiser_domain');
+    expect(tool!.inputSchema.properties).toHaveProperty('account_id');
   });
 
   it('compare_media_kit requires a caller-owned idempotency key prefix', () => {
@@ -184,6 +189,8 @@ describe('evaluation tool idempotency forwarding', () => {
       agent_url: agentUrl,
       idempotency_key: 'io-catalog-caller-key',
       create_media_buy_idempotency_key: 'io-create-caller-key',
+      advertiser_domain: 'example.com',
+      account_id: 'account-123',
       execute: true,
       line_items: [{ description: 'Display inventory', channel: 'display', budget: 1000 }],
     });
