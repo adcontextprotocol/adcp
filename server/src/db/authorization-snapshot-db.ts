@@ -69,6 +69,15 @@ export interface AuthRow {
   expires_at: string | null;
   created_at: string;
   updated_at: string;
+  /**
+   * Publisher-pinned JWK set from adagents.json.
+   * `authorized_agents[*].signing_keys` — an array of JWK objects
+   * (kid + kty + kty-specific fields per RFC 7517). Null when the
+   * publisher did not declare a pin; consumers fall back to the
+   * agent-hosted JWKS per spec R-2. Meaningful for evidence='adagents_json'
+   * rows only.
+   */
+  signing_keys: unknown[] | null;
   override_applied: boolean;
   override_reason: string | null;
 }
@@ -165,7 +174,8 @@ function selectClause(include: IncludeMode): string {
         created_at,
         updated_at,
         override_applied,
-        override_reason
+        override_reason,
+        signing_keys
       FROM v_effective_agent_authorizations
     `;
   }
@@ -185,7 +195,8 @@ function selectClause(include: IncludeMode): string {
       created_at,
       updated_at,
       FALSE AS override_applied,
-      NULL::text AS override_reason
+      NULL::text AS override_reason,
+      signing_keys
     FROM catalog_agent_authorizations
     WHERE deleted_at IS NULL
   `;

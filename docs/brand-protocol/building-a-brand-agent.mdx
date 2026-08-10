@@ -205,7 +205,7 @@ type SubsidiaryRecord = {
 };
 
 type PropertyRecord = {
-  type: "website" | "mobile_app" | "ctv_app" | "desktop_app" | "dooh" | "podcast" | "radio" | "streaming_audio";
+  type: "website" | "mobile_app" | "ctv_app" | "desktop_app" | "dooh" | "podcast" | "radio" | "linear_tv" | "streaming_audio" | "ai_assistant";
   identifier: string;
   brand_id: string;
   relationship: "owned" | "direct" | "delegated" | "ad_network";
@@ -248,7 +248,7 @@ const ParentClaim = z.object({
 
 const PropertyClaim = z.object({
   property: z.object({
-    type: z.enum(["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "streaming_audio"]),
+    type: z.enum(["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "linear_tv", "streaming_audio", "ai_assistant"]),
     identifier: z.string().min(1),
     store: z.enum(["apple", "google", "amazon", "roku", "fire_tv", "samsung", "lg", "vizio", "other"]).optional(),
     region: z.string().optional(),

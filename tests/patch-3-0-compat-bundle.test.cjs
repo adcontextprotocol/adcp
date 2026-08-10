@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const yaml = require('js-yaml');
 
 const repoRoot = path.resolve(__dirname, '..');
 const patchScript = path.join(repoRoot, 'scripts', 'patch-3-0-compat-bundle.cjs');
@@ -88,6 +89,77 @@ phases:
     execFileSync(process.execPath, [patchScript, dir], { cwd: repoRoot, encoding: 'utf8' });
     const output = fs.readFileSync(path.join(dir, 'universal', 'schema-validation.yaml'), 'utf8');
     assert.equal(output, input);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('3.0 compatibility patch adds missing controller sandbox assertions without weakening live probes', () => {
+  const dir = makeBundle('3.0.22', 'id: schema_validation\nphases: []\n');
+  const storyboardPath = path.join(dir, 'universal', 'deterministic-testing.yaml');
+  fs.writeFileSync(storyboardPath, `id: deterministic_testing
+phases:
+  - id: controller_validation
+    steps:
+      - id: missing_account
+        task: comply_test_controller
+        sample_request:
+          # Preserve this comment and numeric spelling exactly.
+          amount: 250.00
+          scenario: list_scenarios
+      - id: account_without_flag
+        task: comply_test_controller
+        sample_request:
+          account:
+            brand:
+              domain: example.com
+          scenario: force_account_status
+      - id: live_probe
+        task: comply_test_controller
+        sample_request:
+          account:
+            sandbox: false
+          scenario: force_creative_status
+      - id: null_account_probe
+        task: comply_test_controller
+        sample_request:
+          account: null
+          scenario: list_scenarios
+      - id: scalar_account_probe
+        task: comply_test_controller
+        sample_request:
+          account: invalid
+          scenario: list_scenarios
+      - id: array_account_probe
+        task: comply_test_controller
+        sample_request:
+          account: []
+          scenario: list_scenarios
+      - id: null_request_probe
+        task: comply_test_controller
+        sample_request: null
+      - id: unrelated
+        task: get_products
+        sample_request: {}
+`, 'utf8');
+
+  try {
+    execFileSync(process.execPath, [patchScript, dir], { cwd: repoRoot, encoding: 'utf8' });
+    const rawOutput = fs.readFileSync(storyboardPath, 'utf8');
+    const output = yaml.load(rawOutput);
+    const steps = output.phases[0].steps;
+    assert.equal(steps[0].sample_request.account.sandbox, true);
+    assert.equal(steps[1].sample_request.account.sandbox, true);
+    assert.equal(steps[1].sample_request.account.brand.domain, 'example.com');
+    assert.equal(steps[2].sample_request.account.sandbox, false);
+    assert.equal(steps[3].sample_request.account, null);
+    assert.equal(steps[4].sample_request.account, 'invalid');
+    assert.deepEqual(steps[5].sample_request.account, []);
+    assert.equal(steps[6].sample_request, null);
+    assert.deepEqual(steps[7].sample_request, {});
+    assert.match(rawOutput, /          # Preserve this comment and numeric spelling exactly\.\n          amount: 250\.00\n/);
+    assert.match(rawOutput, /        sample_request:\n          account:\n            sandbox: true\n          # Preserve this comment/);
+    assert.match(rawOutput, /          account:\n            sandbox: true\n            brand:\n/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

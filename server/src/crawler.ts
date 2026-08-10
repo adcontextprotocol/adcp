@@ -52,6 +52,7 @@ const PUBLISHER_CRAWL_HEARTBEAT_MS = 30_000;
 const PUBLISHER_CRAWL_DEFER_MS = 30_000;
 const PUBLISHER_CRAWL_RETENTION_MS = 30 * 24 * 60 * 60_000;
 const CRAWL_EXECUTION_LOCK_OPERATION_TIMEOUT_MS = 10_000;
+const FULL_CRAWL_INTENT_LOCK_WAIT_MS = 10_000;
 
 export type SingleDomainCrawlOutcome = 'completed' | 'invalid';
 
@@ -151,7 +152,12 @@ export class CrawlerService {
   private lastCrawl: Date | null = null;
   private lastResult: CrawlResult | null = null;
   private intervalId: NodeJS.Timeout | null = null;
+  private initialCrawlTimeoutId: NodeJS.Timeout | null = null;
   private fullCrawlLockRetryTimer: NodeJS.Timeout | null = null;
+  private fullCrawlIntentLock: CrawlExecutionLock | null = null;
+  private fullCrawlIntentLockAcquisition: Promise<CrawlExecutionLock | null> | null = null;
+  private fullCrawlCoordinationInProgress: boolean = false;
+  private crawlerSchedulersStopping: boolean = false;
   private federatedIndex: FederatedIndexService;
   private adAgentsManager: AdAgentsManager;
   private brandManager: BrandManager;
@@ -203,7 +209,9 @@ export class CrawlerService {
       ? this.crawlLockClientFactory()
       : getDedicatedClient());
     const globalKey = 'registry:crawl-execution';
+    const intentKey = 'registry:crawl-intent';
     const publisherKey = domain ? `registry:publisher:${canonicalizePublisherDomain(domain)}` : null;
+    let sharedIntentAcquired = false;
     let lockConnectionValid = true;
     let keepaliveInFlight = false;
     const onConnectionError = (error: Error) => {
@@ -246,6 +254,22 @@ export class CrawlerService {
     };
     client.on('error', onConnectionError);
     try {
+      // A publisher holds the shared intent lock only for its execution-lock
+      // admission handshake. Once a full crawl has queued for the exclusive
+      // intent lock, PostgreSQL prevents later publishers from bypassing it.
+      if (domain) {
+        const intent = await runBounded(() => client.query<{ acquired: boolean }>(
+          'SELECT pg_try_advisory_lock_shared(hashtextextended($1, 0)) AS acquired',
+          [intentKey],
+        ), 'shared intent lock acquisition');
+        if (!intent.rows[0]?.acquired) {
+          client.off('error', onConnectionError);
+          await closeClient();
+          return null;
+        }
+        sharedIntentAcquired = true;
+      }
+
       if (!domain && waitMs > 0) {
         await runBounded(() => client.query("SELECT set_config('lock_timeout', $1, false)", [
           `${Math.max(1, Math.min(waitMs, 300_000))}ms`,
@@ -265,6 +289,12 @@ export class CrawlerService {
             [globalKey],
           ), 'global lock acquisition');
       if (!global.rows[0]?.acquired) {
+        if (sharedIntentAcquired) {
+          await runBounded(
+            () => client.query('SELECT pg_advisory_unlock_shared(hashtextextended($1, 0))', [intentKey]),
+            'shared intent lock release after contention',
+          );
+        }
         client.off('error', onConnectionError);
         await closeClient();
         return null;
@@ -280,10 +310,23 @@ export class CrawlerService {
             () => client.query('SELECT pg_advisory_unlock_shared(hashtextextended($1, 0))', [globalKey]),
             'global lock release after contention',
           );
+          if (sharedIntentAcquired) {
+            await runBounded(
+              () => client.query('SELECT pg_advisory_unlock_shared(hashtextextended($1, 0))', [intentKey]),
+              'shared intent lock release after publisher contention',
+            );
+          }
           client.off('error', onConnectionError);
           await closeClient();
           return null;
         }
+      }
+
+      if (sharedIntentAcquired) {
+        await runBounded(
+          () => client.query('SELECT pg_advisory_unlock_shared(hashtextextended($1, 0))', [intentKey]),
+          'shared intent lock release after admission',
+        );
       }
 
       let released = false;
@@ -339,6 +382,160 @@ export class CrawlerService {
   }
 
   /**
+   * Announce a pending full crawl across worker instances before waiting for
+   * active publisher crawls. This lock deliberately survives execution-lock
+   * timeouts and retry gaps; session loss releases it automatically.
+   */
+  private async tryAcquireFullCrawlIntentLock(): Promise<CrawlExecutionLock | null> {
+    const client: Client = await (this.crawlLockClientFactory
+      ? this.crawlLockClientFactory()
+      : getDedicatedClient());
+    const intentKey = 'registry:crawl-intent';
+    let connectionValid = true;
+    let keepaliveInFlight = false;
+    let acquired = false;
+    const destroyConnection = (): void => {
+      if (!client.connection.stream.destroyed) client.connection.stream.destroy();
+    };
+    const onConnectionError = (error: Error) => {
+      if (!connectionValid) return;
+      connectionValid = false;
+      log.error({ error }, 'Full crawl intent lock connection failed; ownership lost');
+    };
+    const runBounded = async <T>(
+      operation: () => Promise<T>,
+      label: string,
+      timeoutMs: number = CRAWL_EXECUTION_LOCK_OPERATION_TIMEOUT_MS,
+    ): Promise<T> => {
+      let timeout: NodeJS.Timeout | undefined;
+      const deadline = new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          const error = Object.assign(
+            new Error(`Full crawl intent lock ${label} exceeded ${timeoutMs}ms`),
+            { code: 'crawl_intent_lock_operation_timeout' },
+          );
+          onConnectionError(error);
+          destroyConnection();
+          reject(error);
+        }, timeoutMs);
+      });
+      try {
+        return await Promise.race([operation(), deadline]);
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
+    };
+    const closeClient = async (): Promise<void> => {
+      try {
+        await runBounded(() => client.end(), 'connection close');
+      } catch {
+        destroyConnection();
+      }
+    };
+
+    client.on('error', onConnectionError);
+    try {
+      await runBounded(() => client.query("SELECT set_config('lock_timeout', $1, false)", [
+        `${FULL_CRAWL_INTENT_LOCK_WAIT_MS}ms`,
+      ]), 'lock timeout setup');
+      await runBounded(
+        () => client.query('SELECT pg_advisory_lock(hashtextextended($1, 0))', [intentKey]),
+        'acquisition',
+        FULL_CRAWL_INTENT_LOCK_WAIT_MS + CRAWL_EXECUTION_LOCK_OPERATION_TIMEOUT_MS,
+      );
+      acquired = true;
+      await runBounded(() => client.query('RESET lock_timeout'), 'lock timeout reset');
+
+      let released = false;
+      const keepalive = setInterval(() => {
+        if (keepaliveInFlight || !connectionValid) return;
+        keepaliveInFlight = true;
+        runBounded(() => client.query('SELECT 1'), 'keepalive')
+          .catch((error) => onConnectionError(
+            error instanceof Error ? error : new Error('Intent lock keepalive failed'),
+          ))
+          .finally(() => { keepaliveInFlight = false; });
+      }, 15_000);
+      keepalive.unref();
+
+      return {
+        isValid: () => connectionValid,
+        release: async () => {
+          if (released) return;
+          released = true;
+          clearInterval(keepalive);
+          try {
+            if (connectionValid) {
+              await runBounded(
+                () => client.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [intentKey]),
+                'release',
+              );
+            }
+          } catch (error) {
+            log.error({ error }, 'Failed to release full crawl intent lock; connection discarded');
+          } finally {
+            client.off('error', onConnectionError);
+            await closeClient();
+          }
+        },
+      };
+    } catch (error) {
+      client.off('error', onConnectionError);
+      await closeClient();
+      if (!acquired && error && typeof error === 'object' && 'code' in error && error.code === '55P03') {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  private async ensureFullCrawlIntentLock(): Promise<boolean> {
+    if (this.fullCrawlIntentLock?.isValid()) return true;
+    if (this.fullCrawlIntentLock) {
+      await this.fullCrawlIntentLock.release();
+      this.fullCrawlIntentLock = null;
+    }
+    if (!this.fullCrawlIntentLockAcquisition) {
+      this.fullCrawlIntentLockAcquisition = (async () => {
+        const lock = await this.tryAcquireFullCrawlIntentLock();
+        if (!lock) return null;
+        if (this.crawlerSchedulersStopping) {
+          await lock.release();
+          return null;
+        }
+        this.fullCrawlIntentLock = lock;
+        return lock;
+      })();
+    }
+    const acquisition = this.fullCrawlIntentLockAcquisition;
+    try {
+      return (await acquisition) !== null;
+    } finally {
+      if (this.fullCrawlIntentLockAcquisition === acquisition) {
+        this.fullCrawlIntentLockAcquisition = null;
+      }
+    }
+  }
+
+  private async releaseFullCrawlIntentLock(): Promise<void> {
+    const lock = this.fullCrawlIntentLock;
+    this.fullCrawlIntentLock = null;
+    await lock?.release();
+  }
+
+  private scheduleFullCrawlLockRetry(agents: Agent[], reason: string): void {
+    if (this.fullCrawlLockRetryTimer || this.crawlerSchedulersStopping) return;
+    log.warn({ reason }, 'Full crawl coordination unavailable; retrying shortly');
+    this.fullCrawlLockRetryTimer = setTimeout(() => {
+      this.fullCrawlLockRetryTimer = null;
+      this.crawlAllAgents(agents).catch((err) => {
+        log.error({ err, reason }, 'Full crawl coordination retry failed');
+      });
+    }, 30_000);
+    this.fullCrawlLockRetryTimer.unref();
+  }
+
+  /**
    * Resolve any saved owner auth for an agent URL so probes don't get 401'd
    * by agents that gate discovery/health behind authentication. Returns
    * `undefined` when no org has registered credentials for the URL, which
@@ -359,38 +556,52 @@ export class CrawlerService {
   }
 
   async crawlAllAgents(agents: Agent[]): Promise<CrawlResult> {
-    if (this.crawling) {
+    if (this.crawlerSchedulersStopping) {
+      log.debug('Crawler schedulers are stopping; skipping full crawl');
+      return this.lastResult || this.emptyResult();
+    }
+    if (this.crawling || this.fullCrawlCoordinationInProgress) {
       log.debug('Crawl already in progress, skipping');
       return this.lastResult || this.emptyResult();
     }
 
-    const executionLock = this.coordinateCrawlsAcrossInstances
-      ? await this.tryAcquireCrawlExecutionLock(undefined, PUBLISHER_CRAWL_LEASE_MS)
-      : null;
-    if (this.coordinateCrawlsAcrossInstances && !executionLock) {
-      log.warn('Another crawl owns the global execution lock; retrying full crawl shortly');
-      if (!this.fullCrawlLockRetryTimer) {
-        this.fullCrawlLockRetryTimer = setTimeout(() => {
-          this.fullCrawlLockRetryTimer = null;
-          this.crawlAllAgents(agents).catch((err) => {
-            log.error({ err }, 'Full crawl execution-lock retry failed');
-          });
-        }, 30_000);
-        this.fullCrawlLockRetryTimer.unref();
-      }
-      return this.lastResult || this.emptyResult();
-    }
-    if (this.fullCrawlLockRetryTimer) {
-      clearTimeout(this.fullCrawlLockRetryTimer);
-      this.fullCrawlLockRetryTimer = null;
-    }
+    this.fullCrawlCoordinationInProgress = true;
+    let executionLock: CrawlExecutionLock | null = null;
+    let retainIntentForRetry = false;
+    let coordinating = true;
     const assertExecutionLock = (): void => {
       if (executionLock && !executionLock.isValid()) throw new CrawlExecutionLockLostError();
+      if (this.fullCrawlIntentLock && !this.fullCrawlIntentLock.isValid()) {
+        throw new CrawlExecutionLockLostError();
+      }
     };
 
-    this.crawling = true;
-
     try {
+      if (this.coordinateCrawlsAcrossInstances) {
+        const hasIntent = await this.ensureFullCrawlIntentLock();
+        if (!hasIntent) {
+          this.scheduleFullCrawlLockRetry(agents, 'intent_lock_contended');
+          return this.lastResult || this.emptyResult();
+        }
+        if (this.crawlerSchedulersStopping) return this.lastResult || this.emptyResult();
+        executionLock = await this.tryAcquireCrawlExecutionLock(undefined, PUBLISHER_CRAWL_LEASE_MS);
+        if (!executionLock) {
+          this.scheduleFullCrawlLockRetry(agents, 'execution_lock_contended');
+          retainIntentForRetry = !this.crawlerSchedulersStopping
+            && this.fullCrawlLockRetryTimer !== null
+            && (this.fullCrawlIntentLock?.isValid() ?? false);
+          return this.lastResult || this.emptyResult();
+        }
+        if (this.crawlerSchedulersStopping) return this.lastResult || this.emptyResult();
+        assertExecutionLock();
+      }
+      if (this.fullCrawlLockRetryTimer) {
+        clearTimeout(this.fullCrawlLockRetryTimer);
+        this.fullCrawlLockRetryTimer = null;
+      }
+
+      this.crawling = true;
+      coordinating = false;
 
     // Filter out agents whose owners have paused monitoring
     const pausedUrls = await this.getPausedAgentUrls();
@@ -530,37 +741,65 @@ export class CrawlerService {
       return result;
     } catch (error) {
       log.error({ err: error }, 'Crawl failed');
-      if (error instanceof CrawlExecutionLockLostError && !this.fullCrawlLockRetryTimer) {
-        this.fullCrawlLockRetryTimer = setTimeout(() => {
-          this.fullCrawlLockRetryTimer = null;
-          this.crawlAllAgents(agents).catch((err) => {
-            log.error({ err }, 'Full crawl lock-loss retry failed');
-          });
-        }, 30_000);
-        this.fullCrawlLockRetryTimer.unref();
+      if (error instanceof CrawlExecutionLockLostError || coordinating) {
+        this.scheduleFullCrawlLockRetry(
+          agents,
+          error instanceof CrawlExecutionLockLostError
+            ? 'execution_lock_lost'
+            : 'coordination_error',
+        );
+        retainIntentForRetry = !this.crawlerSchedulersStopping
+          && this.fullCrawlLockRetryTimer !== null
+          && (this.fullCrawlIntentLock?.isValid() ?? false);
       }
       throw error;
     } finally {
       this.crawling = false;
-      await executionLock?.release();
+      try {
+        await executionLock?.release();
+      } finally {
+        try {
+          if (!retainIntentForRetry) await this.releaseFullCrawlIntentLock();
+        } finally {
+          this.fullCrawlCoordinationInProgress = false;
+        }
+      }
     }
   }
 
-  startPeriodicCrawl(getAgents: () => Promise<Agent[]>, intervalMinutes: number = 60) {
+  startPeriodicCrawl(
+    getAgents: () => Promise<Agent[]>,
+    intervalMinutes: number = 60,
+    initialDelaySeconds: number = 0,
+  ) {
+    this.crawlerSchedulersStopping = false;
     const run = () =>
       getAgents()
         .then(agents => this.crawlAllAgents(agents))
         .catch(err => log.error({ err }, 'Periodic crawl failed'));
 
-    run();
+    if (initialDelaySeconds > 0) {
+      this.initialCrawlTimeoutId = setTimeout(() => {
+        this.initialCrawlTimeoutId = null;
+        run();
+      }, initialDelaySeconds * 1_000);
+      this.initialCrawlTimeoutId.unref();
+    } else {
+      run();
+    }
     this.intervalId = setInterval(run, intervalMinutes * 60 * 1000);
     // Background loop; never block process (or a vitest worker) exit.
     this.intervalId?.unref();
 
-    log.info({ intervalMinutes }, 'Periodic crawl started');
+    log.info({ intervalMinutes, initialDelaySeconds }, 'Periodic crawl started');
   }
 
   stopPeriodicCrawl() {
+    this.crawlerSchedulersStopping = true;
+    if (this.initialCrawlTimeoutId) {
+      clearTimeout(this.initialCrawlTimeoutId);
+      this.initialCrawlTimeoutId = null;
+    }
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
@@ -2481,10 +2720,10 @@ export class CrawlerService {
   private publisherCrawlLastRetentionAt = 0;
   private publisherCrawlLastHealthLogAt = 0;
 
-  startPeriodicPublisherCrawlRequests(intervalSeconds: number = 5): void {
+  startPeriodicPublisherCrawlRequests(intervalSeconds: number = 5): boolean {
     if (!isPublisherCrawlQueueEnabled()) {
       log.info('Durable publisher crawl request queue disabled by rollout gate');
-      return;
+      return false;
     }
     const run = () => {
       this.processPublisherCrawlRequestQueue().catch((err) => {
@@ -2495,6 +2734,14 @@ export class CrawlerService {
     this.publisherCrawlQueueIntervalId = setInterval(run, intervalSeconds * 1_000);
     this.publisherCrawlQueueIntervalId.unref();
     log.info({ intervalSeconds }, 'Durable publisher crawl request queue started');
+    return true;
+  }
+
+  stopPeriodicPublisherCrawlRequests(): void {
+    if (this.publisherCrawlQueueIntervalId) {
+      clearInterval(this.publisherCrawlQueueIntervalId);
+      this.publisherCrawlQueueIntervalId = null;
+    }
   }
 
   async processPublisherCrawlRequestQueue(): Promise<{
@@ -2515,7 +2762,12 @@ export class CrawlerService {
       deferred: 0,
       lostLease: 0,
     };
-    if (this.publisherCrawlQueueProcessing || this.crawling) return stats;
+    // Claim even while an in-process full crawl is active. crawlSingleDomain()
+    // will take the existing contention path and persist the request as
+    // deferred without consuming an attempt. Returning here instead leaves
+    // accepted work invisibly queued for the entire full crawl and, if that
+    // crawl wedges, forever.
+    if (this.publisherCrawlQueueProcessing) return stats;
 
     this.publisherCrawlQueueProcessing = true;
     try {
@@ -2760,6 +3012,13 @@ export class CrawlerService {
     log.info({ intervalMinutes }, 'Periodic catalog domain crawl started');
   }
 
+  stopPeriodicCatalogCrawl(): void {
+    if (this.catalogCrawlIntervalId) {
+      clearInterval(this.catalogCrawlIntervalId);
+      this.catalogCrawlIntervalId = null;
+    }
+  }
+
   async crawlCatalogDomains(): Promise<{ checked: number; found: number }> {
     if (this.catalogCrawling || this.crawling) {
       log.debug('Crawl already in progress, skipping catalog crawl');
@@ -2883,6 +3142,13 @@ export class CrawlerService {
     log.info({ intervalMinutes }, 'Periodic manager revalidation queue started');
   }
 
+  stopPeriodicManagerRevalidation(): void {
+    if (this.managerRevalidationIntervalId) {
+      clearInterval(this.managerRevalidationIntervalId);
+      this.managerRevalidationIntervalId = null;
+    }
+  }
+
   async processManagerRevalidationQueue(): Promise<{ processed: number; succeeded: number; failed: number }> {
     if (this.managerRevalidationProcessing) {
       log.debug('Manager revalidation already in progress, skipping tick');
@@ -2984,6 +3250,18 @@ export class CrawlerService {
       clearInterval(this.hostedReverifyIntervalId);
       this.hostedReverifyIntervalId = null;
     }
+  }
+
+  async stopPeriodicCrawlers(): Promise<void> {
+    this.stopPeriodicPublisherCrawlRequests();
+    this.stopPeriodicCrawl();
+    this.stopPeriodicCatalogCrawl();
+    this.stopPeriodicManagerRevalidation();
+    this.stopPeriodicHostedOriginReverification();
+    // Intent acquisition has a bounded deadline. Wait for it to settle so a
+    // late continuation cannot recreate a lock session after database drain.
+    await this.fullCrawlIntentLockAcquisition?.catch(() => null);
+    await this.releaseFullCrawlIntentLock();
   }
 
   async processHostedOriginReverification(): Promise<{ processed: number; lapsed: number }> {

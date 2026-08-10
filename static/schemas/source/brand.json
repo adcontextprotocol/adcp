@@ -381,8 +381,7 @@
       "description": "A digital property associated with a brand. Defaults to owned; use 'relationship' to declare direct, delegated, or ad_network properties. For delegated and network paths, these values match the delegation_type field in adagents.json, creating a bilateral verification chain: the operator declares the relationship here, the publisher confirms by setting the same delegation_type on the agent's authorization in their adagents.json. 'owned' is an inline ownership declaration with no adagents.json counterpart.",
       "properties": {
         "type": {
-          "type": "string",
-          "enum": ["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "streaming_audio"],
+          "$ref": "/schemas/enums/property-type.json",
           "description": "Property type"
         },
         "identifier": {

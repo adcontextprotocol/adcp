@@ -530,6 +530,40 @@ function isRunnerApplicabilitySkip(step: {
   }
 }
 
+type SkipEvidenceStep = {
+  skip_reason?: string;
+  details?: unknown;
+  error?: unknown;
+  warnings?: unknown;
+  skip?: { detail?: unknown };
+};
+
+const NO_SKIP_REASONS: ReadonlySet<string> = new Set();
+
+function prerequisiteCascadeSource(step: SkipEvidenceStep): { reason: string } | null {
+  if (step.skip_reason !== 'prerequisite_failed') return null;
+  const warning = Array.isArray(step.warnings)
+    ? step.warnings.find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : undefined;
+  const detail = firstString(step.skip?.detail, step.error, step.details, warning);
+  const match = detail?.match(/prior stateful step "([^"]+)" skipped \(([^)]+)\)/);
+  return match ? { reason: match[2] } : null;
+}
+
+function isApplicabilityCascade(
+  step: SkipEvidenceStep,
+  applicabilityReasons: ReadonlySet<string>,
+  nonApplicabilityReasons: ReadonlySet<string> = new Set(),
+): boolean {
+  const source = prerequisiteCascadeSource(step);
+  if (!source) return false;
+  // A controller absence is always runner-owned applicability, including
+  // cross-phase cascades where the originating step is not in this slice.
+  return source.reason === 'missing_test_controller' || (
+    applicabilityReasons.has(source.reason) && !nonApplicabilityReasons.has(source.reason)
+  );
+}
+
 export function isNonExecutableCoverageGapScenario(scenario: {
   scenario?: unknown;
   steps?: Array<{
@@ -538,6 +572,10 @@ export function isNonExecutableCoverageGapScenario(scenario: {
     skip_reason?: string;
     step_id?: unknown;
     requirement?: unknown;
+    details?: unknown;
+    error?: unknown;
+    warnings?: unknown;
+    skip?: { detail?: unknown };
   }>;
 }): boolean {
   const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
@@ -548,12 +586,20 @@ export function isNonExecutableCoverageGapScenario(scenario: {
   )) return true;
   return steps.length > 0 && steps.every((step) => {
     if (!step?.skipped) return false;
-    return step.skip_reason === 'peer_branch_taken' ||
+    const isApplicabilitySkip = step.skip_reason === 'peer_branch_taken' ||
       step.skip_reason === 'peer_substituted' ||
       step.skip_reason === 'missing_test_controller' ||
       step.skip_reason === 'fixture_unavailable' ||
       (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller') ||
+      isExplicitRequiresToolMissingSkip(step) ||
       isRunnerApplicabilitySkip(step, scenarioId);
+    if (isApplicabilitySkip) {
+      return true;
+    }
+    // This UI helper receives one phase without prior-phase provenance.
+    // Only controller absence is intrinsically safe to classify as N/A;
+    // other same-reason cascades stay visible as executable coverage gaps.
+    return isApplicabilityCascade(step, NO_SKIP_REASONS);
   });
 }
 
@@ -798,7 +844,8 @@ export function deriveStoryboardStatuses(
         }
         continue;
       }
-      let phaseSawNeutralApplicabilitySkip = false;
+      const phaseApplicabilityReasons = new Set<string>();
+      const phaseNonApplicabilityReasons = new Set<string>();
       for (const step of s.steps) {
         if (step.skipped) {
           if (step.skip_reason === 'fixture_unavailable') {
@@ -809,14 +856,18 @@ export function deriveStoryboardStatuses(
           }
           if (isControllerSkip(step)) {
             agg.controllerSkipped++;
+            phaseApplicabilityReasons.add('missing_test_controller');
             continue;
           }
           if (isNeutralApplicabilitySkip(step, String(s.scenario))) {
-            phaseSawNeutralApplicabilitySkip = true;
+            if (step.skip_reason) phaseApplicabilityReasons.add(step.skip_reason);
             continue;
           }
-          if (phaseSawNeutralApplicabilitySkip && isCascadeSkip(step)) {
+          if (isApplicabilityCascade(step, phaseApplicabilityReasons, phaseNonApplicabilityReasons)) {
             continue;
+          }
+          if (step.skip_reason !== 'prerequisite_failed' && step.skip_reason) {
+            phaseNonApplicabilityReasons.add(step.skip_reason);
           }
           if (isCascadeSkip(step)) {
             agg.skippedCount++;

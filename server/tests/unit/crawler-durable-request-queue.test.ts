@@ -98,8 +98,9 @@ describe('CrawlerService durable publisher request worker', () => {
     );
   });
 
-  it('defers full-crawl contention without marking a failure', async () => {
+  it('claims and records deferred work while an in-process full crawl is active', async () => {
     const { ctx, crawlRequestsDb } = await makeContext();
+    ctx.crawling = true;
     ctx.crawlSingleDomain.mockRejectedValue(Object.assign(new Error('full crawl'), {
       code: 'crawl_deferred',
     }));
@@ -107,6 +108,7 @@ describe('CrawlerService durable publisher request worker', () => {
     const result = await ctx.processPublisherCrawlRequestQueue();
 
     expect(result.deferred).toBe(1);
+    expect(crawlRequestsDb.claimDue).toHaveBeenCalledOnce();
     expect(crawlRequestsDb.markDeferred).toHaveBeenCalledOnce();
     expect(crawlRequestsDb.markFailedAttempt).not.toHaveBeenCalled();
   });

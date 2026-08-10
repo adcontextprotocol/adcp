@@ -568,7 +568,7 @@
     }
 
     function agentToolCount(agent) {
-        return Number(agent?.health?.tools_count ?? agent?.capabilities?.tools_count) || 0;
+        return Number(agent?.capabilities?.tools_count ?? agent?.health?.tools_count) || 0;
     }
 
     window.addEventListener('DOMContentLoaded', async () => {
@@ -980,7 +980,7 @@
                                 <div class="compliance-badge__title">${hasCoreTools ? 'AdCP sales agent' : 'Incomplete implementation'}</div>
                                 <div class="compliance-badge__subtitle">
                                     ${capLabels.length > 0 ? capLabels.join(' &middot; ') : 'Implements ' + coreImplemented.length + ' tools'}
-                                    &middot; ${coreImplemented.length + optionalImplemented.length} tools
+                                    &middot; ${agentToolCount(agentWithCaps)} tools
                                 </div>
                             </div>
                         </div>

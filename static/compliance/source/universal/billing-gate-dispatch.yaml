@@ -67,9 +67,10 @@ narrative: |
     field unset).
 
   - **`per_agent_gate_reject`** runs only when the test kit declares
-    `commercial_relationship: "passthrough_only"`. The runner submits
-    `billing: "agent"` (a value `supported_billing` accepts but the
-    per-agent record does not), and asserts
+    `commercial_relationship: "passthrough_only"` AND the seller's
+    `supported_billing` capability includes `"agent"`. The runner submits
+    `billing: "agent"` (a value the capability accepts but the per-agent
+    record does not), and asserts
     `BILLING_NOT_PERMITTED_FOR_AGENT` with the clamped
     `error.details` shape. The seller's `suggested_billing` value is
     captured into context for the recover phase.
@@ -119,9 +120,11 @@ prerequisites:
 
       commercial_relationship — (optional) declares whether the calling
         buyer agent is registered with the seller as passthrough-only.
-        When set to "passthrough_only", per_agent_gate_reject and
-        per_agent_gate_recover run. When unset or set to anything else,
-        both per-agent phases grade `not_applicable`.
+        When set to "passthrough_only" AND the seller advertises `"agent"`
+        in `account.supported_billing`, per_agent_gate_reject and
+        per_agent_gate_recover run. Sellers that do not offer agent billing
+        grade both phases `not_applicable`; they have no per-agent billing
+        permission boundary to exercise.
 
     Establishing the commercial relationship is offline — the
     seller-under-test records the test caller's commercial state in its
@@ -258,16 +261,22 @@ phases:
   - id: per_agent_gate_reject
     title: "Per-agent gate — BILLING_NOT_PERMITTED_FOR_AGENT (reject)"
     optional: true
+    requires_capability:
+      path: "account.supported_billing"
+      contains: "agent"
     skip_if: "test_kit.commercial_relationship != 'passthrough_only'"
     narrative: |
       The test kit declares the calling buyer agent is registered with
-      the seller as passthrough-only. The runner submits `billing:
-      "agent"` (which `supported_billing` accepts but the per-agent
-      record does not) and asserts the per-buyer-agent gate fires with
-      the clamped `error.details` shape. The seller's `suggested_billing`
-      value is captured into context for the recover phase, which
-      submits a new request (with a fresh idempotency_key) using the
-      suggested value.
+      the seller as passthrough-only, and the seller advertises `"agent"`
+      in `account.supported_billing`. The runner submits `billing: "agent"`
+      (which the capability accepts but the per-agent record does not) and
+      asserts the per-buyer-agent gate fires with the clamped
+      `error.details` shape. Sellers that do not offer agent billing skip
+      this phase as `not_applicable`: their rejection belongs to the
+      seller-wide `BILLING_NOT_SUPPORTED` capability gate instead. The
+      seller's `suggested_billing` value is captured into context for the
+      recover phase, which submits a new request (with a fresh
+      idempotency_key) using the suggested value.
 
     steps:
       - id: sync_accounts_passthrough_rejects_agent
@@ -360,6 +369,9 @@ phases:
   - id: per_agent_gate_recover
     title: "Per-agent gate — autonomous recovery via suggested_billing"
     optional: true
+    requires_capability:
+      path: "account.supported_billing"
+      contains: "agent"
     skip_if: "test_kit.commercial_relationship != 'passthrough_only'"
     narrative: |
       The runner submits a new request with the `billing` value the

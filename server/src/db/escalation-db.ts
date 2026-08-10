@@ -4,6 +4,7 @@
  */
 
 import { query } from './client.js';
+import type { PoolClient } from 'pg';
 import { createLogger } from '../logger.js';
 import { redactSupportSecrets } from '../services/support-redaction.js';
 
@@ -252,19 +253,21 @@ async function readOpenEscalationByDedupKey(dedupKey: string): Promise<Escalatio
 export async function resolveEscalationsForPerspective(
   perspectiveId: string,
   resolvedBy: string,
-  notes: string
+  notes: string,
+  client?: Pick<PoolClient, 'query'>
 ): Promise<number[]> {
-  const result = await query<{ id: number }>(
-    `UPDATE addie_escalations
-     SET status = 'resolved',
-         resolved_by = $2,
-         resolved_at = NOW(),
-         resolution_notes = $3,
-         updated_at = NOW()
-     WHERE perspective_id = $1 AND status = 'open'
-     RETURNING id`,
-    [perspectiveId, resolvedBy, notes]
-  );
+  const sql = `UPDATE addie_escalations
+               SET status = 'resolved',
+                   resolved_by = $2,
+                   resolved_at = NOW(),
+                   resolution_notes = $3,
+                   updated_at = NOW()
+               WHERE perspective_id = $1 AND status = 'open'
+               RETURNING id`;
+  const params = [perspectiveId, resolvedBy, notes];
+  const result = client
+    ? await client.query<{ id: number }>(sql, params)
+    : await query<{ id: number }>(sql, params);
   return result.rows.map(r => r.id);
 }
 

@@ -1204,8 +1204,9 @@ describe('training agent idempotency middleware', () => {
 
     it('caches advisory-success results and echoes the current replay context', async () => {
       const ctx: TrainingContext = { mode: 'open', principal: 'test-principal' };
+      const sandboxAccount = { ...ACCOUNT, sandbox: true };
       const directive = await call(server, 'comply_test_controller', {
-        account: ACCOUNT,
+        account: sandboxAccount,
         scenario: 'force_upstream_unavailable',
         params: { tool: 'get_products', upstream_name: 'catalog-test' },
       });
@@ -1215,13 +1216,13 @@ describe('training agent idempotency middleware', () => {
       const first = await executeTrainingAgentTool('get_products', {
         idempotency_key: key,
         buying_mode: 'wholesale',
-        account: ACCOUNT,
+        account: sandboxAccount,
         context: { correlation_id: 'advisory-first' },
       }, ctx);
       const replay = await executeTrainingAgentTool('get_products', {
         idempotency_key: key,
         buying_mode: 'wholesale',
-        account: ACCOUNT,
+        account: sandboxAccount,
         context: { correlation_id: 'advisory-retry' },
       }, ctx);
       expect(first.success).toBe(true);

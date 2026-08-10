@@ -369,6 +369,69 @@ async function runTests() {
     return true;
   });
 
+  await test('brand property schemas accept every canonical property type', async () => {
+    const compile = async relativePath => {
+      const testAjv = new Ajv({
+        allErrors: true,
+        verbose: true,
+        strict: false,
+        discriminator: true,
+        loadSchema: loadExternalSchema
+      });
+      addFormats(testAjv);
+      return testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, relativePath)));
+    };
+
+    const validators = [
+      {
+        name: 'brand.json',
+        validate: await compile('brand.json'),
+        document: propertyType => ({
+          id: 'canonical_property_types',
+          names: [{ en: 'Canonical property types' }],
+          properties: [{ type: propertyType, identifier: 'property-id' }]
+        })
+      },
+      {
+        name: 'verify-brand-claim-request.json',
+        validate: await compile('brand/verify-brand-claim-request.json'),
+        document: propertyType => ({
+          claim_type: 'property',
+          claim: { property: { type: propertyType, identifier: 'property-id' } }
+        })
+      },
+      {
+        name: 'verify-brand-claims-request.json',
+        validate: await compile('brand/verify-brand-claims-request.json'),
+        document: propertyType => ({
+          claims: [{
+            claim_type: 'property',
+            claim: { property: { type: propertyType, identifier: 'property-id' } }
+          }]
+        })
+      }
+    ];
+
+    const canonicalPropertyTypes = loadSchema(
+      path.join(SCHEMA_BASE_DIR, 'enums/property-type.json')
+    ).enum;
+    for (const { name, validate, document } of validators) {
+      for (const propertyType of canonicalPropertyTypes) {
+        if (!validate(document(propertyType))) {
+          const errors = validate.errors
+            .map(error => `${error.instancePath} ${error.message}`)
+            .join('; ');
+          return `${name} rejected canonical property type ${propertyType}: ${errors}`;
+        }
+      }
+      if (validate(document('not_a_property_type'))) {
+        return `${name} accepted a non-canonical property type`;
+      }
+    }
+
+    return true;
+  });
+
   // Test 4B: Validate brand.json verifier ambiguity invariant
   await test('brand.json duplicate agent urls are verifier-ambiguous', () => {
     const manifest = {

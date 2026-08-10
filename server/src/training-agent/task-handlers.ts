@@ -1677,7 +1677,7 @@ import {
   ACCOUNT_TOOLS,
   SUPPORTED_BILLINGS,
   handleListAccounts,
-  sandboxBrandDomainForAccountId,
+  sandboxAccountRefForId,
   resolveAccountIdForRef,
   resolveGovernanceAgentsForAccount,
   handleSyncAccounts,
@@ -2363,44 +2363,38 @@ function controllerFixtureSessionKey(
       );
     }
   }
-  const fixtureAccount = ctx.resolvedAccount ?? args.account ?? (
+  const requestedAccount = args.account ?? ctx.resolvedAccount ?? (
     ctx.requestInput?.account && typeof ctx.requestInput.account === 'object'
       ? ctx.requestInput.account as ToolArgs['account']
       : undefined
   );
-  if (!fixtureAccount) return undefined;
-  let domain: string | undefined;
+  if (!requestedAccount) return undefined;
+  let fixtureAccount: ToolArgs['account'];
   try {
-    const account = canonicalizeAccountRef(fixtureAccount);
+    const account = canonicalizeAccountRef(requestedAccount);
     if (account.kind === 'natural') {
-      if (!account.sandbox) return undefined;
-      domain = account.brand.domain;
+      // Public/static training-agent traffic is itself a sandbox boundary, so
+      // ordinary task calls may omit the controller-only `sandbox: true`
+      // assertion while still reading fixtures seeded for the same complete
+      // natural identity. Authenticated non-static callers must resolve to an
+      // explicitly sandboxed account before any fixture projection occurs.
+      if (!account.sandbox && ctx.principal && !ctx.principal.startsWith('static:')) return undefined;
+      fixtureAccount = {
+        brand: account.brand,
+        operator: account.operator,
+        sandbox: true,
+      };
     } else {
-      domain = sandboxBrandDomainForAccountId(account.account_id, ctx.principal);
-      if (!domain) return undefined;
+      fixtureAccount = sandboxAccountRefForId(account.account_id, ctx.principal);
+      if (!fixtureAccount) return undefined;
     }
   } catch {
     return undefined;
   }
 
   return sessionKeyFromArgs({
-    account: {
-      brand: { domain },
-      operator: domain,
-      sandbox: true,
-    },
+    account: fixtureAccount,
   }, ctx.mode, ctx.userId, ctx.moduleId, controllerFixturePrincipal(ctx.principal));
-}
-
-function withUsageAccountScope<T extends Record<string, unknown>>(req: T): T {
-  if (req.account !== undefined) return req;
-  const usageAccount = Array.isArray(req.usage)
-    ? (req.usage[0] as { account?: unknown } | undefined)?.account
-    : undefined;
-  if (usageAccount && typeof usageAccount === 'object') {
-    return { ...req, account: usageAccount };
-  }
-  return req;
 }
 
 /** Clear the task store (for tests). Calls cleanup() to cancel TTL timers. */
@@ -7922,7 +7916,10 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
 
 export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & { media_buy_id?: string };
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(
+    sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+    controllerFixtureSessionKey(req, ctx),
+  );
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, { ...cp.product }]));
   overlaySeededProducts(session, productMap);
@@ -11029,8 +11026,6 @@ function pickBuyerNominatedVerifierUrl(provenance: Record<string, unknown> | und
 
 export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ReportUsageArgs;
-  const sessionScopeReq = withUsageAccountScope(req as unknown as Record<string, unknown>) as unknown as ToolArgs;
-  const session = await getSession(sessionKeyFromArgs(sessionScopeReq, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!req.reporting_period) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'reporting_period is required.', field: 'reporting_period' }] };
@@ -11040,8 +11035,32 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'At least one usage record is required.', field: 'usage' }] };
   }
 
-  if (session.usageRecords.length + req.usage.length > MAX_USAGE_RECORDS_PER_SESSION) {
-    return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Usage record limit (${MAX_USAGE_RECORDS_PER_SESSION}) would be exceeded.` }] };
+  // Each record is self-contained and a report may span accounts. Resolve
+  // state (including the exact principal-bound controller fixture projection)
+  // from the record's own account instead of letting usage[0] lend its media
+  // buys, creatives, signals, or seeded pricing to the rest of the batch.
+  const sessionPromises = new Map<string, Promise<import('./types.js').SessionState>>();
+  const usageSessions = await Promise.all(req.usage.map(record => {
+    const sessionArgs = { account: record.account } as unknown as ToolArgs;
+    const sessionKey = sessionKeyFromArgs(sessionArgs, ctx.mode, ctx.userId, ctx.moduleId);
+    let sessionPromise = sessionPromises.get(sessionKey);
+    if (!sessionPromise) {
+      sessionPromise = getSession(
+        sessionKey,
+        controllerFixtureSessionKey(sessionArgs, ctx),
+      );
+      sessionPromises.set(sessionKey, sessionPromise);
+    }
+    return sessionPromise;
+  }));
+  const incomingBySession = new Map<import('./types.js').SessionState, number>();
+  for (const session of usageSessions) {
+    incomingBySession.set(session, (incomingBySession.get(session) ?? 0) + 1);
+  }
+  if ([...incomingBySession].some(([session, incoming]) => (
+    session.usageRecords.length + incoming > MAX_USAGE_RECORDS_PER_SESSION
+  ))) {
+    return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Usage record limit (${MAX_USAGE_RECORDS_PER_SESSION}) would be exceeded for at least one account.` }] };
   }
 
   let accepted = 0;
@@ -11049,6 +11068,7 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
 
   for (let i = 0; i < req.usage.length; i++) {
     const record = req.usage[i];
+    const session = usageSessions[i];
 
     // Validate required fields
     if (record.vendor_cost === undefined || record.vendor_cost === null) {

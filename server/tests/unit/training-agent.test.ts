@@ -131,15 +131,14 @@ async function simulateListTools(
 }
 
 /**
- * Auto-inject a fresh UUID v4 `idempotency_key` on mutating tools when the
- * test doesn't provide one. The idempotency middleware requires the key per
- * #2315; most tests in this file predate that requirement and don't care
- * about replay semantics — they just want the tool to run once.
+ * Apply protocol defaults that this broad legacy test file does not need to
+ * repeat at every call site: an explicit sandbox assertion for controller
+ * calls and a fresh UUID v4 `idempotency_key` for mutating tools.
  *
  * Tests that DO care (conflict / replay / expired / missing-key coverage)
  * pass an explicit `idempotency_key`, which this helper preserves.
  */
-function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
+function withTestProtocolDefaults(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
   let normalizedArgs = args;
   if (toolName === 'check_governance' && typeof args.tool === 'string' && args.payload) {
     const rawPayload = args.payload as Record<string, unknown>;
@@ -160,6 +159,18 @@ function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Re
   if (toolName === 'validate_input' && args.adcp_version === undefined) {
     return { ...normalizedArgs, adcp_version: CURRENT_ADCP_VERSION };
   }
+  if (toolName === 'comply_test_controller') {
+    const account = normalizedArgs.account;
+    normalizedArgs = {
+      ...normalizedArgs,
+      account: account && typeof account === 'object' && !Array.isArray(account)
+        ? {
+            ...(account as Record<string, unknown>),
+            sandbox: (account as Record<string, unknown>).sandbox ?? true,
+          }
+        : { sandbox: true },
+    };
+  }
   if (!MUTATING_TOOLS.has(toolName)) return normalizedArgs;
   if (normalizedArgs.idempotency_key !== undefined) return normalizedArgs;
   return { ...normalizedArgs, idempotency_key: `test-${randomUUID()}` };
@@ -179,7 +190,7 @@ async function simulateCallTool(
     throw new Error('CallTool handler not found');
   }
   const response = await handler(
-    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args) } },
+    { method: 'tools/call', params: { name: toolName, arguments: withTestProtocolDefaults(toolName, args) } },
     {},
   );
   // Success responses carry the body on `structuredContent`; error / replay
@@ -215,7 +226,7 @@ async function simulateCallToolAsTask(
     throw new Error('CallTool handler not found');
   }
   return handler(
-    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args), task: taskParams } },
+    { method: 'tools/call', params: { name: toolName, arguments: withTestProtocolDefaults(toolName, args), task: taskParams } },
     {},
   );
 }
@@ -7254,17 +7265,21 @@ describe('report_usage handler', () => {
   const account = { brand: { domain: 'usage.example' }, operator: 'usage.example' };
   const period = { start: '2026-03-01T00:00:00Z', end: '2026-03-31T23:59:59Z' };
 
-  async function setupCreativeWithPricing(server: ReturnType<typeof createTrainingAgentServer>) {
+  async function setupCreativeWithPricing(
+    server: ReturnType<typeof createTrainingAgentServer>,
+    usageAccount = account,
+    creativeId = 'cr_usage',
+  ) {
     await simulateCallTool(server, 'sync_creatives', {
-      account,
+      account: usageAccount,
       creatives: [
-        { creative_id: 'cr_usage', format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' }, name: 'Usage Test' },
+        { creative_id: creativeId, format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' }, name: 'Usage Test' },
       ],
     });
     // Build to set pricingOptionId on the creative
     await simulateCallTool(server, 'build_creative', {
-      account,
-      creative_id: 'cr_usage',
+      account: usageAccount,
+      creative_id: creativeId,
     });
   }
 
@@ -7344,6 +7359,38 @@ describe('report_usage handler', () => {
     });
 
     expect(result.accepted).toBe(1);
+    expect(result.rejected).toBeUndefined();
+  });
+
+  it('resolves each record against its own account in a multi-account batch', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const otherAccount = { brand: { domain: 'usage-other.example' }, operator: 'usage-other.example' };
+    await setupCreativeWithPricing(server, account, 'cr_usage_a');
+    await setupCreativeWithPricing(server, otherAccount, 'cr_usage_b');
+
+    const { result } = await simulateCallTool(server, 'report_usage', {
+      reporting_period: period,
+      usage: [
+        {
+          account,
+          creative_id: 'cr_usage_a',
+          pricing_option_id: 'po_display_300x250_cpm',
+          impressions: 1000,
+          vendor_cost: 1,
+          currency: 'USD',
+        },
+        {
+          account: otherAccount,
+          creative_id: 'cr_usage_b',
+          pricing_option_id: 'po_display_300x250_cpm',
+          impressions: 1000,
+          vendor_cost: 1,
+          currency: 'USD',
+        },
+      ],
+    });
+
+    expect(result.accepted).toBe(2);
     expect(result.rejected).toBeUndefined();
   });
 
@@ -14257,7 +14304,7 @@ async function simulateCallToolRaw(
   const handler = requestHandlers.get('tools/call');
   if (!handler) throw new Error('CallTool handler not found');
   const response = await handler(
-    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args) } },
+    { method: 'tools/call', params: { name: toolName, arguments: withTestProtocolDefaults(toolName, args) } },
     {},
   );
   const text = response.content?.[0]?.text;

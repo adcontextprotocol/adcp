@@ -2,7 +2,7 @@
  * Training-agent wrapper around the SDK's comply_test_controller.
  *
  * The SDK owns the scenario dispatcher, response envelope, and per-scenario
- * enum validation (`@adcp/sdk` exports `handleTestControllerRequest`,
+ * supported-scenario dispatch (`@adcp/sdk` exports `handleTestControllerRequest`,
  * `CONTROLLER_SCENARIOS`, `TOOL_INPUT_SHAPE`, `enforceMapCap`). This file
  * adds the two things the SDK intentionally leaves to the seller: a sandbox
  * gate on the top-level `account.sandbox` flag, and a per-request
@@ -10,7 +10,6 @@
  */
 
 import {
-  CONTROLLER_SCENARIOS,
   TestControllerError,
   createSeedFixtureCache,
   enforceMapCap,
@@ -79,7 +78,15 @@ function mediaBuySandboxIdentity(
       const identity = canonicalizeAccountRef(resolved);
       return identity.kind === 'natural' ? identity : undefined;
     }
-    return account.sandbox ? account : undefined;
+    if (account.sandbox) return account;
+    // Public/static training traffic is already confined to the shared demo
+    // sandbox. Ordinary task calls may omit the controller-only sandbox flag,
+    // but the controller must still be able to mutate resources created by
+    // the same complete natural identity. Authenticated callers remain
+    // fail-closed unless their persisted resource is explicitly sandboxed.
+    return !principal || principal.startsWith('static:')
+      ? { ...account, sandbox: true }
+      : undefined;
   } catch {
     return undefined;
   }
@@ -117,7 +124,10 @@ function creativeSandboxIdentity(
       const identity = canonicalizeAccountRef(resolved);
       return identity.kind === 'natural' ? identity : undefined;
     }
-    return account.sandbox ? account : undefined;
+    if (account.sandbox) return account;
+    return !principal || principal.startsWith('static:')
+      ? { ...account, sandbox: true }
+      : undefined;
   } catch {
     return undefined;
   }
@@ -1033,9 +1043,9 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
 // ── Local scenarios (not in SDK's CONTROLLER_SCENARIOS yet) ───────
 
 /** Scenarios this wrapper handles before delegating to the SDK dispatcher. The SDK's
- * `CONTROLLER_SCENARIOS` enum is closed; new scenarios from spec PRs land here until
- * the SDK adopts them. Listed in the tool's input enum and merged into list_scenarios
- * responses so storyboards can detect support.
+ * internal `CONTROLLER_SCENARIOS` registry is finite; new scenarios from spec PRs
+ * land here until the SDK adopts them. Merged into list_scenarios responses so
+ * storyboards can detect support, while the wire input remains an open string.
  *
  * TODO: when the SDK ships native `force_create_media_buy_arm` (tracked at
  * adcontextprotocol/adcp-client — the dedup below means it is safe to leave this
@@ -1132,15 +1142,6 @@ function tamperGovernanceToken(token: string, what: string): string {
 
 // ── Tool definition ───────────────────────────────────────────────
 
-// `Array.from(new Set(...))` dedups in case the SDK adopts a local scenario
-// natively. Without this, both the input enum and the list_scenarios response
-// would carry the same scenario name twice the moment the SDK catches up.
-const SCENARIO_ENUM = Array.from(new Set([
-  'list_scenarios',
-  ...Object.values(CONTROLLER_SCENARIOS),
-  ...LOCAL_SCENARIOS,
-])) as readonly string[];
-
 // JSON Schema equivalent of the SDK's `TOOL_INPUT_SHAPE`, extended with
 // top-level `account` (sandbox gate) and `brand` (session keying) — both
 // exempt extensions per the SDK's documented wrapper pattern.
@@ -1154,17 +1155,23 @@ export const COMPLY_TEST_CONTROLLER_TOOL = {
     properties: {
       scenario: {
         type: 'string',
-        enum: [...SCENARIO_ENUM],
-        description: 'The seller-side transition to trigger.',
+        description: 'The seller-side transition to trigger. Call list_scenarios to discover supported values.',
       },
       params: {
         type: 'object',
         description: 'Scenario-specific parameters. Call list_scenarios to see required and optional params per scenario. Omit for list_scenarios.',
       },
-      account: { type: 'object' },
+      account: {
+        type: 'object',
+        properties: {
+          sandbox: { type: 'boolean', const: true },
+        },
+        required: ['sandbox'],
+        additionalProperties: true,
+      },
       brand: { type: 'object' },
     },
-    required: ['scenario'],
+    required: ['scenario', 'account'],
   },
 };
 
@@ -1185,24 +1192,26 @@ export const COMPLY_TEST_CONTROLLER_TOOL = {
 export async function handleComplyTestController(args: ToolArgs, ctx: TrainingContext): Promise<object> {
   const rawArgs = args as Record<string, unknown>;
 
-  // Sandbox gate — spec: "If a comply_test_controller call references a
-  // non-sandbox account, the controller MUST return FORBIDDEN." The
-  // training agent is sandbox-only by deployment (the tool only lists on
-  // sandbox connections), so a caller hitting this endpoint is by
-  // definition in sandbox. Reject ONLY when the request explicitly
-  // declares `account.sandbox: false` (an attempt to target a named
-  // production account) — default-to-allow matches the storyboards
-  // (`deterministic_testing`, etc.) which don't include `account` at all
-  // on error-surface probes.
+  // Sandbox gate — the caller's assertion is required but is not itself an
+  // authorization grant. The training agent is sandbox-only, so requiring
+  // the explicit flag keeps this reference implementation fail-closed and
+  // aligned with the published comply_test_controller request schema.
   const account = rawArgs.account as { sandbox?: boolean } | undefined;
   const params = (rawArgs.params ?? {}) as Record<string, unknown>;
   const isLiveModeProbe = rawArgs.scenario === 'force_creative_status'
     && params.creative_id === 'comply-live-mode-probe-000';
-  if ((account && account.sandbox === false) || isLiveModeProbe) {
+  if (!account || account.sandbox !== true) {
     return {
       success: false,
       error: 'FORBIDDEN',
-      error_detail: 'comply_test_controller cannot target non-sandbox accounts',
+      error_detail: 'comply_test_controller requires account.sandbox: true',
+    };
+  }
+  if (isLiveModeProbe) {
+    return {
+      success: false,
+      error: 'FORBIDDEN',
+      error_detail: 'comply_test_controller is unavailable for live accounts',
     };
   }
 
@@ -1222,9 +1231,20 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     && !args.account.account_id
     ? args.brand?.domain ?? args.account.brand?.domain
     : undefined;
+  const opaqueAccountId = typeof args.account?.account_id === 'string'
+    ? args.account.account_id
+    : undefined;
   const sessionArgs = legacyNaturalBrandDomain
     ? { ...args, account: undefined, brand: { domain: legacyNaturalBrandDomain } }
-    : args;
+    : opaqueAccountId
+      // Controller requests carry `sandbox: true` alongside their account
+      // assertion, while canonical opaque AccountRef values contain only the
+      // seller-assigned ID. Strip the assertion before session-key derivation
+      // so controller mutations and ordinary account-scoped calls share the
+      // same `a:<account_id>` partition. A top-level storyboard brand must not
+      // override that opaque identity.
+      ? { ...args, account: { account_id: opaqueAccountId }, brand: undefined }
+      : args;
   let sessionKey = targetsGetProductsState
     ? getProductsSessionKeyFromArgs(sessionArgs, ctx.mode, ctx.userId, ctx.moduleId)
     : sessionKeyFromArgs(

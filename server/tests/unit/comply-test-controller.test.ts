@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import crypto from 'node:crypto';
+import { z } from 'zod';
 import {
   createTrainingAgentServer,
   invalidateCache,
@@ -13,6 +14,11 @@ import {
 import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
+import {
+  buildCreativeComplyConfig,
+  buildGovernanceComplyConfig,
+  buildSalesComplyConfig,
+} from '../../src/training-agent/tenants/comply.js';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 const ACCOUNT = { brand: { domain: 'comply-test.example.com' }, operator: 'comply-tester', sandbox: true };
@@ -156,7 +162,14 @@ describe('comply_test_controller', () => {
       const toolNames = tools.map((t: any) => t.name);
       expect(toolNames).toContain('comply_test_controller');
       const controller = tools.find((tool: any) => tool.name === 'comply_test_controller') as any;
-      expect(controller.inputSchema.properties.scenario.enum).toContain('force_get_products_arm');
+      expect(controller.inputSchema.properties.scenario.type).toBe('string');
+      expect(controller.inputSchema.properties.scenario).not.toHaveProperty('enum');
+      expect(controller.inputSchema.required).toEqual(expect.arrayContaining(['scenario', 'account']));
+      expect(controller.inputSchema.properties.account.required).toContain('sandbox');
+      expect(controller.inputSchema.properties.account.properties.sandbox).toMatchObject({
+        type: 'boolean',
+        const: true,
+      });
     });
   });
 
@@ -203,7 +216,7 @@ describe('comply_test_controller', () => {
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
       expect(scenarios.length).toBe(23);
-      // Dedup invariant — see SCENARIO_ENUM dedup in the wrapper.
+      // Dedup invariant — see the list_scenarios response merge in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });
 
@@ -1111,13 +1124,15 @@ describe('comply_test_controller', () => {
   });
 
   describe('sandbox gating', () => {
-    it('allows calls when sandbox is not specified', async () => {
+    it('rejects calls when sandbox is not specified', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'list_scenarios',
         account: { brand: { domain: 'test.example.com' }, operator: 'tester' },
         brand: BRAND,
       });
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(result.error_detail).toBe('comply_test_controller requires account.sandbox: true');
     });
 
     it('rejects calls with sandbox: false', async () => {
@@ -1130,19 +1145,74 @@ describe('comply_test_controller', () => {
       expect(result.error).toBe('FORBIDDEN');
     });
 
-    it('allows calls with no account', async () => {
+    it('rejects calls with no account', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'list_scenarios',
         brand: BRAND,
       });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+    });
+
+    it('allows calls with sandbox: true', async () => {
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'list_scenarios',
+        account: ACCOUNT,
+        brand: BRAND,
+      });
       expect(result.success).toBe(true);
+    });
+
+    it('reports live-account denial without contradicting the sandbox assertion', async () => {
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'force_creative_status',
+        params: { creative_id: 'comply-live-mode-probe-000', status: 'approved' },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('FORBIDDEN');
+      expect(result.error_detail).toBe('comply_test_controller is unavailable for live accounts');
+    });
+  });
+
+  describe('v6 tenant sandbox gating', () => {
+    it.each([
+      ['sales', buildSalesComplyConfig],
+      ['creative', buildCreativeComplyConfig],
+      ['governance', buildGovernanceComplyConfig],
+    ])('requires account.sandbox: true in the %s controller input schema', (_tenant, buildConfig) => {
+      const schema = z.object(buildConfig().inputSchema);
+      expect(schema.safeParse({ scenario: 'list_scenarios' }).success).toBe(false);
+      expect(schema.safeParse({ scenario: 'list_scenarios', account: { sandbox: false } }).success).toBe(false);
+      expect(schema.safeParse({ scenario: 'list_scenarios', account: { sandbox: true } }).success).toBe(true);
+    });
+
+    it('dispatches a sales controller adapter with an explicit sandbox account', async () => {
+      const config = buildSalesComplyConfig();
+      await expect((config.seed.product as any)({
+        product_id: 'v6_sandbox_gate_product',
+        fixture: {
+          name: 'V6 sandbox gate product',
+          description: 'Controller dispatch fixture',
+          delivery_type: 'guaranteed',
+          channels: ['display'],
+          format_ids: [{ id: 'display_300x250' }],
+        },
+      }, {
+        input: {
+          scenario: 'seed.product',
+          account: ACCOUNT,
+          brand: BRAND,
+        },
+      })).resolves.toBeUndefined();
     });
   });
 
   describe('unknown scenario', () => {
     it('returns UNKNOWN_SCENARIO error', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
-        scenario: 'nonexistent_scenario',
+        scenario: 'implementation_specific_extension_probe',
         account: ACCOUNT,
         brand: BRAND,
       });
@@ -1348,13 +1418,13 @@ describe('comply_test_controller', () => {
     it('blocks create_media_buy when account is suspended', async () => {
       const accountId = 'acct-gated';
       const ACCT_WITH_ID = { account_id: accountId };
+      const SANDBOX_ACCT_WITH_ID = { ...ACCT_WITH_ID, sandbox: true };
 
       // Suspend the account
       await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'force_account_status',
         params: { account_id: accountId, status: 'suspended' },
-        account: ACCT_WITH_ID,
-        brand: BRAND,
+        account: SANDBOX_ACCT_WITH_ID,
       });
 
       // Try to create a media buy — should be blocked
