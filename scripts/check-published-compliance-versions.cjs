@@ -56,7 +56,16 @@ function missingPublishedVersions(manifestVersions, packageVersions) {
 function packSdkTag(tag, destination) {
   const output = execFileSync(
     'npm',
-    ['pack', `@adcp/sdk@${tag}`, '--json', '--pack-destination', destination],
+    [
+      'pack',
+      `@adcp/sdk@${tag}`,
+      '--json',
+      '--pack-destination', destination,
+      '--fetch-retries=4',
+      '--fetch-retry-mintimeout=1000',
+      '--fetch-retry-maxtimeout=5000',
+      '--fetch-timeout=20000',
+    ],
     { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] },
   );
   const result = JSON.parse(output);
