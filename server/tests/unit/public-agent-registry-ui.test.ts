@@ -11,9 +11,11 @@ describe('public agent registry UI', () => {
     expect(agentsHtml).not.toContain("fetch(`/mcp`");
   });
 
-  it('prefers the latest health tool count over stale capability metadata', () => {
-    expect(agentsHtml).toContain('agent?.health?.tools_count ?? agent?.capabilities?.tools_count');
+  it('renders the complete discovered tool catalog count', () => {
+    expect(agentsHtml).toContain('agent?.capabilities?.tools_count ?? agent?.health?.tools_count');
     expect(agentsHtml).toContain('agentWithCaps?.capabilities?.tools || []');
+    expect(agentsHtml).toContain('&middot; ${agentToolCount(agentWithCaps)} tools');
+    expect(agentsHtml).not.toContain('${coreImplemented.length + optionalImplemented.length} tools');
   });
 
   it('allowlists verification links and escapes responsive format dimensions', () => {

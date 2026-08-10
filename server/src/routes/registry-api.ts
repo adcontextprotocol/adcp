@@ -6304,13 +6304,6 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               if (h.stats_json) {
                 enrichedAgent.stats = h.stats_json;
               }
-              // The health snapshot comes from the latest tools/list probe;
-              // the capability catalog can lag on a separate crawl cadence.
-              // Keep the legacy capabilities count fresh for consumers that
-              // have not yet moved to health.tools_count.
-              if (enrichedAgent.capabilities && h.tools_count != null) {
-                enrichedAgent.capabilities.tools_count = h.tools_count;
-              }
             }
           }
 
