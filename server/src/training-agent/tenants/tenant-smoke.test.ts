@@ -805,6 +805,7 @@ describe('tenant routing smoke', () => {
       const account = {
         brand: { domain: 'legacy-only-native-package.example' },
         operator: 'pinnacle-agency.example',
+        sandbox: true,
       };
       const productId = 'legacy_only_native_package';
       const pricingOptionId = 'legacy_only_native_package_cpm';

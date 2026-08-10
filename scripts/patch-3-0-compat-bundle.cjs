@@ -48,6 +48,98 @@ function patchFile(filePath, transform, label) {
   return true;
 }
 
+// Frozen 3.0.x storyboards predate the explicit account.sandbox assertion
+// required by the current controller runtime. Add the assertion only to the
+// temporary compatibility copy so the lane continues to exercise 3.0
+// behavior through today's fail-closed reference implementation. Preserve an
+// explicit false value: live-account denial probes must remain denials.
+function indentation(line) {
+  return line.match(/^ */)?.[0].length ?? 0;
+}
+
+function blockEnd(lines, start, parentIndent) {
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (/^\s*(?:#.*)?$/.test(lines[i])) continue;
+    if (indentation(lines[i]) <= parentIndent) return i;
+  }
+  return lines.length;
+}
+
+function patchControllerSandboxAssertions(text) {
+  const newline = text.includes('\r\n') ? '\r\n' : '\n';
+  const lines = text.split(/\r?\n/);
+  const insertions = [];
+
+  for (let taskIndex = 0; taskIndex < lines.length; taskIndex += 1) {
+    const taskMatch = lines[taskIndex].match(/^(\s*)task:\s*["']?comply_test_controller["']?\s*(?:#.*)?$/);
+    if (!taskMatch) continue;
+
+    const taskIndent = taskMatch[1].length;
+    let stepStart = taskIndex;
+    while (stepStart > 0) {
+      const previous = lines[stepStart - 1];
+      if (!/^\s*(?:#.*)?$/.test(previous) && indentation(previous) < taskIndent) break;
+      stepStart -= 1;
+    }
+    const stepEnd = blockEnd(lines, taskIndex, taskIndent - 1);
+    const requestIndex = lines.findIndex((line, index) => (
+      index >= stepStart
+      && index < stepEnd
+      && indentation(line) === taskIndent
+      && /^\s*sample_request:\s*(?:#.*)?$/.test(line)
+    ));
+    if (requestIndex < 0) continue;
+
+    const requestEnd = blockEnd(lines, requestIndex, taskIndent);
+    const accountIndex = lines.findIndex((line, index) => (
+      index > requestIndex
+      && index < requestEnd
+      && indentation(line) === taskIndent + 2
+      && /^\s*account\s*:/.test(line)
+    ));
+
+    if (accountIndex < 0) {
+      insertions.push({
+        index: requestIndex + 1,
+        lines: [`${' '.repeat(taskIndent + 2)}account:`, `${' '.repeat(taskIndent + 4)}sandbox: true`],
+      });
+      continue;
+    }
+
+    // Only extend a block mapping (`account:`). Inline/null/scalar/array
+    // values are explicit malformed probes and must remain byte-for-byte.
+    if (!/^\s*account\s*:\s*(?:#.*)?$/.test(lines[accountIndex])) continue;
+    const accountEnd = blockEnd(lines, accountIndex, taskIndent + 2);
+    const hasSandbox = lines.some((line, index) => (
+      index > accountIndex
+      && index < accountEnd
+      && indentation(line) === taskIndent + 4
+      && /^\s*sandbox\s*:/.test(line)
+    ));
+    if (!hasSandbox) {
+      insertions.push({
+        index: accountIndex + 1,
+        lines: [`${' '.repeat(taskIndent + 4)}sandbox: true`],
+      });
+    }
+  }
+
+  for (const insertion of insertions.reverse()) {
+    lines.splice(insertion.index, 0, ...insertion.lines);
+  }
+  return lines.join(newline);
+}
+
+let sandboxAssertionFiles = 0;
+for (const yamlPath of walkYamlFiles(bundleDir)) {
+  if (patchFile(yamlPath, patchControllerSandboxAssertions)) {
+    sandboxAssertionFiles += 1;
+  }
+}
+if (sandboxAssertionFiles > 0) {
+  console.log(`Patched comply_test_controller sandbox assertions in ${sandboxAssertionFiles} 3.0 compatibility YAML file(s)`);
+}
+
 // Frozen 3.0.x storyboards authored concrete 2026/2027 active-window dates.
 // As wall-clock time advances those fixtures start failing calendar guards
 // before they can exercise the protocol behavior they were written for
