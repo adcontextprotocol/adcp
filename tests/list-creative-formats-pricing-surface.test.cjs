@@ -13,8 +13,19 @@ const requestSchema = JSON.parse(
   )
 );
 
-test('list_creative_formats does not advertise the retired pricing surface', () => {
-  assert.equal(requestSchema.properties.include_pricing, undefined);
-  assert.equal(requestSchema.properties.account, undefined);
-  assert.doesNotMatch(JSON.stringify(requestSchema.allOf), /include_pricing|account/);
+const formatSchema = JSON.parse(
+  fs.readFileSync(
+    path.join(__dirname, '../static/schemas/source/core/format.json'),
+    'utf8'
+  )
+);
+
+test('list_creative_formats retains deprecated pricing compatibility through 3.x', () => {
+  assert.equal(requestSchema.properties.include_pricing.deprecated, true);
+  assert.equal(requestSchema.properties.account.deprecated, true);
+  assert.match(requestSchema.properties.include_pricing.description, /Removed at 4\.0/);
+  assert.match(requestSchema.properties.include_pricing.description, /list_transformers/);
+  assert.match(JSON.stringify(requestSchema.allOf), /include_pricing/);
+  assert.match(JSON.stringify(requestSchema.allOf), /account/);
+  assert.equal(formatSchema.properties.pricing_options.deprecated, true);
 });
