@@ -23,7 +23,9 @@
 # This kit is the coordination contract between the runner and a seller-under-
 # test that wants the per-agent-gate phases graded. Sellers that do not ship
 # a passthrough-only test caller leave `commercial_relationship` unset and
-# the per-agent phases grade `not_applicable`.
+# the per-agent phases grade `not_applicable`. Sellers whose
+# `account.supported_billing` omits `agent` also grade those phases
+# `not_applicable`: capability-level rejection is covered separately.
 
 id: billing_gate_runner
 applies_to:
@@ -44,10 +46,12 @@ description: |
 
     commercial_relationship — (optional) declares the calling buyer agent's
       onboarded commercial state with the seller. When set to
-      "passthrough_only", the runner submits `billing: "agent"` on the
-      per-agent-gate-reject phase and asserts BILLING_NOT_PERMITTED_FOR_AGENT
-      with the clamped error.details shape. When unset, both per-agent
-      phases grade `not_applicable`.
+      "passthrough_only" AND the seller advertises `"agent"` in
+      `account.supported_billing`, the runner submits `billing: "agent"` on
+      the per-agent-gate-reject phase and asserts
+      BILLING_NOT_PERMITTED_FOR_AGENT with the clamped error.details shape.
+      When the relationship is unset or agent billing is not supported,
+      both per-agent phases grade `not_applicable`.
 
   Establishing the commercial relationship is offline (the same posture as
   operator account creation): the seller-under-test records the test
