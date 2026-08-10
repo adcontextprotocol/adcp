@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import { CrawlerService } from '../../src/crawler.js';
 
 describe('CrawlerService single-domain profile rebuild', () => {
   async function makeCrawlerContext(params: {
     existingAuthorizations: Array<{ agent_url: string; source: string }>;
     authorizedAgents: Array<{ url: string }>;
   }) {
-    const { CrawlerService } = await import('../../src/crawler.js');
     const proto = (CrawlerService as any).prototype;
     const ctx = Object.create(proto);
 
@@ -30,13 +30,152 @@ describe('CrawlerService single-domain profile rebuild', () => {
         recordAgentFromAdagentsJson: vi.fn().mockResolvedValue(undefined),
         reconcileAdagentsAuthorizations: vi.fn().mockResolvedValue(undefined),
       },
-      cacheAdagentsManifest: vi.fn().mockResolvedValue(undefined),
+      cacheAdagentsManifest: vi.fn().mockResolvedValue(true),
       scanBrandForDomain: vi.fn().mockResolvedValue(undefined),
       buildInventoryProfiles: vi.fn().mockResolvedValue(new Map()),
     });
 
     return ctx;
   }
+
+  it('rejects visibly when a full crawl owns the crawler', async () => {
+    const ctx = Object.create((CrawlerService as any).prototype);
+    const validateDomain = vi.fn();
+    Object.assign(ctx, {
+      crawling: true,
+      adAgentsManager: { validateDomain },
+    });
+
+    await expect(ctx.crawlSingleDomain('publisher.example', {
+      requestId: 'crawl-request-id',
+      source: 'test',
+    })).rejects.toMatchObject({ code: 'crawl_deferred' });
+    expect(validateDomain).not.toHaveBeenCalled();
+  });
+
+  it('does not admit an HTTP-style crawl request while a full crawl is active', async () => {
+    const ctx = Object.create((CrawlerService as any).prototype);
+    Object.assign(ctx, { crawling: true });
+
+    expect(ctx.tryStartSingleDomainCrawl('publisher.example', {
+      requestId: 'crawl-request-id',
+      source: 'api:crawl-request',
+    })).toBeNull();
+  });
+
+  it('does not advance manager revalidation failure backoff when a full crawl defers the item', async () => {
+    const ctx = Object.create((CrawlerService as any).prototype);
+    const deferredError = Object.assign(new Error('Full crawl in progress'), {
+      code: 'crawl_deferred',
+    });
+    const publisherDb = {
+      dequeueRevalidationBatch: vi.fn().mockResolvedValue([
+        { publisher_domain: 'publisher.example', manager_domain: 'manager.example', attempts: 0 },
+      ]),
+      markRevalidationSucceeded: vi.fn(),
+      markRevalidationFailed: vi.fn(),
+    };
+    Object.assign(ctx, {
+      managerRevalidationProcessing: false,
+      publisherDb,
+      crawlSingleDomain: vi.fn().mockRejectedValue(deferredError),
+    });
+
+    await expect(ctx.processManagerRevalidationQueue()).resolves.toEqual({
+      processed: 1,
+      succeeded: 0,
+      failed: 0,
+    });
+    expect(publisherDb.markRevalidationSucceeded).not.toHaveBeenCalled();
+    expect(publisherDb.markRevalidationFailed).not.toHaveBeenCalled();
+  });
+
+  it('releases full-crawl ownership when setup fails', async () => {
+    const ctx = Object.create((CrawlerService as any).prototype);
+    Object.assign(ctx, {
+      crawling: false,
+      getPausedAgentUrls: vi.fn().mockRejectedValue(new Error('database unavailable')),
+    });
+
+    await expect(ctx.crawlAllAgents([])).rejects.toThrow('database unavailable');
+    expect(ctx.crawling).toBe(false);
+  });
+
+  it('aborts a full crawl before persistence when its execution lock is lost', async () => {
+    const ctx = Object.create((CrawlerService as any).prototype);
+    const release = vi.fn().mockResolvedValue(undefined);
+    const populateFederatedIndex = vi.fn();
+    Object.assign(ctx, {
+      crawling: false,
+      fullCrawlLockRetryTimer: null,
+      coordinateCrawlsAcrossInstances: true,
+      tryAcquireCrawlExecutionLock: vi.fn().mockResolvedValue({
+        isValid: () => false,
+        release,
+      }),
+      getPausedAgentUrls: vi.fn().mockResolvedValue(new Set()),
+      federatedIndex: {
+        listDiscoveredAgents: vi.fn().mockResolvedValue([]),
+        getSalesCandidatesForProbe: vi.fn().mockResolvedValue([]),
+      },
+      crawler: { crawlAgents: vi.fn().mockResolvedValue({}) },
+      populateFederatedIndex,
+    });
+
+    await expect(ctx.crawlAllAgents([])).rejects.toMatchObject({
+      code: 'crawl_execution_lock_lost',
+    });
+    expect(populateFederatedIndex).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledOnce();
+    if (ctx.fullCrawlLockRetryTimer) clearTimeout(ctx.fullCrawlLockRetryTimer);
+  });
+
+  it('does not write catalog state when another crawl owns the domain lock', async () => {
+    const ctx = Object.create((CrawlerService as any).prototype);
+    const validateDomain = vi.fn();
+    Object.assign(ctx, {
+      coordinateCrawlsAcrossInstances: true,
+      tryAcquireCrawlExecutionLock: vi.fn().mockResolvedValue(null),
+      adAgentsManager: { validateDomain },
+    });
+
+    await expect(ctx.crawlSingleDomainForCatalog('publisher.example')).resolves.toBe(false);
+    expect(validateDomain).not.toHaveBeenCalled();
+  });
+
+  it('forcibly closes a dedicated lock connection when unlock never resolves', async () => {
+    vi.useFakeTimers();
+    try {
+      const ctx = Object.create((CrawlerService as any).prototype);
+      const destroy = vi.fn();
+      const query = vi.fn()
+        .mockResolvedValueOnce({ rows: [{ acquired: true }] })
+        .mockResolvedValueOnce({ rows: [{ acquired: true }] })
+        .mockImplementationOnce(() => new Promise(() => undefined));
+      const client = {
+        query,
+        on: vi.fn(),
+        off: vi.fn(),
+        end: vi.fn().mockResolvedValue(undefined),
+        connection: { stream: { destroyed: false, destroy } },
+      };
+      Object.assign(ctx, {
+        crawlLockClientFactory: vi.fn().mockResolvedValue(client),
+      });
+
+      const lock = await ctx.tryAcquireCrawlExecutionLock('publisher.example');
+      expect(lock).not.toBeNull();
+
+      const release = lock.release();
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      await expect(release).resolves.toBeUndefined();
+      expect(destroy).toHaveBeenCalledOnce();
+      expect(client.end).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it('rebuilds profiles for agents removed from the prior manifest', async () => {
     const ctx = await makeCrawlerContext({
@@ -72,7 +211,6 @@ describe('CrawlerService single-domain profile rebuild', () => {
   });
 
   it('manual adagents revalidation persists a successful verdict and refreshed authorizations', async () => {
-    const { CrawlerService } = await import('../../src/crawler.js');
     const proto = (CrawlerService as any).prototype;
     const ctx = Object.create(proto);
 
@@ -105,7 +243,7 @@ describe('CrawlerService single-domain profile rebuild', () => {
       publisherDb: {
         recordAdagentsValidationFailure: vi.fn().mockResolvedValue(undefined),
       },
-      cacheAdagentsManifest: vi.fn().mockResolvedValue(undefined),
+      cacheAdagentsManifest: vi.fn().mockResolvedValue(true),
       recordPropertiesForAgent: vi.fn().mockResolvedValue(undefined),
       fanOutPublisherPropertiesAuthorizations: vi.fn().mockResolvedValue(undefined),
       reconcileLegacyAdagentsAgents: vi.fn().mockResolvedValue(undefined),
@@ -141,7 +279,6 @@ describe('CrawlerService single-domain profile rebuild', () => {
   });
 
   it('manual adagents revalidation returns warnings for a valid manifest', async () => {
-    const { CrawlerService } = await import('../../src/crawler.js');
     const proto = (CrawlerService as any).prototype;
     const ctx = Object.create(proto);
 
@@ -170,7 +307,7 @@ describe('CrawlerService single-domain profile rebuild', () => {
         reconcileAdagentsAuthorizations: vi.fn().mockResolvedValue(undefined),
       },
       publisherDb: {},
-      cacheAdagentsManifest: vi.fn().mockResolvedValue(undefined),
+      cacheAdagentsManifest: vi.fn().mockResolvedValue(true),
       recordPropertiesForAgent: vi.fn().mockResolvedValue(undefined),
       fanOutPublisherPropertiesAuthorizations: vi.fn().mockResolvedValue(undefined),
       reconcileLegacyAdagentsAgents: vi.fn().mockResolvedValue(undefined),
@@ -191,7 +328,6 @@ describe('CrawlerService single-domain profile rebuild', () => {
   });
 
   it('manual adagents revalidation persists an invalid verdict and retires stale authorizations', async () => {
-    const { CrawlerService } = await import('../../src/crawler.js');
     const proto = (CrawlerService as any).prototype;
     const ctx = Object.create(proto);
 
@@ -248,7 +384,6 @@ describe('CrawlerService single-domain profile rebuild', () => {
   });
 
   it('manual adagents revalidation preserves cached state on transient fetch failures', async () => {
-    const { CrawlerService } = await import('../../src/crawler.js');
     const proto = (CrawlerService as any).prototype;
     const ctx = Object.create(proto);
 
@@ -302,7 +437,6 @@ describe('CrawlerService single-domain profile rebuild', () => {
   });
 
   it('manual adagents revalidation preserves cached state on access-denied origin responses', async () => {
-    const { CrawlerService } = await import('../../src/crawler.js');
     const proto = (CrawlerService as any).prototype;
     const ctx = Object.create(proto);
 
@@ -356,7 +490,6 @@ describe('CrawlerService single-domain profile rebuild', () => {
   });
 
   it('manual adagents revalidation preserves cached state on unparseable 200 responses', async () => {
-    const { CrawlerService } = await import('../../src/crawler.js');
     const proto = (CrawlerService as any).prototype;
     const ctx = Object.create(proto);
 
@@ -410,7 +543,6 @@ describe('CrawlerService single-domain profile rebuild', () => {
   });
 
   it('manual adagents revalidation preserves cached state when authoritative_location fetch is inconclusive', async () => {
-    const { CrawlerService } = await import('../../src/crawler.js');
     const proto = (CrawlerService as any).prototype;
     const ctx = Object.create(proto);
 
@@ -464,7 +596,6 @@ describe('CrawlerService single-domain profile rebuild', () => {
   });
 
   it('manual adagents revalidation persists schema-invalid 200 responses as invalid', async () => {
-    const { CrawlerService } = await import('../../src/crawler.js');
     const proto = (CrawlerService as any).prototype;
     const ctx = Object.create(proto);
 

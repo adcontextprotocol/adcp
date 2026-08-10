@@ -126,6 +126,7 @@ describe('run_conformance_against_my_agent Addie tool', () => {
       passed_count: 2,
       failed_count: 0,
       skipped_count: 0,
+      validations_advisory_failed: 1,
       total_duration_ms: 123,
       phases: [
         {
@@ -134,7 +135,22 @@ describe('run_conformance_against_my_agent Addie tool', () => {
           passed: true,
           duration_ms: 50,
           steps: [
-            { step_id: 's1', phase_id: 'p1', title: 'discover', task: 'discover', passed: true },
+            {
+              step_id: 's1',
+              phase_id: 'p1',
+              title: 'discover',
+              task: 'discover',
+              passed: true,
+              validations: [
+                {
+                  id: 'creative_recommendation',
+                  check: 'field_value',
+                  passed: false,
+                  severity: 'advisory',
+                  description: 'A recommended field is absent',
+                },
+              ],
+            },
             { step_id: 's2', phase_id: 'p1', title: 'query', task: 'query', passed: true },
           ],
         },
@@ -147,6 +163,9 @@ describe('run_conformance_against_my_agent Addie tool', () => {
     });
     expect(out).toMatch(/PASSED/);
     expect(out).toMatch(/2 \/ 0 \/ 0/);
+    expect(out).toContain('Advisory validations failed:** 1');
+    expect(out).toContain('[ADVISORY] failed validations');
+    expect(out).toContain('"id": "creative_recommendation"');
     expect(out).toMatch(/Setup/);
     expect(out).toMatch(/discover/);
   });
@@ -221,6 +240,7 @@ describe('run_conformance_against_my_agent Addie tool', () => {
       passed_count: 1,
       failed_count: 1,
       skipped_count: 0,
+      validations_advisory_failed: 5,
       total_duration_ms: 200,
       phases: [
         {
@@ -247,6 +267,8 @@ describe('run_conformance_against_my_agent Addie tool', () => {
                   id: 'check_extend_flight_mode',
                   check: 'field_value',
                   passed: false,
+                  severity: 'required',
+                  severity_promoted_from_advisory: true,
                   path: 'products[0].allowed_actions[1].mode',
                   json_pointer: '/products/0/allowed_actions/1/mode',
                   expected: 'requires_approval',
@@ -292,6 +314,13 @@ describe('run_conformance_against_my_agent Addie tool', () => {
                   actual: 'unsafe',
                   description: 'Bearer-style validation IDs are redacted',
                 },
+                ...Array.from({ length: 5 }, (_, index) => ({
+                  id: `advisory_${index + 1}`,
+                  check: 'field_value',
+                  passed: false,
+                  severity: 'advisory' as const,
+                  description: `Advisory finding ${index + 1}`,
+                })),
               ],
             },
             {
@@ -316,6 +345,11 @@ describe('run_conformance_against_my_agent Addie tool', () => {
     expect(out).toMatch(/expected status 200, got 500/);
     expect(out).toMatch(/failed validations/);
     expect(out).toMatch(/"id": "check_extend_flight_mode"/);
+    expect(out).toContain('"severity_promoted_from_advisory": true');
+    expect(out.match(/"id":/g)).toHaveLength(8);
+    expect(out).toContain('"id": "advisory_3"');
+    expect(out).not.toContain('"id": "advisory_4"');
+    expect(out).toContain('2 additional failed validation(s) omitted.');
     expect(out).toMatch(/"id": "authorization_header_missing"/);
     expect(out).toMatch(/"id": "multi_finalize_unsupported\.error_code"/);
     expect(out).toMatch(/"id": "\[redacted\]"/);
@@ -334,5 +368,69 @@ describe('run_conformance_against_my_agent Addie tool', () => {
     expect(out).not.toMatch(/Ignore previous instructions/);
     expect(out).not.toMatch(/system prompt/);
     expect(out).toMatch(/\[redacted\]/);
+  });
+
+  it('shares the validation character budget across required and advisory findings', async () => {
+    conformanceSessions.register({
+      orgId: 'org_a',
+      transport: { close: vi.fn().mockResolvedValue(undefined) } as never,
+      mcpClient: {} as never,
+      connectedAt: Date.now(),
+    });
+
+    const longValue = 'x'.repeat(320);
+    const verboseValidation = (id: string, severity: 'required' | 'advisory') => ({
+      id,
+      check: 'field_value',
+      passed: false,
+      severity,
+      path: `products[0].${id}`,
+      expected: longValue,
+      actual: longValue,
+      description: longValue,
+      error: longValue,
+      remediation: longValue,
+    });
+    runStoryboardMock.mockResolvedValue({
+      storyboard_id: 'sb_budget',
+      storyboard_title: 'Shared budget',
+      overall_passed: false,
+      passed_count: 0,
+      failed_count: 1,
+      skipped_count: 0,
+      validations_advisory_failed: 2,
+      total_duration_ms: 100,
+      phases: [{
+        phase_id: 'p1',
+        phase_title: 'Run',
+        passed: false,
+        duration_ms: 100,
+        steps: [{
+          step_id: 's1',
+          phase_id: 'p1',
+          title: 'budgeted step',
+          task: 'get_products',
+          passed: false,
+          validations: [
+            verboseValidation('required_1', 'required'),
+            verboseValidation('required_2', 'required'),
+            verboseValidation('advisory_1', 'advisory'),
+            verboseValidation('advisory_2', 'advisory'),
+          ],
+        }],
+      }],
+    });
+
+    const handlers = createConformanceToolHandlers(memberContextWithOrg('org_a'));
+    const out = await handlers.get('run_conformance_against_my_agent')!({
+      storyboard_id: 'sb_budget',
+    });
+
+    expect(out).toContain('"id": "required_1"');
+    expect(out).toContain('"id": "required_2"');
+    expect(out).not.toContain('"id": "advisory_1"');
+    expect(out).not.toContain('"id": "advisory_2"');
+    expect(out).toContain('"reason": "validation_output_too_large"');
+    expect(out).toContain('Validation details were truncated for chat display (4000 character cap).');
   });
 });

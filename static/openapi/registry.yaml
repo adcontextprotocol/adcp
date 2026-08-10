@@ -7055,6 +7055,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: Publisher lookup exceeded its bounded read deadline
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - publisher_lookup_timeout
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - code
+                  - retry_after
   /api/registry/publisher/{domain}/adagents/revalidate:
     post:
       operationId: revalidatePublisherAdagents
@@ -7199,6 +7218,33 @@ paths:
                     description: Seconds to wait before retrying
                 required:
                   - error
+                  - retry_after
+        "503":
+          description: Publisher crawl is temporarily busy
+          headers:
+            Retry-After:
+              schema:
+                type: string
+                description: Seconds to wait before retrying
+              required: true
+              description: Seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - publisher_crawl_busy
+                  retry_after:
+                    type: integer
+                    description: Seconds to wait before retrying
+                required:
+                  - error
+                  - code
                   - retry_after
   /api/registry/brand/{domain}/force-crawl:
     post:
@@ -7424,6 +7470,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: Publisher authorization lookup exceeded its bounded read deadline
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - publisher_lookup_timeout
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - code
+                  - retry_after
   /api/registry/validate/product-authorization:
     post:
       operationId: validateProductAuthorization
@@ -9703,7 +9768,7 @@ paths:
       operationId: requestCrawl
       summary: Request domain re-crawl
       description: |-
-        Trigger an immediate re-crawl of a publisher domain after updating adagents.json. The crawl runs asynchronously — returns 202 immediately.
+        Persist a durable re-crawl request for a publisher domain after updating adagents.json. Returns 202 only after the request is committed to the queue. Use the returned `crawl_request_id` with the status endpoint to observe completion.
 
         **Rate limits:** 5 minutes per domain, 30 requests per user per hour.
       tags:
@@ -9737,9 +9802,14 @@ paths:
                       - Crawl request accepted
                   domain:
                     type: string
+                  crawl_request_id:
+                    type: string
+                    format: uuid
+                    description: Durable request ID for lifecycle logs and status lookup; acceptance is not completion.
                 required:
                   - message
                   - domain
+                  - crawl_request_id
         "400":
           description: Invalid domain format, private IP, or unresolvable domain
           content:
@@ -9766,6 +9836,160 @@ paths:
                     description: Seconds to wait before retrying
                 required:
                   - error
+                  - retry_after
+        "503":
+          description: The durable crawl queue is temporarily unavailable; the request was not accepted
+          headers:
+            Retry-After:
+              schema:
+                type: string
+                description: Seconds to wait before retrying
+              required: true
+              description: Seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - crawl_queue_unavailable
+                      - crawl_queue_at_capacity
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - code
+                  - retry_after
+  /api/registry/crawl-request/{crawlRequestId}:
+    get:
+      operationId: getCrawlRequest
+      summary: Get publisher crawl request status
+      description: Return the durable lifecycle for a publisher recrawl. Requesters may read their own requests; registry administrators may read any request.
+      tags:
+        - Agent Discovery
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: crawlRequestId
+          in: path
+      responses:
+        "200":
+          description: Durable crawl request lifecycle
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  crawl_request_id:
+                    type: string
+                    format: uuid
+                  domain:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - queued
+                      - running
+                      - deferred
+                      - retrying
+                      - completed
+                      - invalid
+                      - failed
+                  attempts:
+                    type: integer
+                  max_attempts:
+                    type: integer
+                  requested_at:
+                    type: string
+                    format: date-time
+                  started_at:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                  last_attempted_at:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                  completed_at:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                  next_attempt_at:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                  last_error_code:
+                    type:
+                      - string
+                      - "null"
+                required:
+                  - crawl_request_id
+                  - domain
+                  - status
+                  - attempts
+                  - max_attempts
+                  - requested_at
+                  - started_at
+                  - last_attempted_at
+                  - completed_at
+                  - next_attempt_at
+                  - last_error_code
+        "400":
+          description: Invalid crawl request ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Crawl request not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Crawl status is temporarily unavailable
+          headers:
+            Retry-After:
+              schema:
+                type: string
+                description: Seconds to wait before retrying
+              required: true
+              description: Seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - crawl_status_unavailable
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - code
                   - retry_after
   /api/registry/manager-revalidation-request:
     post:

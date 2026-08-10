@@ -166,15 +166,19 @@ export async function processAgentBadges(
       if (existing.status === 'active') {
         await complianceDb.degradeBadge(agentUrl, roleResult.role, adcpVersion);
         result.degraded.push({ role: roleResult.role, adcp_version: adcpVersion });
-        logger.info({ agentUrl, role: roleResult.role, adcpVersion, failing: roleResult.failing }, 'Badge degraded');
+        logger.info({ agentUrl, role: roleResult.role, adcpVersion, failing: roleResult.failing, untested: roleResult.untested }, 'Badge degraded');
       } else if (existing.status === 'degraded') {
         const degradedAt = existing.updated_at;
         const hoursSinceDegraded = (Date.now() - degradedAt.getTime()) / (1000 * 60 * 60);
 
         if (hoursSinceDegraded >= 48) {
-          await complianceDb.revokeBadge(agentUrl, roleResult.role, adcpVersion, `Specialisms failing for 48+ hours: ${roleResult.failing.join(', ')}`);
-          result.revoked.push({ role: roleResult.role, reason: `Failing specialisms: ${roleResult.failing.join(', ')}`, adcp_version: adcpVersion });
-          logger.info({ agentUrl, role: roleResult.role, adcpVersion, failing: roleResult.failing }, 'Badge revoked after 48h grace');
+          const reason = [
+            roleResult.failing.length > 0 ? `Failing specialisms: ${roleResult.failing.join(', ')}` : undefined,
+            roleResult.untested.length > 0 ? `Untested specialisms: ${roleResult.untested.join(', ')}` : undefined,
+          ].filter(Boolean).join('; ');
+          await complianceDb.revokeBadge(agentUrl, roleResult.role, adcpVersion, `${reason} for 48+ hours`);
+          result.revoked.push({ role: roleResult.role, reason, adcp_version: adcpVersion });
+          logger.info({ agentUrl, role: roleResult.role, adcpVersion, failing: roleResult.failing, untested: roleResult.untested }, 'Badge revoked after 48h grace');
         } else {
           result.unchanged.push({ role: roleResult.role, adcp_version: adcpVersion });
         }

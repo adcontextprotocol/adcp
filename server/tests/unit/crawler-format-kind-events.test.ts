@@ -53,4 +53,38 @@ describe('CrawlerService canonical format-kind events', () => {
       ]),
     );
   });
+
+  it('preserves a high-fanout agent profile during full-crawl stale cleanup', async () => {
+    const { CrawlerService } = await import('../../src/crawler.js');
+    const ctx = Object.create((CrawlerService as any).prototype);
+    const normalAgent = 'https://normal.example.com/mcp';
+    const networkAgent = 'https://network.example.com/mcp';
+    const deleteStaleProfiles = vi.fn().mockResolvedValue(0);
+    const getPropertiesForAgent = vi.fn().mockResolvedValue([]);
+
+    Object.assign(ctx, {
+      federatedIndex: {
+        listAllAgents: vi.fn().mockResolvedValue([
+          { url: normalAgent },
+          { url: networkAgent },
+        ]),
+        getDomainsForAgent: vi.fn(async (agentUrl: string) => (
+          agentUrl === networkAgent
+            ? Array.from({ length: 1_001 }, (_, index) => `publisher-${index}.example`)
+            : ['publisher.example']
+        )),
+        getPropertiesForAgent,
+      },
+      profilesDb: {
+        upsertProfiles: vi.fn().mockImplementation(async (profiles: unknown[]) => profiles),
+        deleteStaleProfiles,
+      },
+    });
+
+    await ctx.buildInventoryProfiles();
+
+    expect(getPropertiesForAgent).toHaveBeenCalledTimes(1);
+    expect(getPropertiesForAgent).toHaveBeenCalledWith(normalAgent);
+    expect(deleteStaleProfiles).toHaveBeenCalledWith([normalAgent, networkAgent]);
+  });
 });

@@ -4,6 +4,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const {
+  gradeOAuthMetadataGraphVector,
+} = require('@adcp/sdk/testing');
 const yaml = require('js-yaml');
 
 const ROOT = path.join(__dirname, '..');
@@ -198,5 +201,15 @@ test('every advertised token endpoint in a positive vector has a passive GET fix
         `${vector.id} must probe advertised token endpoint ${tokenEndpoint}`,
       );
     }
+  }
+});
+
+test('installed SDK grades every OAuth metadata graph vector exactly', async (t) => {
+  for (const vector of [...vectors.positive, ...vectors.negative]) {
+    await t.test(vector.id, async () => {
+      const grade = await gradeOAuthMetadataGraphVector(vector);
+      assert.equal(grade.success, vector.expected_outcome.success);
+      assert.equal(grade.error_code, vector.expected_outcome.error_code);
+    });
   }
 });
