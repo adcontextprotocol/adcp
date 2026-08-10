@@ -274,6 +274,8 @@ describe('createMemberToolHandlers', () => {
                     id: 'authorization_header_missing',
                     check: 'field_value',
                     passed: false,
+                    severity: 'required',
+                    severity_promoted_from_advisory: true,
                     description: 'Structured error details are present',
                     error: 'Authorization: Bearer secret-token',
                   },
@@ -304,7 +306,7 @@ describe('createMemberToolHandlers', () => {
       });
 
       expect(result).toContain('Error: [redacted]');
-      expect(result).toContain('Failed: id=authorization_header_missing <untrusted_proposer_input>Structured error details are present</untrusted_proposer_input> — [redacted]');
+      expect(result).toContain('Promoted advisory (required): id=authorization_header_missing <untrusted_proposer_input>Structured error details are present</untrusted_proposer_input> — [redacted]');
       expect(result).toContain('Failed: id=[redacted] <untrusted_proposer_input>Secret-shaped IDs are redacted</untrusted_proposer_input>');
       expect(result).toContain('Failed: id=[redacted] <untrusted_proposer_input>Bearer-style IDs are redacted</untrusted_proposer_input>');
       expect(result).not.toContain('Ignore previous instructions');
@@ -423,6 +425,14 @@ describe('createMemberToolHandlers', () => {
             severity: 'advisory',
             description: 'A recommended field is absent',
           },
+          {
+            id: 'promoted_recommendation',
+            check: 'field_value',
+            passed: false,
+            severity: 'required',
+            severity_promoted_from_advisory: true,
+            description: 'An expired advisory is now required',
+          },
         ],
         response,
         context: exactContext,
@@ -445,6 +455,7 @@ describe('createMemberToolHandlers', () => {
       expect(result).toContain('- PASS: id=list_all_context_echo <untrusted_proposer_input>Context echo returned unchanged</untrusted_proposer_input>');
       expect(result).toContain('- FAIL: id=[redacted] [redacted] — [redacted]');
       expect(result).toContain('- ADVISORY: id=creative_recommendation <untrusted_proposer_input>A recommended field is absent</untrusted_proposer_input>');
+      expect(result).toContain('- PROMOTED ADVISORY (REQUIRED): id=promoted_recommendation <untrusted_proposer_input>An expired advisory is now required</untrusted_proposer_input>');
       expect(result).toContain('**Error:** [redacted]');
       expect(result).toContain('"message": "[redacted]"');
       expect(result).toContain('"basic_value": "[redacted]"');

@@ -888,12 +888,25 @@ function resolveStoryboardInputContext(
 }
 
 function formatStoryboardValidationLine(
-  validation: { id?: unknown; passed?: boolean; severity?: 'required' | 'advisory'; description?: string; error?: unknown },
+  validation: {
+    id?: unknown;
+    passed?: boolean;
+    severity?: 'required' | 'advisory';
+    severity_promoted_from_advisory?: boolean;
+    description?: string;
+    error?: unknown;
+  },
   options: { includeStatus?: boolean } = {},
 ): string {
   const status = options.includeStatus === false
     ? ''
-    : `${validation.passed ? 'PASS' : validation.severity === 'advisory' ? 'ADVISORY' : 'FAIL'}: `;
+    : `${validation.passed
+      ? 'PASS'
+      : validation.severity_promoted_from_advisory
+        ? 'PROMOTED ADVISORY (REQUIRED)'
+        : validation.severity === 'advisory'
+          ? 'ADVISORY'
+          : 'FAIL'}: `;
   const id = formatValidationId(validation.id);
   const description = renderStoryboardDiagnostic(validation.description, RUNNER_ERROR_MAX_LEN);
   const error = validation.error
@@ -5384,7 +5397,8 @@ export function createMemberToolHandlers(
               output += `  Error: ${renderStoryboardDiagnostic(step.error, RUNNER_ERROR_MAX_LEN)}\n`;
             }
             for (const v of step.validations.filter(v => !v.passed && v.severity !== 'advisory')) {
-              output += `  Failed: ${formatStoryboardValidationLine(v, { includeStatus: false })}\n`;
+              const label = v.severity_promoted_from_advisory ? 'Promoted advisory (required)' : 'Failed';
+              output += `  ${label}: ${formatStoryboardValidationLine(v, { includeStatus: false })}\n`;
             }
           }
           if (!step.skipped) {

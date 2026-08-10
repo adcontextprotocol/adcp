@@ -91,6 +91,7 @@ interface PublicValidationResult {
   check: string;
   passed: false;
   severity?: 'required' | 'advisory';
+  severity_promoted_from_advisory?: true;
   description: string;
   path?: string;
   json_pointer?: string | null;
@@ -101,8 +102,13 @@ interface PublicValidationResult {
 }
 
 interface FormattedFailedValidations {
-  json: string;
+  json?: string;
   note?: string;
+}
+
+interface ValidationDisplayBudget {
+  recordsRemaining: number;
+  charsRemaining: number;
 }
 
 interface StoryboardStepLike {
@@ -250,6 +256,7 @@ function compactValidationForOutput(validation: ValidationResult): PublicValidat
     check: safeAgentText(validation.check) ?? 'validation',
     passed: false,
     ...(validation.severity && { severity: validation.severity }),
+    ...(validation.severity_promoted_from_advisory && { severity_promoted_from_advisory: true as const }),
     description: safeDiagnosticText(validation.description),
     ...(validation.path && { path: safeAgentText(validation.path) ?? '[redacted]' }),
     ...(validation.json_pointer !== undefined && { json_pointer: safeAgentText(validation.json_pointer) ?? '[redacted]' }),
@@ -263,6 +270,7 @@ function compactValidationForOutput(validation: ValidationResult): PublicValidat
 function formatFailedValidations(
   validations: ValidationResult[] | undefined,
   severity: 'required' | 'advisory',
+  budget: ValidationDisplayBudget,
 ): FormattedFailedValidations | null {
   if (!Array.isArray(validations)) return null;
   const failed = validations.filter(validation =>
@@ -271,8 +279,15 @@ function formatFailedValidations(
   );
   if (failed.length === 0) return null;
 
-  const compact = failed.slice(0, MAX_VALIDATIONS_PER_STEP).map(compactValidationForOutput);
-  let json: string;
+  const compact = failed.slice(0, budget.recordsRemaining).map(compactValidationForOutput);
+  budget.recordsRemaining -= compact.length;
+  if (compact.length === 0) {
+    return {
+      note: `${failed.length} failed validation(s) omitted by the shared per-step display cap.`,
+    };
+  }
+
+  let json: string | undefined;
   let note: string | undefined;
   try {
     json = JSON.stringify(compact, null, 2);
@@ -285,10 +300,12 @@ function formatFailedValidations(
       },
     ], null, 2);
   }
-  if (json.length > MAX_VALIDATIONS_JSON_CHARS) {
-    json = JSON.stringify([{ truncated: true, reason: 'validation_output_too_large' }], null, 2);
+  if (json.length > budget.charsRemaining) {
+    const truncationMarker = JSON.stringify([{ truncated: true, reason: 'validation_output_too_large' }], null, 2);
+    json = truncationMarker.length <= budget.charsRemaining ? truncationMarker : undefined;
     note = `Validation details were truncated for chat display (${MAX_VALIDATIONS_JSON_CHARS} character cap).`;
   }
+  budget.charsRemaining -= json?.length ?? 0;
   if (failed.length > compact.length) {
     const omitted = `${failed.length - compact.length} additional failed validation(s) omitted.`;
     note = note ? `${note} ${omitted}` : omitted;
@@ -313,6 +330,10 @@ function formatStoryboardResult(result: StoryboardResult): string {
     for (const step of phase.steps) {
       const tag = step.skipped ? '⊘ skipped' : step.passed ? '✓ passed' : '✗ failed';
       lines.push(`- ${tag} — ${step.title}`);
+      const validationBudget: ValidationDisplayBudget = {
+        recordsRemaining: MAX_VALIDATIONS_PER_STEP,
+        charsRemaining: MAX_VALIDATIONS_JSON_CHARS,
+      };
       if (step.skipped) {
         lines.push(...formatSkipDiagnostics(step as StoryboardStepLike));
       }
@@ -321,24 +342,28 @@ function formatStoryboardResult(result: StoryboardResult): string {
         if (errMsg) {
           lines.push(`  - error: ${safeDiagnosticText(errMsg, 240)}`);
         }
-        const failedValidations = formatFailedValidations(step.validations, 'required');
+        const failedValidations = formatFailedValidations(step.validations, 'required', validationBudget);
         if (failedValidations) {
           lines.push('  - failed validations:');
-          lines.push('    ```json');
-          lines.push(failedValidations.json.split('\n').map(line => `    ${line}`).join('\n'));
-          lines.push('    ```');
+          if (failedValidations.json) {
+            lines.push('    ```json');
+            lines.push(failedValidations.json.split('\n').map(line => `    ${line}`).join('\n'));
+            lines.push('    ```');
+          }
           if (failedValidations.note) {
             lines.push(`  - note: ${failedValidations.note}`);
           }
         }
       }
       if (!step.skipped) {
-        const advisoryValidations = formatFailedValidations(step.validations, 'advisory');
+        const advisoryValidations = formatFailedValidations(step.validations, 'advisory', validationBudget);
         if (advisoryValidations) {
           lines.push('  - [ADVISORY] failed validations:');
-          lines.push('    ```json');
-          lines.push(advisoryValidations.json.split('\n').map(line => `    ${line}`).join('\n'));
-          lines.push('    ```');
+          if (advisoryValidations.json) {
+            lines.push('    ```json');
+            lines.push(advisoryValidations.json.split('\n').map(line => `    ${line}`).join('\n'));
+            lines.push('    ```');
+          }
           if (advisoryValidations.note) {
             lines.push(`  - note: ${advisoryValidations.note}`);
           }

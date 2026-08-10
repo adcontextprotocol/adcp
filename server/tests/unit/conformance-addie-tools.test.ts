@@ -240,6 +240,7 @@ describe('run_conformance_against_my_agent Addie tool', () => {
       passed_count: 1,
       failed_count: 1,
       skipped_count: 0,
+      validations_advisory_failed: 5,
       total_duration_ms: 200,
       phases: [
         {
@@ -266,6 +267,8 @@ describe('run_conformance_against_my_agent Addie tool', () => {
                   id: 'check_extend_flight_mode',
                   check: 'field_value',
                   passed: false,
+                  severity: 'required',
+                  severity_promoted_from_advisory: true,
                   path: 'products[0].allowed_actions[1].mode',
                   json_pointer: '/products/0/allowed_actions/1/mode',
                   expected: 'requires_approval',
@@ -311,6 +314,13 @@ describe('run_conformance_against_my_agent Addie tool', () => {
                   actual: 'unsafe',
                   description: 'Bearer-style validation IDs are redacted',
                 },
+                ...Array.from({ length: 5 }, (_, index) => ({
+                  id: `advisory_${index + 1}`,
+                  check: 'field_value',
+                  passed: false,
+                  severity: 'advisory' as const,
+                  description: `Advisory finding ${index + 1}`,
+                })),
               ],
             },
             {
@@ -335,6 +345,11 @@ describe('run_conformance_against_my_agent Addie tool', () => {
     expect(out).toMatch(/expected status 200, got 500/);
     expect(out).toMatch(/failed validations/);
     expect(out).toMatch(/"id": "check_extend_flight_mode"/);
+    expect(out).toContain('"severity_promoted_from_advisory": true');
+    expect(out.match(/"id":/g)).toHaveLength(8);
+    expect(out).toContain('"id": "advisory_3"');
+    expect(out).not.toContain('"id": "advisory_4"');
+    expect(out).toContain('2 additional failed validation(s) omitted.');
     expect(out).toMatch(/"id": "authorization_header_missing"/);
     expect(out).toMatch(/"id": "multi_finalize_unsupported\.error_code"/);
     expect(out).toMatch(/"id": "\[redacted\]"/);
