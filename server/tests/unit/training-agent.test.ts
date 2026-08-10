@@ -129,15 +129,14 @@ async function simulateListTools(
 }
 
 /**
- * Auto-inject a fresh UUID v4 `idempotency_key` on mutating tools when the
- * test doesn't provide one. The idempotency middleware requires the key per
- * #2315; most tests in this file predate that requirement and don't care
- * about replay semantics — they just want the tool to run once.
+ * Apply protocol defaults that this broad legacy test file does not need to
+ * repeat at every call site: an explicit sandbox assertion for controller
+ * calls and a fresh UUID v4 `idempotency_key` for mutating tools.
  *
  * Tests that DO care (conflict / replay / expired / missing-key coverage)
  * pass an explicit `idempotency_key`, which this helper preserves.
  */
-function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
+function withTestProtocolDefaults(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
   let normalizedArgs = args;
   if (toolName === 'check_governance' && typeof args.tool === 'string' && args.payload) {
     const rawPayload = args.payload as Record<string, unknown>;
@@ -158,6 +157,18 @@ function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Re
   if (toolName === 'validate_input' && args.adcp_version === undefined) {
     return { ...normalizedArgs, adcp_version: CURRENT_ADCP_VERSION };
   }
+  if (toolName === 'comply_test_controller') {
+    const account = normalizedArgs.account;
+    normalizedArgs = {
+      ...normalizedArgs,
+      account: account && typeof account === 'object' && !Array.isArray(account)
+        ? {
+            ...(account as Record<string, unknown>),
+            sandbox: (account as Record<string, unknown>).sandbox ?? true,
+          }
+        : { sandbox: true },
+    };
+  }
   if (!MUTATING_TOOLS.has(toolName)) return normalizedArgs;
   if (normalizedArgs.idempotency_key !== undefined) return normalizedArgs;
   return { ...normalizedArgs, idempotency_key: `test-${randomUUID()}` };
@@ -177,7 +188,7 @@ async function simulateCallTool(
     throw new Error('CallTool handler not found');
   }
   const response = await handler(
-    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args) } },
+    { method: 'tools/call', params: { name: toolName, arguments: withTestProtocolDefaults(toolName, args) } },
     {},
   );
   // Success responses carry the body on `structuredContent`; error / replay
@@ -213,7 +224,7 @@ async function simulateCallToolAsTask(
     throw new Error('CallTool handler not found');
   }
   return handler(
-    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args), task: taskParams } },
+    { method: 'tools/call', params: { name: toolName, arguments: withTestProtocolDefaults(toolName, args), task: taskParams } },
     {},
   );
 }
@@ -13886,7 +13897,7 @@ async function simulateCallToolRaw(
   const handler = requestHandlers.get('tools/call');
   if (!handler) throw new Error('CallTool handler not found');
   const response = await handler(
-    { method: 'tools/call', params: { name: toolName, arguments: withIdempotencyKey(toolName, args) } },
+    { method: 'tools/call', params: { name: toolName, arguments: withTestProtocolDefaults(toolName, args) } },
     {},
   );
   const text = response.content?.[0]?.text;

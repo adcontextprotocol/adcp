@@ -1080,10 +1080,17 @@ export const COMPLY_TEST_CONTROLLER_TOOL = {
         type: 'object',
         description: 'Scenario-specific parameters. Call list_scenarios to see required and optional params per scenario. Omit for list_scenarios.',
       },
-      account: { type: 'object' },
+      account: {
+        type: 'object',
+        properties: {
+          sandbox: { type: 'boolean', const: true },
+        },
+        required: ['sandbox'],
+        additionalProperties: true,
+      },
       brand: { type: 'object' },
     },
-    required: ['scenario'],
+    required: ['scenario', 'account'],
   },
 };
 
@@ -1104,24 +1111,26 @@ export const COMPLY_TEST_CONTROLLER_TOOL = {
 export async function handleComplyTestController(args: ToolArgs, ctx: TrainingContext): Promise<object> {
   const rawArgs = args as Record<string, unknown>;
 
-  // Sandbox gate — spec: "If a comply_test_controller call references a
-  // non-sandbox account, the controller MUST return FORBIDDEN." The
-  // training agent is sandbox-only by deployment (the tool only lists on
-  // sandbox connections), so a caller hitting this endpoint is by
-  // definition in sandbox. Reject ONLY when the request explicitly
-  // declares `account.sandbox: false` (an attempt to target a named
-  // production account) — default-to-allow matches the storyboards
-  // (`deterministic_testing`, etc.) which don't include `account` at all
-  // on error-surface probes.
+  // Sandbox gate — the caller's assertion is required but is not itself an
+  // authorization grant. The training agent is sandbox-only, so requiring
+  // the explicit flag keeps this reference implementation fail-closed and
+  // aligned with the published comply_test_controller request schema.
   const account = rawArgs.account as { sandbox?: boolean } | undefined;
   const params = (rawArgs.params ?? {}) as Record<string, unknown>;
   const isLiveModeProbe = rawArgs.scenario === 'force_creative_status'
     && params.creative_id === 'comply-live-mode-probe-000';
-  if ((account && account.sandbox === false) || isLiveModeProbe) {
+  if (!account || account.sandbox !== true) {
     return {
       success: false,
       error: 'FORBIDDEN',
-      error_detail: 'comply_test_controller cannot target non-sandbox accounts',
+      error_detail: 'comply_test_controller requires account.sandbox: true',
+    };
+  }
+  if (isLiveModeProbe) {
+    return {
+      success: false,
+      error: 'FORBIDDEN',
+      error_detail: 'comply_test_controller is unavailable for live accounts',
     };
   }
 
