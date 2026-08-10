@@ -80,6 +80,9 @@ jobs:
         if: github.ref != 'refs/heads/3.0.x' && github.base_ref != '3.0.x'
         run: npm run test:error-code-drift
 
+      - name: Check docs against compliance error codes
+        run: npm run test:doc-compliance-drift
+
       - name: Check policy registry publication completeness
         run: npm run check:registry
 
