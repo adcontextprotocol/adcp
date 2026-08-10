@@ -888,10 +888,27 @@ function resolveStoryboardInputContext(
 }
 
 function formatStoryboardValidationLine(
-  validation: { id?: unknown; passed?: boolean; description?: string; error?: unknown },
+  validation: {
+    id?: unknown;
+    passed?: boolean;
+    severity?: 'required' | 'advisory';
+    severity_promoted_from_advisory?: boolean;
+    description?: string;
+    error?: unknown;
+  },
   options: { includeStatus?: boolean } = {},
 ): string {
-  const status = options.includeStatus === false ? '' : `${validation.passed ? 'PASS' : 'FAIL'}: `;
+  const status = options.includeStatus === false
+    ? ''
+    : `${validation.passed
+      ? validation.severity_promoted_from_advisory
+        ? 'PASS (PROMOTED ADVISORY — REQUIRED)'
+        : 'PASS'
+      : validation.severity_promoted_from_advisory
+        ? 'PROMOTED ADVISORY (REQUIRED)'
+        : validation.severity === 'advisory'
+          ? 'ADVISORY'
+          : 'FAIL'}: `;
   const id = formatValidationId(validation.id);
   const description = renderStoryboardDiagnostic(validation.description, RUNNER_ERROR_MAX_LEN);
   const error = validation.error
@@ -5366,7 +5383,7 @@ export function createMemberToolHandlers(
       output += `## ${result.storyboard_title}\n\n`;
       output += `**Agent:** ${resolved.resolvedUrl}\n`;
       output += `**Compliance target:** ${formatComplianceTarget(runTarget)}\n`;
-      output += `**Result:** ${result.overall_passed ? 'PASSED' : 'FAILED'} — ${result.passed_count} passed, ${result.failed_count} failed, ${result.skipped_count} skipped\n`;
+      output += `**Result:** ${result.overall_passed ? 'PASSED' : 'FAILED'} — ${result.passed_count} passed, ${result.failed_count} failed, ${result.skipped_count} skipped, ${result.validations_advisory_failed ?? 0} advisory validation(s) failed\n`;
       output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
 
       let anyFixPlans = false;
@@ -5381,8 +5398,14 @@ export function createMemberToolHandlers(
             if (step.error) {
               output += `  Error: ${renderStoryboardDiagnostic(step.error, RUNNER_ERROR_MAX_LEN)}\n`;
             }
-            for (const v of step.validations.filter(v => !v.passed)) {
-              output += `  Failed: ${formatStoryboardValidationLine(v, { includeStatus: false })}\n`;
+            for (const v of step.validations.filter(v => !v.passed && v.severity !== 'advisory')) {
+              const label = v.severity_promoted_from_advisory ? 'Promoted advisory (required)' : 'Failed';
+              output += `  ${label}: ${formatStoryboardValidationLine(v, { includeStatus: false })}\n`;
+            }
+          }
+          if (!step.skipped) {
+            for (const v of step.validations.filter(v => !v.passed && v.severity === 'advisory')) {
+              output += `  [ADVISORY] ${formatStoryboardValidationLine(v, { includeStatus: false })}\n`;
             }
           }
           // Hints are diagnostic-only and don't flip pass/fail per the
