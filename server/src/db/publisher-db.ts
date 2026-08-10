@@ -1,4 +1,4 @@
-import { getClient } from './client.js';
+import { getClient, query } from './client.js';
 import { uuidv7 } from './uuid.js';
 import { CollectionCatalogDatabase, type CollectionProjectionEvent } from './collection-catalog-db.js';
 import type { CatalogEventsDatabase, WriteEventInput } from './catalog-events-db.js';
@@ -147,6 +147,15 @@ export interface UpsertAdagentsCacheInput {
   collectionEventActor?: string;
   publisherEventActor?: string;
   publisherEventSource?: string;
+  crawlRequestId?: string;
+  crawlRequestLeaseToken?: string;
+}
+
+export class PublisherCrawlLeaseLostError extends Error {
+  constructor() {
+    super('Publisher crawl request lease is no longer current');
+    this.name = 'PublisherCrawlLeaseLostError';
+  }
 }
 
 export interface RecordAdagentsValidationFailureInput {
@@ -960,10 +969,8 @@ export class PublisherDatabase {
     resolvedUrl?: string;
   }): Promise<void> {
     const domain = canonicalizePublisherDomain(input.domain);
-    const client = await getClient();
-    try {
-      await client.query(
-        `INSERT INTO publishers
+    await query(
+      `INSERT INTO publishers
            (domain, source_type, last_http_status, last_response_bytes, resolved_url)
          VALUES ($1, 'community', $2, $3, $4)
          ON CONFLICT (domain) DO UPDATE SET
@@ -976,11 +983,8 @@ export class PublisherDatabase {
           clampHttpStatus(input.statusCode),
           input.responseBytes ?? null,
           truncateResolvedUrl(input.resolvedUrl),
-        ],
-      );
-    } finally {
-      client.release();
-    }
+      ],
+    );
   }
 
   /**
@@ -1128,6 +1132,28 @@ export class PublisherDatabase {
       // no row exists yet. A row lock alone cannot prevent concurrent first
       // crawls from both observing "missing" and emitting duplicate events.
       await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [domain]);
+      if (input.crawlRequestId || input.crawlRequestLeaseToken) {
+        if (!input.crawlRequestId || !input.crawlRequestLeaseToken) {
+          throw new PublisherCrawlLeaseLostError();
+        }
+        // Serialize the token check with claim/reclaim without row-locking
+        // the request. Heartbeats must remain able to extend the lease while
+        // a larger mirror transaction is committing.
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+          `publisher-crawl-fence:${input.crawlRequestId}`,
+        ]);
+        const lease = await client.query(
+          `SELECT 1
+             FROM publisher_crawl_requests
+            WHERE id = $1
+              AND status = 'running'
+              AND lease_token = $2
+              AND lease_expires_at > NOW()
+            `,
+          [input.crawlRequestId, input.crawlRequestLeaseToken],
+        );
+        if (lease.rowCount !== 1) throw new PublisherCrawlLeaseLostError();
+      }
       const previousResult = await client.query<{ adagents_json: AdagentsManifest | null }>(
         `SELECT adagents_json FROM publishers WHERE domain = $1 FOR UPDATE`,
         [domain],

@@ -155,6 +155,8 @@ export class AgentInventoryProfilesDatabase {
     let persistedProfiles: AgentInventoryProfile[] = [];
     try {
       await client.query('BEGIN');
+      await client.query("SELECT set_config('statement_timeout', '30000ms', true)");
+      await client.query("SELECT set_config('lock_timeout', '5000ms', true)");
       for (const input of inputs) {
         const sql = `INSERT INTO agent_inventory_profiles (
           agent_url, channels, property_types, markets, categories, tags,
