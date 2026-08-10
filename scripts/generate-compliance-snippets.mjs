@@ -104,6 +104,17 @@ function generatedHeader(sourcePaths) {
   ].join('\n');
 }
 
+function generatedFrontmatter({ title, description, ogTitle }) {
+  return [
+    '---',
+    `title: ${title}`,
+    `description: "${description}"`,
+    `"og:title": "${ogTitle}"`,
+    '---',
+    '',
+  ].join('\n');
+}
+
 function assertCompleteErrorTaxonomy(schema) {
   if (!Array.isArray(schema.enum)) {
     throw new Error('error-code.json must contain an enum array');
@@ -162,6 +173,12 @@ function assertCompleteErrorTaxonomy(schema) {
 function renderErrorCodes(schema) {
   assertCompleteErrorTaxonomy(schema);
   const lines = [
+    generatedFrontmatter({
+      title: 'Compliance Error Codes',
+      description:
+        'Canonical AdCP error codes with recovery classifications, remediation guidance, and complete human-readable definitions.',
+      ogTitle: 'AdCP — Compliance Error Codes',
+    }),
     generatedHeader(['static/schemas/source/enums/error-code.json']),
     '| Code | Recovery | Suggested action |',
     '|------|----------|------------------|',
@@ -246,6 +263,12 @@ function loadGradedStoryboards(index, complianceDir = COMPLIANCE_DIR) {
 function renderStoryboardInventory(index, complianceDir = COMPLIANCE_DIR) {
   const storyboards = loadGradedStoryboards(index, complianceDir);
   const lines = [
+    generatedFrontmatter({
+      title: 'Universal Compliance Storyboards',
+      description:
+        "Graded universal compliance storyboards that every AdCP agent runs, including each scenario's purpose and canonical YAML source.",
+      ogTitle: 'AdCP — Universal Compliance Storyboards',
+    }),
     generatedHeader([
       'dist/compliance/latest/index.json',
       'dist/compliance/latest/universal/*.yaml',

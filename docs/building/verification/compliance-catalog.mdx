@@ -28,9 +28,7 @@ Capability-gated rows (`deterministic-testing`, `oauth-setup`, `signed-requests`
 
 ## Standard error codes
 
-{/* Using latest because the generated taxonomy includes error codes not yet
-    present in the current v3 release. Update to the v3 alias after the next release. */}
-The compliance suite verifies that standard errors use the recovery classifications and remediation guidance defined by the canonical [`error-code.json`](https://adcontextprotocol.org/schemas/latest/enums/error-code.json) taxonomy. The vocabulary remains open: agents must also handle unknown codes using the response's `recovery` value.
+The compliance suite verifies that standard errors use the recovery classifications and remediation guidance defined by the canonical [`error-code.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/source/enums/error-code.json) source taxonomy. The vocabulary remains open: agents must also handle unknown codes using the response's `recovery` value.
 
 <ComplianceErrorCodes />
 

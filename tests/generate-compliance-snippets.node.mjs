@@ -38,6 +38,8 @@ test('error-code rendering is sorted, escaped, and deterministic', () => {
   const first = renderErrorCodes(schemaFixture());
   const second = renderErrorCodes(schemaFixture());
   assert.equal(first, second);
+  assert.match(first, /^---\ntitle: Compliance Error Codes\n/);
+  assert.match(first, /"og:title": "AdCP — Compliance Error Codes"/);
   assert.ok(first.indexOf('`A_CODE`') < first.indexOf('`Z_CODE`'));
   assert.match(first, /&lt;tags&gt;/);
   assert.match(first, /&#123;values&#125;/);
