@@ -2694,6 +2694,31 @@ const CollectionEventPayloadSchema = z
   .passthrough()
   .openapi("CollectionEventPayload");
 
+// JWK shape for publisher-pinned signing keys. Mirrors the canonical
+// core schema at static/schemas/source/core/agent-signing-key.json —
+// kid + kty required, kty-specific fields (crv/x/y for OKP/EC; n/e for
+// RSA) surface for downstream verifiers. `.passthrough()` matches the
+// source schema's additionalProperties: true so future JWK params ride
+// through without a schema bump.
+const SigningKeySchema = z
+  .object({
+    kid: z.string().openapi({ description: "Key identifier for selecting the correct signing key." }),
+    kty: z.string().openapi({ description: "JWK key type, such as 'OKP', 'EC', or 'RSA'." }),
+    alg: z.string().optional().openapi({ description: "Expected signing algorithm for this key, such as 'EdDSA' or 'RS256'." }),
+    use: z.string().optional().openapi({ description: "Optional JWK use value. Typically 'sig' for signing keys." }),
+    crv: z.string().optional().openapi({ description: "Curve name for OKP or EC keys, such as 'Ed25519' or 'P-256'." }),
+    x: z.string().optional().openapi({ description: "Base64url-encoded public key x coordinate or public key value for OKP keys." }),
+    y: z.string().optional().openapi({ description: "Base64url-encoded public key y coordinate for EC keys." }),
+    n: z.string().optional().openapi({ description: "Base64url-encoded RSA modulus." }),
+    e: z.string().optional().openapi({ description: "Base64url-encoded RSA public exponent." }),
+    revoked_at: z.string().datetime().optional().openapi({
+      description:
+        "Optional revocation timestamp. When present, verifiers MUST reject any signature produced with this key whose signing epoch is at or after this timestamp. The key may continue to appear in the trust anchor during a grace period so caches that have not yet refreshed still find the key and can evaluate the revocation marker.",
+    }),
+  })
+  .passthrough()
+  .openapi("SigningKey");
+
 const AuthorizationEventPayloadSchema = z
   .object({
     id: z.string().uuid().optional().openapi({ description: "Registry authorization row id when the event is backed by a materialized effective authorization row." }),
@@ -2722,7 +2747,7 @@ const AuthorizationEventPayloadSchema = z
     // base-row events where the publisher declared no pin (the common case).
     // Absent (undefined) on 'add'-phantom override events which never carry
     // signing_keys. `.nullable().optional()` admits both.
-    signing_keys: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
+    signing_keys: z.array(SigningKeySchema).nullable().optional(),
     evidence: z.string().optional(),
     disputed: z.boolean().optional(),
     created_by: z.string().nullable().optional(),
@@ -2921,7 +2946,7 @@ const AuthorizationRowSchema = z.object({
   expires_at: z.string().datetime().nullable(),
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
-  signing_keys: z.array(z.record(z.string(), z.unknown())).nullable().openapi({
+  signing_keys: z.array(SigningKeySchema).nullable().openapi({
     description:
       "Publisher-pinned JWK set (authorized_agents[*].signing_keys) from the source " +
       "adagents.json. Consumers verifying inbound TMP signatures key on kid → JWK. " +
