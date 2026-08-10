@@ -8,7 +8,7 @@ vi.mock('../../src/db/agent-snapshot-db.js', () => ({
   AgentSnapshotDatabase: class {
     bulkGetCapabilities() {
       return Promise.resolve(new Map([[AGENT_URL, {
-        discovered_tools_json: Array.from({ length: 5 }, (_, index) => `stale_tool_${index}`),
+        discovered_tools_json: Array.from({ length: 12 }, (_, index) => `tool_${index}`),
         inferred_type: 'sales',
       }]]));
     }
@@ -57,14 +57,14 @@ function buildApp(): express.Express {
 }
 
 describe('public registry tool count enrichment', () => {
-  it('uses the fresher health count for legacy capability consumers', async () => {
+  it('keeps the complete capability catalog count separate from the health snapshot', async () => {
     const response = await request(buildApp())
       .get('/api/registry/agents?health=true&capabilities=true');
 
     expect(response.status).toBe(200);
     expect(response.body.agents[0]).toMatchObject({
       health: { tools_count: 10 },
-      capabilities: { tools_count: 10 },
+      capabilities: { tools_count: 12 },
     });
   });
 });
