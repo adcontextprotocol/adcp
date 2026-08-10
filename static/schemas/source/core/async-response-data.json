@@ -30,6 +30,21 @@
       "$ref": "/schemas/media-buy/get-products-async-response-submitted.json"
     },
     {
+      "title": "RequestProposalsResponse",
+      "description": "Terminal response for request_proposals",
+      "$ref": "/schemas/media-buy/request-proposals-response.json"
+    },
+    {
+      "title": "RefineProposalsResponse",
+      "description": "Terminal response for refine_proposals",
+      "$ref": "/schemas/media-buy/refine-proposals-response.json"
+    },
+    {
+      "title": "FinalizeProposalsResponse",
+      "description": "Terminal response for finalize_proposals",
+      "$ref": "/schemas/media-buy/finalize-proposals-response.json"
+    },
+    {
       "title": "GetSignalsResponse",
       "description": "Response for completed or failed get_signals",
       "$ref": "/schemas/signals/get-signals-response.json"

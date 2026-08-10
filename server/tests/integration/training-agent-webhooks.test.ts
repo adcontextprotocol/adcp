@@ -262,6 +262,15 @@ describe('Training Agent webhook emission', () => {
         'op_finalize_proposals',
       ]);
       expect(bodies.every(body => body.token === 'split-callback-token-1234')).toBe(true);
+      const results = bodies.map(body => body.result as Record<string, unknown>);
+      expect(results[0]).toMatchObject({ proposals: expect.any(Array), products: expect.any(Array) });
+      expect(results[0]).not.toHaveProperty('refinement_applied');
+      expect(results[1]).toMatchObject({ results: expect.any(Array), products: expect.any(Array) });
+      expect(results[1]).not.toHaveProperty('proposals');
+      expect(results[1]).not.toHaveProperty('refinement_applied');
+      expect(results[2]).toMatchObject({ proposals: expect.any(Array) });
+      expect(results[2]).not.toHaveProperty('products');
+      expect(results[2]).not.toHaveProperty('refinement_applied');
     } finally {
       if (srv) {
         srv.closeAllConnections?.();

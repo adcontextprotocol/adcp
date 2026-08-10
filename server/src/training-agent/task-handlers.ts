@@ -12085,10 +12085,15 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         || toolResult!.isError
         || handlerThrew
       ) return;
+      const webhookResponse = projectProductDiscoveryResult(
+        name,
+        cachableResponse,
+        initialHandlerArgs,
+      );
       maybeEmitCompletionWebhook({
         toolName: name,
         args: initialHandlerArgs,
-        response: cachableResponse,
+        response: webhookResponse,
         requestIdempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
         principal: idempotencyPrincipal,
       });
