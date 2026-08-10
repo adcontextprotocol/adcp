@@ -2515,7 +2515,12 @@ export class CrawlerService {
       deferred: 0,
       lostLease: 0,
     };
-    if (this.publisherCrawlQueueProcessing || this.crawling) return stats;
+    // Claim even while an in-process full crawl is active. crawlSingleDomain()
+    // will take the existing contention path and persist the request as
+    // deferred without consuming an attempt. Returning here instead leaves
+    // accepted work invisibly queued for the entire full crawl and, if that
+    // crawl wedges, forever.
+    if (this.publisherCrawlQueueProcessing) return stats;
 
     this.publisherCrawlQueueProcessing = true;
     try {

@@ -128,14 +128,17 @@ terminal `failed` request, correct the reported error category and submit a new
 crawl request after the per-domain rate-limit window; the old request remains
 as the audit record.
 
-Workers claim no more requests than they can start immediately. Each active
-publisher crawl holds a PostgreSQL shared global execution lock and an
-exclusive per-domain lock for the fetch/write lifecycle; the periodic full
-crawl holds the exclusive global lock. These session locks use dedicated
-connections outside the application pool, so crawl concurrency does not consume
-the connections needed by heartbeats, status reads, or mirror transactions. The
-locks prevent an expired or duplicate attempt from overwriting newer mirror
-state. The mirror transaction
+Workers claim at most the configured crawl concurrency per tick. If a periodic
+full crawl is active, claimed requests are persisted as `deferred`, their claim
+attempt is refunded, and they become eligible again after 30 seconds. This
+makes contention visible without spending the retry budget or performing
+origin work. Each active publisher crawl holds a PostgreSQL shared global
+execution lock and an exclusive per-domain lock for the fetch/write lifecycle;
+the periodic full crawl holds the exclusive global lock. These session locks
+use dedicated connections outside the application pool, so crawl concurrency
+does not consume the connections needed by heartbeats, status reads, or mirror
+transactions. The locks prevent an expired or duplicate attempt from
+overwriting newer mirror state. The mirror transaction
 also verifies the current request lease token before committing. Publisher GET
 requests do not acquire these locks and continue to serve the last committed
 mirror state while crawling is delayed or unavailable.
