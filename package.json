@@ -134,6 +134,7 @@
     "update-schema-versions": "echo 'Schema versioning is now handled by build:schemas script'",
     "release": "npm run version && npm test && npm run build && git add -A && git commit -m 'Version packages' && git push",
     "verify-version-sync": "node scripts/verify-version-sync.cjs",
+    "check:published-compliance": "node scripts/check-published-compliance-versions.cjs",
     "check:registry": "node scripts/check-registry-completeness.cjs",
     "check:x-entity-gaps": "node scripts/check-x-entity-gaps.cjs",
     "check:seo": "node scripts/check-seo-metadata.cjs",
