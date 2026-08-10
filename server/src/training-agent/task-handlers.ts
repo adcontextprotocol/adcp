@@ -4416,7 +4416,7 @@ export function projectProductDiscoveryResult(
               source_proposal_id: sourceProposalId,
               outcome,
               proposal,
-              ...(typeof internalProposal?.__refinement_notes === 'string'
+              ...(outcome === 'partial' && typeof internalProposal?.__refinement_notes === 'string'
                 && { notes: internalProposal.__refinement_notes }),
             }
           : {
@@ -5673,7 +5673,7 @@ async function handleGetProductsUnlocked(
           const status = proposalLifecycle(proposal).proposal_status;
           if (status === 'committed') {
             refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal already committed' });
-          } else if (status === 'draft') {
+          } else {
             const committed = { ...proposal } as Record<string, unknown> & ProposalLifecycle;
             committed.proposal_status = 'committed';
             (committed as Record<string, unknown>).expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -5710,8 +5710,6 @@ async function handleGetProductsUnlocked(
             stagedProposalCommits.set(op.proposal_id, updatedProposal);
 
             refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal finalized — pricing committed, inventory held for 24 hours' });
-          } else {
-            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal is already ready to buy (no finalization needed)' });
           }
         }
       } else if (op.scope === 'request') {

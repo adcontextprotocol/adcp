@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
+import addFormats from 'ajv-formats';
 
 type JsonSchema = Record<string, unknown>;
 
@@ -183,7 +184,8 @@ function productDiscoverySourceValidator(fileName: string): ValidateFunction {
   if (cached) return cached;
 
   if (!sourceAjv) {
-    sourceAjv = new Ajv({ strict: false, validateFormats: false });
+    sourceAjv = new Ajv({ strict: false });
+    addFormats(sourceAjv);
     for (const path of schemaFiles(schemaRoot)) {
       const schema = JSON.parse(readFileSync(path, 'utf8')) as JsonSchema;
       if (typeof schema.$id === 'string') sourceAjv.addSchema(schema, schema.$id);

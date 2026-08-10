@@ -12624,6 +12624,62 @@ describe('proposal lifecycle', () => {
     expect(purchased.media_buy_id).toEqual(expect.any(String));
   });
 
+  it('omits partial-only notes from a fully revised proposal result', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: requested, isError: requestError } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+    });
+    expect(requestError).toBeFalsy();
+    const source = (requested.proposals as Array<Record<string, unknown>>)[0];
+
+    const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: source.proposal_id,
+        instructions: 'Provide concrete fixed CPM pricing in USD.',
+      }],
+    });
+    expect(refineError).toBeFalsy();
+    const revision = (refined.results as Array<Record<string, unknown>>)[0];
+    expect(revision).toMatchObject({
+      source_proposal_id: source.proposal_id,
+      outcome: 'revised',
+      proposal: { proposal_status: 'draft' },
+    });
+    expect(revision).not.toHaveProperty('notes');
+  });
+
+  it('commits a statusless backward-compatible proposal before returning it from finalize_proposals', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: requested, isError: requestError } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+    });
+    expect(requestError).toBeFalsy();
+    const source = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const compactSessionKey = sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous');
+    await runWithSessionContext(async () => {
+      const session = await getSession(compactSessionKey);
+      const stored = session.lastGetProductsContext?.proposals?.find(
+        proposal => proposal.proposal_id === source.proposal_id,
+      ) as (Record<string, unknown> | undefined);
+      expect(stored).toBeDefined();
+      delete stored!.proposal_status;
+      delete stored!.expires_at;
+      await flushDirtySessions();
+    });
+
+    const { result: finalized, isError: finalizeError } = await simulateCallTool(server, 'finalize_proposals', {
+      proposal_ids: [source.proposal_id],
+    });
+    expect(finalizeError).toBeFalsy();
+    expect((finalized.proposals as Array<Record<string, unknown>>)[0]).toMatchObject({
+      proposal_id: source.proposal_id,
+      proposal_status: 'committed',
+      expires_at: expect.any(String),
+    });
+  });
+
   it('binds compact proposals to both the seller account and full BrandKey', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const originalBrand = { domain: 'proposal-house.example', brand_id: 'alpha' };

@@ -37,7 +37,8 @@ const logger = createLogger('training-agent-webhooks');
  *  Keep in sync with `static/schemas/source/core/mcp-webhook-payload.json`. */
 export type WebhookTaskType =
   | 'create_media_buy' | 'update_media_buy' | 'sync_creatives' | 'build_creative'
-  | 'get_products' | 'activate_signal'
+  | 'get_products' | 'request_proposals' | 'refine_proposals' | 'finalize_proposals'
+  | 'activate_signal'
   | 'get_signals' | 'create_property_list' | 'update_property_list' | 'get_property_list'
   | 'list_property_lists' | 'delete_property_list' | 'sync_accounts'
   | 'get_account_financials' | 'get_creative_delivery' | 'sync_event_sources'
@@ -46,6 +47,9 @@ export type WebhookTaskType =
 
 export const TOOL_TO_TASK_TYPE = {
   get_products: 'get_products',
+  request_proposals: 'request_proposals',
+  refine_proposals: 'refine_proposals',
+  finalize_proposals: 'finalize_proposals',
   create_media_buy: 'create_media_buy',
   update_media_buy: 'update_media_buy',
   sync_creatives: 'sync_creatives',
@@ -83,6 +87,9 @@ type WebhookProtocol = 'media-buy' | 'signals' | 'governance' | 'creative' | 'br
 
 export const TOOL_TO_PROTOCOL: Readonly<Record<WebhookEmittingTool, WebhookProtocol>> = {
   get_products: 'media-buy',
+  request_proposals: 'media-buy',
+  refine_proposals: 'media-buy',
+  finalize_proposals: 'media-buy',
   create_media_buy: 'media-buy',
   update_media_buy: 'media-buy',
   sync_creatives: 'media-buy',
@@ -122,6 +129,29 @@ function extractBuyerOperationId(args: Record<string, unknown>): string | undefi
   const pnc = args.push_notification_config as { operation_id?: unknown } | undefined;
   if (!pnc || typeof pnc !== 'object') return undefined;
   return typeof pnc.operation_id === 'string' && pnc.operation_id.length > 0 ? pnc.operation_id : undefined;
+}
+
+function extractWebhookToken(args: Record<string, unknown>): string | undefined {
+  const pnc = args.push_notification_config as { token?: unknown } | undefined;
+  if (!pnc || typeof pnc !== 'object') return undefined;
+  return typeof pnc.token === 'string' && pnc.token.length > 0 ? pnc.token : undefined;
+}
+
+function extractWebhookAuthentication(args: Record<string, unknown>): WebhookAuthentication | undefined {
+  const pnc = args.push_notification_config as {
+    authentication?: { schemes?: unknown; credentials?: unknown };
+  } | undefined;
+  const authentication = pnc?.authentication;
+  if (!authentication || typeof authentication !== 'object'
+      || !Array.isArray(authentication.schemes)
+      || typeof authentication.credentials !== 'string') return undefined;
+  if (authentication.schemes[0] === 'Bearer') {
+    return { type: 'bearer', token: authentication.credentials };
+  }
+  if (authentication.schemes[0] === 'HMAC-SHA256') {
+    return { type: 'hmac_sha256', secret: authentication.credentials };
+  }
+  return undefined;
 }
 
 /** Derive a stable scope key for the **webhook idempotency-key store** —
@@ -202,6 +232,7 @@ export function maybeEmitCompletionWebhook(opts: {
   // the principal-scoped `idempotencyScope` on the wire: it embeds the
   // seller-side auth token.
   const wireOperationId = extractBuyerOperationId(opts.args) ?? webhookTaskId;
+  const token = extractWebhookToken(opts.args);
   const payload: Record<string, unknown> = {
     operation_id: wireOperationId,
     task_id: webhookTaskId,
@@ -209,9 +240,16 @@ export function maybeEmitCompletionWebhook(opts: {
     protocol: TOOL_TO_PROTOCOL[tool],
     status: 'completed',
     timestamp: new Date().toISOString(),
+    ...(token !== undefined && { token }),
     result: opts.response,
   };
-  void emitter.emit({ url: webhookUrl, payload, operation_id: idempotencyScope })
+  const authentication = extractWebhookAuthentication(opts.args);
+  void emitter.emit({
+    url: webhookUrl,
+    payload,
+    operation_id: idempotencyScope,
+    ...(authentication !== undefined && { authentication }),
+  })
     .catch(err => logger.warn({ err, tool: opts.toolName, url: webhookUrl }, 'Webhook emission failed'));
 }
 

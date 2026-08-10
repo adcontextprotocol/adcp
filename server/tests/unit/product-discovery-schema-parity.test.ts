@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import Ajv from 'ajv';
 import { describe, expect, it } from 'vitest';
 import { productDiscoveryAliasToolDefinitions } from '../../src/training-agent/task-handlers.js';
+import { validateProductDiscoverySourceInput } from '../../src/training-agent/source-schema.js';
 
 type JsonSchema = Record<string, any>;
 
@@ -102,5 +103,14 @@ describe('product discovery MCP schema parity', () => {
     expect(criteria.properties.offer_filters).toBeDefined();
     expect(criteria.properties).not.toHaveProperty('targeting_overlay');
     expect(criteria.properties).not.toHaveProperty('required_overlay_support');
+  });
+
+  it('enforces URI formats from the normative source schema at dispatch', () => {
+    expect(validateProductDiscoverySourceInput('request-proposals-request', {
+      idempotency_key: 'format-check-key-1234',
+      brand: { domain: 'format-check.example' },
+      brief: 'Reach relevant buyers',
+      push_notification_config: { url: 'not a uri' },
+    })).toMatchObject({ field: 'push_notification_config.url' });
   });
 });
