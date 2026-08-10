@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/refine-proposals-response.json",
+  "title": "Refine Proposals Response",
+  "description": "One ordered immutable revision result per requested source proposal, plus the products needed to evaluate the revised allocations.",
+  "type": "object",
+  "properties": {
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_proposal_id": {
+            "type": "string",
+            "minLength": 1,
+            "x-entity": "proposal"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": ["revised", "partial", "unable"]
+          },
+          "proposal": {
+            "allOf": [
+              { "$ref": "/schemas/core/proposal.json" },
+              {
+                "properties": {
+                  "proposal_status": { "type": "string", "const": "draft" },
+                  "expires_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["proposal_status", "expires_at"]
+              }
+            ]
+          },
+          "reason": { "type": "string", "minLength": 1 },
+          "notes": { "type": "string", "minLength": 1 },
+          "suggestions": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "minItems": 1
+          }
+        },
+        "required": ["source_proposal_id", "outcome"],
+        "oneOf": [
+          {
+            "properties": { "outcome": { "const": "revised" } },
+            "required": ["proposal"],
+            "not": {
+              "anyOf": [
+                { "required": ["reason"] },
+                { "required": ["notes"] }
+              ]
+            }
+          },
+          {
+            "properties": { "outcome": { "const": "partial" } },
+            "required": ["proposal", "notes"],
+            "not": { "required": ["reason"] }
+          },
+          {
+            "properties": { "outcome": { "const": "unable" } },
+            "required": ["reason"],
+            "not": { "required": ["proposal"] }
+          }
+        ],
+        "additionalProperties": false
+      }
+    },
+    "products": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/product.json" }
+    }
+  },
+  "required": ["results", "products"],
+  "not": {
+    "anyOf": [
+      { "required": ["proposals"] },
+      { "required": ["refinement_applied"] },
+      { "required": ["pagination"] }
+    ]
+  },
+  "additionalProperties": true
+}

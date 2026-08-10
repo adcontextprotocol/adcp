@@ -2,4 +2,4 @@
 "adcontextprotocol": minor
 ---
 
-Add the AdCP 3.2 `list_products`, `recommend_products`, `refine_proposal`, and `finalize_proposals` tools. The split tools give reads, recommendations, refinements, and commits explicit idempotency contracts while retaining `get_products` as a key-optional compatibility facade throughout 3.x. Keyed retries are equivalent across legacy and split names.
+Add the compact AdCP 3.2 product lifecycle: `list_products`, `request_proposals`, `refine_proposals`, and `finalize_proposals`. The task-specific contracts separate offer discovery from proposal creation, immutable refinement, atomic commitment, and purchase while retaining `get_products` as a key-optional compatibility facade throughout 3.x.

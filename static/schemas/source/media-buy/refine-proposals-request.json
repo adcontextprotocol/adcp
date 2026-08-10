@@ -1,11 +1,11 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/media-buy/finalize-proposals-request.json",
-  "title": "Finalize Proposals Request",
-  "description": "Atomically commit one or more draft proposals to firm terms and inventory holds. Proposal ownership is resolved from the authenticated principal and opaque IDs.",
+  "$id": "/schemas/media-buy/refine-proposals-request.json",
+  "title": "Refine Proposals Request",
+  "description": "Create revised drafts from one or more existing proposals. Each source proposal remains addressable so buyers can explore alternatives safely.",
   "type": "object",
   "x-mutates-state": true,
-  "x-operation-family": "finalize_proposals",
+  "x-operation-family": "refine_proposals",
   "x-added-in": "3.2.0",
   "properties": {
     "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
@@ -22,20 +22,19 @@
     },
     "idempotency_key": {
       "type": "string",
-      "description": "Client-generated key required for retry-safe atomic finalization.",
+      "description": "Client-generated key required for retry-safe proposal refinement.",
       "minLength": 16,
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
-    "proposal_ids": {
+    "refinements": {
       "type": "array",
-      "description": "Unique proposal IDs to commit as one atomic operation.",
-      "items": { "type": "string", "minLength": 1, "x-entity": "proposal" },
+      "description": "Proposal revisions to create. proposal_id values MUST be unique within the request; results preserve request order.",
+      "items": { "$ref": "/schemas/media-buy/proposal-refinement.json" },
       "minItems": 1,
-      "maxItems": 25,
       "uniqueItems": true
     }
   },
-  "required": ["idempotency_key", "proposal_ids"],
+  "required": ["idempotency_key", "refinements"],
   "additionalProperties": false
 }

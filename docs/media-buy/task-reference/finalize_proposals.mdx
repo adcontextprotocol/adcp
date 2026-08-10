@@ -5,9 +5,10 @@ description: "Atomically commit one or more draft product proposals."
 testable: true
 ---
 
-`finalize_proposals` is the explicit AdCP 3.2 proposal commit boundary. `idempotency_key` is required, and `proposal_ids` must be non-empty and unique.
+`finalize_proposals` is the explicit proposal commit boundary. `idempotency_key` is required, and `proposal_ids` must be non-empty and unique. The request carries no brand, account, catalog, or targeting state: each opaque proposal ID is resolved under the authenticated principal and already binds that state.
 
-**Request schema:** [`/schemas/v3/media-buy/finalize-proposals-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/finalize-proposals-request.json)
+<!-- Using latest because this schema is not yet released. -->
+**Request schema:** [`/schemas/latest/media-buy/finalize-proposals-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/finalize-proposals-request.json)
 
 ```json
 {
@@ -16,4 +17,4 @@ testable: true
 }
 ```
 
-Multi-proposal finalization retains the legacy atomic pre-commit validation rule: if any proposal is invalid, the seller rejects the request without committing any named proposal. During 3.x, it shares replay identity with the equivalent exclusive legacy finalize array.
+The seller advertises `max_atomic_finalize_batch_size`. Within that bound, finalization is all-or-nothing: every named proposal is persisted as committed, or none is. Retrying an already successful request returns the original committed snapshots and does not extend their inventory holds.

@@ -530,6 +530,10 @@
           "$ref": "/schemas/core/product-filters.json",
           "description": "Structured filters for product discovery"
         },
+        "product-offer-filters": {
+          "$ref": "/schemas/core/product-offer-filters.json",
+          "description": "Offer-only product filters used by the compact product-discovery tools"
+        },
         "creative-filters": {
           "$ref": "/schemas/core/creative-filters.json",
           "description": "Filter criteria for querying creative assets from the centralized library"
@@ -598,6 +602,14 @@
         "brand-ref": {
           "$ref": "/schemas/core/brand-ref.json",
           "description": "Reference to a brand via house domain + brand_id (like publisher + property_id)"
+        },
+        "brand-key": {
+          "$ref": "/schemas/core/brand-key.json",
+          "description": "Identity-only brand key for resolving a canonical brand manifest"
+        },
+        "catalog-selection": {
+          "$ref": "/schemas/core/catalog-selection.json",
+          "description": "Catalog reference and item selectors without ingestion configuration"
         },
         "seller-agent-ref": {
           "$ref": "/schemas/core/seller-agent-ref.json",
@@ -1291,6 +1303,14 @@
     "media-buy": {
       "description": "Media buy task request/response schemas",
       "supporting-schemas": {
+        "product-discovery-criteria": {
+          "$ref": "/schemas/media-buy/product-discovery-criteria.json",
+          "description": "Structured offer, catalog, and policy criteria shared by compact discovery tools"
+        },
+        "proposal-refinement": {
+          "$ref": "/schemas/media-buy/proposal-refinement.json",
+          "description": "One immutable proposal revision request"
+        },
         "get-products-rejected": {
           "$ref": "/schemas/media-buy/get-products-rejected.json",
           "description": "Terminal business rejection arm for a well-formed get_products brief or refinement"
@@ -1309,7 +1329,7 @@
           "request": {
             "$ref": "/schemas/media-buy/get-products-request.json",
             "deprecated": true,
-            "description": "AdCP 3.x compatibility request. New 3.2 callers use list_products, recommend_products, refine_proposal, or finalize_proposals."
+            "description": "AdCP 3.x compatibility request. New 3.2 callers use list_products, request_proposals, refine_proposals, or finalize_proposals."
           },
           "response": {
             "$ref": "/schemas/media-buy/get-products-response.json",
@@ -1320,31 +1340,31 @@
         "list-products": {
           "request": {
             "$ref": "/schemas/media-buy/list-products-request.json",
-            "description": "Request parameters for synchronous wholesale product-feed reads"
+            "description": "Request parameters for synchronous product-offer reads"
           },
           "response": {
             "$ref": "/schemas/media-buy/list-products-response.json",
             "description": "Response payload for list_products"
           }
         },
-        "recommend-products": {
+        "request-proposals": {
           "request": {
-            "$ref": "/schemas/media-buy/recommend-products-request.json",
-            "description": "Request parameters for curated brief-based product recommendations"
+            "$ref": "/schemas/media-buy/request-proposals-request.json",
+            "description": "Request parameters for creating actionable seller proposals"
           },
           "response": {
-            "$ref": "/schemas/media-buy/recommend-products-response.json",
-            "description": "Response payload for recommend_products"
+            "$ref": "/schemas/media-buy/request-proposals-response.json",
+            "description": "Response payload for request_proposals"
           }
         },
-        "refine-proposal": {
+        "refine-proposals": {
           "request": {
-            "$ref": "/schemas/media-buy/refine-proposal-request.json",
-            "description": "Request parameters for changing one draft proposal"
+            "$ref": "/schemas/media-buy/refine-proposals-request.json",
+            "description": "Request parameters for creating one or more proposal revisions"
           },
           "response": {
-            "$ref": "/schemas/media-buy/refine-proposal-response.json",
-            "description": "Response payload for refine_proposal"
+            "$ref": "/schemas/media-buy/refine-proposals-response.json",
+            "description": "Response payload for refine_proposals"
           }
         },
         "finalize-proposals": {

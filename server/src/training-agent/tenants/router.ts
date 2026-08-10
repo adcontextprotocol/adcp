@@ -133,8 +133,8 @@ const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
 const PRODUCT_DISCOVERY_TOOL_NAMES = [
   'get_products',
   'list_products',
-  'recommend_products',
-  'refine_proposal',
+  'request_proposals',
+  'refine_proposals',
   'finalize_proposals',
 ] as const;
 

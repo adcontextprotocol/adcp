@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/get-products-request.json",
   "title": "Get Products Request",
-  "description": "AdCP 3.x compatibility request for discovering, refining, or finalizing advertising products and proposals. AdCP 3.2 introduces the narrower list_products, recommend_products, refine_proposal, and finalize_proposals tasks; new callers SHOULD use those tasks. Existing get_products payloads remain valid throughout 3.x.",
+  "description": "AdCP 3.x compatibility request for discovering, refining, or finalizing advertising products and proposals. AdCP 3.2 introduces the narrower list_products, request_proposals, refine_proposals, and finalize_proposals tasks; new callers SHOULD use those tasks. Existing get_products payloads remain valid throughout 3.x.",
   "type": "object",
   "allOf": [
     {
@@ -43,7 +43,7 @@
   "properties": {
     "idempotency_key": {
       "type": "string",
-      "description": "Optional client-generated key for retry-safe use of the AdCP 3.x compatibility facade. Sellers MUST honor replay semantics when the key is supplied, including across the equivalent AdCP 3.2 split-task alias. New callers SHOULD use list_products, recommend_products, refine_proposal, or finalize_proposals; the three stateful split tasks require a key. Keys MUST be unique per (seller, logical request) pair to prevent cross-seller correlation.",
+      "description": "Optional client-generated key for retry-safe use of the AdCP 3.x compatibility facade. New callers SHOULD use the compact 3.2 tasks; each stateful split task has its own idempotency identity, so callers MUST retry with the same tool name. Keys MUST be unique per seller and logical request.",
       "minLength": 16,
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$"

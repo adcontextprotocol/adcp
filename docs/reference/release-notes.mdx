@@ -13,13 +13,15 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 **Status:** In development — minor release targeting the 3.2.0 milestone. Stable wire shapes remain backward compatible; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
 
-### Product discovery split with cross-alias idempotency (#6115)
+### Compact product and proposal lifecycle (#6115)
 
-AdCP 3.2 adds `list_products`, `recommend_products`, `refine_proposal`, and `finalize_proposals`. These are additive aliases for the four jobs previously combined in `get_products`, which remains schema-valid and functional throughout 3.x.
+AdCP 3.2 adds `list_products`, `request_proposals`, `refine_proposals`, and `finalize_proposals` as compact, task-specific contracts and retains `get_products` throughout 3.x.
 
-- `list_products` is a synchronous read and accepts an optional `idempotency_key`.
-- `recommend_products`, `refine_proposal`, and `finalize_proposals` require a key.
-- Sellers normalize split and legacy calls to one `get_products` operation identity before authorization, idempotency hashing, task recovery, persistence, and webhook emission. Retrying under the equivalent alias replays the original result rather than duplicating work.
+- `list_products` is a synchronous, naturally idempotent product-offer read.
+- `request_proposals` creates actionable draft proposals from a brief and optional listed product IDs.
+- `refine_proposals` creates immutable proposal revisions; `finalize_proposals` commits one or more revisions atomically.
+- Each stateful task requires an idempotency key and retains its own replay identity. Retries use the same tool name.
+- Brand input is an identity-only key, catalogs are compact selections, and offer filters are separated from exact targeting and future targeting support.
 - `media_buy.product_discovery_tools` advertises the split surface. Its absence means callers use `get_products` and `buying_modes`.
 
 New integrations SHOULD use the split tools. Existing integrations do not need an immediate migration: `get_products` keeps its optional-key 3.x contract, and sellers MUST honor replay protection whenever a key is supplied.

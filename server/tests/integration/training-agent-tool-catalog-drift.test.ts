@@ -147,8 +147,8 @@ describe('tool-catalog drift detection', () => {
     });
     const splitTools = [
       'list_products',
-      'recommend_products',
-      'refine_proposal',
+      'request_proposals',
+      'refine_proposals',
       'finalize_proposals',
     ];
     for (const tool of splitTools) {

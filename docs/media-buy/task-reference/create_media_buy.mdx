@@ -141,7 +141,7 @@ npx @adcp/sdk@latest \
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `account` | [account-ref](/docs/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required for billing and policy evaluation. |
-| `proposal_id` | string | No* | ID of a committed proposal from `get_products` to execute. Alternative to providing packages. Draft proposals must be finalized first; sellers reject draft proposal execution with `PROPOSAL_NOT_COMMITTED`. |
+| `proposal_id` | string | No* | ID of a committed proposal from `finalize_proposals` to execute. Alternative to providing packages. Draft proposals must be finalized first; sellers reject draft proposal execution with `PROPOSAL_NOT_COMMITTED`. The legacy `get_products` finalize form remains supported throughout 3.x. |
 | `total_budget` | TotalBudget | No* | Hard aggregate lifetime budget. Its currency is the single media-buy denomination for package constraints and canonical bidding. Required for proposals and seller-optimized explicit packages. Optional in fixed explicit-package mode; when supplied there, it must equal the sum of package budgets. |
 | `budget_allocation` | BudgetAllocation | No | Cross-package allocation mode. Omit for fixed allocation. Use `seller_optimized` with media-buy optimization goals to delegate allocation to the seller. Must be omitted when executing a proposal because the committed proposal supplies it. |
 | `packages` | Package[] | No* | Array of package configurations (see below). Required when not using proposal_id. |
@@ -159,7 +159,7 @@ npx @adcp/sdk@latest \
 
 \* Either `packages` OR (`proposal_id` + `total_budget`) must be provided.
 
-When executing a proposal, `proposal_status` on the returned proposal determines whether `create_media_buy` is valid. `committed` proposals can be executed before `expires_at`; `draft` proposals require a prior `get_products` refine call with `action: "finalize"`. Finalization is seller commitment to firm terms, not buyer acceptance. This `create_media_buy` call is the acceptance/execution step.
+When executing a proposal, `proposal_status` on the returned proposal determines whether `create_media_buy` is valid. `committed` proposals can be executed before `expires_at`; `draft` proposals require a prior `finalize_proposals` call. Finalization is seller commitment to firm terms, not buyer acceptance. This `create_media_buy` call is the acceptance/execution step. The legacy `get_products` finalize form remains supported throughout 3.x.
 
 ### TotalBudget Object
 
@@ -172,7 +172,7 @@ When executing a proposal, `proposal_status` on the returned proposal determines
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `product_id` | string | Yes | Product ID from `get_products`. Sellers MUST echo this value on every response package object that represents this requested package. |
+| `product_id` | string | Yes | Product ID from `list_products` or a proposal response's supporting `products`. Sellers MUST echo this value on every response package object that represents this requested package. The legacy `get_products` source remains valid throughout 3.x. |
 | `pricing_option_id` | string | Yes | Pricing option ID from product's `pricing_options` array |
 | `format_option_refs` | FormatOptionRef[] | No | Canonical 3.2 selector into the product's `format_options[]`: publisher-scoped or product-scoped. |
 | `format_kind` | CanonicalFormatKind | No | Direct canonical selector. Pair with enough `params` to satisfy the product declaration. |
@@ -888,7 +888,7 @@ asyncio.run(create_with_reporting())
 
 ### Executing a Proposal
 
-Execute a proposal from `get_products` without manually constructing packages:
+Execute a committed proposal from `finalize_proposals` without manually constructing packages:
 
 <CodeGroup>
 
@@ -901,7 +901,7 @@ const endDate = new Date();
 endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
-  proposal_id: 'swiss_balanced_v1',  // From get_products response
+  proposal_id: 'swiss_balanced_v1',  // From finalize_proposals response
   total_budget: {
     amount: 50000,
     currency: 'USD'
@@ -940,7 +940,7 @@ async def execute_proposal():
     end_date = datetime.now(timezone.utc) + timedelta(days=90)
 
     result = await test_agent.simple.create_media_buy(
-        proposal_id='swiss_balanced_v1',  # From get_products response
+        proposal_id='swiss_balanced_v1',  # From finalize_proposals response
         total_budget={
             'amount': 50000,
             'currency': 'USD'

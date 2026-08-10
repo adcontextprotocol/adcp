@@ -180,31 +180,19 @@ describe('Training Agent webhook emission', () => {
     }
   }, 20000);
 
-  it('emits one canonical get_products webhook for a replayed 3.2 split call', async () => {
+  it('uses MCP task replay without a tool-specific webhook for request_proposals', async () => {
     const deliveries: CapturedDelivery[] = [];
     let srv: http.Server | undefined;
     try {
-      let resolveFirstDelivery: (() => void) | undefined;
-      const firstDelivery = new Promise<void>(resolve => { resolveFirstDelivery = resolve; });
       srv = await startReceiver((delivery, res) => {
         deliveries.push(delivery);
         res.writeHead(200);
         res.end();
-        resolveFirstDelivery?.();
       });
-      const addr = srv.address() as AddressInfo;
-      const webhookUrl = `http://127.0.0.1:${addr.port}/hook/get_products`;
       const logicalRequest = {
         idempotency_key: `split-products-${randomUUID()}`,
-        account: {
-          brand: { domain: 'split-webhook.example' },
-          operator: 'split-webhook.example',
-        },
+        brand: { domain: 'split-webhook.example' },
         brief: 'Reach sports fans',
-        push_notification_config: {
-          url: webhookUrl,
-          operation_id: 'op_split_products',
-        },
       };
       const call = () => request(app)
         .post('/api/training-agent/sales/mcp')
@@ -215,27 +203,16 @@ describe('Training Agent webhook emission', () => {
           jsonrpc: '2.0',
           id: randomUUID(),
           method: 'tools/call',
-          params: { name: 'recommend_products', arguments: logicalRequest },
+          params: { name: 'request_proposals', arguments: logicalRequest },
         });
 
       const first = await call();
       const replay = await call();
       expect(structuredToolResult(first)).not.toHaveProperty('adcp_error');
       expect(structuredToolResult(replay)).toMatchObject({ replayed: true });
-      await Promise.race([
-        firstDelivery,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('webhook never arrived')), 10_000)),
-      ]);
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      expect(deliveries).toHaveLength(1);
-      const body = JSON.parse(deliveries[0].body) as Record<string, unknown>;
-      expect(body).toMatchObject({
-        operation_id: 'op_split_products',
-        task_type: 'get_products',
-        protocol: 'media-buy',
-        status: 'completed',
-      });
+      expect(deliveries).toHaveLength(0);
     } finally {
       if (srv) {
         srv.closeAllConnections?.();

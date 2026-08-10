@@ -35,8 +35,8 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   sync_catalogs: ['sales', 'si'],
   get_products: ['sales'],
   list_products: ['sales'],
-  recommend_products: ['sales'],
-  refine_proposal: ['sales'],
+  request_proposals: ['sales'],
+  refine_proposals: ['sales'],
   finalize_proposals: ['sales'],
   create_media_buy: ['sales'],
   update_media_buy: ['sales'],
@@ -137,8 +137,8 @@ export function toolsForTenant(
       // /signals keeps it across versions.
       if (
         tool === 'list_products'
-        || tool === 'recommend_products'
-        || tool === 'refine_proposal'
+        || tool === 'request_proposals'
+        || tool === 'refine_proposals'
         || tool === 'finalize_proposals'
       ) return false;
       if (tool === 'validate_input' || tool === 'list_transformers') return false;

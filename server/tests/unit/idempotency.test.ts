@@ -72,7 +72,7 @@ describe('idempotency facade', () => {
     it('covers specific mutating tools explicitly', () => {
       for (const name of [
         'create_media_buy', 'update_media_buy', 'sync_audiences',
-        'recommend_products', 'refine_proposal', 'finalize_proposals',
+        'request_proposals', 'refine_proposals', 'finalize_proposals',
         'si_initiate_session', 'si_send_message',
         'acquire_rights', 'update_rights', 'creative_approval',
       ]) {

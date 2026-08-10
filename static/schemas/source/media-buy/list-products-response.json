@@ -2,6 +2,40 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/list-products-response.json",
   "title": "List Products Response",
-  "description": "Wholesale product-feed response. The wire shape is intentionally identical to the completed wholesale arm of get_products during the AdCP 3.2 alias window.",
-  "allOf": [{ "$ref": "/schemas/media-buy/get-products-response.json" }]
+  "description": "Product offers and continuation state. This response never contains proposals or proposal-lifecycle fields.",
+  "type": "object",
+  "properties": {
+    "products": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/product.json" }
+    },
+    "next_cursor": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Cursor for the next page. Omitted when this is the last page."
+    },
+    "feed_version": { "type": "string", "description": "Opaque version of the selected offer feed." },
+    "pricing_version": { "type": "string", "description": "Opaque version of the selected pricing layer." },
+    "cache_scope": { "type": "string", "enum": ["public", "account"] },
+    "unchanged": { "type": "boolean", "const": true },
+    "incomplete": { "$ref": "/schemas/media-buy/get-products-response.json#/properties/incomplete" }
+  },
+  "oneOf": [
+    {
+      "required": ["products"],
+      "not": { "required": ["unchanged"] }
+    },
+    {
+      "required": ["unchanged", "feed_version", "cache_scope"],
+      "not": { "required": ["products"] }
+    }
+  ],
+  "not": {
+    "anyOf": [
+      { "required": ["proposals"] },
+      { "required": ["refinement_applied"] },
+      { "required": ["pagination"] }
+    ]
+  },
+  "additionalProperties": true
 }

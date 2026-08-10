@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/product-offer-filters.json",
+  "title": "Product Offer Filters",
+  "description": "Offer, commercial-fit, availability, and reporting filters for product discovery. Delivery targeting is intentionally outside this offer-only filter object.",
+  "type": "object",
+  "properties": {
+    "delivery_type": { "$ref": "/schemas/core/product-filters.json#/properties/delivery_type" },
+    "exclusivity": { "$ref": "/schemas/core/product-filters.json#/properties/exclusivity" },
+    "is_fixed_price": { "$ref": "/schemas/core/product-filters.json#/properties/is_fixed_price" },
+    "pricing_structures": { "$ref": "/schemas/core/product-filters.json#/properties/pricing_structures" },
+    "pricing_currencies": { "$ref": "/schemas/core/product-filters.json#/properties/pricing_currencies" },
+    "format_kinds": { "$ref": "/schemas/core/product-filters.json#/properties/format_kinds" },
+    "format_option_refs": { "$ref": "/schemas/core/product-filters.json#/properties/format_option_refs" },
+    "standard_formats_only": { "$ref": "/schemas/core/product-filters.json#/properties/standard_formats_only" },
+    "min_exposures": { "$ref": "/schemas/core/product-filters.json#/properties/min_exposures" },
+    "start_date": { "$ref": "/schemas/core/product-filters.json#/properties/start_date" },
+    "end_date": { "$ref": "/schemas/core/product-filters.json#/properties/end_date" },
+    "budget_range": { "$ref": "/schemas/core/product-filters.json#/properties/budget_range" },
+    "channels": { "$ref": "/schemas/core/product-filters.json#/properties/channels" },
+    "video_placement_types": { "$ref": "/schemas/core/product-filters.json#/properties/video_placement_types" },
+    "audio_distribution_types": { "$ref": "/schemas/core/product-filters.json#/properties/audio_distribution_types" },
+    "sponsored_placement_types": { "$ref": "/schemas/core/product-filters.json#/properties/sponsored_placement_types" },
+    "social_placement_surfaces": { "$ref": "/schemas/core/product-filters.json#/properties/social_placement_surfaces" },
+    "trusted_match": { "$ref": "/schemas/core/product-filters.json#/properties/trusted_match" },
+    "required_features": {
+      "allOf": [{ "$ref": "/schemas/core/media-buy-features.json" }],
+      "description": "Protocol features the seller must support.",
+      "x-adcp-schema-uri": "/schemas/core/media-buy-features.json"
+    },
+    "required_performance_standards": {
+      "allOf": [{ "$ref": "/schemas/core/product-filters.json#/properties/required_performance_standards" }],
+      "x-adcp-schema-uri": "/schemas/core/product-filters.json#/properties/required_performance_standards"
+    },
+    "required_metrics": { "$ref": "/schemas/core/product-filters.json#/properties/required_metrics" },
+    "required_vendor_metrics": {
+      "allOf": [{ "$ref": "/schemas/core/product-filters.json#/properties/required_vendor_metrics" }],
+      "x-adcp-schema-uri": "/schemas/core/product-filters.json#/properties/required_vendor_metrics"
+    },
+    "audience_evidence_requirements": {
+      "allOf": [{ "$ref": "/schemas/core/audience-evidence-requirements.json" }],
+      "description": "Buyer policy for evaluating published audience evidence.",
+      "x-adcp-schema-uri": "/schemas/core/audience-evidence-requirements.json"
+    },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "additionalProperties": false
+}

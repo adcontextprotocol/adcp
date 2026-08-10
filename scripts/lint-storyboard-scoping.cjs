@@ -48,8 +48,8 @@ const TENANT_SCOPED_TASKS = new Set([
   // Products & signals
   'get_products',
   'list_products',
-  'recommend_products',
-  'refine_proposal',
+  'request_proposals',
+  'refine_proposals',
   'finalize_proposals',
   'get_signals',
   'activate_signal',

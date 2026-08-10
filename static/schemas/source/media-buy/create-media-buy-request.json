@@ -72,7 +72,7 @@
     },
     "proposal_id": {
       "type": "string",
-      "description": "ID of a committed proposal from get_products to execute. With total_budget, the publisher creates packages using the proposal's fixed percentages or seller-optimized constraints. Alternative to providing packages. If the referenced proposal has proposal_status: 'draft', the seller MUST reject with PROPOSAL_NOT_COMMITTED; the buyer finalizes first via get_products refine action 'finalize'."
+      "description": "ID of a committed proposal from finalize_proposals to execute. With total_budget, the publisher creates packages using the proposal's fixed percentages or seller-optimized constraints. Alternative to providing packages. If the referenced proposal has proposal_status: 'draft', the seller MUST reject with PROPOSAL_NOT_COMMITTED; the buyer calls finalize_proposals first. The legacy get_products finalize form remains supported throughout AdCP 3.x."
     },
     "total_budget": {
       "type": "object",

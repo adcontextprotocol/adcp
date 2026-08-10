@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/proposal-refinement.json",
+  "title": "Proposal Refinement",
+  "description": "Requested revision of one draft proposal. A successful refinement produces a new draft proposal and leaves the source proposal unchanged.",
+  "type": "object",
+  "properties": {
+    "proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "proposal"
+    },
+    "instructions": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Natural-language changes that are not represented by structured criteria."
+    }
+  },
+  "required": ["proposal_id", "instructions"],
+  "additionalProperties": false
+}

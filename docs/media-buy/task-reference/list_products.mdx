@@ -1,23 +1,28 @@
 ---
 title: list_products
-description: "List the seller's synchronous wholesale product feed."
+description: "Read seller product offers with structured discovery criteria."
 "og:title": "AdCP list_products Task"
 testable: true
 ---
 
-`list_products` is the AdCP 3.2 side-effect-free replacement for `get_products` with `buying_mode: "wholesale"`. It never allocates an asynchronous task. `idempotency_key` is optional; when supplied, the seller applies the normal replay contract.
+`list_products` is the side-effect-free entry point to the compact product lifecycle. It returns products only—never proposals—and always completes synchronously. Buyers can purchase a listed product directly or pass returned `product_id` values to `request_proposals` for seller planning.
 
-**Request schema:** [`/schemas/v3/media-buy/list-products-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-products-request.json)
+<!-- Using latest because this schema is not yet released. -->
+**Request schema:** [`/schemas/latest/media-buy/list-products-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/list-products-request.json)
 
 ```json
 {
-  "idempotency_key": "550e8400-e29b-41d4-a716-446655441000",
-  "account": {
-    "brand": { "domain": "acmeoutdoor.example" },
-    "operator": "pinnacle-agency.example"
+  "brand": { "domain": "acmeoutdoor.example" },
+  "criteria": {
+    "offer_filters": {
+      "channels": ["olv"],
+      "pricing_currencies": ["USD"]
+    }
   },
-  "pagination": { "max_results": 25 }
+  "max_results": 25
 }
 ```
 
-During 3.x, this request is canonically equivalent to the same keyed `get_products` request with `buying_mode: "wholesale"`. Retrying under either name returns the original result.
+`brand` is an identity-only key. Sellers resolve its canonical manifest from the domain; callers do not send logos, colors, or governance overrides in this request. Catalog ingestion belongs to `sync_catalogs`; discovery accepts only a compact catalog selection under `criteria.catalog`.
+
+The compact criteria deliberately contain only offer characteristics, catalog selection, and policy requirements. The targeting-aware discovery contract is being developed separately in [PR #6203](https://github.com/adcontextprotocol/adcp/pull/6203), so this task does not advertise targeting fields before sellers can enforce them.

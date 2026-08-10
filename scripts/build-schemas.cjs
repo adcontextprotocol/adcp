@@ -1324,20 +1324,38 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set()) {
   for (const [key, value] of Object.entries(schema)) {
     if (key === '$ref' && typeof value === 'string' && value.startsWith('/schemas/')) {
       // Resolve the reference
-      const refPath = path.join(sourceDir, value.replace('/schemas/', ''));
+      const externalRef = value.replace('/schemas/', '');
+      const hashIndex = externalRef.indexOf('#');
+      const relativePath = hashIndex === -1 ? externalRef : externalRef.slice(0, hashIndex);
+      const fragment = hashIndex === -1 ? '' : externalRef.slice(hashIndex + 1);
+      const refPath = path.join(sourceDir, relativePath);
+      const ancestorKey = `${refPath}${fragment ? `#${fragment}` : ''}`;
 
       // Prevent infinite recursion for true circular refs (A → B → A)
       // But allow the same schema to be referenced from different locations
-      if (ancestorRefs.has(refPath)) {
+      if (ancestorRefs.has(ancestorKey)) {
         result[key] = value;  // Keep as-is for circular refs
         continue;
       }
 
       try {
-        const refContent = JSON.parse(fs.readFileSync(refPath, 'utf8'));
+        let refContent = JSON.parse(fs.readFileSync(refPath, 'utf8'));
+        if (fragment) {
+          if (!fragment.startsWith('/')) throw new Error(`Unsupported schema fragment: ${value}`);
+          refContent = fragment
+            .slice(1)
+            .split('/')
+            .map(segment => segment.replace(/~1/g, '/').replace(/~0/g, '~'))
+            .reduce((current, segment) => {
+              if (!current || typeof current !== 'object' || !(segment in current)) {
+                throw new Error(`Schema pointer not found: ${value}`);
+              }
+              return current[segment];
+            }, refContent);
+        }
         // Create a new set including this ref for the recursive call
         const newAncestors = new Set(ancestorRefs);
-        newAncestors.add(refPath);
+        newAncestors.add(ancestorKey);
         // Recursively resolve refs in the referenced schema
         const resolvedRef = resolveRefs(refContent, sourceDir, newAncestors);
         // Merge the resolved content. Drop `$schema` (only meaningful at

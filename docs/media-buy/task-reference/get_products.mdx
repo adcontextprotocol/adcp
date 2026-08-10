@@ -8,7 +8,7 @@ testable: true
 Discover available advertising products based on campaign requirements using natural language briefs or structured filters.
 
 <Warning>
-`get_products` is deprecated for new integrations in AdCP 3.2, but remains fully supported throughout 3.x. Use [`list_products`](/docs/media-buy/task-reference/list_products), [`recommend_products`](/docs/media-buy/task-reference/recommend_products), [`refine_proposal`](/docs/media-buy/task-reference/refine_proposal), or [`finalize_proposals`](/docs/media-buy/task-reference/finalize_proposals). Its `idempotency_key` remains optional; when supplied, retries share the same replay identity as the equivalent split call.
+`get_products` is deprecated for new integrations in AdCP 3.2, but remains fully supported throughout 3.x. Use [`list_products`](/docs/media-buy/task-reference/list_products), [`request_proposals`](/docs/media-buy/task-reference/request_proposals), [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), or [`finalize_proposals`](/docs/media-buy/task-reference/finalize_proposals). Its `idempotency_key` remains optional. Split-task retries keep the same tool name; they are not cross-name replays of this compatibility facade.
 </Warning>
 
 <Info>

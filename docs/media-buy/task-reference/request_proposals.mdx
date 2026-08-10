@@ -1,0 +1,26 @@
+---
+title: request_proposals
+description: "Request one or more actionable seller-authored media plans."
+"og:title": "AdCP request_proposals Task"
+testable: true
+---
+
+`request_proposals` creates one or more draft media-plan proposals from a brief. It can begin a consultative workflow directly or use `product_ids` returned by `list_products`. Success always contains at least one proposal; returning products without a proposal does not satisfy this task.
+
+`brand` is required and contains only the stable BrandKey (`domain` plus optional `brand_id`); the seller resolves the canonical brand manifest rather than receiving a full brand file in every call. `account_id` is optional and adds seller-specific commercial terms when the buyer already knows its account.
+
+<!-- Using latest because this schema is not yet released. -->
+**Request schema:** [`/schemas/latest/media-buy/request-proposals-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/request-proposals-request.json)
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441001",
+  "brief": "Reach outdoor enthusiasts with premium video inventory.",
+  "brand": { "domain": "acmeoutdoor.example" },
+  "criteria": {
+    "product_ids": ["product_premium_video"]
+  }
+}
+```
+
+Every returned allocation references the exact `product_id` whose pricing and forecast the seller used. The returned `proposal_id` is the only linkage needed by `refine_proposals`, `finalize_proposals`, and `create_media_buy`.

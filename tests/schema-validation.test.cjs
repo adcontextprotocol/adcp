@@ -24,7 +24,7 @@ addFormats(ajv);
 // Schema loader for resolving $ref
 async function loadExternalSchema(uri) {
   if (uri.startsWith('/schemas/')) {
-    const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/', ''));
+    const schemaPath = path.join(SCHEMA_BASE_DIR, uri.replace('/schemas/', '').split('#', 1)[0]);
     try {
       const content = fs.readFileSync(schemaPath, 'utf8');
       return JSON.parse(content);
@@ -146,7 +146,7 @@ function validateSchemaStructure(schemaPath, schema) {
 }
 
 function validateCrossReferences(schemas) {
-  const schemaIds = new Set(schemas.map(([_, schema]) => schema.$id));
+  const schemasById = new Map(schemas.map(([_, schema]) => [schema.$id, schema]));
   const missingRefs = [];
 
   for (const [schemaPath, schema] of schemas) {
@@ -166,9 +166,27 @@ function validateCrossReferences(schemas) {
         continue;
       }
 
-      // Check if referenced schema exists
-      if (!schemaIds.has(ref)) {
+      const hashIndex = ref.indexOf('#');
+      const schemaId = hashIndex === -1 ? ref : ref.slice(0, hashIndex);
+      const fragment = hashIndex === -1 ? '' : ref.slice(hashIndex + 1);
+      const referencedSchema = schemasById.get(schemaId);
+      if (!referencedSchema) {
         missingRefs.push({ schema: schemaPath, ref });
+        continue;
+      }
+      if (fragment) {
+        if (!fragment.startsWith('/')) {
+          missingRefs.push({ schema: schemaPath, ref });
+          continue;
+        }
+        const resolved = fragment
+          .slice(1)
+          .split('/')
+          .map(segment => segment.replace(/~1/g, '/').replace(/~0/g, '~'))
+          .reduce((current, segment) => (
+            current && typeof current === 'object' ? current[segment] : undefined
+          ), referencedSchema);
+        if (resolved === undefined) missingRefs.push({ schema: schemaPath, ref });
       }
     }
   }

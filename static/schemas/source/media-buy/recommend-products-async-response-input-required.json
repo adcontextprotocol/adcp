@@ -1,7 +1,0 @@
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/media-buy/recommend-products-async-response-input-required.json",
-  "title": "Recommend Products Input Required Response",
-  "description": "Input-required payload for paused curated product recommendation.",
-  "allOf": [{ "$ref": "/schemas/media-buy/get-products-async-response-input-required.json" }]
-}

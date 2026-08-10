@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/request-proposals-response.json",
+  "title": "Request Proposals Response",
+  "description": "One or more draft media-plan proposals and the exact products referenced by their allocations. Returning only products does not satisfy request_proposals.",
+  "type": "object",
+  "properties": {
+    "outcome": { "type": "string", "const": "rejected" },
+    "reason": { "type": "string", "minLength": 1 },
+    "suggestions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "proposals": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/core/proposal.json" },
+          {
+            "properties": {
+              "proposal_status": { "type": "string", "const": "draft" },
+              "expires_at": { "type": "string", "format": "date-time" }
+            },
+            "required": ["proposal_status", "expires_at"]
+          }
+        ]
+      }
+    },
+    "products": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "/schemas/core/product.json" }
+    }
+  },
+  "oneOf": [
+    {
+      "required": ["proposals", "products"],
+      "not": {
+        "anyOf": [
+          { "required": ["outcome"] },
+          { "required": ["reason"] },
+          { "required": ["suggestions"] }
+        ]
+      }
+    },
+    {
+      "properties": { "outcome": { "type": "string", "const": "rejected" } },
+      "required": ["outcome", "reason"],
+      "not": {
+        "anyOf": [
+          { "required": ["proposals"] },
+          { "required": ["products"] }
+        ]
+      }
+    }
+  ],
+  "not": {
+    "anyOf": [
+      { "required": ["refinement_applied"] },
+      { "required": ["pagination"] },
+      { "required": ["unchanged"] },
+      { "required": ["wholesale_feed_version"] }
+    ]
+  },
+  "additionalProperties": true
+}

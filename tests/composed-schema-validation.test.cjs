@@ -3033,44 +3033,54 @@ async function runTests() {
         url: 'https://buyer.example.com/adcp-events'
       }
     },
-    'list_products accepts wrapper callback configuration even though the read does not emit callbacks'
+    'list_products tolerates uniform callback envelope configuration even though the read is synchronous'
   );
   await testSchemaRejection(
     '/schemas/media-buy/list-products-request.json',
-    { catalog: { type: 'product' } },
+    { criteria: { catalog: { catalog_id: 'catalog-1', type: 'product' } } },
     'list_products requires brand when catalog is present'
   );
   await testSchemaValidation(
-    '/schemas/media-buy/recommend-products-request.json',
+    '/schemas/media-buy/request-proposals-request.json',
     {
-      idempotency_key: 'recommend-products-0001',
+      idempotency_key: 'request-proposals-0001',
+      brand: { domain: 'acmeoutdoor.example' },
       brief: 'Reach streaming audio listeners in Rome'
     },
-    'recommend_products requires a brief and accepts a replay key'
+    'request_proposals requires a brief and accepts a replay key'
   );
   await testSchemaRejection(
-    '/schemas/media-buy/recommend-products-request.json',
+    '/schemas/media-buy/request-proposals-request.json',
     { brief: 'Reach streaming audio listeners in Rome' },
-    'recommend_products rejects a missing replay key'
+    'request_proposals rejects a missing replay key'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-request.json',
+    {
+      idempotency_key: 'request-proposals-0002',
+      account_id: 'seller-account-1',
+      brief: 'Reach streaming audio listeners in Rome'
+    },
+    'request_proposals requires a stable BrandKey even when account_id is supplied'
   );
   await testSchemaValidation(
-    '/schemas/media-buy/refine-proposal-request.json',
+    '/schemas/media-buy/refine-proposals-request.json',
     {
-      idempotency_key: 'refine-proposal-0001',
-      refine: [
-        { scope: 'request', ask: 'Prefer video' },
-        { scope: 'proposal', proposal_id: 'proposal-1', ask: 'Move budget to video' }
+      idempotency_key: 'refine-proposals-0001',
+      refinements: [
+        { proposal_id: 'proposal-1', instructions: 'Prefer video and move budget toward it' },
+        { proposal_id: 'proposal-2', instructions: 'Use only the premium video product' }
       ]
     },
-    'refine_proposal preserves non-finalizing refinement grammar'
+    'refine_proposals accepts plural proposal-scoped immutable refinements'
   );
   await testSchemaRejection(
-    '/schemas/media-buy/refine-proposal-request.json',
+    '/schemas/media-buy/refine-proposals-request.json',
     {
-      idempotency_key: 'refine-proposal-0002',
-      refine: [{ scope: 'proposal', proposal_id: 'proposal-1', action: 'finalize' }]
+      idempotency_key: 'refine-proposals-0002',
+      refinements: [{ proposal_id: 'proposal-1', action: 'finalize' }]
     },
-    'refine_proposal rejects finalization'
+    'refine_proposals rejects finalization'
   );
   await testSchemaValidation(
     '/schemas/media-buy/finalize-proposals-request.json',
@@ -3087,6 +3097,121 @@ async function runTests() {
       proposal_ids: ['proposal-1', 'proposal-1']
     },
     'finalize_proposals rejects duplicate proposal IDs'
+  );
+  const splitCapabilityBase = {
+    status: 'completed',
+    adcp: {
+      major_versions: [3],
+      idempotency: { supported: true, replay_ttl_seconds: 86400 }
+    },
+    supported_protocols: ['media_buy']
+  };
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...splitCapabilityBase,
+      media_buy: {
+        product_discovery_tools: ['request_proposals', 'finalize_proposals'],
+        max_atomic_finalize_batch_size: 25
+      }
+    },
+    'finalize_proposals capability declares its atomic batch bound'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...splitCapabilityBase,
+      media_buy: { product_discovery_tools: ['finalize_proposals'] }
+    },
+    'finalize_proposals capability rejects a missing atomic batch bound'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...splitCapabilityBase,
+      media_buy: {
+        product_discovery_tools: ['finalize_proposals'],
+        max_atomic_finalize_batch_size: 26
+      }
+    },
+    'finalize_proposals capability rejects a bound above the protocol ceiling'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/list-products-response.json',
+    { products: [] },
+    'list_products treats no matches as an empty successful product page'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/request-proposals-response.json',
+    {
+      outcome: 'rejected',
+      reason: 'No available offer satisfies the campaign constraints.',
+      suggestions: ['Broaden the flight dates.']
+    },
+    'request_proposals has an explicit business-rejection outcome'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-response.json',
+    { products: [] },
+    'request_proposals cannot return products without a proposal'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-response.json',
+    {
+      proposals: [{
+        proposal_id: 'proposal-1',
+        name: 'Draft premium video plan',
+        allocations: [{ product_id: 'premium-video', allocation_percentage: 100 }],
+        proposal_status: 'draft',
+        expires_at: '2027-06-30T23:59:59Z'
+      }],
+      products: [{ ...productBase, product_id: 'premium-video' }],
+      reason: 'This must not appear on the success arm.'
+    },
+    'request_proposals success cannot carry rejection fields'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'partial',
+        proposal: {
+          proposal_id: 'proposal-2',
+          name: 'Partially revised premium video plan',
+          allocations: [{ product_id: 'premium-video', allocation_percentage: 100 }],
+          proposal_status: 'draft',
+          expires_at: '2027-06-30T23:59:59Z'
+        }
+      }],
+      products: []
+    },
+    'refine_proposals partial results require explanatory notes'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/finalize-proposals-response.json',
+    {
+      proposals: [{
+        proposal_id: 'proposal-1',
+        name: 'Committed premium video plan',
+        allocations: [{ product_id: 'premium-video', allocation_percentage: 100 }],
+        proposal_status: 'committed',
+        expires_at: '2027-06-30T23:59:59Z'
+      }]
+    },
+    'finalize_proposals returns committed proposals with hold expiry'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/finalize-proposals-response.json',
+    {
+      proposals: [{
+        proposal_id: 'proposal-1',
+        name: 'Uncommitted premium video plan',
+        allocations: [{ product_id: 'premium-video', allocation_percentage: 100 }],
+        proposal_status: 'draft'
+      }]
+    },
+    'finalize_proposals rejects draft proposal results'
   );
 
   log('');

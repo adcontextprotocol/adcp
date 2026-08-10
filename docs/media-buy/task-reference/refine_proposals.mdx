@@ -1,0 +1,29 @@
+---
+title: refine_proposals
+description: "Create revised drafts from one or more proposals."
+"og:title": "AdCP refine_proposals Task"
+testable: true
+---
+
+`refine_proposals` creates revised drafts without committing them. Each entry targets one proposal, proposal IDs must be unique within the request, and results preserve request order. Successful refinement returns a new `proposal_id`; the source proposal remains addressable for comparison or parallel exploration.
+
+<!-- Using latest because this schema is not yet released. -->
+**Request schema:** [`/schemas/latest/media-buy/refine-proposals-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/refine-proposals-request.json)
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441002",
+  "refinements": [
+    {
+      "proposal_id": "proposal_123",
+      "instructions": "Shift more budget toward video."
+    },
+    {
+      "proposal_id": "proposal_456",
+      "instructions": "Limit the revision to inventory available in the US and Canada."
+    }
+  ]
+}
+```
+
+The response contains one ordered `results[]` entry per request. `revised` means the requested change was applied, `partial` returns an honest draft plus explanatory notes, and `unable` returns a reason without minting a misleading revision. Refinement never commits pricing or inventory; use `finalize_proposals` when revisions have converged.

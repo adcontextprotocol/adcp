@@ -164,19 +164,19 @@ describe('training agent idempotency middleware', () => {
       });
 
       const list = await call(server, 'list_products', {
-        account: ACCOUNT,
-        pagination: { max_results: 0 },
+        account_id: 'idem-account',
+        max_results: 0,
       });
       expect(list.isError).toBe(true);
       expect((list.parsed as any).adcp_error).toMatchObject({
         code: 'INVALID_REQUEST',
-        field: 'pagination.max_results',
+        field: 'max_results',
       });
     });
 
-    it('accepts and ignores callback configuration on synchronous list_products', async () => {
+    it('accepts and ignores callback envelope configuration on synchronous list_products', async () => {
       const result = await call(server, 'list_products', {
-        account: ACCOUNT,
+        account_id: 'idem-account',
         push_notification_config: {
           url: 'https://callbacks.example/list-products',
           operation_id: 'list-products-wrapper-envelope',
@@ -184,6 +184,40 @@ describe('training agent idempotency middleware', () => {
       });
       expect(result.isError).toBeFalsy();
       expect(result.parsed.products).toEqual(expect.any(Array));
+    });
+
+    it('validates compact linked and envelope fields against the source schema', async () => {
+      const malformedFilter = await call(server, 'list_products', {
+        criteria: {
+          offer_filters: {
+            required_vendor_metrics: { vendor: { domain: 'measure.example' } },
+          },
+        },
+      });
+      expect(malformedFilter.isError).toBe(true);
+      expect((malformedFilter.parsed as any).adcp_error).toMatchObject({
+        code: 'INVALID_REQUEST',
+        field: 'criteria.offer_filters.required_vendor_metrics',
+      });
+
+      const malformedEnvelope = await call(server, 'request_proposals', {
+        idempotency_key: `proposal-${randomUUID()}`,
+        brand: BRAND,
+        brief: 'news video',
+        governance_context: 42,
+      });
+      expect(malformedEnvelope.isError).toBe(true);
+      expect((malformedEnvelope.parsed as any).adcp_error).toMatchObject({
+        code: 'INVALID_REQUEST',
+        field: 'governance_context',
+      });
+
+      const malformedContext = await call(server, 'list_products', { context: 'not-an-object' });
+      expect(malformedContext.isError).toBe(true);
+      expect((malformedContext.parsed as any).adcp_error).toMatchObject({
+        code: 'INVALID_REQUEST',
+        field: 'context',
+      });
     });
 
     it('adapts only served-3.0 missing-key get_products requests to safe deterministic replay', async () => {
@@ -250,6 +284,54 @@ describe('training agent idempotency middleware', () => {
   });
 
   describe('replay with same key + same payload', () => {
+    it('hashes context_id and callback routing while excluding rotated callback credentials', async () => {
+      const key = `proposal-callback-${randomUUID()}`;
+      const base = {
+        idempotency_key: key,
+        brand: BRAND,
+        brief: 'cross-channel sports',
+        context_id: 'campaign-context-a',
+        push_notification_config: {
+          url: 'https://callbacks.example/proposals/a',
+          operation_id: 'proposal-callback-test',
+          authentication: {
+            schemes: ['Bearer'],
+            credentials: 'a'.repeat(32),
+          },
+        },
+      };
+      const first = await executeTrainingAgentTool('request_proposals', base as any, CTX);
+      expect(first.success).toBe(true);
+
+      const rotatedCredential = await executeTrainingAgentTool('request_proposals', {
+        ...base,
+        push_notification_config: {
+          ...base.push_notification_config,
+          authentication: {
+            schemes: ['Bearer'],
+            credentials: 'b'.repeat(32),
+          },
+        },
+      } as any, CTX);
+      expect(rotatedCredential.success).toBe(true);
+      expect((rotatedCredential.data as any).replayed).toBe(true);
+
+      const changedCallback = await executeTrainingAgentTool('request_proposals', {
+        ...base,
+        push_notification_config: {
+          ...base.push_notification_config,
+          url: 'https://callbacks.example/proposals/b',
+        },
+      } as any, CTX);
+      expect(changedCallback).toMatchObject({ success: false, error: 'IDEMPOTENCY_CONFLICT' });
+
+      const changedContextId = await executeTrainingAgentTool('request_proposals', {
+        ...base,
+        context_id: 'campaign-context-b',
+      } as any, CTX);
+      expect(changedContextId).toMatchObject({ success: false, error: 'IDEMPOTENCY_CONFLICT' });
+    });
+
     it('returns the cached media_buy_id with replayed: true', async () => {
       const { productId, pricingOptionId } = await getValidProductAndPricing(server);
       const key = `idem-${randomUUID()}`;
@@ -375,32 +457,27 @@ describe('training agent idempotency middleware', () => {
       expect((conflict.parsed as any).adcp_error?.code).toBe('IDEMPOTENCY_CONFLICT');
     });
 
-    it('shares replay identity between legacy wholesale discovery and list_products', async () => {
+    it('keeps keyless list_products independent from legacy discovery replay identity', async () => {
       const key = `products-list-alias-${randomUUID()}`;
-      const shared = {
-        idempotency_key: key,
+      const identity = {
         adcp_version: '3.2-beta.0',
-        account: ACCOUNT,
+        brand: BRAND,
         brand: BRAND,
       };
 
       const first = await call(server, 'get_products', {
-        ...shared,
+        idempotency_key: key,
+        adcp_version: identity.adcp_version,
+        account: ACCOUNT,
+        brand: BRAND,
         buying_mode: 'wholesale',
       });
       expect(first.isError).toBeFalsy();
 
-      const replay = await call(server, 'list_products', shared);
-      expect(replay.isError).toBeFalsy();
-      expect(replay.parsed.replayed).toBe(true);
-      expect(replay.parsed.products).toEqual(first.parsed.products);
-
-      const conflict = await call(server, 'list_products', {
-        ...shared,
-        fields: ['product_id'],
-      });
-      expect(conflict.isError).toBe(true);
-      expect((conflict.parsed as any).adcp_error?.code).toBe('IDEMPOTENCY_CONFLICT');
+      const listed = await call(server, 'list_products', identity);
+      expect(listed.isError).toBeFalsy();
+      expect(listed.parsed.replayed).toBeUndefined();
+      expect(listed.parsed.products).toEqual(first.parsed.products);
     });
 
     it('treats caller-supplied version pins as part of product request identity', async () => {
@@ -423,23 +500,21 @@ describe('training agent idempotency middleware', () => {
       expect((conflict.parsed as any).adcp_error?.code).toBe('IDEMPOTENCY_CONFLICT');
     });
 
-    it('does not replay unpinned product aliases across different effective releases', async () => {
-      const shared = {
-        idempotency_key: `products-effective-version-${randomUUID()}`,
-        account: ACCOUNT,
-      };
+    it('keeps unpinned keyless list discovery independent from legacy replay state', async () => {
+      const key = `products-effective-version-${randomUUID()}`;
       const legacy = await call(server, 'get_products', {
-        ...shared,
+        idempotency_key: key,
+        account: ACCOUNT,
         buying_mode: 'wholesale',
       });
       expect(legacy.isError).toBeFalsy();
 
-      const split = await call(server, 'list_products', shared);
-      expect(split.isError).toBe(true);
-      expect((split.parsed as any).adcp_error?.code).toBe('IDEMPOTENCY_CONFLICT');
+      const split = await call(server, 'list_products', { brand: BRAND });
+      expect(split.isError).toBeFalsy();
+      expect(split.parsed.replayed).toBeUndefined();
     });
 
-    it('reuses one task receipt when a brief retry switches to recommend_products', async () => {
+    it('does not reuse a legacy task receipt for request_proposals', async () => {
       const key = `products-recommend-task-alias-${randomUUID()}`;
       const shared = {
         idempotency_key: key,
@@ -451,27 +526,33 @@ describe('training agent idempotency middleware', () => {
 
       const first = await callAsTask(server, 'get_products', {
         ...shared,
+        account: undefined,
         buying_mode: 'brief',
       });
       const firstTaskId = (first.parsed.task as { taskId?: string })?.taskId;
       expect(firstTaskId).toBeTruthy();
 
-      const replay = await callAsTask(server, 'recommend_products', shared);
-      expect((replay.parsed.task as { taskId?: string })?.taskId).toBe(firstTaskId);
-      expect(replay.parsed.replayed).toBe(true);
+      const split = await call(server, 'request_proposals', {
+        idempotency_key: key,
+        adcp_version: '3.2-beta.0',
+        brand: BRAND,
+        brief: shared.brief,
+      });
+      expect(split.isError).toBe(true);
+      expect((split.parsed as any).adcp_error?.code).toBe('IDEMPOTENCY_CONFLICT');
     });
 
     it('projects one cached product result across inline then task execution modes', async () => {
       const shared = {
         idempotency_key: `products-inline-task-${randomUUID()}`,
         adcp_version: '3.2-beta.0',
-        account: ACCOUNT,
+        brand: BRAND,
         brief: 'cross-channel sports',
       };
-      const inline = await call(server, 'recommend_products', shared);
-      expect(inline.isError).toBeFalsy();
+      const inline = await call(server, 'request_proposals', shared);
+      expect(inline.isError, JSON.stringify(inline.parsed)).toBeFalsy();
 
-      const task = await callAsTask(server, 'recommend_products', shared);
+      const task = await callAsTask(server, 'request_proposals', shared);
       expect(task.isError).toBeFalsy();
       expect(task.parsed).toMatchObject({
         replayed: true,
@@ -485,16 +566,38 @@ describe('training agent idempotency middleware', () => {
       const shared = {
         idempotency_key: `products-task-inline-${randomUUID()}`,
         adcp_version: '3.2-beta.0',
-        account: ACCOUNT,
+        brand: BRAND,
         brief: 'cross-channel news',
       };
-      const task = await callAsTask(server, 'recommend_products', shared);
+      const task = await callAsTask(server, 'request_proposals', shared);
       expect(task.parsed.task).toMatchObject({ taskId: expect.any(String), status: 'completed' });
 
-      const inline = await call(server, 'recommend_products', shared);
+      const inline = await call(server, 'request_proposals', shared);
       expect(inline.isError).toBeFalsy();
       expect(inline.parsed).toMatchObject({ replayed: true, products: expect.any(Array) });
       expect(inline.parsed).not.toHaveProperty('task');
+    });
+
+    it('binds refine_proposals replay identity to ordered instructions', async () => {
+      const requested = await call(server, 'request_proposals', {
+        idempotency_key: `proposal-request-${randomUUID()}`,
+        brand: BRAND,
+        brief: 'cross-channel sports',
+      });
+      const proposalId = (requested.parsed.proposals as Array<{ proposal_id: string }>)[0].proposal_id;
+      const key = `proposal-refine-${randomUUID()}`;
+      const first = await call(server, 'refine_proposals', {
+        idempotency_key: key,
+        refinements: [{ proposal_id: proposalId, instructions: 'Prefer video.' }],
+      });
+      expect(first.isError).toBeFalsy();
+
+      const conflict = await call(server, 'refine_proposals', {
+        idempotency_key: key,
+        refinements: [{ proposal_id: proposalId, instructions: 'Prefer audio.' }],
+      });
+      expect(conflict.isError).toBe(true);
+      expect((conflict.parsed as any).adcp_error?.code).toBe('IDEMPOTENCY_CONFLICT');
     });
 
     it('validates the complete get_products payload before consulting the cache', async () => {
@@ -627,13 +730,13 @@ describe('training agent idempotency middleware', () => {
       const payload = {
         idempotency_key: key,
         brief: 'A retry-safe campaign recommendation',
-        account: ACCOUNT,
+        brand: BRAND,
       };
       const taskStore = getTrainingTaskStore();
       const storeFailure = vi.spyOn(taskStore, 'storeTaskResult')
         .mockRejectedValueOnce(new Error('injected task-result persistence failure'));
 
-      await expect(callAsTask(server, 'recommend_products', payload))
+      await expect(callAsTask(server, 'request_proposals', payload))
         .rejects.toThrow('injected task-result persistence failure');
       storeFailure.mockRestore();
 
@@ -641,7 +744,7 @@ describe('training agent idempotency middleware', () => {
       expect(orphan?.taskId).toBeTruthy();
       await taskStore.updateTaskStatus(orphan!.taskId, 'cancelled', 'cancelled by buyer');
 
-      const cancelledRetry = await callAsTask(server, 'recommend_products', payload);
+      const cancelledRetry = await callAsTask(server, 'request_proposals', payload);
       expect(cancelledRetry.parsed).toMatchObject({
         replayed: true,
         task: { taskId: orphan!.taskId, status: 'cancelled' },
@@ -649,11 +752,11 @@ describe('training agent idempotency middleware', () => {
 
       // The cancelled receipt released the cache claim instead of publishing
       // a hidden success. A later inline request therefore executes normally.
-      const inlineRetry = await call(server, 'recommend_products', payload);
+      const inlineRetry = await call(server, 'request_proposals', payload);
       expect(inlineRetry.isError).not.toBe(true);
       expect(inlineRetry.parsed.replayed).toBeUndefined();
 
-      const taskReplay = await callAsTask(server, 'recommend_products', payload);
+      const taskReplay = await callAsTask(server, 'request_proposals', payload);
       const replacementTask = taskReplay.parsed.task as { taskId: string; status: string };
       expect(replacementTask).toMatchObject({ status: 'completed' });
       expect(replacementTask.taskId).not.toBe(orphan!.taskId);
@@ -662,7 +765,7 @@ describe('training agent idempotency middleware', () => {
       expect((replacementResult.structuredContent as { proposals?: unknown[] })?.proposals?.length)
         .toBeGreaterThan(0);
 
-      const stableReplay = await callAsTask(server, 'recommend_products', payload);
+      const stableReplay = await callAsTask(server, 'request_proposals', payload);
       expect(stableReplay.parsed).toMatchObject({
         replayed: true,
         task: { taskId: replacementTask.taskId, status: 'completed' },
