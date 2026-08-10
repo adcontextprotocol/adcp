@@ -491,7 +491,7 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `vast_versions` | string[] | VAST versions supported (e.g., `["4.0", "4.1", "4.2"]`) |
+| `vast_versions` | string[] | VAST versions supported (e.g., `["4.0", "4.1", "4.2", "4.3"]`) |
 | `mraid_versions` | string[] | MRAID versions supported |
 | `vpaid` | boolean | VPAID support |
 | `simid` | boolean | SIMID support |
@@ -1236,7 +1236,7 @@ const buy = await client.createMediaBuy({
     "execution": {
       "axe_integrations": ["https://axe.example.com"],
       "creative_specs": {
-        "vast_versions": ["4.0", "4.1", "4.2"],
+        "vast_versions": ["4.0", "4.1", "4.2", "4.3"],
         "mraid_versions": ["3.0"],
         "vpaid": false,
         "simid": true
