@@ -90,7 +90,7 @@ Core AdCP protocol information:
 
 #### idempotency
 
-Declares whether this seller honors `idempotency_key` replay protection. AdCP requires keys on mutating requests and requires sellers to accept them on pure reads when supplied. AdCP 4.0 classifies polymorphic `get_products` as mutating and requires the key on every call; guaranteed pure-read request schemas may continue to leave it optional. See [security.mdx § Idempotency](/docs/building/by-layer/L1/security#idempotency). Mirrors the `request_signing.supported` pattern — a single positive declaration, decoupled from the window detail. Clients MUST NOT assume a default; a seller without this block is non-compliant and should be treated as unsafe for retry-sensitive operations across all call modes.
+Declares whether this seller honors `idempotency_key` replay protection. AdCP requires keys on mutating requests and requires sellers to accept them on pure reads when supplied. In the AdCP 3.2 product split, `recommend_products`, `refine_proposal`, and `finalize_proposals` require keys; `list_products` and the legacy 3.x `get_products` facade leave them optional. See [security.mdx § Idempotency](/docs/building/by-layer/L1/security#idempotency). Clients MUST NOT assume a default; a seller without this block is non-compliant and should be treated as unsafe for retry-sensitive operations.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -361,6 +361,10 @@ See [Accounts and Agents](/docs/building/by-layer/L2/accounts-and-agents#what-se
 ### media_buy
 
 Media-buy protocol capabilities. Only present if `media_buy` is in `supported_protocols`. Sellers declaring `media_buy` should also include `account` (with `supported_billing`) and `media_buy.portfolio` — buyers need both to establish billing and understand inventory coverage. Compliance testing validates their presence.
+
+#### product_discovery_tools
+
+AdCP 3.2 sellers use `product_discovery_tools` to advertise any supported subset of `get_products`, `list_products`, `recommend_products`, `refine_proposal`, and `finalize_proposals`. When absent, buyers use the legacy `get_products` facade and inspect `buying_modes`. Split and legacy names share one authorization and idempotency operation family throughout 3.x.
 
 :::note 3.0 breaking changes
 The following fields have been removed from the capabilities response:

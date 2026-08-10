@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/finalize-proposals-async-response-submitted.json",
+  "title": "Finalize Proposals Submitted Response",
+  "description": "Submitted task envelope for asynchronous atomic proposal finalization.",
+  "allOf": [{ "$ref": "/schemas/media-buy/get-products-async-response-submitted.json" }]
+}

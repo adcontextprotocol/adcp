@@ -1,0 +1,22 @@
+---
+title: list_products
+description: "List the seller's synchronous wholesale product feed."
+testable: true
+---
+
+`list_products` is the AdCP 3.2 side-effect-free replacement for `get_products` with `buying_mode: "wholesale"`. It never allocates an asynchronous task. `idempotency_key` is optional; when supplied, the seller applies the normal replay contract.
+
+**Request schema:** [`/schemas/latest/media-buy/list-products-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/list-products-request.json)
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441000",
+  "account": {
+    "brand": { "domain": "acmeoutdoor.example" },
+    "operator": "pinnacle-agency.example"
+  },
+  "pagination": { "max_results": 25 }
+}
+```
+
+During 3.x, this request is canonically equivalent to the same keyed `get_products` request with `buying_mode: "wholesale"`. Retrying under either name returns the original result.

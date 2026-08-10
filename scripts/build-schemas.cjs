@@ -369,6 +369,13 @@ function hasNaturallyIdempotentMarker(schema) {
   return /naturally idempotent/i.test(haystack);
 }
 
+function isDeprecatedGetProductsCompatibilityFacade(schema) {
+  return schema.$id === '/schemas/media-buy/get-products-request.json'
+    && schema['x-operation-family'] === 'get_products'
+    && schema['x-deprecated-in'] === '3.2.0'
+    && schema['x-idempotency-key-required'] === false;
+}
+
 // Classify a request schema as mutating or non-mutating using the same rules
 // the lint enforces. Returns true if the operation mutates state.
 //
@@ -408,6 +415,11 @@ function lintMutatingRequestsRequireIdempotencyKey(sourceDir) {
       const required = Array.isArray(schema.required) ? schema.required : [];
       if (required.includes('idempotency_key')) continue;
       if (hasNaturallyIdempotentMarker(schema)) continue;
+      // A stable 3.x compatibility facade may remain polymorphic while newer,
+      // narrow replacement tools carry the required-key contract. This marker
+      // is deliberately explicit so a newly added mutator cannot become
+      // key-optional by accident.
+      if (isDeprecatedGetProductsCompatibilityFacade(schema)) continue;
       violations.push(path.relative(sourceDir, p));
     }
   }
@@ -1022,6 +1034,7 @@ function discoverTools(sourceDir) {
       const toolBase = f.name.replace(/-request\.json$/, '');
       const toolName = toolBase.replace(/-/g, '_');
       const requestPath = path.join(protoDir, f.name);
+      const requestSchema = JSON.parse(fs.readFileSync(requestPath, 'utf8'));
       const responseName = `${toolBase}-response.json`;
       const responsePath = path.join(protoDir, responseName);
       if (!fs.existsSync(responsePath)) {
@@ -1042,6 +1055,14 @@ function discoverTools(sourceDir) {
         name: toolName,
         protocol,
         mutating,
+        operation_family: requestSchema['x-operation-family'] || toolName,
+        idempotency_requirement: Array.isArray(requestSchema.required) && requestSchema.required.includes('idempotency_key')
+          ? 'required'
+          : requestSchema.properties?.idempotency_key
+            ? 'optional'
+            : 'none',
+        ...(requestSchema['x-added-in'] ? { added_in: requestSchema['x-added-in'] } : {}),
+        ...(requestSchema['x-deprecated-in'] ? { deprecated_in: requestSchema['x-deprecated-in'] } : {}),
         request_schema: `${protocol}/${f.name}`,
         response_schema: `${protocol}/${responseName}`,
         async_response_schemas: asyncVariants
@@ -1113,10 +1134,14 @@ function buildManifest(sourceDir, urlVersion, semverVersion, repoRoot) {
     toolsObj[t.name] = {
       protocol: t.protocol,
       mutating: t.mutating,
+      operation_family: t.operation_family,
+      idempotency_requirement: t.idempotency_requirement,
       request_schema: t.request_schema,
       response_schema: t.response_schema,
       async_response_schemas: t.async_response_schemas,
-      ...(t.specialisms ? { specialisms: t.specialisms } : {})
+      ...(t.specialisms ? { specialisms: t.specialisms } : {}),
+      ...(t.added_in ? { added_in: t.added_in } : {}),
+      ...(t.deprecated_in ? { deprecated_in: t.deprecated_in } : {})
     };
   }
 

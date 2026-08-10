@@ -144,6 +144,8 @@ Vendor agents that support scope introspection attach an `authorization` object 
 | `scope_name` | Optional named scope identifier. Only `attestation_verifier` is standardized (media-buy-specific, binds to the **AAO Verified (Live)** qualifier); agent-defined names MUST use the `custom:` prefix so typos of the standard value fail schema validation rather than pass through. |
 | `read_only` | Convenience flag. When true, mutations return `READ_ONLY_SCOPE` regardless of whether the task is in `allowed_tasks`. Omission is equivalent to `false`. Callers MUST NOT infer read-only from `allowed_tasks` alone. |
 
+**AdCP 3.2 product aliases.** `get_products` is the authorization name for the full product-discovery operation family, including every split tool the seller advertises. Sellers normalize split requests to canonical `get_products` fields before applying its `field_scopes`; alias-only grants and alias-specific field scopes are not defined during the 3.x compatibility window. A read-only grant permits `list_products`, rejects the three mutation-capable split tools, and permits legacy `get_products` only when the selected arm is guaranteed to remain a synchronous side-effect-free read.
+
 ### Semantics of presence and absence
 
 - **Present**: the vendor agent asserts the shape reflects its enforcement for this caller on this account at this moment. Stale-by-seconds is fine; systematically-divergent is non-conformant.

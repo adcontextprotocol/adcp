@@ -247,6 +247,10 @@ test('temporary snapshot redirects cover every available live page', () => {
     'docs/reference/migration/cross-role-governance-enforcement',
     'docs/protocol/language-and-localization',
     'docs/protocol/sync_agent_notification_configs',
+    'docs/media-buy/task-reference/list_products',
+    'docs/media-buy/task-reference/recommend_products',
+    'docs/media-buy/task-reference/refine_proposal',
+    'docs/media-buy/task-reference/finalize_proposals',
     'docs/creative/channels/radio',
     'docs/brand-protocol/tasks/search_brands',
   ];

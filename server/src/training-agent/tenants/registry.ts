@@ -50,6 +50,7 @@ import { createLogger } from '../../logger.js';
 import type { TrainingContext } from '../types.js';
 import { getCanonicalBase } from '../canonical-base.js';
 import { creativeProjectionAdapters } from '../task-handlers.js';
+import { sharedTrainingTaskStore } from '../mcp-task-store.js';
 
 export { getCanonicalBase } from '../canonical-base.js';
 
@@ -196,6 +197,7 @@ function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboar
     // while its consumers migrate to inline-terminal handling.
     autoEmitCompletionWebhooks: true,
     taskRegistry: pickTaskRegistry(),
+    taskStore: sharedTrainingTaskStore,
     stateStore: pickStateStore(),
     mergeSeam: 'log-once',
     // Keep the SDK facade's legacy and canonical wire projections on the

@@ -548,13 +548,13 @@ Sales agents SHOULD target the following response times:
 
 ### Idempotency
 
-Every state-mutating AdCP task request MUST carry an `idempotency_key`. In AdCP 4.0 that includes every `get_products` call because the tool is polymorphic. Sales agents MUST apply the replay contract:
+Every state-mutating AdCP task request MUST carry an `idempotency_key`. In AdCP 3.2, product discovery uses explicit contracts: `recommend_products`, `refine_proposal`, and `finalize_proposals` require a key; `list_products` and the legacy 3.x `get_products` facade leave it optional. Sales agents MUST apply the replay contract whenever a key is supplied:
 
 - The same key and equivalent canonical payload within the replay window MUST return the original response without re-executing the request.
 - The same key with a different canonical payload MUST return `IDEMPOTENCY_CONFLICT`.
 - Keys are scoped to the authenticated caller and account so retries cannot cross tenant boundaries.
 
-The 3.x `get_products` migration grace applies only when a seller can guarantee that an omitted-key request will complete as a side-effect-free synchronous read. It never permits a `Submitted` response, task allocation, proposal finalization, or another state transition, and it is removed in AdCP 4.0. `get_products` is polymorphic, so buyers MUST include the key on every call rather than attempting to predict which execution arm the seller will choose. See [Request safety — idempotency](/docs/building/by-layer/L1/security#idempotency) for the normative cache, replay, concurrency, and 4.0 enforcement rules.
+During 3.x, split and legacy calls are aliases in one logical operation family. Sellers normalize them before authorization, idempotency, task recovery, persistence, and webhook emission, so a retry may safely switch names. New buyers SHOULD use the split tools; sellers MUST retain `get_products` through 3.x. See [Request safety — idempotency](/docs/building/by-layer/L1/security#idempotency) for the normative cache, replay, and concurrency rules.
 
 ### Human-in-the-Loop
 

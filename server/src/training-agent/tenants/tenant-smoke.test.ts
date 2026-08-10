@@ -1490,7 +1490,7 @@ describe('tenant routing smoke', () => {
       await close();
     }
   }, 20000);
-  it('enforces and replays idempotency on polymorphic sales get_products', async () => {
+  it('keeps get_products compatible and replays across the AdCP 3.2 split aliases', async () => {
     const { baseUrl, close } = await bootServer();
     try {
       const url = `${baseUrl}/sales/mcp`;
@@ -1501,6 +1501,7 @@ describe('tenant routing smoke', () => {
       };
       const payload = {
         idempotency_key: 'tenant-products-idempotency-0001',
+        adcp_version: '3.2-beta.0',
         buying_mode: 'wholesale',
         account,
       };
@@ -1521,13 +1522,15 @@ describe('tenant routing smoke', () => {
             inputSchema?: {
               properties?: Record<string, Record<string, unknown>>;
               required?: string[];
+              $defs?: Record<string, Record<string, unknown>>;
             };
             annotations?: Record<string, unknown>;
+            execution?: { taskSupport?: string };
           }>;
         };
       };
       const discovered = listBody.result?.tools?.find(tool => tool.name === 'get_products');
-      expect(discovered?.inputSchema?.required).toContain('idempotency_key');
+      expect(discovered?.inputSchema?.required).not.toContain('idempotency_key');
       expect(discovered?.inputSchema?.properties?.idempotency_key).toMatchObject({
         type: 'string',
         minLength: 16,
@@ -1536,12 +1539,77 @@ describe('tenant routing smoke', () => {
       });
       expect(discovered?.annotations).toMatchObject({ readOnlyHint: false, idempotentHint: true });
 
-      const missing = await callTenantTool(url, 3, 'get_products', {
+      expect(listBody.result?.tools?.map(tool => tool.name)).toEqual(expect.arrayContaining([
+        'list_products',
+        'recommend_products',
+        'refine_proposal',
+        'finalize_proposals',
+      ]));
+      const listAlias = listBody.result?.tools?.find(tool => tool.name === 'list_products');
+      const recommendAlias = listBody.result?.tools?.find(tool => tool.name === 'recommend_products');
+      expect(listAlias?.execution).toEqual({ taskSupport: 'forbidden' });
+      expect(listAlias?.inputSchema).toMatchObject({ dependencies: { catalog: ['brand'] } });
+      expect(recommendAlias?.execution).toEqual({ taskSupport: 'optional' });
+      expect(recommendAlias?.inputSchema).toMatchObject({
+        dependencies: { catalog: ['brand'] },
+        properties: { brief: { type: 'string', minLength: 1 } },
+      });
+      const refineAlias = listBody.result?.tools?.find(tool => tool.name === 'refine_proposal');
+      expect(refineAlias?.inputSchema?.properties?.refine).toMatchObject({
+        allOf: expect.arrayContaining([
+          { $ref: '#/$defs/media-buy~1product-refinement.json' },
+        ]),
+      });
+      expect(refineAlias?.inputSchema?.$defs?.['media-buy/product-refinement.json'])
+        .toMatchObject({ type: 'array', minItems: 1 });
+
+      const keylessLegacy = await callTenantTool(url, 3, 'get_products', {
         buying_mode: 'wholesale',
         account,
+      }) as { result?: { structuredContent?: { products?: unknown[] } } };
+      expect(keylessLegacy.result?.structuredContent?.products?.length).toBeGreaterThan(0);
+
+      const invalidKeylessLegacy = await callTenantTool(url, 31, 'get_products', {
+        buying_mode: 'not-a-mode',
+        account,
       }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string } } } };
-      expect(missing.result?.structuredContent?.adcp_error?.code).toBe('INVALID_REQUEST');
-      expect(missing.result?.structuredContent?.adcp_error?.field).toBe('idempotency_key');
+      expect(invalidKeylessLegacy.result?.structuredContent?.adcp_error).toMatchObject({
+        code: 'INVALID_REQUEST',
+        field: 'buying_mode',
+      });
+
+      const invalidKeylessList = await callTenantTool(url, 32, 'list_products', {
+        account,
+        pagination: { max_results: 0 },
+      }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string } } } };
+      expect(invalidKeylessList.result?.structuredContent?.adcp_error).toMatchObject({
+        code: 'INVALID_REQUEST',
+        field: 'pagination.max_results',
+      });
+
+      const malformedAccount = await callTenantTool(url, 33, 'list_products', {
+        account: 'not-an-account',
+      }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string } } } };
+      expect(malformedAccount.result?.structuredContent?.adcp_error).toMatchObject({
+        code: 'INVALID_REQUEST',
+        field: 'account',
+      });
+
+      const unsupportedAliasVersion = await callTenantTool(url, 34, 'list_products', {
+        account,
+        adcp_version: '99.0',
+      }) as {
+        result?: {
+          structuredContent?: {
+            adcp_error?: { code?: string; field?: string; details?: { supported_versions?: string[] } };
+          };
+        };
+      };
+      expect(unsupportedAliasVersion.result?.structuredContent?.adcp_error).toMatchObject({
+        code: 'VERSION_UNSUPPORTED',
+        field: 'adcp_version',
+        details: { supported_versions: expect.any(Array) },
+      });
 
       const first = await callTenantTool(url, 4, 'get_products', payload) as {
         result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
@@ -1554,7 +1622,114 @@ describe('tenant routing smoke', () => {
       expect(replay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);
       expect(replay.result?.structuredContent?.replayed).toBe(true);
 
-      const invalid = await callTenantTool(url, 6, 'get_products', {
+      const aliasReplay = await callTenantTool(url, 6, 'list_products', {
+        idempotency_key: payload.idempotency_key,
+        adcp_version: payload.adcp_version,
+        account,
+      }) as { result?: { structuredContent?: { adcp_version?: string; products?: unknown[]; replayed?: boolean } } };
+      expect(aliasReplay.result?.structuredContent).not.toHaveProperty('adcp_error');
+      expect(aliasReplay.result?.structuredContent?.adcp_version).toBe('3.2-beta.0');
+      expect(aliasReplay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);
+      expect(aliasReplay.result?.structuredContent?.replayed).toBe(true);
+
+      const taskKey = 'tenant-products-task-receipt-0001';
+      const taskCall = async (id: number): Promise<Record<string, unknown>> => {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json',
+            authorization: 'Bearer test-token',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id,
+            method: 'tools/call',
+            params: {
+              name: 'recommend_products',
+              arguments: {
+                idempotency_key: taskKey,
+                account,
+                brief: 'Reach sports fans',
+              },
+              task: { ttl: 120000 },
+            },
+          }),
+        });
+        return response.json() as Promise<Record<string, unknown>>;
+      };
+      const taskFirst = await taskCall(62) as { result?: { task?: { taskId?: string; status?: string } } };
+      const taskReplay = await taskCall(63) as { result?: { task?: { taskId?: string; status?: string } } };
+      expect(taskFirst.result?.task).toMatchObject({ status: 'completed', taskId: expect.any(String) });
+      expect(taskReplay.result?.task?.taskId).toBe(taskFirst.result?.task?.taskId);
+
+      const taskGetResponse = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+          authorization: 'Bearer test-token',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 64,
+          method: 'tasks/get',
+          params: { taskId: taskFirst.result?.task?.taskId, adcp_version: '3.2-beta.0' },
+        }),
+      });
+      const taskGet = await taskGetResponse.json() as { result?: { taskId?: string; status?: string } };
+      expect(taskGet.result).toMatchObject({ taskId: taskFirst.result?.task?.taskId, status: 'completed' });
+
+      const taskListResponse = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+          authorization: 'Bearer test-token',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 641,
+          method: 'tasks/list',
+          params: { adcp_version: '3.2-beta.0' },
+        }),
+      });
+      const taskList = await taskListResponse.json() as { result?: { tasks?: Array<{ taskId?: string }> } };
+      expect(taskList.result?.tasks).toEqual(expect.arrayContaining([
+        expect.objectContaining({ taskId: taskFirst.result?.task?.taskId }),
+      ]));
+
+      const forbiddenListTask = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+          authorization: 'Bearer test-token',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 65,
+          method: 'tools/call',
+          params: {
+            name: 'list_products',
+            arguments: { account },
+            task: { ttl: 120000 },
+          },
+        }),
+      });
+      const forbiddenListTaskBody = await forbiddenListTask.json() as { error?: { code?: number; message?: string } };
+      expect(forbiddenListTaskBody.error?.message).toContain('does not support task augmentation');
+
+      const missingAliasKey = await callTenantTool(url, 61, 'recommend_products', {
+        account,
+        brief: 'Reach sports fans',
+      }) as { error?: { code?: number; data?: { field?: string } } };
+      expect(missingAliasKey.error).toMatchObject({
+        code: -32602,
+        data: { field: 'idempotency_key' },
+      });
+
+      const invalid = await callTenantTool(url, 7, 'get_products', {
         ...payload,
         buying_mode: 'not-a-mode',
       }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string } } } };
@@ -1563,7 +1738,7 @@ describe('tenant routing smoke', () => {
         field: 'buying_mode',
       });
 
-      const mixedFinalize = await callTenantTool(url, 7, 'get_products', {
+      const mixedFinalize = await callTenantTool(url, 8, 'get_products', {
         ...payload,
         buying_mode: 'refine',
         refine: [
@@ -1576,7 +1751,7 @@ describe('tenant routing smoke', () => {
         field: 'refine[1]',
       });
 
-      const conflict = await callTenantTool(url, 8, 'get_products', {
+      const conflict = await callTenantTool(url, 9, 'get_products', {
         ...payload,
         buying_mode: 'brief',
         brief: 'different logical request',

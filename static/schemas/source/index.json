@@ -1308,11 +1308,53 @@
         "get-products": {
           "request": {
             "$ref": "/schemas/media-buy/get-products-request.json",
-            "description": "Request parameters for discovering available advertising products"
+            "deprecated": true,
+            "description": "AdCP 3.x compatibility request. New 3.2 callers use list_products, recommend_products, refine_proposal, or finalize_proposals."
           },
           "response": {
             "$ref": "/schemas/media-buy/get-products-response.json",
-            "description": "Response payload for get_products task"
+            "deprecated": true,
+            "description": "AdCP 3.x compatibility response for get_products"
+          }
+        },
+        "list-products": {
+          "request": {
+            "$ref": "/schemas/media-buy/list-products-request.json",
+            "description": "Request parameters for synchronous wholesale product-feed reads"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/list-products-response.json",
+            "description": "Response payload for list_products"
+          }
+        },
+        "recommend-products": {
+          "request": {
+            "$ref": "/schemas/media-buy/recommend-products-request.json",
+            "description": "Request parameters for curated brief-based product recommendations"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/recommend-products-response.json",
+            "description": "Response payload for recommend_products"
+          }
+        },
+        "refine-proposal": {
+          "request": {
+            "$ref": "/schemas/media-buy/refine-proposal-request.json",
+            "description": "Request parameters for changing one draft proposal"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/refine-proposal-response.json",
+            "description": "Response payload for refine_proposal"
+          }
+        },
+        "finalize-proposals": {
+          "request": {
+            "$ref": "/schemas/media-buy/finalize-proposals-request.json",
+            "description": "Request parameters for atomically committing proposal pricing and inventory holds"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/finalize-proposals-response.json",
+            "description": "Response payload for finalize_proposals"
           }
         },
         "list-creative-formats": {

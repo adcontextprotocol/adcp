@@ -7,6 +7,10 @@ testable: true
 
 Discover available advertising products based on campaign requirements using natural language briefs or structured filters.
 
+<Warning>
+`get_products` is deprecated for new integrations in AdCP 3.2, but remains fully supported throughout 3.x. Use [`list_products`](/docs/media-buy/task-reference/list_products), [`recommend_products`](/docs/media-buy/task-reference/recommend_products), [`refine_proposal`](/docs/media-buy/task-reference/refine_proposal), or [`finalize_proposals`](/docs/media-buy/task-reference/finalize_proposals). Its `idempotency_key` remains optional; when supplied, retries share the same replay identity as the equivalent split call.
+</Warning>
+
 <Info>
 **Why this shape.** Targeting, pricing, and curation are folded into one round-trip — the brief drives discovery, the publisher curates against it, and `pricing_options` carry firm prices the buyer commits against via `pricing_option_id`. We rejected a separate `get_price_quote` step between products and buy creation: it splits one expert decision into two underspecified ones and breaks the brief→curation contract. Iteration is `buying_mode: "refine"` with a typed change array — not a new task. → [Design principle: the brief drives discovery](/docs/protocol/design-principles#3-the-brief-drives-discovery-targeting-is-an-input-not-a-step).
 </Info>
@@ -147,7 +151,7 @@ asyncio.run(discover_with_filters())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `idempotency_key` | string | Yes | Unique key for this logical request (16–255 characters; letters, digits, `_`, `.`, `:`, and `-`). Reuse the same key only when retrying the exact initial request, including after a timeout when the original request may have returned `Submitted`. Poll the resulting task through `get_task_status` or MCP task APIs; each new polling request carries its own fresh key. Use a new key whenever any request parameter changes. |
+| `idempotency_key` | string | No | Optional key for retry-safe use of the 3.x compatibility facade (16–255 characters; letters, digits, `_`, `.`, `:`, and `-`). When supplied, reuse the same key only when retrying the exact initial request, including through the equivalent 3.2 split task. Poll the resulting task through `get_task_status` or MCP task APIs; each new polling request carries its own fresh key. Use a new key whenever any request parameter changes. |
 | `buying_mode` | string | Yes | `"brief"`, `"wholesale"`, or `"refine"`. `"brief"`: publisher curates products from the brief. `"wholesale"`: raw product feed access for buyer-directed targeting, `brief` must not be provided. `"refine"`: iterate on products and proposals from a previous response using the `refine` array of change requests. v3 clients MUST include `buying_mode`. Sellers receiving requests from pre-v3 clients without `buying_mode` SHOULD default to `"brief"`. **Timing semantics:** `"wholesale"` is a wholesale product feed read — sellers SHOULD return a synchronous response and MUST NOT route a `"wholesale"` request through the async/Submitted arm. Partial completion is signalled via [`incomplete[]`](#incomplete-array), not a task handoff. `"brief"` and `"refine"` MAY complete synchronously OR MAY return a `Submitted` envelope when curation requires upstream-system queries or HITL review the seller cannot complete inside `time_budget`. Buyers needing predictable fast wholesale product feed access MUST use `"wholesale"`. |
 | `brief` | string | Conditional | Natural language description of campaign requirements. Required when `buying_mode` is `"brief"`. Must not be provided when `buying_mode` is `"wholesale"` or `"refine"`. |
 | `refine` | [Refine[]](#refine-array) | Conditional | Array of change requests for iterating on products and proposals. Required when `buying_mode` is `"refine"`. Must not be provided when `buying_mode` is `"brief"` or `"wholesale"`. See [Refine array](#refine-array) below. |

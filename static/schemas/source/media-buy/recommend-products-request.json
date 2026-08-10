@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/recommend-products-request.json",
+  "title": "Recommend Products Request",
+  "description": "AdCP 3.2 additive curated product-discovery request. This replaces get_products with buying_mode: brief. It may allocate an asynchronous task, so idempotency_key is required even when a seller completes synchronously.",
+  "type": "object",
+  "x-mutates-state": true,
+  "x-operation-family": "get_products",
+  "x-added-in": "3.2.0",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "not": {
+        "anyOf": [
+          { "required": ["buying_mode"] },
+          { "required": ["refine"] },
+          { "required": ["if_wholesale_feed_version"] },
+          { "required": ["if_pricing_version"] }
+        ]
+      }
+    }
+  ],
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated key required for retry-safe curated discovery.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "brief": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Natural-language campaign requirements used to curate recommendations."
+    },
+    "account": {
+      "$ref": "/schemas/core/account-ref.json"
+    },
+    "brand": {
+      "$ref": "/schemas/core/brand-ref.json"
+    },
+    "catalog": {
+      "$ref": "/schemas/core/catalog.json"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    },
+    "fields": {
+      "$ref": "/schemas/media-buy/product-fields.json"
+    },
+    "filters": {
+      "$ref": "/schemas/core/product-filters.json"
+    },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-request.json"
+    },
+    "preferred_delivery_types": {
+      "type": "array",
+      "description": "Preferred delivery types in priority order.",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "/schemas/enums/delivery-type.json" }
+    },
+    "property_list": {
+      "$ref": "/schemas/core/property-list-ref.json"
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/core/push-notification-config.json"
+    },
+    "required_policies": {
+      "type": "array",
+      "description": "Registry policy IDs that the buyer requires products to enforce.",
+      "items": { "type": "string" }
+    },
+    "time_budget": {
+      "$ref": "/schemas/core/duration.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "brief"
+  ],
+  "dependencies": {
+    "catalog": ["brand"]
+  },
+  "additionalProperties": true
+}

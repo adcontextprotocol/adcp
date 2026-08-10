@@ -16,12 +16,24 @@ import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
 import { createRegistryHolder, getCanonicalBase, resolveTenantHost, type RegistryHolder } from './registry.js';
 import { buildSignedRevocationList } from '../governance-revocations.js';
-import { salesCapabilityProjection } from '../v6-sales-platform.js';
+import {
+  resolveTrainingSalesRequestContext,
+  salesCapabilityProjection,
+} from '../v6-sales-platform.js';
 import { handleComplyTestController } from '../comply-test-controller.js';
-import { adcpError, resolveServedAdcpVersion, supportedCanonicalFormatsCapability } from '../task-handlers.js';
-import { GET_PRODUCTS_REJECTED_ADCP_VERSION, type TrainingContext } from '../types.js';
+import {
+  adcpError,
+  createTrainingAgentServer,
+  productDiscoveryAliasToolDefinitions,
+  resolveServedAdcpVersion,
+  resolveServedAdcpVersionForTool,
+  supportedCanonicalFormatsCapability,
+  validateProductDiscoveryAliasInput,
+} from '../task-handlers.js';
+import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
+import { canonicalizeAccountRef } from '../account-scope.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
@@ -118,6 +130,13 @@ const SALES_CURRENT_SCENARIOS = [
 
 const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', GET_PRODUCTS_REJECTED_ADCP_VERSION] as const;
 const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
+const PRODUCT_DISCOVERY_TOOL_NAMES = [
+  'get_products',
+  'list_products',
+  'recommend_products',
+  'refine_proposal',
+  'finalize_proposals',
+] as const;
 
 function bearerToken(req: Request): string | undefined {
   const auth = req.headers.authorization;
@@ -356,6 +375,9 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCo
       if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat)) {
         return;
       }
+      if (await tryHandleProductDiscoveryRequest(req, res, resolved.tenantId, principal, storyboardCompat)) {
+        return;
+      }
 
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
@@ -386,6 +408,114 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCo
       }
     });
   };
+}
+
+async function tryHandleProductDiscoveryRequest(
+  req: Request,
+  res: Response,
+  tenantId: string,
+  principal: string | undefined,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): Promise<boolean> {
+  if (tenantId !== 'sales') return false;
+  if (storyboardCompat?.version === '3.0') return false;
+
+  const method = req.body?.method;
+  const toolName = req.body?.params?.name;
+  const rawArgs = (req.body?.params?.arguments ?? {}) as Record<string, unknown>;
+  const requestedProductVersion = method === 'tools/call' && PRODUCT_DISCOVERY_TOOL_NAMES.includes(toolName)
+    ? resolveServedAdcpVersionForTool(toolName, rawArgs)
+    : undefined;
+  const isProductCall = (
+    method === 'tools/call'
+    && PRODUCT_DISCOVERY_TOOL_NAMES.includes(toolName)
+    && (
+      toolName !== 'get_products'
+      || (requestedProductVersion?.ok === true && supportsGetProductsRejected(requestedProductVersion.servedVersion))
+    )
+  );
+  const isTaskLifecycleCall = (
+    method === 'tasks/get'
+    || method === 'tasks/result'
+    || method === 'tasks/list'
+    || method === 'tasks/cancel'
+  );
+  if (!isProductCall && !isTaskLifecycleCall) return false;
+
+  if (isProductCall && toolName !== 'get_products') {
+    const validationError = validateProductDiscoveryAliasInput(toolName, rawArgs);
+    if (validationError) {
+      res.json({
+        jsonrpc: '2.0',
+        id: req.body.id ?? null,
+        error: {
+          code: -32602,
+          message: validationError.message,
+          data: validationError.field ? { field: validationError.field } : undefined,
+        },
+      });
+      return true;
+    }
+
+  }
+
+  if (isProductCall && rawArgs.account !== undefined) {
+    try {
+      canonicalizeAccountRef(rawArgs.account as never);
+    } catch (error) {
+      res.json({
+        jsonrpc: '2.0',
+        id: req.body.id ?? null,
+        result: adcpError('INVALID_REQUEST', {
+          message: error instanceof Error ? error.message : 'account is malformed',
+          field: 'account',
+          recovery: 'correctable',
+        }, rawArgs.context, requestedProductVersion?.ok ? requestedProductVersion.servedVersion : undefined),
+      });
+      return true;
+    }
+  }
+
+  let nativeContext: TrainingContext;
+  try {
+    nativeContext = isProductCall
+      ? await resolveTrainingSalesRequestContext(
+        req.body.params.arguments as Record<string, unknown>,
+        (req as unknown as {
+          auth?: { clientId?: string; scopes?: string[]; extra?: Record<string, unknown> };
+        }).auth,
+        storyboardCompat,
+      )
+      : {
+        mode: 'open' as const,
+        tenantId: 'sales' as const,
+        principal: principal ?? 'anonymous',
+      };
+  } catch (error) {
+    logger.error({ error, toolName }, 'Native sales request context resolution failed');
+    res.json({
+      jsonrpc: '2.0',
+      id: req.body.id ?? null,
+      result: adcpError('SERVICE_UNAVAILABLE', {
+        message: 'Unable to resolve the sales request context',
+        recovery: 'transient',
+      }, rawArgs.context, requestedProductVersion?.ok ? requestedProductVersion.servedVersion : undefined),
+    });
+    return true;
+  }
+  const nativeServer = createTrainingAgentServer(nativeContext);
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+    enableJsonResponse: true,
+  });
+  try {
+    await nativeServer.connect(transport);
+    installConflictEnvelopeRedaction(res);
+    await transport.handleRequest(req, res, req.body);
+  } finally {
+    await nativeServer.close().catch(() => {});
+  }
+  return true;
 }
 
 async function tryHandleLocalComplyScenario(
@@ -545,6 +675,7 @@ function projectTenantToolDiscovery(
             [key: string]: unknown;
           };
           annotations?: Record<string, unknown>;
+          execution?: { taskSupport?: string };
         }>;
       };
     };
@@ -573,15 +704,20 @@ function projectTenantToolDiscovery(
         getProducts.inputSchema = {
           ...inputSchema,
           properties,
-          required: isThreeZeroCompat
-            ? required.filter(field => field !== 'idempotency_key')
-            : [...new Set([...required, 'idempotency_key'])],
+          required: required.filter(field => field !== 'idempotency_key'),
         };
         getProducts.annotations = {
           ...(getProducts.annotations ?? {}),
           readOnlyHint: isThreeZeroCompat,
           idempotentHint: true,
         };
+
+        if (!isThreeZeroCompat) {
+          const splitTools = productDiscoveryAliasToolDefinitions();
+          for (const splitTool of splitTools) {
+            if (!tools.some(tool => tool.name === splitTool.name)) tools.push(splitTool);
+          }
+        }
       }
     }
     if (storyboardCompat?.version === '3.0') {
@@ -691,6 +827,9 @@ function projectSalesCapabilities(
       structured.media_buy = {
         ...mediaBuy,
         ...salesProjection,
+        ...(supportsGetProductsRejected(servedVersion) && {
+          product_discovery_tools: [...PRODUCT_DISCOVERY_TOOL_NAMES],
+        }),
         features: {
           ...(
             mediaBuy.features && typeof mediaBuy.features === 'object'

@@ -72,7 +72,7 @@ describe('idempotency facade', () => {
     it('covers specific mutating tools explicitly', () => {
       for (const name of [
         'create_media_buy', 'update_media_buy', 'sync_audiences',
-        'get_products',
+        'recommend_products', 'refine_proposal', 'finalize_proposals',
         'si_initiate_session', 'si_send_message',
         'acquire_rights', 'update_rights', 'creative_approval',
       ]) {
@@ -83,6 +83,7 @@ describe('idempotency facade', () => {
     it('excludes read-only and discovery tools', () => {
       for (const name of [
         'get_media_buys',
+        'get_products', 'list_products',
         'get_adcp_capabilities',
         'check_governance',
         'si_terminate_session',

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/get-products-request.json",
   "title": "Get Products Request",
-  "description": "Request parameters for discovering or refining advertising products. buying_mode declares the buyer's intent: 'brief' for curated discovery, 'wholesale' for raw wholesale product feed access, or 'refine' to iterate on known products and proposals.",
+  "description": "AdCP 3.x compatibility request for discovering, refining, or finalizing advertising products and proposals. AdCP 3.2 introduces the narrower list_products, recommend_products, refine_proposal, and finalize_proposals tasks; new callers SHOULD use those tasks. Existing get_products payloads remain valid throughout 3.x.",
   "type": "object",
   "allOf": [
     {
@@ -37,10 +37,13 @@
     }
   ],
   "x-mutates-state": true,
+  "x-idempotency-key-required": false,
+  "x-operation-family": "get_products",
+  "x-deprecated-in": "3.2.0",
   "properties": {
     "idempotency_key": {
       "type": "string",
-      "description": "Client-generated unique key for this request. get_products is polymorphic: a call may complete as a read, create an asynchronous task, or finalize a proposal and commit an inventory hold. Reusing the same key with the same canonical payload returns the original response without repeating those effects. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each new request and reuse it only for retries.",
+      "description": "Optional client-generated key for retry-safe use of the AdCP 3.x compatibility facade. Sellers MUST honor replay semantics when the key is supplied, including across the equivalent AdCP 3.2 split-task alias. New callers SHOULD use list_products, recommend_products, refine_proposal, or finalize_proposals; the three stateful split tasks require a key. Keys MUST be unique per (seller, logical request) pair to prevent cross-seller correlation.",
       "minLength": 16,
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
@@ -277,7 +280,6 @@
     }
   },
   "required": [
-    "idempotency_key",
     "buying_mode"
   ],
   "dependencies": {

@@ -1,0 +1,22 @@
+---
+title: recommend_products
+description: "Request curated products from a campaign brief."
+testable: true
+---
+
+`recommend_products` is the AdCP 3.2 replacement for `get_products` with `buying_mode: "brief"`. It may allocate an asynchronous task, so `idempotency_key` is required.
+
+**Request schema:** [`/schemas/latest/media-buy/recommend-products-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/recommend-products-request.json)
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441001",
+  "brief": "Reach outdoor enthusiasts with premium video inventory.",
+  "account": {
+    "brand": { "domain": "acmeoutdoor.example" },
+    "operator": "pinnacle-agency.example"
+  }
+}
+```
+
+During 3.x, keyed retries are equivalent across `recommend_products` and the matching legacy `get_products` call.

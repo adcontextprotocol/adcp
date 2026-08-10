@@ -411,6 +411,50 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
 };
 
 /**
+ * Resolve the trusted sales account and buyer-agent context for native MCP
+ * dispatchers that sit beside the SDK facade. Keeping this on the platform's
+ * actual resolvers prevents the split 3.2 tools from treating buyer input as
+ * an already-authorized account.
+ */
+export async function resolveTrainingSalesRequestContext(
+  input: Record<string, unknown>,
+  auth: {
+    clientId?: string;
+    scopes?: string[];
+    extra?: Record<string, unknown>;
+  } | undefined,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): Promise<TrainingContext> {
+  const credential = auth?.extra?.credential;
+  const agent = await trainingBuyerAgentRegistry.resolve({
+    ...(credential ? { credential: credential as never } : {}),
+    ...(auth?.extra && { extra: auth.extra }),
+    input,
+  });
+  const account = await trainingSalesAccounts.resolve(
+    input.account as never,
+    {
+      authInfo: {
+        ...(auth?.clientId && { clientId: auth.clientId }),
+        ...(auth?.scopes && { scopes: auth.scopes }),
+        ...(credential ? { credential: credential as never } : {}),
+        ...(auth?.extra && { extra: auth.extra }),
+      },
+      toolName: 'get_products',
+      ...(agent && { agent }),
+      input,
+    },
+  );
+  if (!account) throw new Error('Unable to resolve sales account');
+  return buildTrainingCtx({
+    account,
+    authInfo: { clientId: auth?.clientId },
+    ...(agent && { agent }),
+    input,
+  }, storyboardCompat);
+}
+
+/**
  * Temporary raw-wire compatibility adapters for creative identity surfaces.
  *
  * AdCP 3.1's canonical-format conformance scenarios deliberately exercise

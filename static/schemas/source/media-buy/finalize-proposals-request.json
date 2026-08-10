@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/finalize-proposals-request.json",
+  "title": "Finalize Proposals Request",
+  "description": "AdCP 3.2 additive request for atomically committing one or more draft proposals to firm pricing and inventory holds. It replaces exclusive get_products refine entries with action: finalize.",
+  "type": "object",
+  "x-mutates-state": true,
+  "x-operation-family": "get_products",
+  "x-added-in": "3.2.0",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "not": {
+        "anyOf": [
+          { "required": ["buying_mode"] },
+          { "required": ["brief"] },
+          { "required": ["refine"] },
+          { "required": ["catalog"] },
+          { "required": ["filters"] },
+          { "required": ["fields"] },
+          { "required": ["preferred_delivery_types"] },
+          { "required": ["property_list"] },
+          { "required": ["required_policies"] },
+          { "required": ["if_wholesale_feed_version"] },
+          { "required": ["if_pricing_version"] },
+          { "required": ["pagination"] },
+          { "required": ["time_budget"] }
+        ]
+      }
+    }
+  ],
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated key required for retry-safe atomic proposal finalization.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "proposal_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "x-entity": "proposal"
+      },
+      "description": "Proposal IDs to commit. Multi-proposal requests retain the atomic pre-commit validation contract of legacy get_products finalization."
+    },
+    "account": {
+      "$ref": "/schemas/core/account-ref.json"
+    },
+    "brand": {
+      "$ref": "/schemas/core/brand-ref.json"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/core/push-notification-config.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "proposal_ids"
+  ],
+  "additionalProperties": true
+}

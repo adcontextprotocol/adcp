@@ -1,0 +1,109 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/refine-proposal-request.json",
+  "title": "Refine Proposal Request",
+  "description": "AdCP 3.2 additive request for changing one draft proposal. It preserves the get_products refine grammar, but excludes finalization and requires every proposal-scoped entry to name the same proposal. Finalization is a separate finalize_proposals call.",
+  "type": "object",
+  "x-mutates-state": true,
+  "x-operation-family": "get_products",
+  "x-added-in": "3.2.0",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "not": {
+        "anyOf": [
+          { "required": ["buying_mode"] },
+          { "required": ["brief"] },
+          { "required": ["if_wholesale_feed_version"] },
+          { "required": ["if_pricing_version"] }
+        ]
+      }
+    }
+  ],
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated key required for retry-safe proposal refinement.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "refine": {
+      "allOf": [
+        { "$ref": "/schemas/media-buy/product-refinement.json" },
+        {
+          "contains": {
+            "type": "object",
+            "properties": { "scope": { "const": "proposal" } },
+            "required": ["scope"]
+          }
+        },
+        {
+          "not": {
+            "contains": {
+              "type": "object",
+              "properties": { "action": { "const": "finalize" } },
+              "required": ["action"]
+            }
+          }
+        }
+      ],
+      "description": "Non-finalizing request, product, and proposal changes using the established get_products refine grammar. At least one entry MUST be proposal-scoped, all proposal-scoped entries MUST name the same proposal_id, and action: finalize is invalid on this tool."
+    },
+    "account": {
+      "$ref": "/schemas/core/account-ref.json"
+    },
+    "brand": {
+      "$ref": "/schemas/core/brand-ref.json"
+    },
+    "catalog": {
+      "$ref": "/schemas/core/catalog.json"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    },
+    "fields": {
+      "$ref": "/schemas/media-buy/product-fields.json"
+    },
+    "filters": {
+      "$ref": "/schemas/core/product-filters.json"
+    },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-request.json"
+    },
+    "preferred_delivery_types": {
+      "type": "array",
+      "description": "Preferred delivery types in priority order.",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "/schemas/enums/delivery-type.json" }
+    },
+    "property_list": {
+      "$ref": "/schemas/core/property-list-ref.json"
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/core/push-notification-config.json"
+    },
+    "required_policies": {
+      "type": "array",
+      "description": "Registry policy IDs that the buyer requires products to enforce.",
+      "items": { "type": "string" }
+    },
+    "time_budget": {
+      "$ref": "/schemas/core/duration.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "refine"
+  ],
+  "dependencies": {
+    "catalog": ["brand"]
+  },
+  "additionalProperties": true
+}

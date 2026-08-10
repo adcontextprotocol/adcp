@@ -3015,6 +3015,82 @@ async function runTests() {
   );
   log('');
 
+  log('AdCP 3.2 split product-discovery request contracts:', 'info');
+  await testSchemaValidation(
+    '/schemas/media-buy/get-products-request.json',
+    { buying_mode: 'wholesale' },
+    'Legacy get_products remains valid without an idempotency key throughout 3.x'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/list-products-request.json',
+    { fields: ['product_id', 'pricing_options'] },
+    'list_products is a key-optional synchronous read'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/list-products-request.json',
+    {
+      push_notification_config: {
+        url: 'https://buyer.example.com/adcp-events'
+      }
+    },
+    'list_products accepts wrapper callback configuration even though the read does not emit callbacks'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-products-request.json',
+    { catalog: { type: 'product' } },
+    'list_products requires brand when catalog is present'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/recommend-products-request.json',
+    {
+      idempotency_key: 'recommend-products-0001',
+      brief: 'Reach streaming audio listeners in Rome'
+    },
+    'recommend_products requires a brief and accepts a replay key'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/recommend-products-request.json',
+    { brief: 'Reach streaming audio listeners in Rome' },
+    'recommend_products rejects a missing replay key'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposal-request.json',
+    {
+      idempotency_key: 'refine-proposal-0001',
+      refine: [
+        { scope: 'request', ask: 'Prefer video' },
+        { scope: 'proposal', proposal_id: 'proposal-1', ask: 'Move budget to video' }
+      ]
+    },
+    'refine_proposal preserves non-finalizing refinement grammar'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposal-request.json',
+    {
+      idempotency_key: 'refine-proposal-0002',
+      refine: [{ scope: 'proposal', proposal_id: 'proposal-1', action: 'finalize' }]
+    },
+    'refine_proposal rejects finalization'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/finalize-proposals-request.json',
+    {
+      idempotency_key: 'finalize-proposals-0001',
+      proposal_ids: ['proposal-1', 'proposal-2']
+    },
+    'finalize_proposals accepts a unique atomic proposal set'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/finalize-proposals-request.json',
+    {
+      idempotency_key: 'finalize-proposals-0002',
+      proposal_ids: ['proposal-1', 'proposal-1']
+    },
+    'finalize_proposals rejects duplicate proposal IDs'
+  );
+
+  log('');
+
   log('SignalId compatibility during SignalRef migration:', 'info');
   await testSchemaValidation(
     '/schemas/signals/get-signals-response.json',

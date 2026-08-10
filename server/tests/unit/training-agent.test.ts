@@ -1368,6 +1368,10 @@ describe('createTrainingAgentServer', () => {
     const toolNames = tools.map(t => t.name);
 
     expect(toolNames).toContain('get_products');
+    expect(toolNames).toContain('list_products');
+    expect(toolNames).toContain('recommend_products');
+    expect(toolNames).toContain('refine_proposal');
+    expect(toolNames).toContain('finalize_proposals');
     expect(toolNames).toContain('list_creative_formats');
     expect(toolNames).toContain('create_media_buy');
     expect(toolNames).toContain('get_media_buys');
@@ -1418,7 +1422,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('update_collection_list');
     expect(toolNames).toContain('list_collection_lists');
     expect(toolNames).toContain('delete_collection_list');
-    expect(toolNames).toHaveLength(51);
+    expect(toolNames).toHaveLength(55);
 
     const validateInput = tools.find(t => t.name === 'validate_input');
     expect(validateInput?.inputSchema?.properties?.targets?.maxItems).toBe(50);
@@ -12316,6 +12320,7 @@ describe('MCP Tasks protocol', () => {
     const response = await simulateCallToolAsTask(server, 'get_products', {
       adcp_version: '3.1',
       adcp_major_version: 3,
+      idempotency_key: 'task-products-receipt-0001',
       buying_mode: 'wholesale',
     });
 
@@ -12336,6 +12341,7 @@ describe('MCP Tasks protocol', () => {
   it('overrides requested TTL for successful idempotency recovery receipts', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const response = await simulateCallToolAsTask(server, 'get_products', {
+      idempotency_key: 'task-products-receipt-0002',
       buying_mode: 'wholesale',
     }, { ttl: 120000 });
 
@@ -12504,6 +12510,7 @@ describe('MCP Tasks protocol', () => {
     try {
       const server = createTrainingAgentServer(DEFAULT_CTX);
       const response = await simulateCallToolAsTask(server, 'get_products', {
+        idempotency_key: 'task-products-receipt-0003',
         buying_mode: 'wholesale',
       }, { ttl: 1 }); // caller suggests a 1ms TTL
 

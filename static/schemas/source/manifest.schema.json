@@ -52,7 +52,16 @@
           },
           "mutating": {
             "type": "boolean",
-            "description": "True if invoking this tool can change server-side state. Mutating tools MUST declare an idempotency_key on the request schema (or carry an explicit `naturally idempotent` exemption marker in the schema's description). Verb prefixes are not authoritative: polymorphic tools such as get_products are mutating because some valid request arms create asynchronous tasks or commit state, even though other arms complete as reads."
+            "description": "True if invoking this tool can change server-side state. New mutating tools MUST require idempotency_key (or carry an explicit naturally-idempotent exemption). A stable 3.x compatibility facade may explicitly mark the key optional while narrower replacement tools carry the required-key contract. Verb prefixes are not authoritative."
+          },
+          "operation_family": {
+            "type": "string",
+            "description": "Stable logical operation identity used for authorization, idempotency equivalence, task recovery, and webhook identity. Aliases in the same family share this value."
+          },
+          "idempotency_requirement": {
+            "type": "string",
+            "enum": ["required", "optional", "none"],
+            "description": "Whether callers must, may, or cannot supply idempotency_key for this tool. Optional keys, when supplied, receive the same replay guarantees as required keys."
           },
           "request_schema": {
             "type": "string",

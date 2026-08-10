@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/finalize-proposals-response.json",
+  "title": "Finalize Proposals Response",
+  "description": "Proposal-finalization response. The wire shape is intentionally identical to an exclusive get_products finalize response during the AdCP 3.2 alias window.",
+  "allOf": [{ "$ref": "/schemas/media-buy/get-products-response.json" }]
+}

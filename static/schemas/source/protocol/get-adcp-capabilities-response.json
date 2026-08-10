@@ -634,6 +634,16 @@
           "uniqueItems": true,
           "default": ["brief"]
         },
+        "product_discovery_tools": {
+          "type": "array",
+          "description": "Product-discovery operation names this seller supports. Added in AdCP 3.2 for the additive split of get_products. Sellers may advertise any supported subset of list_products, recommend_products, refine_proposal, and finalize_proposals while retaining get_products throughout 3.x. Absence means the caller should use the legacy get_products facade and inspect buying_modes. Every advertised split tool shares get_products authorization, idempotency, task-recovery, and webhook operation identity during 3.x.",
+          "items": {
+            "type": "string",
+            "enum": ["get_products", "list_products", "recommend_products", "refine_proposal", "finalize_proposals"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
         "reporting_delivery_methods": {
           "type": "array",
           "description": "How this seller delivers reporting data to buyers. Polling via get_media_buy_delivery is always available as a baseline regardless of this field. This array declares additional push-based delivery methods the seller supports. 'webhook': seller pushes to buyer-provided URL (configured per buy via reporting_webhook). 'offline': seller pushes batch files to a cloud storage bucket (seller-provisioned per account via reporting_bucket on the account object). When absent, only polling is available.",

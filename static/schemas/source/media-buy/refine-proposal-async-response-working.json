@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/refine-proposal-async-response-working.json",
+  "title": "Refine Proposal Working Response",
+  "description": "Progress payload for active proposal refinement.",
+  "allOf": [{ "$ref": "/schemas/media-buy/get-products-async-response-working.json" }]
+}

@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": major
+"adcontextprotocol": minor
 ---
 
-Require idempotency keys in AdCP 4.0 for polymorphic `get_products` requests so asynchronous discovery and proposal finalization are safe to retry. AdCP 3.x retains its bounded omission grace only for guaranteed side-effect-free synchronous reads.
+Add the AdCP 3.2 `list_products`, `recommend_products`, `refine_proposal`, and `finalize_proposals` tools. The split tools give reads, recommendations, refinements, and commits explicit idempotency contracts while retaining `get_products` as a key-optional compatibility facade throughout 3.x. Keyed retries are equivalent across legacy and split names.

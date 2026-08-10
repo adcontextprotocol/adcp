@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/recommend-products-response.json",
+  "title": "Recommend Products Response",
+  "description": "Curated discovery response. The wire shape is intentionally identical to the brief arm of get_products during the AdCP 3.2 alias window.",
+  "allOf": [{ "$ref": "/schemas/media-buy/get-products-response.json" }]
+}

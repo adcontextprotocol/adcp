@@ -1,0 +1,18 @@
+---
+title: finalize_proposals
+description: "Atomically commit one or more draft proposals."
+testable: true
+---
+
+`finalize_proposals` is the explicit AdCP 3.2 proposal commit boundary. `idempotency_key` is required, and `proposal_ids` must be non-empty and unique.
+
+**Request schema:** [`/schemas/latest/media-buy/finalize-proposals-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/finalize-proposals-request.json)
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441003",
+  "proposal_ids": ["proposal_123", "proposal_456"]
+}
+```
+
+Multi-proposal finalization retains the legacy atomic pre-commit validation rule: if any proposal is invalid, the seller rejects the request without committing any named proposal. During 3.x, it shares replay identity with the equivalent exclusive legacy finalize array.

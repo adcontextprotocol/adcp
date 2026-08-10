@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/finalize-proposals-async-response-working.json",
+  "title": "Finalize Proposals Working Response",
+  "description": "Progress payload for active atomic proposal finalization.",
+  "allOf": [{ "$ref": "/schemas/media-buy/get-products-async-response-working.json" }]
+}

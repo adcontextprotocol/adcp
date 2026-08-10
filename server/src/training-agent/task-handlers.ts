@@ -16,7 +16,6 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
 import { PostgresTaskStore } from '@adcp/sdk';
 import {
   canonicalFormatLegacyResolverFromCatalogSnapshots,
@@ -34,7 +33,6 @@ import {
   type V2ProductFormatDeclaration,
 } from '@adcp/sdk/v2/projection';
 import { mergeSeedProductLegacy as mergeSeedProduct } from '@adcp/sdk/testing';
-import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetchAxiosLike } from '../utils/url-security.js';
 import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type SessionState } from './types.js';
@@ -1724,6 +1722,12 @@ import {
 } from './idempotency.js';
 import { maybeEmitCompletionWebhook } from './webhooks.js';
 import { selectSigningCapability } from './request-signing.js';
+import {
+  getTrainingTaskStore,
+  resetTrainingTaskStore,
+  type TrainingTaskStore,
+} from './mcp-task-store.js';
+import { loadProductDiscoveryInputSchema } from './source-schema.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
 const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', GET_PRODUCTS_REJECTED_ADCP_VERSION] as const;
@@ -1907,12 +1911,16 @@ export function resolveServedAdcpVersion(args: Record<string, unknown>): Version
 }
 
 export function resolveServedAdcpVersionForTool(toolName: string, args: Record<string, unknown>): VersionResolution {
+  const splitProductTool = isProductDiscoveryTool(toolName) && toolName !== 'get_products';
   if (
-    toolName === 'validate_input'
+    (toolName === 'validate_input' || splitProductTool)
     && args.adcp_version === undefined
     && args.adcp_major_version === undefined
   ) {
-    return resolveServedAdcpVersion({ ...args, adcp_version: CURRENT_ADCP_VERSION });
+    return resolveServedAdcpVersion({
+      ...args,
+      adcp_version: splitProductTool ? GET_PRODUCTS_REJECTED_ADCP_VERSION : CURRENT_ADCP_VERSION,
+    });
   }
   return resolveServedAdcpVersion(args);
 }
@@ -2129,8 +2137,8 @@ function installTaskProtocolVersionNegotiation(server: Server): void {
  * another. This is intentional for the training agent where all sessions
  * are sandboxed. Production servers should scope tasks by sessionId.
  */
-let sdkTaskStore: InMemoryTaskStore | PostgresTaskStore | null = null;
 const inMemoryTaskIdsByNaturalKey = new Map<string, string>();
+const IDEMPOTENT_TASK_MAX_GENERATIONS = 64;
 
 function idempotentTaskNaturalKey(
   principal: string,
@@ -2141,41 +2149,69 @@ function idempotentTaskNaturalKey(
   return [principal, toolName, `success:${idempotencyKey}:${payloadHash}`].join('\0');
 }
 
-function getTaskStore(): InMemoryTaskStore | PostgresTaskStore {
-  if (!sdkTaskStore) {
-    sdkTaskStore = isDatabaseInitialized()
-      ? new PostgresTaskStore(getPool())
-      : new InMemoryTaskStore();
-  }
-  return sdkTaskStore;
+export function idempotentTaskId(naturalKey: string, generation: number): string {
+  const generationKey = generation === 0 ? naturalKey : `${naturalKey}\0replacement:${generation}`;
+  return createHash('sha256').update(generationKey).digest('hex');
 }
 
-async function createOrReuseIdempotentTask(
-  taskStore: InMemoryTaskStore | PostgresTaskStore,
+function taskReceiptCanBeReused(task: { status: string }): boolean {
+  return task.status !== 'cancelled' && task.status !== 'failed';
+}
+
+function isTaskIdCollision(error: unknown, taskId: string): boolean {
+  return error instanceof Error
+    && error.message === `Task with ID ${taskId} already exists. Use a different taskId or retrieve the existing task via getTask().`;
+}
+
+export async function createOrReuseIdempotentTask(
+  taskStore: TrainingTaskStore,
   naturalKey: string,
   ttl: number,
   request: { method: string; params?: { _meta?: Record<string, unknown> } },
 ) {
-  const deterministicTaskId = createHash('sha256').update(naturalKey).digest('hex');
   if (taskStore instanceof PostgresTaskStore) {
-    const existing = await taskStore.getTask(deterministicTaskId);
-    if (existing) return existing;
-    try {
-      return await taskStore.createTask({ ttl, taskId: deterministicTaskId }, 0, request);
-    } catch (error) {
-      // A sibling process may have inserted the same naturally keyed task
-      // between getTask() and createTask(). Re-read instead of allocating a
-      // second task or surfacing a false failure.
-      const raced = await taskStore.getTask(deterministicTaskId);
-      if (raced) return raced;
-      throw error;
+    const taskIds = Array.from(
+      { length: IDEMPOTENT_TASK_MAX_GENERATIONS },
+      (_, generation) => idempotentTaskId(naturalKey, generation),
+    );
+    const existingTasks = await Promise.all(taskIds.map(taskId => taskStore.getTask(taskId)));
+    // Prefer the newest live generation. Missing entries may be expired rows
+    // hidden by PostgresTaskStore, so the complete scan must happen before an
+    // insertion attempt; an older hole cannot prove that later generations
+    // do not exist.
+    for (let generation = existingTasks.length - 1; generation >= 0; generation -= 1) {
+      const existing = existingTasks[generation];
+      if (existing && taskReceiptCanBeReused(existing)) return existing;
     }
+
+    for (let generation = 0; generation < taskIds.length; generation += 1) {
+      if (existingTasks[generation]) continue;
+      const deterministicTaskId = taskIds[generation]!;
+      try {
+        return await taskStore.createTask({ ttl, taskId: deterministicTaskId }, 0, request);
+      } catch (error) {
+        // A sibling process may have inserted the same naturally keyed task
+        // between getTask() and createTask(). Re-read instead of allocating a
+        // second task or surfacing a false failure.
+        const raced = await taskStore.getTask(deterministicTaskId);
+        if (raced) {
+          if (taskReceiptCanBeReused(raced)) return raced;
+          continue;
+        }
+        // getTask() filters expired rows, but their primary keys remain until
+        // cleanup. A confirmed SDK duplicate for an invisible row occupies
+        // this generation; advance instead of failing or recreating gen0.
+        if (isTaskIdCollision(error, deterministicTaskId)) continue;
+        throw error;
+      }
+    }
+    throw new Error('Too many cancelled or failed idempotent task receipt generations');
   }
 
   const priorId = inMemoryTaskIdsByNaturalKey.get(naturalKey);
   if (priorId) {
     const existing = await taskStore.getTask(priorId);
-    if (existing) return existing;
+    if (existing && taskReceiptCanBeReused(existing)) return existing;
     inMemoryTaskIdsByNaturalKey.delete(naturalKey);
   }
   const created = await taskStore.createTask({ ttl }, 0, request);
@@ -2183,13 +2219,23 @@ async function createOrReuseIdempotentTask(
   return created;
 }
 
-async function getIdempotentTask(
-  taskStore: InMemoryTaskStore | PostgresTaskStore,
+export async function getIdempotentTask(
+  taskStore: TrainingTaskStore,
   naturalKey: string,
 ) {
   if (taskStore instanceof PostgresTaskStore) {
-    const deterministicTaskId = createHash('sha256').update(naturalKey).digest('hex');
-    return taskStore.getTask(deterministicTaskId);
+    const tasks = await Promise.all(Array.from(
+      { length: IDEMPOTENT_TASK_MAX_GENERATIONS },
+      (_, generation) => taskStore.getTask(idempotentTaskId(naturalKey, generation)),
+    ));
+    let latestTerminalTask: Awaited<ReturnType<typeof taskStore.getTask>> = null;
+    for (let generation = tasks.length - 1; generation >= 0; generation -= 1) {
+      const task = tasks[generation];
+      if (!task) continue;
+      if (taskReceiptCanBeReused(task)) return task;
+      if (!latestTerminalTask) latestTerminalTask = task;
+    }
+    return latestTerminalTask;
   }
   const taskId = inMemoryTaskIdsByNaturalKey.get(naturalKey);
   if (!taskId) return null;
@@ -2314,8 +2360,7 @@ function withUsageAccountScope<T extends Record<string, unknown>>(req: T): T {
 
 /** Clear the task store (for tests). Calls cleanup() to cancel TTL timers. */
 export function clearTaskStore(): void {
-  sdkTaskStore?.cleanup();
-  sdkTaskStore = null;
+  resetTrainingTaskStore();
   inMemoryTaskIdsByNaturalKey.clear();
 }
 
@@ -2499,7 +2544,7 @@ export function hasAdcpSuccessPayload(resultObj: Record<string, unknown> | undef
 }
 
 function permitsAdvisoryErrors(toolName: string, resultObj: Record<string, unknown> | undefined): boolean {
-  if (toolName === 'get_products') return hasAdcpSuccessPayload(resultObj);
+  if (isProductDiscoveryTool(toolName)) return hasAdcpSuccessPayload(resultObj);
   if (toolName === 'create_media_buy') {
     return resultObj?.status === 'submitted' && typeof resultObj.task_id === 'string';
   }
@@ -4043,10 +4088,169 @@ function signalMatchesRef(
 
 // ── Tool definitions ──────────────────────────────────────────────
 
+const PRODUCT_DISCOVERY_TOOLS = new Set([
+  'get_products',
+  'list_products',
+  'recommend_products',
+  'refine_proposal',
+  'finalize_proposals',
+]);
+
+function isProductDiscoveryTool(toolName: string): boolean {
+  return PRODUCT_DISCOVERY_TOOLS.has(toolName);
+}
+
+export function canonicalProductDiscoveryTool(toolName: string): string {
+  return isProductDiscoveryTool(toolName) ? 'get_products' : toolName;
+}
+
+/**
+ * Normalize every AdCP 3.2 split product task to the stable 3.x get_products
+ * logical payload before validation, idempotency, task recovery, and handler
+ * dispatch. This makes a retry safe even when a caller switches between the
+ * legacy facade and its canonical 3.2 alias after an ambiguous failure.
+ */
+export function normalizeProductDiscoveryArgs(
+  toolName: string,
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  if (toolName === 'list_products') {
+    const { buying_mode: _buyingMode, brief: _brief, refine: _refine, ...rest } = args;
+    return { ...rest, buying_mode: 'wholesale' };
+  }
+  if (toolName === 'recommend_products') {
+    const { buying_mode: _buyingMode, refine: _refine, ...rest } = args;
+    return { ...rest, buying_mode: 'brief' };
+  }
+  if (toolName === 'refine_proposal') {
+    const { buying_mode: _buyingMode, ...rest } = args;
+    return { ...rest, buying_mode: 'refine' };
+  }
+  if (toolName === 'finalize_proposals') {
+    const {
+      buying_mode: _buyingMode,
+      refine: _refine,
+      proposal_ids: proposalIds,
+      ...rest
+    } = args;
+    return {
+      ...rest,
+      buying_mode: 'refine',
+      refine: Array.isArray(proposalIds)
+        ? proposalIds.map(proposalId => ({ scope: 'proposal', proposal_id: proposalId, action: 'finalize' }))
+        : [],
+    };
+  }
+  return args;
+}
+
+function idempotencyPayloadForServedVersion(
+  toolName: string,
+  args: Record<string, unknown>,
+  servedAdcpVersion: string,
+): Record<string, unknown> {
+  if (
+    isProductDiscoveryTool(toolName)
+    && args.adcp_version === undefined
+    && args.adcp_major_version === undefined
+  ) {
+    // The legacy facade defaults to 3.0 while split names default to 3.2.
+    // Bind an omitted caller pin to the effective release so those distinct
+    // wire contracts conflict instead of replaying a response across versions.
+    return { ...args, adcp_version: servedAdcpVersion };
+  }
+  return args;
+}
+
+export function validateProductDiscoveryAliasInput(
+  toolName: string,
+  args: Record<string, unknown>,
+): { message: string; field?: string } | undefined {
+  if (
+    (toolName === 'recommend_products' || toolName === 'refine_proposal' || toolName === 'finalize_proposals')
+    && args.idempotency_key == null
+  ) {
+    return { message: `idempotency_key is required for ${toolName}`, field: 'idempotency_key' };
+  }
+  if (toolName === 'list_products') {
+    for (const field of ['buying_mode', 'brief', 'refine']) {
+      if (args[field] !== undefined) return { message: `${field} is not valid for list_products`, field };
+    }
+    if (args.if_pricing_version !== undefined && args.if_wholesale_feed_version === undefined) {
+      return { message: 'if_pricing_version requires if_wholesale_feed_version', field: 'if_wholesale_feed_version' };
+    }
+  }
+  if (toolName === 'recommend_products') {
+    if (typeof args.brief !== 'string' || args.brief.length === 0) {
+      return { message: 'brief is required for recommend_products', field: 'brief' };
+    }
+    for (const field of ['buying_mode', 'refine', 'if_wholesale_feed_version', 'if_pricing_version']) {
+      if (args[field] !== undefined) return { message: `${field} is not valid for recommend_products`, field };
+    }
+  }
+  if (toolName === 'refine_proposal') {
+    if (!Array.isArray(args.refine) || args.refine.length === 0) {
+      return { message: 'refine must contain at least one change', field: 'refine' };
+    }
+    const proposalIds = new Set<string>();
+    for (let index = 0; index < args.refine.length; index += 1) {
+      const entry = args.refine[index];
+      if (!isRecord(entry)) continue;
+      if (entry.action === 'finalize') {
+        return { message: 'action finalize is only valid on finalize_proposals', field: `refine[${index}].action` };
+      }
+      if (entry.scope === 'proposal' && typeof entry.proposal_id === 'string') proposalIds.add(entry.proposal_id);
+    }
+    if (proposalIds.size === 0) {
+      return { message: 'refine_proposal requires at least one proposal-scoped change', field: 'refine' };
+    }
+    if (proposalIds.size > 1) {
+      return { message: 'refine_proposal may target only one proposal_id', field: 'refine' };
+    }
+    for (const field of ['buying_mode', 'brief', 'if_wholesale_feed_version', 'if_pricing_version']) {
+      if (args[field] !== undefined) return { message: `${field} is not valid for refine_proposal`, field };
+    }
+  }
+  if (toolName === 'finalize_proposals') {
+    if (!Array.isArray(args.proposal_ids) || args.proposal_ids.length === 0) {
+      return { message: 'proposal_ids must contain at least one proposal ID', field: 'proposal_ids' };
+    }
+    if (args.proposal_ids.some(proposalId => typeof proposalId !== 'string' || proposalId.length === 0)) {
+      return { message: 'proposal_ids entries must be non-empty strings', field: 'proposal_ids' };
+    }
+    if (new Set(args.proposal_ids).size !== args.proposal_ids.length) {
+      return { message: 'proposal_ids entries must be unique', field: 'proposal_ids' };
+    }
+    for (const field of [
+      'buying_mode',
+      'brief',
+      'refine',
+      'catalog',
+      'filters',
+      'fields',
+      'preferred_delivery_types',
+      'property_list',
+      'required_policies',
+      'if_wholesale_feed_version',
+      'if_pricing_version',
+      'pagination',
+      'time_budget',
+    ]) {
+      if (args[field] !== undefined) return { message: `${field} is not valid for finalize_proposals`, field };
+    }
+  }
+  return undefined;
+}
+
+const LIST_PRODUCTS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('list-products-request');
+const RECOMMEND_PRODUCTS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('recommend-products-request');
+const REFINE_PROPOSAL_INPUT_SCHEMA = loadProductDiscoveryInputSchema('refine-proposal-request');
+const FINALIZE_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('finalize-proposals-request');
+
 const TOOLS = [
   {
     name: 'get_products',
-    description: 'Discover available advertising products. Supports brief (curated discovery), wholesale (raw catalog), and refine (iterate on previous results) buying modes. Use this before create_media_buy to find valid product_id and pricing_option_id values. Not for checking delivery or managing existing buys. Returns sandbox catalog data.',
+    description: 'DEPRECATED in AdCP 3.2. Compatibility facade for brief, wholesale, refine, and finalize product flows. New callers use list_products, recommend_products, refine_proposal, and finalize_proposals.',
     // Polymorphic: brief/wholesale can be reads, but Submitted responses
     // allocate a task and refine+finalize commits an inventory hold.
     annotations: { readOnlyHint: false, idempotentHint: true },
@@ -4077,8 +4281,36 @@ const TOOLS = [
           },
         },
       },
-      required: ['idempotency_key', 'buying_mode'],
+      required: ['buying_mode'],
     },
+  },
+  {
+    name: 'list_products',
+    description: 'List the synchronous wholesale product feed. This is the side-effect-free AdCP 3.2 replacement for get_products with buying_mode "wholesale".',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
+    inputSchema: LIST_PRODUCTS_INPUT_SCHEMA,
+  },
+  {
+    name: 'recommend_products',
+    description: 'Request curated product recommendations from a campaign brief. May complete asynchronously. AdCP 3.2 replacement for get_products with buying_mode "brief".',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: RECOMMEND_PRODUCTS_INPUT_SCHEMA,
+  },
+  {
+    name: 'refine_proposal',
+    description: 'Refine one draft proposal without committing it. AdCP 3.2 replacement for non-finalizing get_products refine calls.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: REFINE_PROPOSAL_INPUT_SCHEMA,
+  },
+  {
+    name: 'finalize_proposals',
+    description: 'Atomically commit one or more draft proposals to firm pricing and inventory holds. AdCP 3.2 replacement for exclusive get_products finalize refinements.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: FINALIZE_PROPOSALS_INPUT_SCHEMA,
   },
   {
     name: 'list_creative_formats',
@@ -4512,21 +4744,43 @@ const TOOLS = [
   },
 ];
 
+/**
+ * Return the exact split product-discovery definitions used by the native
+ * training server. Tenant discovery projects these same objects so the two
+ * MCP entry points cannot advertise different request contracts.
+ */
+export function productDiscoveryAliasToolDefinitions(): Array<(typeof TOOLS)[number]> {
+  return structuredClone(TOOLS.filter(tool => (
+    tool.name === 'list_products'
+    || tool.name === 'recommend_products'
+    || tool.name === 'refine_proposal'
+    || tool.name === 'finalize_proposals'
+  )));
+}
+
 function visibleToolsForContext(ctx: TrainingContext): typeof TOOLS {
   const threeZero = isThreeZeroStoryboardCompat(ctx);
   return TOOLS
-    .filter(tool => tool.name !== 'validate_input' || !threeZero)
+    .filter(tool => !threeZero || (
+      tool.name !== 'validate_input'
+      && (tool.name === 'get_products' || !isProductDiscoveryTool(tool.name))
+    ))
     .map(tool => {
       if (!threeZero || tool.name !== 'get_products') return tool;
-      const properties = { ...tool.inputSchema.properties };
-      delete (properties as Record<string, unknown>).idempotency_key;
+      const inputSchema = tool.inputSchema as {
+        properties?: Record<string, unknown>;
+        required?: unknown[];
+        [key: string]: unknown;
+      };
+      const properties = { ...(inputSchema.properties ?? {}) };
+      delete properties.idempotency_key;
       return {
         ...tool,
         annotations: { ...tool.annotations, readOnlyHint: true, idempotentHint: true },
         inputSchema: {
-          ...tool.inputSchema,
+          ...inputSchema,
           properties,
-          required: tool.inputSchema.required?.filter(field => field !== 'idempotency_key'),
+          required: inputSchema.required?.filter(field => field !== 'idempotency_key'),
         },
       };
     }) as typeof TOOLS;
@@ -4537,7 +4791,11 @@ export function visibleTrainingToolNamesForContext(ctx: TrainingContext): string
 }
 
 function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: string): boolean {
-  return !(toolName === 'validate_input' && servedAdcpVersion.startsWith('3.0'));
+  if (toolName === 'validate_input') return !servedAdcpVersion.startsWith('3.0');
+  if (isProductDiscoveryTool(toolName) && toolName !== 'get_products') {
+    return supportsGetProductsRejected(servedAdcpVersion);
+  }
+  return true;
 }
 
 // ── Task handler implementations ──────────────────────────────────
@@ -8614,6 +8872,9 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     }),
     media_buy: {
       buying_modes: wholesaleProfile.productWholesale ? ['brief', 'wholesale', 'refine'] : ['brief', 'refine'],
+      ...(supportsGetProductsRejected(servedAdcpVersion) && {
+        product_discovery_tools: [...PRODUCT_DISCOVERY_TOOLS],
+      }),
       supports_proposals: true,
       features: {
         inline_creative_management: true,
@@ -10479,6 +10740,10 @@ type ToolHandler = (args: ToolArgs, ctx: TrainingContext) => object | Promise<ob
 
 const HANDLER_MAP: Record<string, ToolHandler> = {
   get_products: handleGetProducts,
+  list_products: handleGetProducts,
+  recommend_products: handleGetProducts,
+  refine_proposal: handleGetProducts,
+  finalize_proposals: handleGetProducts,
   list_creative_formats: handleListCreativeFormats,
   validate_input: handleValidateInput,
   create_media_buy: handleCreateMediaBuy,
@@ -10592,7 +10857,7 @@ function applyThreeZeroGetProductsIdempotencyCompatibility(
     return args;
   }
 
-  // Frozen 3.0 get_products examples predate the now-required key. Give only
+  // Frozen 3.0 get_products examples predate the shared replay contract. Give only
   // that legacy wire shape a deterministic internal key so exact retries still
   // converge through the normal schema/cache/task/finalize path. Context and
   // version negotiation are envelope concerns, not logical request identity.
@@ -10655,12 +10920,20 @@ async function executeTrainingAgentToolInContext(
   if (!handler) {
     return { success: false, error: `Unknown tool: ${toolName}` };
   }
+  if (isMutatingTool(toolName) && initialHandlerArgs.idempotency_key == null) {
+    return { success: false, error: `idempotency_key is required for ${toolName}` };
+  }
+  const aliasValidationError = validateProductDiscoveryAliasInput(toolName, initialHandlerArgs);
+  if (aliasValidationError) {
+    return { success: false, error: aliasValidationError.message };
+  }
+  const normalizedHandlerArgs = normalizeProductDiscoveryArgs(toolName, initialHandlerArgs);
   const authPrincipal = ctx.principal ?? ctx.userId ?? 'anonymous';
   let accountScope: string | undefined;
   try {
     accountScope = toolName === 'comply_test_controller'
       ? undefined
-      : deriveAccountScope(initialHandlerArgs, toolName === 'get_products');
+      : deriveAccountScope(normalizedHandlerArgs, isProductDiscoveryTool(toolName));
   } catch (error) {
     if (!(error instanceof AccountRefValidationError)) throw error;
     return { success: false, error: `Invalid ${toolName} request at account: ${error.message}` };
@@ -10668,34 +10941,42 @@ async function executeTrainingAgentToolInContext(
   const principal = scopedPrincipal(authPrincipal, accountScope);
   const handlerArgs = applyThreeZeroGetProductsIdempotencyCompatibility(
     toolName,
-    initialHandlerArgs,
+    normalizedHandlerArgs,
     principal,
     ctx.storyboardCompat?.version === '3.0' || initialHandlerArgs.adcp_version === '3.0',
   );
   const idempotencyKey = handlerArgs.idempotency_key;
   let claim: { payloadHash: string; claimToken: string } | undefined;
 
-  if (isMutatingTool(toolName)) {
-    if (idempotencyKey === undefined || idempotencyKey === null) {
+  // The read-only legacy/list surfaces permit keyless calls, but they still
+  // share the canonical get_products request contract. Validate the logical
+  // request before deciding whether this attempt participates in replay.
+  const productValidationError = validateIdempotencyProtectedInput(
+    canonicalProductDiscoveryTool(toolName),
+    handlerArgs,
+  );
+  if (productValidationError) {
+    return { success: false, error: productValidationError.message };
+  }
+
+  if (isMutatingTool(toolName) || idempotencyKey !== undefined) {
+    if (isMutatingTool(toolName) && (idempotencyKey === undefined || idempotencyKey === null)) {
       return { success: false, error: `idempotency_key is required for ${toolName}` };
     }
     if (!validateKeyFormat(idempotencyKey)) {
       return { success: false, error: 'idempotency_key has an invalid format' };
     }
-    const validationError = validateIdempotencyProtectedInput(toolName, handlerArgs);
-    if (validationError) {
-      return { success: false, error: validationError.message };
-    }
     const outcome = await getIdempotencyStore().check({
       principal,
       key: idempotencyKey,
-      payload: handlerArgs,
+      payload: idempotencyPayloadForServedVersion(toolName, handlerArgs, versionResolution.servedVersion),
     });
     if (outcome.kind === 'replay') {
       return {
         success: true,
         data: {
           ...(outcome.response as object),
+          adcp_version: versionResolution.servedVersion,
           replayed: true,
           ...(callerContext !== undefined && { context: callerContext }),
         },
@@ -10736,7 +11017,7 @@ async function executeTrainingAgentToolInContext(
         // published. Other tools retain the historical save-then-flush order;
         // moving every synchronous mutation to flush-first creates a new
         // duplicate-execution window if cache publication fails.
-        if (toolName === 'get_products') await flushDirtySessions();
+        if (isProductDiscoveryTool(toolName)) await flushDirtySessions();
         await getIdempotencyStore().save({
           principal,
           key: idempotencyKey,
@@ -10766,7 +11047,7 @@ async function executeTrainingAgentToolInContext(
  * Create a per-request MCP Server with training agent tools.
  */
 export function createTrainingAgentServer(ctx: TrainingContext): Server {
-  const taskStore = getTaskStore();
+  const taskStore = getTrainingTaskStore();
   const server = new Server(
     { name: 'adcp-training-agent', version: '1.0.0' },
     {
@@ -10837,6 +11118,30 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       return { result: adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` }, callerContext, servedAdcpVersion), flushable: true };
     }
 
+    if (isMutatingTool(name) && initialHandlerArgs.idempotency_key == null) {
+      return {
+        result: adcpError('INVALID_REQUEST', {
+          message: `idempotency_key is required for ${name}. Generate a UUID v4 and reuse it unchanged for retries.`,
+          field: 'idempotency_key',
+          recovery: 'correctable',
+        }, callerContext, servedAdcpVersion),
+        flushable: true,
+      };
+    }
+
+    const aliasValidationError = validateProductDiscoveryAliasInput(name, initialHandlerArgs);
+    if (aliasValidationError) {
+      return {
+        result: adcpError('INVALID_REQUEST', {
+          message: aliasValidationError.message,
+          ...(aliasValidationError.field && { field: aliasValidationError.field }),
+          recovery: 'correctable',
+        }, callerContext, servedAdcpVersion),
+        flushable: true,
+      };
+    }
+    const normalizedHandlerArgs = normalizeProductDiscoveryArgs(name, initialHandlerArgs);
+
     // Check for task-augmented request (explicit `task` field in params).
     // Dry-run requests always return synchronously — there's no reason to
     // async a dry-run operation, and clients expect immediate results.
@@ -10863,7 +11168,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     try {
       accountScope = name === 'comply_test_controller'
         ? undefined
-        : deriveAccountScope(initialHandlerArgs, name === 'get_products');
+        : deriveAccountScope(normalizedHandlerArgs, isProductDiscoveryTool(name));
     } catch (error) {
       if (!(error instanceof AccountRefValidationError)) throw error;
       return {
@@ -10878,7 +11183,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     const idempotencyPrincipal = scopedPrincipal(authPrincipal, accountScope);
     const handlerArgs = applyThreeZeroGetProductsIdempotencyCompatibility(
       name,
-      initialHandlerArgs,
+      normalizedHandlerArgs,
       idempotencyPrincipal,
       ctx.storyboardCompat?.version === '3.0' || initialHandlerArgs.adcp_version === '3.0',
     );
@@ -10892,10 +11197,27 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     let idempotencyClaimed = false;
     let idempotencyClaimToken: string | undefined;
     let idempotencyReplayed = false;
-    let idempotencyReplayResponse: Record<string, unknown> | undefined;
 
-    if (isMutatingTool(name)) {
-      if (idempotencyKey === undefined || idempotencyKey === null) {
+    // Product reads may omit an idempotency key, but keylessness must never
+    // weaken their request validation. The split names normalize to the same
+    // canonical get_products contract before this check.
+    const productValidationError = validateIdempotencyProtectedInput(
+      canonicalProductDiscoveryTool(name),
+      handlerArgs,
+    );
+    if (productValidationError) {
+      return {
+        result: adcpError('INVALID_REQUEST', {
+          message: productValidationError.message,
+          ...(productValidationError.field && { field: productValidationError.field }),
+          recovery: 'correctable',
+        }, callerContext, servedAdcpVersion),
+        flushable: true,
+      };
+    }
+
+    if (isMutatingTool(name) || idempotencyKey !== undefined) {
+      if (isMutatingTool(name) && (idempotencyKey === undefined || idempotencyKey === null)) {
         return {
           result: adcpError('INVALID_REQUEST', {
             message: `idempotency_key is required for ${name}. Generate a UUID v4 and include it on every mutating request; reuse the same key for network retries.`,
@@ -10915,22 +11237,12 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           flushable: true,
         };
       }
-      const validationError = validateIdempotencyProtectedInput(name, handlerArgs);
-      if (validationError) {
-        return {
-          result: adcpError('INVALID_REQUEST', {
-            message: validationError.message,
-            ...(validationError.field && { field: validationError.field }),
-            recovery: 'correctable',
-          }, callerContext, servedAdcpVersion),
-          flushable: true,
-        };
-      }
       const store = getIdempotencyStore();
+      const idempotencyPayload = idempotencyPayloadForServedVersion(name, handlerArgs, servedAdcpVersion);
       const outcome = await store.check({
         principal: idempotencyPrincipal,
         key: idempotencyKey,
-        payload: handlerArgs,
+        payload: idempotencyPayload,
       });
       if (outcome.kind === 'expired') {
         return {
@@ -10982,9 +11294,10 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           content: [{ type: 'text', text: JSON.stringify(body) }],
           structuredContent: body,
         };
+        cachableResponse = { ...(outcome.response as Record<string, unknown>) };
+        idempotencyPayloadHash = payloadHash(idempotencyPayload);
         skipHandler = true;
         idempotencyReplayed = true;
-        idempotencyReplayResponse = body;
       } else {
         // 'miss' → the store reserved the claim via putIfAbsent. We must
         // call save() on success or release() on any other path so the
@@ -11001,20 +11314,40 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         if (isTaskRequest) {
           const naturalKey = idempotentTaskNaturalKey(
             idempotencyPrincipal,
-            name,
+            canonicalProductDiscoveryTool(name),
             idempotencyKey,
             idempotencyPayloadHash,
           );
           try {
             const recoveredTask = await getIdempotentTask(taskStore, naturalKey);
             if (recoveredTask) {
+              if (recoveredTask.status === 'cancelled' || recoveredTask.status === 'failed') {
+                // Cancellation is terminal buyer intent, and failed task
+                // results are deliberately not cached. Never rerun either
+                // receipt as crash recovery: doing so could publish a success
+                // cache/webhook that the returned terminal task cannot expose.
+                await store.release({
+                  principal: idempotencyPrincipal,
+                  key: idempotencyKey,
+                  claimToken: idempotencyClaimToken,
+                });
+                return {
+                  result: {
+                    task: recoveredTask,
+                    adcp_version: servedAdcpVersion,
+                    replayed: true,
+                    ...(callerContext !== undefined && { context: callerContext }),
+                  },
+                  flushable: false,
+                };
+              }
               if (recoveredTask.status !== 'completed') {
                 // get_products commits converge on the exact stored proposal
                 // (including IO and expiry), so it is safe to repair an
                 // orphaned deterministic task by rerunning the handler and
                 // storing the result into the same task below. Other mutators
                 // may have non-reconstructable random IDs and must fail closed.
-                if (name !== 'get_products') {
+                if (!isProductDiscoveryTool(name)) {
                   throw new Error(`Prior idempotent task ${recoveredTask.taskId} is not recoverable in status ${recoveredTask.status}`);
                 }
               } else {
@@ -11026,21 +11359,21 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
                   throw new Error(`Prior idempotent task ${recoveredTask.taskId} has no successful structured result`);
                 }
 
-                const taskResponse = { task: recoveredTask, adcp_version: servedAdcpVersion };
-                await store.save({
-                  principal: idempotencyPrincipal,
-                  key: idempotencyKey,
-                  payloadHash: idempotencyPayloadHash,
-                  response: taskResponse,
-                  claimToken: idempotencyClaimToken,
-                });
                 const {
                   context: _cachedContext,
                   replayed: _cachedReplayMarker,
                   ...notificationResponse
                 } = recoveredBody;
+                const taskResponse = { task: recoveredTask, adcp_version: servedAdcpVersion };
+                await store.save({
+                  principal: idempotencyPrincipal,
+                  key: idempotencyKey,
+                  payloadHash: idempotencyPayloadHash,
+                  response: notificationResponse,
+                  claimToken: idempotencyClaimToken,
+                });
                 maybeEmitCompletionWebhook({
-                  toolName: name,
+                  toolName: canonicalProductDiscoveryTool(name),
                   args: handlerArgs,
                   response: notificationResponse,
                   requestIdempotencyKey: idempotencyKey,
@@ -11188,7 +11521,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         return false;
       }
       try {
-        const flushedBeforeSave = name === 'get_products';
+        const flushedBeforeSave = isProductDiscoveryTool(name);
         if (flushedBeforeSave) await flushDirtySessions();
         await store.save({
           principal: idempotencyPrincipal,
@@ -11209,9 +11542,15 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     };
 
     const emitCompletionWebhook = (): void => {
-      if (cachableResponse === null || toolResult!.isError || handlerThrew) return;
+      if (
+        name === 'list_products'
+        || idempotencyReplayed
+        || cachableResponse === null
+        || toolResult!.isError
+        || handlerThrew
+      ) return;
       maybeEmitCompletionWebhook({
-        toolName: name,
+        toolName: canonicalProductDiscoveryTool(name),
         args: handlerArgs,
         response: cachableResponse,
         requestIdempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
@@ -11230,12 +11569,6 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       // mutation-capable task; only after both succeed may delivery begin.
       emitCompletionWebhook();
       return { result: toolResult, flushable: !handlerThrew && !flushed };
-    }
-
-    // Exact task replay returns the originally cached task envelope and never
-    // reaches createTask(). This remains true after the task becomes terminal.
-    if (idempotencyReplayed) {
-      return { result: idempotencyReplayResponse ?? toolResult, flushable: false };
     }
 
     // Ordinary/error tasks honor the requested TTL up to the training-agent
@@ -11263,18 +11596,32 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       // committed proposal and converges on the same IO/expiry.
       await flushDirtySessions();
       const canReuseNaturalTask = (
-        idempotencyClaimed
-        && typeof idempotencyKey === 'string'
+        typeof idempotencyKey === 'string'
         && typeof idempotencyPayloadHash === 'string'
         && cachableResponse !== null
         && !toolResult.isError
         && !handlerThrew
       );
-      const taskRequest = request as unknown as { method: string; params?: { _meta?: Record<string, unknown> } };
+      const rawTaskRequest = request as unknown as { method: string; params?: Record<string, unknown> };
+      const taskRequest = isProductDiscoveryTool(name)
+        ? {
+            ...rawTaskRequest,
+            params: {
+              ...rawTaskRequest.params,
+              name: canonicalProductDiscoveryTool(name),
+              arguments: handlerArgs,
+            },
+          }
+        : rawTaskRequest;
       const created = canReuseNaturalTask
         ? await createOrReuseIdempotentTask(
             taskStore,
-            idempotentTaskNaturalKey(idempotencyPrincipal, name, idempotencyKey!, idempotencyPayloadHash!),
+            idempotentTaskNaturalKey(
+              idempotencyPrincipal,
+              canonicalProductDiscoveryTool(name),
+              idempotencyKey!,
+              idempotencyPayloadHash!,
+            ),
             IDEMPOTENT_TASK_RECEIPT_TTL,
             taskRequest,
           )
@@ -11298,8 +11645,13 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       'Created MCP task',
     );
 
-    const taskResponse = { task, adcp_version: servedAdcpVersion } as Record<string, unknown>;
-    const flushed = await resolveIdempotencyClaim(cachableResponse === null ? null : taskResponse);
+    const taskResponse = {
+      task,
+      adcp_version: servedAdcpVersion,
+      ...(idempotencyReplayed && { replayed: true }),
+      ...(callerContext !== undefined && { context: callerContext }),
+    } as Record<string, unknown>;
+    const flushed = await resolveIdempotencyClaim(cachableResponse);
     emitCompletionWebhook();
     return { result: taskResponse, flushable: !handlerThrew && !flushed };
   }

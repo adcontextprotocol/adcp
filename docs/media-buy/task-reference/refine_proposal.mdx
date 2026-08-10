@@ -1,0 +1,25 @@
+---
+title: refine_proposal
+description: "Refine one draft proposal without committing it."
+testable: true
+---
+
+`refine_proposal` preserves the established `refine[]` grammar while making the non-commit boundary explicit. `idempotency_key` is required. At least one entry must be proposal-scoped, and every proposal-scoped entry must name the same `proposal_id`. `action: "finalize"` is invalid; use `finalize_proposals`.
+
+**Request schema:** [`/schemas/latest/media-buy/refine-proposal-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/refine-proposal-request.json)
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441002",
+  "refine": [
+    {
+      "scope": "proposal",
+      "proposal_id": "proposal_123",
+      "action": "include",
+      "ask": "Shift more budget toward video."
+    }
+  ]
+}
+```
+
+Request- and product-scoped changes may accompany the proposal change. The seller normalizes the request to the equivalent non-finalizing `get_products` refine call.
