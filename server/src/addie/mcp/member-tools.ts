@@ -901,7 +901,9 @@ function formatStoryboardValidationLine(
   const status = options.includeStatus === false
     ? ''
     : `${validation.passed
-      ? 'PASS'
+      ? validation.severity_promoted_from_advisory
+        ? 'PASS (PROMOTED ADVISORY — REQUIRED)'
+        : 'PASS'
       : validation.severity_promoted_from_advisory
         ? 'PROMOTED ADVISORY (REQUIRED)'
         : validation.severity === 'advisory'

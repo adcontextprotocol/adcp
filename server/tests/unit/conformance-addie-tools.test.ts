@@ -369,4 +369,68 @@ describe('run_conformance_against_my_agent Addie tool', () => {
     expect(out).not.toMatch(/system prompt/);
     expect(out).toMatch(/\[redacted\]/);
   });
+
+  it('shares the validation character budget across required and advisory findings', async () => {
+    conformanceSessions.register({
+      orgId: 'org_a',
+      transport: { close: vi.fn().mockResolvedValue(undefined) } as never,
+      mcpClient: {} as never,
+      connectedAt: Date.now(),
+    });
+
+    const longValue = 'x'.repeat(320);
+    const verboseValidation = (id: string, severity: 'required' | 'advisory') => ({
+      id,
+      check: 'field_value',
+      passed: false,
+      severity,
+      path: `products[0].${id}`,
+      expected: longValue,
+      actual: longValue,
+      description: longValue,
+      error: longValue,
+      remediation: longValue,
+    });
+    runStoryboardMock.mockResolvedValue({
+      storyboard_id: 'sb_budget',
+      storyboard_title: 'Shared budget',
+      overall_passed: false,
+      passed_count: 0,
+      failed_count: 1,
+      skipped_count: 0,
+      validations_advisory_failed: 2,
+      total_duration_ms: 100,
+      phases: [{
+        phase_id: 'p1',
+        phase_title: 'Run',
+        passed: false,
+        duration_ms: 100,
+        steps: [{
+          step_id: 's1',
+          phase_id: 'p1',
+          title: 'budgeted step',
+          task: 'get_products',
+          passed: false,
+          validations: [
+            verboseValidation('required_1', 'required'),
+            verboseValidation('required_2', 'required'),
+            verboseValidation('advisory_1', 'advisory'),
+            verboseValidation('advisory_2', 'advisory'),
+          ],
+        }],
+      }],
+    });
+
+    const handlers = createConformanceToolHandlers(memberContextWithOrg('org_a'));
+    const out = await handlers.get('run_conformance_against_my_agent')!({
+      storyboard_id: 'sb_budget',
+    });
+
+    expect(out).toContain('"id": "required_1"');
+    expect(out).toContain('"id": "required_2"');
+    expect(out).not.toContain('"id": "advisory_1"');
+    expect(out).not.toContain('"id": "advisory_2"');
+    expect(out).toContain('"reason": "validation_output_too_large"');
+    expect(out).toContain('Validation details were truncated for chat display (4000 character cap).');
+  });
 });

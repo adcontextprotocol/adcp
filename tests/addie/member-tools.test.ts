@@ -412,6 +412,14 @@ describe('createMemberToolHandlers', () => {
             description: 'Context echo returned unchanged',
           },
           {
+            id: 'promoted_recommendation_passed',
+            check: 'field_value',
+            passed: true,
+            severity: 'required',
+            severity_promoted_from_advisory: true,
+            description: 'An expired advisory now passes as required',
+          },
+          {
             id: 'sk_live_1234567890abcdefghijkl',
             check: 'field_value',
             passed: false,
@@ -453,6 +461,7 @@ describe('createMemberToolHandlers', () => {
       });
 
       expect(result).toContain('- PASS: id=list_all_context_echo <untrusted_proposer_input>Context echo returned unchanged</untrusted_proposer_input>');
+      expect(result).toContain('- PASS (PROMOTED ADVISORY — REQUIRED): id=promoted_recommendation_passed <untrusted_proposer_input>An expired advisory now passes as required</untrusted_proposer_input>');
       expect(result).toContain('- FAIL: id=[redacted] [redacted] — [redacted]');
       expect(result).toContain('- ADVISORY: id=creative_recommendation <untrusted_proposer_input>A recommended field is absent</untrusted_proposer_input>');
       expect(result).toContain('- PROMOTED ADVISORY (REQUIRED): id=promoted_recommendation <untrusted_proposer_input>An expired advisory is now required</untrusted_proposer_input>');
