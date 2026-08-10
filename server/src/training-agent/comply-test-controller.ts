@@ -2,7 +2,7 @@
  * Training-agent wrapper around the SDK's comply_test_controller.
  *
  * The SDK owns the scenario dispatcher, response envelope, and per-scenario
- * enum validation (`@adcp/sdk` exports `handleTestControllerRequest`,
+ * supported-scenario dispatch (`@adcp/sdk` exports `handleTestControllerRequest`,
  * `CONTROLLER_SCENARIOS`, `TOOL_INPUT_SHAPE`, `enforceMapCap`). This file
  * adds the two things the SDK intentionally leaves to the seller: a sandbox
  * gate on the top-level `account.sandbox` flag, and a per-request
@@ -10,7 +10,6 @@
  */
 
 import {
-  CONTROLLER_SCENARIOS,
   TestControllerError,
   createSeedFixtureCache,
   enforceMapCap,
@@ -952,9 +951,9 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
 // ── Local scenarios (not in SDK's CONTROLLER_SCENARIOS yet) ───────
 
 /** Scenarios this wrapper handles before delegating to the SDK dispatcher. The SDK's
- * `CONTROLLER_SCENARIOS` enum is closed; new scenarios from spec PRs land here until
- * the SDK adopts them. Listed in the tool's input enum and merged into list_scenarios
- * responses so storyboards can detect support.
+ * internal `CONTROLLER_SCENARIOS` registry is finite; new scenarios from spec PRs
+ * land here until the SDK adopts them. Merged into list_scenarios responses so
+ * storyboards can detect support, while the wire input remains an open string.
  *
  * TODO: when the SDK ships native `force_create_media_buy_arm` (tracked at
  * adcontextprotocol/adcp-client — the dedup below means it is safe to leave this
@@ -1051,15 +1050,6 @@ function tamperGovernanceToken(token: string, what: string): string {
 
 // ── Tool definition ───────────────────────────────────────────────
 
-// `Array.from(new Set(...))` dedups in case the SDK adopts a local scenario
-// natively. Without this, both the input enum and the list_scenarios response
-// would carry the same scenario name twice the moment the SDK catches up.
-const SCENARIO_ENUM = Array.from(new Set([
-  'list_scenarios',
-  ...Object.values(CONTROLLER_SCENARIOS),
-  ...LOCAL_SCENARIOS,
-])) as readonly string[];
-
 // JSON Schema equivalent of the SDK's `TOOL_INPUT_SHAPE`, extended with
 // top-level `account` (sandbox gate) and `brand` (session keying) — both
 // exempt extensions per the SDK's documented wrapper pattern.
@@ -1073,8 +1063,7 @@ export const COMPLY_TEST_CONTROLLER_TOOL = {
     properties: {
       scenario: {
         type: 'string',
-        enum: [...SCENARIO_ENUM],
-        description: 'The seller-side transition to trigger.',
+        description: 'The seller-side transition to trigger. Call list_scenarios to discover supported values.',
       },
       params: {
         type: 'object',

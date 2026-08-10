@@ -162,7 +162,8 @@ describe('comply_test_controller', () => {
       const toolNames = tools.map((t: any) => t.name);
       expect(toolNames).toContain('comply_test_controller');
       const controller = tools.find((tool: any) => tool.name === 'comply_test_controller') as any;
-      expect(controller.inputSchema.properties.scenario.enum).toContain('force_get_products_arm');
+      expect(controller.inputSchema.properties.scenario.type).toBe('string');
+      expect(controller.inputSchema.properties.scenario).not.toHaveProperty('enum');
       expect(controller.inputSchema.required).toEqual(expect.arrayContaining(['scenario', 'account']));
       expect(controller.inputSchema.properties.account.required).toContain('sandbox');
       expect(controller.inputSchema.properties.account.properties.sandbox).toMatchObject({
@@ -215,7 +216,7 @@ describe('comply_test_controller', () => {
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
       expect(scenarios.length).toBe(23);
-      // Dedup invariant — see SCENARIO_ENUM dedup in the wrapper.
+      // Dedup invariant — see the list_scenarios response merge in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });
 
@@ -1211,7 +1212,7 @@ describe('comply_test_controller', () => {
   describe('unknown scenario', () => {
     it('returns UNKNOWN_SCENARIO error', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
-        scenario: 'nonexistent_scenario',
+        scenario: 'implementation_specific_extension_probe',
         account: ACCOUNT,
         brand: BRAND,
       });
