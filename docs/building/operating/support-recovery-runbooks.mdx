@@ -100,8 +100,40 @@ curl -X POST "https://agenticadvertising.org/api/registry/crawl-request" \
 Expected accepted response:
 
 ```json
-{ "message": "Crawl request accepted", "domain": "example.publisher" }
+{
+  "message": "Crawl request accepted",
+  "domain": "example.publisher",
+  "crawl_request_id": "8d127de4-5568-4756-b66c-dd9b0780fd8f"
+}
 ```
+
+Acceptance means the request was committed to the durable PostgreSQL queue; it
+does not mean the crawl has completed. Check the request with the same member
+or admin session:
+
+```bash
+CRAWL_REQUEST_ID="8d127de4-5568-4756-b66c-dd9b0780fd8f"
+curl "https://agenticadvertising.org/api/registry/crawl-request/$CRAWL_REQUEST_ID" \
+  -b "$SESSION_COOKIE"
+```
+
+The lifecycle is `queued` → `running` → `completed` or `invalid`. Transient
+failures move through `retrying`; full-crawl contention produces `deferred`
+without consuming an attempt. `failed` is terminal after the bounded retry
+budget. Request history is retained for 30 days.
+
+If a worker exits while a request is running, its two-minute lease expires and
+another worker reclaims the request. Do not manually change queue rows. For a
+terminal `failed` request, correct the reported error category and submit a new
+crawl request after the per-domain rate-limit window; the old request remains
+as the audit record.
+
+Operational logs include `crawl_request_id`, attempt count,
+`accepted_to_terminal_ms`, queue depth, oldest-active age, and expired-lease
+count. A `Publisher crawl request queue requires attention` warning means a
+lease is expired or an active request is older than five minutes. Confirm that
+the worker process is healthy, then use the status endpoint to determine
+whether the request recovered before escalating.
 
 For brand manifests, use the same body shape:
 

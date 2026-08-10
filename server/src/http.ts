@@ -9704,6 +9704,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       // Crawl catalog domains for adagents.json (demand-driven queue)
       this.crawler.startPeriodicCatalogCrawl(30); // Process queue every 30 minutes
 
+      // Drain durable explicit publisher recrawl requests. Admission is
+      // persisted by the web process before it returns 202; the worker claims
+      // requests with expiring leases so deploys and crashes cannot lose work.
+      this.crawler.startPeriodicPublisherCrawlRequests(5); // 5-second tick
+
       // Drain manager_revalidation_queue (#4200 item 2) — fan-out
       // re-validation when a manager rotates its adagents.json.
       this.crawler.startPeriodicManagerRevalidation(5); // 5-minute tick

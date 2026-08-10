@@ -24,6 +24,12 @@ import { verifyHostedPropertyOrigin } from "./services/hosted-property-origin-ve
 import { insertTypeReclassification } from "./db/type-reclassification-log-db.js";
 import { resolveUserAgentAuth } from "./routes/helpers/resolve-user-agent-auth.js";
 import { adaptAuthForSdk, type SdkAuth } from "./services/sdk-auth-adapter.js";
+import {
+  PublisherCrawlRequestsDatabase,
+  type CreatePublisherCrawlRequestInput,
+  type PublisherCrawlRequest,
+  type ClaimedPublisherCrawlRequest,
+} from "./db/publisher-crawl-requests-db.js";
 
 const log = createLogger('crawler');
 // Inventory profiles are a derived search projection, not the authorization
@@ -32,6 +38,14 @@ const log = createLogger('crawler');
 // point. A dedicated aggregate profile query can replace this guard later.
 const INVENTORY_PROFILE_PUBLISHER_FANOUT_CAP = 1_000;
 const SINGLE_DOMAIN_CRAWL_DB_DEADLINE_MS = 60_000;
+const PUBLISHER_CRAWL_QUEUE_BATCH_SIZE = 10;
+const PUBLISHER_CRAWL_QUEUE_CONCURRENCY = 4;
+const PUBLISHER_CRAWL_LEASE_MS = 2 * 60_000;
+const PUBLISHER_CRAWL_HEARTBEAT_MS = 30_000;
+const PUBLISHER_CRAWL_DEFER_MS = 30_000;
+const PUBLISHER_CRAWL_RETENTION_MS = 30 * 24 * 60 * 60_000;
+
+export type SingleDomainCrawlOutcome = 'completed' | 'invalid';
 
 function unknownClassificationProbeDue(
   snapshot: AgentCapabilitiesSnapshotRow | undefined,
@@ -121,8 +135,15 @@ export class CrawlerService {
   private agentContextDb: AgentContextDatabase;
   private eventsDb?: CatalogEventsDatabase;
   private profilesDb?: AgentInventoryProfilesDatabase;
+  private crawlRequestsDb: PublisherCrawlRequestsDatabase;
+  private publisherCrawlWorkerId: string;
 
-  constructor(options?: { eventsDb?: CatalogEventsDatabase; profilesDb?: AgentInventoryProfilesDatabase }) {
+  constructor(options?: {
+    eventsDb?: CatalogEventsDatabase;
+    profilesDb?: AgentInventoryProfilesDatabase;
+    crawlRequestsDb?: PublisherCrawlRequestsDatabase;
+    crawlWorkerId?: string;
+  }) {
     this.crawler = new PropertyCrawler({ logLevel: (process.env.LOG_LEVEL as 'debug' | 'info' | 'warn' | 'error') || 'error', userAgent: AAO_UA_DISCOVERY });
     this.federatedIndex = new FederatedIndexService();
     this.adAgentsManager = new AdAgentsManager();
@@ -136,6 +157,10 @@ export class CrawlerService {
     this.agentContextDb = new AgentContextDatabase();
     this.eventsDb = options?.eventsDb;
     this.profilesDb = options?.profilesDb;
+    this.crawlRequestsDb = options?.crawlRequestsDb ?? new PublisherCrawlRequestsDatabase();
+    this.publisherCrawlWorkerId = options?.crawlWorkerId
+      ?? process.env.FLY_MACHINE_ID
+      ?? `worker-${process.pid}-${Date.now().toString(36)}`;
   }
 
   /**
@@ -1984,7 +2009,7 @@ export class CrawlerService {
   tryStartSingleDomainCrawl(
     domain: string,
     context: SingleDomainCrawlContext = {},
-  ): Promise<void> | null {
+  ): Promise<SingleDomainCrawlOutcome> | null {
     if (this.crawling) return null;
     return this.crawlSingleDomain(domain, context);
   }
@@ -1992,7 +2017,7 @@ export class CrawlerService {
   async crawlSingleDomain(
     domain: string,
     context: SingleDomainCrawlContext = {},
-  ): Promise<void> {
+  ): Promise<SingleDomainCrawlOutcome> {
     const startedAt = Date.now();
     let stage = 'admission';
     const lifecycleContext = {
@@ -2022,7 +2047,7 @@ export class CrawlerService {
     );
 
     try {
-      await withDatabaseDeadline(Date.now() + SINGLE_DOMAIN_CRAWL_DB_DEADLINE_MS, async () => {
+      return await withDatabaseDeadline(Date.now() + SINGLE_DOMAIN_CRAWL_DB_DEADLINE_MS, async () => {
       stage = 'origin_validation';
       const validation = await this.adAgentsManager.validateDomain(domain);
 
@@ -2032,6 +2057,11 @@ export class CrawlerService {
           responseBytes: validation.response_bytes,
           resolvedUrl: validation.resolved_url,
         });
+        if (this.isTransientPublisherAdagentsFailure(validation)) {
+          throw Object.assign(new Error('Publisher origin was temporarily unavailable'), {
+            code: 'crawl_origin_temporarily_unavailable',
+          });
+        }
         log.warn(
           {
             ...lifecycleContext,
@@ -2041,7 +2071,7 @@ export class CrawlerService {
           },
           'No valid adagents.json for domain',
         );
-        return;
+        return 'invalid' as const;
       }
 
       stage = 'publisher_cache_write';
@@ -2121,6 +2151,7 @@ export class CrawlerService {
         },
         'Single domain crawl complete',
       );
+      return 'completed' as const;
       }, { readOnly: false });
     } catch (err) {
       log.error(
@@ -2134,6 +2165,231 @@ export class CrawlerService {
         'Single domain crawl failed',
       );
       throw err;
+    }
+  }
+
+  // ── Durable Publisher Crawl Requests ─────────────────────────
+
+  async enqueuePublisherCrawlRequest(
+    input: CreatePublisherCrawlRequestInput,
+  ): Promise<PublisherCrawlRequest> {
+    return this.crawlRequestsDb.create(input);
+  }
+
+  async getPublisherCrawlRequest(id: string): Promise<PublisherCrawlRequest | null> {
+    return this.crawlRequestsDb.getById(id);
+  }
+
+  private publisherCrawlQueueIntervalId: NodeJS.Timeout | null = null;
+  private publisherCrawlQueueProcessing = false;
+  private publisherCrawlLastRetentionAt = 0;
+  private publisherCrawlLastHealthLogAt = 0;
+
+  startPeriodicPublisherCrawlRequests(intervalSeconds: number = 5): void {
+    const run = () => {
+      this.processPublisherCrawlRequestQueue().catch((err) => {
+        log.error({ err }, 'Publisher crawl request queue tick failed');
+      });
+    };
+    run();
+    this.publisherCrawlQueueIntervalId = setInterval(run, intervalSeconds * 1_000);
+    this.publisherCrawlQueueIntervalId.unref();
+    log.info({ intervalSeconds }, 'Durable publisher crawl request queue started');
+  }
+
+  async processPublisherCrawlRequestQueue(): Promise<{
+    claimed: number;
+    completed: number;
+    invalid: number;
+    retried: number;
+    failed: number;
+    deferred: number;
+  }> {
+    const stats = { claimed: 0, completed: 0, invalid: 0, retried: 0, failed: 0, deferred: 0 };
+    if (this.publisherCrawlQueueProcessing || this.crawling) return stats;
+
+    this.publisherCrawlQueueProcessing = true;
+    try {
+      const requests = await this.crawlRequestsDb.claimDue(
+        this.publisherCrawlWorkerId,
+        PUBLISHER_CRAWL_QUEUE_BATCH_SIZE,
+        PUBLISHER_CRAWL_LEASE_MS,
+      );
+      stats.claimed = requests.length;
+      if (requests.length === 0) {
+        await this.maybeLogPublisherCrawlQueueHealth();
+        await this.maybeRetainPublisherCrawlRequests();
+        return stats;
+      }
+
+      log.info(
+        {
+          crawl_queue_claimed: requests.length,
+          crawl_worker_id: this.publisherCrawlWorkerId,
+          oldest_request_age_ms: Math.max(...requests.map((request) => Date.now() - request.created_at.getTime())),
+        },
+        'Publisher crawl request batch claimed',
+      );
+
+      const results = await this.processWithConcurrency(
+        requests,
+        PUBLISHER_CRAWL_QUEUE_CONCURRENCY,
+        (request) => this.processClaimedPublisherCrawlRequest(request),
+      );
+      for (const result of results) stats[result]++;
+
+      log.info(
+        { ...stats, crawl_worker_id: this.publisherCrawlWorkerId },
+        'Publisher crawl request batch complete',
+      );
+      await this.maybeLogPublisherCrawlQueueHealth();
+      await this.maybeRetainPublisherCrawlRequests();
+      return stats;
+    } finally {
+      this.publisherCrawlQueueProcessing = false;
+    }
+  }
+
+  private async processClaimedPublisherCrawlRequest(
+    request: ClaimedPublisherCrawlRequest,
+  ): Promise<'completed' | 'invalid' | 'retried' | 'failed' | 'deferred'> {
+    let heartbeatInFlight = false;
+    const heartbeat = setInterval(() => {
+      if (heartbeatInFlight) return;
+      heartbeatInFlight = true;
+      this.crawlRequestsDb
+        .heartbeat(request.id, request.lease_token, PUBLISHER_CRAWL_LEASE_MS)
+        .then((renewed) => {
+          if (!renewed) {
+            log.warn(
+              { crawl_request_id: request.id, domain: request.publisher_domain },
+              'Publisher crawl request lease was not renewed',
+            );
+          }
+        })
+        .catch((err) => {
+          log.warn(
+            { err, crawl_request_id: request.id, domain: request.publisher_domain },
+            'Publisher crawl request heartbeat failed',
+          );
+        })
+        .finally(() => {
+          heartbeatInFlight = false;
+        });
+    }, PUBLISHER_CRAWL_HEARTBEAT_MS);
+    heartbeat.unref();
+
+    try {
+      const outcome = await this.crawlSingleDomain(request.publisher_domain, {
+        requestId: request.id,
+        source: request.source,
+      });
+      const recorded = await this.crawlRequestsDb.markCompleted(
+        request.id,
+        request.lease_token,
+        outcome,
+      );
+      if (!recorded) {
+        log.warn(
+          { crawl_request_id: request.id, domain: request.publisher_domain, crawl_status: outcome },
+          'Publisher crawl request completion lost its lease',
+        );
+      } else {
+        log.info(
+          {
+            crawl_request_id: request.id,
+            domain: request.publisher_domain,
+            crawl_status: outcome,
+            crawl_attempts: request.attempts,
+            accepted_to_terminal_ms: Date.now() - request.created_at.getTime(),
+          },
+          'Durable publisher crawl request reached terminal state',
+        );
+      }
+      return outcome;
+    } catch (error) {
+      const errorCode = error && typeof error === 'object' && 'code' in error
+        && typeof error.code === 'string' && /^[a-zA-Z0-9_.:-]{1,100}$/.test(error.code)
+        ? error.code
+        : 'crawl_failed';
+      const errorMessage = errorCode === 'crawl_origin_temporarily_unavailable'
+        ? 'Publisher origin was temporarily unavailable'
+        : errorCode === 'crawl_deferred'
+          ? 'Full crawl in progress; publisher crawl deferred'
+          : 'Publisher crawl execution failed';
+      if (errorCode === 'crawl_deferred') {
+        await this.crawlRequestsDb.markDeferred(
+          request.id,
+          request.lease_token,
+          PUBLISHER_CRAWL_DEFER_MS,
+          errorMessage,
+        );
+        return 'deferred';
+      }
+
+      const updated = await this.crawlRequestsDb.markFailedAttempt(
+        request.id,
+        request.lease_token,
+        errorCode,
+        errorMessage,
+      );
+      if (!updated) {
+        log.warn(
+          { crawl_request_id: request.id, domain: request.publisher_domain },
+          'Publisher crawl request failure lost its lease',
+        );
+        return 'retried';
+      }
+      log[updated.status === 'failed' ? 'error' : 'warn'](
+        {
+          crawl_request_id: request.id,
+          domain: request.publisher_domain,
+          crawl_status: updated.status,
+          crawl_attempts: updated.attempts,
+          max_attempts: updated.max_attempts,
+          error_code: updated.last_error_code,
+          accepted_to_outcome_ms: Date.now() - request.created_at.getTime(),
+        },
+        updated.status === 'failed'
+          ? 'Durable publisher crawl request exhausted retries'
+          : 'Durable publisher crawl request scheduled for retry',
+      );
+      return updated.status === 'failed' ? 'failed' : 'retried';
+    } finally {
+      clearInterval(heartbeat);
+    }
+  }
+
+  private async maybeRetainPublisherCrawlRequests(): Promise<void> {
+    const now = Date.now();
+    if (now - this.publisherCrawlLastRetentionAt < 60 * 60_000) return;
+    const deleted = await this.crawlRequestsDb.deleteTerminalBefore(
+      new Date(now - PUBLISHER_CRAWL_RETENTION_MS),
+    );
+    this.publisherCrawlLastRetentionAt = now;
+    if (deleted > 0) {
+      log.info({ deleted }, 'Expired publisher crawl request history removed');
+    }
+  }
+
+  private async maybeLogPublisherCrawlQueueHealth(): Promise<void> {
+    const now = Date.now();
+    if (now - this.publisherCrawlLastHealthLogAt < 60_000) return;
+    const health = await this.crawlRequestsDb.getQueueHealth();
+    this.publisherCrawlLastHealthLogAt = now;
+    const oldestActiveAgeMs = health.oldest_active_at
+      ? now - health.oldest_active_at.getTime()
+      : 0;
+    const context = {
+      ...health,
+      oldest_active_at: health.oldest_active_at?.toISOString() ?? null,
+      oldest_active_age_ms: oldestActiveAgeMs,
+      crawl_worker_id: this.publisherCrawlWorkerId,
+    };
+    if (health.expired_leases > 0 || oldestActiveAgeMs > 5 * 60_000) {
+      log.warn(context, 'Publisher crawl request queue requires attention');
+    } else {
+      log.info(context, 'Publisher crawl request queue healthy');
     }
   }
 
