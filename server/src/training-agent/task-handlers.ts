@@ -2381,12 +2381,22 @@ function controllerFixtureSessionKey(
       if (!account.sandbox && ctx.principal && !ctx.principal.startsWith('static:')) return undefined;
       fixtureAccount = {
         brand: account.brand,
-        operator: account.operator,
+        // SDK controller seeding uses the brand domain as operator. Public
+        // static credentials intentionally share one demo fixture sandbox,
+        // so task examples using a buyer operator resolve the same brand-owned
+        // fixtures. Authenticated principals retain full operator isolation.
+        operator: ctx.principal?.startsWith('static:')
+          ? account.brand.domain
+          : account.operator,
         sandbox: true,
       };
     } else {
-      fixtureAccount = sandboxAccountRefForId(account.account_id, ctx.principal);
-      if (!fixtureAccount) return undefined;
+      // Resolve first so an opaque ID is usable only by the principal that
+      // owns that sandbox account. Keep the opaque identity for projection:
+      // controller fixture writes are keyed by account_id, and resolving it
+      // to a natural ref here would fork reads into a different partition.
+      if (!sandboxAccountRefForId(account.account_id, ctx.principal)) return undefined;
+      fixtureAccount = { account_id: account.account_id };
     }
   } catch {
     return undefined;

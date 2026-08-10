@@ -2679,6 +2679,169 @@ describe('validate_input handler', () => {
     ]);
   });
 
+  it('projects static storyboard fixtures across buyer operators', async () => {
+    const server = createTrainingAgentServer({ mode: 'open', principal: 'static:demo:storyboard' });
+    const brand = { domain: 'static-fixture-projection.example' };
+    const controllerAccount = { brand, operator: brand.domain };
+    const buyerAccount = { brand, operator: 'pinnacle-agency.example' };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account: controllerAccount,
+      brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'static_fixture_projection_product',
+        fixture: {
+          channels: ['olv'],
+          delivery_type: 'guaranteed',
+          format_options: [{
+            format_kind: 'video_hosted',
+            format_option_id: 'static_fixture_projection_brief',
+            params: {
+              synthesis_nondeterministic: true,
+              slots: [{ asset_group_id: 'creative_brief', asset_type: 'brief', required: true }],
+            },
+          }],
+        },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account: buyerAccount,
+      manifest: {
+        format_kind: 'video_hosted',
+        format_option_ref: { scope: 'product', format_option_id: 'static_fixture_projection_brief' },
+        assets: {},
+      },
+      targets: [{ kind: 'product', id: 'static_fixture_projection_product' }],
+    });
+
+    expect(result.results).toEqual([
+      expect.objectContaining({
+        result_kind: 'validated_fail',
+        violations: [expect.objectContaining({ rule: 'required_slot', field: 'assets.creative_brief' })],
+      }),
+    ]);
+  });
+
+  it('keeps projected fixtures isolated between real same-brand operators', async () => {
+    const server = createTrainingAgentServer({ mode: 'open', principal: 'workos:fixture-operator-isolation' });
+    const brand = { domain: 'fixture-operator-isolation.example' };
+    const ownerAccount = { brand, operator: 'owner-agency.example', sandbox: true };
+    const otherAccount = { brand, operator: 'other-agency.example', sandbox: true };
+    const productId = 'operator_isolated_fixture_product';
+    const formatOptionId = 'operator_isolated_fixture_brief';
+    await simulateCallTool(server, 'comply_test_controller', {
+      account: ownerAccount,
+      brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          channels: ['olv'],
+          delivery_type: 'guaranteed',
+          format_options: [{
+            format_kind: 'video_hosted',
+            format_option_id: formatOptionId,
+            params: {
+              slots: [{ asset_group_id: 'creative_brief', asset_type: 'brief', required: true }],
+            },
+          }],
+        },
+      },
+    });
+
+    const validateFor = (account: typeof ownerAccount) => simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        format_kind: 'video_hosted',
+        format_option_ref: { scope: 'product', format_option_id: formatOptionId },
+        assets: {},
+      },
+      targets: [{ kind: 'product', id: productId }],
+    });
+    const ownerResult = (await validateFor(ownerAccount)).result;
+    const otherResult = (await validateFor(otherAccount)).result;
+
+    expect(ownerResult.results).toEqual([
+      expect.objectContaining({
+        violations: [expect.objectContaining({ rule: 'required_slot' })],
+      }),
+    ]);
+    expect(otherResult.results).toEqual([
+      expect.objectContaining({
+        violations: [expect.objectContaining({ rule: 'product_target_found' })],
+      }),
+    ]);
+  });
+
+  it('keeps projected fixtures isolated between opaque accounts', async () => {
+    const server = createTrainingAgentServer({ mode: 'open', principal: 'workos:fixture-account-isolation' });
+    const ownerAccountId = 'acct_fixture_owner';
+    const otherAccountId = 'acct_fixture_other';
+    for (const [accountId, operator] of [
+      [ownerAccountId, 'owner-agency.example'],
+      [otherAccountId, 'other-agency.example'],
+    ]) {
+      await simulateCallTool(server, 'comply_test_controller', {
+        account: { account_id: accountId },
+        scenario: 'seed_account',
+        params: {
+          account_id: accountId,
+          fixture: {
+            brand: { domain: 'opaque-fixture-isolation.example' },
+            operator,
+            billing: 'operator',
+            sandbox: true,
+            status: 'active',
+          },
+        },
+      });
+    }
+    const productId = 'opaque_isolated_fixture_product';
+    const formatOptionId = 'opaque_isolated_fixture_brief';
+    await simulateCallTool(server, 'comply_test_controller', {
+      account: { account_id: ownerAccountId },
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          channels: ['olv'],
+          delivery_type: 'guaranteed',
+          format_options: [{
+            format_kind: 'video_hosted',
+            format_option_id: formatOptionId,
+            params: {
+              slots: [{ asset_group_id: 'creative_brief', asset_type: 'brief', required: true }],
+            },
+          }],
+        },
+      },
+    });
+
+    const validateFor = (accountId: string) => simulateCallTool(server, 'validate_input', {
+      account: { account_id: accountId },
+      manifest: {
+        format_kind: 'video_hosted',
+        format_option_ref: { scope: 'product', format_option_id: formatOptionId },
+        assets: {},
+      },
+      targets: [{ kind: 'product', id: productId }],
+    });
+    const ownerResult = (await validateFor(ownerAccountId)).result;
+    const otherResult = (await validateFor(otherAccountId)).result;
+
+    expect(ownerResult.results).toEqual([
+      expect.objectContaining({
+        violations: [expect.objectContaining({ rule: 'required_slot' })],
+      }),
+    ]);
+    expect(otherResult.results).toEqual([
+      expect.objectContaining({
+        violations: [expect.objectContaining({ rule: 'product_target_found' })],
+      }),
+    ]);
+  });
+
   it('does not infer third-party validation from a legacy format_id manifest', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'validate_input', {

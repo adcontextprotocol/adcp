@@ -1234,6 +1234,26 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   const opaqueAccountId = typeof args.account?.account_id === 'string'
     ? args.account.account_id
     : undefined;
+  let staticFixtureAccount: ToolArgs['account'] | undefined;
+  if (targetsControllerFixtureState && ctx.principal?.startsWith('static:') && args.account) {
+    try {
+      const canonical = canonicalizeAccountRef(args.account);
+      if (canonical.kind === 'natural' && canonical.sandbox) {
+        // Public/demo credentials share one non-production fixture sandbox.
+        // The SDK controller seeds with operator=brand.domain, while authored
+        // task examples may name the buyer operator. Canonicalize only this
+        // fixture projection to the brand-owned sandbox partition; real
+        // principals keep the complete natural account identity.
+        staticFixtureAccount = {
+          brand: canonical.brand,
+          operator: canonical.brand.domain,
+          sandbox: true,
+        };
+      }
+    } catch {
+      staticFixtureAccount = undefined;
+    }
+  }
   const sessionArgs = legacyNaturalBrandDomain
     ? { ...args, account: undefined, brand: { domain: legacyNaturalBrandDomain } }
     : opaqueAccountId
@@ -1244,7 +1264,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       // same `a:<account_id>` partition. A top-level storyboard brand must not
       // override that opaque identity.
       ? { ...args, account: { account_id: opaqueAccountId }, brand: undefined }
-      : args;
+      : staticFixtureAccount
+        ? { ...args, account: staticFixtureAccount }
+        : args;
   let sessionKey = targetsGetProductsState
     ? getProductsSessionKeyFromArgs(sessionArgs, ctx.mode, ctx.userId, ctx.moduleId)
     : sessionKeyFromArgs(
