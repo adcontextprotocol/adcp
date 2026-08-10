@@ -548,13 +548,13 @@ Sales agents SHOULD target the following response times:
 
 ### Idempotency
 
-Every AdCP task request MUST carry an `idempotency_key`, including `get_products`. Sales agents MUST apply the universal replay contract:
+Every state-mutating AdCP task request MUST carry an `idempotency_key`. In AdCP 4.0 that includes every `get_products` call because the tool is polymorphic. Sales agents MUST apply the replay contract:
 
 - The same key and equivalent canonical payload within the replay window MUST return the original response without re-executing the request.
 - The same key with a different canonical payload MUST return `IDEMPOTENCY_CONFLICT`.
 - Keys are scoped to the authenticated caller and account so retries cannot cross tenant boundaries.
 
-The 3.1.x migration grace applies only when a seller can guarantee that an omitted-key request will complete as a side-effect-free synchronous read. It never permits a `Submitted` response, task allocation, proposal finalization, or another state transition. `get_products` is polymorphic, so buyers MUST include the key on every call rather than attempting to predict which execution arm the seller will choose. See [Request safety — idempotency](/docs/building/by-layer/L1/security#idempotency) for the normative cache, replay, concurrency, and 3.2 enforcement rules.
+The 3.x `get_products` migration grace applies only when a seller can guarantee that an omitted-key request will complete as a side-effect-free synchronous read. It never permits a `Submitted` response, task allocation, proposal finalization, or another state transition, and it is removed in AdCP 4.0. `get_products` is polymorphic, so buyers MUST include the key on every call rather than attempting to predict which execution arm the seller will choose. See [Request safety — idempotency](/docs/building/by-layer/L1/security#idempotency) for the normative cache, replay, concurrency, and 4.0 enforcement rules.
 
 ### Human-in-the-Loop
 

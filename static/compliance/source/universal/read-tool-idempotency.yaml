@@ -3,7 +3,7 @@ version: "1.0.0"
 introduced_in: "3.1"
 title: "Read-tool idempotency_key tolerance"
 category: idempotency
-summary: "Validates that read-only AdCP tasks accept the 3.1 every-request idempotency_key envelope without strict wrapper rejection."
+summary: "Validates that read-only AdCP tasks accept an optional idempotency_key without strict wrapper rejection, while AdCP 4.0 get_products rejects an omitted key."
 track: core
 required_tools: []  # protocol-level baseline; read-tool probes gate themselves per step
 
@@ -21,11 +21,11 @@ narrative: |
   mutating replay semantics, conflict detection, TTL declaration, and
   `replayed: true`.
 
-  The final phase intentionally omits `idempotency_key` on a read request.
-  During the 3.1 grace window, sellers SHOULD reject this omission but MAY
-  accept it for compatibility; therefore the probe is documented here as a
-  future 3.2 switch point rather than a hard failure. The 3.2 storyboard cut
-  should flip that probe to a required rejection.
+  The final phase intentionally omits `idempotency_key` on
+  `get_adcp_capabilities`. Sellers MUST accept this bootstrap request without a
+  key because it is how buyers discover the seller's idempotency declaration.
+  AdCP 4.0 separately requires the key on polymorphic `get_products`, covered by
+  the preceding negative vector.
 
 agent:
   interaction_model: "*"  # applies to every agent regardless of protocol or specialism
@@ -269,138 +269,110 @@ phases:
             value: "read_tool_idempotency--list_creatives_with_key"
             description: "Context correlation_id returned unchanged"
 
-  - id: omitted_key_grace_accept_path
-    title: "3.1 omitted-key grace window — accept path"
+  - id: get_products_missing_key_4_0
+    title: "AdCP 4.0 get_products requires idempotency_key"
     narrative: |
-      Exercise the intentional omission vector on a read request. 3.1 sellers
-      SHOULD reject omitted `idempotency_key` values on reads but MAY continue
-      to accept them during the migration window. Passing this path records the
-      compatibility behavior without failing 3.1 acceptance; the peer reject
-      path below records the recommended behavior.
-    optional: true
-    branch_set:
-      id: omitted_key_grace_handled
-      semantics: any_of
+      `get_products` is polymorphic: a call may create a task or finalize a
+      proposal even when another call completes as a read. Its AdCP 4.0 schema
+      therefore requires `idempotency_key` before execution-arm selection.
 
     steps:
-      - id: get_capabilities_without_idempotency_key_3_1_accept
-        title: "Capabilities read without idempotency_key may still succeed in 3.1"
+      - id: get_products_without_idempotency_key_4_0
+        title: "Missing get_products idempotency_key returns INVALID_REQUEST"
         narrative: |
           The request intentionally omits `idempotency_key` and sets
           `omit_idempotency_key: true` so future runners that auto-inject keys
-          for all tasks preserve the missing-key vector. Some 3.1 sellers may
-          still accept this request during migration.
-        task: get_adcp_capabilities
-        schema_ref: "protocol/get-adcp-capabilities-request.json"
-        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
-        doc_ref: "/protocol/get_adcp_capabilities"
-        comply_scenario: read_tool_idempotency
-        omit_idempotency_key: true
-        stateful: false
-        contributes: true
-        expected: |
-          3.1 grace-window accept behavior: a seller MAY accept this request
-          and return capabilities normally, but SHOULD prepare to reject omitted
-          `idempotency_key` on read tools. The 3.2 compliance cut should remove
-          this accept branch.
-
-        sample_request:
-          context:
-            correlation_id: "read_tool_idempotency--capabilities_omitted_key_grace"
-          ext:
-            adcp:
-              storyboard: "read_tool_idempotency"
-              probe: "omitted_key_grace"
-        validations:
-          - check: response_schema
-            description: "Response matches get-adcp-capabilities-response.json schema during the 3.1 omitted-key grace window"
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "read_tool_idempotency--capabilities_omitted_key_grace"
-            description: "Context correlation_id returned unchanged"
-
-  - id: omitted_key_grace_reject_path
-    title: "3.1 omitted-key grace window — reject path"
-    narrative: |
-      Exercise the recommended 3.1 behavior for a read request that omits
-      `idempotency_key`: reject the request with `INVALID_REQUEST`. Passing
-      this path contributes the same branch-set flag as the accept path above,
-      so either behavior is conformant during the 3.1 migration window.
-    optional: true
-    branch_set:
-      id: omitted_key_grace_handled
-      semantics: any_of
-
-    steps:
-      - id: get_capabilities_without_idempotency_key_3_1_reject
-        title: "Capabilities read without idempotency_key may reject in 3.1"
-        narrative: |
-          The request intentionally omits `idempotency_key` and sets
-          `omit_idempotency_key: true`. In 3.1, sellers that already enforce
-          the every-request envelope should reject this with `INVALID_REQUEST`.
-          In 3.2 this becomes the only conformant branch.
-        task: get_adcp_capabilities
-        schema_ref: "protocol/get-adcp-capabilities-request.json"
-        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
-        doc_ref: "/protocol/get_adcp_capabilities"
+          preserve the missing-key vector. The seller must reject before
+          creating a task, returning products, or finalizing state.
+        task: get_products
+        requires_tool: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: read_tool_idempotency
         omit_idempotency_key: true
         expect_error: true
-        negative_path: payload_well_formed
+        negative_path: schema_invalid
         stateful: false
-        contributes: true
         expected: |
-          3.1 grace-window reject behavior: reject the read request with:
-          - Error code: INVALID_REQUEST
-          - Message indicating idempotency_key is required
+          Reject before handler execution with:
+          - Error code: INVALID_REQUEST or VALIDATION_ERROR
+          - No task_id, products, or proposals payload
 
         sample_request:
+          buying_mode: "brief"
+          brief: "Show available advertising products for an outdoor lifestyle campaign."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
           context:
-            correlation_id: "read_tool_idempotency--capabilities_omitted_key_grace"
+            correlation_id: "read_tool_idempotency--get_products_missing_key_4_0"
           ext:
             adcp:
               storyboard: "read_tool_idempotency"
-              probe: "omitted_key_grace"
+              probe: "get_products_missing_key_4_0"
         validations:
           - check: error_code
-            value: "INVALID_REQUEST"
-            description: "Missing idempotency_key rejected with INVALID_REQUEST"
+            allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
+            description: "Missing get_products idempotency_key is rejected"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "read_tool_idempotency--capabilities_omitted_key_grace"
+            value: "read_tool_idempotency--get_products_missing_key_4_0"
             description: "Context correlation_id returned unchanged"
+          - check: field_absent
+            path: "task_id"
+            description: "Validation failure does not allocate an async task"
+          - check: field_absent
+            path: "products"
+            description: "Validation failure does not execute product discovery"
+          - check: field_absent
+            path: "proposals"
+            description: "Validation failure does not return or finalize proposals"
 
-  - id: omitted_key_grace_assertion
-    title: "3.1 omitted-key grace window — require handled outcome"
+  - id: capabilities_bootstrap_without_key
+    title: "Capabilities bootstrap accepts an omitted idempotency_key"
     narrative: |
-      Synthetic assertion over the two optional omitted-key branches. In 3.1,
-      either success-path compatibility or recommended `INVALID_REQUEST`
-      rejection satisfies the migration window. A transport failure, unrelated
-      error, or schema-invalid success satisfies neither branch and is
-      non-conformant. The 3.2 storyboard cut should collapse this to the
-      rejection branch only.
+      Exercise the intentional omission vector on `get_adcp_capabilities`.
+      This bootstrap read is how the buyer learns the seller's idempotency
+      declaration, so sellers MUST accept it without a key.
 
     steps:
-      - id: assert_omitted_key_grace_handled
-        title: "Require omitted_key_grace_handled from either path"
+      - id: get_capabilities_without_idempotency_key
+        title: "Capabilities read without idempotency_key succeeds"
         narrative: |
-          At least one omitted-key branch must pass: the 3.1 compatibility
-          accept path or the 3.1 recommended reject path.
-        task: assert_contribution
+          The request intentionally omits `idempotency_key` and sets
+          `omit_idempotency_key: true` so future runners that auto-inject keys
+          preserve the bootstrap vector. The seller must return capabilities
+          normally rather than deadlock discovery behind the declaration being
+          discovered.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
         comply_scenario: read_tool_idempotency
+        omit_idempotency_key: true
         stateful: false
         expected: |
-          At least one of omitted_key_grace_accept_path or
-          omitted_key_grace_reject_path contributed
-          `omitted_key_grace_handled`.
+          Return capabilities normally without requiring `idempotency_key`.
 
+        sample_request:
+          context:
+            correlation_id: "read_tool_idempotency--capabilities_without_key"
+          ext:
+            adcp:
+              storyboard: "read_tool_idempotency"
+              probe: "capabilities_without_key"
         validations:
-          - check: any_of
-            allowed_values: ["omitted_key_grace_handled"]
-            description: "Agent must either accept the omitted-key read during the 3.1 grace window or reject it with INVALID_REQUEST."
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json without an idempotency_key"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "read_tool_idempotency--capabilities_without_key"
+            description: "Context correlation_id returned unchanged"
