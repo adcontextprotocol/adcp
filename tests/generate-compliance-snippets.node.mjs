@@ -52,11 +52,11 @@ test('error-code rendering is sorted, escaped, and deterministic', () => {
 test('MDX escaping preserves code-span contents while escaping prose', () => {
   assert.equal(
     escapeMdxBlock('Use `{value} <tag> & more` after {input}.'),
-    'Use `{value} <tag> & more` after &#123;input&#125;.',
+    'Use <code>{"{value} <tag> & more"}</code> after &#123;input&#125;.',
   );
   assert.equal(
     escapeTableCell('Use `{value} <tag> & left|right` after {input}.'),
-    'Use `{value} <tag> & left\\|right` after &#123;input&#125;.',
+    'Use <code>{"{value} <tag> & left\\u007cright"}</code> after &#123;input&#125;.',
   );
 });
 

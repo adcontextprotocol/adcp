@@ -71,14 +71,19 @@ function readJson(filePath) {
   }
 }
 
-function mapOutsideCodeSpans(value, transformProse, transformCode = code => code) {
+function renderMdxCodeSpan(code) {
+  const stringLiteral = JSON.stringify(code).replace(/\|/g, '\\u007c');
+  return `<code>{${stringLiteral}}</code>`;
+}
+
+function mapOutsideCodeSpans(value, transformProse) {
   const text = String(value);
   const codeSpanPattern = /(`+)([\s\S]*?)\1/g;
   const parts = [];
   let cursor = 0;
   for (const match of text.matchAll(codeSpanPattern)) {
     parts.push(transformProse(text.slice(cursor, match.index)));
-    parts.push(match[1], transformCode(match[2]), match[1]);
+    parts.push(renderMdxCodeSpan(match[2]));
     cursor = match.index + match[0].length;
   }
   parts.push(transformProse(text.slice(cursor)));
@@ -95,7 +100,6 @@ function escapeTableCell(value) {
       .replace(/{/g, '&#123;')
       .replace(/}/g, '&#125;')
       .replace(/\|/g, '&#124;'),
-    code => code.replace(/\|/g, '\\|'),
   )
     .replace(/\s+/g, ' ')
     .trim();
