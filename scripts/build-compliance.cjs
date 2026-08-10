@@ -846,6 +846,16 @@ function main() {
     process.exit(1);
   }
 
+  const symbolArgs = ['scripts/link-compliance-symbols.mjs', isCheck ? '--check' : '--fix'];
+  try {
+    execFileSync(process.execPath, symbolArgs, {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   const docParityErrors = lintUniversalDocParity({ sourceDir: SOURCE_DIR });
   if (docParityErrors.length) {
     console.error('Universal-storyboard doc parity drift:\n  - ' + docParityErrors.join('\n  - '));

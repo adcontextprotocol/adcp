@@ -344,6 +344,8 @@ const NON_OPERATION_ALLOWLIST = new Set([
   // themselves — they're referenced via $ref from operation schemas.
   'pagination-request.json',
   'package-request.json',
+  // Webhook payload delivered to approval_webhook, not an agent operation.
+  'creative-approval-request.json',
   // Read-only evaluation operations (TMP matching — no state mutation).
   'context-match-request.json',
   'identity-match-request.json',
@@ -2334,6 +2336,7 @@ module.exports = {
   getReleaseMetadata,
   buildRootSchemaDiscovery,
   isSelectableRelease,
+  discoverTools,
 };
 
 if (require.main === module) {

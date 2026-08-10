@@ -37,7 +37,6 @@ const TENANT_SCOPED_TASKS = new Set([
   'get_media_buys',
   'update_media_buy',
   'get_media_buy_delivery',
-  'creative_approval',
   // Creatives
   'sync_creatives',
   'list_creatives',
@@ -141,6 +140,11 @@ const EXEMPT_FROM_LINT = new Set([
   'validate_content_delivery',
   'validate_property_delivery',
 ]);
+
+// Compatibility-only handlers that are not AdCP tasks. creative_approval is
+// the payload delivered to approval_webhook; the training agent retains a
+// handler for legacy sandbox clients, but storyboards must not invoke it.
+const NON_TASK_HANDLER_ALLOWLIST = new Set(['creative_approval']);
 
 /** Walk a directory for *.yaml files. */
 function walkYaml(dir) {
@@ -271,4 +275,10 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { TENANT_SCOPED_TASKS, EXEMPT_FROM_LINT, lint, hasTenantIdentity };
+module.exports = {
+  TENANT_SCOPED_TASKS,
+  EXEMPT_FROM_LINT,
+  NON_TASK_HANDLER_ALLOWLIST,
+  lint,
+  hasTenantIdentity,
+};

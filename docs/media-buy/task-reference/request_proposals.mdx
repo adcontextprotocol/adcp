@@ -5,11 +5,11 @@ description: "Request one or more actionable seller-authored media plans."
 testable: true
 ---
 
-`request_proposals` creates one or more draft media-plan proposals from a brief. It can begin a consultative workflow directly or use `product_ids` returned by `list_products`. Success always contains at least one proposal; returning products without a proposal does not satisfy this task.
+`request_proposals` creates one or more draft media-plan proposals from a brief. It can begin a consultative workflow directly or use `product_ids` returned by [`list_products`](/docs/media-buy/task-reference/list_products). Success always contains at least one proposal; returning products without a proposal does not satisfy this task.
 
 `brand` is required and contains only the stable BrandKey (`domain` plus optional `brand_id`); the seller resolves the canonical brand manifest rather than receiving a full brand file in every call. `account_id` is optional and adds seller-specific commercial terms when the buyer already knows its account.
 
-<!-- Using latest because this schema is not yet released. -->
+{/* Using latest because this schema is not yet released. */}
 **Request schema:** [`/schemas/latest/media-buy/request-proposals-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/request-proposals-request.json)
 
 ```json
@@ -23,4 +23,4 @@ testable: true
 }
 ```
 
-Every returned allocation references the exact `product_id` whose pricing and forecast the seller used. The returned `proposal_id` is the only linkage needed by `refine_proposals`, `finalize_proposals`, and `create_media_buy`.
+Every returned allocation references the exact `product_id` whose pricing and forecast the seller used. The returned `proposal_id` is the only linkage needed by [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), [`finalize_proposals`](/docs/media-buy/task-reference/finalize_proposals), and [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy).

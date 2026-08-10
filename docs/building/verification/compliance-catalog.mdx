@@ -8,10 +8,10 @@ description: "Full index of AdCP protocols and specialisms an agent can claim �
 import ComplianceErrorCodes from "/docs/snippets/compliance-error-codes.mdx";
 import ComplianceStoryboardInventory from "/docs/snippets/compliance-storyboard-inventory.mdx";
 
-Every AdCP agent declares its `supported_protocols` and `specialisms` in `get_adcp_capabilities`. Each declaration maps to a compliance bundle at `/compliance/{version}/` that the storyboard runner executes to verify the claim.
+Every AdCP agent declares its `supported_protocols` and `specialisms` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). Each declaration maps to a compliance bundle at `/compliance/{version}/` that the storyboard runner executes to verify the claim.
 
 <Note>
-**`supported_protocols` is not exhaustive.** The `accounts` surface (`sync_accounts`, `list_accounts`, `sync_governance`) is a foundation implicit in every `media_buy`, `creative`, and `signals` agent and is intentionally not a `supported_protocols` value. See [Accounts tasks](/docs/accounts/tasks/sync_accounts) for the full account surface.
+**`supported_protocols` is not exhaustive.** The `accounts` surface ([`sync_accounts`](/docs/accounts/tasks/sync_accounts), [`list_accounts`](/docs/accounts/tasks/list_accounts), [`sync_governance`](/docs/accounts/tasks/sync_governance)) is a foundation implicit in every `media_buy`, `creative`, and `signals` agent and is intentionally not a `supported_protocols` value. See [Accounts tasks](/docs/accounts/tasks/sync_accounts) for the full account surface.
 </Note>
 
 This page is the human-readable index of that taxonomy. The machine-readable equivalent is `/compliance/{version}/index.json`.
@@ -49,7 +49,7 @@ Top-level agent capability claims. An agent claims a protocol by listing it in `
 | `measurement` | Preview / no stable baseline | Experimental 3.1 metric-catalog discovery. Agents implementing it must list `measurement.core` in `experimental_features`. |
 
 <Note>
-Support for the [compliance test controller](/docs/building/by-layer/L3/comply-test-controller) is declared via the `capabilities.compliance_testing` block on `get_adcp_capabilities`, not via `supported_protocols`. Compliance testing is an RPC surface for the test harness, not a functional protocol.
+Support for the [compliance test controller](/docs/building/by-layer/L3/comply-test-controller) is declared via the `capabilities.compliance_testing` block on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities), not via `supported_protocols`. Compliance testing is an RPC surface for the test harness, not a functional protocol.
 </Note>
 
 <Tip>
@@ -84,8 +84,8 @@ Specialisms are grouped below by parent protocol.
 | `sales-catalog-driven` | stable | Catalog-driven commerce with conversion tracking |
 | `sales-broadcast-tv` | stable | Broadcast linear TV with guaranteed inventory and FCC cancellation rules |
 | `sales-social` | stable | Social media advertising platform with self-service flows |
-| `governance-aware-seller` | stable | Seller composes with the buyer's campaign-governance agent after baseline registration — calls `check_governance` and propagates approvals, conditions, and denials unchanged. Optional claim for the full governance-check loop. |
-| `audience-sync` | stable | Syncs buyer-provided audience segments into a platform for activation (uses `sync_audiences`, `list_accounts`) |
+| `governance-aware-seller` | stable | Seller composes with the buyer's campaign-governance agent after baseline registration — calls [`check_governance`](/docs/governance/campaign/tasks/check_governance) and propagates approvals, conditions, and denials unchanged. Optional claim for the full governance-check loop. |
+| `audience-sync` | stable | Syncs buyer-provided audience segments into a platform for activation (uses [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences), [`list_accounts`](/docs/accounts/tasks/list_accounts)) |
 
 <Note>
 **Coming in 3.1.** `sales-streaming-tv` (CTV / streaming), `sales-exchange` (programmatic SSP / exchange), and `sales-retail-media` (retail media network) are scheduled for 3.1. Sellers in those categories should claim `sales-guaranteed` or `sales-non-guaranteed` at 3.0 GA.
@@ -107,8 +107,8 @@ Specialisms are grouped below by parent protocol.
 
 | Specialism | Status | Purpose |
 |-----------|--------|---------|
-| `signal-owned` | stable | Owned signal agent exposing first-party segments through `get_signals`; activation is not required for this claim |
-| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data; requires `get_signals` and `activate_signal` |
+| `signal-owned` | stable | Owned signal agent exposing first-party segments through [`get_signals`](/docs/signals/tasks/get_signals); activation is not required for this claim |
+| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data; requires `get_signals` and [`activate_signal`](/docs/signals/tasks/activate_signal) |
 
 ### governance
 
@@ -135,7 +135,7 @@ Specialisms are grouped below by parent protocol.
 The `sales-*` specialisms are not mutually exclusive — a hybrid platform with both a guaranteed direct desk and an auction floor should claim both `sales-guaranteed` and `sales-non-guaranteed`. Follow the steps below to resolve your claim.
 
 <Warning>
-**`sales-proposal-mode` is deprecated in 3.1.** Do not claim it for new agents. Existing agents that declare it must drop it entirely and replace it with `sales-guaranteed` + `media_buy.supports_proposals: true` in `get_adcp_capabilities`. See [#3823](https://github.com/adcontextprotocol/adcp/issues/3823).
+**`sales-proposal-mode` is deprecated in 3.1.** Do not claim it for new agents. Existing agents that declare it must drop it entirely and replace it with `sales-guaranteed` + `media_buy.supports_proposals: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). See [#3823](https://github.com/adcontextprotocol/adcp/issues/3823).
 </Warning>
 
 <Steps>
@@ -209,8 +209,8 @@ Three specialisms apply to specific delivery channels and have their own storybo
 
 | Specialism | Status | Purpose |
 |-----------|--------|---------|
-| `signal-owned` | stable | Owned signal agent exposing first-party segments through `get_signals`; activation is not required for this claim |
-| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data; requires `get_signals` and `activate_signal` |
+| `signal-owned` | stable | Owned signal agent exposing first-party segments through [`get_signals`](/docs/signals/tasks/get_signals); activation is not required for this claim |
+| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data; requires `get_signals` and [`activate_signal`](/docs/signals/tasks/activate_signal) |
 
 ### governance
 
@@ -245,13 +245,13 @@ In addition to per-step validations, specialisms declare cross-step and cross-re
 | Invariant | Scope | Specialisms |
 |-----------|-------|-------------|
 | `status.monotonic` | Single-resource — rejects status transitions observed across steps that aren't on the spec lifecycle graph. | All specialisms with a stateful resource lifecycle. |
-| `impairment.coherence` | Cross-resource — verifies that `media_buy.impairments[]` stays in sync with referenced resources. **Forward**: every entry references a currently-offline resource. **Inverse**: any offline resource referenced by a non-terminal buy appears in `impairments[]`. **Health-iff**: on a non-terminal buy, `health == "impaired"` iff `impairments[]` is non-empty (strict iff — stale drift fails). Out of scope: all three rules relax on terminal-status buys (sellers MAY leave `impairments[]` and `health` in whatever state held at the terminal transition); materiality is schema-enforced via `package_ids: minItems: 1`. | `audience-sync`, `creative-ad-server`, `creative-template`, `creative-generative`, `sales-catalog-driven`. Driven by the `media_buy_seller/dependency_impairment` scenario (creative-track via `force_creative_status`); audience-track and catalog-track follow once the compliance test controller adds `force_audience_status` / `force_catalog_item_status`. Grades `not_applicable` on storyboards that don't observe both a resource transition and a media-buy snapshot read. |
+| `impairment.coherence` | Cross-resource — verifies that `media_buy.impairments[]` stays in sync with referenced resources. **Forward**: every entry references a currently-offline resource. **Inverse**: any offline resource referenced by a non-terminal buy appears in `impairments[]`. **Health-iff**: on a non-terminal buy, `health == "impaired"` iff `impairments[]` is non-empty (strict iff — stale drift fails). Out of scope: all three rules relax on terminal-status buys (sellers MAY leave `impairments[]` and `health` in whatever state held at the terminal transition); materiality is schema-enforced via `package_ids: minItems: 1`. | `audience-sync`, `creative-ad-server`, `creative-template`, `creative-generative`, `sales-catalog-driven`. Driven by the [`media_buy_seller/dependency_impairment`](/compliance/latest/protocols/media-buy/scenarios/dependency_impairment.yaml) scenario (creative-track via `force_creative_status`); audience-track and catalog-track follow once the compliance test controller adds `force_audience_status` / `force_catalog_item_status`. Grades `not_applicable` on storyboards that don't observe both a resource transition and a media-buy snapshot read. |
 
 Invariants are declared in the specialism YAML's `invariants:` array and documented inline with the rule they enforce. See [media-buy lifecycle § Compliance](/docs/media-buy/media-buys/lifecycle#compliance) for the full `impairment.coherence` contract.
 
 ## How to claim
 
-Declare your protocols and specialisms in `get_adcp_capabilities`:
+Declare your protocols and specialisms in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities):
 
 ```json
 {
@@ -279,7 +279,7 @@ Four casings coexist in the taxonomy. Which one applies depends on where the ide
 
 | Casing | Layer | Example | Where it appears |
 |--------|-------|---------|------------------|
-| `snake_case` | Wire enums (`supported_protocols`, `delivery_type`, channel IDs, `signal_type`) | `media_buy`, `non_guaranteed`, `ctv`, `custom` | `get_adcp_capabilities` response, JSON payloads, generated schemas |
+| `snake_case` | Wire enums (`supported_protocols`, `delivery_type`, channel IDs, `signal_type`) | `media_buy`, `non_guaranteed`, `ctv`, `custom` | [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) response, JSON payloads, generated schemas |
 | `kebab-case` | Specialism IDs and compliance URLs | `sales-broadcast-tv`, `property-lists`, `audience-sync` | `get_adcp_capabilities.specialisms`, `/compliance/.../specialisms/{id}/` paths |
 | `snake_case` | Storyboard `id:` and `category:` fields | `sales_broadcast_tv`, `audience_sync` | Compliance YAML frontmatter, runner output, test reports |
 | Prose / hyphenated | Titles and narrative | "Streaming TV", "non-guaranteed" | Catalog pages, narrative copy |
@@ -288,14 +288,14 @@ The kebab↔snake swap between wire specialism IDs and storyboard categories is 
 
 | Specialism ID (wire) | Channel / tool family | Storyboard category | Variant scenarios |
 |----------------------|-----------------------|---------------------|-------------------|
-| `sales-broadcast-tv` | `channels: ['linear_tv']` | `sales_broadcast_tv` | — |
-| `sales-social` | `channels: ['social']` | `sales_social` | — |
-| `audience-sync` | `sync_audiences` tool | `audience_sync` | — |
-| `property-lists` | `property_list` tools | `property_lists` | — |
-| `collection-lists` | `collection_list` tools | `collection_lists` | — |
-| `governance-spend-authority` | `check_governance`, `sync_plans` | `governance_spend_authority` | `governance_spend_authority/denied` |
-| `creative-generative` | `build_creative` | `creative_generative` | `creative_generative/seller` |
-| `brand-rights` | `get_brand_identity`, `acquire_rights` | `brand_rights` | `brand_rights/governance_denied` |
+| `sales-broadcast-tv` | `channels: ['linear_tv']` | [`sales_broadcast_tv`](/compliance/latest/specialisms/sales-broadcast-tv/index.yaml) | — |
+| `sales-social` | `channels: ['social']` | [`sales_social`](/compliance/latest/specialisms/sales-social/index.yaml) | — |
+| `audience-sync` | [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) tool | [`audience_sync`](/compliance/latest/specialisms/audience-sync/index.yaml) | — |
+| `property-lists` | `property_list` tools | [`property_lists`](/compliance/latest/specialisms/property-lists/index.yaml) | — |
+| `collection-lists` | `collection_list` tools | [`collection_lists`](/compliance/latest/specialisms/collection-lists/index.yaml) | — |
+| `governance-spend-authority` | [`check_governance`](/docs/governance/campaign/tasks/check_governance), [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) | [`governance_spend_authority`](/compliance/latest/specialisms/governance-spend-authority/index.yaml) | [`governance_spend_authority/denied`](/compliance/latest/specialisms/governance-spend-authority/denied.yaml) |
+| `creative-generative` | [`build_creative`](/docs/creative/task-reference/build_creative) | [`creative_generative`](/compliance/latest/specialisms/creative-generative/index.yaml) | [`creative_generative/seller`](/compliance/latest/specialisms/creative-generative/generative-seller.yaml) |
+| `brand-rights` | [`get_brand_identity`](/docs/brand-protocol/tasks/get_brand_identity), [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights) | [`brand_rights`](/compliance/latest/specialisms/brand-rights/index.yaml) | [`brand_rights/governance_denied`](/compliance/latest/specialisms/brand-rights/scenarios/governance_denied.yaml) |
 
 The case split is deliberate: `supported_protocols` is a pre-existing 3.0 field already shipped to production agents, while specialism IDs are new and URL-first (each is a directory name under `/compliance/.../specialisms/{id}/`). The runner handles the mapping transparently.
 
@@ -304,7 +304,7 @@ The case split is deliberate: `supported_protocols` is a pre-existing 3.0 field 
 The protocol an agent claims does not always match the tool family name a specialism uses:
 
 - `audience-sync` lives under the `media-buy` protocol because `sync_audiences` is a media-buy tool.
-- `property-lists` (specialism ID, kebab-case) maps to the `property_list` tool family (`create_property_list`, `validate_property_delivery`) and storyboard category `property_lists`.
+- `property-lists` (specialism ID, kebab-case) maps to the `property_list` tool family ([`create_property_list`](/docs/governance/property/tasks/property_lists#create_property_list), [`validate_property_delivery`](/docs/governance/property/tasks/validate_property_delivery)) and storyboard category `property_lists`.
 - `sales-broadcast-tv` declares `channels: ['linear_tv']` — "Broadcast TV" is the prose name; `linear_tv` is the wire value.
 
 `/compliance/{version}/index.json` surfaces each specialism's `required_tools` so agents can discover the tool families without reading the full storyboard YAML.

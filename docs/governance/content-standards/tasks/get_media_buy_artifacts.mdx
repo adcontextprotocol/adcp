@@ -6,7 +6,7 @@ description: "get_media_buy_artifacts retrieves content context records from a m
 
 # get_media_buy_artifacts
 
-Retrieve content artifacts from a media buy for validation. This is separate from `get_media_buy_delivery` which returns performance metrics - artifacts contain the actual content (text, images, video) where ads were placed.
+Retrieve content artifacts from a media buy for validation. This is separate from [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) which returns performance metrics - artifacts contain the actual content (text, images, video) where ads were placed.
 
 **Response time**: < 5s (batch of 1,000 artifacts)
 
@@ -40,7 +40,7 @@ The buyer retrieves artifacts the seller has collected per the sampling configur
 | `pagination` | object | No | Pagination parameters (see below) |
 
 <Info>
-**Sampling is configured at buy creation time**, not at retrieval time. The sampling rate, method, and per-channel configuration are part of the media buy's `governance.content_standards` agreement. `get_media_buy_artifacts` retrieves artifacts that the seller has already collected per that agreement. For push-based delivery, configure `artifact_webhook` in `create_media_buy`.
+**Sampling is configured at buy creation time**, not at retrieval time. The sampling rate, method, and per-channel configuration are part of the media buy's `governance.content_standards` agreement. `get_media_buy_artifacts` retrieves artifacts that the seller has already collected per that agreement. For push-based delivery, configure `artifact_webhook` in [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy).
 </Info>
 
 ### Pagination

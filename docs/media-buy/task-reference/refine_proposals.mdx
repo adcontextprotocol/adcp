@@ -7,7 +7,7 @@ testable: true
 
 `refine_proposals` creates revised drafts without committing them. Each entry targets one proposal, proposal IDs must be unique within the request, and results preserve request order. Successful refinement returns a new `proposal_id`; the source proposal remains addressable for comparison or parallel exploration.
 
-<!-- Using latest because this schema is not yet released. -->
+{/* Using latest because this schema is not yet released. */}
 **Request schema:** [`/schemas/latest/media-buy/refine-proposals-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/refine-proposals-request.json)
 
 ```json
@@ -26,4 +26,4 @@ testable: true
 }
 ```
 
-The response contains one ordered `results[]` entry per request. `revised` means the requested change was applied, `partial` returns an honest draft plus explanatory notes, and `unable` returns a reason without minting a misleading revision. Refinement never commits pricing or inventory; use `finalize_proposals` when revisions have converged.
+The response contains one ordered `results[]` entry per request. `revised` means the requested change was applied, `partial` returns an honest draft plus explanatory notes, and `unable` returns a reason without minting a misleading revision. Refinement never commits pricing or inventory; use [`finalize_proposals`](/docs/media-buy/task-reference/finalize_proposals) when revisions have converged.

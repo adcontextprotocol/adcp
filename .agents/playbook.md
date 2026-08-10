@@ -255,6 +255,34 @@ patches continue to advance independently of the next-minor line.
 
 **CI validation:** The `check-schema-links.yml` workflow validates schema URLs in PRs and will warn about unreleased schemas or suggest the correct version.
 
+### Compliance symbol links
+
+`npm run build:compliance` links canonical task names and error codes in the
+participating reference-doc globs. Its `--check` form fails when generated
+links are stale, when a structurally claimed task/error is unknown, or when a
+reviewed ignore is unused. Schema fields and storyboard IDs are advisory
+because their bare names overlap other namespaces.
+
+Authors can make a namespace explicit with a pseudo-link; the build replaces
+it with the canonical destination:
+
+```md
+[`get_products`](adcp:task/get_products)
+[`INVALID_REQUEST`](adcp:error-code/INVALID_REQUEST)
+[`pagination_integrity`](adcp:storyboard/pagination_integrity)
+[`product_id`](adcp:field/core/product.json#/properties/product_id)
+```
+
+Field pseudo-links must include the source-schema-relative path and JSON
+Pointer. Do not hand-edit generated destinations; update the machine authority
+or rerun `npm run build:compliance`.
+
+Exceptions live in `scripts/compliance-symbol-ignore.json` and must name one
+family, symbol, and participating page with a concrete reason. They are only
+for deliberate non-symbol prose (for example, a hypothetical task or a removed
+task in migration guidance), never for undocumented protocol codes. Unused or
+newly resolvable entries fail the build.
+
 ### Protocol vs Task Response Separation
 Task responses contain ONLY domain data. Protocol concerns (message, context_id, task_id, status) are handled by transport layer.
 

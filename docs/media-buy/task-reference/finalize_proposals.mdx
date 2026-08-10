@@ -7,7 +7,7 @@ testable: true
 
 `finalize_proposals` is the explicit proposal commit boundary. `idempotency_key` is required, and `proposal_ids` must be non-empty and unique. The request carries no brand, account, catalog, or targeting state: each opaque proposal ID is resolved under the authenticated principal and already binds that state.
 
-<!-- Using latest because this schema is not yet released. -->
+{/* Using latest because this schema is not yet released. */}
 **Request schema:** [`/schemas/latest/media-buy/finalize-proposals-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/finalize-proposals-request.json)
 
 ```json

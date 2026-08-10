@@ -31,7 +31,7 @@ The `get_signals` task returns both signal metadata and real-time deployment sta
 | `if_pricing_version` | string | No | Opaque `pricing_version` token from a prior response. MUST only be sent together with `if_wholesale_feed_version`. Evaluation order: `if_wholesale_feed_version` mismatch → full payload; `if_wholesale_feed_version` matches but `if_pricing_version` mismatches → full payload (so the caller sees updated `pricing_options`); both match → agent MAY return `unchanged: true`. Agents that don't track pricing separately ignore this. |
 | `max_results` | number | No | **Deprecated.** Use `pagination.max_results` instead. When both are present, `pagination.max_results` takes precedence. Will be removed in AdCP 4.0. |
 | `pagination` | object | No | Pagination envelope. `pagination.max_results` (max: 100, default: 50) controls page size; `pagination.cursor` (opaque token from previous response) advances pages. Required for wholesale (signals feeds may be large). |
-| `push_notification_config` | PushNotificationConfig | No | Optional webhook channel for async terminal completion/failure notifications on `brief` semantic discovery. `submitted` responses with a `task_id` remain pollable through `get_task_status` (legacy `tasks/get`) whether or not this field is present. If the request includes this field and the agent returns `submitted`, the agent MUST deliver at least the terminal completion/failure notification to the configured webhook; intermediate progress notifications are MAY. If the agent cannot honor the webhook channel, it MUST reject the request with a structured error instead of silently accepting. Ignored for `wholesale`; agents MUST NOT route wholesale reads through the Submitted arm because this field is present. |
+| `push_notification_config` | PushNotificationConfig | No | Optional webhook channel for async terminal completion/failure notifications on `brief` semantic discovery. `submitted` responses with a `task_id` remain pollable through [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) (legacy `tasks/get`) whether or not this field is present. If the request includes this field and the agent returns `submitted`, the agent MUST deliver at least the terminal completion/failure notification to the configured webhook; intermediate progress notifications are MAY. If the agent cannot honor the webhook channel, it MUST reject the request with a structured error instead of silently accepting. Ignored for `wholesale`; agents MUST NOT route wholesale reads through the Submitted arm because this field is present. |
 
 <Note>
 `discovery_mode: "wholesale"` is an AdCP 3.1+ discovery shape. When the
@@ -234,7 +234,7 @@ custom or brief-specific signals return deeper inline context when useful.
 - **signals**: Array of matching signals
   - **signal_ref**: Canonical signal reference. Use `scope: "data_provider"` for signals resolved through adagents.json `signals[]`, `scope: "signal_source"` for source-native signals that are not published in adagents.json `signals[]`, and `scope: "product"` only in product-contextual responses. New responses SHOULD include this field.
   - **signal_id**: Deprecated legacy SignalId object. New clients should read `signal_ref`; during the migration window, older responses may include only `signal_id`.
-  - **signal_agent_segment_id**: Opaque signal handle issued by this signal source. Use it verbatim for `activate_signal`; do not treat it as a globally portable signal ID. For package-level `signal_targeting_groups`, `signal_ref` is the buy-time identity and this handle is echoed only when the selected product option exposes it as a separate execution handle.
+  - **signal_agent_segment_id**: Opaque signal handle issued by this signal source. Use it verbatim for [`activate_signal`](/docs/signals/tasks/activate_signal); do not treat it as a globally portable signal ID. For package-level `signal_targeting_groups`, `signal_ref` is the buy-time identity and this handle is echoed only when the selected product option exposes it as a separate execution handle.
   - **name**: Human-readable signal name
   - **description**: Detailed signal description
   - **demographic_predicate**: Authoritative demographic meaning projected from the signal definition. Age predicates carry inclusive bounds and explicit unknown-age membership; names alone are not machine-readable semantics.
@@ -251,7 +251,7 @@ custom or brief-specific signals return deeper inline context when useful.
     - **is_live**: Whether signal is currently active on this deployment
     - **activation_key**: The key to use for targeting (see Activation Key below). **Only present when `is_live=true` and the authenticated caller has access to this deployment.**
     - **estimated_activation_duration_minutes**: Time to activate if not live
-  - **pricing_options**: Array of pricing options for this signal when it has an incremental price. Pass the selected `pricing_option_id` in `report_usage` or package-level `signal_targeting_groups` for billing verification. Omitted when pricing is unavailable to the caller, bundled into the destination product, or has no incremental cost.
+  - **pricing_options**: Array of pricing options for this signal when it has an incremental price. Pass the selected `pricing_option_id` in [`report_usage`](/docs/accounts/tasks/report_usage) or package-level `signal_targeting_groups` for billing verification. Omitted when pricing is unavailable to the caller, bundled into the destination product, or has no incremental cost.
     - **pricing_option_id**: Unique identifier for this pricing option
     - **model**: Pricing model — `cpm`, `percent_of_media`, `flat_fee`, `per_unit`, or `custom`
     - `model: "cpm"` — `cpm` (number, cost per thousand impressions), `currency` (ISO 4217)
@@ -405,7 +405,7 @@ Because the authenticated caller matches the deployment target, the response inc
 
 ### MCP Response - Multiple Pricing Options
 
-Some signals offer multiple pricing models. The buyer selects one and passes its `pricing_option_id` in `report_usage` for direct signal usage or in package-level `signal_targeting_groups` when the signal is selected on a media buy:
+Some signals offer multiple pricing models. The buyer selects one and passes its `pricing_option_id` in [`report_usage`](/docs/accounts/tasks/report_usage) for direct signal usage or in package-level `signal_targeting_groups` when the signal is selected on a media buy:
 
 ```json
 {
@@ -768,7 +768,7 @@ Discover all available deployments across platforms:
 
 - **context_id** (string): Context identifier for session persistence
 - **signals** (array): Array of matching signals
-  - **signal_agent_segment_id** (string): Opaque signal handle issued by this signal source. Use it verbatim for `activate_signal`; do not treat it as a globally portable signal ID. For media-buy signal groups, `signal_ref` is the buy-time identity and this handle is echoed only when the selected product option exposes it as a separate execution handle.
+  - **signal_agent_segment_id** (string): Opaque signal handle issued by this signal source. Use it verbatim for [`activate_signal`](/docs/signals/tasks/activate_signal); do not treat it as a globally portable signal ID. For media-buy signal groups, `signal_ref` is the buy-time identity and this handle is echoed only when the selected product option exposes it as a separate execution handle.
   - **name** (string): Human-readable signal name
   - **description** (string): Detailed signal description
   - **signal_type** (string): `marketplace` (resold third-party), `owned` (signal source first-party data), or `custom` (source-native segment built on demand)
@@ -783,14 +783,14 @@ Use `coverage_forecast` as the authoritative field for signal-first discovery: "
     - **is_live** (boolean): Whether signal is currently active
     - **activation_key** (object): The key to use for targeting. Only present when `is_live=true` and the caller has access. See Activation Key Object above.
     - **estimated_activation_duration_minutes** (number, optional): Time to activate if not live
-  - **pricing_options** (array): Array of pricing options available for this signal when it has an incremental price. Select one and pass its `pricing_option_id` in `report_usage` or package-level `signal_targeting_groups`.
+  - **pricing_options** (array): Array of pricing options available for this signal when it has an incremental price. Select one and pass its `pricing_option_id` in [`report_usage`](/docs/accounts/tasks/report_usage) or package-level `signal_targeting_groups`.
     - **pricing_option_id** (string): Unique identifier for this pricing option
     - **model** (string): Pricing model — `cpm`, `percent_of_media`, `flat_fee`, `per_unit`, or `custom`
 
 ## Error Codes
 
 ### Discovery Errors
-- `REFERENCE_NOT_FOUND`: Referenced `signal_agent_segment_id` doesn't exist,
+- [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found): Referenced `signal_agent_segment_id` doesn't exist,
   OR a private signal agent is not visible to this account. The same code is
   returned whether the resource exists but is unauthorized or truly does not
   exist — sellers MUST NOT distinguish the two (see `error.field` to
@@ -809,16 +809,16 @@ Use `coverage_forecast` as the authoritative field for signal-first discovery: "
 2. **Permission Security**: The signal agent determines key inclusion based on caller identity, not request flags
 3. **Deployment Status**: Check `is_live` to determine if activation is needed
 4. **Multiple Deployments**: Query multiple deployment targets to check availability across platforms
-5. **Activation Required**: If `is_live` is false, use the `activate_signal` task
+5. **Activation Required**: If `is_live` is false, use the [`activate_signal`](/docs/signals/tasks/activate_signal) task
 6. **The message field** provides a quick summary of the most relevant findings
 
 ## Seller-offered signals on media products
 
-A sales agent that owns or is authorized to apply targeting signals exposes buy-time product eligibility through `get_products`. It can also expose a broader cross-product signal feed through `get_signals` when buyers need discovery or activation before package selection:
+A sales agent that owns or is authorized to apply targeting signals exposes buy-time product eligibility through [`get_products`](/docs/media-buy/task-reference/get_products). It can also expose a broader cross-product signal feed through `get_signals` when buyers need discovery or activation before package selection:
 
 - `get_products` declares whether a product has package-level signal targeting. `products[].included_signals` describes non-selectable signals already bundled into or planned into a product. Inline `products[].signal_targeting_options` can carry a product-specific menu, price, activation handle, default, grouping hint, or brief/refine-selected subset; wholesale products can omit inline options and use `get_signals` as the selectable signal feed.
 - `get_signals` optionally returns cross-product signal metadata, including `signal_ref`, `signal_agent_segment_id`, value metadata, and any default or account-scoped `pricing_options`.
-- `create_media_buy` selects the signal for a package in `packages[].targeting_overlay.signal_targeting_groups`, carrying the selected signal `pricing_option_id`, `signal_ref`, and any separate seller execution handle when required.
+- [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) selects the signal for a package in `packages[].targeting_overlay.signal_targeting_groups`, carrying the selected signal `pricing_option_id`, `signal_ref`, and any separate seller execution handle when required.
 
 This gives buyers a product-first buy-time eligibility path without forcing products to duplicate a large wholesale signal feed: use the selected product's inline `signal_targeting_options` when present and `signal_targeting_rules` to determine what may be applied on that package. When a product omits inline options but allows signal targeting, use `get_signals` for candidate discovery and activation metadata, then use `get_products.filters.signal_targeting` or a product-specific `get_products` query to confirm the candidate set is selectable and jointly composable for the intended product before calling `create_media_buy`. When both surfaces include pricing, the product-scoped `signal_targeting_options[].pricing_options` price is authoritative for that product. For product-local signals exposed on both surfaces, `signal_ref.signal_id` in the product option MUST match the seller's `get_signals.signals[].signal_ref.signal_id` for the same signal. `included_signals` is descriptive only and does not make a signal selectable.
 
@@ -899,13 +899,13 @@ Signals agents declare wholesale support in [`get_adcp_capabilities`](/docs/prot
 }
 ```
 
-Agents not declaring `"wholesale"` MAY return `INVALID_REQUEST` for wholesale calls. Because wholesale discovery is AdCP 3.1+, the capability declaration is the canonical support signal when a caller cannot assume a 3.1+ signals surface or wholesale support; callers SHOULD probe before issuing wholesale requests.
+Agents not declaring `"wholesale"` MAY return [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) for wholesale calls. Because wholesale discovery is AdCP 3.1+, the capability declaration is the canonical support signal when a caller cannot assume a 3.1+ signals surface or wholesale support; callers SHOULD probe before issuing wholesale requests.
 
 ## Wholesale feed versioning
 
 Even with wholesale enumeration, a consumer mirroring an agent's signals feed would re-fetch every paginated page on each poll just to detect changes. To avoid that, `get_signals` supports an opaque `wholesale_feed_version` token returned on every response. Pass it back via `if_wholesale_feed_version` on a subsequent call and the agent MAY short-circuit with `unchanged: true` — no signal payload, no per-page diff.
 
-This is the seller-side wholesale signals feed returned by `get_signals`. It is not a `sync_catalogs` feed; `sync_catalogs` manages buyer-provided campaign input feeds on a seller account.
+This is the seller-side wholesale signals feed returned by `get_signals`. It is not a [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) feed; `sync_catalogs` manages buyer-provided campaign input feeds on a seller account.
 
 ### Unchanged response
 

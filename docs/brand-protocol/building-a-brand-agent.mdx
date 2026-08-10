@@ -180,7 +180,7 @@ server.tool("get_adcp_capabilities", {}, async () => ({
 }));
 ```
 
-When `supported_claim_types` is omitted, the agent advertises support for all four. Consumers MUST check before relying on a specific claim type; unsupported types MUST return `UNSUPPORTED_CLAIM_TYPE`.
+When `supported_claim_types` is omitted, the agent advertises support for all four. Consumers MUST check before relying on a specific claim type; unsupported types MUST return `UNSUPPORTED_FEATURE`.
 
 ### State model
 
@@ -229,7 +229,7 @@ type TrademarkRecord = {
 
 ### Tool registration and request validation
 
-`verify_brand_claim` discriminates on `claim_type`. Validate the `claim` payload per type — required fields differ, and `INVALID_INPUT` is the right response when they're missing or malformed.
+`verify_brand_claim` discriminates on `claim_type`. Validate the `claim` payload per type — required fields differ, and `INVALID_REQUEST` is the right response when they're missing or malformed.
 
 ```typescript
 import { z } from "zod";

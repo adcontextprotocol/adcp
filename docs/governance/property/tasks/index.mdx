@@ -15,7 +15,7 @@ Property governance uses a **stateful** model where all evaluation happens throu
 |------|---------|---------------|
 | [get_adcp_capabilities](/docs/protocol/get_adcp_capabilities) | Discover agent capabilities | ~200ms |
 
-Use the protocol-level `get_adcp_capabilities` task to discover what features a governance agent can evaluate. See the [governance section](/docs/protocol/get_adcp_capabilities#governance-protocol) for details on the `property_features` array.
+Use the protocol-level [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) task to discover what features a governance agent can evaluate. See the [governance section](/docs/protocol/get_adcp_capabilities#governance-protocol) for details on the `property_features` array.
 
 ## Property List Management
 
@@ -41,7 +41,7 @@ See [validate_property_delivery](./validate_property_delivery) for post-campaign
 
 ### Creating a Property List
 
-Use `create_property_list` with filters and brand reference:
+Use [`create_property_list`](/docs/governance/property/tasks/property_lists#create_property_list) with filters and brand reference:
 
 ```json
 {
@@ -94,7 +94,7 @@ Filters have two built-in fields (`countries_all`, `channels_any`) plus `feature
 
 ### Getting Resolved Properties
 
-Use `get_property_list` to retrieve the list with resolved identifiers:
+Use [`get_property_list`](/docs/governance/property/tasks/property_lists#get_property_list) to retrieve the list with resolved identifiers:
 
 ```json
 {

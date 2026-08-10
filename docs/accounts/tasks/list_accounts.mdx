@@ -7,7 +7,7 @@ testable: false
 
 Returns all accounts the authenticated agent can operate on this vendor agent. Use this to discover existing accounts, check status changes on pending accounts, and retrieve `account_id` values for use in protocol operations.
 
-For upstream-managed account namespaces, `list_accounts` is not optional discovery polish; it is the namespace discovery contract. The upstream platform owns the accessible account set, so buyers MUST resolve an explicit `account_id` before the first account-scoped request. If the authenticated credential can access more than one account, the seller MUST expose `list_accounts`; if it can access exactly one account, the seller SHOULD expose `list_accounts` returning that singleton so SDKs can auto-select it and still send `{ "account_id": "..." }` on required-account calls. `sync_accounts` provisioning does not create account-id accounts in 3.0.x unless a future explicit capability declares that mode; if `sync_accounts` is exposed on these sellers today, use it only for settings updates against an account already identified by `account_id`.
+For upstream-managed account namespaces, `list_accounts` is not optional discovery polish; it is the namespace discovery contract. The upstream platform owns the accessible account set, so buyers MUST resolve an explicit `account_id` before the first account-scoped request. If the authenticated credential can access more than one account, the seller MUST expose `list_accounts`; if it can access exactly one account, the seller SHOULD expose `list_accounts` returning that singleton so SDKs can auto-select it and still send `{ "account_id": "..." }` on required-account calls. [`sync_accounts`](/docs/accounts/tasks/sync_accounts) provisioning does not create account-id accounts in 3.0.x unless a future explicit capability declares that mode; if `sync_accounts` is exposed on these sellers today, use it only for settings updates against an account already identified by `account_id`.
 
 `list_accounts` works across all vendor protocols — media buy agents, signals agents, governance agents, and creative agents all return accounts through this same task.
 
@@ -88,7 +88,7 @@ the authenticated caller. Use `account` when re-reading one known account by
 
 | Field | Description |
 |-------|-------------|
-| `account_id` | Vendor agent's identifier. Pass this to protocol tasks: `create_media_buy`, `get_signals`, `activate_signal`, `report_usage`, and other operations. May be absent when `status: "rejected"`. |
+| `account_id` | Vendor agent's identifier. Pass this to protocol tasks: [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy), [`get_signals`](/docs/signals/tasks/get_signals), [`activate_signal`](/docs/signals/tasks/activate_signal), [`report_usage`](/docs/accounts/tasks/report_usage), and other operations. May be absent when `status: "rejected"`. |
 | `name` | Vendor agent's display name for the account |
 | `brand` | Brand reference object: `domain` (the [brand registry](/docs/brand-protocol/brand-json) house domain) and optional `brand_id` (sub-brand within the house) |
 | `operator` | Operator domain. Always present — when the brand operates directly, `operator` equals the brand's domain. |
@@ -117,7 +117,7 @@ Runners SHOULD grade pagination-walk phases as `not_applicable` in either case. 
 
 ### Poll until account becomes active
 
-After `sync_accounts` returns `pending_approval`, poll until the account is ready:
+After [`sync_accounts`](/docs/accounts/tasks/sync_accounts) returns `pending_approval`, poll until the account is ready:
 
 <CodeGroup>
 
@@ -250,7 +250,7 @@ asyncio.run(main())
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `ACCOUNT_NOT_FOUND` | No accounts found for this agent | Run `sync_accounts` first to establish a buying relationship |
+| [`ACCOUNT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-account-not-found) | No accounts found for this agent | Run [`sync_accounts`](/docs/accounts/tasks/sync_accounts) first to establish a buying relationship |
 
 ## Next Steps
 

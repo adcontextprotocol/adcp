@@ -27,7 +27,7 @@ npx @adcp/sdk@latest grade request-signing <agent-url>
 - Replay detection (if the agent advertises it)
 - Negative-vector rejection — each malformed request MUST produce the expected error code
 
-**When to use it:** before flipping any operation to `required_for` in `get_adcp_capabilities`; when a counterparty reports signature verification failures; when upgrading key algorithms (Ed25519 → P-256 or the reverse).
+**When to use it:** before flipping any operation to `required_for` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities); when a counterparty reports signature verification failures; when upgrading key algorithms (Ed25519 → P-256 or the reverse).
 
 ## OAuth handshake diagnoser
 
@@ -48,7 +48,7 @@ The `<alias>` form uses a saved alias from `~/.adcp/config.json` (set via `npx @
 
 **Output:** ranked hypothesis list, e.g., `1. token_endpoint not reachable (connection refused) — likely cause`, `2. issuer mismatch — AS URL returned by protected-resource does not match adagents.json`. Each hypothesis links to the relevant spec section.
 
-**When to use it:** when `AUTH_REQUIRED` errors persist after bearer token configuration; when dynamic client registration returns unexpected responses; when a new seller's OAuth setup fails silently.
+**When to use it:** when [`AUTH_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-auth-required) errors persist after bearer token configuration; when dynamic client registration returns unexpected responses; when a new seller's OAuth setup fails silently.
 
 ## Key generation
 

@@ -12,7 +12,7 @@ If you're trying to figure out *how* to test an AdCP agent, three things in this
 | | What it is | Where it lives | Normative? |
 |---|---|---|---|
 | **Storyboards** | YAML files defining a workflow end-to-end + every wire-shape assertion. **The conformance specification.** | `/compliance/{version}/universal/*.yaml`, `protocols/*/*.yaml`, `specialisms/*/index.yaml` | ✅ Yes |
-| **`comply_test_controller` scenarios** | Protocol-level tool operations a seller exposes (`force_*`, `simulate_*`, `seed_*`) so storyboards can drive deterministic state. | The `scenario` parameter of the seller's `comply_test_controller` MCP tool. | ✅ Yes |
+| **[`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) scenarios** | Protocol-level tool operations a seller exposes (`force_*`, `simulate_*`, `seed_*`) so storyboards can drive deterministic state. | The `scenario` parameter of the seller's `comply_test_controller` MCP tool. | ✅ Yes |
 | **`@adcp/sdk/testing/scenarios/*.ts`** | Legacy TypeScript test runners predating storyboard-driven `comply()`. | `node_modules/@adcp/sdk/dist/lib/testing/scenarios/*.js` | ❌ **No** |
 
 If you're reading a file at `node_modules/@adcp/sdk/dist/lib/testing/scenarios/media-buy.js` and trying to figure out what AdCP requires — **stop**. That's not the spec. Read [the storyboards](/docs/building/verification/conformance) instead.
@@ -23,7 +23,7 @@ Storyboards are the conformance specification. Each one defines:
 - A workflow (e.g. *sales-guaranteed proposal/refine/finalize lifecycle*)
 - The exact tool calls a buyer agent makes
 - Every wire-shape assertion the seller's responses must satisfy
-- The `comply_test_controller` operations the runner uses to seed deterministic state
+- The [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) operations the runner uses to seed deterministic state
 
 [`conformance.mdx`](/docs/building/verification/conformance) calls these *"the truth"* — and means it. These YAML files are the basis for **AgenticAdvertising.org Verified (Spec)**; AgenticAdvertising.org issues that qualifier when its compliance heartbeat runs the applicable storyboards and every assertion passes.
 
@@ -50,7 +50,7 @@ That order prevents the release deadlock where a new runner expects stricter sce
 
 ## `comply_test_controller` scenarios (normative — but different)
 
-The word "scenario" also appears in the `comply_test_controller` MCP tool that sellers expose to support deterministic testing. Storyboards call this tool with `scenario: <name>` to drive seller state without waiting for real time to pass: e.g. `force_task_completion` to finish a pending async media buy, `simulate_delivery` to inject impressions, `seed_product` to install a fixture.
+The word "scenario" also appears in the [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) MCP tool that sellers expose to support deterministic testing. Storyboards call this tool with `scenario: <name>` to drive seller state without waiting for real time to pass: e.g. `force_task_completion` to finish a pending async media buy, `simulate_delivery` to inject impressions, `seed_product` to install a fixture.
 
 These are **protocol operations**, not test runners. They're documented at [comply_test_controller](/docs/building/by-layer/L3/comply-test-controller). Sellers MUST implement them to be testable; the storyboards MUST use them to stay deterministic.
 
@@ -75,7 +75,7 @@ If you find yourself grepping `testing/scenarios/*.ts` to understand AdCP, you'v
 If you see…                                                | …you're looking at                                | Trust as spec?
 ---|---|---
 A `.yaml` under `/compliance/{version}/...`               | A storyboard                                       | ✅ Yes
-A seller responding to `comply_test_controller` with a `scenario` parameter | A protocol-level test-control operation         | ✅ Yes (the contract is normative; the seller MAY refuse with `UNKNOWN_SCENARIO`)
+A seller responding to [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) with a `scenario` parameter | A protocol-level test-control operation         | ✅ Yes (the contract is normative; the seller MAY refuse with [`UNKNOWN_SCENARIO`](/docs/building/by-layer/L3/comply-test-controller#error-codes))
 A `.ts` or `.js` under `@adcp/sdk/dist/lib/testing/scenarios/` | A legacy SDK test runner                          | ❌ No
 
 ## Cross-repo

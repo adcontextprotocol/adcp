@@ -216,6 +216,8 @@ function renderErrorCodes(schema) {
   for (const code of [...schema.enum].sort(compareText)) {
     const metadata = schema.enumMetadata[code];
     lines.push(
+      `<a id="error-code-${code.toLowerCase().replaceAll('_', '-')}"></a>`,
+      '',
       `<Accordion title="${code} — ${metadata.recovery}">`,
       '',
       `**Suggested action:** ${escapeMdxBlock(metadata.suggestion)}`,

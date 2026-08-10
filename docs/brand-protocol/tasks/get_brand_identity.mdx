@@ -25,7 +25,7 @@ Brand identity is public data. Any agent can call `get_brand_identity` without a
 
 The registry enforces this: every brand indexed from `brand.json` is publicly discoverable. You can always find out what house a brand belongs to, what it's called, and what it does.
 
-Authorized callers (linked via [`sync_accounts`](/docs/accounts/overview)) get deeper data on top of the public baseline.
+Authorized callers (linked via [`sync_accounts`](/docs/accounts/tasks/sync_accounts)) get deeper data on top of the public baseline.
 
 Account linking is a one-time setup: a buyer agent calls [`sync_accounts`](/docs/accounts/tasks/sync_accounts) on the brand agent, providing its brand reference. After that, the buyer's `get_brand_identity` requests are recognized as authorized.
 
@@ -193,7 +193,7 @@ The response mirrors the brand.json brand definition, extended with dynamic data
 | `visual_guidelines` | object | No | Photography, graphic style, colorways, type scale, motion rules, restrictions |
 | `tone` | object | No | Brand voice and messaging guidelines. Sub-fields: `voice` (personality adjectives), `attributes` (prompt guidance traits), `dos` (approved approaches), `donts` (prohibited topics) |
 | `tagline` | string | No | Brand tagline or slogan |
-| `voice_synthesis` | object | No | TTS voice synthesis configuration (`provider`, `voice_id`, `settings`, optional `rights_offering_id`). The offering ID is advisory provenance from `get_rights`, not a buyer-specific grant; resolve it through `acquire_rights` before synthesis. |
+| `voice_synthesis` | object | No | TTS voice synthesis configuration (`provider`, `voice_id`, `settings`, optional `rights_offering_id`). The offering ID is advisory provenance from [`get_rights`](/docs/brand-protocol/tasks/get_rights), not a buyer-specific grant; resolve it through [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights) before synthesis. |
 | `assets` | object[] | No | Available brand assets — matches brand.json asset shape (`asset_id`, `asset_type`, `url`, `tags`) |
 | `rights` | object | No | Rights availability summary (for pricing, use `get_rights`) |
 | `available_fields` | string[] | No | Sections available but not returned due to authorization level. Tells the caller what linking their account would unlock. |

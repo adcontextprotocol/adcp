@@ -455,26 +455,26 @@ The response includes setup details for each event source. The `setup` object te
 | `javascript` | JavaScript tag for website pages | Place in `<head>` of tracked pages |
 | `html` | HTML pixel/iframe | Place before `</body>` |
 | `pixel_url` | URL that fires on events | Send GET request on each event |
-| `server_only` | No client-side tag needed | Use `log_event` API directly |
+| `server_only` | No client-side tag needed | Use [`log_event`](/docs/media-buy/task-reference/log_event) API directly |
 
 ## Error Handling
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `ACCOUNT_NOT_FOUND` | Account does not exist | Verify `account_id` from account setup |
-| `INVALID_EVENT_TYPE` | Unrecognized event type | Check seller's `supported_event_types` in `get_adcp_capabilities` |
-| `DUPLICATE_EVENT_SOURCE_ID` | Multiple sources with same ID in request | Use unique `event_source_id` values |
-| `RATE_LIMITED` | Too many sync requests | Wait and retry with exponential backoff |
+| [`ACCOUNT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-account-not-found) | Account does not exist | Verify `account_id` from account setup |
+| [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | An event type is not included in the seller's `supported_event_types` | Choose a supported event type or another seller |
+| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | An `event_source_id` is duplicated in the request | Use unique source IDs |
+| [`RATE_LIMITED`](/docs/building/verification/compliance-catalog#error-code-rate-limited) | Too many sync requests | Wait and retry with exponential backoff |
 
 ## Best Practices
 
-1. **Sync before logging** - Always configure event sources before sending events via `log_event`. Events sent to unconfigured sources will be rejected.
+1. **Sync before logging** - Always configure event sources before sending events via [`log_event`](/docs/media-buy/task-reference/log_event). Events sent to unconfigured sources will be rejected.
 
 2. **Use descriptive IDs** - Choose `event_source_id` values that are meaningful (e.g. `web_pixel`, `app_sdk`, `crm_import`) rather than opaque identifiers.
 
 3. **Specify event_types** - Restrict each source to relevant event types for better validation and debugging.
 
-4. **Check seller capabilities** - Use `get_adcp_capabilities` to discover supported event types, UID types, and action sources before configuring event sources.
+4. **Check seller capabilities** - Use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) to discover supported event types, UID types, and action sources before configuring event sources.
 
 5. **Install setup snippets** - When the response includes `setup` instructions, install the provided snippet before logging events. Server-only sources (`snippet_type: "server_only"`) skip this step.
 

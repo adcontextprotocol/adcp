@@ -5,9 +5,9 @@ description: "Read seller product offers with structured discovery criteria."
 testable: true
 ---
 
-`list_products` is the side-effect-free entry point to the compact product lifecycle. It returns products only—never proposals—and always completes synchronously. Buyers can purchase a listed product directly or pass returned `product_id` values to `request_proposals` for seller planning.
+`list_products` is the side-effect-free entry point to the compact product lifecycle. It returns products only—never proposals—and always completes synchronously. Buyers can purchase a listed product directly or pass returned `product_id` values to [`request_proposals`](/docs/media-buy/task-reference/request_proposals) for seller planning.
 
-<!-- Using latest because this schema is not yet released. -->
+{/* Using latest because this schema is not yet released. */}
 **Request schema:** [`/schemas/latest/media-buy/list-products-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/list-products-request.json)
 
 ```json
@@ -23,6 +23,6 @@ testable: true
 }
 ```
 
-`brand` is an identity-only key. Sellers resolve its canonical manifest from the domain; callers do not send logos, colors, or governance overrides in this request. Catalog ingestion belongs to `sync_catalogs`; discovery accepts only a compact catalog selection under `criteria.catalog`.
+`brand` is an identity-only key. Sellers resolve its canonical manifest from the domain; callers do not send logos, colors, or governance overrides in this request. Catalog ingestion belongs to [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs); discovery accepts only a compact catalog selection under `criteria.catalog`.
 
 The compact criteria deliberately contain only offer characteristics, catalog selection, and policy requirements. The targeting-aware discovery contract is being developed separately in [PR #6203](https://github.com/adcontextprotocol/adcp/pull/6203), so this task does not advertise targeting fields before sellers can enforce them.
