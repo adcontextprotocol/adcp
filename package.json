@@ -175,7 +175,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.6.2",
     "file-type": "^22.0.1",
-    "google-auth-library": "^10.9.0",
+    "google-auth-library": "^11.0.0",
     "isomorphic-dompurify": "^3.22.0",
     "jose": "^6.2.8",
     "jsonwebtoken": "^9.0.3",
