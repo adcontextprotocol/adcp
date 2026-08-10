@@ -79,6 +79,14 @@ test('storyboard inventory rejects traversal, duplicates, and malformed prose', 
     () => loadGradedStoryboards({ universal: ['../outside'] }, complianceDir),
     /invalid universal storyboard slug/,
   );
+  fs.symlinkSync(
+    path.join(universalDir, 'valid-storyboard.yaml'),
+    path.join(universalDir, 'linked-storyboard.yaml'),
+  );
+  assert.throws(
+    () => loadGradedStoryboards({ universal: ['linked-storyboard'] }, complianceDir),
+    /must be a regular file/,
+  );
   assert.throws(
     () => loadGradedStoryboards({ universal: ['valid-storyboard', 'valid-storyboard'] }, complianceDir),
     /duplicate universal storyboard slug/,

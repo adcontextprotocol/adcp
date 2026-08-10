@@ -224,16 +224,27 @@ function loadGradedStoryboards(index, complianceDir = COMPLIANCE_DIR) {
     }
     seen.add(slug);
     const yamlPath = path.join(universalDir, `${slug}.yaml`);
-    let stat;
+    let descriptor;
     try {
-      stat = fs.lstatSync(yamlPath);
-    } catch {
-      throw new Error(`Compliance index references missing storyboard source: ${yamlPath}`);
-    }
-    if (!stat.isFile()) {
+      descriptor = fs.openSync(
+        yamlPath,
+        fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0),
+      );
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        throw new Error(`Compliance index references missing storyboard source: ${yamlPath}`);
+      }
       throw new Error(`Compliance storyboard source must be a regular file: ${yamlPath}`);
     }
-    const document = yaml.load(fs.readFileSync(yamlPath, 'utf8'));
+    let document;
+    try {
+      if (!fs.fstatSync(descriptor).isFile()) {
+        throw new Error(`Compliance storyboard source must be a regular file: ${yamlPath}`);
+      }
+      document = yaml.load(fs.readFileSync(descriptor, 'utf8'));
+    } finally {
+      fs.closeSync(descriptor);
+    }
     if (UNIVERSAL_SUPPORT_ARTIFACTS.has(slug)) {
       if (isPlainObject(document) && Array.isArray(document.phases)) {
         throw new Error(`Universal support artifact ${slug} unexpectedly declares graded phases`);

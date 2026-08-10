@@ -132,7 +132,22 @@ function expandImportedSnippets(content, section, filePath, repoRoot) {
       errors.push(`snippet import ${importPath} resolves outside the repository`);
       continue;
     }
-    snippets.push(fs.readFileSync(resolved, 'utf8'));
+    let descriptor;
+    try {
+      descriptor = fs.openSync(
+        realPath,
+        fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0),
+      );
+      if (!fs.fstatSync(descriptor).isFile()) {
+        errors.push(`snippet import ${importPath} is not a regular file`);
+        continue;
+      }
+      snippets.push(fs.readFileSync(descriptor, 'utf8'));
+    } catch {
+      errors.push(`snippet import ${importPath} could not be read safely`);
+    } finally {
+      if (descriptor !== undefined) fs.closeSync(descriptor);
+    }
   }
   return { content: [section, ...snippets].join('\n'), errors };
 }
