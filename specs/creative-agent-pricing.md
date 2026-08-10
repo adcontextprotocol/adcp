@@ -177,9 +177,9 @@ rate card. For agents with predetermined rate cards, this typically contains a s
 option.
 
 **Two pricing discovery surfaces.** `list_creatives` carries `pricing_options` for
-ad servers and library agents. `list_creative_formats` carries `pricing_options` for
-transformation and generation agents where the format is the product. An agent MAY
-expose pricing on both.
+ad servers and library agents. The shipped protocol uses `list_transformers` for
+account-scoped transformation and generation pricing. An agent MAY expose pricing on
+both surfaces.
 
 **Schema: vendor pricing option**
 
@@ -296,15 +296,15 @@ so this field is always available for usage reporting.
   The sales agent is the buyer in the creative agent relationship.
 - **`sync_creatives`** — asset sync is about getting creatives into a library. Pricing is
   discovered via `list_creatives`, not during sync.
-- **`list_creative_formats`** — now carries `pricing_options` per format for transformation/generation agents.
+- **`list_transformers`** — carries account-scoped `pricing_options` per transformer for transformation/generation agents.
 
 ### Pricing models by interaction model
 
 | Interaction model | Pricing surface | Likely models |
 |---|---|---|
 | Transformation (free) | None | N/A — stateless, no pricing |
-| Transformation (paid) | `list_creative_formats` + `build_creative` response | per_unit, cpm, flat_fee |
-| Generation (AI) | `list_creative_formats` + `build_creative` response | per_unit, flat_fee, cpm |
+| Transformation (paid) | `list_transformers` + `build_creative` response | per_unit, cpm, flat_fee |
+| Generation (AI) | `list_transformers` + `build_creative` response | per_unit, flat_fee, cpm |
 | Ad server (pre-loaded) | `list_creatives` + `build_creative` response | cpm, flat_fee |
 | Sales agent with creative | `list_creatives` + `build_creative` response | cpm, percent_of_media |
 
