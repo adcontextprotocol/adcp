@@ -16,7 +16,7 @@ import { createLogger } from "../logger.js";
 import { CachedPostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { optionalAuth } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
-import { AddieClaudeClient, type RequestTools } from "../addie/claude-client.js";
+import { AddieClaudeClient, type AddieResponse, type RequestTools } from "../addie/claude-client.js";
 import { sanitizeSpeakerName } from "../addie/prompts.js";
 import { resolveUserTierFromDb } from "../addie/claude-cost-tracker.js";
 import {
@@ -30,6 +30,8 @@ import {
   initializeKnowledgeSearch,
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
+  createSlackKnowledgeRequestTools,
+  isSlackKnowledgeTool,
 } from "../addie/mcp/knowledge-search.js";
 import { ANONYMOUS_SAFE_KNOWLEDGE_TOOLS } from "../mcp/chat-tool.js";
 import {
@@ -112,6 +114,11 @@ import {
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { siRetriever, type RetrievedSIAgent } from "../addie/services/si-retriever.js";
 import { AddieModelConfig } from "../config/models.js";
+import {
+  getCertificationExperienceForClientRequest,
+  getCertificationModuleExperience,
+  recordCertificationExperienceEvent,
+} from "../services/certification-experience.js";
 import {
   getWebMemberContext,
   formatMemberContextForPrompt,
@@ -260,7 +267,7 @@ export function ensureNonEmptyAssistantResponse(
  * Merge per-request member tools with cached authenticated-only tools,
  * and select model + iteration limits based on auth status.
  */
-export function buildTieredAccess(memberTools: RequestTools, isAuth: boolean) {
+export function buildTieredAccess(memberTools: RequestTools, isAuth: boolean, isCertification = false) {
   let requestTools = memberTools;
   if (isAuth && authenticatedOnlyTools) {
     // Per-request member tools (with memberContext) must override cached auth tools
@@ -275,9 +282,11 @@ export function buildTieredAccess(memberTools: RequestTools, isAuth: boolean) {
     };
   }
   const processOptions = isAuth
-    ? {}
+    ? (isCertification ? { modelOverride: AddieModelConfig.certification } : {})
     : { modelOverride: AddieModelConfig.anonymousChat, maxIterations: ANONYMOUS_MAX_ITERATIONS };
-  const effectiveModel = isAuth ? AddieModelConfig.chat : AddieModelConfig.anonymousChat;
+  const effectiveModel = isAuth
+    ? (isCertification ? AddieModelConfig.certification : AddieModelConfig.chat)
+    : AddieModelConfig.anonymousChat;
   return { requestTools, processOptions, effectiveModel };
 }
 
@@ -325,8 +334,13 @@ async function initializeChatClient(): Promise<void> {
   // user-submitted resources and strips Addie-generated notes) and full
   // (for the authenticated-only set). The split happens at handler-creation
   // time because handler closures don't carry per-call scope.
-  const anonymousKnowledgeHandlers = createKnowledgeToolHandlers(undefined, { anonymous: true });
-  const authedKnowledgeHandlers = createKnowledgeToolHandlers();
+  const anonymousKnowledgeHandlers = createKnowledgeToolHandlers({
+    anonymous: true,
+    slackAccess: { kind: 'public-only' },
+  });
+  const authedKnowledgeHandlers = createKnowledgeToolHandlers({
+    slackAccess: { kind: 'public-only' },
+  });
 
   // Register anonymous-safe knowledge tools globally — search_docs, get_doc,
   // search_repos, search_resources, get_recent_news. All read-only over public
@@ -354,6 +368,7 @@ async function initializeChatClient(): Promise<void> {
   // restricted handler globally, authenticated users get the full handler
   // via this per-request override.
   for (const tool of KNOWLEDGE_TOOLS) {
+    if (isSlackKnowledgeTool(tool)) continue;
     const handler = authedKnowledgeHandlers.get(tool.name);
     if (!handler) continue;
     if (ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.has(tool.name)) {
@@ -520,7 +535,56 @@ export interface PreparedRequest {
   siRetrievalTimeMs: number | null;
   siAgents: RetrievedSIAgent[];
   hasCertificationContext: boolean;
+  hasThreadCertificationContext: boolean;
+  certificationModuleContext: { moduleId?: string };
+  certificationProgress: certDb.LearnerProgress[];
   threadExternalId: string;
+}
+
+export function resolveThreadCertificationProgress(
+  progress: Array<Pick<certDb.LearnerProgress, 'module_id' | 'status' | 'addie_thread_id' | 'completed_at'>>,
+  threadExternalId: string,
+  threadId?: string,
+) {
+  const matches = progress.filter(item =>
+    Boolean(item.addie_thread_id)
+    && (item.addie_thread_id === threadExternalId || item.addie_thread_id === threadId),
+  );
+  return matches.find(item => item.status === 'in_progress') ?? matches[0];
+}
+
+export async function resolveCompletionModuleId(
+  execution: { tool_name: string; parameters?: Record<string, unknown> } | undefined,
+  userId: string | null | undefined,
+  threadContextModuleId: string | undefined,
+): Promise<string | undefined> {
+  const explicitModuleId = execution?.parameters?.module_id;
+  if (typeof explicitModuleId === 'string') {
+    return explicitModuleId.toUpperCase();
+  }
+
+  if (execution?.tool_name !== 'complete_certification_exam' || !userId) {
+    return threadContextModuleId;
+  }
+
+  const attemptId = execution.parameters?.attempt_id;
+  if (typeof attemptId !== 'string') {
+    return threadContextModuleId;
+  }
+
+  // The exam tool accepts a module ID as a recovery shorthand. Otherwise use
+  // the owned attempt as the authoritative source; its module can differ from
+  // the thread's previously active teaching context.
+  const normalizedAttemptId = attemptId.toUpperCase();
+  if (/^[A-Z]{1,2}[0-9]+$/.test(normalizedAttemptId)) {
+    return normalizedAttemptId;
+  }
+  if (!uuidValidate(attemptId)) {
+    return threadContextModuleId;
+  }
+
+  const attempt = await certDb.getAttemptForUser(attemptId, userId);
+  return attempt?.module_id?.toUpperCase() ?? threadContextModuleId;
 }
 
 interface SiSessionData {
@@ -649,10 +713,22 @@ export async function prepareRequestWithMemberTools(
   // Add certification module state so Addie remembers active modules
   // even when conversation history is trimmed
   let hasCertificationContext = false;
+  let hasThreadCertificationContext = false;
+  let certificationModuleId: string | undefined;
+  let certificationProgress: certDb.LearnerProgress[] = [];
   if (memberContext?.workos_user?.workos_user_id) {
     try {
       const progress = await certDb.getProgress(memberContext.workos_user.workos_user_id);
+      certificationProgress = progress;
       const inProgress = progress.filter(p => p.status === 'in_progress');
+      const threadProgress = resolveThreadCertificationProgress(progress, threadExternalId, threadId);
+      const recentlyCompleted = threadProgress?.status === 'completed'
+        && threadProgress.completed_at
+        && Date.now() - new Date(threadProgress.completed_at).getTime() < 24 * 60 * 60 * 1000;
+      certificationModuleId = threadProgress?.status === 'in_progress' || recentlyCompleted
+        ? threadProgress.module_id
+        : undefined;
+      hasThreadCertificationContext = threadProgress?.status === 'in_progress';
       const certContext = await buildCertificationContext(inProgress, memberContext.workos_user.workos_user_id);
       if (certContext) {
         contextSections.push(certContext);
@@ -664,6 +740,9 @@ export async function prepareRequestWithMemberTools(
   }
 
   const requestContext = contextSections.join('\n\n');
+  const trainingModuleContext: { moduleId?: string } = {
+    moduleId: certificationModuleId,
+  };
 
   // Anonymous users get no per-request tools (saves tokens and prevents data leakage)
   if (!isAuthenticated) {
@@ -675,6 +754,9 @@ export async function prepareRequestWithMemberTools(
       siRetrievalTimeMs,
       siAgents: siRetrievalResult.agents,
       hasCertificationContext: false,
+      hasThreadCertificationContext: false,
+      certificationModuleContext: trainingModuleContext,
+      certificationProgress,
       threadExternalId,
     };
   }
@@ -684,20 +766,28 @@ export async function prepareRequestWithMemberTools(
 
   // Create per-request tools (same tools as Slack, minus Slack-specific ones)
   // Re-register billing with memberContext so org-scoped operations work (overrides baseline)
-  const trainingModuleContext: { moduleId?: string } = {
-    moduleId: memberContext?.certification?.status === 'in_progress'
-      ? memberContext.certification.module_id ?? undefined
-      : undefined,
-  };
   const allTools = [...MEMBER_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS, ...IMAGE_TOOLS];
   const combinedHandlers = new Map([
-    ...createMemberToolHandlers(memberContext),
+    ...createMemberToolHandlers(memberContext, undefined, trainingModuleContext),
     ...createSiHostToolHandlers(() => memberContext, () => threadExternalId),
     ...createAdcpToolHandlers(memberContext, trainingModuleContext),
     ...createEscalationToolHandlers(memberContext, linkedSlackUserId, threadId),
     ...createBillingToolHandlers(memberContext),
     ...createImageToolHandlers(linkedSlackUserId, threadExternalId),
   ]);
+
+  // Slack history is always request-scoped. A linked Slack identity may see
+  // its allowed private channels; an authenticated-but-unlinked web user gets
+  // an explicit public-only scope.
+  const slackKnowledge = createSlackKnowledgeRequestTools(
+    linkedSlackUserId
+      ? { kind: 'slack-user', slackUserId: linkedSlackUserId }
+      : { kind: 'public-only' },
+  );
+  allTools.push(...slackKnowledge.tools);
+  for (const [name, handler] of slackKnowledge.handlers) {
+    combinedHandlers.set(name, handler);
+  }
 
   // Certification tools (for authenticated users)
   if (userId) {
@@ -711,12 +801,12 @@ export async function prepareRequestWithMemberTools(
   }
 
   // Auth graders — RFC 9421 signing + OAuth handshake diagnosis. Authenticated
-  // users only on the web path; each call spawns a child Node process and
-  // makes outbound HTTP probes from the server, so we keep it gated behind a
+  // users only on the web path; signing grades spawn a child Node process and
+  // both tools make outbound HTTP probes, so we keep them gated behind a
   // signed-in identity. (The Slack path in bolt-app.ts is always authenticated.)
   if (userId) {
     allTools.push(...AUTH_GRADER_TOOLS);
-    for (const [name, handler] of createAuthGraderToolHandlers()) {
+    for (const [name, handler] of createAuthGraderToolHandlers(userId)) {
       combinedHandlers.set(name, handler);
     }
   }
@@ -797,6 +887,9 @@ export async function prepareRequestWithMemberTools(
     siRetrievalTimeMs,
     siAgents: siRetrievalResult.agents,
     hasCertificationContext,
+    hasThreadCertificationContext,
+    certificationModuleContext: trainingModuleContext,
+    certificationProgress,
     threadExternalId,
   };
 }
@@ -962,6 +1055,15 @@ export function createAddieChatRouter(options?: {
         if (!thread || !canAccessWebThread(req, thread)) {
           return res.status(404).json({ error: "Conversation not found" });
         }
+        if (req.user?.id && thread.user_type === 'anonymous') {
+          const anonymousOwnerId = readAnonymousThreadOwner(req);
+          thread = anonymousOwnerId
+            ? await threadService.claimAnonymousThread(
+                thread.thread_id, anonymousOwnerId, req.user.id, req.user.firstName ?? undefined,
+              )
+            : null;
+          if (!thread) return res.status(404).json({ error: "Conversation not found" });
+        }
       }
 
       // Get conversation history for context
@@ -999,7 +1101,10 @@ export function createAddieChatRouter(options?: {
       // data so they are reconstructed as proper tool_use/tool_result API blocks.
       // Token-aware trimming in processMessage handles length; no hard slice here.
       const contextMessages = threadMessages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .filter((m) =>
+          (m.role === 'user' || m.role === 'assistant')
+          && m.delivery_status !== 'interrupted',
+        )
         .map((m) => ({
           user: m.role === 'assistant' ? 'Addie' : (m.user_display_name || 'User'),
           text: m.content,
@@ -1011,7 +1116,12 @@ export function createAddieChatRouter(options?: {
       const isAuth = !!req.user;
 
       // Prepare message with member context and per-request tools
-      const { messageToProcess, requestContext, requestTools: memberTools, hasCertificationContext } = await prepareRequestWithMemberTools(
+      const {
+        messageToProcess,
+        requestContext,
+        requestTools: memberTools,
+        hasThreadCertificationContext,
+      } = await prepareRequestWithMemberTools(
         inputValidation.sanitized,
         req.user?.id,
         externalId,
@@ -1019,7 +1129,11 @@ export function createAddieChatRouter(options?: {
         thread.thread_id,
         typeof organization_id === 'string' ? organization_id : null
       );
-      const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth);
+      const { requestTools, processOptions, effectiveModel } = buildTieredAccess(
+        memberTools,
+        isAuth,
+        hasThreadCertificationContext,
+      );
 
       // Cost-cap scope (#2790 / #2945 f/u). Authenticated callers key
       // off the WorkOS user ID and resolve their tier from
@@ -1044,7 +1158,9 @@ export function createAddieChatRouter(options?: {
           userDisplayName: displayName || undefined,
           currentSpeakerName: displayName || undefined,
           inputAttachments: attachments,
-          costScope: authedScope ?? { userId: `anon:${hashIp(req.ip)}`, tier: 'anonymous' as const },
+          costScope: authedScope
+            ? authedScope
+            : { userId: `anon:${hashIp(req.ip)}`, tier: 'anonymous' as const },
         });
       } catch (error) {
         // Provide user-friendly error message based on error type
@@ -1170,9 +1286,12 @@ export function createAddieChatRouter(options?: {
 
     // Track connection state
     let connectionClosed = false;
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
+    let claimedTurn: { threadId: string; clientRequestId: string; leaseId: string } | null = null;
+    let terminalResponse: AddieResponse | undefined;
 
     // Handle client disconnect
-    req.on("close", () => {
+    res.on("close", () => {
       connectionClosed = true;
       logger.debug("Addie Chat Stream: Client disconnected");
     });
@@ -1197,8 +1316,26 @@ export function createAddieChatRouter(options?: {
         });
       }
 
-      const { message, conversation_id, user_name, message_source: rawMessageSourceStream, attachments: rawAttachmentsStream, organization_id } = req.body;
+      const {
+        message,
+        conversation_id,
+        user_name,
+        message_source: rawMessageSourceStream,
+        attachments: rawAttachmentsStream,
+        organization_id,
+        client_request_id,
+        retry,
+      } = req.body;
       const attachments = validateChatAttachments(rawAttachmentsStream);
+      const clientRequestId = typeof client_request_id === 'string' ? client_request_id : null;
+      const retryRequested = retry === true;
+
+      if (clientRequestId && !uuidValidate(clientRequestId)) {
+        return res.status(400).json({ error: 'client_request_id must be a valid UUID' });
+      }
+      if (retryRequested && !clientRequestId) {
+        return res.status(400).json({ error: 'client_request_id is required when retry is true' });
+      }
 
       if (typeof message !== "string" || (!message.trim() && attachments.length === 0)) {
         return res.status(400).json({ error: "Message is required" });
@@ -1272,6 +1409,67 @@ export function createAddieChatRouter(options?: {
         if (!thread || !canAccessWebThread(req, thread)) {
           return res.status(404).json({ error: "Conversation not found" });
         }
+        if (req.user?.id && thread.user_type === 'anonymous') {
+          const anonymousOwnerId = readAnonymousThreadOwner(req);
+          thread = anonymousOwnerId
+            ? await threadService.claimAnonymousThread(
+                thread.thread_id, anonymousOwnerId, req.user.id, req.user.firstName ?? undefined,
+              )
+            : null;
+          if (!thread) return res.status(404).json({ error: "Conversation not found" });
+        }
+      }
+
+      const requestMessages = clientRequestId
+        ? await threadService.getMessagesByClientRequestId(thread.thread_id, clientRequestId)
+        : [];
+      const existingUserMessage = requestMessages.find(m => m.role === 'user');
+      const completedAssistantMessage = [...requestMessages]
+        .reverse()
+        .find(m => m.role === 'assistant' && m.delivery_status === 'completed');
+
+      if (existingUserMessage && existingUserMessage.content !== messageForStorage) {
+        return res.status(409).json({
+          error: 'client_request_id conflict',
+          message: 'That retry identifier belongs to a different message. Please send this as a new turn.',
+        });
+      }
+      if (retryRequested && !existingUserMessage) {
+        return res.status(409).json({
+          error: 'Original turn not found',
+          message: 'The original turn is no longer available to retry. Please send it as a new message.',
+        });
+      }
+
+      // The message uniqueness constraint prevents duplicate storage; this
+      // lease prevents duplicate model/tool execution while a turn is active.
+      if (!completedAssistantMessage && clientRequestId) {
+        const claim = await threadService.claimClientTurn(
+          thread.thread_id,
+          clientRequestId,
+          retryRequested,
+        );
+        if (claim.state !== 'claimed') {
+          const messages = claim.state === 'completed'
+            ? await threadService.getMessagesByClientRequestId(thread.thread_id, clientRequestId)
+            : [];
+          const completed = [...messages].reverse().find(
+            m => m.role === 'assistant' && m.delivery_status === 'completed',
+          );
+          if (completed) {
+            return res.status(409).json({
+              error: 'turn_already_completed',
+              message: 'This reply has already completed. Reload the conversation to view it.',
+            });
+          }
+          return res.status(409).json({
+            error: claim.state === 'processing' ? 'turn_in_progress' : 'turn_not_retryable',
+            message: claim.state === 'processing'
+              ? 'This reply is still being generated. Please wait a moment and reload.'
+              : 'Only an interrupted reply can be continued with this retry identifier.',
+          });
+        }
+        claimedTurn = { threadId: thread.thread_id, clientRequestId, leaseId: claim.leaseId! };
       }
 
       // Do not commit the SSE response until ownership has been checked.
@@ -1280,28 +1478,60 @@ export function createAddieChatRouter(options?: {
       res.setHeader("Connection", "keep-alive");
       res.setHeader("X-Accel-Buffering", "no");
       res.flushHeaders();
+      heartbeat = setInterval(() => {
+        if (!connectionClosed) res.write(': keep-alive\n\n');
+        const turn = claimedTurn;
+        if (turn) {
+          void threadService.renewClientTurnLease(
+            turn.threadId,
+            turn.clientRequestId,
+            turn.leaseId,
+          ).catch(error => logger.error({ error }, 'Failed to renew chat turn lease'));
+        }
+      }, 15_000);
 
       // Send conversation_id immediately so client can track it
       sendEvent("meta", { conversation_id: externalId });
+
+      // A browser may retry after losing the final SSE packet even though the
+      // assistant response committed. Replay the authoritative stored result
+      // instead of sampling the model or executing tools again.
+      if (completedAssistantMessage) {
+        const certification = userId && clientRequestId
+          ? await getCertificationExperienceForClientRequest(userId, clientRequestId)
+          : null;
+        sendEvent('text', { text: completedAssistantMessage.content, replayed: true });
+        sendEvent('done', {
+          conversation_id: externalId,
+          message_id: completedAssistantMessage.message_id,
+          replayed: true,
+          certification,
+        });
+        res.end();
+        return;
+      }
 
       // Get conversation history
       const threadMessages = await threadService.getThreadMessages(thread.thread_id, { limit: 100 });
 
       // Save user message
-      await threadService.addMessage({
-        thread_id: thread.thread_id,
-        role: 'user',
-        content: messageForStorage,
-        content_sanitized: inputValidation.sanitized,
-        flagged: inputValidation.flagged,
-        flag_reason: inputValidation.reason,
-        user_id: userId || undefined,
-        user_display_name: displayName || undefined,
-        message_source: messageSourceStream,
-      });
+      if (!existingUserMessage) {
+        await threadService.addMessage({
+          thread_id: thread.thread_id,
+          role: 'user',
+          content: messageForStorage,
+          content_sanitized: inputValidation.sanitized,
+          flagged: inputValidation.flagged,
+          flag_reason: inputValidation.reason,
+          user_id: userId || undefined,
+          user_display_name: displayName || undefined,
+          message_source: messageSourceStream,
+          client_request_id: clientRequestId || undefined,
+        });
+      }
 
       // Record inbound message in the relationship system
-      if (userId) {
+      if (userId && !existingUserMessage) {
         try {
           const personId = await relationshipDb.resolvePersonId({ workos_user_id: userId });
           await relationshipDb.recordPersonMessage(personId, 'web');
@@ -1321,7 +1551,11 @@ export function createAddieChatRouter(options?: {
       // Build context messages, passing tool calls as structured data
       // Token-aware trimming in processMessageStream handles length; no hard slice here.
       const contextMessages = threadMessages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .filter((m) =>
+          (m.role === 'user' || m.role === 'assistant')
+          && (m.delivery_status !== 'interrupted'
+            || (retryRequested && m.client_request_id === clientRequestId)),
+        )
         .map((m) => ({
           user: m.role === 'assistant' ? 'Addie' : (m.user_display_name || 'User'),
           text: m.content,
@@ -1333,19 +1567,57 @@ export function createAddieChatRouter(options?: {
       const isAuth = !!req.user;
 
       // Prepare message with member context and per-request tools
-      const { messageToProcess, requestContext, requestTools: memberTools, siAgents, hasCertificationContext: hasCertCtx } = await prepareRequestWithMemberTools(
-        inputValidation.sanitized,
+      const messageForModel = retryRequested
+        ? 'Continue the interrupted reply from the stored tool results. Do not repeat any completed action. Give the learner the result and next step.'
+        : inputValidation.sanitized;
+      const {
+        messageToProcess,
+        requestContext,
+        requestTools: memberTools,
+        siAgents,
+        hasThreadCertificationContext: hasThreadCertCtx,
+        certificationModuleContext,
+        certificationProgress,
+      } = await prepareRequestWithMemberTools(
+        messageForModel,
         req.user?.id,
         externalId,
         isAuth,
         thread.thread_id,
         typeof organization_id === 'string' ? organization_id : null
       );
-      const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth);
+      const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth, hasThreadCertCtx);
+      const preTurnCertification = userId && certificationModuleContext.moduleId
+        ? await getCertificationModuleExperience(userId, certificationModuleContext.moduleId)
+        : null;
+      const completionReserveEligible = hasThreadCertCtx
+        && (retryRequested
+          || preTurnCertification?.status === 'evidence_complete'
+          || preTurnCertification?.checkpoint?.current_phase === 'assessment');
+      if (userId && hasThreadCertCtx) {
+        await recordCertificationExperienceEvent({
+          userId,
+          moduleId: certificationModuleContext.moduleId,
+          threadId: externalId,
+          eventType: 'chat_turn_started',
+          clientRequestId,
+          metadata: { model: effectiveModel, retry: retryRequested },
+        });
+        if (retryRequested) {
+          await recordCertificationExperienceEvent({
+            userId,
+            moduleId: certificationModuleContext.moduleId,
+            threadId: externalId,
+            eventType: 'chat_turn_retry_requested',
+            clientRequestId,
+            metadata: { model: effectiveModel },
+          });
+        }
+      }
 
       // Stream the response — certification sessions get more conversation history
       let fullText = '';
-      let response;
+      let response: AddieResponse | undefined;
       const toolsUsed: string[] = [];
 
       // Cost cap — see matching block in the non-streaming path.
@@ -1355,22 +1627,23 @@ export function createAddieChatRouter(options?: {
 
       for await (const event of activeChatClient.processMessageStream(messageToProcess, contextMessages, requestTools, {
         ...processOptions,
+        ...(completionReserveEligible ? { maxIterations: 3, maxMessages: 12 } : {}),
         requestContext,
         threadId: thread.thread_id,
-          userDisplayName: displayName || undefined,
-          currentSpeakerName: displayName || undefined,
-          inputAttachments: attachments,
-          ...(streamAuthedScope
-          ? { costScope: streamAuthedScope }
+        userDisplayName: displayName || undefined,
+        currentSpeakerName: displayName || undefined,
+        inputAttachments: attachments,
+        ...(streamAuthedScope
+          ? { costScope: {
+              ...streamAuthedScope,
+              ...(completionReserveEligible ? { certificationReserveUsd: 1 } : {}),
+            } }
           : externalId
             ? { costScope: { userId: `anon:${externalId}`, tier: 'anonymous' as const } }
             : {}),
       })) {
-        // Break early if client disconnected (still save partial response below)
-        if (connectionClosed) {
-          logger.info("Addie Chat Stream: Breaking loop due to client disconnect");
-          break;
-        }
+        // Deliberately keep consuming after a disconnect. The completed result
+        // is persisted and the same client_request_id can replay it on reconnect.
 
         if (event.type === 'text') {
           fullText += event.text;
@@ -1387,30 +1660,121 @@ export function createAddieChatRouter(options?: {
             reason: event.reason,
           });
         } else if (event.type === 'stream_error') {
-          // Mid-stream upstream failure after partial delivery (#4797). Forward
-          // to the SSE client so it can render a Retry affordance, then end
-          // the response. The underlying throw on the next iteration is caught
-          // by the outer handler — persistence is already skipped because we
-          // never reach addMessage on this path. The partial fullText is
-          // discarded by virtue of returning here.
+          // Mid-stream upstream failure after partial delivery (#4797). Save a
+          // non-displayable audit attempt (including completed tool results),
+          // then give the browser an idempotent continuation affordance. The
+          // partial prose is deliberately excluded from future history.
           logger.warn(
             { reason: event.reason, deltasBeforeError: event.deltasBeforeError, fullTextLength: fullText.length },
             'Addie Chat Stream: Stream interrupted mid-reply — discarding partial turn'
           );
+          const moduleId = certificationModuleContext.moduleId;
+          const certification = userId && moduleId
+            ? await getCertificationModuleExperience(userId, moduleId)
+            : null;
+          await threadService.addMessage({
+            thread_id: thread.thread_id,
+            role: 'assistant',
+            content: 'Reply interrupted before completion. The learner can safely retry this turn.',
+            tools_used: event.tool_executions.map(execution => execution.tool_name),
+            tool_calls: event.tool_executions.map(execution => ({
+              name: execution.tool_name,
+              input: execution.parameters,
+              result: execution.result,
+              duration_ms: execution.duration_ms,
+              is_error: execution.is_error,
+            })),
+            model: effectiveModel,
+            flagged: true,
+            flag_reason: `stream_interrupted: ${event.reason}`,
+            client_request_id: clientRequestId || undefined,
+            delivery_status: 'interrupted',
+            client_turn_lease_id: claimedTurn?.leaseId,
+            finalize_client_turn_status: claimedTurn ? 'interrupted' : undefined,
+          });
+          claimedTurn = null;
+          if (userId && moduleId) {
+            await recordCertificationExperienceEvent({
+              userId,
+              moduleId,
+              threadId: externalId,
+              eventType: 'chat_turn_interrupted',
+              clientRequestId,
+              metadata: {
+                reason: event.reason,
+                tools_executed: event.tool_executions.map(execution => execution.tool_name),
+                model: effectiveModel,
+              },
+            });
+          }
           sendEvent("stream_error", {
             reason: event.reason,
             deltasBeforeError: event.deltasBeforeError,
             recoverable: true,
+            certification,
           });
           res.end();
           return;
         } else if (event.type === 'done') {
           response = event.response;
+          terminalResponse = event.response;
         } else if (event.type === 'error') {
-          sendEvent("error", { error: event.error });
+          if (claimedTurn) {
+            await threadService.addMessage({
+              thread_id: claimedTurn.threadId,
+              role: 'assistant',
+              content: 'Reply interrupted before completion. The learner can safely retry this turn.',
+              flagged: true,
+              flag_reason: `stream_interrupted: ${event.error}`,
+              client_request_id: claimedTurn.clientRequestId,
+              delivery_status: 'interrupted',
+              client_turn_lease_id: claimedTurn.leaseId,
+              finalize_client_turn_status: 'interrupted',
+            });
+            claimedTurn = null;
+          }
+          sendEvent("stream_error", { error: event.error, recoverable: true });
           res.end();
           return;
         }
+      }
+
+      if (!response) {
+        const moduleId = certificationModuleContext.moduleId;
+        const certification = userId && moduleId
+          ? await getCertificationModuleExperience(userId, moduleId)
+          : null;
+        await threadService.addMessage({
+          thread_id: thread.thread_id,
+          role: 'assistant',
+          content: 'Reply interrupted before completion. The learner can safely retry this turn.',
+          tools_used: toolsUsed.length > 0 ? toolsUsed : undefined,
+          model: effectiveModel,
+          flagged: true,
+          flag_reason: 'stream_interrupted: ended_without_done',
+          client_request_id: clientRequestId || undefined,
+          delivery_status: 'interrupted',
+          client_turn_lease_id: claimedTurn?.leaseId,
+          finalize_client_turn_status: claimedTurn ? 'interrupted' : undefined,
+        });
+        claimedTurn = null;
+        if (userId && moduleId) {
+          await recordCertificationExperienceEvent({
+            userId,
+            moduleId,
+            threadId: externalId,
+            eventType: 'chat_turn_interrupted',
+            clientRequestId,
+            metadata: { reason: 'ended_without_done', model: effectiveModel },
+          });
+        }
+        sendEvent('stream_error', {
+          reason: 'Reply ended before completion',
+          recoverable: true,
+          certification,
+        });
+        res.end();
+        return;
       }
 
       const finalStreamText = fullText.trim() ? fullText : response?.text;
@@ -1468,7 +1832,130 @@ export function createAddieChatRouter(options?: {
         tokens_cache_read: response?.usage?.cache_read_input_tokens,
         active_rule_ids: response?.active_rule_ids,
         config_version_id: response?.config_version_id,
+        client_request_id: clientRequestId || undefined,
+        delivery_status: 'completed',
+        client_turn_lease_id: claimedTurn?.leaseId,
+        finalize_client_turn_status: claimedTurn ? 'completed' : undefined,
       });
+      claimedTurn = null;
+
+      const completionExecution = response?.tool_executions?.find(execution =>
+        execution.tool_name === 'complete_certification_module'
+        || execution.tool_name === 'complete_certification_exam');
+      const activeModuleId = await resolveCompletionModuleId(
+        completionExecution,
+        userId,
+        certificationModuleContext.moduleId,
+      );
+      const preCompletionProgress = activeModuleId
+        ? certificationProgress.find(item => item.module_id === activeModuleId)
+        : undefined;
+      const certification = userId && activeModuleId
+        ? await getCertificationModuleExperience(userId, activeModuleId)
+        : null;
+      if (userId && activeModuleId) {
+        // A module can begin during this turn, so it was not present in the
+        // pre-model member context. Backfill the matching start event once the
+        // tool has bound the module to the thread.
+        if (!hasThreadCertCtx) {
+          await recordCertificationExperienceEvent({
+            userId,
+            moduleId: activeModuleId,
+            threadId: externalId,
+            eventType: 'chat_turn_started',
+            clientRequestId,
+            metadata: { model: effectiveModel, module_started_during_turn: true },
+          });
+        }
+        const capacityBlocked = response?.flag_reason === 'cost_cap_exceeded';
+        await recordCertificationExperienceEvent({
+          userId,
+          moduleId: activeModuleId,
+          threadId: externalId,
+          eventType: capacityBlocked ? 'capacity_blocked' : 'chat_turn_completed',
+          clientRequestId,
+          metadata: { model: effectiveModel, latency_ms: latencyMs },
+        });
+        if (response?.capacity?.certification_reserve_used) {
+          await recordCertificationExperienceEvent({
+            userId,
+            moduleId: activeModuleId,
+            threadId: externalId,
+            eventType: 'completion_reserve_used',
+            clientRequestId,
+            metadata: { model: effectiveModel },
+          });
+        }
+        if (certification?.status === 'evidence_complete') {
+          await recordCertificationExperienceEvent({
+            userId,
+            moduleId: activeModuleId,
+            threadId: externalId,
+            eventType: 'module_evidence_complete',
+            clientRequestId,
+            metadata: { model: effectiveModel },
+          });
+        }
+        // Tool invocation alone is not success: completion tools return normal
+        // explanatory text when a server-side gate rejects the attempt.
+        if (completionExecution
+            && certification?.status === 'completed'
+            && preCompletionProgress?.status !== 'completed'
+            && preCompletionProgress?.status !== 'tested_out') {
+          const completedAt = new Date().toISOString();
+          await recordCertificationExperienceEvent({
+            userId,
+            moduleId: activeModuleId,
+            threadId: externalId,
+            eventType: 'module_completed',
+            clientRequestId,
+            metadata: { completed_at: completedAt, model: effectiveModel },
+          });
+          if (certification?.credential.state === 'issued') {
+            await recordCertificationExperienceEvent({
+              userId,
+              moduleId: activeModuleId,
+              threadId: externalId,
+              eventType: 'credential_issued',
+              clientRequestId,
+              metadata: { module_completed_at: completedAt, model: effectiveModel },
+            });
+          } else if (certification?.credential.state === 'processing') {
+            await recordCertificationExperienceEvent({
+              userId,
+              moduleId: activeModuleId,
+              threadId: externalId,
+              eventType: 'credential_processing',
+              clientRequestId,
+              metadata: { module_completed_at: completedAt, model: effectiveModel },
+            });
+          } else if (certification?.credential.state === 'action_required') {
+            await recordCertificationExperienceEvent({
+              userId,
+              moduleId: activeModuleId,
+              threadId: externalId,
+              eventType: 'credential_action_required',
+              clientRequestId,
+              metadata: { module_completed_at: completedAt, model: effectiveModel },
+            });
+          }
+        }
+        if (!completionExecution
+            && certification?.credential.state === 'issued'
+            && preTurnCertification?.credential.state !== 'issued') {
+          await recordCertificationExperienceEvent({
+            userId,
+            moduleId: activeModuleId,
+            threadId: externalId,
+            eventType: 'credential_issued',
+            clientRequestId,
+            metadata: {
+              resolved_previous_state: preTurnCertification?.credential.state ?? null,
+              model: effectiveModel,
+            },
+          });
+        }
+      }
 
       // Check for SI session started (from connect_to_si_agent tool)
       const siSession = withSiAnonymousCapability(
@@ -1484,6 +1971,7 @@ export function createAddieChatRouter(options?: {
         timing: response?.timing,
         usage: response?.usage,
         latency_ms: latencyMs,
+        certification,
         si_session: siSession,
         si_agents: !siSession && siAgents.length > 0 ? siAgents.map(a => ({
           slug: a.slug,
@@ -1495,6 +1983,32 @@ export function createAddieChatRouter(options?: {
       res.end();
     } catch (error) {
       logger.error({ err: error }, "Addie Chat Stream: Error handling message");
+      if (claimedTurn) {
+        try {
+          await threadService.addMessage({
+            thread_id: claimedTurn.threadId,
+            role: 'assistant',
+            content: 'Reply interrupted before completion. The learner can safely retry this turn.',
+            tools_used: terminalResponse?.tool_executions?.map(execution => execution.tool_name),
+            tool_calls: terminalResponse?.tool_executions?.map(execution => ({
+              name: execution.tool_name,
+              input: execution.parameters,
+              result: execution.result,
+              duration_ms: execution.duration_ms,
+              is_error: execution.is_error,
+            })),
+            flagged: true,
+            flag_reason: 'stream_interrupted: route_error',
+            client_request_id: claimedTurn.clientRequestId,
+            delivery_status: 'interrupted',
+            client_turn_lease_id: claimedTurn.leaseId,
+            finalize_client_turn_status: 'interrupted',
+          });
+          claimedTurn = null;
+        } catch (statusError) {
+          logger.error({ statusError }, 'Failed to release interrupted chat turn lease');
+        }
+      }
       if (!res.headersSent) {
         if (error instanceof ChatAttachmentValidationError) {
           return res.status(error.statusCode).json({ error: ATTACHMENT_VALIDATION_CLIENT_MESSAGE });
@@ -1505,9 +2019,11 @@ export function createAddieChatRouter(options?: {
         logger.warn({ reason: error.message }, "Addie Chat Stream: Invalid attachment");
         sendEvent("error", { error: ATTACHMENT_VALIDATION_CLIENT_MESSAGE });
       } else {
-        sendEvent("error", { error: "Internal server error" });
+        sendEvent("stream_error", { error: "Internal server error", recoverable: true });
       }
       res.end();
+    } finally {
+      if (heartbeat) clearInterval(heartbeat);
     }
   });
 
@@ -1726,9 +2242,12 @@ export function createAddieChatRouter(options?: {
       const limit = Number.isSafeInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 200) : 100;
       const offset = Number.isSafeInteger(requestedOffset) ? Math.min(requestedOffset, 10_000) : 0;
 
-      const threadMessages = await threadService.getThreadMessages(thread.thread_id, { limit, offset });
+      const [threadMessages, recoverableTurn] = await Promise.all([
+        threadService.getThreadMessages(thread.thread_id, { limit, offset }),
+        channel === 'web' ? threadService.getRecoverableClientTurn(thread.thread_id) : Promise.resolve(null),
+      ]);
       const messages: ConversationMessage[] = threadMessages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.delivery_status !== 'interrupted')
         .map((m) => ({
           role: m.role as 'user' | 'assistant',
           content: m.content,
@@ -1748,6 +2267,11 @@ export function createAddieChatRouter(options?: {
         limit,
         offset,
         messages,
+        recoverable_turn: recoverableTurn ? {
+          client_request_id: recoverableTurn.client_request_id,
+          message: recoverableTurn.content,
+          message_source: recoverableTurn.message_source ?? 'typed',
+        } : null,
         read_only: channel === 'slack' || channel === 'video',
       });
     } catch (error) {

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/pricing-option.json",
   "title": "Pricing Option",
-  "description": "A pricing model option offered by a publisher for a product. Discriminated by pricing_model field. If fixed_price is present, it's fixed pricing. If absent, it's auction-based (floor_price and price_guidance optional). Bid-based auction models may also include max_bid as a boolean signal to interpret bid_price as a buyer ceiling instead of an exact honored price.",
+  "description": "A seller's commercial pricing offer, discriminated by pricing_model. fixed_price is an agreed seller price; floor_price is the seller minimum for an auction-priced option; price_guidance is non-binding discovery guidance. Buyer execution instructions belong in BiddingPolicy. revenue_share is contingent pricing: its payable spend is calculated from settled commissionable_value and does not use fixed_price or auction bidding fields. The legacy max_bid boolean and package bid_price are deprecated in 3.2 and removed in the next major.",
   "discriminator": {
     "propertyName": "pricing_model"
   },
@@ -27,6 +27,9 @@
     },
     {
       "$ref": "/schemas/pricing-options/cpa-option.json"
+    },
+    {
+      "$ref": "/schemas/pricing-options/revenue-share-option.json"
     },
     {
       "$ref": "/schemas/pricing-options/flat-rate-option.json"

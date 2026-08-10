@@ -17,7 +17,7 @@ import {
   AdcpError,
   type DecisioningPlatform,
   type CreativeBuilderPlatform,
-  type SyncCreativesRow,
+  type LegacyCreativeHandlers,
   type AccountStore,
 } from '@adcp/sdk/server';
 import {
@@ -27,7 +27,6 @@ import {
   handleSyncCreatives,
 } from './task-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
-import { pickFromInput } from './v6-input-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
@@ -40,10 +39,21 @@ interface TrainingCreativeBuilderConfig {
   strict: boolean;
 }
 
-function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undefined): TrainingContext {
+function buildTrainingCtx(
+  ctx: {
+    account?: unknown;
+    authInfo?: { clientId?: string };
+    agent?: { agent_url: string };
+  } | undefined,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): TrainingContext {
+  const account = ctx?.account as { authInfo?: { principal?: string } } | undefined;
   return {
     mode: 'open',
-    principal: account?.authInfo?.principal ?? 'anonymous',
+    tenantId: 'creative-builder',
+    principal: ctx?.authInfo?.clientId ?? account?.authInfo?.principal ?? 'anonymous',
+    ...(ctx?.agent?.agent_url && { authenticatedAgentUrl: ctx.agent.agent_url }),
+    ...(storyboardCompat && { storyboardCompat }),
   };
 }
 
@@ -108,6 +118,15 @@ const trainingBuilderAccounts: AccountStore<TrainingCreativeBuilderMeta> = {
   upsert: syncAccountsUpsert,
 };
 
+export function legacyCreativeBuilderSyncHandler(
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): NonNullable<LegacyCreativeHandlers['syncCreatives']> {
+  return async (req, ctx) => await handleSyncCreatives(
+    req as unknown as ToolArgs,
+    buildTrainingCtx(ctx, storyboardCompat),
+  ) as unknown as Awaited<ReturnType<NonNullable<LegacyCreativeHandlers['syncCreatives']>>>;
+}
+
 export class TrainingCreativeBuilderPlatform
   implements DecisioningPlatform<TrainingCreativeBuilderConfig, TrainingCreativeBuilderMeta>
 {
@@ -131,8 +150,8 @@ export class TrainingCreativeBuilderPlatform
   agentRegistry = trainingBuyerAgentRegistry;
 
   creative: CreativeBuilderPlatform<TrainingCreativeBuilderMeta> = {
-    buildCreative: async (req, ctx) => {
-      const result = await handleBuildCreative(req as ToolArgs, buildTrainingCtx(ctx.account));
+    buildCreativeLegacy: async (req, ctx) => {
+      const result = await handleBuildCreative(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       // F16 (`bca20dfb`) — framework's discriminator detects the
       // envelope shape: bare CreativeManifest wraps as
       // { creative_manifest }; bare CreativeManifest[] wraps as
@@ -142,20 +161,13 @@ export class TrainingCreativeBuilderPlatform
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return translateV5Result(result) as any;
     },
-    previewCreative: async (req, ctx) => {
-      const result = await handlePreviewCreative(req as ToolArgs, buildTrainingCtx(ctx.account));
+    previewCreativeLegacy: async (req, ctx) => {
+      const result = await handlePreviewCreative(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
-    listCreativeFormats: async (req, ctx) => {
-      const result = await handleListCreativeFormats(req as ToolArgs, buildTrainingCtx(ctx.account));
+    listCreativeFormatsLegacy: async (req, ctx) => {
+      const result = await handleListCreativeFormats(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
-    },
-    syncCreatives: async (creatives, ctx) => {
-      // Lift `dry_run` and `assignments[]` off ctx.input (adcp-client#1842).
-      const fromInput = pickFromInput(ctx.input, ['assignments', 'dry_run'] as const);
-      const result = await handleSyncCreatives({ creatives, ...fromInput } as unknown as ToolArgs, buildTrainingCtx(ctx.account));
-      const wrapped = translateV5Result<{ creatives?: unknown[] }>(result);
-      return (wrapped.creatives ?? []) as SyncCreativesRow[];
     },
     // refineCreative — v5 doesn't have a dedicated handler; the buildCreative
     // handler accepts refinement payloads via the same code path. Skip for

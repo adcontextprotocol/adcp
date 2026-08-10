@@ -9,11 +9,25 @@ const mocks = vi.hoisted(() => ({
   authenticated: true,
   getThreadByExternalId: vi.fn(),
   getThreadMessages: vi.fn(),
+  getMessagesByClientRequestId: vi.fn(),
+  claimClientTurn: vi.fn(),
+  renewClientTurnLease: vi.fn(),
+  setClientTurnStatus: vi.fn(),
+  getRecoverableClientTurn: vi.fn(),
+  claimAnonymousThread: vi.fn(),
   addMessage: vi.fn(),
   addMessageFeedback: vi.fn(),
   processMessage: vi.fn(),
   processMessageStream: vi.fn(),
   initializeKnowledgeSearch: vi.fn().mockResolvedValue(undefined),
+  getProgress: vi.fn(),
+  getAttemptForUser: vi.fn(),
+  memberContext: {
+    is_mapped: false,
+    is_member: false,
+    slack_linked: false,
+  } as Record<string, unknown>,
+  createSlackKnowledgeRequestTools: vi.fn(() => ({ tools: [], handlers: new Map() })),
 }));
 
 vi.mock('express-rate-limit', () => ({
@@ -47,6 +61,12 @@ vi.mock('../../src/addie/thread-service.js', () => ({
   getThreadService: () => ({
     getThreadByExternalId: mocks.getThreadByExternalId,
     getThreadMessages: mocks.getThreadMessages,
+    getMessagesByClientRequestId: mocks.getMessagesByClientRequestId,
+    claimClientTurn: mocks.claimClientTurn,
+    renewClientTurnLease: mocks.renewClientTurnLease,
+    setClientTurnStatus: mocks.setClientTurnStatus,
+    getRecoverableClientTurn: mocks.getRecoverableClientTurn,
+    claimAnonymousThread: mocks.claimAnonymousThread,
     addMessage: mocks.addMessage,
     addMessageFeedback: mocks.addMessageFeedback,
     getOrCreateThread: vi.fn(),
@@ -58,6 +78,8 @@ vi.mock('../../src/addie/mcp/knowledge-search.js', () => ({
   initializeKnowledgeSearch: mocks.initializeKnowledgeSearch,
   KNOWLEDGE_TOOLS: [],
   createKnowledgeToolHandlers: () => new Map(),
+  createSlackKnowledgeRequestTools: mocks.createSlackKnowledgeRequestTools,
+  isSlackKnowledgeTool: () => false,
 }));
 
 vi.mock('../../src/mcp/chat-tool.js', () => ({
@@ -163,11 +185,7 @@ vi.mock('../../src/utils/anthropic-retry.js', () => ({
 }));
 
 vi.mock('../../src/addie/member-context.js', () => ({
-  getWebMemberContext: vi.fn().mockResolvedValue({
-    is_mapped: false,
-    is_member: false,
-    slack_linked: false,
-  }),
+  getWebMemberContext: vi.fn(() => Promise.resolve(mocks.memberContext)),
   formatMemberContextForPrompt: vi.fn().mockReturnValue(null),
 }));
 
@@ -179,7 +197,14 @@ vi.mock('../../src/addie/services/si-retriever.js', () => ({
 }));
 
 vi.mock('../../src/db/certification-db.js', () => ({
-  getProgress: vi.fn().mockResolvedValue([]),
+  getProgress: mocks.getProgress,
+  getAttemptForUser: mocks.getAttemptForUser,
+}));
+
+vi.mock('../../src/services/certification-experience.js', () => ({
+  getCertificationExperienceForClientRequest: vi.fn().mockResolvedValue(null),
+  getCertificationModuleExperience: vi.fn().mockResolvedValue(null),
+  recordCertificationExperienceEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../src/db/working-group-db.js', () => ({
@@ -206,6 +231,9 @@ vi.mock('../../src/db/person-events-db.js', () => ({
 import {
   createAddieChatRouter,
   getChatClaudeClient,
+  resolveCompletionModuleId,
+  resolveThreadCertificationProgress,
+  prepareRequestWithMemberTools,
 } from '../../src/routes/addie-chat.js';
 import { issueAnonymousSessionCapability } from '../../src/routes/helpers/anonymous-session-capability.js';
 
@@ -268,6 +296,11 @@ describe('Addie chat conversation object authorization', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.authenticated = true;
+    mocks.memberContext = {
+      is_mapped: false,
+      is_member: false,
+      slack_linked: false,
+    };
     mocks.getThreadByExternalId.mockResolvedValue({
       thread_id: 'thread_victim',
       channel: 'web',
@@ -279,11 +312,31 @@ describe('Addie chat conversation object authorization', () => {
       { role: 'user', content: 'Earlier question', user_display_name: 'Attacker' },
       { role: 'assistant', content: 'Earlier answer' },
     ]);
+    mocks.getMessagesByClientRequestId.mockResolvedValue([]);
+    mocks.claimClientTurn.mockResolvedValue({ state: 'claimed', leaseId: 'lease-1' });
+    mocks.renewClientTurnLease.mockResolvedValue(true);
+    mocks.setClientTurnStatus.mockResolvedValue(undefined);
+    mocks.getRecoverableClientTurn.mockResolvedValue(null);
+    mocks.claimAnonymousThread.mockImplementation(async (
+      _threadId: string,
+      _ownerId: string,
+      workosUserId: string,
+      userDisplayName?: string,
+    ) => ({
+      thread_id: 'thread_anonymous',
+      channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      user_type: 'workos',
+      user_id: workosUserId,
+      user_display_name: userDisplayName,
+    }));
     mocks.addMessage.mockImplementation(async (message: { role: string }) => ({
       ...message,
       message_id: message.role === 'assistant' ? 'message_assistant' : 'message_user',
     }));
     mocks.processMessage.mockResolvedValue(successfulModelResponse());
+    mocks.getProgress.mockResolvedValue([]);
+    mocks.getAttemptForUser.mockResolvedValue(null);
     mocks.addMessageFeedback.mockResolvedValue(true);
     mocks.processMessageStream.mockImplementation(async function* () {
       yield { type: 'text', text: 'Allowed response' };
@@ -308,6 +361,55 @@ describe('Addie chat conversation object authorization', () => {
     expect(mocks.getThreadMessages).not.toHaveBeenCalled();
     expect(mocks.addMessage).not.toHaveBeenCalled();
     expect(mocks.processMessage).not.toHaveBeenCalled();
+  });
+
+  it('resolves an ordinary learner-progress module from its bound conversation', () => {
+    const resolved = resolveThreadCertificationProgress([
+      { module_id: 'S6', status: 'in_progress', addie_thread_id: 'other-thread', completed_at: null },
+      { module_id: 'A1', status: 'completed', addie_thread_id: 'conversation-a1', completed_at: new Date().toISOString() },
+      { module_id: 'A2', status: 'in_progress', addie_thread_id: 'conversation-a1', completed_at: null },
+    ], 'conversation-a1', 'internal-thread-a1');
+
+    expect(resolved?.module_id).toBe('A2');
+  });
+
+  it('attributes capstone completion to the attempt module instead of stale thread context', async () => {
+    const attemptId = '36ad6e65-7a1c-45bb-ab7f-86b05ae3b718';
+    mocks.getAttemptForUser.mockResolvedValue({
+      id: attemptId,
+      workos_user_id: 'user_attacker',
+      module_id: 'S6',
+    });
+
+    const resolved = await resolveCompletionModuleId({
+      tool_name: 'complete_certification_exam',
+      parameters: { attempt_id: attemptId },
+    }, 'user_attacker', 'A2');
+
+    expect(resolved).toBe('S6');
+    expect(mocks.getAttemptForUser).toHaveBeenCalledWith(attemptId, 'user_attacker');
+  });
+
+  it('builds authenticated unlinked web Slack tools with an explicit public-only scope', async () => {
+    await prepareRequestWithMemberTools('hello', 'user_attacker', 'thread-web', true);
+
+    expect(mocks.createSlackKnowledgeRequestTools).toHaveBeenCalledWith({ kind: 'public-only' });
+  });
+
+  it('builds linked web Slack tools with the member Slack identity', async () => {
+    mocks.memberContext = {
+      is_mapped: true,
+      is_member: true,
+      slack_linked: true,
+      slack_user: { slack_user_id: 'U_LINKED' },
+    };
+
+    await prepareRequestWithMemberTools('hello', 'user_attacker', 'thread-web', true);
+
+    expect(mocks.createSlackKnowledgeRequestTools).toHaveBeenCalledWith({
+      kind: 'slack-user',
+      slackUserId: 'U_LINKED',
+    });
   });
 
   it('allows an anonymous caller to continue a thread with its signed owner capability', async () => {
@@ -335,6 +437,32 @@ describe('Addie chat conversation object authorization', () => {
     expect(mocks.getThreadMessages).toHaveBeenCalledWith('thread_anonymous', { limit: 100 });
     expect(mocks.addMessage).toHaveBeenCalledTimes(2);
     expect(mocks.processMessage).toHaveBeenCalledOnce();
+  });
+
+  it('claims a browser-owned anonymous thread when that learner signs in', async () => {
+    const ownerId = 'anonymous-owner';
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_anonymous',
+      channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      user_type: 'anonymous',
+      user_id: ownerId,
+    });
+    const capability = issueAnonymousSessionCapability('addie-web-thread-owner', ownerId);
+
+    const response = await request(mountChatRouter())
+      .post('/')
+      .set('Cookie', `addie-anonymous-owner=${capability}`)
+      .send({
+        message: 'Continue after signing in',
+        conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      });
+
+    expect(response.status).toBe(200);
+    expect(mocks.claimAnonymousThread).toHaveBeenCalledWith(
+      'thread_anonymous', ownerId, 'user_attacker', 'Attacker',
+    );
+    expect(mocks.getThreadMessages).toHaveBeenCalledWith('thread_anonymous', { limit: 100 });
   });
 
   it('denies an authenticated caller access to an anonymous thread before effects', async () => {
@@ -427,6 +555,108 @@ describe('Addie chat conversation object authorization', () => {
     expect(mocks.addMessage).toHaveBeenCalledTimes(2);
     expect(mocks.processMessage).not.toHaveBeenCalled();
     expect(mocks.processMessageStream).toHaveBeenCalledOnce();
+  });
+
+  it('replays a completed client request without duplicating messages, tools, or model work', async () => {
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker',
+      channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      user_type: 'workos',
+      user_id: 'user_attacker',
+    });
+    mocks.getMessagesByClientRequestId.mockResolvedValue([
+      {
+        message_id: 'message_user',
+        role: 'user',
+        content: 'Complete my module',
+        delivery_status: 'completed',
+      },
+      {
+        message_id: 'message_assistant',
+        role: 'assistant',
+        content: 'Module complete and saved.',
+        delivery_status: 'completed',
+      },
+    ]);
+
+    const response = await request(mountChatRouter())
+      .post('/stream')
+      .send({
+        message: 'Complete my module',
+        conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+        client_request_id: 'e6c3ffbe-bbf4-4ae5-a32f-713e05af4b68',
+        retry: true,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.text).toContain('Module complete and saved.');
+    expect(response.text).toContain('"replayed":true');
+    expect(mocks.getThreadMessages).not.toHaveBeenCalled();
+    expect(mocks.addMessage).not.toHaveBeenCalled();
+    expect(mocks.processMessageStream).not.toHaveBeenCalled();
+  });
+
+  it('rejects a duplicate request while the original turn owns the execution lease', async () => {
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker',
+      channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      user_type: 'workos',
+      user_id: 'user_attacker',
+    });
+    mocks.getMessagesByClientRequestId.mockResolvedValue([{
+      message_id: 'message_user',
+      role: 'user',
+      content: 'Complete my module',
+      delivery_status: 'completed',
+    }]);
+    mocks.claimClientTurn.mockResolvedValue({ state: 'processing' });
+
+    const response = await request(mountChatRouter())
+      .post('/stream')
+      .send({
+        message: 'Complete my module',
+        conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+        client_request_id: 'e6c3ffbe-bbf4-4ae5-a32f-713e05af4b68',
+        retry: true,
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe('turn_in_progress');
+    expect(mocks.addMessage).not.toHaveBeenCalled();
+    expect(mocks.processMessageStream).not.toHaveBeenCalled();
+  });
+
+  it('marks a stream that ends without done as interrupted and recoverable', async () => {
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker',
+      channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      user_type: 'workos',
+      user_id: 'user_attacker',
+    });
+    mocks.processMessageStream.mockImplementation(async function* () {
+      yield { type: 'text', text: 'Partial response' };
+    });
+
+    const response = await request(mountChatRouter())
+      .post('/stream')
+      .send({
+        message: 'Continue assessment',
+        conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+        client_request_id: 'e6c3ffbe-bbf4-4ae5-a32f-713e05af4b68',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.text).toContain('Reply ended before completion');
+    expect(response.text).toContain('"recoverable":true');
+    expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({
+      role: 'assistant',
+      delivery_status: 'interrupted',
+      client_turn_lease_id: 'lease-1',
+      finalize_client_turn_status: 'interrupted',
+    }));
   });
 
   it('denies cross-user feedback before attempting a message update', async () => {

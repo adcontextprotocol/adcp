@@ -76,13 +76,19 @@ fixtures:
     - product_id: "primetime_30s_mf"
       delivery_type: "guaranteed"
       channels: ["linear_tv"]
-      format_ids:
-        - id: "broadcast_spot_30s"
+      format_options:
+        - format_option_id: "broadcast_spot_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
     - product_id: "late_fringe_15s_mf"
       delivery_type: "guaranteed"
       channels: ["linear_tv"]
-      format_ids:
-        - id: "broadcast_spot_15s"
+      format_options:
+        - format_option_id: "broadcast_spot_15s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 15000
   pricing_options:
     - product_id: "primetime_30s_mf"
       pricing_option_id: "unit_primetime_30"
@@ -179,7 +185,7 @@ phases:
           - delivery_type: guaranteed (standard for broadcast upfront and scatter)
           - pricing_models: unit-based pricing (cost per spot or cost per unit)
           - forecast: estimated impressions by demo, GRPs, reach
-          - creative_format_ids: broadcast spot formats (:15, :30, :60)
+          - creative format_options: canonical hosted-video declarations for :15, :30, and :60 spots
           - reporting_capabilities with measurement_windows:
             - live: real-time linear viewing, available within 24 hours
             - c3: live + 3 days DVR playback, available ~4 days after air
@@ -216,14 +222,14 @@ phases:
             value: "sales_broadcast_tv--get_products_brief"
             description: "Context correlation_id returned unchanged"
           - check: field_present
-            path: "products[0].format_ids"
-            description: "Products include format_ids for creative requirements"
+            path: "products[0].format_options"
+            description: "Products include canonical format_options for creative requirements"
           - check: field_present
-            path: "products[0].format_ids[0].agent_url"
-            description: "Format IDs include agent_url — must match this agent's URL"
+            path: "products[0].format_options[0].format_kind"
+            description: "Canonical format options include a format_kind discriminator"
           - check: field_present
-            path: "products[0].format_ids[0].id"
-            description: "Format IDs include id — must be accepted back in sync_creatives"
+            path: "products[0].format_options[0].format_option_id"
+            description: "Canonical format options include a stable ID accepted by sync_creatives"
   - id: create_buy
     title: "Create the media buy"
     narrative: |
@@ -431,49 +437,6 @@ phases:
       requirements are defined by spot length (:15, :30, :60) rather than pixel dimensions.
 
     steps:
-      - id: list_formats
-        title: "Check broadcast format requirements"
-        narrative: |
-          The buyer confirms what broadcast spot formats the seller accepts. The seller
-          returns format specs defined by spot length, codec requirements, and file
-          delivery specifications. No VAST or tracker-related formats appear.
-        task: list_creative_formats
-        schema_ref: "creative/list-creative-formats-request.json"
-        response_schema_ref: "creative/list-creative-formats-response.json"
-        doc_ref: "/creative/task-reference/list_creative_formats"
-        comply_scenario: creative_lifecycle
-        stateful: false
-        expected: |
-          Return broadcast spot formats the platform accepts. Each format should define:
-          - format_id with your agent_url and unique id (e.g., "broadcast_30s", "broadcast_15s")
-          - Asset requirements: video codec, container format, bitrate, frame rate
-          - Duration constraints matching the spot length
-          - No VAST, VPAID, or tracker-related asset slots
-
-        sample_request:
-          context:
-            correlation_id: "sales_broadcast_tv--list_formats"
-
-        validations:
-          - check: response_schema
-            description: "Response matches list-creative-formats-response.json schema"
-          - check: field_present
-            path: "formats"
-            description: "Response contains formats array"
-
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "sales_broadcast_tv--list_formats"
-            description: "Context correlation_id returned unchanged"
-          - check: field_present
-            path: "formats[0].format_id.agent_url"
-            description: "Format IDs include agent_url"
-          - check: field_present
-            path: "formats[0].format_id.id"
-            description: "Format IDs include id — must match those in get_products"
       - id: sync_creatives
         title: "Push broadcast spot files"
         narrative: |
@@ -507,9 +470,7 @@ phases:
           creatives:
             - creative_id: "volta_ev_launch_30s"
               name: "Nova Volta EV Launch - :30"
-              format_id:
-                agent_url: "https://your-station.example.com"
-                id: "broadcast_30s"
+              format_kind: "video_hosted"
               industry_identifiers:
                 - type: "ad_id"
                   value: "NOVA0042000H"
@@ -524,9 +485,7 @@ phases:
                   video_codec: "h264"
             - creative_id: "volta_ev_launch_15s"
               name: "Nova Volta EV Launch - :15"
-              format_id:
-                agent_url: "https://your-station.example.com"
-                id: "broadcast_15s"
+              format_kind: "video_hosted"
               industry_identifiers:
                 - type: "ad_id"
                   value: "NOVA0042001H"

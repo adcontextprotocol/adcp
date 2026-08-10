@@ -4,9 +4,9 @@ description: "Step-by-step guide to RFC 9421 request signing in AdCP: key genera
 "og:title": "AdCP — Request Signing Guide"
 ---
 
-AdCP 3.0 supports [HTTP Message Signatures (RFC 9421)](https://www.rfc-editor.org/rfc/rfc9421) for cryptographic request authentication. A buyer signs outbound requests so the seller can verify who sent them and that the payload wasn't tampered with. A seller signs outbound webhooks so the buyer can verify authenticity.
+AdCP supports [HTTP Message Signatures (RFC 9421)](https://www.rfc-editor.org/rfc/rfc9421) for cryptographic request authentication. A buyer signs outbound requests so the seller can verify who sent them and that the payload wasn't tampered with. A seller signs outbound webhooks so the buyer can verify authenticity.
 
-Signing is **optional in AdCP 3.0** and becomes **mandatory in AdCP 4.0** for all spend-committing operations. Agents that don't sign yet must still tolerate signature headers (`Signature`, `Signature-Input`, `Content-Digest`) on inbound requests without breaking.
+Signing remains **optional through AdCP 3.2** and becomes **mandatory in AdCP 4.0** for all spend-committing operations. Starting in 3.2, however, every accepted signature on a request with a body must cover `Content-Digest`. Agents that don't support signing may continue using their existing authentication path.
 
 <Note>
 This is the practical implementation guide. For the normative specification — covered components, canonicalization rules, the full verifier checklist, replay dedup sizing, and the complete error taxonomy — see [Security: Signed Requests](/docs/building/by-layer/L1/security#signed-requests-transport-layer).
@@ -36,7 +36,7 @@ The AdCP signing profile covers these request components:
 - `@target-uri` — full canonicalized request URL
 - `@authority` — lowercased host header
 - `content-type` — media type
-- `content-digest` — SHA-256 or SHA-512 hash of the request body (see `covers_content_digest` capability)
+- `content-digest` — SHA-256 or SHA-512 hash of the exact request body bytes; REQUIRED for every body-bearing request signed under the 3.2 profile
 
 If any covered component changes after signing, verification fails.
 
@@ -457,7 +457,7 @@ import { BrandJsonJwksResolver, InMemoryReplayStore, InMemoryRevocationStore } f
 serve(createAgent, {
   authenticate: requireAuthenticatedOrSigned({
     signature: verifySignatureAsAuthenticator({
-      capability: { supported: true, required_for: ['create_media_buy'], covers_content_digest: 'either' },
+      capability: { supported: true, required_for: ['create_media_buy'], covers_content_digest: 'required' },
       jwks: new BrandJsonJwksResolver(),
       replayStore: new InMemoryReplayStore(),
       revocationStore: new InMemoryRevocationStore(),
@@ -639,6 +639,8 @@ Publish the webhook signing public key as a JWK with `"adcp_use": "request-signi
 
 If your seller verifies inbound signatures, declare `signed_requests` (alias `request_signing` in the on-wire schema) in your `get_adcp_capabilities` response so buyers know to sign:
 
+For AdCP 3.2, `covers_content_digest: 'required'` is part of the signing profile rather than an operation-level choice. The operation lists still control where signing is supported, shadowed, or required; they never weaken body binding. Keep `either` or `forbidden` only on an explicitly configured 3.0/3.1 compatibility endpoint.
+
 <Tabs>
 <Tab title="JavaScript/TypeScript">
 ```typescript
@@ -649,7 +651,7 @@ createAdcpServer({
         supported: true,
         required_for: ['create_media_buy', 'update_media_buy'],
         supported_for: ['sync_creatives', 'sync_audiences'],
-        covers_content_digest: 'either',
+        covers_content_digest: 'required',
       },
     },
   },
@@ -669,7 +671,7 @@ class MySeller(ADCPHandler):
                 "supported": True,
                 "required_for": ["create_media_buy", "update_media_buy"],
                 "supported_for": ["sync_creatives", "sync_audiences"],
-                "covers_content_digest": "either",
+                "covers_content_digest": "required",
             },
         )
 ```
@@ -684,7 +686,7 @@ return adcp.CapabilitiesResponse(adcp.CapabilitiesData{
         Supported:           true,
         RequiredFor:         []string{"create_media_buy", "update_media_buy"},
         SupportedFor:        []string{"sync_creatives", "sync_audiences"},
-        CoversContentDigest: "either",
+        CoversContentDigest: "required",
     },
 }), nil
 ```
@@ -708,10 +710,11 @@ For emergency rotation (key compromise), add the old `kid` to `revoked_kids` in 
 
 ### Conformance vectors
 
-The spec ships **39 test vectors** at `compliance/cache/3.0.0/test-vectors/request-signing/` (source at `static/compliance/source/test-vectors/request-signing/`):
+The spec ships legacy-profile wire vectors, dedicated 3.2 wire vectors, and the 3.2 post-parse body-integrity reference-evaluator matrix at `/compliance/latest/test-vectors/request-signing/` (source at `static/compliance/source/test-vectors/request-signing/`). Select fixtures by `signing_profile_version`; the root positive and negative directories are 3.1 compatibility fixtures, not 3.2 conformance cases.
 
-- **12 positive vectors**: valid signed requests your verifier must accept (non-4xx)
-- **27 negative vectors**: invalid requests your verifier must reject with `401` and the correct error code
+- **Legacy 3.1 positive vectors**: valid signed requests using the legacy binary encoding
+- **Legacy 3.1 negative vectors**: invalid requests a 3.1 verifier must reject with the stated error code
+- **Profile-3.2 wire vectors**: body-bound positives and rejections of malformed RFC 8941 `sf-binary`
 
 ```bash
 # Debug a single vector
@@ -727,19 +730,11 @@ adcp grade request-signing https://agent.example.com/mcp --auth-token $TOKEN
 
 ### Error codes
 
-When verification fails, return `401` with `WWW-Authenticate: Signature error="<code>"`:
+When verification fails, return `401` with `WWW-Authenticate: Signature error="<code>"`.
 
-| Code | Meaning |
-|---|---|
-| `missing_signature` | Signature headers not present when required |
-| `invalid_signature` | Signature doesn't verify against the public key |
-| `expired_signature` | Signature timestamp too old |
-| `replayed_nonce` | Nonce was already used |
-| `revoked_key` | Key has been revoked |
-| `unknown_key` | Key ID not found in JWKS |
-| `unsupported_algorithm` | Algorithm not in allowlist |
+The negative vectors grade `<code>` **byte-for-byte** against the vector's `expected_outcome.error_code`, so a rejection that is correct in substance still fails its vector if the code string differs. Take the code from the taxonomy rather than from memory.
 
-For the full error code taxonomy, see [Transport error taxonomy](/docs/building/by-layer/L1/security#transport-error-taxonomy).
+For the codes — with retry semantics for each, and the rules for the `WWW-Authenticate` header itself — see [Transport error taxonomy](/docs/building/by-layer/L1/security#transport-error-taxonomy). Signing-key discovery via `brand_json_url` raises its own `request_signature_brand_*` and `request_signature_key_origin_*` codes, listed under [Discovering an agent's signing keys via `brand_json_url`](/docs/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url).
 
 ## Related
 

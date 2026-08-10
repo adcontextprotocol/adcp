@@ -7,11 +7,20 @@
  * compromised account can keep a session running that stays under
  * the tool-call cap while steadily burning dollars on Claude.
  *
- * This module enforces a rolling 24-hour USD budget per user at the
- * claude-client boundary. Callers check the cap at entry, record
- * cost on completion. Like `tool-rate-limiter.ts`, it uses a
+ * This module enforces a calendar-day (UTC midnight) USD budget per
+ * user at the claude-client boundary. Callers check the cap at entry,
+ * record cost on completion. Like `tool-rate-limiter.ts`, it uses a
  * dependency-injection seam so unit tests don't need a Postgres
  * connection.
+ *
+ * Calendar-day, not rolling 24h (#6048): the cap was originally a
+ * rolling 24h window (`NOW() - interval`), which caused a real
+ * incident — `formatCapExceededMessage()` tells users "try again
+ * tomorrow", but a user capped at 6pm was still blocked at 8am the
+ * next morning because only 14 of the required 24 hours had elapsed.
+ * Rolling windows are right for abuse/API-cost defense; human-facing
+ * "daily" quotas need to reset at a fixed calendar boundary, matching
+ * how every ad-tech daily budget/frequency cap already works.
  *
  * System users (automated pipelines — newsletter, registry review)
  * are exempt by literal allowlist (see `./system-identities.ts`).
@@ -20,6 +29,14 @@
  * amortized across the workspace.
  *
  * Known trade-offs:
+ *
+ * - **Midnight burst.** A calendar-day boundary (vs. the old rolling
+ *   window) lets a user spend up to ~2x the daily budget in the few
+ *   seconds straddling UTC midnight (max out at 23:59:59, fresh budget
+ *   at 00:00:00). Acceptable given the caps are small in absolute
+ *   terms ($3-$25) and this is cost-defense against runaway/abusive
+ *   sessions, not hard billing enforcement — every calendar-day ad
+ *   budget or frequency cap has this same edge at its reset boundary.
  *
  * - **Check/record race.** The flow is `check → Claude call → record`,
  *   which is TOCTOU. N concurrent requests from one user can all see
@@ -42,6 +59,7 @@
  *   intentionally triggers truncation to make responses "free".
  */
 
+import { randomUUID } from 'crypto';
 import { createLogger } from '../logger.js';
 import { query } from '../db/client.js';
 import { TIER_PRESERVING_STATUSES } from '../db/organization-db.js';
@@ -52,7 +70,19 @@ import type { MemberContext } from './member-context.js';
 const logger = createLogger('addie-cost-tracker');
 
 const MICROS_PER_DOLLAR = 1_000_000;
-const WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Start of the current UTC calendar day, as an epoch-ms cutoff. */
+function utcMidnightCutoffMs(now: number = Date.now()): number {
+  const d = new Date(now);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+/** Milliseconds from now until the next UTC calendar-day boundary. */
+function msUntilNextUtcMidnight(now: number = Date.now()): number {
+  const d = new Date(now);
+  const nextMidnight = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+  return nextMidnight - now;
+}
 
 /**
  * Slack sharing metadata may be this old when choosing a public-community
@@ -105,14 +135,20 @@ export type UserTier = CappedTier | 'aao_team';
 
 export interface CostCheckResult {
   ok: boolean;
-  /** Cents spent in the trailing 24h for the user (rounded from micros). */
+  /** Cents spent in the current UTC calendar day for the user (rounded from micros). */
   spentCents?: number;
   /** Remaining USD in the budget, floored to 2 decimals. 0 when blocked. */
   remainingUsd?: number;
-  /** Milliseconds until the oldest in-window charge falls out. */
+  /** Milliseconds until the daily cap resets at the next UTC midnight. */
   retryAfterMs?: number;
   /** The tier threshold that applies. */
   tier?: UserTier;
+  /** True when the normal tier cap was exceeded but a bounded certification reserve allowed the call. */
+  usedCertificationReserve?: boolean;
+  /** Cross-replica lease held while a reserve-eligible completion call runs. */
+  certificationLeaseId?: string;
+  /** Another completion call already owns the reserve lease. */
+  reserveBusy?: boolean;
 }
 
 /**
@@ -120,27 +156,34 @@ export interface CostCheckResult {
  * inject an in-memory store.
  */
 export interface CostTrackerStore {
-  /** Sum of cost_usd_micros for `key` recorded in the last `windowMs`. */
-  sumInWindow(key: string, windowMs: number): Promise<{ totalMicros: number; firstAtMs: number | null }>;
+  /** Sum of cost_usd_micros for `key` recorded since the start of the current UTC calendar day. */
+  sumSinceUtcMidnight(key: string): Promise<{ totalMicros: number }>;
   /** Persist one charge. */
   record(key: string, costMicros: number, model: string, usage: ClaudeUsage): Promise<void>;
+  claimCertificationLease(key: string, leaseId: string): Promise<boolean>;
+  renewCertificationLease(key: string, leaseId: string): Promise<boolean>;
+  releaseCertificationLease(key: string, leaseId: string): Promise<void>;
   /** Test-only: clear all state. */
   reset(): Promise<void>;
 }
 
 class PostgresStore implements CostTrackerStore {
-  async sumInWindow(key: string, windowMs: number): Promise<{ totalMicros: number; firstAtMs: number | null }> {
-    const result = await query<{ total_micros: string | null; first_at: Date | null }>(
-      `SELECT COALESCE(SUM(cost_usd_micros), 0)::text AS total_micros, MIN(recorded_at) AS first_at
+  async sumSinceUtcMidnight(key: string): Promise<{ totalMicros: number }> {
+    // Computes the UTC-midnight cutoff from Postgres's own NOW(), not the
+    // app server's clock — `record()` below also timestamps via NOW(), so
+    // the cutoff and the recorded charges share one clock. Comparing an
+    // app-computed epoch-ms cutoff against DB-clock timestamps would let
+    // clock skew misplace a charge relative to the boundary — precisely
+    // the class of bug #6048 was about.
+    const result = await query<{ total_micros: string | null }>(
+      `SELECT COALESCE(SUM(cost_usd_micros), 0)::text AS total_micros
        FROM addie_token_cost_events
-       WHERE scope_key = $1 AND recorded_at > NOW() - ($2::bigint || ' milliseconds')::interval`,
-      [key, String(windowMs)],
+       WHERE scope_key = $1
+         AND recorded_at >= (date_trunc('day', NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')`,
+      [key],
     );
     const row = result.rows[0];
-    return {
-      totalMicros: Number(row.total_micros ?? 0),
-      firstAtMs: row.first_at ? row.first_at.getTime() : null,
-    };
+    return { totalMicros: Number(row.total_micros ?? 0) };
   }
 
   async record(key: string, costMicros: number, model: string, usage: ClaudeUsage): Promise<void> {
@@ -151,6 +194,38 @@ class PostgresStore implements CostTrackerStore {
     );
   }
 
+  async claimCertificationLease(key: string, leaseId: string): Promise<boolean> {
+    const result = await query(
+      `INSERT INTO certification_completion_leases (scope_key, lease_id, expires_at)
+       VALUES ($1, $2, NOW() + INTERVAL '10 minutes')
+       ON CONFLICT (scope_key) DO UPDATE SET
+         lease_id = EXCLUDED.lease_id,
+         expires_at = EXCLUDED.expires_at,
+         created_at = NOW()
+       WHERE certification_completion_leases.expires_at < NOW()
+       RETURNING lease_id`,
+      [key, leaseId],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async releaseCertificationLease(key: string, leaseId: string): Promise<void> {
+    await query(
+      `DELETE FROM certification_completion_leases WHERE scope_key = $1 AND lease_id = $2`,
+      [key, leaseId],
+    );
+  }
+
+  async renewCertificationLease(key: string, leaseId: string): Promise<boolean> {
+    const result = await query(
+      `UPDATE certification_completion_leases
+       SET expires_at = NOW() + INTERVAL '10 minutes'
+       WHERE scope_key = $1 AND lease_id = $2`,
+      [key, leaseId],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async reset(): Promise<void> {
     await query(`TRUNCATE addie_token_cost_events`);
   }
@@ -158,12 +233,13 @@ class PostgresStore implements CostTrackerStore {
 
 class InMemoryStore implements CostTrackerStore {
   private readonly events = new Map<string, Array<{ atMs: number; micros: number }>>();
+  private readonly certificationLeases = new Map<string, string>();
 
-  async sumInWindow(key: string, windowMs: number): Promise<{ totalMicros: number; firstAtMs: number | null }> {
-    const cutoff = Date.now() - windowMs;
-    const recent = (this.events.get(key) ?? []).filter(e => e.atMs > cutoff);
+  async sumSinceUtcMidnight(key: string): Promise<{ totalMicros: number }> {
+    const cutoff = utcMidnightCutoffMs();
+    const recent = (this.events.get(key) ?? []).filter(e => e.atMs >= cutoff);
     const totalMicros = recent.reduce((acc, e) => acc + e.micros, 0);
-    return { totalMicros, firstAtMs: recent.length > 0 ? recent[0].atMs : null };
+    return { totalMicros };
   }
 
   async record(key: string, costMicros: number): Promise<void> {
@@ -172,8 +248,23 @@ class InMemoryStore implements CostTrackerStore {
     this.events.set(key, existing);
   }
 
+  async claimCertificationLease(key: string, leaseId: string): Promise<boolean> {
+    if (this.certificationLeases.has(key)) return false;
+    this.certificationLeases.set(key, leaseId);
+    return true;
+  }
+
+  async releaseCertificationLease(key: string, leaseId: string): Promise<void> {
+    if (this.certificationLeases.get(key) === leaseId) this.certificationLeases.delete(key);
+  }
+
+  async renewCertificationLease(key: string, leaseId: string): Promise<boolean> {
+    return this.certificationLeases.get(key) === leaseId;
+  }
+
   async reset(): Promise<void> {
     this.events.clear();
+    this.certificationLeases.clear();
   }
 }
 
@@ -191,23 +282,54 @@ let store: CostTrackerStore = new PostgresStore();
 export async function checkCostCap(
   userId: string | null | undefined,
   tier: UserTier,
+  options?: { certificationReserveUsd?: number },
 ): Promise<CostCheckResult> {
   if (!userId) return { ok: true };
   if (SYSTEM_USER_IDS.has(userId)) return { ok: true };
   if (tier === 'aao_team') return { ok: true, tier };
 
-  const budgetMicros = DAILY_BUDGET_MICROS[tier];
-  const { totalMicros, firstAtMs } = await store.sumInWindow(userId, WINDOW_MS);
+  const baseBudgetMicros = DAILY_BUDGET_MICROS[tier];
+  const reserveMicros = Math.max(0, options?.certificationReserveUsd ?? 0) * MICROS_PER_DOLLAR;
+  const budgetMicros = baseBudgetMicros + reserveMicros;
+  const { totalMicros } = await store.sumSinceUtcMidnight(userId);
   const remainingMicros = Math.max(0, budgetMicros - totalMicros);
+  const usedCertificationReserve = reserveMicros > 0 && totalMicros >= baseBudgetMicros;
 
-  if (totalMicros >= budgetMicros && firstAtMs !== null) {
+  if (totalMicros >= budgetMicros) {
+    // #6048 secondary risk: a Slack caller without a resolved WorkOS
+    // mapping is forced to `member_free` ($5/day) by
+    // `resolveUserTierFromDb` regardless of their real subscription
+    // tier, so a paying member can hit a cap 5x tighter than expected.
+    // Log it so an unmapped-identity cap-exceeded is diagnosable from
+    // the scope key alone, without re-deriving this from an escalation.
+    if (tier === 'member_free' && userId.startsWith('slack:')) {
+      logger.warn(
+        { userId, tier, spentCents: Math.round(totalMicros / 10_000) },
+        'Slack user hit member_free cost cap on an unmapped scope key — real tier could not be resolved from WorkOS',
+      );
+    }
     return {
       ok: false,
       spentCents: Math.round(totalMicros / 10_000),
       remainingUsd: 0,
-      retryAfterMs: Math.max(0, firstAtMs + WINDOW_MS - Date.now()),
+      retryAfterMs: msUntilNextUtcMidnight(),
       tier,
+      usedCertificationReserve,
     };
+  }
+
+  let certificationLeaseId: string | undefined;
+  if (reserveMicros > 0 && usedCertificationReserve) {
+    certificationLeaseId = randomUUID();
+    if (!await store.claimCertificationLease(userId, certificationLeaseId)) {
+      return {
+        ok: false,
+        spentCents: Math.round(totalMicros / 10_000),
+        remainingUsd: remainingMicros / MICROS_PER_DOLLAR,
+        tier,
+        reserveBusy: true,
+      };
+    }
   }
 
   return {
@@ -215,7 +337,34 @@ export async function checkCostCap(
     spentCents: Math.round(totalMicros / 10_000),
     remainingUsd: remainingMicros / MICROS_PER_DOLLAR,
     tier,
+    usedCertificationReserve,
+    certificationLeaseId,
   };
+}
+
+export async function releaseCertificationReserve(
+  userId: string | null | undefined,
+  leaseId: string | undefined,
+): Promise<void> {
+  if (!userId || !leaseId) return;
+  try {
+    await store.releaseCertificationLease(userId, leaseId);
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to release certification completion lease');
+  }
+}
+
+export async function renewCertificationReserve(
+  userId: string | null | undefined,
+  leaseId: string | undefined,
+): Promise<boolean> {
+  if (!userId || !leaseId) return false;
+  try {
+    return await store.renewCertificationLease(userId, leaseId);
+  } catch (error) {
+    logger.error({ error, userId }, 'Failed to renew certification completion lease');
+    return false;
+  }
 }
 
 /**
@@ -249,19 +398,28 @@ export async function recordCost(
  * understands what happened.
  */
 export function formatCapExceededMessage(result: CostCheckResult): string {
+  if (result.reserveBusy) {
+    return 'A certification completion reply is already processing. Please wait a moment and reload this conversation.';
+  }
   const tier = result.tier ?? 'anonymous';
+  const retryHours = result.retryAfterMs == null
+    ? null
+    : Math.max(1, Math.ceil(result.retryAfterMs / (60 * 60 * 1000)));
+  const retryMessage = retryHours == null
+    ? 'Please try again when your rolling daily limit resets.'
+    : `Please try again in about ${retryHours} ${retryHours === 1 ? 'hour' : 'hours'}.`;
   if (tier === 'aao_team') {
     return 'AAO team usage is uncapped.';
   }
   if (tier === 'public_community') {
     return (
       `Public Addie discussions have reached today's community conversation capacity. ` +
-      `Please try again tomorrow or ping the AgenticAdvertising.org team if the discussion is time-sensitive.`
+      `${retryMessage} Ping the AgenticAdvertising.org team if the discussion is time-sensitive.`
     );
   }
   return (
     `You've reached your daily conversation limit with Addie. ` +
-    `Please try again tomorrow. ` +
+    `${retryMessage} ` +
     (tier === 'member_paid'
       ? 'Ping the AgenticAdvertising.org team if you need a higher ceiling for legitimate work.'
       : 'Upgrade your membership at https://agenticadvertising.org/dashboard/membership for a higher daily limit.')

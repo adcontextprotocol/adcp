@@ -11,6 +11,7 @@
     },
     "suppress_minutes": {
       "type": "number",
+      "deprecated": true,
       "description": "Deprecated — use suppress instead. Cooldown period in minutes between consecutive exposures to the same entity (e.g. 60 for a 1-hour cooldown).",
       "minimum": 0
     },

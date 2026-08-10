@@ -26,6 +26,7 @@ const OTHER_USER_ID = `user_test_refresh_other_${RUN_SUFFIX}`;
 const ADMIN_USER_ID = `user_test_refresh_admin_${RUN_SUFFIX}`;
 const STATIC_ADMIN_USER_ID = 'admin_api_key';
 const TEST_ORG_ID = `org_test_refresh_${RUN_SUFFIX}`;
+const SECOND_ORG_ID = `org_test_refresh_second_${RUN_SUFFIX}`;
 // Each test that expects a 200 uses its own URL — the per-agent rate-limit
 // closure inside the router is stateful across test cases, so reusing one
 // URL would 429 the second hit. Unowned URL stays constant since no test
@@ -43,6 +44,8 @@ const ALL_OWNED_URLS = [
   ownedAgentUrl('badge-fanout'),
   ownedAgentUrl('static-admin'),
   ownedAgentUrl('applicable-oauth'),
+  ownedAgentUrl('selected-org-refresh'),
+  ownedAgentUrl('selected-org-challenge'),
 ];
 
 // Toggle which user the auth middleware stamps onto the request. Tests
@@ -214,6 +217,36 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
         JSON.stringify(ALL_OWNED_URLS.map(u => ({ url: u, name: 'Test agent' }))),
       ],
     );
+    await pool.query(
+      `INSERT INTO organizations (
+         workos_organization_id, name, membership_tier, subscription_status, created_at, updated_at
+       )
+       VALUES ($1, 'Second Refresh Org', 'company_standard', 'active', NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE
+         SET membership_tier = EXCLUDED.membership_tier,
+             subscription_status = EXCLUDED.subscription_status,
+             updated_at = NOW()`,
+      [SECOND_ORG_ID],
+    );
+    await pool.query(
+      `INSERT INTO organization_memberships (workos_organization_id, workos_user_id, email, role, created_at, updated_at)
+       VALUES ($1, $2, $3, 'admin', NOW(), NOW())
+       ON CONFLICT (workos_organization_id, workos_user_id) DO NOTHING`,
+      [SECOND_ORG_ID, OWNER_USER_ID, `${OWNER_USER_ID}@test.com`],
+    );
+    await pool.query(
+      `INSERT INTO member_profiles (workos_organization_id, display_name, slug, agents, created_at, updated_at)
+       VALUES ($1, 'Second Refresh Org', $2, $3::jsonb, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE SET agents = EXCLUDED.agents, updated_at = NOW()`,
+      [
+        SECOND_ORG_ID,
+        `test-refresh-second-${RUN_SUFFIX}`,
+        JSON.stringify([
+          { url: ownedAgentUrl('selected-org-refresh'), name: 'Shared refresh agent' },
+          { url: ownedAgentUrl('selected-org-challenge'), name: 'Shared challenge agent' },
+        ]),
+      ],
+    );
 
     server = new HTTPServer();
     await server.start(0);
@@ -229,9 +262,10 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     await pool.query('DELETE FROM agent_compliance_runs WHERE agent_url = ANY($1)', [allUrls]);
     await pool.query('DELETE FROM agent_health_snapshot WHERE agent_url = ANY($1)', [allUrls]);
     await pool.query('DELETE FROM agent_capabilities_snapshot WHERE agent_url = ANY($1)', [allUrls]);
-    await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = $1', [TEST_ORG_ID]);
-    await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = $1', [TEST_ORG_ID]);
-    await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query('DELETE FROM agent_contexts WHERE organization_id = ANY($1)', [[TEST_ORG_ID, SECOND_ORG_ID]]);
+    await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = ANY($1)', [[TEST_ORG_ID, SECOND_ORG_ID]]);
+    await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = ANY($1)', [[TEST_ORG_ID, SECOND_ORG_ID]]);
+    await pool.query('DELETE FROM organizations WHERE workos_organization_id = ANY($1)', [[TEST_ORG_ID, SECOND_ORG_ID]]);
     await server?.stop();
     await closeDatabase();
   });
@@ -498,6 +532,66 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     } finally {
       await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
     }
+  });
+
+  it('uses the selected org credentials when a shared agent is refreshed', async () => {
+    const agentUrl = ownedAgentUrl('selected-org-refresh');
+    const { AgentContextDatabase } = await import('../../src/db/agent-context-db.js');
+    const db = new AgentContextDatabase();
+    const context = await db.create({
+      organization_id: SECOND_ORG_ID,
+      agent_url: agentUrl,
+      created_by: OWNER_USER_ID,
+    });
+    const token = 'selected-org-bearer-do-not-use-in-prod';
+    await db.saveAuthToken(context.id, token, 'bearer');
+
+    try {
+      const res = await request(app)
+        .post(url(agentUrl))
+        .send({ organization_id: SECOND_ORG_ID });
+
+      expect(res.status).toBe(200);
+      expect(refreshSingleAgentMock).toHaveBeenCalledWith(
+        agentUrl,
+        expect.objectContaining({
+          auth: { type: 'bearer', token },
+          ownerOrgId: SECOND_ORG_ID,
+        }),
+      );
+    } finally {
+      await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
+    }
+  });
+
+  it('creates an OAuth challenge context in the selected org for a shared agent', async () => {
+    const agentUrl = ownedAgentUrl('selected-org-challenge');
+    testCapabilityDiscoveryMock.mockResolvedValueOnce({
+      profile: {
+        name: 'OAuth challenge agent',
+        tools: [],
+        supported_protocols: ['media_buy'],
+        specialisms: [],
+      },
+      steps: [{
+        step: 'Discover agent profile',
+        passed: false,
+        duration_ms: 1,
+        error: 'Agent requires OAuth authorization',
+      }],
+    });
+
+    const res = await request(app)
+      .get(`/api/registry/agents/${encodeURIComponent(agentUrl)}/applicable-storyboards`)
+      .query({ org: SECOND_ORG_ID });
+
+    expect(res.status).toBe(422);
+    expect(res.body).toMatchObject({ needs_oauth: true });
+    const stored = await pool.query(
+      'SELECT organization_id FROM agent_contexts WHERE id = $1',
+      [res.body.agent_context_id],
+    );
+    expect(stored.rows).toEqual([{ organization_id: SECOND_ORG_ID }]);
   });
 
   it('fans out badge issuance for an owner refresh with a passing specialism', async () => {

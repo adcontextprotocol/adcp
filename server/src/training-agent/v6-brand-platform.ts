@@ -36,12 +36,18 @@ interface TrainingBrandConfig {
 }
 
 function buildTrainingCtx(
-  account: { authInfo?: { principal?: string } } | undefined,
+  ctx: {
+    account?: { authInfo?: { principal?: string } };
+    authInfo?: { clientId?: string };
+    agent?: { agent_url: string };
+  } | undefined,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): TrainingContext {
   return {
     mode: 'open',
-    principal: account?.authInfo?.principal ?? 'anonymous',
+    tenantId: 'brand',
+    principal: ctx?.authInfo?.clientId ?? ctx?.account?.authInfo?.principal ?? 'anonymous',
+    ...(ctx?.agent?.agent_url && { authenticatedAgentUrl: ctx.agent.agent_url }),
     ...(storyboardCompat && { storyboardCompat }),
   };
 }
@@ -134,19 +140,19 @@ export class TrainingBrandPlatform
 
   brandRights: BrandRightsPlatform<TrainingBrandMeta> = {
     getBrandIdentity: async (req, ctx) => {
-      const result = await handleGetBrandIdentity(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
+      const result = await handleGetBrandIdentity(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
-    getRights: async (req, ctx) => {
-      const result = await handleGetRights(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
+    getRightsLegacy: async (req, ctx) => {
+      const result = await handleGetRights(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
-    acquireRights: async (req, ctx) => {
-      const result = await handleAcquireRights(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
+    acquireRightsLegacy: async (req, ctx) => {
+      const result = await handleAcquireRights(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
-    updateRights: async (req, ctx) => {
-      const result = await handleUpdateRights(req as ToolArgs, buildTrainingCtx(ctx.account, this.storyboardCompat));
+    updateRightsLegacy: async (req, ctx) => {
+      const result = await handleUpdateRights(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
     reviewCreativeApproval: async () => {

@@ -61,6 +61,17 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
   });
 
   describe('upsertDiscoveredBrand', () => {
+    it('rejects malformed primary domains before writing', async () => {
+      await expect(
+        db.upsertDiscoveredBrand({
+          domain: "x')-alert(1)-('",
+          brand_name: 'Attacker',
+          source_type: 'community',
+        }),
+      ).rejects.toThrow(/not a valid brand domain/i);
+      expect(mocks.query).not.toHaveBeenCalled();
+    });
+
     it('strips caller-supplied classification.confidence and brand_context from brand_manifest', async () => {
       mocks.query.mockResolvedValueOnce({
         rows: [{ domain: 'attacker.example', brand_names: '[]', brand_manifest: null, discovered_at: new Date(), last_validated: new Date() }],

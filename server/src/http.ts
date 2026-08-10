@@ -54,6 +54,7 @@ import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
+import { hasActiveSlackLink } from "./utils/slack-linkage.js";
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
@@ -61,7 +62,7 @@ import { formatPerspectiveUrlAsMarkdownDestination, normalizePerspectiveExternal
 import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
-import { sendNewsletterConfirmation } from "./notifications/email.js";
+import { sendNewsletterConfirmation, SLACK_INVITE_URL } from "./notifications/email.js";
 import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
 import { getAssetData as getPerspectiveAssetData } from "./db/perspective-asset-db.js";
 import { generatePerspectiveCard, compositePerspectiveCard } from "./services/perspective-cards.js";
@@ -155,6 +156,14 @@ import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review
 import { AgentContextDatabase } from "./db/agent-context-db.js";
 import { getWebMemberContext } from "./addie/member-context.js";
 import { buildAgentOAuthAuthorizeUrl } from "./routes/helpers/agent-oauth-prompt.js";
+import {
+  buildNativeErrorRedirect,
+  consumeNativePendingAuth,
+  createNativeAuthRouter,
+  issueNativeGrantRedirect,
+  parseNativePendingId,
+} from "./routes/native-auth.js";
+import type { NativePendingAuth } from "./db/native-auth-state-db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1605,6 +1614,7 @@ export class HTTPServer {
     // Mount member profile routes
     const memberDb = new MemberDatabase();
     const orgDb = new OrganizationDatabase();
+
     const memberProfileConfig = {
       workos,
       memberDb,
@@ -2374,6 +2384,13 @@ export class HTTPServer {
       if (req.user) {
         await enrichUserWithMembership(req.user as any);
         await enrichUserWithAdmin(req.user as any);
+        let isLinkedToSlack = false;
+        try {
+          const slackMapping = await new SlackDatabase().getByWorkosUserId(req.user.id);
+          isLinkedToSlack = hasActiveSlackLink(slackMapping);
+        } catch (err) {
+          logger.warn({ err, userId: req.user.id }, 'Unable to resolve Slack linkage for public config');
+        }
         user = {
           id: req.user.id,
           email: req.user.email,
@@ -2381,11 +2398,13 @@ export class HTTPServer {
           lastName: req.user.lastName,
           isAdmin: !!(req.user as any).isAdmin,
           isMember: !!(req.user as any).isMember,
+          isLinkedToSlack,
         };
       }
 
       res.json({
         authEnabled: AUTH_ENABLED,
+        slackInviteUrl: SLACK_INVITE_URL,
         user,
       });
     });
@@ -5419,7 +5438,7 @@ export class HTTPServer {
 
 
     // GET /api/admin/audit-logs - Get audit log entries
-    this.app.get('/api/admin/audit-logs', requireAuth, requireAdmin, async (req, res) => {
+    this.app.get('/api/admin/audit-logs', ...requireGlobalAdmin, async (req, res) => {
       try {
         const {
           organization_id,
@@ -6812,6 +6831,18 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
     const orgDb = new OrganizationDatabase();
 
+    this.app.use('/auth/native', createNativeAuthRouter({
+      issuer: new URL(WORKOS_REDIRECT_URI).origin,
+      buildWorkOSAuthorizationUrl: (state, codeChallenge) => workos.userManagement.getAuthorizationUrl({
+        provider: 'authkit',
+        clientId: WORKOS_CLIENT_ID,
+        redirectUri: WORKOS_REDIRECT_URI,
+        state,
+        codeChallenge,
+        codeChallengeMethod: 'S256',
+      }),
+    }));
+
     // GET /auth/login - Redirect to WorkOS for authentication (or dev login page)
     // On AdCP domain, redirect to AAO first to keep auth on a single domain
     // Supports slack_user_id param for auto-linking after login (for existing users)
@@ -6843,27 +6874,21 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         const returnTo = req.query.return_to as string;
         const slackUserId = req.query.slack_user_id as string;
-        const nativeMode = req.query.native === 'true';
-        const nativeRedirectUri = req.query.redirect_uri as string;
 
-        // Validate native redirect URI to prevent open redirect attacks
-        const ALLOWED_NATIVE_SCHEMES = ['addie://'];
-        const isValidNativeRedirectUri = (uri: string): boolean => {
-          return ALLOWED_NATIVE_SCHEMES.some(scheme => uri.startsWith(scheme));
-        };
-
-        if (nativeMode && nativeRedirectUri && !isValidNativeRedirectUri(nativeRedirectUri)) {
-          return res.status(400).json({ error: 'Invalid redirect_uri - must use addie:// scheme' });
+        // Native OAuth v1 put a bearer session directly in a custom-scheme
+        // URI and had no client-bound state. It is intentionally disabled;
+        // desktop v2 starts at POST /auth/native/start with state + PKCE.
+        if (req.query.native !== undefined || req.query.redirect_uri !== undefined) {
+          return res.status(426).json({
+            error: 'native_client_upgrade_required',
+            native_protocol: 2,
+          });
         }
 
-        // Build state object with return_to, slack_user_id for auto-linking, and native app params
-        const stateObj: { return_to?: string; slack_user_id?: string; native?: boolean; native_redirect_uri?: string } = {};
+        // Build state object with return_to and slack_user_id for auto-linking.
+        const stateObj: { return_to?: string; slack_user_id?: string } = {};
         if (returnTo) stateObj.return_to = returnTo;
         if (slackUserId) stateObj.slack_user_id = slackUserId;
-        if (nativeMode) {
-          stateObj.native = true;
-          stateObj.native_redirect_uri = nativeRedirectUri || 'addie://auth/callback';
-        }
         const state = Object.keys(stateObj).length > 0 ? JSON.stringify(stateObj) : undefined;
 
         const authUrl = workos!.userManagement.getAuthorizationUrl({
@@ -6980,10 +7005,36 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     // GET /auth/callback - Handle OAuth callback from WorkOS
     // codeql[js/user-controlled-bypass] - OAuth callback must read authorization code from query params
     this.app.get('/auth/callback', async (req, res) => {
-      const code = req.query.code as string;
-      const state = req.query.state as string;
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Pragma', 'no-cache');
+      const code = typeof req.query.code === 'string' ? req.query.code : undefined;
+      const state = typeof req.query.state === 'string' ? req.query.state : undefined;
+      let nativePending: NativePendingAuth | undefined;
 
+      const nativePendingId = parseNativePendingId(state);
+      if (nativePendingId) {
+        try {
+          nativePending = await consumeNativePendingAuth(nativePendingId);
+        } catch (error) {
+          logger.error({ error }, 'Native OAuth pending lookup failed');
+          return res.status(503).json({ error: 'temporarily_unavailable' });
+        }
+        if (!nativePending) {
+          return res.status(400).json({ error: 'invalid_request' });
+        }
+      }
+
+      // The OAuth provider controls whether a callback contains `code`. This branch does not
+      // bypass authentication: native state was atomically consumed and validated above, and
+      // the no-code path can only return an error. Successful authentication still requires
+      // WorkOS code redemption below.
+      // codeql[js/user-controlled-bypass] - provider code presence selects only error vs redemption
       if (!code) {
+        if (nativePending) {
+          res.setHeader('Cache-Control', 'no-store');
+          const error = req.query.error === 'access_denied' ? 'access_denied' : 'server_error';
+          return res.redirect(buildNativeErrorRedirect(nativePending, error));
+        }
         return res.status(400).json({
           error: 'Missing authorization code',
           message: 'No authorization code provided',
@@ -7006,6 +7057,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         const { user, sealedSession } = await workos!.userManagement.authenticateWithCode({
           clientId: WORKOS_CLIENT_ID,
           code,
+          ...(nativePending && { codeVerifier: nativePending.workosCodeVerifier }),
           session: {
             sealSession: true,
             cookiePassword: WORKOS_COOKIE_PASSWORD,
@@ -7304,11 +7356,24 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           })();
         }
 
-        // Parse return_to, slack_user_id, and native mode from state
+        if (nativePending) {
+          const redirectUrl = await issueNativeGrantRedirect(
+            nativePending,
+            sealedSession!,
+            {
+              id: user.id,
+              email: user.email,
+              ...(user.firstName && { firstName: user.firstName }),
+              ...(user.lastName && { lastName: user.lastName }),
+            },
+          );
+          res.setHeader('Cache-Control', 'no-store');
+          return res.redirect(redirectUrl);
+        }
+
+        // Parse return_to and slack_user_id from web state
         let returnTo = '/member-hub';
         let slackUserIdToLink: string | undefined;
-        let isNativeMode = false;
-        let nativeRedirectUri = 'addie://auth/callback';
         logger.debug({ state, hasState: !!state }, 'Parsing state for return_to');
         if (state) {
           try {
@@ -7321,34 +7386,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
               logger.warn({ returnTo: candidateReturnTo }, 'Blocked invalid return_to from OAuth state');
             }
             slackUserIdToLink = parsedState.slack_user_id;
-            isNativeMode = parsedState.native === true;
-            const candidateNativeUri = parsedState.native_redirect_uri || nativeRedirectUri;
-            const ALLOWED_NATIVE_SCHEMES = ['addie://'];
-            if (ALLOWED_NATIVE_SCHEMES.some(scheme => candidateNativeUri.startsWith(scheme))) {
-              nativeRedirectUri = candidateNativeUri;
-            } else if (candidateNativeUri !== nativeRedirectUri) {
-              logger.warn({ nativeRedirectUri: candidateNativeUri }, 'Blocked invalid native_redirect_uri from OAuth state');
-            }
-            logger.debug({ parsedState, returnTo, slackUserIdToLink, isNativeMode }, 'Parsed state successfully');
+            logger.debug({ returnTo, slackUserIdToLink }, 'Parsed state successfully');
           } catch (e) {
             // Invalid state, use default
             logger.debug({ state, error: String(e) }, 'Failed to parse state');
           }
-        }
-
-        // For native app authentication, return JSON with sealed session and redirect to deep link
-        if (isNativeMode) {
-          logger.info({ userId: user.id, nativeRedirectUri }, 'Native app authentication - redirecting to deep link');
-
-          // Redirect to native app with sealed session as a query parameter
-          const redirectUrl = new URL(nativeRedirectUri);
-          redirectUrl.searchParams.set('sealed_session', sealedSession!);
-          redirectUrl.searchParams.set('user_id', user.id);
-          redirectUrl.searchParams.set('email', user.email);
-          if (user.firstName) redirectUrl.searchParams.set('first_name', user.firstName);
-          if (user.lastName) redirectUrl.searchParams.set('last_name', user.lastName);
-
-          return res.redirect(redirectUrl.toString());
         }
 
         // Auto-link Slack account if slack_user_id was provided during signup
@@ -7504,6 +7546,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           res.redirect(returnTo); // lgtm[js/server-side-unvalidated-url-redirection]
         }
       } catch (error) {
+        if (nativePending) {
+          logger.warn({ error }, 'Native OAuth callback failed');
+          res.setHeader('Cache-Control', 'no-store');
+          return res.redirect(buildNativeErrorRedirect(nativePending, 'server_error'));
+        }
         // Expired or already-used authorization codes: redirect back to login
         // instead of showing a raw error page.
         if (error instanceof Error && error.name === 'OauthException' && 'error' in error && (error as Record<string, unknown>).error === 'invalid_grant') {
@@ -9147,14 +9194,6 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       }
     });
 
-    // GET /api/public/agent-publishers - Deprecated: listAuthorizedProperties was removed from AdCP SDK
-    this.app.get('/api/public/agent-publishers', async (_req, res) => {
-      return res.status(501).json({
-        error: 'Not Implemented',
-        message: 'The list_authorized_properties task is no longer supported in the current SDK version',
-      });
-    });
-
     // Note: Member profile routes are in routes/member-profiles.ts (mounted in setupRoutes)
 
     // Note: Account management routes are in routes/admin/accounts.ts
@@ -9342,12 +9381,25 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         if (agentType === 'creative') {
           try {
-            const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
-            const formats = await creativeClient.listFormats();
-            stats.format_count = formats.length;
+            const capabilities = await client.getAdcpCapabilities({});
+            const canonicalFormats = capabilities.data?.creative?.supported_formats;
+            if (Array.isArray(canonicalFormats) && canonicalFormats.length > 0) {
+              stats.format_count = canonicalFormats.length;
+            } else {
+              const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
+              const formats = await creativeClient.listFormatsLegacy();
+              stats.format_count = formats.length;
+            }
           } catch (statsError) {
-            logger.debug({ err: statsError, url }, 'Failed to fetch creative formats');
-            stats.format_count = 0;
+            logger.debug({ err: statsError, url }, 'Canonical creative capability discovery failed; trying legacy formats');
+            try {
+              const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
+              const formats = await creativeClient.listFormatsLegacy();
+              stats.format_count = formats.length;
+            } catch (legacyStatsError) {
+              logger.debug({ err: legacyStatsError, url }, 'Failed to fetch legacy creative formats');
+              stats.format_count = 0;
+            }
           }
         } else if (agentType === 'sales') {
           // Always show product and publisher counts for sales agents

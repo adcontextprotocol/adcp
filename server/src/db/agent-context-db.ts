@@ -71,8 +71,8 @@ export interface OAuthClientCredentials {
   client_id: string;
   client_secret: string;
   scope?: string;
-  /** RFC 8707 resource indicator. Single-resource only; multi-resource tracked as #2805. */
-  resource?: string;
+  /** RFC 8707 resource indicator. Scalar string or array of up to 8 URI strings. */
+  resource?: string | string[];
   audience?: string;
   /**
    * Client-credentials auth placement. `basic` = HTTP Basic header
@@ -322,35 +322,40 @@ export class AgentContextDatabase {
   }
 
   /**
-   * Find an organization that has saved any kind of auth (bearer, OAuth tokens,
-   * or OAuth client-credentials) for the given agent URL. Returns the most
-   * recently updated row's org id, or null if no credentials are saved by any
-   * org. Used by the periodic crawler so its probe runs with owner credentials
-   * when available — keeping a per-org-aware view of `oauth_required` instead
-   * of clobbering it back to `true` on every anonymous heartbeat. When multiple
-   * orgs have independently registered the same agent, the most recently
-   * updated set wins; that matches "freshly-rotated creds take precedence" and
-   * the periodic snapshot is a single shared row anyway.
+   * Find an owning organization that has saved any kind of auth (bearer, OAuth
+   * tokens, or OAuth client-credentials) for the given agent URL. Returns the
+   * most recently updated eligible row's org id, or null if no credentials are
+   * saved by an owning org. Used by the periodic crawler so its probe runs with owner
+   * credentials when available — keeping a per-org-aware view of
+   * `oauth_required` instead of clobbering it back to `true` on every anonymous
+   * heartbeat. A context is eligible only when the same organization registers
+   * the URL in `member_profiles.agents`; this prevents a stale or accidentally
+   * misrouted credential from another tenant from driving the shared probe.
+   * When multiple owning orgs have independently registered the same agent, the
+   * most recently updated set wins; the periodic snapshot is a single shared row.
    */
-  async findOrgWithSavedAuth(agentUrl: string): Promise<string | null> {
+  async findOwnerOrgWithSavedAuth(agentUrl: string): Promise<string | null> {
     const canonicalUrl = requireCanonicalAgentUrl(agentUrl);
     const result = await query<{ organization_id: string }>(
-      `SELECT organization_id
-       FROM agent_contexts
-       WHERE agent_url = $1
+      `SELECT ac.organization_id
+       FROM agent_contexts ac
+       JOIN member_profiles mp
+         ON mp.workos_organization_id = ac.organization_id
+        AND mp.agents @> $2::jsonb
+       WHERE ac.agent_url = $1
          AND (
-           (auth_token_encrypted IS NOT NULL
-            AND auth_token_iv IS NOT NULL)
-           OR (oauth_access_token_encrypted IS NOT NULL
-               AND oauth_access_token_iv IS NOT NULL)
-           OR (oauth_cc_token_endpoint IS NOT NULL
-               AND oauth_cc_client_id IS NOT NULL
-               AND oauth_cc_client_secret_encrypted IS NOT NULL
-               AND oauth_cc_client_secret_iv IS NOT NULL)
+           (ac.auth_token_encrypted IS NOT NULL
+            AND ac.auth_token_iv IS NOT NULL)
+           OR (ac.oauth_access_token_encrypted IS NOT NULL
+               AND ac.oauth_access_token_iv IS NOT NULL)
+           OR (ac.oauth_cc_token_endpoint IS NOT NULL
+               AND ac.oauth_cc_client_id IS NOT NULL
+               AND ac.oauth_cc_client_secret_encrypted IS NOT NULL
+               AND ac.oauth_cc_client_secret_iv IS NOT NULL)
          )
-       ORDER BY updated_at DESC
+       ORDER BY ac.updated_at DESC
        LIMIT 1`,
-      [canonicalUrl],
+      [canonicalUrl, JSON.stringify([{ url: canonicalUrl }])],
     );
     return result.rows[0]?.organization_id ?? null;
   }
@@ -875,7 +880,11 @@ export class AgentContextDatabase {
         secretEncrypted.encrypted,
         secretEncrypted.iv,
         creds.scope || null,
-        creds.resource || null,
+        Array.isArray(creds.resource)
+          ? `v1a:${JSON.stringify(creds.resource)}`
+          : creds.resource != null
+            ? `v1s:${creds.resource}`
+            : null,
         creds.audience || null,
         creds.auth_method || null,
         id,
@@ -929,7 +938,27 @@ export class AgentContextDatabase {
       ),
     };
     if (row.oauth_cc_scope) creds.scope = row.oauth_cc_scope;
-    if (row.oauth_cc_resource) creds.resource = row.oauth_cc_resource;
+    if (row.oauth_cc_resource) {
+      const raw: string = row.oauth_cc_resource;
+      if (raw.startsWith('v1a:')) {
+        try {
+          const parsed: unknown = JSON.parse(raw.slice(4));
+          creds.resource =
+            Array.isArray(parsed) && parsed.every((e): e is string => typeof e === 'string')
+              ? parsed
+              : raw;
+        } catch {
+          creds.resource = raw;
+        }
+      } else if (raw.startsWith('v1s:')) {
+        creds.resource = raw.slice(4);
+      } else {
+        // Untagged row (no v1a:/v1s: prefix) — treat as a legacy bare scalar.
+        // json1: rows from an unreleased draft also fall here; that encoding
+        // never reached main so there are no production array rows to preserve.
+        creds.resource = raw;
+      }
+    }
     if (row.oauth_cc_audience) creds.audience = row.oauth_cc_audience;
     if (row.oauth_cc_auth_method === 'basic' || row.oauth_cc_auth_method === 'body') {
       creds.auth_method = row.oauth_cc_auth_method;

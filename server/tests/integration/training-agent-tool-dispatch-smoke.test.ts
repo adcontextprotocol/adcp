@@ -35,7 +35,7 @@ const { stopSessionCleanup } = await import('../../src/training-agent/state.js')
 const { toolsForTenant } = await import('../../src/training-agent/tenants/tool-catalog.js');
 const { MUTATING_TOOLS } = await import('../../src/training-agent/idempotency.js');
 
-const TENANT_IDS = ['signals', 'sales', 'governance', 'creative', 'creative-builder', 'brand'] as const;
+const TENANT_IDS = ['signals', 'sales', 'governance', 'creative', 'creative-builder', 'brand', 'si'] as const;
 type TenantId = typeof TENANT_IDS[number];
 const AUTH = 'Bearer tool-dispatch-smoke-token';
 

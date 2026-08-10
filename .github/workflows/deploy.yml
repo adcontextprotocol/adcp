@@ -1,9 +1,13 @@
 name: Deploy
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: [Build Check]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
 
 concurrency:
   group: fly-deploy
@@ -16,10 +20,40 @@ jobs:
   # here instead of shipping a container that crashloops on boot.
   preflight:
     name: Preflight
+    # workflow_run has access to deployment secrets, so only trust a successful
+    # push run from this repository's main branch. Never deploy a PR run.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
+    outputs:
+      deploy_current: ${{ steps.current-main.outputs.deploy_current }}
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - name: Require the tested SHA to still be current main
+        id: current-main
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          current_main_sha=$(git ls-remote origin refs/heads/main | awk '{print $1}')
+          if [ -z "${current_main_sha}" ]; then
+            echo "::error::Could not resolve the current origin/main SHA."
+            exit 1
+          fi
+          if [ "${TESTED_SHA}" != "${current_main_sha}" ]; then
+            echo "::notice::Skipping stale tested SHA ${TESTED_SHA}; origin/main is ${current_main_sha}."
+            echo "deploy_current=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "deploy_current=true" >> "${GITHUB_OUTPUT}"
+          fi
       - name: No duplicate migration numbers
+        if: steps.current-main.outputs.deploy_current == 'true'
         run: |
           dupes=$(ls server/src/db/migrations/*.sql \
             | xargs -n1 basename \
@@ -41,13 +75,27 @@ jobs:
   deploy:
     name: Deploy to Fly.io
     needs: preflight
+    if: needs.preflight.outputs.deploy_current == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Recheck tested SHA is still current main
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          current_main_sha=$(git ls-remote origin refs/heads/main | awk '{print $1}')
+          if [ -z "${current_main_sha}" ] || [ "${TESTED_SHA}" != "${current_main_sha}" ]; then
+            echo "::error::Refusing to deploy stale SHA ${TESTED_SHA}; origin/main is ${current_main_sha:-unavailable}."
+            exit 1
+          fi
 
       - name: Setup Fly CLI
-        uses: superfly/flyctl-actions/setup-flyctl@1.6
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
 
       # flyctl deploy can fail for two very different reasons:
       #   1. The new image is broken (real failure — must block).
@@ -236,9 +284,9 @@ jobs:
           fi
 
       - name: Setup Node.js for artifact build
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies for artifact build
@@ -287,14 +335,14 @@ jobs:
           # Capture the deploy-outcome we computed so the artifact is
           # self-describing in 30 days.
           echo "deploy_outcome=${{ steps.deploy.outputs.deploy_outcome }}" > /tmp/forensics/summary.txt
-          echo "github_sha=${{ github.sha }}" >> /tmp/forensics/summary.txt
+          echo "github_sha=${{ github.event.workflow_run.head_sha }}" >> /tmp/forensics/summary.txt
           echo "github_run_id=${{ github.run_id }}" >> /tmp/forensics/summary.txt
           echo "note=fly-logs-tail.txt filtered for common secret shapes (Bearer/sk-/wos_/JWT/etc). Not exhaustive — treat as read-only." >> /tmp/forensics/summary.txt
           ls -la /tmp/forensics/
 
       - name: Upload Fly forensics
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: fly-forensics-${{ github.run_id }}
           path: /tmp/forensics/

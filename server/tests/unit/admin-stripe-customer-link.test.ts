@@ -32,6 +32,7 @@ vi.mock('../../src/middleware/auth.js', () => ({
     next();
   },
   requireAdmin: (_req: any, _res: any, next: any) => next(),
+  requireTenantAdminForOrganization: (_req: any, _res: any, next: any) => next(),
   requireGlobalAdmin: [
     (req: any, _res: any, next: any) => {
       req.user = { id: 'user_admin_01', email: 'admin@test', is_admin: true };

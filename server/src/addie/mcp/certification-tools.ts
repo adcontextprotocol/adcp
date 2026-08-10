@@ -38,6 +38,7 @@ import {
   NAME_REQUIRED_MARKER,
   ensureCertifierCredential,
 } from '../../services/certification-credential-issuance.js';
+import { linkCertificationModuleThread } from '../../services/certification-experience.js';
 
 export { NAME_REQUIRED_MARKER };
 
@@ -112,11 +113,11 @@ const MIN_PLACEMENT_TURNS = 3;
 const MIN_MODULE_TIME_MS = 5 * 60 * 1000; // 5 minutes
 const MIN_CAPSTONE_TIME_MS = 10 * 60 * 1000; // 10 minutes
 
-const UNAVAILABLE_SPECIALIST_MODULES = new Set(['S5']);
+const UNAVAILABLE_SPECIALIST_MODULES = new Set<string>();
 
 function unavailableSpecialistMessage(moduleId: string): string | null {
   if (!UNAVAILABLE_SPECIALIST_MODULES.has(moduleId)) return null;
-  return `Module ${moduleId} (Sponsored Intelligence) is not currently available for assessment because the sandbox does not yet expose the required si_* lab tools. No module progress or capstone attempt was changed.`;
+  return `Module ${moduleId} is not currently available for assessment. No module progress or capstone attempt was changed.`;
 }
 
 export const PRIOR_TURN_RESTATEMENT_NO_RAW_JSON_RULE = 'for prior-turn re-statements, no raw JSON';
@@ -609,7 +610,11 @@ async function checkAndFormatCredentials(
   userId: string,
   memberContext: MemberContext | null,
 ): Promise<string[]> {
+  const allowPaidCredentials = await certDb.hasEffectiveMembershipForUser(userId);
   const awarded = await certDb.checkAndAwardCredentials(userId);
+
+  const creds = await certDb.getCredentials();
+  const credMap = new Map(creds.map(c => [c.id, c]));
 
   // Pick up the "awarded earlier, never issued to Certifier" backlog so a
   // post-set_my_name retry actually finalizes the certificate. Bounded to a
@@ -624,6 +629,7 @@ async function checkAndFormatCredentials(
     .filter(c =>
       !c.certifier_credential_id &&
       !awarded.includes(c.credential_id) &&
+      (allowPaidCredentials || (credMap.get(c.credential_id)?.tier ?? Number.POSITIVE_INFINITY) <= 1) &&
       (now - new Date(c.awarded_at).getTime()) < RETRY_WINDOW_MS,
     )
     .map(c => c.credential_id);
@@ -631,13 +637,17 @@ async function checkAndFormatCredentials(
   const toProcess = [...new Set([...awarded, ...deferred])];
   if (toProcess.length === 0) return [];
 
-  const creds = await certDb.getCredentials();
-  const credMap = new Map(creds.map(c => [c.id, c]));
   const lines: string[] = [''];
   let nameRequired = false;
   for (const credId of toProcess) {
     const cred = credMap.get(credId);
     if (cred) {
+      // External issuance is its own authorization boundary. Recheck directly
+      // before each paid badge call so membership ending during assessment or
+      // an earlier network request cannot reuse a stale positive decision.
+      if (cred.tier > 1 && !(await certDb.hasEffectiveMembershipForUser(userId))) {
+        continue;
+      }
       const result = await issueCertifierBadge(userId, credId, cred, memberContext);
       if (result === NAME_REQUIRED_MARKER) {
         nameRequired = true;
@@ -980,7 +990,7 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
   },
   {
     name: 'start_certification_exam',
-    description: 'Begin an available specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S6: Security). S5 Sponsored Intelligence is listed in the curriculum but is not assessable until its sandbox labs exist. The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.',
+    description: 'Begin an available specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence, S6: Security). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.',
     usage_hints: 'use for "take the exam", "start capstone", "specialist exam", "ready for certification", "start S1", "media buy specialist", "security specialist"',
     input_schema: {
       type: 'object',
@@ -988,7 +998,7 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
         module_id: {
           type: 'string',
           enum: ['S1', 'S2', 'S3', 'S4', 'S5', 'S6'],
-          description: 'Specialist module ID: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence — currently unavailable), S6 (Security)',
+          description: 'Specialist module ID: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence), S6 (Security)',
         },
       },
       required: ['module_id'],
@@ -1578,9 +1588,20 @@ export function createCertificationToolHandlers(
    * trigger that surfaces the latent state — they never see the drift.
    */
   const ensureMembership = async (): Promise<boolean> => {
-    if (memberContext?.is_member) return true;
     const orgId = memberContext?.organization?.workos_organization_id;
-    if (!orgId || !stripe) return false;
+    const userId = getUserId();
+    if (!userId) return false;
+
+    // This is an authorization boundary, so do not trust the conversation's
+    // captured member context or the normal five-minute membership cache. Use
+    // the same user-level resolver as background issuance so membership via a
+    // second organization is handled consistently.
+    if (await certDb.hasEffectiveMembershipForUser(userId)) {
+      memberContext = memberContext ? { ...memberContext, is_member: true } : memberContext;
+      return true;
+    }
+    if (!orgId) return false;
+    if (!stripe) return false;
 
     const result = await attemptStripeReconciliation(orgId, {
       pool: getPool(),
@@ -1588,19 +1609,24 @@ export function createCertificationToolHandlers(
       logger,
     });
 
-    if (!result.healed) return false;
+    if (!result.healed && result.reason !== 'already_entitled') return false;
+
+    // Lazy reconciliation accepts a broader set of Stripe states for billing
+    // continuity. Certification uses the canonical membership rule (active,
+    // not canceled), so refresh and re-resolve instead of trusting `healed`.
+    const isMember = await certDb.hasEffectiveMembershipForUser(userId);
 
     if (memberContext?.organization) {
       memberContext = {
         ...memberContext,
-        is_member: true,
+        is_member: isMember,
         organization: {
           ...memberContext.organization,
-          subscription_status: result.subscriptionStatus,
+          ...(result.healed && { subscription_status: result.subscriptionStatus }),
         },
       };
     }
-    return true;
+    return isMember;
   };
 
   // ----- list_certification_tracks -----
@@ -1682,7 +1708,7 @@ export function createCertificationToolHandlers(
       lines.push('---');
       lines.push('Modules A1, A2, A2B, and A3 are free for everyone. Other modules require AgenticAdvertising.org membership.');
       lines.push('To start a module, say "start module [ID]" (e.g., "start module A1").');
-      lines.push('To start a specialist deep dive, say "start capstone S1" (S1–S4, S6 Security, or S7 Brand are available; S5 is pending sandbox labs).');
+      lines.push('To start a specialist deep dive, say "start capstone S1" (S1–S6 and S7 Brand are available).');
       lines.push('Already familiar with AdCP? Say "assess my level" to take a placement assessment and skip modules you already know.');
 
       return lines.join('\n');
@@ -1847,7 +1873,11 @@ export function createCertificationToolHandlers(
         return `Module ${moduleId} is already ${existingMod.status.replace('_', ' ')}. You can proceed to the next module or use get_learner_progress to check your overall progress.`;
       }
 
-      await certDb.startModule(userId, moduleId);
+      if (options?.threadId) {
+        await certDb.startModule(userId, moduleId, options.threadId);
+      } else {
+        await certDb.startModule(userId, moduleId);
+      }
       if (options?.trainingModuleContext) {
         options.trainingModuleContext.moduleId = moduleId;
       }
@@ -1968,6 +1998,14 @@ export function createCertificationToolHandlers(
       const unavailable = unavailableSpecialistMessage(moduleId);
       if (unavailable) return notCompleted(moduleId, 'state', unavailable);
 
+      const mod = await certDb.getModule(moduleId);
+      if (!mod) return notCompleted(moduleId, 'state', `Module ${moduleId} was not found.`);
+
+      const hasMembership = await ensureMembership();
+      if (!mod.is_free && !hasMembership) {
+        return notCompleted(moduleId, 'state', membershipRequiredMessage(moduleId, memberContext));
+      }
+
       // Verify module is in-progress before allowing completion
       const progress = await certDb.getProgress(userId);
       const moduleProgress = progress.find(p => p.module_id === moduleId);
@@ -1990,7 +2028,6 @@ export function createCertificationToolHandlers(
       const scores = input.scores as Record<string, number>;
       if (!scores || typeof scores !== 'object') return 'Scores are required to complete a module.';
 
-      const mod = await certDb.getModule(moduleId);
       const ac = mod?.assessment_criteria as certDb.AssessmentCriteria | undefined;
 
       // Validate scores against assessment criteria (range, dimensions, floor, threshold)
@@ -2086,6 +2123,11 @@ export function createCertificationToolHandlers(
       const retrySeconds = Math.max(1, Math.ceil((rate.retryAfterMs ?? 60000) / 1000));
       return `Rate limit exceeded on check_credentials. Try again in ~${retrySeconds} seconds.`;
     }
+    // A deferred badge retry is also an entitlement recovery point. Give a
+    // Stripe-active organization with stale local state the same lazy-heal
+    // opportunity as the paid learning gates. The issuance path still
+    // revalidates membership immediately before every paid badge call.
+    await ensureMembership();
     const lines = await checkAndFormatCredentials(userId, memberContext);
     if (lines.length === 0) {
       return 'No new credentials to issue. Your existing credentials are unchanged.';
@@ -2243,7 +2285,8 @@ export function createCertificationToolHandlers(
         const mod = moduleMap.get(id);
         return mod && !mod.is_free;
       });
-      if (paidModules.length > 0 && !(await ensureMembership())) {
+      const hasMembership = await ensureMembership();
+      if (paidModules.length > 0 && !hasMembership) {
         return membershipRequiredMessage(paidModules[0], memberContext);
       }
 
@@ -2301,7 +2344,7 @@ export function createCertificationToolHandlers(
       // Validate it's a capstone module
       const mod = await certDb.getModule(moduleId);
       if (!mod || mod.format !== 'capstone') {
-        return `"${moduleId}" is not a capstone module. Valid specialist modules: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Generative Advertising).`;
+        return `"${moduleId}" is not a capstone module. Valid specialist modules: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence), S6 (Security).`;
       }
 
       if (!(await ensureMembership())) {
@@ -2435,7 +2478,11 @@ export function createCertificationToolHandlers(
       }
 
       // Start the module and create an attempt
-      await certDb.startModule(userId, moduleId);
+      if (options?.threadId) {
+        await certDb.startModule(userId, moduleId, options.threadId);
+      } else {
+        await certDb.startModule(userId, moduleId);
+      }
       const attempt = await certDb.createAttempt(userId, mod.track_id, options?.threadId, moduleId);
       if (options?.trainingModuleContext) {
         options.trainingModuleContext.moduleId = moduleId;
@@ -2581,6 +2628,10 @@ export function createCertificationToolHandlers(
             return 'This exam attempt is already completed, but I could not find the capstone module needed to reconcile credential issuance. Ask an admin to run the certification repair from the admin dashboard.';
           }
 
+          if (!(await ensureMembership())) {
+            return notCompleted(capstoneMod.id, 'state', membershipRequiredMessage(capstoneMod.id, memberContext));
+          }
+
           const completedScores = asNumberRecord(attempt.scores);
           if (!completedScores) {
             return notCompleted(capstoneMod.id, 'state', `This capstone attempt is already passed, but its recorded scores are missing. Ask an admin to use Certification > Attempts needing attention for attempt ${attempt.id}.`);
@@ -2627,6 +2678,9 @@ export function createCertificationToolHandlers(
       const capstoneId = capstoneMod.id;
       const unavailable = unavailableSpecialistMessage(capstoneId);
       if (unavailable) return notCompleted(capstoneId, 'state', unavailable);
+      if (!(await ensureMembership())) {
+        return notCompleted(capstoneId, 'state', membershipRequiredMessage(capstoneId, memberContext));
+      }
       const deltaDef = getDeltaForModule(capstoneId) ?? null;
       const deltaStatus = deltaDef
         ? await certDb.getDeltaStatus(deltaDef, userId)
@@ -2809,6 +2863,12 @@ export function createCertificationToolHandlers(
       const userId = getUserId();
       if (!userId) return 'User not authenticated.';
 
+      const mod = await certDb.getModule(moduleId);
+      if (!mod) return `Module ${moduleId} was not found.`;
+      if (!mod.is_free && !(await ensureMembership())) {
+        return membershipRequiredMessage(moduleId, memberContext);
+      }
+
       // Validate module is in-progress before saving checkpoint
       const progress = await certDb.getProgress(userId);
       const modProgress = progress.find(p => p.module_id === moduleId);
@@ -2832,7 +2892,6 @@ export function createCertificationToolHandlers(
 
       // Validate demonstration IDs and evidence keys are real criteria for this module
       if (demonstrationsVerified.length || (demonstrationEvidence && Object.keys(demonstrationEvidence).length > 0)) {
-        const mod = await certDb.getModule(moduleId);
         if (demonstrationsVerified.length) {
           const invalid = validateDemonstrationIds(mod, demonstrationsVerified);
           if (invalid.length > 0) {
@@ -2862,6 +2921,7 @@ export function createCertificationToolHandlers(
         demonstration_evidence: demonstrationEvidence,
         notes: enrichedNotes,
       });
+      await linkCertificationModuleThread(userId, moduleId, options?.threadId);
 
       const demoCount = demonstrationsVerified.length;
       return `Teaching checkpoint saved for ${moduleId}. Phase: ${currentPhase}. Covered ${conceptsCovered.length} concepts, ${conceptsRemaining.length} remaining. Demonstrations verified: ${demoCount}.`;
@@ -2911,7 +2971,7 @@ Run your buyer agent against the public test agent and share the output. Use the
 npx @adcp/sdk@latest test-mcp get_products '{"brief":"<your campaign brief>"}'
 \`\`\`
 
-Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products → create_media_buy → list_creative_formats → sync_creatives.
+Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products (select a canonical \`format_options[]\` entry) → create_media_buy → get_adcp_capabilities on the chosen creative endpoint → sync_creatives with \`format_kind\` and optional \`format_option_ref\`.
 
 Paste the output from each step. We'll verify your agent handles the complete buying workflow correctly.
 

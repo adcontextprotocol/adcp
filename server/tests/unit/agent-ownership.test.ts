@@ -5,7 +5,11 @@ vi.mock('../../src/db/client.js', () => ({
 }));
 
 import { query } from '../../src/db/client.js';
-import { findOwnerOrgForUser, isOrgOwnerOfAgent } from '../../src/services/agent-ownership.js';
+import {
+  findOwnerOrgForUser,
+  isOrgOwnerOfAgent,
+  resolveOwnerOrgForUser,
+} from '../../src/services/agent-ownership.js';
 
 const queryMock = vi.mocked(query);
 
@@ -130,6 +134,62 @@ describe('agent-ownership', () => {
         JSON.stringify([{ url: 'https://agent.example.com/mcp' }]),
         'user_123',
       ]);
+    });
+  });
+
+  describe('resolveOwnerOrgForUser', () => {
+    it('uses the explicitly requested owning organization', async () => {
+      queryMock.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] } as never);
+
+      await expect(resolveOwnerOrgForUser(
+        'user_123',
+        'https://agent.example.com/mcp',
+        'org_selected',
+      )).resolves.toBe('org_selected');
+
+      expect(queryMock.mock.calls[0]?.[1]).toEqual([
+        'org_selected',
+        JSON.stringify([{ url: 'https://agent.example.com/mcp' }]),
+        'user_123',
+      ]);
+    });
+
+    it('fails closed when the requested organization does not own the agent', async () => {
+      queryMock.mockResolvedValueOnce({ rows: [] } as never);
+
+      await expect(resolveOwnerOrgForUser(
+        'user_123',
+        'https://agent.example.com/mcp',
+        'org_wrong',
+      )).resolves.toBeNull();
+
+      expect(queryMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('resolves a sole owner when no organization is requested', async () => {
+      queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_discovered' }] } as never);
+
+      await expect(resolveOwnerOrgForUser(
+        'user_123',
+        'https://agent.example.com/mcp',
+      )).resolves.toBe('org_discovered');
+    });
+
+    it('fails closed when an omitted organization has multiple owners', async () => {
+      queryMock.mockResolvedValueOnce({
+        rows: [
+          { workos_organization_id: 'org_a' },
+          { workos_organization_id: 'org_b' },
+        ],
+      } as never);
+
+      await expect(resolveOwnerOrgForUser(
+        'user_123',
+        'https://agent.example.com/mcp',
+      )).resolves.toBeNull();
+
+      expect(queryMock.mock.calls[0]?.[0]).toContain('SELECT DISTINCT');
+      expect(queryMock.mock.calls[0]?.[0]).toContain('LIMIT 2');
     });
   });
 

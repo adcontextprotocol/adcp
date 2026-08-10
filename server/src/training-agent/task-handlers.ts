@@ -18,35 +18,53 @@ import {
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
 import { PostgresTaskStore } from '@adcp/sdk';
-import { mergeSeedProduct } from '@adcp/sdk/testing';
+import {
+  canonicalFormatLegacyResolverFromCatalogSnapshots,
+  canonicalFormatLegacyResolverFromRoutes,
+  legacyRoutesForProduct,
+  legacyFormatConverterFromCatalogSnapshots,
+  projectCreativeForDelivery,
+  projectV1ProductToV2,
+  toCanonicalOnlyResponse,
+  type CreativeFormatWireMode,
+  type CanonicalFormatLegacyResolver,
+  type CanonicalFormatLegacyRoute,
+  type CanonicalFormatKind,
+  type ProjectionCatalogSnapshot,
+  type V2ProductFormatDeclaration,
+} from '@adcp/sdk/v2/projection';
+import { mergeSeedProductLegacy as mergeSeedProduct } from '@adcp/sdk/testing';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetchAxiosLike } from '../utils/url-security.js';
-import type { TrainingContext, CatalogProduct, MediaBuyState, MediaBuyAvailableActionState, MediaBuyProductAllowedActionState, PackageState, SignalActivationState, CreativeState, CreativeManifest, ToolArgs, ListReference, PackageTargeting, AccountRef, SessionState } from './types.js';
+import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type SessionState } from './types.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
-  Product,
+  LegacyProduct as Product,
   Proposal,
-  FormatID,
-  CreateMediaBuyRequest,
-  UpdateMediaBuyRequest,
-  GetProductsRequest,
-  GetProductsResponse,
+  LegacyFormatID as FormatID,
+  LegacyCreateMediaBuyRequest as CreateMediaBuyRequest,
+  LegacyUpdateMediaBuyRequest as UpdateMediaBuyRequest,
+  LegacyGetProductsRequest as GetProductsRequest,
+  LegacyGetProductsResponse as GetProductsResponse,
   GetMediaBuysRequest,
   GetMediaBuyDeliveryRequest,
-  ListCreativeFormatsRequest,
-  SyncCreativesRequest,
-  ListCreativesRequest,
+  LegacyListCreativeFormatsRequest as ListCreativeFormatsRequest,
+  LegacySyncCreativesRequest as SyncCreativesRequest,
+  LegacyListCreativesRequest as ListCreativesRequest,
   GetSignalsRequest,
   ActivateSignalRequest,
   GetCreativeDeliveryRequest,
   GetAdCPCapabilitiesRequest,
-  ListCreativesResponse,
-  PreviewCreativeResponse,
-  BuildCreativeResponse,
-  CreativeManifest as AdcpCreativeManifest,
+  LegacyListCreativesResponse as ListCreativesResponse,
+  LegacyPreviewCreativeResponse as PreviewCreativeResponse,
+  LegacyBuildCreativeResponse as BuildCreativeResponse,
+  LegacyCreativeManifest as AdcpCreativeManifest,
 } from '@adcp/sdk';
-import { CreativeManifestSchema } from '@adcp/sdk/schemas';
+import { CreativeAssetSchema, CreativeManifestSchema } from '@adcp/sdk/schemas';
+import { verifyGovernedServiceAuthorization } from './governance-verify.js';
+import { getCanonicalBase } from './canonical-base.js';
+
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
 function escapeHtmlAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -79,6 +97,14 @@ type InlineCreativeInput = {
   assets?: Record<string, unknown>;
   manifest?: CreativeManifest;
 };
+type InlineCreativeIdentity =
+  | { kind: 'canonical'; formatKind: CanonicalFormatKind; formatOptionRef?: Record<string, unknown> }
+  | { kind: 'legacy'; formatId: FormatID; formatOptionRef?: Record<string, unknown> };
+type ValidatedInlineCreative = {
+  creative: InlineCreativeInput;
+  creativeId: string;
+  identity: InlineCreativeIdentity;
+};
 type PackageUpdate = NonNullable<UpdateMediaBuyRequest['packages']>[number];
 type PackageUpdateExt = PackageUpdate & {
   canceled?: boolean;
@@ -89,8 +115,26 @@ type PackageUpdateExt = PackageUpdate & {
 };
 type Destination = NonNullable<ActivateSignalRequest['destinations']>[number];
 type SignalFilters = NonNullable<GetSignalsRequest['filters']>;
+type GetProductsRejectedResponse = {
+  status: 'rejected';
+  adcp_version: string;
+  reason: string;
+  suggestions?: string[];
+  context?: Record<string, unknown>;
+};
 type PricingOption = Product['pricing_options'][number];
-type AuctionPricingOption = Exclude<PricingOption, { pricing_model: 'cpa' }>;
+type PricingStructure = 'fixed' | 'auction' | 'contingent';
+type PricingOptionView = {
+  pricing_option_id?: string;
+  pricing_model?: string;
+  currency?: string;
+  fixed_price?: number;
+  floor_price?: number;
+  price_guidance?: { p50?: number };
+  commission_rate?: number;
+  event_source_id?: string;
+  min_spend_per_package?: number;
+};
 type WholesaleFeedRequest = {
   account?: AccountRef;
   if_wholesale_feed_version?: string;
@@ -103,7 +147,7 @@ type WholesaleFeedMeta = {
   cache_scope: 'public' | 'account';
 };
 type ValidateInputTarget = {
-  kind: 'canonical' | 'product' | 'third_party_format';
+  kind: 'canonical' | 'product' | 'capability' | 'third_party_format';
   id: string;
 };
 type ValidateInputArgs = ToolArgs & {
@@ -248,6 +292,7 @@ const BUILD_CREATIVE_FORMAT_ALIASES: Record<string, string> = {
 };
 const SUPPORTED_CANONICAL_BUILD_CAPABILITIES = [
   { capabilityId: 'training_image_generation', formatKind: 'image' },
+  { capabilityId: 'audio_vo', formatKind: 'audio_hosted' },
 ] as const;
 const MAX_VALIDATE_INPUT_TARGETS = 50;
 const VALID_CANONICAL_FORMAT_KINDS = new Set([...Object.keys(CANONICAL_FORMAT_SLOTS), 'custom']);
@@ -286,6 +331,12 @@ interface PackageInput {
   creative_assignments?: Array<{ creative_id?: string }>;
   creatives?: InlineCreativeInput[];
   context?: Record<string, unknown>;
+  committed_metrics?: Array<{
+    scope: 'standard' | 'vendor';
+    metric_id: string;
+    vendor?: { domain: string; brand_id?: string };
+    qualifier?: Record<string, unknown>;
+  }>;
 }
 
 interface CreativeAssignmentInput {
@@ -297,10 +348,11 @@ interface CreativeAssignmentInput {
 function collectInlineCreativeIds(
   rawCreatives: InlineCreativeInput[] | undefined,
   fieldPrefix: string,
-): { creativeIds: string[]; errors: TaskError[] } {
+): { creativeIds: string[]; validatedCreatives: ValidatedInlineCreative[]; errors: TaskError[] } {
   const creativeIds: string[] = [];
+  const validatedCreatives: ValidatedInlineCreative[] = [];
   const errors: TaskError[] = [];
-  if (!Array.isArray(rawCreatives)) return { creativeIds, errors };
+  if (!Array.isArray(rawCreatives)) return { creativeIds, validatedCreatives, errors };
 
   for (let i = 0; i < rawCreatives.length; i++) {
     const creativeId = rawCreatives[i]?.creative_id;
@@ -312,54 +364,49 @@ function collectInlineCreativeIds(
       });
       continue;
     }
+    const identity = validatedCreativeIdentity(rawCreatives[i]);
+    if (!identity.ok) {
+      errors.push({
+        code: 'VALIDATION_ERROR',
+        message: `${fieldPrefix}[${i}] ${identity.message}`,
+        field: `${fieldPrefix}[${i}]`,
+      });
+      continue;
+    }
     creativeIds.push(creativeId);
+    validatedCreatives.push({ creative: rawCreatives[i], creativeId, identity: identity.identity });
   }
-  return { creativeIds, errors };
-}
-
-function formatIdForInlineCreative(creative: InlineCreativeInput): FormatID {
-  if (creative.format_id && typeof creative.format_id === 'object') {
-    return creative.format_id;
-  }
-  return {
-    agent_url: getAgentUrl(),
-    id: creative.format_kind || 'inline_creative',
-  };
+  return { creativeIds, validatedCreatives, errors };
 }
 
 function persistInlineCreatives(
   session: SessionState,
-  rawCreatives: InlineCreativeInput[] | undefined,
+  validatedCreatives: ValidatedInlineCreative[],
   accountRef: AccountRef | undefined,
   accountId: string | undefined,
   syncedAt: string,
 ) {
-  if (!Array.isArray(rawCreatives)) return;
-
-  for (const creative of rawCreatives) {
-    if (!creative.creative_id) continue;
-    const creativeId = creative.creative_id;
+  for (const { creative, creativeId, identity } of validatedCreatives) {
     const existing = session.creatives.get(creativeId);
-    const formatId = formatIdForInlineCreative(creative);
+    const manifest = normalizedCreativeManifest(creative, existing, identity);
     session.creatives.set(creativeId, {
       creativeId,
       accountId: accountId ?? existing?.accountId,
       accountRef: accountRef ?? existing?.accountRef,
-      formatId,
-      formatKind: creative.format_kind,
-      formatOptionRef: creative.format_option_ref,
+      ...(identity.kind === 'legacy'
+        ? {
+          formatId: identity.formatId,
+          ...(identity.formatOptionRef && { formatOptionRef: identity.formatOptionRef }),
+        }
+        : {
+          formatKind: identity.formatKind,
+          ...(identity.formatOptionRef && { formatOptionRef: identity.formatOptionRef }),
+        }),
+      ...(manifest && { assets: manifest.assets }),
       name: creative.name ?? existing?.name,
       status: existing?.status ?? 'approved',
       syncedAt,
-      manifest: creative.manifest ?? (creative.assets ? {
-        ...(creative.format_kind
-          ? {
-            format_kind: creative.format_kind,
-            ...(creative.format_option_ref && { format_option_ref: creative.format_option_ref }),
-          }
-          : { format_id: formatId }),
-        assets: creative.assets as CreativeManifest['assets'],
-      } : existing?.manifest),
+      manifest,
       pricingOptionId: existing?.pricingOptionId,
       purge: existing?.purge,
       webhookActivity: existing?.webhookActivity,
@@ -427,6 +474,561 @@ function validateDirectCanonicalPackageSelector(pkg: PackageInput, product: Prod
   };
 }
 
+type CanonicalPackageFormat = Record<string, unknown> & {
+  format_kind?: string;
+  format_option_id?: string;
+  publisher_domain?: string;
+  params?: Record<string, unknown>;
+  v1_format_ref?: FormatID[];
+};
+
+type IndexedLegacyDeclaration = {
+  declaration: CanonicalPackageFormat;
+  legacyFormat: FormatID;
+};
+
+type IndexedDeclarations = {
+  stable: CanonicalPackageFormat[];
+  legacyAlias: IndexedLegacyDeclaration[];
+};
+type ProductFormatOptionIndex = Map<string, IndexedDeclarations>;
+type ProductFormatOptionIndexCache = WeakMap<Product, ProductFormatOptionIndex>;
+
+function cloneCanonicalFormat(format: CanonicalPackageFormat): CanonicalPackageFormat {
+  return JSON.parse(JSON.stringify(format)) as CanonicalPackageFormat;
+}
+
+function cloneLegacyFormatId(formatId: FormatID): FormatID {
+  return JSON.parse(JSON.stringify(formatId)) as FormatID;
+}
+
+function migratedOptionIdForLegacyFormat(formatId: FormatID): string | undefined {
+  const projected = projectV1ProductToV2({
+    product_id: 'legacy_request_projection',
+    name: 'Legacy request projection',
+    description: 'Ephemeral compatibility projection',
+    format_ids: [{
+      ...formatId,
+      agent_url: formatId.agent_url ?? 'https://creative.adcontextprotocol.org/',
+    }],
+  });
+  return projected.v2.format_options?.[0]?.format_option_id;
+}
+
+function legacyFormatsByMigratedOption(legacyFormats: FormatID[]): Map<string, FormatID[]> {
+  const indexed = new Map<string, FormatID[]>();
+  for (const format of legacyFormats) {
+    const optionId = migratedOptionIdForLegacyFormat(format);
+    if (!optionId) continue;
+    indexed.set(optionId, [...(indexed.get(optionId) ?? []), cloneLegacyFormatId(format)]);
+  }
+  return indexed;
+}
+
+function flattenedManifestAssets(manifest: CreativeManifest): Array<Record<string, unknown>> {
+  return Object.values(manifest.assets ?? {}).flatMap(value => {
+    const values = Array.isArray(value) ? value : [value];
+    return values.filter(isRecord);
+  });
+}
+
+export function canonicalParamsSatisfied(manifest: CreativeManifest, params: Record<string, unknown>): boolean {
+  const assets = flattenedManifestAssets(manifest);
+  const width = typeof params.width === 'number' ? params.width : undefined;
+  const height = typeof params.height === 'number' ? params.height : undefined;
+  if (width !== undefined || height !== undefined) {
+    const matchesDimensions = assets.some(asset =>
+      (width === undefined || asset.width === width)
+      && (height === undefined || asset.height === height)
+    );
+    if (!matchesDimensions) return false;
+  }
+
+  const minWidth = typeof params.min_width === 'number' ? params.min_width : undefined;
+  const maxWidth = typeof params.max_width === 'number' ? params.max_width : undefined;
+  const minHeight = typeof params.min_height === 'number' ? params.min_height : undefined;
+  const maxHeight = typeof params.max_height === 'number' ? params.max_height : undefined;
+  if (minWidth !== undefined || maxWidth !== undefined || minHeight !== undefined || maxHeight !== undefined) {
+    const matchesBounds = assets.some(asset => {
+      if (typeof asset.width !== 'number' || typeof asset.height !== 'number') return false;
+      return (minWidth === undefined || asset.width >= minWidth)
+        && (maxWidth === undefined || asset.width <= maxWidth)
+        && (minHeight === undefined || asset.height >= minHeight)
+        && (maxHeight === undefined || asset.height <= maxHeight);
+    });
+    if (!matchesBounds) return false;
+  }
+
+  const durationExact = typeof params.duration_ms_exact === 'number' ? params.duration_ms_exact : undefined;
+  if (durationExact !== undefined && !assets.some(asset => asset.duration_ms === durationExact)) return false;
+
+  if (Array.isArray(params.duration_ms_range)) {
+    const [minimum, maximum] = params.duration_ms_range;
+    const matchesDuration = assets.some(asset => {
+      const duration = asset.duration_ms;
+      if (typeof duration !== 'number') return false;
+      return (typeof minimum !== 'number' || duration >= minimum)
+        && (typeof maximum !== 'number' || duration <= maximum);
+    });
+    if (!matchesDuration) return false;
+  }
+
+  if (typeof params.aspect_ratio === 'string') {
+    const [ratioWidth, ratioHeight] = params.aspect_ratio.split(':').map(Number);
+    if (!Number.isFinite(ratioWidth) || !Number.isFinite(ratioHeight) || ratioHeight === 0) return false;
+    const expectedRatio = ratioWidth / ratioHeight;
+    if (!assets.some(asset =>
+      typeof asset.width === 'number'
+      && typeof asset.height === 'number'
+      && asset.height > 0
+      && Math.abs(asset.width / asset.height - expectedRatio) < 0.01
+    )) return false;
+  }
+
+  if (params.orientation === 'horizontal' || params.orientation === 'vertical' || params.orientation === 'square') {
+    const matchesOrientation = assets.some(asset => {
+      if (typeof asset.width !== 'number' || typeof asset.height !== 'number') return false;
+      if (params.orientation === 'horizontal') return asset.width > asset.height;
+      if (params.orientation === 'vertical') return asset.height > asset.width;
+      return asset.width === asset.height;
+    });
+    if (!matchesOrientation) return false;
+  }
+
+  for (const [key, value] of Object.entries(params)) {
+    if ((key !== 'sizes' && !key.endsWith('_sizes')) || !Array.isArray(value) || value.length === 0) continue;
+    const allowedSizes = value.filter(isRecord);
+    if (!assets.some(asset => allowedSizes.some(size => asset.width === size.width && asset.height === size.height))) {
+      return false;
+    }
+  }
+
+  // title_max_chars: the manifest's title asset content must not exceed the limit.
+  if (typeof params.title_max_chars === 'number') {
+    const rawTitle = (manifest.assets as Record<string, unknown>).title;
+    const titleAsset = Array.isArray(rawTitle) ? rawTitle[0] : rawTitle;
+    if (isRecord(titleAsset) && typeof titleAsset.content === 'string') {
+      if (titleAsset.content.length > params.title_max_chars) return false;
+    }
+  }
+
+  // min_cards / max_cards: count card assets in the manifest (carousel formats).
+  if (typeof params.min_cards === 'number' || typeof params.max_cards === 'number') {
+    const rawCards = (manifest.assets as Record<string, unknown>).cards;
+    const cardCount = Array.isArray(rawCards) ? rawCards.length : (rawCards != null ? 1 : 0);
+    if (typeof params.min_cards === 'number' && cardCount < params.min_cards) return false;
+    if (typeof params.max_cards === 'number' && cardCount > params.max_cards) return false;
+  }
+
+  // image_formats: primary image asset url extension must match the allowed list.
+  if (Array.isArray(params.image_formats) && params.image_formats.length > 0) {
+    const allowedFmts = (params.image_formats as unknown[])
+      .filter((format): format is string => typeof format === 'string')
+      .map(format => format.startsWith('.') ? format.slice(1).toLowerCase() : format.toLowerCase());
+    const rawImage = (manifest.assets as Record<string, unknown>).image;
+    const imageAsset = Array.isArray(rawImage) ? rawImage[0] : rawImage;
+    if (isRecord(imageAsset) && typeof imageAsset.url === 'string') {
+      const withoutFragment = imageAsset.url.split('#', 1)[0] ?? '';
+      const withoutQuery = withoutFragment.split('?', 1)[0] ?? '';
+      const filename = withoutQuery.split('/').pop() ?? '';
+      const finalDot = filename.lastIndexOf('.');
+      const extension = finalDot >= 0 ? filename.slice(finalDot + 1).toLowerCase() : undefined;
+      if (extension && !allowedFmts.includes(extension)) return false;
+    }
+  }
+
+  // min_resolution_dpi: image asset must meet the minimum DPI when declared.
+  if (typeof params.min_resolution_dpi === 'number') {
+    const rawImage = (manifest.assets as Record<string, unknown>).image;
+    const imageAsset = Array.isArray(rawImage) ? rawImage[0] : rawImage;
+    if (isRecord(imageAsset) && typeof imageAsset.dpi === 'number') {
+      if (imageAsset.dpi < params.min_resolution_dpi) return false;
+    }
+  }
+
+  return true;
+}
+
+/** Resolve the package selector to an immutable canonical checklist. */
+function snapshotPackageFormats(
+  pkg: PackageInput,
+  product: Product,
+  packageIndex: number,
+  optionIndexCache: ProductFormatOptionIndexCache,
+): {
+  formats?: CanonicalPackageFormat[];
+  legacyFormatIds?: FormatID[];
+  selectedLegacyFormatIds?: FormatID[];
+  error?: TaskError;
+} {
+  const declarations = (Array.isArray(product.format_options) ? product.format_options : [])
+    .filter(isRecord) as CanonicalPackageFormat[];
+  const advertisedLegacyIds = Array.isArray(product.format_ids) ? product.format_ids : [];
+
+  if (declarations.length === 0) {
+    if (Array.isArray(pkg.format_option_refs) && pkg.format_option_refs.length > 0) {
+      const selectedLegacyIds: FormatID[] = [];
+      const legacyIdsByAlias = legacyFormatsByMigratedOption(advertisedLegacyIds);
+      for (let i = 0; i < pkg.format_option_refs.length; i++) {
+        const ref = pkg.format_option_refs[i];
+        if (!isRecord(ref) || typeof ref.format_option_id !== 'string') {
+          return {
+            error: {
+              code: 'UNSUPPORTED_FEATURE',
+              message: `Package ${packageIndex}: format_option_refs[${i}] is not a resolvable legacy format option`,
+              field: `packages[${packageIndex}].format_option_refs[${i}]`,
+              recovery: 'correctable',
+            },
+          };
+        }
+        if (ref.scope !== 'product' || ref.publisher_domain !== undefined) {
+          return {
+            error: {
+              code: 'UNSUPPORTED_FEATURE',
+              message: `Package ${packageIndex}: legacy-only format option "${ref.format_option_id}" must use product scope`,
+              field: `packages[${packageIndex}].format_option_refs[${i}]`,
+              recovery: 'correctable',
+            },
+          };
+        }
+        const matches = legacyIdsByAlias.get(ref.format_option_id) ?? [];
+        if (matches.length !== 1) {
+          return {
+            error: {
+              code: 'UNSUPPORTED_FEATURE',
+              message: `Package ${packageIndex}: format option "${ref.format_option_id}" is not an unambiguous legacy format advertised by product ${pkg.product_id}`,
+              field: `packages[${packageIndex}].format_option_refs[${i}]`,
+              recovery: 'correctable',
+            },
+          };
+        }
+        selectedLegacyIds.push(matches[0]!);
+      }
+      return {
+        legacyFormatIds: Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0
+          ? pkg.format_ids.map(cloneLegacyFormatId)
+          : selectedLegacyIds,
+        selectedLegacyFormatIds: selectedLegacyIds,
+      };
+    }
+    if (Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0) {
+      const unavailable = pkg.format_ids.filter(requested => !advertisedLegacyIds.some(advertised =>
+        advertised.id === requested.id
+        && (requested.agent_url === undefined || advertised.agent_url === requested.agent_url)
+      ));
+      if (unavailable.length > 0) {
+        return {
+          error: {
+            code: 'UNSUPPORTED_FEATURE',
+            message: `Package ${packageIndex}: deprecated format_ids are not advertised by product ${pkg.product_id}`,
+            field: `packages[${packageIndex}].format_ids`,
+            recovery: 'correctable',
+          },
+        };
+      }
+      return {
+        legacyFormatIds: pkg.format_ids.map(cloneLegacyFormatId),
+        selectedLegacyFormatIds: pkg.format_ids.map(cloneLegacyFormatId),
+      };
+    }
+    return {};
+  }
+
+  if (Array.isArray(pkg.format_option_refs) && pkg.format_option_refs.length > 0) {
+    let declarationsByOptionId = optionIndexCache.get(product);
+    const shouldBuildIndex = declarationsByOptionId === undefined;
+    if (!declarationsByOptionId) {
+      declarationsByOptionId = new Map<string, IndexedDeclarations>();
+      optionIndexCache.set(product, declarationsByOptionId);
+    }
+    const declarationsFor = (optionId: string): IndexedDeclarations => {
+      const indexed = declarationsByOptionId.get(optionId) ?? { stable: [], legacyAlias: [] };
+      declarationsByOptionId.set(optionId, indexed);
+      return indexed;
+    };
+    if (shouldBuildIndex) {
+      for (const declaration of declarations) {
+        if (typeof declaration.format_option_id === 'string') {
+          declarationsFor(declaration.format_option_id).stable.push(declaration);
+        }
+        for (const legacyRef of Array.isArray(declaration.v1_format_ref) ? declaration.v1_format_ref : []) {
+          if (typeof legacyRef?.id !== 'string') continue;
+          const migratedId = migratedOptionIdForLegacyFormat(legacyRef);
+          if (typeof migratedId === 'string') {
+            declarationsFor(migratedId).legacyAlias.push({
+              declaration,
+              legacyFormat: cloneLegacyFormatId(legacyRef),
+            });
+          }
+        }
+      }
+    }
+
+    const selected: CanonicalPackageFormat[] = [];
+    const selectedSet = new Set<CanonicalPackageFormat>();
+    const projectedLegacyIds: FormatID[] = [];
+    for (let i = 0; i < pkg.format_option_refs.length; i++) {
+      const ref = pkg.format_option_refs[i];
+      if (!isRecord(ref) || typeof ref.format_option_id !== 'string') {
+        return {
+          error: {
+            code: 'UNSUPPORTED_FEATURE',
+            message: `Package ${packageIndex}: format_option_refs[${i}] is not a resolvable canonical format option`,
+            field: `packages[${packageIndex}].format_option_refs[${i}]`,
+            recovery: 'correctable',
+          },
+        };
+      }
+      const indexed = declarationsByOptionId.get(ref.format_option_id);
+      const matchesScope = (declaration: CanonicalPackageFormat) => {
+        if (ref.scope === 'publisher') {
+          return typeof ref.publisher_domain === 'string'
+            && declaration.publisher_domain === ref.publisher_domain;
+        }
+        if (ref.scope === 'product') return declaration.publisher_domain === undefined;
+        return ref.publisher_domain === undefined
+          || declaration.publisher_domain === ref.publisher_domain;
+      };
+      const scopedStable = (indexed?.stable ?? []).filter(matchesScope);
+      const scopedLegacyAliases = (indexed?.legacyAlias ?? [])
+        .filter(entry => matchesScope(entry.declaration));
+      const scopedDeclarations = new Set([
+        ...scopedStable,
+        ...scopedLegacyAliases.map(entry => entry.declaration),
+      ]);
+      if (scopedStable.length && scopedLegacyAliases.length && scopedDeclarations.size > 1) {
+        return {
+          error: {
+            code: 'UNSUPPORTED_FEATURE',
+            message: `Package ${packageIndex}: format option "${ref.format_option_id}" collides with a migrated legacy alias`,
+            field: `packages[${packageIndex}].format_option_refs[${i}]`,
+            recovery: 'correctable',
+          },
+        };
+      }
+      const selectedByLegacyAlias = scopedStable.length === 0;
+      const candidates = scopedStable.length
+        ? scopedStable
+        : [...new Set(scopedLegacyAliases.map(entry => entry.declaration))];
+      if (candidates.length > 1) {
+        return {
+          error: {
+            code: 'UNSUPPORTED_FEATURE',
+            message: `Package ${packageIndex}: format option "${ref.format_option_id}" is ambiguous without a narrower scope`,
+            field: `packages[${packageIndex}].format_option_refs[${i}]`,
+            recovery: 'correctable',
+          },
+        };
+      }
+      const matches = candidates.slice(0, 1);
+      if (matches.length === 0) {
+        return {
+          error: {
+            code: 'UNSUPPORTED_FEATURE',
+            message: `Package ${packageIndex}: format option "${ref.format_option_id}" is not declared by product ${pkg.product_id}`,
+            field: `packages[${packageIndex}].format_option_refs[${i}]`,
+            recovery: 'correctable',
+          },
+        };
+      }
+      for (const match of matches) {
+        if (selectedByLegacyAlias) {
+          projectedLegacyIds.push(...scopedLegacyAliases
+            .filter(entry => entry.declaration === match)
+            .map(entry => cloneLegacyFormatId(entry.legacyFormat)));
+        }
+        if (selectedSet.has(match)) continue;
+        selectedSet.add(match);
+        selected.push(cloneCanonicalFormat(match));
+      }
+    }
+    return {
+      formats: selected,
+      ...(projectedLegacyIds.length > 0 && {
+        selectedLegacyFormatIds: projectedLegacyIds.map(cloneLegacyFormatId),
+      }),
+      ...((Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0)
+        ? { legacyFormatIds: pkg.format_ids.map(cloneLegacyFormatId) }
+        : projectedLegacyIds.length > 0
+          ? { legacyFormatIds: projectedLegacyIds }
+          : {}),
+    };
+  }
+
+  if (Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0) {
+    const selected = declarations.filter(declaration => {
+      const legacyRefs = Array.isArray(declaration.v1_format_ref) ? declaration.v1_format_ref : [];
+      return pkg.format_ids!.some(requested => legacyRefs.some(ref =>
+        ref?.id === requested.id
+        && (requested.agent_url === undefined || ref.agent_url === requested.agent_url)
+      ));
+    });
+    const unavailable = pkg.format_ids.filter(requested => !advertisedLegacyIds.some(advertised =>
+      advertised.id === requested.id
+      && (requested.agent_url === undefined || advertised.agent_url === requested.agent_url)
+    ));
+    if (unavailable.length > 0) {
+      return {
+        error: {
+          code: 'UNSUPPORTED_FEATURE',
+          message: `Package ${packageIndex}: deprecated format_ids are not advertised by product ${pkg.product_id}`,
+          field: `packages[${packageIndex}].format_ids`,
+          recovery: 'correctable',
+        },
+      };
+    }
+    // A legacy product may advertise a named format whose canonical kind is
+    // intentionally non-equivalent (`canonical_formats_only`). Validate and
+    // accept that independent legacy selector above, but do not fabricate a
+    // canonical declaration for formats_to_provide.
+    return {
+      formats: selected.map(cloneCanonicalFormat),
+      legacyFormatIds: pkg.format_ids.map(cloneLegacyFormatId),
+      selectedLegacyFormatIds: pkg.format_ids.map(cloneLegacyFormatId),
+    };
+  }
+
+  if (typeof pkg.format_kind === 'string') {
+    return {
+      formats: [{
+        format_kind: pkg.format_kind,
+        params: isRecord(pkg.params)
+          ? JSON.parse(JSON.stringify(pkg.params)) as Record<string, unknown>
+          : {},
+      }],
+    };
+  }
+
+  // Omitting selectors means every product format option is active.
+  return { formats: declarations.map(cloneCanonicalFormat) };
+}
+
+function packageFormatSelectorForState(
+  pkg: PackageInput,
+  formats: CanonicalPackageFormat[] | undefined,
+  legacyFormatIds: FormatID[] | undefined,
+  selectedLegacyFormatIds: FormatID[] | undefined,
+): Pick<PackageState, 'formatIds' | 'formatOptionRefs' | 'formatKind' | 'selectedLegacyFormatIds'> {
+  const selector: Pick<PackageState, 'formatIds' | 'formatOptionRefs' | 'formatKind' | 'selectedLegacyFormatIds'> = {};
+  if (typeof pkg.format_kind === 'string') selector.formatKind = pkg.format_kind;
+  if (legacyFormatIds?.length) selector.formatIds = legacyFormatIds.map(cloneLegacyFormatId);
+  if (selectedLegacyFormatIds?.length) {
+    selector.selectedLegacyFormatIds = selectedLegacyFormatIds.map(cloneLegacyFormatId);
+  }
+  if (
+    (Array.isArray(pkg.format_option_refs) && pkg.format_option_refs.length > 0)
+    || (Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0)
+  ) {
+    const canonicalRefs = (formats ?? []).flatMap(format => {
+      if (typeof format.format_option_id !== 'string') return [];
+      return [typeof format.publisher_domain === 'string'
+        ? {
+          scope: 'publisher',
+          publisher_domain: format.publisher_domain,
+          format_option_id: format.format_option_id,
+        }
+        : { scope: 'product', format_option_id: format.format_option_id }];
+    });
+    if (formats?.length && canonicalRefs.length === formats.length) {
+      // A legacy request selected concrete canonical declarations. Persist
+      // their stable canonical refs; the SDK facade re-projects them for a
+      // legacy caller from formats_to_provide[].v1_format_ref.
+      selector.formatOptionRefs = canonicalRefs;
+      return selector;
+    }
+  }
+  if (selector.formatIds) {
+    // The SDK canonical facade represents a recognized legacy-only selector
+    // as a temporary migrated option ref. Retain the reversible legacy tuple,
+    // never the facade-local alias, when the product has no canonical option.
+    return selector;
+  }
+  if (Array.isArray(pkg.format_option_refs) && pkg.format_option_refs.length > 0) {
+    selector.formatOptionRefs = pkg.format_option_refs;
+    return selector;
+  }
+  if (!selector.formatIds && Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0) {
+    // Truly legacy-only products have no canonical declaration to retain.
+    selector.formatIds = pkg.format_ids.map(cloneLegacyFormatId);
+  }
+  return selector;
+}
+
+function packageFormatSelectorForWire(pkg: PackageState, ctx: TrainingContext): Record<string, unknown> {
+  return {
+    ...(pkg.formatIds && { format_ids: pkg.formatIds }),
+    ...(pkg.formatOptionRefs && { format_option_refs: pkg.formatOptionRefs }),
+    ...(pkg.formatKind && { format_kind: pkg.formatKind }),
+    ...(pkg.params && { params: pkg.params }),
+    ...(ctx.tenantId === 'sales' && pkg.selectedLegacyFormatIds?.length && {
+      __selected_legacy_format_ids: pkg.selectedLegacyFormatIds,
+    }),
+  };
+}
+
+function creativeCoversPackageFormat(
+  creative: CreativeState | undefined,
+  requirement: CanonicalPackageFormat,
+  sameKindRequirementCount: number,
+): boolean {
+  if (!creative) return false;
+  const creativeKind = creative.formatKind ?? creative.manifest?.format_kind;
+  const requiredKind = requirement.format_kind;
+
+  const legacyRefs = Array.isArray(requirement.v1_format_ref) ? requirement.v1_format_ref : [];
+  if (creative.formatId && legacyRefs.some(ref => ref?.id === creative.formatId?.id
+    && (!ref.agent_url || !creative.formatId?.agent_url || ref.agent_url === creative.formatId.agent_url))) {
+    return true;
+  }
+  if (!requiredKind || creativeKind !== requiredKind) return false;
+
+  const requiredOptionId = requirement.format_option_id;
+  const ref = creative.formatOptionRef ?? creative.manifest?.format_option_ref;
+  if (requiredOptionId && isRecord(ref)) {
+    if (ref.format_option_id !== requiredOptionId) return false;
+    return !requirement.publisher_domain || ref.publisher_domain === requirement.publisher_domain;
+  }
+  if (requiredOptionId && sameKindRequirementCount > 1) return false;
+
+  // An explicit option reference is the strongest coverage proof. Portable
+  // manifests may omit it, so for an unambiguous kind fall back to validating
+  // the actual manifest slots against the frozen package declaration.
+  const manifest = creative.manifest;
+  if (!manifest) return !requiredOptionId && !requirement.params;
+  const params = isRecord(requirement.params) ? requirement.params : {};
+  const slots = normalizeCanonicalSlots(requirement.slots)
+    ?? normalizeCanonicalSlots(params.slots)
+    ?? CANONICAL_FORMAT_SLOTS[requiredKind ?? '']
+    ?? [];
+  return validateManifestSlots(manifest, slots).length === 0
+    && canonicalParamsSatisfied(manifest, params);
+}
+
+function formatsPendingForPackage(pkg: PackageState, session: SessionState): CanonicalPackageFormat[] {
+  const requirements = (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[];
+  if (requirements.length === 0) return [];
+  return requirements.filter(requirement => {
+    const sameKindCount = requirements.filter(other => other.format_kind === requirement.format_kind).length;
+    return !pkg.creativeAssignments.some(creativeId =>
+      creativeCoversPackageFormat(session.creatives.get(creativeId), requirement, sameKindCount)
+    );
+  });
+}
+
+function packageNeedsCreative(pkg: PackageState, session: SessionState): boolean {
+  if (pkg.canceled) return false;
+  if (pkg.formatsToProvide?.length) return formatsPendingForPackage(pkg, session).length > 0;
+  return pkg.creativeAssignments.length === 0;
+}
+
+function packageReadinessFields(pkg: PackageState, session: SessionState): Record<string, unknown> {
+  if (!pkg.formatsToProvide?.length) return {};
+  return {
+    formats_to_provide: pkg.formatsToProvide,
+    formats_pending: formatsPendingForPackage(pkg, session),
+  };
+}
+
 const MAX_URL_LEN = 2048;
 const MAX_ID_LEN = 256;
 const MAX_TOKEN_LEN = 4096;
@@ -465,16 +1067,36 @@ function validateTargeting(t: unknown, pathLabel: string): { targeting?: Package
   const pl = validateListRef(src.property_list, `${pathLabel}.property_list`);
   const cl = validateListRef(src.collection_list, `${pathLabel}.collection_list`);
   const cle = validateListRef(src.collection_list_exclude, `${pathLabel}.collection_list_exclude`);
+  const validateAudienceIds = (value: unknown, field: string): string[] | undefined => {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value)) {
+      errors.push({ code: 'VALIDATION_ERROR', message: `${pathLabel}.${field}: must be an array of audience IDs`, field: `${pathLabel}.${field}` });
+      return undefined;
+    }
+    const ids: string[] = [];
+    for (let i = 0; i < value.length; i++) {
+      if (typeof value[i] !== 'string' || value[i].length === 0) {
+        errors.push({ code: 'VALIDATION_ERROR', message: `${pathLabel}.${field}[${i}]: must be a non-empty audience ID`, field: `${pathLabel}.${field}[${i}]` });
+      } else {
+        ids.push(value[i]);
+      }
+    }
+    return ids;
+  };
+  const audienceInclude = validateAudienceIds(src.audience_include, 'audience_include');
+  const audienceExclude = validateAudienceIds(src.audience_exclude, 'audience_exclude');
   if (pl.error) errors.push(pl.error);
   if (cl.error) errors.push(cl.error);
   if (cle.error) errors.push(cle.error);
   if (errors.length) return { errors };
-  if (!pl.ref && !cl.ref && !cle.ref) return { errors: [] };
+  if (!pl.ref && !cl.ref && !cle.ref && !audienceInclude && !audienceExclude) return { errors: [] };
   return {
     targeting: {
       ...(pl.ref && { property_list: pl.ref }),
       ...(cl.ref && { collection_list: cl.ref }),
       ...(cle.ref && { collection_list_exclude: cle.ref }),
+      ...(audienceInclude && { audience_include: audienceInclude }),
+      ...(audienceExclude && { audience_exclude: audienceExclude }),
     },
     errors: [],
   };
@@ -487,12 +1109,21 @@ interface VendorMetricRefView {
   scope?: unknown;
 }
 
+interface CommittedMetricProposalView extends VendorMetricRefView {
+  scope?: 'standard' | 'vendor';
+  metric_id?: string;
+  vendor?: { domain?: string; brand_id?: string };
+  qualifier?: Record<string, unknown>;
+  committed_at?: string;
+}
+
 interface VendorMetricOptimizationView {
   supported_metrics?: VendorMetricRefView[];
 }
 
 interface ReportingCapabilitiesView {
   vendor_metrics?: VendorMetricRefView[];
+  available_metrics?: string[];
 }
 
 interface MeasurementCatalogView {
@@ -508,6 +1139,120 @@ function vendorMetricKey(entry: VendorMetricRefView | undefined): string | null 
   }
   const brandId = typeof entry?.vendor?.brand_id === 'string' ? entry.vendor.brand_id : '';
   return `${domain.toLowerCase()}|${brandId}|${metricId}`;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+function committedMetricKey(entry: CommittedMetricProposalView): string | null {
+  if (entry.scope === 'vendor') {
+    const vendorKey = vendorMetricKey(entry);
+    return vendorKey ? `vendor|${vendorKey}` : null;
+  }
+  if (entry.scope !== 'standard' || typeof entry.metric_id !== 'string' || entry.metric_id.length === 0) return null;
+  return `standard|${entry.metric_id}|${canonicalJson(entry.qualifier ?? {})}`;
+}
+
+function validateCommittedMetricProposals(
+  metrics: CommittedMetricProposalView[] | undefined,
+  product: Product,
+  fieldPrefix: string,
+): TaskError | null {
+  if (!metrics?.length) return null;
+  const reporting = product.reporting_capabilities as ReportingCapabilitiesView | undefined;
+  const availableMetrics = new Set(reporting?.available_metrics ?? []);
+  const vendorMetrics = reporting?.vendor_metrics ?? [];
+  const seen = new Set<string>();
+
+  for (let i = 0; i < metrics.length; i++) {
+    const metric = metrics[i]!;
+    const key = committedMetricKey(metric);
+    if (!key) {
+      return {
+        code: 'VALIDATION_ERROR',
+        message: 'committed_metrics entries require a valid scope and metric identity',
+        field: `${fieldPrefix}[${i}]`,
+      };
+    }
+    if (seen.has(key)) {
+      return {
+        code: 'VALIDATION_ERROR',
+        message: 'committed_metrics entries must be unique by scope, metric identity, and qualifier',
+        field: `${fieldPrefix}[${i}]`,
+      };
+    }
+    seen.add(key);
+
+    if (metric.scope === 'standard' && !availableMetrics.has(metric.metric_id!)) {
+      return {
+        code: 'TERMS_REJECTED',
+        message: `committed standard metric "${metric.metric_id}" is not in the product's reporting_capabilities.available_metrics`,
+        field: `${fieldPrefix}[${i}].metric_id`,
+      };
+    }
+    if (
+      metric.scope === 'vendor'
+      && !vendorMetrics.some(candidate => vendorMetricKey(candidate) === vendorMetricKey(metric))
+    ) {
+      return {
+        code: 'TERMS_REJECTED',
+        message: `committed vendor metric "${metric.metric_id}" is not in the product's reporting_capabilities.vendor_metrics`,
+        field: `${fieldPrefix}[${i}].metric_id`,
+      };
+    }
+  }
+  return null;
+}
+
+function hasOwnMetric(metrics: Record<string, unknown>, metricId: string): boolean {
+  return Object.prototype.hasOwnProperty.call(metrics, metricId) && metrics[metricId] !== undefined;
+}
+
+function standardMetricIsDelivered(
+  metric: CommittedMetricProposalView,
+  delivery: Record<string, unknown>,
+): boolean {
+  const metricId = metric.metric_id!;
+  const qualifier = metric.qualifier;
+  if (qualifier && Object.keys(qualifier).length > 0) {
+    if (
+      metricId === 'viewability'
+      && typeof qualifier.viewability_standard === 'string'
+      && isRecord(delivery.viewability)
+    ) {
+      return delivery.viewability.standard === qualifier.viewability_standard;
+    }
+    // A qualified commitment is satisfied only by a delivery path that makes
+    // the same qualifier observable. The reference seller currently exposes
+    // only viewability.standard at package grain.
+    return false;
+  }
+  if (hasOwnMetric(delivery, metricId)) return true;
+  switch (metricId) {
+    case 'ctr':
+      return hasOwnMetric(delivery, 'clicks') && hasOwnMetric(delivery, 'impressions');
+    case 'cost_per_click':
+    case 'cpm':
+      return hasOwnMetric(delivery, 'spend') && hasOwnMetric(delivery, metricId === 'cpm' ? 'impressions' : 'clicks');
+    case 'cost_per_completed_view':
+      return hasOwnMetric(delivery, 'spend') && hasOwnMetric(delivery, 'completed_views');
+    case 'roas':
+      return hasOwnMetric(delivery, 'conversion_value') && hasOwnMetric(delivery, 'spend');
+    case 'cost_per_acquisition':
+      return hasOwnMetric(delivery, 'conversions') && hasOwnMetric(delivery, 'spend');
+    case 'engagement_rate':
+      return hasOwnMetric(delivery, 'engagements') && hasOwnMetric(delivery, 'impressions');
+    default:
+      return false;
+  }
 }
 
 function vendorCatalogKey(entry: VendorMetricRefView | undefined): string | null {
@@ -532,19 +1277,36 @@ function productMeasurementCatalogForGoal(product: Product | undefined, goal: Ve
   });
 }
 
-function hasFixedPrice(option: PricingOption): boolean {
-  return (option as { fixed_price?: unknown }).fixed_price !== undefined;
+export function pricingStructureForOption(option: unknown): PricingStructure {
+  if (!option || typeof option !== 'object' || Array.isArray(option)) return 'auction';
+  const view = option as PricingOptionView;
+  if (view.pricing_model === 'revenue_share') return 'contingent';
+  return view.fixed_price !== undefined ? 'fixed' : 'auction';
 }
 
 function applyFixedPriceFilter(product: Product, fixedPrice: boolean): Product | null {
-  const pricing_options = product.pricing_options.filter(po => hasFixedPrice(po) === fixedPrice);
+  const requested: PricingStructure = fixedPrice ? 'fixed' : 'auction';
+  const pricing_options = product.pricing_options.filter(po => pricingStructureForOption(po) === requested);
   if (pricing_options.length === 0) return null;
   return { ...product, pricing_options };
 }
 
-function applyFixedPriceFilterToProducts(products: Product[], fixedPrice: boolean): Product[] {
+export function applyFixedPriceFilterToProducts(products: Product[], fixedPrice: boolean): Product[] {
   return products
     .map(product => applyFixedPriceFilter(product, fixedPrice))
+    .filter((product): product is Product => product !== null);
+}
+
+function applyPricingStructuresFilter(product: Product, structures: Set<PricingStructure>): Product | null {
+  const pricing_options = product.pricing_options.filter(option => structures.has(pricingStructureForOption(option)));
+  if (pricing_options.length === 0) return null;
+  return { ...product, pricing_options };
+}
+
+export function applyPricingStructuresFilterToProducts(products: Product[], structures: PricingStructure[]): Product[] {
+  const requested = new Set(structures);
+  return products
+    .map(product => applyPricingStructuresFilter(product, requested))
     .filter((product): product is Product => product !== null);
 }
 
@@ -585,6 +1347,37 @@ function productMatchesAnyFormatId(product: Product, requestedFormatIds: FormatI
 
 function applyFormatIdsFilterToProducts(products: Product[], requestedFormatIds: FormatID[]): Product[] {
   return products.filter(product => productMatchesAnyFormatId(product, requestedFormatIds));
+}
+
+function productCanonicalFormatOptions(product: Product): Array<{
+  format_kind?: string;
+  format_option_id?: string;
+  publisher_domain?: string;
+}> {
+  const options = (product as unknown as { format_options?: unknown[] }).format_options;
+  return Array.isArray(options)
+    ? options.filter((option): option is { format_kind?: string; format_option_id?: string; publisher_domain?: string } => Boolean(option && typeof option === 'object'))
+    : [];
+}
+
+function applyCanonicalFormatFiltersToProducts(
+  products: Product[],
+  formatKinds: string[],
+  refs: Array<{ scope?: string; publisher_domain?: string; format_option_id?: string }>,
+): Product[] {
+  const kinds = new Set(formatKinds);
+  return products.filter(product => {
+    const options = productCanonicalFormatOptions(product);
+    const kindMatches = kinds.size === 0 || options.some(option => Boolean(option.format_kind && kinds.has(option.format_kind)));
+    const refMatches = refs.length === 0 || refs.some(ref => options.some(option => {
+      if (!ref.format_option_id || option.format_option_id !== ref.format_option_id) return false;
+      if (ref.scope === 'publisher') {
+        return Boolean(ref.publisher_domain && option.publisher_domain?.toLowerCase() === ref.publisher_domain.toLowerCase());
+      }
+      return ref.scope === 'product' && !option.publisher_domain;
+    }));
+    return kindMatches && refMatches;
+  });
 }
 
 function mandatoryProductSignalChargesSatisfied(product: Product, currencies: Set<string>): boolean {
@@ -921,7 +1714,7 @@ import { maybeEmitCompletionWebhook } from './webhooks.js';
 import { selectSigningCapability } from './request-signing.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
-const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15'] as const;
+const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', GET_PRODUCTS_REJECTED_ADCP_VERSION] as const;
 const DEFAULT_ADCP_VERSION = '3.0';
 const CURRENT_ADCP_VERSION = '3.1-rc.15';
 const MAX_PACKAGES_PER_BUY = 50;
@@ -1116,6 +1909,138 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function validatedCreativeIdentity(
+  creative: Pick<InlineCreativeInput, 'format_id' | 'format_kind' | 'format_option_ref'>,
+): { ok: true; identity: InlineCreativeIdentity } | { ok: false; message: string } {
+  const hasLegacyIdentity = creative.format_id !== undefined;
+  const hasCanonicalIdentity = creative.format_kind !== undefined;
+  if (hasLegacyIdentity === hasCanonicalIdentity) {
+    return {
+      ok: false,
+      message: hasLegacyIdentity
+        ? 'must provide exactly one of format_id or format_kind, not both'
+        : 'requires exactly one of format_id or format_kind',
+    };
+  }
+
+  if (hasCanonicalIdentity) {
+    const formatKind = canonicalFormatKind(creative.format_kind);
+    const parsed = CreativeAssetSchema.safeParse({
+      creative_id: '__identity_validation__',
+      name: 'Identity validation',
+      assets: {},
+      format_kind: creative.format_kind,
+      ...(creative.format_option_ref !== undefined && { format_option_ref: creative.format_option_ref }),
+    });
+    if (!formatKind || !parsed.success) {
+      return { ok: false, message: 'has an invalid canonical format_kind or format_option_ref' };
+    }
+    return {
+      ok: true,
+      identity: {
+        kind: 'canonical',
+        formatKind,
+        ...(isRecord(creative.format_option_ref) && { formatOptionRef: creative.format_option_ref }),
+      },
+    };
+  }
+
+  const parsed = CreativeAssetSchema.safeParse({
+    creative_id: '__identity_validation__',
+    name: 'Identity validation',
+    assets: {},
+    format_id: creative.format_id,
+    ...(creative.format_option_ref !== undefined && { format_option_ref: creative.format_option_ref }),
+  });
+  if (!parsed.success || !isRecord(creative.format_id)) {
+    return { ok: false, message: 'has an invalid legacy format_id' };
+  }
+  const agentUrl = creative.format_id.agent_url;
+  if (
+    typeof agentUrl !== 'string'
+    || agentUrl.length === 0
+    || agentUrl.length > MAX_URL_LEN
+    || agentUrl !== agentUrl.trim()
+  ) {
+    return { ok: false, message: `has an invalid legacy format_id.agent_url (expected a URL up to ${MAX_URL_LEN} characters)` };
+  }
+  try {
+    const url = new URL(agentUrl);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return { ok: false, message: 'has an invalid legacy format_id.agent_url (expected http:// or https://)' };
+    }
+  } catch {
+    return { ok: false, message: 'has an invalid legacy format_id.agent_url' };
+  }
+  const width = creative.format_id.width;
+  const height = creative.format_id.height;
+  const durationMs = creative.format_id.duration_ms;
+  const pixelRatio = creative.format_id.pixel_ratio;
+  if (
+    (width !== undefined && (typeof width !== 'number' || !Number.isInteger(width) || width < 1))
+    || (height !== undefined && (typeof height !== 'number' || !Number.isInteger(height) || height < 1))
+    || (width === undefined) !== (height === undefined)
+    || (durationMs !== undefined && (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs < 1))
+    || (pixelRatio !== undefined && (typeof pixelRatio !== 'number' || !Number.isFinite(pixelRatio) || pixelRatio <= 0))
+    || (pixelRatio !== undefined && (width === undefined || height === undefined))
+  ) {
+    return { ok: false, message: 'has invalid legacy format_id dimensions, duration_ms, or pixel_ratio parameters' };
+  }
+  return {
+    ok: true,
+    identity: {
+      kind: 'legacy',
+      formatId: creative.format_id as unknown as FormatID,
+      ...(isRecord(creative.format_option_ref) && { formatOptionRef: creative.format_option_ref }),
+    },
+  };
+}
+
+function normalizedCreativeManifest(
+  creative: InlineCreativeInput,
+  existing: CreativeState | undefined,
+  identity: InlineCreativeIdentity,
+): CreativeManifest | undefined {
+  const inlineAssets = isRecord(creative.assets)
+    ? creative.assets as CreativeManifest['assets']
+    : undefined;
+  const manifestAssets = isRecord(creative.manifest) && isRecord(creative.manifest.assets)
+    ? creative.manifest.assets as CreativeManifest['assets']
+    : undefined;
+  const assets = inlineAssets
+    ?? manifestAssets
+    ?? existing?.manifest?.assets
+    ?? existing?.assets;
+  if (!assets) return undefined;
+
+  const sourceManifest = isRecord(creative.manifest)
+    ? creative.manifest
+    : isRecord(existing?.manifest)
+      ? existing.manifest
+      : undefined;
+  const {
+    format_id: _staleFormatId,
+    format_kind: _staleFormatKind,
+    format_option_ref: _staleFormatOptionRef,
+    assets: _staleAssets,
+    ...manifestMetadata
+  } = sourceManifest ?? {};
+
+  return identity.kind === 'canonical'
+    ? {
+      ...manifestMetadata,
+      format_kind: identity.formatKind,
+      ...(identity.formatOptionRef && { format_option_ref: identity.formatOptionRef }),
+      assets,
+    }
+    : {
+      ...manifestMetadata,
+      format_id: identity.formatId,
+      ...(identity.formatOptionRef && { format_option_ref: identity.formatOptionRef }),
+      assets,
+    };
+}
+
 function mcpErrorMessage(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
   return error.message.replace(/^MCP error -?\d+: /, '');
@@ -1278,6 +2203,118 @@ function governanceErrorDetails(check: import('./types.js').GovernanceCheckState
   return details;
 }
 
+/** Verify the signed authorization at the service boundary. */
+async function governedCommitmentError(
+  governanceContext: string,
+  authenticatedCaller: string | undefined,
+  expectedTool: string,
+  expectedAudience: string,
+  actualPayload: Record<string, unknown>,
+  actualAmount: number,
+  actualCurrency: string,
+): Promise<TaskError | undefined> {
+  const result = await verifyGovernedServiceAuthorization({
+    token: governanceContext,
+    expectedIssuer: `${getCanonicalBase()}/governance`,
+    expectedTask: expectedTool,
+    expectedAudience,
+    payload: actualPayload,
+    actualCommitment: { amount: actualAmount, currency: actualCurrency },
+    authenticatedCaller,
+  });
+  return result.ok ? undefined : {
+    code: 'PERMISSION_DENIED',
+    message: result.message ?? 'The signed governance authorization is invalid.',
+  };
+}
+
+function projectedPackageBudgetTotal(mb: MediaBuyState, req: UpdateMediaBuyArgs): number {
+  const currentBudgets = new Map(
+    mb.packages.map(pkg => [pkg.packageId, pkg.canceled ? 0 : pkg.budget]),
+  );
+  for (const update of req.packages ?? []) {
+    const packageId = update.package_id;
+    if (!packageId || !currentBudgets.has(packageId)) continue;
+    if ((update as PackageUpdateExt).canceled === true) {
+      currentBudgets.set(packageId, 0);
+    } else if (update.budget !== undefined) {
+      currentBudgets.set(packageId, update.budget);
+    }
+  }
+  const nextExisting = [...currentBudgets.values()].reduce((sum, budget) => sum + budget, 0);
+  const added = (req.new_packages ?? []).reduce((sum, pkg) => sum + pkg.budget, 0);
+  return nextExisting + added;
+}
+
+interface MediaBuyAggregateUpdate {
+  total_budget?: { amount: number; currency: string };
+  budget_allocation?: Record<string, unknown>;
+  pacing?: string;
+  bidding?: Record<string, unknown> | null;
+}
+
+function aggregateMediaBuyUpdate(req: UpdateMediaBuyArgs): MediaBuyAggregateUpdate {
+  return req as unknown as MediaBuyAggregateUpdate;
+}
+
+function resultingMediaBuyIsSellerOptimized(mb: MediaBuyState, req: UpdateMediaBuyArgs): boolean {
+  const update = aggregateMediaBuyUpdate(req);
+  return (update.budget_allocation ?? mb.budgetAllocation)?.mode === 'seller_optimized';
+}
+
+function positiveMediaBuyUpdateDelta(mb: MediaBuyState, req: UpdateMediaBuyArgs): number {
+  const packageBaseline = mb.packages.reduce(
+    (sum, pkg) => sum + (pkg.canceled ? 0 : pkg.budget),
+    0,
+  );
+  const baseline = mb.totalBudget ?? packageBaseline;
+  const requestedTotal = aggregateMediaBuyUpdate(req).total_budget?.amount;
+  // In seller-optimized mode package budgets are optional package caps, not
+  // allocations. They may sum above the shared hard total, and changing them
+  // MUST NOT silently replace or increase that total. Only an explicit
+  // total_budget changes the shared monetary obligation.
+  const nextTotal = requestedTotal
+    ?? (resultingMediaBuyIsSellerOptimized(mb, req)
+      ? baseline
+      : projectedPackageBudgetTotal(mb, req));
+  return Math.max(0, nextTotal - baseline);
+}
+
+function mediaBuyUpdateRequiresGovernance(mb: MediaBuyState, req: UpdateMediaBuyArgs, delta: number): boolean {
+  if (delta > 0 || req.paused === false || (req.new_packages?.length ?? 0) > 0) return true;
+  if (req.end_time && new Date(req.end_time) > new Date(mb.endTime)) return true;
+  if ((req.packages ?? []).some(update => {
+    const current = mb.packages.find(pkg => pkg.packageId === update.package_id);
+    if (!current || !Object.prototype.hasOwnProperty.call(update, 'budget')) return false;
+    const nextBudget = (update as unknown as { budget?: number | null }).budget;
+    // Removing a seller-optimized cap or raising any package cap widens the
+    // effective delivery envelope even when the shared/fixed aggregate total
+    // stays flat. A pure numeric decrease remains the decrease_only exemption.
+    return nextBudget === null
+      || (typeof nextBudget === 'number' && nextBudget > current.budget);
+  })) return true;
+  const aggregateUpdate = aggregateMediaBuyUpdate(req);
+  const currentAllocation = mb.budgetAllocation ?? { mode: 'fixed' };
+  if (
+    aggregateUpdate.budget_allocation !== undefined
+    && !isDeepStrictEqual(aggregateUpdate.budget_allocation, currentAllocation)
+  ) return true;
+  if (
+    aggregateUpdate.pacing !== undefined
+    && aggregateUpdate.pacing !== (mb.aggregatePacing ?? 'even')
+  ) return true;
+  if (aggregateUpdate.bidding !== undefined) {
+    const resultingBidding = aggregateUpdate.bidding === null ? undefined : aggregateUpdate.bidding;
+    if (!isDeepStrictEqual(resultingBidding, mb.aggregateBidding)) return true;
+  }
+  return (req.packages ?? []).some(update =>
+    update.paused === false
+    || Boolean(update.targeting_overlay ?? (update as PackageUpdateExt).targeting)
+    || Boolean(update.end_time && new Date(update.end_time) > new Date(
+      mb.packages.find(pkg => pkg.packageId === update.package_id)?.endTime ?? mb.endTime,
+    )));
+}
+
 /** Wire-format error shared by all training agent responses. */
 interface TaskError {
   code: string;
@@ -1389,7 +2426,9 @@ interface CreativeVariant {
 interface CreativeDeliveryEntry {
   creative_id: string;
   media_buy_id?: string;
-  format_id: FormatID;
+  format_id?: FormatID;
+  format_kind?: string;
+  format_option_ref?: Record<string, unknown>;
   totals: { impressions: number; spend: number; clicks: number; ctr: number };
   variant_count: number;
   variants: CreativeVariant[];
@@ -1462,16 +2501,14 @@ const SYNONYM_MAP: Record<string, string[]> = {
 };
 
 /** Derive lifecycle status from stored status and flight dates. */
-export function deriveStatus(mb: MediaBuyState): string {
+export function deriveStatus(mb: MediaBuyState, session?: SessionState): string {
   if (mb.canceledAt) return 'canceled';
   if (mb.status === 'rejected') return 'rejected';
-  const hasCreatives = mb.packages.some(pkg => pkg.creativeAssignments.length > 0);
-  if (!hasCreatives && mb.status !== 'completed') {
-    if (mb.complyControllerForced) {
-      mb.complyControllerForced = false;
-    } else {
-      return 'pending_creatives';
-    }
+  const needsCreative = session
+    ? mb.packages.some(pkg => packageNeedsCreative(pkg, session))
+    : mb.packages.some(pkg => pkg.creativeAssignments.length === 0);
+  if (needsCreative && mb.status !== 'completed' && !mb.complyControllerForced) {
+    return 'pending_creatives';
   }
   const now = new Date();
   if (mb.status === 'active' || mb.status === 'paused') {
@@ -1786,6 +2823,226 @@ function getFormats(): ReturnType<typeof buildFormats> {
   return cachedFormats;
 }
 
+function requestedCreativeWireMode(args: Record<string, unknown>): CreativeFormatWireMode {
+  const ext = args.ext as { adcp?: { creative_wire?: unknown } } | undefined;
+  const explicit = ext?.adcp?.creative_wire;
+  if (explicit === 'canonical' || explicit === 'legacy') return explicit;
+  return typeof args.adcp_version === 'string' && args.adcp_version.startsWith('3.0')
+    ? 'legacy'
+    : 'unknown';
+}
+
+function formatProjectionCatalogs(): ProjectionCatalogSnapshot[] {
+  const declarations = new Map<string, Record<string, unknown>>();
+  for (const catalogProduct of getCatalog()) {
+    for (const rawDeclaration of catalogProduct.product.format_options ?? []) {
+      if (!isRecord(rawDeclaration)) continue;
+      declarations.set(JSON.stringify(rawDeclaration), rawDeclaration);
+    }
+  }
+  return [{
+    source: 'configured',
+    formats: [...declarations.values()] as unknown as ProjectionCatalogSnapshot['formats'],
+  }];
+}
+
+function legacyFormatRef(value: unknown): FormatID | undefined {
+  if (!isRecord(value) || typeof value.agent_url !== 'string' || typeof value.id !== 'string') return undefined;
+  return {
+    agent_url: value.agent_url,
+    id: value.id,
+    ...(typeof value.width === 'number' && Number.isFinite(value.width) && { width: value.width }),
+    ...(typeof value.height === 'number' && Number.isFinite(value.height) && { height: value.height }),
+    ...(typeof value.duration_ms === 'number' && Number.isFinite(value.duration_ms) && { duration_ms: value.duration_ms }),
+  };
+}
+
+function canonicalFormatKind(value: unknown): CanonicalFormatKind | undefined {
+  switch (value) {
+    case 'image':
+    case 'html5':
+    case 'display_tag':
+    case 'image_carousel':
+    case 'video_hosted':
+    case 'video_vast':
+    case 'audio_hosted':
+    case 'audio_daast':
+    case 'sponsored_placement':
+    case 'native_in_feed':
+    case 'responsive_creative':
+    case 'agent_placement':
+    case 'custom':
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+function requestScopedLegacyRoutes(selector: Readonly<Record<string, unknown>>): CanonicalFormatLegacyRoute[] | undefined {
+  const productId = typeof selector.product_id === 'string' ? selector.product_id : undefined;
+  let hasRequestScopedDeclarations = false;
+  const mappedDeclarations: V2ProductFormatDeclaration[] = [];
+  for (const field of ['formats_to_provide', 'formats_pending'] as const) {
+    const declarations = selector[field];
+    if (!Array.isArray(declarations)) continue;
+    hasRequestScopedDeclarations = true;
+    for (const declaration of declarations) {
+      if (
+        !isRecord(declaration)
+        || declaration.canonical_formats_only === true
+        || !Array.isArray(declaration.v1_format_ref)
+      ) continue;
+      const formatKind = canonicalFormatKind(declaration.format_kind);
+      const formatOptionId = typeof declaration.format_option_id === 'string'
+        ? declaration.format_option_id
+        : undefined;
+      if (!formatKind || !formatOptionId) continue;
+      const refs: FormatID[] = [];
+      for (const value of declaration.v1_format_ref) {
+        const ref = legacyFormatRef(value);
+        if (!ref) continue;
+        refs.push(ref);
+      }
+      if (refs.length === 0) continue;
+      mappedDeclarations.push({
+        format_kind: formatKind,
+        params: isRecord(declaration.params) ? declaration.params : {},
+        format_option_id: formatOptionId,
+        ...(typeof declaration.publisher_domain === 'string' && { publisher_domain: declaration.publisher_domain }),
+        v1_format_ref: refs,
+      });
+    }
+  }
+  if (!hasRequestScopedDeclarations) return undefined;
+  return productId ? legacyRoutesForProduct(productId, mappedDeclarations) : [];
+}
+
+export const trainingCatalogLegacyResolver: CanonicalFormatLegacyResolver = context => {
+  if (context.source !== 'product') {
+    // The platform response carries the exact declarations selected for this
+    // package. Prefer their serializable v1_format_ref sidecars over a global
+    // catalog lookup: seeded storyboard products are request-scoped and may
+    // not exist in the configured training catalog.
+    const requestScopedRoutes = requestScopedLegacyRoutes(context.selector);
+    if (requestScopedRoutes !== undefined) {
+      return canonicalFormatLegacyResolverFromRoutes(requestScopedRoutes)(context);
+    }
+  }
+  const candidate = context.source === 'creative'
+    ? context.creative.format_option_ref
+    : context.source === 'selector'
+      ? context.selector.format_option_ref
+      : undefined;
+  if (!isRecord(candidate) || typeof candidate.format_option_id !== 'string') return undefined;
+
+  const matches = new Map<string, FormatID>();
+  for (const catalogProduct of getCatalog()) {
+    for (const rawDeclaration of catalogProduct.product.format_options ?? []) {
+      if (!isRecord(rawDeclaration) || rawDeclaration.format_option_id !== candidate.format_option_id) continue;
+      if (candidate.scope === 'publisher') {
+        if (rawDeclaration.publisher_domain !== candidate.publisher_domain) continue;
+      } else if (candidate.scope === 'product' && rawDeclaration.publisher_domain !== undefined) {
+        continue;
+      }
+      for (const ref of Array.isArray(rawDeclaration.v1_format_ref) ? rawDeclaration.v1_format_ref : []) {
+        if (!isRecord(ref) || typeof ref.id !== 'string') continue;
+        const typedRef = ref as FormatID;
+        matches.set(JSON.stringify(typedRef), typedRef);
+      }
+    }
+  }
+  return matches.size === 1 ? [...matches.values()][0] : undefined;
+};
+
+/** Project a raw compatibility response to the wire arm explicitly requested by the caller. */
+export function projectGetProductsCompatibilityWire(
+  response: { products?: Product[]; [key: string]: unknown },
+  args: Record<string, unknown>,
+): unknown {
+  const wireMode = requestedCreativeWireMode(args);
+  if (wireMode === 'unknown') return response;
+  if (wireMode === 'canonical') return toCanonicalOnlyResponse(response as never).response;
+
+  const products = (response.products ?? []).flatMap(product => {
+    if (!Array.isArray(product.format_ids) || product.format_ids.length === 0) return [];
+    const { format_options: _formatOptions, ...legacyProduct } = product as Product & { format_options?: unknown };
+    return [legacyProduct as Product];
+  });
+  return { ...response, products };
+}
+
+/**
+ * Preserve stored identity for ambiguous 3.1 callers, and use exact catalog
+ * aliases only when a caller explicitly asks for the other wire generation.
+ */
+export function projectListCreativesCompatibilityWire<T extends {
+  creatives?: Array<Record<string, unknown>>;
+  errors?: unknown[];
+  query_summary?: Record<string, unknown>;
+}>(response: T, args: Record<string, unknown>): T {
+  const wireMode = requestedCreativeWireMode(args);
+  if (wireMode === 'unknown' || !Array.isArray(response.creatives)) return response;
+
+  const adapters = creativeProjectionAdapters();
+  const projected: Array<Record<string, unknown>> = [];
+  const projectionErrors: unknown[] = [];
+  for (const creative of response.creatives) {
+    try {
+      projected.push(projectCreativeRecordForWire(creative, wireMode, adapters));
+    } catch (error) {
+      projectionErrors.push({
+        code: 'FORMAT_PROJECTION_FAILED',
+        message: error instanceof Error ? error.message : 'Creative format projection failed',
+        recovery: 'correctable',
+      });
+    }
+  }
+  return {
+    ...response,
+    creatives: projected,
+    ...(response.query_summary && {
+      query_summary: { ...response.query_summary, returned: projected.length },
+    }),
+    ...(projectionErrors.length > 0 && { errors: [...(response.errors ?? []), ...projectionErrors] }),
+  };
+}
+
+type CreativeProjectionAdapters = {
+  legacyFormatConverter: ReturnType<typeof legacyFormatConverterFromCatalogSnapshots>;
+  canonicalFormatLegacyResolver: ReturnType<typeof canonicalFormatLegacyResolverFromCatalogSnapshots>;
+};
+
+export function creativeProjectionAdapters(): CreativeProjectionAdapters {
+  const catalogs = formatProjectionCatalogs();
+  return {
+    legacyFormatConverter: legacyFormatConverterFromCatalogSnapshots(catalogs),
+    canonicalFormatLegacyResolver: canonicalFormatLegacyResolverFromCatalogSnapshots(
+      catalogs,
+      trainingCatalogLegacyResolver,
+    ),
+  };
+}
+
+function projectCreativeRecordForWire(
+  creative: Record<string, unknown>,
+  wireMode: Exclude<CreativeFormatWireMode, 'unknown'>,
+  adapters: CreativeProjectionAdapters,
+): Record<string, unknown> {
+  if (wireMode === 'legacy' && isRecord(creative.format_id)) return creative;
+  if (wireMode === 'canonical' && typeof creative.format_kind === 'string') return creative;
+  return projectCreativeForDelivery(
+    creative as never,
+    {
+      ...(typeof creative.format_kind === 'string' && { format_kind: creative.format_kind }),
+      ...(isRecord(creative.format_option_ref) && { format_option_refs: [creative.format_option_ref] }),
+    },
+    wireMode,
+    'list_creatives',
+    adapters.legacyFormatConverter,
+    adapters.canonicalFormatLegacyResolver,
+  ) as Record<string, unknown>;
+}
+
 /** Invalidate cached catalog/formats (for tests or hot-reload) */
 export function invalidateCache(): void {
   cachedCatalog = null;
@@ -1843,7 +3100,11 @@ function backfillTrainingProductDefaults(product: Product, ownAgentUrl: string):
     reporting_capabilities?: Record<string, unknown>;
   };
   if ((!Array.isArray(p.format_ids) || p.format_ids.length === 0) && (!Array.isArray(p.format_options) || p.format_options.length === 0)) {
-    p.format_ids = [{ agent_url: ownAgentUrl, id: 'display_300x250' }];
+    p.format_options = [{
+      format_kind: 'image',
+      format_option_id: 'fixture_default_image_300x250',
+      params: { width: 300, height: 250 },
+    }];
   } else {
     for (const fid of p.format_ids ?? []) {
       if (typeof fid === 'object' && fid !== null && !fid.agent_url) {
@@ -2172,7 +3433,7 @@ async function enforceProvenancePolicy(
  */
 function overlaySeededProducts(
   session: import('./types.js').SessionState,
-  productMap: Map<string, import('@adcp/sdk').Product>,
+  productMap: Map<string, import('@adcp/sdk').LegacyProduct>,
 ): void {
   const { seededProducts, seededPricingOptions } = session.complyExtensions;
   if (seededProducts.size === 0 && seededPricingOptions.size === 0) return;
@@ -2473,18 +3734,26 @@ function stableMapDigest(map: Map<string, Record<string, unknown>>): string {
 function productWholesaleFeedMeta(req: WholesaleFeedRequest, session: SessionState): WholesaleFeedMeta {
   const seededProductsRevision = stableMapDigest(session.complyExtensions.seededProducts);
   const seededPricingRevision = stableMapDigest(session.complyExtensions.seededPricingOptions);
+  const cacheScope = cacheScopeForWholesaleRequest(req);
+  // Tokens are scope-keyed: the same feed state yields a distinct token per
+  // cache_scope so a token minted under one scope never short-circuits a probe
+  // the seller resolves to another. See media-buy/get-products-response.json#unchanged.
   return {
-    wholesale_feed_version: `${PRODUCT_WHOLESALE_FEED_VERSION}.${seededProductsRevision}`,
-    pricing_version: `${PRODUCT_WHOLESALE_PRICING_VERSION}.${seededPricingRevision}`,
-    cache_scope: cacheScopeForWholesaleRequest(req),
+    wholesale_feed_version: `${PRODUCT_WHOLESALE_FEED_VERSION}.${cacheScope}.${seededProductsRevision}`,
+    pricing_version: `${PRODUCT_WHOLESALE_PRICING_VERSION}.${cacheScope}.${seededPricingRevision}`,
+    cache_scope: cacheScope,
   };
 }
 
 function signalWholesaleFeedMeta(req: WholesaleFeedRequest): WholesaleFeedMeta {
+  const cacheScope = cacheScopeForWholesaleRequest(req);
+  // Tokens are scope-keyed: the same feed state yields a distinct token per
+  // cache_scope so a token minted under one scope never short-circuits a probe
+  // the agent resolves to another. See signals/get-signals-response.json#unchanged.
   return {
-    wholesale_feed_version: SIGNAL_WHOLESALE_FEED_VERSION,
-    pricing_version: SIGNAL_WHOLESALE_PRICING_VERSION,
-    cache_scope: cacheScopeForWholesaleRequest(req),
+    wholesale_feed_version: `${SIGNAL_WHOLESALE_FEED_VERSION}.${cacheScope}`,
+    pricing_version: `${SIGNAL_WHOLESALE_PRICING_VERSION}.${cacheScope}`,
+    cache_scope: cacheScope,
   };
 }
 
@@ -2521,6 +3790,7 @@ function wholesaleCapabilityProfile(ctx: TrainingContext): {
 export function supportedCanonicalFormatsCapability(): Array<Record<string, unknown>> {
   return SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(({ capabilityId, formatKind }) => ({
     capability_id: capabilityId,
+    operations: ['build', 'validate', 'preview'],
     format: {
       format_kind: formatKind,
       params: {
@@ -2655,7 +3925,7 @@ const TOOLS = [
   },
   {
     name: 'list_creative_formats',
-    description: 'List supported creative formats with asset requirements, dimensions, and rendering specifications. Filter by channels to see formats relevant to specific media types. Not for uploading creatives (use sync_creatives) or checking creative status.',
+    description: 'DEPRECATED in AdCP 3.2. Legacy named-format compatibility projection only. Sales deliverability comes from get_products format_options[]; creative-agent operations come from get_adcp_capabilities creative.supported_formats[].',
     annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
@@ -2695,7 +3965,7 @@ const TOOLS = [
           items: {
             type: 'object',
             properties: {
-              kind: { type: 'string', enum: ['canonical', 'product', 'third_party_format'] },
+              kind: { type: 'string', enum: ['canonical', 'product', 'third_party_format', 'capability'] },
               id: { type: 'string' },
             },
             required: ['kind', 'id'],
@@ -2890,7 +4160,7 @@ const TOOLS = [
   },
   {
     name: 'build_creative',
-    description: 'Build a creative from assets and a target format. Supports two modes: (1) Stateless transformation — pass a creative_manifest with inline assets and a target_format_id to produce a serving tag. (2) Library retrieval — pass a creative_id referencing a synced creative to generate a tag. Returns a creative manifest with an HTML/JavaScript/VAST serving tag.',
+    description: 'Build a creative through a canonical capability advertised by get_adcp_capabilities creative.supported_formats. Pass target_capability_id (or target_capability_ids) with a creative_manifest, brief, or library creative_id. Returns canonical creative manifests.',
     annotations: { readOnlyHint: true, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
@@ -2899,8 +4169,10 @@ const TOOLS = [
         account: ACCOUNT_REF_SCHEMA,
         creative_id: { type: 'string', description: 'Reference to a synced creative (ad server mode)' },
         creative_manifest: { type: 'object', description: 'Inline manifest with assets (transformation mode)' },
-        target_format_id: { type: 'object', properties: { agent_url: { type: 'string' }, id: { type: 'string' } }, description: 'Target output format' },
-        target_format_ids: { type: 'array', items: { type: 'object', properties: { agent_url: { type: 'string' }, id: { type: 'string' } } }, description: 'Multiple target formats' },
+        target_capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$', description: 'Canonical output capability ID from creative.supported_formats' },
+        target_capability_ids: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$' }, description: 'Multiple canonical output capability IDs' },
+        target_format_id: { type: 'object', properties: { agent_url: { type: 'string' }, id: { type: 'string' } }, description: 'Deprecated 3.x named-format selector' },
+        target_format_ids: { type: 'array', minItems: 1, maxItems: 50, items: { type: 'object', properties: { agent_url: { type: 'string' }, id: { type: 'string' } } }, description: 'Deprecated 3.x named-format selectors' },
         brand: { type: 'object', properties: { domain: { type: 'string' } }, description: 'Brand reference for identity resolution' },
         media_buy_id: { type: 'string', description: 'Media buy context for placement-level tags' },
         package_id: { type: 'string', description: 'Package context for placement-level tags' },
@@ -2921,15 +4193,37 @@ const TOOLS = [
       properties: {
         account: ACCOUNT_REF_SCHEMA,
         request_type: { type: 'string', enum: ['single', 'batch', 'variant'], description: 'Preview mode: single, batch, or variant' },
-        creative_manifest: { type: 'object', description: 'Creative manifest with assets to preview (required for single mode)' },
-        creative_id: { type: 'string', description: 'Creative identifier for context (variant mode)' },
-        requests: { type: 'array', description: 'Array of preview requests for batch mode (1-50 items)', minItems: 1, maxItems: 50, items: { type: 'object', properties: { creative_manifest: { type: 'object' } }, required: ['creative_manifest'] } },
+        creative_manifest: { type: 'object', description: 'Creative manifest with assets to preview. In single mode, provide this or creative_id.' },
+        target_capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$', description: 'Preview capability ID from creative.supported_formats' },
+        format_id: { ...FORMAT_ID_INPUT_SCHEMA, deprecated: true, description: 'Deprecated 3.x named-format preview route.' },
+        creative_id: { type: 'string', description: 'Creative-library identifier used instead of creative_manifest in single mode.' },
+        requests: {
+          type: 'array', description: 'Array of preview requests for batch mode (1-50 items)', minItems: 1, maxItems: 50,
+          items: {
+            type: 'object',
+            properties: {
+              target_capability_id: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$' },
+              format_id: { ...FORMAT_ID_INPUT_SCHEMA, deprecated: true },
+              creative_manifest: { type: 'object' },
+              creative_id: { type: 'string' },
+              output_format: { type: 'string', enum: ['url', 'html', 'both'] },
+              quality: { type: 'string', enum: ['draft', 'production'] },
+              template_id: { type: 'string' },
+              item_limit: { type: 'integer', minimum: 1 },
+            },
+            oneOf: [{ required: ['creative_manifest'] }, { required: ['creative_id'] }],
+          },
+        },
         variant_id: { type: 'string', description: 'Variant ID from get_creative_delivery (required for variant mode)' },
         output_format: { type: 'string', enum: ['url', 'html', 'both'], description: 'Preview output format' },
         quality: { type: 'string', enum: ['draft', 'production'] },
         template_id: { type: 'string', description: 'Specific template ID for custom format rendering' },
         item_limit: { type: 'integer', minimum: 1, description: 'Max catalog items to render per preview' },
       },
+      allOf: [{
+        if: { properties: { request_type: { const: 'single' } } },
+        then: { oneOf: [{ required: ['creative_manifest'] }, { required: ['creative_id'] }] },
+      }],
       required: ['request_type'] as const,
     },
   },
@@ -2951,6 +4245,7 @@ const TOOLS = [
         new_packages: { type: 'array', items: { type: 'object', properties: { product_id: { type: 'string' }, pricing_option_id: { type: 'string' }, budget: { type: 'number' }, bid_price: { type: 'number' }, impressions: { type: 'number' }, paused: { type: 'boolean' }, start_time: { type: 'string' }, end_time: { type: 'string' }, format_ids: { type: 'array' } }, required: ['product_id', 'pricing_option_id', 'budget'] }, description: 'Add new packages to the media buy' },
         end_time: { type: 'string' },
         action: { type: 'string', description: 'Action to perform (pause, resume, cancel, extend)' },
+        governance_context: { type: 'string', maxLength: 4096, description: 'Opaque intent authorization for a governed update. The seller computes the actual positive delta from its current revision and enforces the signed ceiling.' },
       },
       required: ['account', 'media_buy_id'] as const,
     },
@@ -3078,7 +4373,7 @@ function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: 
 
 // ── Task handler implementations ──────────────────────────────────
 
-export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | { errors: TaskError[] }> {
+export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
   const brief = (req as Record<string, unknown>).brief;
@@ -3130,6 +4425,21 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     : undefined;
   const contextEcho = req.context ? { context: req.context } : {};
 
+  const directivePrincipal = ctx.principal ?? 'anonymous';
+  const rejection = buyingMode === 'brief' || buyingMode === 'refine'
+    ? session.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
+    : undefined;
+  if (rejection && supportsGetProductsRejected(ctx.servedAdcpVersion)) {
+    session.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
+    return {
+      status: 'rejected',
+      adcp_version: ctx.servedAdcpVersion!,
+      reason: rejection.reason,
+      ...(rejection.suggestions && { suggestions: [...rejection.suggestions] }),
+      ...contextEcho,
+    };
+  }
+
   if (wholesaleMeta && wholesaleFeedUnchanged(req as WholesaleFeedRequest, wholesaleMeta)) {
     return {
       status: 'completed' as const,
@@ -3167,6 +4477,17 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     if (formatIdsFilter?.length) {
       products = applyFormatIdsFilterToProducts(products, formatIdsFilter);
     }
+    const canonicalFormatFilters = req.filters as unknown as {
+      format_kinds?: string[];
+      format_option_refs?: Array<{ scope?: string; publisher_domain?: string; format_option_id?: string }>;
+    };
+    if (canonicalFormatFilters.format_kinds?.length || canonicalFormatFilters.format_option_refs?.length) {
+      products = applyCanonicalFormatFiltersToProducts(
+        products,
+        canonicalFormatFilters.format_kinds ?? [],
+        canonicalFormatFilters.format_option_refs ?? [],
+      );
+    }
     const channelFilter = req.filters.channels;
     if (channelFilter?.length) {
       products = products.filter(p =>
@@ -3180,6 +4501,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     const fixedPriceFilter = req.filters.is_fixed_price;
     if (typeof fixedPriceFilter === 'boolean') {
       products = applyFixedPriceFilterToProducts(products, fixedPriceFilter);
+    }
+    const pricingStructures = (req.filters as { pricing_structures?: PricingStructure[] }).pricing_structures;
+    if (pricingStructures?.length) {
+      products = applyPricingStructuresFilterToProducts(products, pricingStructures);
     }
     const requiredVendorMetrics = (req.filters as { required_vendor_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> }).required_vendor_metrics;
     if (requiredVendorMetrics?.length) {
@@ -3661,7 +4986,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   return response;
 }
 
-export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingContext): Promise<object> {
+export async function handleListCreativeFormats(args: ToolArgs, ctx: TrainingContext): Promise<object> {
   const req = args as unknown as ListCreativeFormatsRequest & { channels?: string[] };
 
   // When comply_test_controller.seed_creative_format has pre-populated formats,
@@ -3701,6 +5026,21 @@ export async function handleListCreativeFormats(args: ToolArgs, _ctx: TrainingCo
   if (req.format_ids?.length) {
     const requestedIds = new Set(req.format_ids.map(f => f.id));
     formats = formats.filter(f => requestedIds.has(f.format_id.id));
+  }
+
+  // The 3.0 FormatIDParameter enum predates pixel-density negotiation. Keep
+  // the template available to compatibility runners, but do not advertise an
+  // enum member their pinned response schema cannot represent.
+  if (ctx.storyboardCompat?.version === '3.0') {
+    formats = formats.map(format => format.accepts_parameters?.includes('pixel_ratio')
+      ? {
+          ...format,
+          accepts_parameters: format.accepts_parameters.filter(parameter => parameter !== 'pixel_ratio'),
+          description: format.format_id.id === 'display_image'
+            ? 'Static image display ad. Provide logical width and height in format_id.'
+            : format.description,
+        }
+      : format);
   }
 
   const totalMatching = formats.length;
@@ -3758,7 +5098,9 @@ interface TrainingTransformer {
   description?: string;
   metadata?: Record<string, unknown>;
   input_format_ids?: FormatID[];
+  input_formats?: Array<{ format_kind: string; params: Record<string, unknown> }>;
   output_format_ids: FormatID[];
+  output_capability_ids: string[];
   params: TransformerParam[];
   pricing_options?: Array<Record<string, unknown>>;
   multiplicity?: Record<string, unknown>;
@@ -3782,6 +5124,7 @@ function getTransformers(): TrainingTransformer[] {
       metadata: { provider: 'audiostack', modality: 'audio' },
       input_format_ids: [{ agent_url: agentUrl, id: 'script' }],
       output_format_ids: [{ agent_url: agentUrl, id: 'audio_vo' }],
+      output_capability_ids: ['audio_vo'],
       params: [
         { field: 'voice', type: 'string', value_source: 'enumerable', default: 'sara', description: 'Narration voice, incl. account-specific custom/cloned voices.' },
         { field: 'mastering_preset', type: 'string', value_source: 'inline', allowed_values: ['broadcast', 'podcast', 'music'], default: 'broadcast', description: 'Audio mastering profile applied to the final mix.' },
@@ -3808,6 +5151,8 @@ interface ListTransformersArgs {
   transformer_ids?: string[];
   input_format_ids?: FormatID[];
   output_format_ids?: FormatID[];
+  input_format_kinds?: string[];
+  output_capability_ids?: string[];
   name_search?: string;
   brief?: string;
   expand_params?: string[];
@@ -3839,9 +5184,17 @@ export async function handleListTransformers(args: ToolArgs, _ctx: TrainingConte
     const want = new Set(req.output_format_ids.map(f => f.id));
     transformers = transformers.filter(t => t.output_format_ids.some(f => want.has(f.id)));
   }
+  if (req.output_capability_ids?.length) {
+    const want = new Set(req.output_capability_ids);
+    transformers = transformers.filter(t => t.output_capability_ids.some(id => want.has(id)));
+  }
   if (req.input_format_ids?.length) {
     const want = new Set(req.input_format_ids.map(f => f.id));
     transformers = transformers.filter(t => (t.input_format_ids ?? []).some(f => want.has(f.id)));
+  }
+  if (req.input_format_kinds?.length) {
+    const want = new Set(req.input_format_kinds);
+    transformers = transformers.filter(t => (t.input_formats ?? []).some(format => want.has(format.format_kind)));
   }
   if (req.name_search) {
     const needle = req.name_search.toLowerCase();
@@ -3894,8 +5247,8 @@ export async function handleListTransformers(args: ToolArgs, _ctx: TrainingConte
       name: t.name,
       ...(t.description && { description: t.description }),
       ...(t.metadata && { metadata: t.metadata }),
-      ...(t.input_format_ids && { input_format_ids: t.input_format_ids }),
-      output_format_ids: t.output_format_ids,
+      ...(t.input_formats && { input_formats: t.input_formats }),
+      output_capability_ids: t.output_capability_ids,
       params,
       ...(t.multiplicity && { multiplicity: t.multiplicity }),
       ...(req.include_pricing && t.pricing_options && { pricing_options: t.pricing_options }),
@@ -3969,7 +5322,22 @@ function validateTransformerConfig(
   return null;
 }
 
-function transformerManifest(target: FormatID, label: string): AdcpCreativeManifest {
+function transformerManifest(target: FormatID, label: string, canonical: boolean): AdcpCreativeManifest {
+  if (canonical) {
+    const capability = supportedCanonicalBuildCapability(target.id);
+    if (capability) {
+      if (capability.formatKind === 'audio_hosted') {
+        return {
+          format_kind: capability.formatKind,
+          assets: buildCanonicalAudioAssets(),
+        } as AdcpCreativeManifest;
+      }
+      return {
+        format_kind: capability.formatKind,
+        assets: buildHtmlAssets(label),
+      } as AdcpCreativeManifest;
+    }
+  }
   return {
     format_id: { agent_url: target.agent_url ?? getAgentUrl(), id: target.id },
     assets: buildHtmlAssets(label),
@@ -4317,6 +5685,41 @@ function validateCanonicalTarget(
     : { target, result_kind: 'validated_pass' };
 }
 
+function validateCapabilityTarget(
+  target: ValidateInputTarget,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+): ValidateInputResult {
+  const capability = supportedCanonicalBuildCapability(target.id);
+  if (!capability) {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'capability_target_supported',
+        field: 'targets[].id',
+        expected: SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(item => item.capabilityId),
+        predicted: target.id,
+      }],
+    };
+  }
+  if (manifest.format_kind !== capability.formatKind) {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'format_kind',
+        field: 'manifest.format_kind',
+        expected: capability.formatKind,
+        predicted: manifest.format_kind,
+      }],
+    };
+  }
+  const violations = validateManifestSlots(manifest, capability.slots);
+  return violations.length > 0
+    ? { target, result_kind: 'validated_fail', violations }
+    : { target, result_kind: 'validated_pass' };
+}
+
 function validateProductTarget(
   target: ValidateInputTarget,
   manifest: NonNullable<ValidateInputArgs['manifest']>,
@@ -4431,6 +5834,25 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
     };
   }
 
+  const unknownCapabilityIndex = targets.findIndex(target =>
+    target.kind === 'capability' && !supportedCanonicalBuildCapability(target.id)
+  );
+  if (unknownCapabilityIndex >= 0) {
+    const target = targets[unknownCapabilityIndex];
+    return {
+      errors: [{
+        code: 'FORMAT_NOT_SUPPORTED',
+        message: `Validation capability "${target.id}" is not advertised by this creative agent.`,
+        field: `targets[${unknownCapabilityIndex}].id`,
+        recovery: 'correctable',
+        details: {
+          capability_id: target.id,
+          supported_capability_ids: SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(item => item.capabilityId),
+        },
+      }],
+    };
+  }
+
   const schemaViolations = [
     ...validateManifestSchema(req.manifest),
     ...validateAssetUrls(req.manifest),
@@ -4462,6 +5884,9 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
     }
     if (target.kind === 'product') {
       return validateProductTarget(target, req.manifest!, productsById.get(target.id));
+    }
+    if (target.kind === 'capability') {
+      return validateCapabilityTarget(target, req.manifest!);
     }
     return validateThirdPartyTarget(target, req.manifest!);
   }));
@@ -4525,80 +5950,31 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // check_governance first.
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const govCtx = typeof rawGovCtx === 'string' && rawGovCtx ? rawGovCtx : undefined;
+  const governanceAgents = resolveGovernanceAgentsForAccount(
+    sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+    ctx.principal,
+    req.account,
+  );
   if (govCtx) {
-    // Find the latest check for this governance_context (Map iterates in insertion order)
-    let latestCheck: import('./types.js').GovernanceCheckState | undefined;
-    for (const check of session.governanceChecks.values()) {
-      if (check.governanceContext === govCtx) {
-        latestCheck = check;
-      }
-    }
-    if (latestCheck?.status === 'denied') {
-      return {
-        errors: [{
-          code: 'GOVERNANCE_DENIED',
-          message: latestCheck.explanation || 'Governance check denied this purchase.',
-          details: governanceErrorDetails(latestCheck),
-        }] as TaskError[],
-      };
-    }
-    // governance_context provided but no matching check — reject if plans exist
-    if (!latestCheck && session.governancePlans.size > 0) {
-      return {
-        errors: [{
-          code: 'GOVERNANCE_DENIED',
-          message: `governance_context "${govCtx}" does not match any governance check. Call check_governance first.`,
-        }] as TaskError[],
-      };
-    }
-  } else if (session.governancePlans.size > 0) {
-    // No governance_context provided but plans exist — compute budget and check
     const buyBudget = req.total_budget?.amount
-      ?? (req.packages?.reduce((sum, pkg) => sum + ((pkg as unknown as { budget: number }).budget || 0), 0));
-    if (buyBudget !== undefined) {
-      for (const plan of session.governancePlans.values()) {
-        const remaining = plan.budget.total - plan.committedBudget;
-        if (buyBudget > remaining) {
-          const msg = `Buy budget $${buyBudget} exceeds governance plan "${plan.planId}" remaining budget $${remaining}. Call check_governance first.`;
-          return {
-            errors: [{
-              code: 'GOVERNANCE_DENIED',
-              message: msg,
-              details: {
-                findings: [{
-                  category_id: 'budget_authority',
-                  severity: 'critical',
-                  explanation: msg,
-                }],
-                plan_id: plan.planId,
-              },
-            }] as TaskError[],
-          };
-        }
-        const typeAllocation = plan.budget.allocations?.media_buy;
-        if (typeAllocation?.amount !== undefined) {
-          const typeCommitted = plan.committedByType?.media_buy ?? 0;
-          const typeRemaining = typeAllocation.amount - typeCommitted;
-          if (buyBudget > typeRemaining) {
-            const msg = `Buy budget $${buyBudget} exceeds media_buy allocation $${typeRemaining} remaining in plan "${plan.planId}". Call check_governance first.`;
-            return {
-              errors: [{
-                code: 'GOVERNANCE_DENIED',
-                message: msg,
-                details: {
-                  findings: [{
-                    category_id: 'budget_authority',
-                    severity: 'critical',
-                    explanation: msg,
-                  }],
-                  plan_id: plan.planId,
-                },
-              }] as TaskError[],
-            };
-          }
-        }
-      }
-    }
+      ?? req.packages?.reduce((sum, pkg) => sum + ((pkg as unknown as { budget: number }).budget || 0), 0);
+    const commitmentError = await governedCommitmentError(
+      govCtx,
+      ctx.authenticatedAgentUrl,
+      'create_media_buy',
+      `${getCanonicalBase()}/sales`,
+      req as unknown as Record<string, unknown>,
+      buyBudget ?? 0,
+      req.total_budget?.currency ?? 'USD',
+    );
+    if (commitmentError) return { errors: [commitmentError] };
+  } else if (session.governancePlans.size > 0 || governanceAgents.length > 0) {
+    return {
+      errors: [{
+        code: governanceAgents.length > 0 ? 'PERMISSION_DENIED' : 'GOVERNANCE_DENIED',
+        message: 'Media-buy creation requires governance approval. Call check_governance first.',
+      }] as TaskError[],
+    };
   }
 
   // Validate event-kind optimization_goals reference a previously-registered
@@ -4940,12 +6316,9 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
       // Auction pricing needs a bid_price — use price_guidance p50 or floor_price
       let bidPrice: number | undefined;
-      if (pricing && pricing.pricing_model !== 'cpa') {
-        const po = pricing as AuctionPricingOption;
-        const hasFixed = po.fixed_price !== undefined;
-        if (!hasFixed) {
-          bidPrice = po.price_guidance?.p50 ?? po.floor_price;
-        }
+      if (pricing && pricingStructureForOption(pricing) === 'auction') {
+        const po = pricing as unknown as PricingOptionView;
+        bidPrice = po.price_guidance?.p50 ?? po.floor_price;
       }
 
       return {
@@ -4992,9 +6365,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   }
 
   // Validate all packages and collect errors before returning
+  const confirmedAt = new Date().toISOString();
   const errors: TaskError[] = [];
   const createdPackages: PackageState[] = [];
-  const inlineCreativesToPersist: InlineCreativeInput[] = [];
+  const inlineCreativesToPersist: ValidatedInlineCreative[] = [];
+  const productFormatOptionIndexes: ProductFormatOptionIndexCache = new WeakMap();
   for (let i = 0; i < req.packages.length; i++) {
     const pkg = req.packages[i] as unknown as PackageInput;
     const pkgLabel = `Package ${i}`;
@@ -5008,6 +6383,16 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     const product = productMap.get(pkg.product_id);
     if (!product) {
       errors.push({ code: 'PRODUCT_NOT_FOUND', message: `${pkgLabel}: Product not found: ${pkg.product_id}` });
+      continue;
+    }
+
+    const committedMetricError = validateCommittedMetricProposals(
+      pkg.committed_metrics,
+      product,
+      `packages[${i}].committed_metrics`,
+    );
+    if (committedMetricError) {
+      errors.push(committedMetricError);
       continue;
     }
 
@@ -5030,6 +6415,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     const directFormatError = validateDirectCanonicalPackageSelector(pkg, product, i);
     if (directFormatError) {
       errors.push(directFormatError);
+      continue;
+    }
+    const formatSnapshot = snapshotPackageFormats(pkg, product, i, productFormatOptionIndexes);
+    if (formatSnapshot.error) {
+      errors.push(formatSnapshot.error);
       continue;
     }
 
@@ -5062,10 +6452,10 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       }
     }
 
-    // Check bid vs floor price (floor_price exists on all pricing models except CPA)
-    const floorPrice = pricing.pricing_model !== 'cpa' ? pricing.floor_price : undefined;
-    const isAuction = pricing.pricing_model !== 'cpa'
-      && !('fixed_price' in pricing && (pricing as AuctionPricingOption).fixed_price !== undefined);
+    const pricingView = pricing as unknown as PricingOptionView;
+    const pricingStructure = pricingStructureForOption(pricing);
+    const floorPrice = pricingStructure === 'auction' ? pricingView.floor_price : undefined;
+    const isAuction = pricingStructure === 'auction';
     const seededPricingKey = `${pkg.product_id}:${pkg.pricing_option_id}`;
     const allowSeededMetricFloorCoercion = Boolean(
       floorPrice !== undefined
@@ -5084,6 +6474,26 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       } as TaskError);
     }
 
+    if (pricingStructure === 'contingent' && pkg.bid_price !== undefined) {
+      errors.push({
+        code: 'INVALID_REQUEST',
+        message: `${pkgLabel}: bid_price is not valid for contingent pricing (pricing option ${pkg.pricing_option_id})`,
+        field: `packages[${i}].bid_price`,
+      } as TaskError);
+    }
+
+    if (
+      pricingView.pricing_model === 'revenue_share'
+      && pricingView.event_source_id
+      && !findEventSourceInSession(sessionKeyForEventSources, pricingView.event_source_id)
+    ) {
+      errors.push({
+        code: 'INVALID_REQUEST',
+        message: `event_source_id "${pricingView.event_source_id}" from revenue-share pricing option "${pkg.pricing_option_id}" was not registered via sync_event_sources`,
+        field: `packages[${i}].pricing_option_id`,
+      } as TaskError);
+    }
+
     if (floorPrice !== undefined && pkg.bid_price !== undefined && pkg.bid_price < floorPrice && !allowSeededMetricFloorCoercion) {
       errors.push({
         code: 'INVALID_REQUEST',
@@ -5092,7 +6502,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     }
 
     // Check min spend
-    const minSpend = pricing.min_spend_per_package;
+    const minSpend = pricingView.min_spend_per_package;
     if (minSpend && pkg.budget < minSpend) {
       errors.push({
         code: 'INVALID_REQUEST',
@@ -5130,6 +6540,12 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     const optimizationGoals = Array.isArray(rawGoals)
       ? (rawGoals as unknown[]).filter((g): g is Record<string, unknown> => typeof g === 'object' && g !== null)
       : undefined;
+    const committedMetrics = Array.isArray(pkg.committed_metrics)
+      ? pkg.committed_metrics.map(metric => ({
+        ...metric,
+        committed_at: confirmedAt,
+      }))
+      : undefined;
     const rawCreativeAssignments = Array.isArray(pkg.creative_assignments) ? pkg.creative_assignments : [];
     const creativeAssignments: string[] = [];
     for (let j = 0; j < rawCreativeAssignments.length; j++) {
@@ -5149,8 +6565,14 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     creativeAssignments.push(...inlineCreatives.creativeIds);
     if (errors.length > 0) continue;
     if (Array.isArray(pkg.creatives)) {
-      inlineCreativesToPersist.push(...pkg.creatives);
+      inlineCreativesToPersist.push(...inlineCreatives.validatedCreatives);
     }
+    const formatSelector = packageFormatSelectorForState(
+      pkg,
+      formatSnapshot.formats,
+      formatSnapshot.legacyFormatIds,
+      formatSnapshot.selectedLegacyFormatIds,
+    );
 
     createdPackages.push({
       packageId: `pkg-${i}`,
@@ -5162,14 +6584,16 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       paused: pkg.paused || false,
       startTime: resolvedStart,
       endTime,
-      formatIds: pkg.format_ids,
-      formatOptionRefs: pkg.format_option_refs,
-      formatKind: pkg.format_kind,
+      ...formatSelector,
       params: pkg.params,
+      ...(!isThreeZeroStoryboardCompat(ctx) && formatSnapshot.formats?.length && {
+        formatsToProvide: formatSnapshot.formats,
+      }),
       creativeAssignments,
       targeting: targetingResult.targeting,
       ...(isRecord(pkg.context) && { context: pkg.context }),
       ...(optimizationGoals && optimizationGoals.length > 0 && { optimizationGoals }),
+      ...(committedMetrics && committedMetrics.length > 0 && { committedMetrics }),
     });
   }
 
@@ -5185,7 +6609,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   const mediaBuyId = typeof requestedMediaBuyId === 'string' && /^[A-Za-z0-9._-]{1,128}$/.test(requestedMediaBuyId)
     ? requestedMediaBuyId
     : `mb_${randomUUID().slice(0, 8)}`;
-  const now = new Date().toISOString();
+  const now = confirmedAt;
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
   persistInlineCreatives(
     session,
@@ -5204,7 +6628,18 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     accountRef: req.account,
     brandRef: req.brand,
     status: req.paused === true ? 'paused' : 'active',
-    currency: 'USD',
+    currency: req.total_budget?.currency ?? 'USD',
+    totalBudget: req.total_budget?.amount
+      ?? createdPackages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0),
+    ...((req as unknown as { budget_allocation?: Record<string, unknown> }).budget_allocation
+      ? { budgetAllocation: structuredClone((req as unknown as { budget_allocation: Record<string, unknown> }).budget_allocation) }
+      : {}),
+    ...((req as unknown as { pacing?: string }).pacing
+      ? { aggregatePacing: (req as unknown as { pacing: string }).pacing }
+      : {}),
+    ...((req as unknown as { bidding?: Record<string, unknown> }).bidding
+      ? { aggregateBidding: structuredClone((req as unknown as { bidding: Record<string, unknown> }).bidding) }
+      : {}),
     packages: createdPackages,
     ...(productAllowedActions && { productAllowedActions }),
     startTime: resolvedStart,
@@ -5228,7 +6663,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
   session.mediaBuys.set(mediaBuyId, mediaBuy);
 
-  const status = deriveStatus(mediaBuy);
+  const status = deriveStatus(mediaBuy, session);
   const productAvailableActions = deriveAvailableActionsFromProductAllowedActions(productAllowedActions, status);
   if (productAvailableActions !== undefined) mediaBuy.availableActions = productAvailableActions;
   // Emit `media_buy_status` (canonical 3.1 field per #4895). Body-level
@@ -5242,6 +6677,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     media_buy_status: status,
     revision: mediaBuy.revision,
     confirmed_at: mediaBuy.confirmedAt,
+    currency: mediaBuy.currency,
+    total_budget: mediaBuy.totalBudget,
+    ...(mediaBuy.budgetAllocation && { budget_allocation: mediaBuy.budgetAllocation }),
+    ...(mediaBuy.aggregatePacing && { pacing: mediaBuy.aggregatePacing }),
+    ...(mediaBuy.aggregateBidding && { bidding: mediaBuy.aggregateBidding }),
     valid_actions: validActionsForMediaBuy(mediaBuy, status),
     available_actions: availableActionsForMediaBuy(mediaBuy, status),
     packages: createdPackages.map(pkg => ({
@@ -5254,12 +6694,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       paused: pkg.paused,
       start_time: pkg.startTime,
       end_time: pkg.endTime,
-      ...(pkg.formatIds && { format_ids: pkg.formatIds }),
-      ...(pkg.formatOptionRefs && { format_option_refs: pkg.formatOptionRefs }),
-      ...(pkg.formatKind && { format_kind: pkg.formatKind }),
-      ...(pkg.params && { params: pkg.params }),
+      ...packageFormatSelectorForWire(pkg, ctx),
+      ...packageReadinessFields(pkg, session),
       ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
       ...(pkg.context && { context: pkg.context }),
+      ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
       creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     })),
     ...(isRecord(req.context) && { context: req.context }),
@@ -5290,9 +6729,9 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
   const statusFilter = req.status_filter;
   if (!filterIds?.length) {
     const effectiveFilter = statusFilter || ['active'];
-    buys = buys.filter(mb => effectiveFilter.includes(deriveStatus(mb)));
+    buys = buys.filter(mb => effectiveFilter.includes(deriveStatus(mb, session)));
   } else if (statusFilter?.length) {
-    buys = buys.filter(mb => statusFilter.includes(deriveStatus(mb)));
+    buys = buys.filter(mb => statusFilter.includes(deriveStatus(mb, session)));
   }
 
   const includeSnapshot = req.include_snapshot === true;
@@ -5334,8 +6773,9 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
 
   return {
     media_buys: pageBuys.map(mb => {
-      const status = deriveStatus(mb);
-      const totalBudget = mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
+      const status = deriveStatus(mb, session);
+      const totalBudget = mb.totalBudget
+        ?? mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
       const openImpairments = mb.impairments ?? [];
       const buy = {
         media_buy_id: mb.mediaBuyId,
@@ -5348,6 +6788,9 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
         available_actions: availableActionsForMediaBuy(mb, status),
         currency: mb.currency,
         total_budget: totalBudget,
+        ...(mb.budgetAllocation && { budget_allocation: mb.budgetAllocation }),
+        ...(mb.aggregatePacing && { pacing: mb.aggregatePacing }),
+        ...(mb.aggregateBidding && { bidding: mb.aggregateBidding }),
         start_time: mb.startTime,
         end_time: mb.endTime,
         health: (openImpairments.length > 0 ? 'impaired' : 'ok') as 'ok' | 'impaired',
@@ -5382,16 +6825,15 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             paused: pkg.paused,
             start_time: pkg.startTime,
             end_time: pkg.endTime,
-            ...(pkg.formatIds && { format_ids: pkg.formatIds }),
-            ...(pkg.formatOptionRefs && { format_option_refs: pkg.formatOptionRefs }),
-            ...(pkg.formatKind && { format_kind: pkg.formatKind }),
-            ...(pkg.params && { params: pkg.params }),
+            ...packageFormatSelectorForWire(pkg, ctx),
+            ...packageReadinessFields(pkg, session),
             creative_approvals: pkg.creativeAssignments.map(cid => ({
               creative_id: cid,
               approval_status: 'approved' as const,
             })),
             ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
             ...(pkg.context && { context: pkg.context }),
+            ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
             ...(pkg.canceledAt && {
               cancellation: {
                 canceled_at: pkg.canceledAt,
@@ -5426,7 +6868,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & { media_buy_id?: string };
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
   const catalog = getCatalog();
-  const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
+  const productMap = new Map(catalog.map(cp => [cp.product.product_id, { ...cp.product }]));
+  overlaySeededProducts(session, productMap);
+  overlayNegotiatedPricingOptions(session, productMap);
   const mediaBuyId = req.media_buy_id || req.media_buy_ids?.[0] || '';
   const mb = session.mediaBuys.get(mediaBuyId) ?? getComplianceMediaBuy(mediaBuyId);
 
@@ -5439,9 +6883,16 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const now = new Date();
   const start = new Date(mb.startTime);
   const end = new Date(mb.endTime);
+  const reportingStart = req.start_date ? new Date(`${req.start_date}T00:00:00.000Z`) : start;
+  const reportingEnd = req.end_date ? new Date(`${req.end_date}T23:59:59.999Z`) : now;
+  if (req.start_date && req.end_date && reportingStart.getTime() > reportingEnd.getTime()) {
+    return {
+      errors: [{ code: 'INVALID_REQUEST', message: 'start_date must be on or before end_date', field: 'start_date' }],
+    };
+  }
   const durationMs = end.getTime() - start.getTime();
   const elapsed = durationMs > 0
-    ? Math.max(0, Math.min(1, (now.getTime() - start.getTime()) / durationMs))
+    ? Math.max(0, Math.min(1, (reportingEnd.getTime() - start.getTime()) / durationMs))
     : 0;
 
   // Read simulated delivery upfront so vendor_metric_values can be spread into
@@ -5479,10 +6930,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       };
     }
 
-    const budget = pkg.budget;
-    const spend = Math.round(budget * elapsed * 100) / 100;
-
     const { model: pricingModel, rate } = derivePricing(pkg, productMap);
+    const isRevenueShare = pricingModel === 'revenue_share';
+    const budget = pkg.budget;
+    const spend = isRevenueShare
+      ? (simDelivery?.reportedSpend.amount ?? 0)
+      : Math.round(budget * elapsed * 100) / 100;
 
     // Channel-appropriate CTR
     const product = productMap.get(pkg.productId);
@@ -5496,12 +6949,16 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     else if (channels?.some(c => ['print'].includes(c))) ctr = 0;
     else ctr = 0.001;
 
-    const impressions = rate > 0 ? Math.round((spend / rate) * 1000) : 0;
-    const clicks = Math.round(impressions * ctr);
+    const impressions = isRevenueShare
+      ? (simDelivery?.impressions ?? 0)
+      : rate > 0 ? Math.round((spend / rate) * 1000) : 0;
+    const clicks = isRevenueShare ? (simDelivery?.clicks ?? 0) : Math.round(impressions * ctr);
 
-    totalImpressions += impressions;
-    totalSpend += spend;
-    totalClicks += clicks;
+    if (!isRevenueShare) {
+      totalImpressions += impressions;
+      totalSpend += spend;
+      totalClicks += clicks;
+    }
 
     // Audio/video metrics — completion rates vary by channel
     // Accumulators for totals rollup are updated after audioMetrics is built
@@ -5549,6 +7006,91 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       }
       : {};
 
+    const reporting = product?.reporting_capabilities as ReportingCapabilitiesView | undefined;
+    const fallbackMetrics: CommittedMetricProposalView[] = [
+      ...(reporting?.available_metrics ?? []).map(metricId => ({ scope: 'standard' as const, metric_id: metricId })),
+      ...(reporting?.vendor_metrics ?? []).flatMap(metric => {
+        const domain = metric.vendor?.domain;
+        const metricId = metric.metric_id;
+        if (typeof domain !== 'string' || typeof metricId !== 'string') return [];
+        return [{
+          scope: 'vendor' as const,
+          vendor: {
+            domain,
+            ...(typeof metric.vendor?.brand_id === 'string' && { brand_id: metric.vendor.brand_id }),
+          },
+          metric_id: metricId,
+        }];
+      }),
+    ];
+    // An explicit package snapshot is authoritative even when it contains no
+    // vendor rows. Only packages without a snapshot fall back to the product's
+    // current reporting capabilities.
+    const auditMetrics: CommittedMetricProposalView[] = pkg.committedMetrics !== undefined
+      ? pkg.committedMetrics
+      : fallbackMetrics;
+    const eligibleAuditMetrics = auditMetrics.filter(metric => (
+      metric.committed_at === undefined
+      || new Date(metric.committed_at).getTime() < reportingEnd.getTime()
+    ));
+    const auditVendorKeys = new Set(
+      auditMetrics
+        .filter(metric => metric.scope === 'vendor')
+        .map(metric => vendorMetricKey(metric))
+        .filter((key): key is string => key !== null),
+    );
+    const rawDeferredVendorMetrics = simDelivery?.deferredVendorMetricsByPackage?.[pkg.packageId]
+      ?? (mb.packages.length === 1 ? simDelivery?.deferredVendorMetrics : undefined)
+      ?? [];
+    const deferredVendorKeys = new Set(
+      rawDeferredVendorMetrics
+        .map(metric => vendorMetricKey(metric))
+        .filter((key): key is string => key !== null),
+    );
+    const rawVendorMetricValues = simDelivery?.vendorMetricValuesByPackage?.[pkg.packageId]
+      ?? (mb.packages.length === 1 ? simDelivery?.vendorMetricValues : undefined)
+      ?? [];
+    const vendorMetricValues = rawVendorMetricValues
+      .filter((value): value is Record<string, unknown> => isRecord(value))
+      .filter(value => {
+        const key = vendorMetricKey(value as VendorMetricRefView);
+        return key !== null && auditVendorKeys.has(key);
+      });
+    const deliveredVendorKeys = new Set(
+      vendorMetricValues
+        .map(value => vendorMetricKey(value as VendorMetricRefView))
+        .filter((key): key is string => key !== null),
+    );
+    const packageDeliveryMetrics: Record<string, unknown> = {
+      spend,
+      impressions,
+      clicks,
+      ...audioMetrics,
+      ...byCreative,
+      ...(vendorMetricValues.length > 0 && { vendor_metric_values: vendorMetricValues }),
+    };
+    const missingMetrics = eligibleAuditMetrics.reduce<Array<Record<string, unknown>>>((missing, metric) => {
+      if (metric.scope === 'standard') {
+        if (!standardMetricIsDelivered(metric, packageDeliveryMetrics)) {
+          missing.push({
+            scope: 'standard' as const,
+            metric_id: metric.metric_id!,
+            ...(metric.qualifier && { qualifier: metric.qualifier }),
+          });
+        }
+        return missing;
+      }
+      const key = vendorMetricKey(metric);
+      if (key !== null && !deliveredVendorKeys.has(key) && !deferredVendorKeys.has(key)) {
+        missing.push({
+          scope: 'vendor' as const,
+          vendor: metric.vendor!,
+          metric_id: metric.metric_id!,
+        });
+      }
+      return missing;
+    }, []);
+
     if (isAudioVideo && impressions > 0) {
       totalCompletedViews += Math.round(impressions * completionRate);
       totalViews += Math.round(impressions * 0.9);
@@ -5559,11 +7101,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
 
     return {
       package_id: pkg.packageId,
-      spend,
-      impressions,
-      clicks,
-      ...audioMetrics,
-      ...byCreative,
+      ...packageDeliveryMetrics,
+      ...(isRevenueShare && simDelivery ? {
+        conversions: simDelivery.conversions,
+        ...(simDelivery.conversionValue !== undefined ? { conversion_value: simDelivery.conversionValue } : {}),
+        ...(simDelivery.commissionableValue !== undefined ? { commissionable_value: simDelivery.commissionableValue } : {}),
+      } : {}),
       pricing_model: pricingModel,
       model: pricingModel, // #1525: alias for @adcp/sdk < 4.11.0
       rate,
@@ -5573,13 +7116,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       ...(includeThreeOneFields(ctx) && simDelivery?.measurementWindow ? { measurement_window: simDelivery.measurementWindow } : {}),
       paused: false,
       delivery_status: elapsed >= 1 ? 'completed' as const : 'delivering' as const,
-      // vendor_metric_values are media-buy-scoped in simulate_delivery, so they
-      // propagate to all active packages. Multi-package buys will echo the same
-      // array across packages — known training-agent limitation, acceptable for
-      // single-package storyboard scenarios.
-      ...(simDelivery?.vendorMetricValues?.length
-        ? { vendor_metric_values: simDelivery.vendorMetricValues }
-        : {}),
+      ...(auditMetrics.length > 0 ? { missing_metrics: missingMetrics } : {}),
     };
   });
 
@@ -5603,6 +7140,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     : totalConversions > 0
       ? { conversions: totalConversions }
       : {};
+  const conversionValueTotals = simDelivery
+    ? {
+      ...(simDelivery.conversionValue !== undefined ? { conversion_value: simDelivery.conversionValue } : {}),
+      ...(simDelivery.commissionableValue !== undefined ? { commissionable_value: simDelivery.commissionableValue } : {}),
+    }
+    : {};
 
   // Click-attributed total. cost_per_click is defined as spend / clicks in
   // delivery-metrics.json. Always surface when both are positive — this
@@ -5686,13 +7229,13 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
 
   return {
     reporting_period: {
-      start: mb.startTime,
-      end: now.toISOString(),
+      start: reportingStart.toISOString(),
+      end: reportingEnd.toISOString(),
     },
     currency: mb.currency,
     media_buy_deliveries: [{
       media_buy_id: mb.mediaBuyId,
-      status: deriveStatus(mb),
+      status: deriveStatus(mb, session),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal !== undefined ? { is_final: simDelivery.isFinal } : {}),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal === true && simDelivery.finalizedAt ? { finalized_at: simDelivery.finalizedAt } : {}),
       totals: {
@@ -5714,6 +7257,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
         ...goalDerivedReach,
         ...simulatedReachMetrics,
         ...conversionTotals,
+        ...conversionValueTotals,
         ...simulatedViewability,
       },
       by_package: byPackage,
@@ -5721,13 +7265,15 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   };
 }
 
-function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/sdk').Product>): { model: string; rate: number } {
+function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/sdk').LegacyProduct>): { model: string; rate: number } {
   const product = productMap.get(pkg.productId);
   const pricing = product?.pricing_options.find(po => po.pricing_option_id === pkg.pricingOptionId);
+  const view = pricing as unknown as PricingOptionView | undefined;
   return {
-    model: pricing?.pricing_model || 'cpm',
-    rate: pricing?.fixed_price
-      ?? (pricing && pricing.pricing_model !== 'cpa' ? pricing.floor_price : undefined)
+    model: view?.pricing_model || 'cpm',
+    rate: view?.commission_rate
+      ?? view?.fixed_price
+      ?? (pricingStructureForOption(view) === 'auction' ? view?.floor_price : undefined)
       ?? 10,
   };
 }
@@ -5770,15 +7316,21 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       };
     }
     const creativeId = creative.creative_id;
-    const formatId = creative.format_id as FormatID | undefined;
-    const formatKind = typeof creative.format_kind === 'string' ? creative.format_kind : undefined;
-    const formatOptionRef = (creative as unknown as { format_option_ref?: Record<string, unknown> }).format_option_ref;
-
-    if (!formatId && !formatKind) {
+    const creativeShape = creative as unknown as {
+      format_id?: FormatID;
+      format_kind?: string;
+      format_option_ref?: Record<string, unknown>;
+      assets?: Record<string, unknown>;
+      manifest?: CreativeManifest;
+    };
+    const identityResult = validatedCreativeIdentity(creativeShape);
+    if (!identityResult.ok) {
       return {
-        errors: [{ code: 'INVALID_REQUEST', message: 'Each creative requires either format_id or format_kind.' }] as TaskError[],
+        errors: [{ code: 'INVALID_REQUEST', message: `Each creative ${identityResult.message}.` }] as TaskError[],
       };
     }
+    const identity = identityResult.identity;
+    const formatId = identity.kind === 'legacy' ? identity.formatId : undefined;
 
     // Enforce creative_policy.provenance_required / provenance_requirements /
     // accepted_verifiers BEFORE persisting the creative. Per-creative failure
@@ -5794,17 +7346,6 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       continue;
     }
 
-    // Reject clearly-malformed agent_urls before we persist them. Prevents
-    // javascript:/data: or overlong URLs landing in JSONB via the pointer.
-    if (formatId?.agent_url !== undefined) {
-      if (typeof formatId.agent_url !== 'string' || formatId.agent_url.length === 0 || formatId.agent_url.length > MAX_URL_LEN) {
-        return { errors: [{ code: 'INVALID_REQUEST', message: `format_id.agent_url: must be a non-empty string up to ${MAX_URL_LEN} chars` }] as TaskError[] };
-      }
-      if (!/^https?:\/\//i.test(formatId.agent_url)) {
-        return { errors: [{ code: 'INVALID_REQUEST', message: 'format_id.agent_url: must use http:// or https://' }] as TaskError[] };
-      }
-    }
-
     // Validate format_id only when the format is claimed against this agent.
     // Cross-agent format references (e.g. creative.adcontextprotocol.org) are
     // resolved by the referenced creative agent at render time — the seller
@@ -5812,11 +7353,11 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     // or case variant of the local URL still counts as local.
     const isLocalFormat = !formatId?.agent_url
       || canonicalizeAgentUrl(formatId.agent_url) === ownAgentUrlCanonical;
-    if (formatId?.id && isLocalFormat && !validFormatIds.has(formatId.id)) {
+    if (creativeShape.format_id && formatId?.id && isLocalFormat && !validFormatIds.has(formatId.id)) {
       return {
         errors: [{
           code: 'INVALID_REQUEST',
-          message: `Unknown format_id "${formatId.id}". Use list_creative_formats to see available formats.`,
+          message: `Unknown format_id "${formatId.id}" on the deprecated named-format path. Use canonical format_kind from the target product.`,
         }] as TaskError[],
       };
     }
@@ -5828,33 +7369,28 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     const existingCreative = session.creatives.get(creativeId);
 
     if (!isDryRun) {
-      const internalFormatId = formatId ?? {
-        agent_url: getAgentUrl(),
-        id: formatKind!,
-      };
+      const manifest = normalizedCreativeManifest(creativeShape, existingCreative, identity);
       session.creatives.set(creativeId, {
         creativeId,
         accountId: accountId ?? existingCreative?.accountId,
         accountRef: req.account ?? existingCreative?.accountRef,
-        formatId: internalFormatId,
-        formatKind,
-        formatOptionRef,
+        ...(identity.kind === 'legacy'
+          ? {
+            formatId: identity.formatId,
+            ...(identity.formatOptionRef && { formatOptionRef: identity.formatOptionRef }),
+          }
+          : {
+            formatKind: identity.formatKind,
+            ...(identity.formatOptionRef && { formatOptionRef: identity.formatOptionRef }),
+          }),
+        ...(manifest && { assets: manifest.assets }),
         name: creative.name,
         status: existingCreative?.status ?? 'approved',
         syncedAt: new Date().toISOString(),
         // manifest is a training-agent extension, not in SDK CreativeAsset type.
-        // Preserve direct assets too: list_creatives asset-type filtering must
-        // inspect the same library payload accepted by sync_creatives.
-        manifest: (creative as unknown as { manifest?: CreativeManifest }).manifest
-          ?? ((creative as unknown as { assets?: Record<string, unknown> }).assets ? {
-            ...(formatKind
-              ? {
-                format_kind: formatKind,
-                ...(formatOptionRef && { format_option_ref: formatOptionRef }),
-              }
-              : { format_id: internalFormatId }),
-            assets: (creative as unknown as { assets: Record<string, unknown> }).assets as CreativeManifest['assets'],
-          } : existingCreative?.manifest),
+        // Normalize its identity from the validated top-level union so a
+        // canonical update cannot retain a nested legacy format_id.
+        manifest,
         pricingOptionId: existingCreative?.pricingOptionId,
         purge: existingCreative?.purge,
         webhookActivity: existingCreative?.webhookActivity,
@@ -5932,9 +7468,36 @@ type CreativeListFilters = {
   asset_types?: string[];
 };
 
-function creativeMatchesAnyFormatId(creative: CreativeState, requested: FormatID[]): boolean {
-  if (creative.formatKind) return false;
-  const actual = creative.formatId;
+function storedCreativeFormatRecord(creative: CreativeState): Record<string, unknown> {
+  if (creative.formatKind) {
+    return {
+      format_kind: creative.formatKind,
+      ...(creative.formatOptionRef && { format_option_ref: creative.formatOptionRef }),
+    };
+  }
+  return creative.formatId
+    ? {
+      format_id: {
+        ...creative.formatId,
+        agent_url: creative.formatId.agent_url ?? getAgentUrl(),
+      },
+      ...(creative.formatOptionRef && { format_option_ref: creative.formatOptionRef }),
+    }
+    : {};
+}
+
+function creativeMatchesAnyFormatId(
+  creative: CreativeState,
+  requested: FormatID[],
+  adapters: CreativeProjectionAdapters,
+): boolean {
+  let projected: Record<string, unknown>;
+  try {
+    projected = projectCreativeRecordForWire(storedCreativeFormatRecord(creative), 'legacy', adapters);
+  } catch {
+    return false;
+  }
+  const actual = isRecord(projected.format_id) ? projected.format_id as unknown as FormatID : undefined;
   if (!actual?.id) return false;
   const actualAgentUrl = actual.agent_url ?? getAgentUrl();
   return requested.some(wanted => {
@@ -5946,6 +7509,20 @@ function creativeMatchesAnyFormatId(creative: CreativeState, requested: FormatID
     }
     return true;
   });
+}
+
+function creativeMatchesAnyFormatKind(
+  creative: CreativeState,
+  requested: Set<string>,
+  adapters: CreativeProjectionAdapters,
+): boolean {
+  let projected: Record<string, unknown>;
+  try {
+    projected = projectCreativeRecordForWire(storedCreativeFormatRecord(creative), 'canonical', adapters);
+  } catch {
+    return false;
+  }
+  return typeof projected.format_kind === 'string' && requested.has(projected.format_kind);
 }
 
 function creativeHasAnyTopLevelAssetType(creative: CreativeState, requested: Set<string>): boolean {
@@ -6010,8 +7587,16 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     const statuses = new Set(filters.statuses);
     creatives = creatives.filter(c => statuses.has(c.status));
   }
+  const formatKinds = (req.filters as unknown as { format_kinds?: string[] } | undefined)?.format_kinds;
+  const filterProjectionAdapters = formatKinds?.length || filters.format_ids?.length
+    ? creativeProjectionAdapters()
+    : undefined;
+  if (formatKinds?.length) {
+    const wantedKinds = new Set(formatKinds);
+    creatives = creatives.filter(c => creativeMatchesAnyFormatKind(c, wantedKinds, filterProjectionAdapters!));
+  }
   if (filters.format_ids?.length) {
-    creatives = creatives.filter(c => creativeMatchesAnyFormatId(c, filters.format_ids!));
+    creatives = creatives.filter(c => creativeMatchesAnyFormatId(c, filters.format_ids!, filterProjectionAdapters!));
   }
   if (filters.asset_types?.length) {
     const assetTypes = new Set(filters.asset_types);
@@ -6043,7 +7628,6 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   // emission-on-omit behaviour here is deliberate per the has_creative_library
   // gate in #2847 and tracks the spec-side clarification referenced there.
   const emitPricing = creativeBillsThroughAdcp(ctx) && Boolean(req.account) && req.include_pricing !== false;
-  const agentUrl = getAgentUrl();
   const selectedFields = req.fields?.length ? new Set(req.fields) : undefined;
 
   return {
@@ -6061,31 +7645,16 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       ...(hasMore && { cursor: encodeCreativeCursor(pageEnd) }),
     },
     creatives: pageCreatives.map(c => {
-      // Schema requires creatives[].name and creatives[].format_id.agent_url.
-      // sync_creatives accepts payloads missing either (buyer may omit name,
-      // SDK request builders occasionally drop agent_url), so stamp defaults
-      // at emit time: creative_id stands in for name, own agent_url stands
-      // in for format_id.agent_url. Keeps list_creatives response-schema
-      // valid regardless of what was synced.
-      const formatId = {
-        ...c.formatId,
-        agent_url: c.formatId.agent_url ?? agentUrl,
-      };
       const base: Record<string, unknown> = {
         creative_id: c.creativeId,
-        ...(c.formatKind
-          ? {
-            format_kind: c.formatKind,
-            ...(c.formatOptionRef && { format_option_ref: c.formatOptionRef }),
-          }
-          : { format_id: formatId }),
+        ...storedCreativeFormatRecord(c),
         name: c.name ?? c.creativeId,
         status: c.status,
         created_date: c.syncedAt,
         updated_date: c.syncedAt,
         ...(c.manifest?.assets && (!selectedFields || selectedFields.has('assets')) && { assets: c.manifest.assets }),
       };
-      if (emitPricing && c.formatId?.id && (!selectedFields || selectedFields.has('pricing_options'))) {
+      if (emitPricing && (c.formatKind || c.formatId?.id) && (!selectedFields || selectedFields.has('pricing_options'))) {
         base.pricing_options = [getCreativePricing(req.account!, c)];
       }
       if (req.include_snapshot) {
@@ -6135,11 +7704,12 @@ function decodeTransformerOptionCursor(cursor: string | undefined): number | nul
 function getCreativePricing(account: { account_id?: string }, creative: import('./types.js').CreativeState) {
   // Two sandbox rate cards: "premium" accounts get lower CPM
   const isPremium = account.account_id?.includes('premium');
-  const isVideo = creative.formatId.id.includes('video') || creative.formatId.id.includes('vast');
+  const pricingIdentity = creative.formatKind ?? creative.formatId?.id ?? 'creative';
+  const isVideo = pricingIdentity.includes('video') || pricingIdentity.includes('vast');
   const cpm = isPremium
     ? (isVideo ? 0.25 : 0.10)
     : (isVideo ? 0.50 : 0.20);
-  const pricingOptionId = `po_${creative.formatId.id}_cpm`;
+  const pricingOptionId = `po_${pricingIdentity}_cpm`;
   return {
     pricing_option_id: pricingOptionId,
     model: 'cpm',
@@ -6160,7 +7730,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
   // Terminal state check. Double-cancel returns NOT_CANCELLABLE —
   // media_buy_seller/invalid_transitions pins this error code explicitly.
-  const currentStatus = deriveStatus(mb);
+  const currentStatus = deriveStatus(mb, session);
   if (['canceled', 'rejected', 'completed'].includes(currentStatus)) {
     const isRecancel = req.canceled === true && currentStatus === 'canceled';
     const code = isRecancel ? 'NOT_CANCELLABLE' : 'INVALID_STATE';
@@ -6196,6 +7766,77 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mb.revision}, got ${reqRevision}` }] };
   }
 
+  // Compute the monetary delta from the seller's authoritative pre-update
+  // revision, then enforce the buyer intent's signed ceiling before mutating
+  // any state. The buyer's post-update totals are never trusted as the delta.
+  const submittedBudgets = [
+    ...(req.packages ?? []).flatMap(update => update.budget === undefined ? [] : [update.budget]),
+    ...(req.new_packages ?? []).map(pkg => pkg.budget),
+  ];
+  if (submittedBudgets.some(budget => !Number.isFinite(budget) || budget < 0)) {
+    return { errors: [{ code: 'VALIDATION_ERROR', message: 'Package budgets must be finite, non-negative numbers.' }] };
+  }
+  const aggregateUpdate = aggregateMediaBuyUpdate(req);
+  if (aggregateUpdate.total_budget && (
+    !Number.isFinite(aggregateUpdate.total_budget.amount)
+    || aggregateUpdate.total_budget.amount < 0
+    || aggregateUpdate.total_budget.currency !== mb.currency
+  )) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: `total_budget must be finite, non-negative, and denominated in ${mb.currency}.`,
+      }],
+    };
+  }
+  const resultingAllocation = aggregateUpdate.budget_allocation ?? mb.budgetAllocation;
+  const sellerOptimized = resultingAllocation?.mode === 'seller_optimized';
+  if (
+    aggregateUpdate.total_budget
+    && !sellerOptimized
+    && aggregateUpdate.total_budget.amount !== projectedPackageBudgetTotal(mb, req)
+  ) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'In fixed allocation mode, total_budget.amount must equal the resulting package budget sum.',
+      }],
+    };
+  }
+  const updateDelta = positiveMediaBuyUpdateDelta(mb, req);
+  if (!Number.isFinite(updateDelta)) {
+    return { errors: [{ code: 'VALIDATION_ERROR', message: 'Package budgets must be finite numbers.' }] };
+  }
+  const rawGovernanceContext = (req as unknown as Record<string, unknown>).governance_context;
+  const updateGovernanceContext = typeof rawGovernanceContext === 'string' && rawGovernanceContext
+    ? rawGovernanceContext
+    : undefined;
+  const requiresGovernance = mediaBuyUpdateRequiresGovernance(mb, req, updateDelta);
+  const updateGovernanceAgents = resolveGovernanceAgentsForAccount(
+    sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+    ctx.principal,
+    mb.accountRef,
+  );
+  if (updateGovernanceContext) {
+    const commitmentError = await governedCommitmentError(
+      updateGovernanceContext,
+      ctx.authenticatedAgentUrl,
+      'update_media_buy',
+      `${getCanonicalBase()}/sales`,
+      req as unknown as Record<string, unknown>,
+      updateDelta,
+      mb.currency,
+    );
+    if (commitmentError) return { errors: [commitmentError] };
+  } else if (requiresGovernance && (session.governancePlans.size > 0 || updateGovernanceAgents.length > 0)) {
+    return {
+      errors: [{
+        code: 'GOVERNANCE_DENIED',
+        message: 'This media-buy update increases or widens the governed obligation. Call check_governance and provide governance_context.',
+      }] as TaskError[],
+    };
+  }
+
   const now = new Date().toISOString();
   const affectedPackageIds = new Set<string>();
 
@@ -6212,7 +7853,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'canceled', summary: reason || 'Media buy canceled by buyer' });
     mb.updatedAt = now;
 
-    const status = deriveStatus(mb);
+    const status = deriveStatus(mb, session);
     // `media_buy_status` is the canonical 3.1 body field (#4895); legacy
     // body `status: MediaBuyStatus` removed in 3.2 (#4906).
     return {
@@ -6264,7 +7905,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       if (assignments === undefined) continue;
       const pkgId = update.package_id || '';
       if (assignments.length === 0) {
-        const currentStatus = deriveStatus(mb);
+        const currentStatus = deriveStatus(mb, session);
         if (['active', 'paused', 'pending_start'].includes(currentStatus)) {
           return {
             errors: [{ code: 'VALIDATION_ERROR', message: `creative_assignments cannot be cleared on a buy in "${currentStatus}" status`, field: `packages[${pkgId}].creative_assignments` }] as TaskError[],
@@ -6355,10 +7996,11 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'creative_assignments_updated', summary: `Package ${pkgId} creative assignments replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
       if (update.creatives !== undefined) {
-        const creativeIds = collectInlineCreativeIds(update.creatives, `packages[${pkgId}].creatives`).creativeIds;
+        const inlineCreatives = collectInlineCreativeIds(update.creatives, `packages[${pkgId}].creatives`);
+        const creativeIds = inlineCreatives.creativeIds;
         persistInlineCreatives(
           session,
-          update.creatives,
+          inlineCreatives.validatedCreatives,
           req.account as AccountRef | undefined,
           resolveAccountIdForRef(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId), ctx.principal, req.account),
           now,
@@ -6369,19 +8011,21 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       }
     }
 
-    // Recompute open impairments: a creative-impairment is cleared when no
-    // package on the buy still references it. Recovery via assignment swap
-    // is the canonical clearing path (the buyer replaces a rejected creative
-    // with an approved sibling), so the same-buy union of all package
-    // creativeAssignments is the authoritative dependency set.
+    // Recompute open impairments when package dependencies change. Creative
+    // bindings use creativeAssignments; audience bindings use the targeting
+    // overlay include/exclude arrays.
     if (mb.impairments?.length) {
       const stillReferenced = new Set<string>();
+      const stillReferencedAudiences = new Set<string>();
       for (const pkg of mb.packages) {
         for (const cid of pkg.creativeAssignments) stillReferenced.add(cid);
+        for (const audienceId of pkg.targeting?.audience_include ?? []) stillReferencedAudiences.add(audienceId);
+        for (const audienceId of pkg.targeting?.audience_exclude ?? []) stillReferencedAudiences.add(audienceId);
       }
       const before = mb.impairments.length;
       mb.impairments = mb.impairments.filter(
-        i => i.resourceType !== 'creative' || stillReferenced.has(i.resourceId),
+        i => (i.resourceType !== 'creative' || stillReferenced.has(i.resourceId))
+          && (i.resourceType !== 'audience' || stillReferencedAudiences.has(i.resourceId)),
       );
       if (mb.impairments.length !== before) {
         mb.updatedAt = now;
@@ -6392,6 +8036,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // Add new packages
   const newPackages = req.new_packages;
   if (newPackages?.length) {
+    const productFormatOptionIndexes: ProductFormatOptionIndexCache = new WeakMap();
     if (mb.packages.length + newPackages.length > MAX_PACKAGES_PER_BUY) {
       return {
         errors: [{ code: 'LIMIT_EXCEEDED', message: `Adding ${newPackages.length} packages would exceed the per-buy limit of ${MAX_PACKAGES_PER_BUY}.` }] as TaskError[],
@@ -6404,6 +8049,16 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       if (!product) {
         return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Product not found for new package: ${productId}` }] };
       }
+      const directFormatError = validateDirectCanonicalPackageSelector(npkg, product, i);
+      if (directFormatError) return { errors: [directFormatError] };
+      const formatSnapshot = snapshotPackageFormats(npkg, product, i, productFormatOptionIndexes);
+      if (formatSnapshot.error) return { errors: [formatSnapshot.error] };
+      const formatSelector = packageFormatSelectorForState(
+        npkg,
+        formatSnapshot.formats,
+        formatSnapshot.legacyFormatIds,
+        formatSnapshot.selectedLegacyFormatIds,
+      );
 
       const pkgId = `pkg-${mb.packages.length + i}`;
       const newTargeting = npkg.targeting_overlay ?? npkg.targeting;
@@ -6421,7 +8076,11 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         paused: npkg.paused || false,
         startTime: npkg.start_time || mb.startTime,
         endTime: npkg.end_time || mb.endTime,
-        formatIds: npkg.format_ids,
+        ...formatSelector,
+        params: npkg.params,
+        ...(!isThreeZeroStoryboardCompat(ctx) && formatSnapshot.formats?.length && {
+          formatsToProvide: formatSnapshot.formats,
+        }),
         creativeAssignments: [],
         targeting: targetingResult.targeting,
       };
@@ -6437,9 +8096,33 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     }
   }
 
+  const packageBudgetChanged = Boolean(
+    req.packages?.some(update => update.budget !== undefined || (update as PackageUpdateExt).canceled === true)
+    || req.new_packages?.length,
+  );
+  if (aggregateUpdate.total_budget) {
+    mb.totalBudget = aggregateUpdate.total_budget.amount;
+  } else if (
+    !sellerOptimized
+    && (packageBudgetChanged || aggregateUpdate.budget_allocation !== undefined)
+  ) {
+    mb.totalBudget = mb.packages.reduce(
+      (sum, pkg) => sum + (pkg.canceled ? 0 : pkg.budget || 0),
+      0,
+    );
+  }
+  if (aggregateUpdate.budget_allocation !== undefined) {
+    mb.budgetAllocation = structuredClone(aggregateUpdate.budget_allocation);
+  }
+  if (aggregateUpdate.pacing !== undefined) mb.aggregatePacing = aggregateUpdate.pacing;
+  if (aggregateUpdate.bidding === null) delete mb.aggregateBidding;
+  else if (aggregateUpdate.bidding !== undefined) {
+    mb.aggregateBidding = structuredClone(aggregateUpdate.bidding);
+  }
+
   mb.updatedAt = now;
 
-  const status = deriveStatus(mb);
+  const status = deriveStatus(mb, session);
   const updatedPackages = mb.packages.map(pkg => ({
     package_id: pkg.packageId,
     product_id: pkg.productId,
@@ -6448,8 +8131,11 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     paused: pkg.paused,
     start_time: pkg.startTime,
     end_time: pkg.endTime,
+    ...packageFormatSelectorForWire(pkg, ctx),
+    ...packageReadinessFields(pkg, session),
     ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
     ...(pkg.context && { context: pkg.context }),
+    ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
     creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     ...(pkg.canceledAt && {
       cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },
@@ -6466,6 +8152,19 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     revision: mb.revision,
     valid_actions: validActionsForMediaBuy(mb, status),
     available_actions: availableActionsForMediaBuy(mb, status),
+    ...((aggregateUpdate.total_budget !== undefined || packageBudgetChanged) && {
+      currency: mb.currency,
+      total_budget: mb.totalBudget,
+    }),
+    ...(aggregateUpdate.budget_allocation !== undefined && mb.budgetAllocation
+      ? { budget_allocation: mb.budgetAllocation }
+      : {}),
+    ...(aggregateUpdate.pacing !== undefined && mb.aggregatePacing
+      ? { pacing: mb.aggregatePacing }
+      : {}),
+    ...(aggregateUpdate.bidding !== undefined && mb.aggregateBidding
+      ? { bidding: mb.aggregateBidding }
+      : {}),
     ...(mb.canceledAt && {
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
     }),
@@ -6508,6 +8207,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
   const wholesaleProfile = wholesaleCapabilityProfile(ctx);
   const complianceScenarios = [
     'force_creative_status',
+    'force_audience_status',
     'force_account_status',
     'force_media_buy_status',
     'force_create_media_buy_arm',
@@ -6526,14 +8226,35 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     'seed_measurement_catalog',
     ...(!isThreeZeroStoryboardCompat(ctx) ? ['query_provenance_audit_observations'] : []),
   ];
+  const governanceEnforcementTasks = ctx.tenantId === 'sales'
+    ? [
+      { task: 'create_media_buy', modes: ['signed_context'] },
+      { task: 'update_media_buy', modes: ['signed_context'] },
+    ]
+    : ctx.tenantId === 'signals'
+      ? [{ task: 'activate_signal', modes: ['signed_context'] }]
+      : ctx.tenantId === 'brand'
+        ? [
+          { task: 'acquire_rights', modes: ['signed_context'] },
+          { task: 'update_rights', modes: ['signed_context'] },
+        ]
+        : ctx.tenantId === 'creative' || ctx.tenantId === 'creative-builder'
+          ? [{ task: 'build_creative', modes: ['signed_context'] }]
+          : [];
   return {
     adcp_version: DEFAULT_ADCP_VERSION,
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
       supported_versions: [...SUPPORTED_RELEASE_VERSIONS],
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
+      ...(governanceEnforcementTasks.length > 0 && {
+        governance_enforcement: { tasks: governanceEnforcementTasks },
+      }),
     },
     supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand'],
+    ...((governanceEnforcementTasks.length > 0 || ctx.tenantId === 'governance') && {
+      experimental_features: ['governance.campaign'],
+    }),
     specialisms: [],
     request_signing: {
       supported: signingCap.supported,
@@ -6622,7 +8343,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       ...(includeThreeOneFields(ctx) ? {
         bills_through_adcp: creativeBillsThroughAdcp(ctx),
         supported_formats: supportedCanonicalFormatsCapability(),
-        canonical_catalog_version: '3.1',
+        canonical_catalog_version: '3.2',
         supports_transformers: true,
         supports_refinement: true,
         refinable_retention_seconds: 3600,
@@ -6963,43 +8684,42 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
       }],
     };
   }
+  const validPricing = pricingOptionId
+    ? signal.pricingOptions.find(po => po.pricingOptionId === pricingOptionId)
+    : undefined;
+  if (pricingOptionId && !validPricing) {
+    return {
+      errors: [{
+        code: 'INVALID_PRICING_MODEL',
+        message: `Pricing option not found: ${pricingOptionId}. Available: ${signal.pricingOptions.map(po => po.pricingOptionId).join(', ')}`,
+      }],
+    };
+  }
+  const signalCommitment = action === 'deactivate'
+    ? 0
+    : validPricing?.model === 'flat_fee'
+      ? validPricing.amount ?? 0
+      : validPricing?.model === 'cpm'
+        ? validPricing.cpm ?? 0
+        : validPricing?.maxCpm ?? 0;
+  const signalCurrency = validPricing?.currency ?? 'USD';
 
   // Enforce governance: if the account has a registered governance agent, the
   // activation requires a valid approval token from check_governance. Fall back
   // to session plans for legacy storyboard setup where the governance agent was
   // called in-process but sync_governance was omitted.
   if (governanceContext) {
-    let latestCheck: import('./types.js').GovernanceCheckState | undefined;
-    for (const check of session.governanceChecks.values()) {
-      if (check.governanceContext === governanceContext) latestCheck = check;
-    }
-    if (latestCheck?.status === 'denied') {
-      return {
-        errors: [{
-          code: 'GOVERNANCE_DENIED',
-          message: latestCheck.explanation || 'Governance check denied this signal activation.',
-          details: governanceErrorDetails(latestCheck),
-        }] as TaskError[],
-      };
-    }
-    if (latestCheck?.status === 'conditions') {
-      return {
-        errors: [{
-          code: 'GOVERNANCE_DENIED',
-          message: latestCheck.explanation || 'Governance check returned conditions; re-call check_governance with an adjusted activation payload before activating this signal.',
-          details: governanceErrorDetails(latestCheck),
-        }] as TaskError[],
-      };
-    }
-    if (!latestCheck && (hasRegisteredGovernanceAgent || session.governancePlans.size > 0)) {
-      return {
-        errors: [{
-          code: 'PERMISSION_DENIED',
-          message: `governance_context "${governanceContext}" does not match any governance approval for this account. Call check_governance first.`,
-        }] as TaskError[],
-      };
-    }
-  } else if (hasRegisteredGovernanceAgent || session.governancePlans.size > 0) {
+    const commitmentError = await governedCommitmentError(
+      governanceContext,
+      ctx.authenticatedAgentUrl,
+      'activate_signal',
+      `${getCanonicalBase()}/signals`,
+      req as unknown as Record<string, unknown>,
+      signalCommitment,
+      signalCurrency,
+    );
+    if (commitmentError) return { errors: [commitmentError] };
+  } else if (action !== 'deactivate' && (hasRegisteredGovernanceAgent || session.governancePlans.size > 0)) {
     const msg = hasRegisteredGovernanceAgent
       ? `Signal activation requires governance approval. Call check_governance first — a governance agent is registered for this account.`
       : `Signal activation requires governance approval. Call check_governance first — a governance plan is registered for this account.`;
@@ -7013,23 +8733,10 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
             severity: 'critical',
             explanation: msg,
           }],
-          ...(session.governancePlans.size > 0 && { plan_id: [...session.governancePlans.keys()][0] }),
+          ...(session.governancePlans.size > 0 && { plan_id: [...session.governancePlans.values()][0].planId }),
         },
       }] as TaskError[],
     };
-  }
-
-  // Validate pricing option if provided
-  if (pricingOptionId) {
-    const validPricing = signal.pricingOptions.find(po => po.pricingOptionId === pricingOptionId);
-    if (!validPricing) {
-      return {
-        errors: [{
-          code: 'INVALID_PRICING_MODEL',
-          message: `Pricing option not found: ${pricingOptionId}. Available: ${signal.pricingOptions.map(po => po.pricingOptionId).join(', ')}`,
-        }],
-      };
-    }
   }
 
   const agentUrl = getAgentUrl();
@@ -7174,7 +8881,7 @@ export async function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingCon
           device_class: devices[i % devices.length],
         },
         manifest: {
-          format_id: creative.formatId || { agent_url: agentUrl, id: 'display_300x250' },
+          ...storedCreativeFormatRecord(creative),
           assets: {
             headline: { asset_type: 'text', content: `Generated variant ${i + 1} for ${creative.name || cid}` },
             hero_image: { asset_type: 'image', url: `https://cdn.example.com/generated/${cid}_v${i}.jpg`, width: 300, height: 250 },
@@ -7190,7 +8897,7 @@ export async function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingCon
     creatives.push({
       creative_id: cid,
       media_buy_id: creativeToBuy.get(cid) || matchingBuys[0]?.mediaBuyId,
-      format_id: creative.formatId,
+      ...storedCreativeFormatRecord(creative),
       totals: {
         impressions: totalImpressions,
         spend: totalSpend,
@@ -7218,9 +8925,16 @@ export async function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingCon
 interface BuildCreativeArgs {
   account?: unknown;
   creative_id?: string;
-  creative_manifest?: { format_id?: FormatID; assets?: Record<string, unknown> | Array<Record<string, unknown>> };
+  creative_manifest?: {
+    format_id?: FormatID;
+    format_kind?: string;
+    format_option_ref?: Record<string, unknown>;
+    assets?: Record<string, unknown> | Array<Record<string, unknown>>;
+  };
   target_format_id?: FormatID;
   target_format_ids?: FormatID[];
+  target_capability_id?: string;
+  target_capability_ids?: string[];
   brand?: { domain?: string };
   media_buy_id?: string;
   package_id?: string;
@@ -7278,6 +8992,17 @@ function buildCanonicalImageAssets(formatId: string, dimensions: { w: number; h:
   };
 }
 
+function buildCanonicalAudioAssets(): AdcpCreativeManifest['assets'] {
+  return {
+    audio_main: {
+      asset_type: 'audio',
+      url: 'https://test-assets.adcontextprotocol.org/acme-outdoor/generated-voiceover.mp3',
+      duration_ms: 30000,
+      container_format: 'mp3',
+    },
+  } as AdcpCreativeManifest['assets'];
+}
+
 export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {
   const req = args as unknown as BuildCreativeArgs;
   const session = await getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
@@ -7285,6 +9010,22 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
   const formats = getFormats();
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
+  if (governanceContext) {
+    const commitmentError = await governedCommitmentError(
+      governanceContext,
+      ctx.authenticatedAgentUrl,
+      'build_creative',
+      `${getCanonicalBase()}/${ctx.tenantId === 'creative-builder' ? 'creative-builder' : 'creative'}`,
+      req as unknown as Record<string, unknown>,
+      0,
+      'USD',
+    );
+    if (commitmentError) {
+      return buildCreativeCompleted({
+        errors: [{ code: commitmentError.code, message: commitmentError.message }],
+      });
+    }
+  }
   const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
   const canonicalBuildsEnabled = includeThreeOneFields(ctx);
   const acceptedTargetIds = new Set([
@@ -7292,6 +9033,18 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     ...Object.keys(BUILD_CREATIVE_FORMAT_ALIASES),
     ...(canonicalBuildsEnabled ? SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(item => item.capabilityId) : []),
   ]);
+  const usesCanonicalTargets = Boolean(req.target_capability_id || req.target_capability_ids?.length);
+  const usesLegacyTargets = Boolean(req.target_format_id || req.target_format_ids?.length);
+  if (usesCanonicalTargets && usesLegacyTargets) {
+    return buildCreativeCompleted({
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'Use canonical target_capability_id(s) or deprecated target_format_id(s), not both.',
+        field: 'target_capability_id',
+        recovery: 'correctable',
+      }],
+    });
+  }
 
   const unsupportedFormatError = (formatId: FormatID, field: string) => ({
     code: 'FORMAT_NOT_SUPPORTED',
@@ -7305,6 +9058,14 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
   });
 
   const resolveTarget = (formatId: FormatID, field: string): { target?: ResolvedBuildTarget; error?: ReturnType<typeof unsupportedFormatError> } => {
+    if (usesCanonicalTargets && canonicalBuildsEnabled) {
+      const capability = supportedCanonicalBuildCapability(formatId.id);
+      if (capability) {
+        return { target: { requested: formatId, formatKind: capability.formatKind as NonNullable<AdcpCreativeManifest['format_kind']> } };
+      }
+      return { error: unsupportedFormatError(formatId, field) };
+    }
+
     const aliasId = BUILD_CREATIVE_FORMAT_ALIASES[formatId.id] ?? formatId.id;
     const format = validFormatIds.get(aliasId);
     if (format) {
@@ -7329,6 +9090,12 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
         assets: buildCanonicalImageAssets(target.requested.id, { w, h }),
       } as AdcpCreativeManifest;
     }
+    if (target.formatKind === 'audio_hosted') {
+      return {
+        format_kind: target.formatKind,
+        assets: buildCanonicalAudioAssets(),
+      } as AdcpCreativeManifest;
+    }
     if (target.formatKind) {
       return {
         format_kind: target.formatKind,
@@ -7336,24 +9103,48 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
       } as AdcpCreativeManifest;
     }
     return {
-      format_id: { agent_url: agentUrl, id: target.requested.id },
+      format_id: {
+        ...target.requested,
+        agent_url: target.requested.agent_url ?? agentUrl,
+      },
       assets: buildHtmlAssets(label),
     } as AdcpCreativeManifest;
   };
 
   // Determine target formats (cap at 50 to prevent response amplification)
   const MAX_TARGET_FORMATS = 50;
-  const targetIds: FormatID[] = req.target_format_ids?.length
-    ? req.target_format_ids.slice(0, MAX_TARGET_FORMATS)
+  if ((req.target_capability_ids?.length ?? 0) > MAX_TARGET_FORMATS || (req.target_format_ids?.length ?? 0) > MAX_TARGET_FORMATS) {
+    const field = (req.target_capability_ids?.length ?? 0) > MAX_TARGET_FORMATS
+      ? 'target_capability_ids'
+      : 'target_format_ids';
+    return buildCreativeCompleted({ errors: [{
+      code: 'INVALID_REQUEST',
+      message: `${field} supports at most ${MAX_TARGET_FORMATS} entries.`,
+      field,
+      recovery: 'correctable',
+    }] });
+  }
+  const targetCapabilityIds = req.target_capability_ids?.length
+    ? req.target_capability_ids
+    : req.target_capability_id
+      ? [req.target_capability_id]
+      : [];
+  const targetIds: FormatID[] = targetCapabilityIds.length
+    ? targetCapabilityIds.map(id => ({ agent_url: agentUrl, id }))
+    : req.target_format_ids?.length
+    ? req.target_format_ids
     : req.target_format_id
       ? [req.target_format_id]
       : [];
+  const targetField = (index?: number): string => usesCanonicalTargets
+    ? (req.target_capability_ids?.length ? `target_capability_ids[${index ?? 0}]` : 'target_capability_id')
+    : (req.target_format_ids?.length ? `target_format_ids[${index ?? 0}]` : 'target_format_id');
 
   // Transformer / multiplicity / refinement path. Engaged whenever the request
   // selects a transformer or asks for the variant shape (max_variants > 1,
   // variant_axis, or refine_from_build_variant_id). Bypasses the format-catalog
-  // gate: a transformer's target is one of ITS output_format_ids, echoed into
-  // the produced manifest rather than resolved against the static catalog.
+  // gate: a canonical target is one of the transformer's advertised output
+  // capability IDs. Legacy named targets remain accepted as a 3.x shim.
   const wantsVariantShape = (typeof req.max_variants === 'number' && req.max_variants > 1)
     || !!req.variant_axis
     || !!req.refine_from_build_variant_id;
@@ -7372,11 +9163,13 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
         return buildCreativeCompleted({ errors: [configError] });
       }
       // A build_creative target MUST be a subset of the transformer's outputs.
-      const transformerOutputIds = transformer.output_format_ids;
-      const invalidTargetIndex = targetIds.findIndex(targetId => !transformerOutputIds.some(f => f.id === targetId.id));
+      const transformerOutputIds = usesCanonicalTargets
+        ? transformer.output_capability_ids
+        : transformer.output_format_ids.map(format => format.id);
+      const invalidTargetIndex = targetIds.findIndex(targetId => !transformerOutputIds.includes(targetId.id));
       if (invalidTargetIndex >= 0) {
         const invalidTarget = targetIds[invalidTargetIndex];
-        const field = req.target_format_ids?.length ? `target_format_ids[${invalidTargetIndex}]` : 'target_format_id';
+        const field = targetField(invalidTargetIndex);
         return buildCreativeCompleted({ errors: [{ code: 'INVALID_REQUEST', message: `Target format "${invalidTarget.id}" is not an output format of transformer "${req.transformer_id}".`, field, recovery: 'correctable' }] });
       }
     }
@@ -7386,7 +9179,16 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
       return buildCreativeCompleted({ errors: [{ code: 'UNSUPPORTED_FEATURE', message: 'This agent does not retain prior builds for refinement. Drop refine_from_build_variant_id and resend, or use the transform path (creative_manifest + message).', field: 'refine_from_build_variant_id', recovery: 'correctable' }] });
     }
 
-    const target: FormatID = targetIds[0]
+    // For refinements, inherit the parent leaf's target from session state.
+    // The schema forbids a new selector on refinement — the only valid source
+    // of truth is what was stored when the parent variant was produced.
+    if (req.refine_from_build_variant_id && !session.buildVariantTargets.has(req.refine_from_build_variant_id)) {
+      return buildCreativeCompleted({ errors: [{ code: 'REFERENCE_NOT_FOUND', message: `Build variant "${req.refine_from_build_variant_id}" is not retained by this agent. Only variants produced in the current session are refinable.`, field: 'refine_from_build_variant_id', recovery: 'correctable' }] });
+    }
+
+    const target: FormatID = (req.refine_from_build_variant_id
+      ? session.buildVariantTargets.get(req.refine_from_build_variant_id)!
+      : targetIds[0])
       ?? req.target_format_id
       ?? transformer?.output_format_ids?.[0]
       ?? { agent_url: agentUrl, id: 'audio_vo' };
@@ -7394,9 +9196,11 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     // Single-format, non-variant transformer build → BuildCreativeSuccess,
     // carrying a build_variant_id so the result is itself refinable.
     if (!wantsVariantShape && req.transformer_id) {
+      const singleVariantId = `bv_${idemSeed}_0`;
+      session.buildVariantTargets.set(singleVariantId, target);
       return buildCreativeCompleted({
-        creative_manifest: transformerManifest(target, `<!-- AdCP Training Agent transformer ${escapeHtmlAttr(req.transformer_id)} -->`),
-        build_variant_id: `bv_${idemSeed}_0`,
+        creative_manifest: transformerManifest(target, `<!-- AdCP Training Agent transformer ${escapeHtmlAttr(req.transformer_id)} -->`, usesCanonicalTargets || !usesLegacyTargets),
+        build_variant_id: singleVariantId,
         ...(governanceContext && { governance_context: governanceContext }),
       });
     }
@@ -7415,9 +9219,11 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     const keepMode = req.keep_mode;
 
     const variants = Array.from({ length: variantCount }, (_unused, i) => {
+      const variantId = `bv_${idemSeed}_${i}`;
+      session.buildVariantTargets.set(variantId, target);
       const leaf: Record<string, unknown> = {
-        build_variant_id: `bv_${idemSeed}_${i}`,
-        creative_manifest: transformerManifest(target, `<!-- AdCP Training Agent variant ${i} -->`),
+        build_variant_id: variantId,
+        creative_manifest: transformerManifest(target, `<!-- AdCP Training Agent variant ${i} -->`, usesCanonicalTargets || !usesLegacyTargets),
       };
       if (Array.isArray(axisValues) && axisValues[i] !== undefined) {
         leaf.variant_axis_value = axisValues[i];
@@ -7467,15 +9273,36 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
       });
     }
 
-    const formatId = targetIds[0] || creative.formatId;
-    const resolved = resolveTarget(formatId, 'target_format_id');
-    if (resolved.error) {
-      return buildCreativeCompleted({ errors: [resolved.error] });
+    const requestedTarget = targetIds[0];
+    let resolved;
+    if (requestedTarget) {
+      resolved = resolveTarget(requestedTarget, targetField());
+    } else if (creative.formatKind) {
+      resolved = {
+        target: {
+          requested: { agent_url: agentUrl, id: creative.formatKind },
+          formatKind: creative.formatKind as NonNullable<AdcpCreativeManifest['format_kind']>,
+        },
+      };
+    } else if (creative.formatId) {
+      resolved = resolveTarget(creative.formatId, targetField());
+    } else {
+      return buildCreativeCompleted({
+        errors: [{ code: 'INVALID_REQUEST', message: `Creative "${req.creative_id}" has no format identity.` }],
+      });
     }
+    if (resolved.error) return buildCreativeCompleted({ errors: [resolved.error] });
     const { w, h } = getDimensions(resolved.target!.format);
+    const targetLabel = requestedTarget?.id ?? creative.formatKind ?? creative.formatId?.id ?? 'unknown';
 
+    const builtManifest = buildManifest(resolved.target!, `<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(targetLabel)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`);
     const base = {
-      creative_manifest: buildManifest(resolved.target!, `<!-- AdCP Training Agent tag for ${escapeHtmlAttr(req.creative_id!)} -->\n<div data-adcp-creative="${escapeHtmlAttr(req.creative_id!)}" data-format="${escapeHtmlAttr(formatId.id)}"${req.media_buy_id ? ` data-media-buy="${escapeHtmlAttr(req.media_buy_id)}"` : ''}${req.package_id ? ` data-package="${escapeHtmlAttr(req.package_id)}"` : ''} style="width:${w}px;height:${h}px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:14px;color:#666;">Ad: ${escapeHtmlAttr(creative.name || req.creative_id!)}</div>`),
+      creative_manifest: !requestedTarget && creative.formatKind && creative.formatOptionRef
+        ? {
+          ...builtManifest,
+          format_option_ref: creative.formatOptionRef as unknown as NonNullable<AdcpCreativeManifest['format_option_ref']>,
+        }
+        : builtManifest,
     };
 
     // Return pricing when account is provided (paid creative agent mode)
@@ -7495,7 +9322,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     return buildCreativeCompleted({ ...base, ...(governanceContext && { governance_context: governanceContext }) });
   }
 
-  // Mode 2: Stateless transformation (creative_manifest + target_format_id)
+  // Mode 2: Stateless transformation (creative_manifest + canonical target)
   if (req.creative_manifest) {
     const rawAssets = req.creative_manifest.assets;
     const inputAssetCount = Array.isArray(rawAssets) ? rawAssets.length : Object.keys(rawAssets || {}).length;
@@ -7508,7 +9335,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
 
     // Generate output for each target format
     if (targetIds.length > 1) {
-      const resolvedTargets = targetIds.map((fmtId, index) => resolveTarget(fmtId, `target_format_ids[${index}]`));
+      const resolvedTargets = targetIds.map((fmtId, index) => resolveTarget(fmtId, targetField(index)));
       const errors = resolvedTargets.flatMap(result => result.error ? [result.error] : []);
       if (errors.length > 0) {
         return buildCreativeCompleted({ errors, ...(governanceContext && { governance_context: governanceContext }) });
@@ -7525,7 +9352,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
 
     // Single format response
     const fmtId = targetIds[0] || { agent_url: agentUrl, id: 'display_300x250' };
-    const resolved = resolveTarget(fmtId, 'target_format_id');
+    const resolved = resolveTarget(fmtId, targetField());
     if (resolved.error) {
       return buildCreativeCompleted({ errors: [resolved.error], ...(governanceContext && { governance_context: governanceContext }) });
     }
@@ -7537,10 +9364,10 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     });
   }
 
-  // Mode 3: Generative build (target_format_id + message, no manifest or library creative)
+  // Mode 3: Generative build (canonical target + message, no manifest or library creative)
   if (targetIds.length > 0) {
     if (targetIds.length > 1) {
-      const resolvedTargets = targetIds.map((fmtId, index) => resolveTarget(fmtId, `target_format_ids[${index}]`));
+      const resolvedTargets = targetIds.map((fmtId, index) => resolveTarget(fmtId, targetField(index)));
       const errors = resolvedTargets.flatMap(result => result.error ? [result.error] : []);
       if (errors.length > 0) {
         return buildCreativeCompleted({ errors, ...(governanceContext && { governance_context: governanceContext }) });
@@ -7554,7 +9381,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     }
 
     const fmtId = targetIds[0];
-    const resolved = resolveTarget(fmtId, 'target_format_id');
+    const resolved = resolveTarget(fmtId, targetField());
     if (resolved.error) {
       return buildCreativeCompleted({ errors: [resolved.error], ...(governanceContext && { governance_context: governanceContext }) });
     }
@@ -7567,7 +9394,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
   }
 
   return buildCreativeCompleted({
-    errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_id (library mode), creative_manifest (transformation mode), or target_format_id (generative mode).' }],
+    errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_id (library mode), creative_manifest (transformation mode), or target_capability_id (generative mode).' }],
   });
 }
 
@@ -7576,9 +9403,20 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
 interface PreviewCreativeArgs {
   account?: unknown;
   request_type: 'single' | 'batch' | 'variant';
-  creative_manifest?: { format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> };
+  creative_manifest?: { format_id?: FormatID; format_kind?: string; format_option_ref?: Record<string, unknown>; creative_id?: string; assets?: Record<string, unknown> };
+  target_capability_id?: string;
+  format_id?: FormatID;
   creative_id?: string;
-  requests?: Array<{ format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> }>;
+  requests?: Array<{
+    target_capability_id?: string;
+    format_id?: FormatID;
+    creative_manifest?: { format_id?: FormatID; format_kind?: string; format_option_ref?: Record<string, unknown>; creative_id?: string; assets?: Record<string, unknown> };
+    creative_id?: string;
+    output_format?: 'url' | 'html' | 'both';
+    quality?: 'draft' | 'production';
+    template_id?: string;
+    item_limit?: number;
+  }>;
   variant_id?: string;
   output_format?: 'url' | 'html' | 'both';
   quality?: 'draft' | 'production';
@@ -7592,43 +9430,86 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
   const agentUrl = getAgentUrl();
   const formats = getFormats();
   const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
-  const outputFormat = req.output_format || 'url';
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-  function buildPreview(manifest: { format_id?: FormatID; creative_id?: string; assets?: Record<string, unknown> }) {
+  function buildPreview(
+    manifest: { format_id?: FormatID; format_kind?: string; format_option_ref?: Record<string, unknown>; creative_id?: string; assets?: Record<string, unknown> },
+    targetCapabilityId?: string,
+    requestedOutputFormat: 'url' | 'html' | 'both' = 'url',
+    requestedQuality: 'draft' | 'production' = 'production',
+    legacyFormatId?: FormatID,
+  ) {
     // Resolve format
-    let formatId = manifest.format_id;
+    let formatId = legacyFormatId ?? manifest.format_id;
+    let formatKind = manifest.format_kind;
     let creativeName = 'Preview';
 
-    // If creative_id provided, look up from library
-    if (manifest.creative_id) {
+    // A top-level creative_id is normalized to a manifest containing only
+    // that ID. An inline manifest may also carry creative_id as identity; its
+    // supplied assets and format remain authoritative and must not trigger a
+    // library lookup.
+    const isLibraryReference = Boolean(
+      manifest.creative_id
+      && manifest.assets === undefined
+      && manifest.format_id === undefined
+      && manifest.format_kind === undefined,
+    );
+    if (isLibraryReference && manifest.creative_id) {
       const creative = session.creatives.get(manifest.creative_id);
-      if (creative) {
-        formatId = creative.formatId;
-        creativeName = creative.name || manifest.creative_id;
-      }
+      if (!creative) return null;
+      formatId = creative.formatId;
+      formatKind = creative.formatKind;
+      creativeName = creative.name || manifest.creative_id;
     }
 
-    const fmtId = formatId?.id || 'display_300x250';
+    // The frozen 3.0 surface stored named format IDs in the later
+    // `format_kind` slot when the SDK projected a synced creative. Treat that
+    // value as legacy routing only inside the storyboard compatibility shim.
+    if (
+      isThreeZeroStoryboardCompat(ctx)
+      && formatKind
+      && !VALID_CANONICAL_FORMAT_KINDS.has(formatKind)
+      && formatId?.id
+      && validFormatIds.has(formatId.id)
+    ) {
+      formatKind = undefined;
+    }
+
+    if (legacyFormatId) {
+      if (!legacyFormatId.id || !validFormatIds.has(legacyFormatId.id)) return null;
+    } else if (formatKind) {
+      const matches = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.filter(item => item.formatKind === formatKind);
+      if (targetCapabilityId) {
+        const selected = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.find(item => item.capabilityId === targetCapabilityId);
+        if (!selected || selected.formatKind !== formatKind) return null;
+      } else if (matches.length !== 1 && !isThreeZeroStoryboardCompat(ctx)) {
+        return null;
+      }
+    } else if (targetCapabilityId) {
+      return null;
+    }
+
+    const fmtId = legacyFormatId?.id || formatKind || formatId?.id || 'image';
     const format = validFormatIds.get(fmtId);
-    if (!format && formatId?.id && fmtId !== 'native_in_feed') {
+    if (!formatKind && !format && formatId?.id && fmtId !== 'native_in_feed') {
       return null; // Signal invalid format to caller
     }
+    if (formatKind && !VALID_CANONICAL_FORMAT_KINDS.has(formatKind)) return null;
     const { w, h } = getDimensions(format);
 
-    const previewHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview: ${escapeHtmlAttr(fmtId)}</title><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fafafa;font-family:sans-serif;}</style></head><body><div style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;color:#fff;"><div style="font-size:16px;font-weight:600;">${escapeHtmlAttr(creativeName)}</div><div style="font-size:12px;opacity:0.8;margin-top:4px;">${escapeHtmlAttr(fmtId)} (${w}x${h})</div><div style="font-size:10px;opacity:0.6;margin-top:8px;">AdCP Training Agent Preview</div></div></body></html>`;
+    const previewHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Preview: ${escapeHtmlAttr(fmtId)}</title><style>body{margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fafafa;font-family:sans-serif;}</style></head><body><div data-quality="${requestedQuality}" style="width:${w}px;height:${h}px;background:linear-gradient(135deg,#1B5E20,#FF6F00);display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;color:#fff;"><div style="font-size:16px;font-weight:600;">${escapeHtmlAttr(creativeName)}</div><div style="font-size:12px;opacity:0.8;margin-top:4px;">${escapeHtmlAttr(fmtId)} (${w}x${h})</div><div style="font-size:10px;opacity:0.6;margin-top:8px;">AdCP Training Agent Preview</div></div></body></html>`;
 
     const render: Record<string, unknown> = {
       render_id: `preview_${fmtId}`,
-      output_format: outputFormat,
+      output_format: requestedOutputFormat,
       role: 'primary',
       dimensions: { width: w, height: h },
     };
 
-    if (outputFormat === 'url' || outputFormat === 'both') {
+    if (requestedOutputFormat === 'url' || requestedOutputFormat === 'both') {
       render.preview_url = `data:text/html;base64,${Buffer.from(previewHtml).toString('base64')}`;
     }
-    if (outputFormat === 'html' || outputFormat === 'both') {
+    if (requestedOutputFormat === 'html' || requestedOutputFormat === 'both') {
       render.preview_html = previewHtml;
     }
 
@@ -7649,20 +9530,62 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
 
   // Batch mode
   if (req.request_type === 'batch' && req.requests?.length) {
+    const usesCanonicalRouting = Boolean(req.target_capability_id)
+      || req.requests.some(item => Boolean(item.target_capability_id));
+    const usesLegacyRouting = Boolean(req.format_id)
+      || req.requests.some(item => Boolean(item.format_id));
+    if (usesCanonicalRouting && usesLegacyRouting) {
+      return { errors: [{ code: 'INVALID_REQUEST', message: 'Use target_capability_id or deprecated format_id routing, not both.' }] };
+    }
+    const results = req.requests.map(item => {
+      if (item.creative_manifest && item.creative_id) {
+        return {
+          success: false,
+          creative_id: item.creative_id,
+          errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_manifest or creative_id, not both.' }],
+        };
+      }
+      const manifest = item.creative_manifest || (item.creative_id ? { creative_id: item.creative_id } : undefined);
+      if (item.creative_id && !session.creatives.has(item.creative_id)) {
+        return {
+          success: false,
+          creative_id: item.creative_id,
+          errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative "${item.creative_id}" was not found in this agent's creative library.` }],
+        };
+      }
+      const targetCapabilityId = item.target_capability_id ?? req.target_capability_id;
+      const legacyFormatId = targetCapabilityId ? undefined : item.format_id ?? req.format_id;
+      const effectiveOutputFormat = item.output_format ?? req.output_format ?? 'url';
+      const effectiveQuality = item.quality ?? req.quality ?? 'production';
+      const preview = manifest
+        ? buildPreview(manifest, targetCapabilityId, effectiveOutputFormat, effectiveQuality, legacyFormatId)
+        : null;
+      if (!preview) {
+        return {
+          success: false,
+          creative_id: item.creative_id || 'unknown',
+          errors: [{ code: 'FORMAT_NOT_SUPPORTED', message: 'No unique advertised preview capability matches this item.' }],
+        };
+      }
+      return {
+        success: true,
+        creative_id: item.creative_id || 'unknown',
+        response: { previews: [preview], expires_at: expiresAt },
+      };
+    });
     return {
       response_type: 'batch',
-      results: req.requests.map(c => ({
-        success: true,
-        creative_id: c.creative_id || 'unknown',
-        response: {
-          previews: [buildPreview(c)],
-          expires_at: expiresAt,
-        },
-      })),
-      };
+      results,
+    };
   }
 
   // Single mode
+  if (req.creative_manifest && req.creative_id) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'Provide creative_manifest or creative_id, not both.' }] };
+  }
+  if (req.target_capability_id && req.format_id) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'Use target_capability_id or deprecated format_id routing, not both.' }] };
+  }
   const manifest = req.creative_manifest || (req.creative_id ? { creative_id: req.creative_id } : null);
   if (!manifest) {
     return {
@@ -7670,11 +9593,23 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
     };
   }
 
-  const preview = buildPreview(manifest);
-  if (!preview) {
-    const fmtId = manifest.format_id?.id || 'unknown';
+  if (req.creative_id && !session.creatives.has(req.creative_id)) {
     return {
-      errors: [{ code: 'UNSUPPORTED_FEATURE', message: `Format "${fmtId}" is not supported. Use list_creative_formats to discover available formats.` }],
+      errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative "${req.creative_id}" was not found in this agent's creative library.` }],
+    };
+  }
+
+  const preview = buildPreview(
+    manifest,
+    req.target_capability_id,
+    req.output_format ?? 'url',
+    req.quality ?? 'production',
+    req.target_capability_id ? undefined : req.format_id,
+  );
+  if (!preview) {
+    const fmtId = manifest.format_kind || manifest.format_id?.id || 'unknown';
+    return {
+      errors: [{ code: 'FORMAT_NOT_SUPPORTED', message: `Format "${fmtId}" has no unique matching advertised preview capability. Inspect get_adcp_capabilities creative.supported_formats to select target_capability_id.` }],
     };
   }
 
@@ -7693,17 +9628,79 @@ interface ReportUsageArgs extends ToolArgs {
   reporting_period: { start: string; end: string };
   usage: Array<{
     account: { account_id?: string; brand?: { domain: string }; operator?: string };
+    media_buy_id?: string;
     creative_id?: string;
     signal_agent_segment_id?: string;
+    standards_id?: string;
+    rights_id?: string;
+    build_variant_id?: string;
+    property_list_id?: string;
     pricing_option_id?: string;
     impressions?: number;
     media_spend?: number;
+    conversions?: number;
+    conversion_value?: number;
+    commissionable_value?: number;
     vendor_cost: number;
     currency: string;
     final?: boolean;
     finalized_at?: string;
     measurement_window?: string;
   }>;
+}
+
+function roundCurrency(value: number, currency: string): number {
+  let fractionDigits = 2;
+  try {
+    fractionDigits = new Intl.NumberFormat('en', { style: 'currency', currency })
+      .resolvedOptions().maximumFractionDigits ?? 2;
+  } catch {
+    // The schema constrains shape but not membership in the ISO registry. The
+    // handler's existing behavior accepts unknown three-letter codes, so keep
+    // the conventional two-decimal fallback rather than adding a new rejection.
+  }
+  const factor = 10 ** fractionDigits;
+  return Math.round((value + Number.EPSILON) * factor) / factor;
+}
+
+function effectiveProductMapForSession(session: SessionState): Map<string, Product> {
+  const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, { ...cp.product }]));
+  overlaySeededProducts(session, productMap);
+  overlayNegotiatedPricingOptions(session, productMap);
+  return productMap;
+}
+
+type RevenueShareUsageContext = {
+  rate: number;
+  currency: string;
+  budget: number;
+  pricingOptionId: string;
+};
+
+function pricingContextsForUsage(
+  session: SessionState,
+  record: ReportUsageArgs['usage'][number],
+): { packagePricingOptionIds: Set<string>; revenueShares: RevenueShareUsageContext[] } | undefined {
+  if (!record.media_buy_id) return undefined;
+  const mediaBuy = session.mediaBuys.get(record.media_buy_id);
+  if (!mediaBuy) return undefined;
+  const products = effectiveProductMapForSession(session);
+  const revenueShares: RevenueShareUsageContext[] = [];
+  for (const pkg of mediaBuy.packages) {
+    const product = products.get(pkg.productId);
+    const option = product?.pricing_options.find(candidate => candidate.pricing_option_id === pkg.pricingOptionId) as unknown as PricingOptionView | undefined;
+    if (option?.pricing_model !== 'revenue_share' || option.commission_rate === undefined || !option.currency) continue;
+    revenueShares.push({
+      rate: option.commission_rate,
+      currency: option.currency,
+      budget: pkg.budget,
+      pricingOptionId: pkg.pricingOptionId,
+    });
+  }
+  return {
+    packagePricingOptionIds: new Set(mediaBuy.packages.map(pkg => pkg.pricingOptionId)),
+    revenueShares,
+  };
 }
 
 // ── get_creative_features (truth-of-claim verifier; closes #3802) ──
@@ -7958,8 +9955,12 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   const sessionScopeReq = withUsageAccountScope(req as unknown as Record<string, unknown>) as unknown as ToolArgs;
   const session = await getSession(sessionKeyFromArgs(sessionScopeReq, ctx.mode, ctx.userId, ctx.moduleId));
 
-  if (!req.reporting_period || !req.usage?.length) {
-    return { errors: [{ code: 'INVALID_USAGE_DATA', message: 'reporting_period and at least one usage record are required.' }] };
+  if (!req.reporting_period) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'reporting_period is required.', field: 'reporting_period' }] };
+  }
+
+  if (!req.usage?.length) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'At least one usage record is required.', field: 'usage' }] };
   }
 
   if (session.usageRecords.length + req.usage.length > MAX_USAGE_RECORDS_PER_SESSION) {
@@ -7992,6 +9993,86 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
     if (record.impressions !== undefined && record.impressions < 0) {
       errors.push({ code: 'INVALID_USAGE_DATA', message: 'impressions must be non-negative.', field: `usage[${i}].impressions` });
       continue;
+    }
+    if (record.conversions !== undefined && record.conversions < 0) {
+      errors.push({ code: 'INVALID_USAGE_DATA', message: 'conversions must be non-negative.', field: `usage[${i}].conversions` });
+      continue;
+    }
+    if (record.conversion_value !== undefined && record.conversion_value < 0) {
+      errors.push({ code: 'INVALID_USAGE_DATA', message: 'conversion_value must be non-negative.', field: `usage[${i}].conversion_value` });
+      continue;
+    }
+    if (record.commissionable_value !== undefined && record.commissionable_value < 0) {
+      errors.push({ code: 'INVALID_USAGE_DATA', message: 'commissionable_value must be non-negative.', field: `usage[${i}].commissionable_value` });
+      continue;
+    }
+
+    const usesVendorPricingNamespace = Boolean(
+      record.creative_id
+      || record.signal_agent_segment_id
+      || record.standards_id
+      || record.rights_id
+      || record.build_variant_id
+      || record.property_list_id,
+    );
+    const pricingContexts = usesVendorPricingNamespace ? undefined : pricingContextsForUsage(session, record);
+    if (record.pricing_option_id && pricingContexts && !pricingContexts.packagePricingOptionIds.has(record.pricing_option_id)) {
+      errors.push({
+        code: 'INVALID_PRICING_OPTION',
+        message: `pricing_option_id "${record.pricing_option_id}" is not part of media buy "${record.media_buy_id}".`,
+        field: `usage[${i}].pricing_option_id`,
+      });
+      continue;
+    }
+    const revenueShare = record.pricing_option_id
+      ? pricingContexts?.revenueShares.find(context => context.pricingOptionId === record.pricing_option_id)
+      : pricingContexts?.revenueShares[0];
+    if (revenueShare) {
+      if (!record.pricing_option_id) {
+        errors.push({
+          code: 'INVALID_USAGE_DATA',
+          message: `pricing_option_id is required for revenue-share reconciliation; expected ${revenueShare.pricingOptionId}.`,
+          field: `usage[${i}].pricing_option_id`,
+        });
+        continue;
+      }
+      if (record.commissionable_value === undefined) {
+        errors.push({
+          code: 'INVALID_USAGE_DATA',
+          message: 'commissionable_value is required for revenue-share reconciliation.',
+          field: `usage[${i}].commissionable_value`,
+        });
+        continue;
+      }
+      if (record.currency !== revenueShare.currency) {
+        errors.push({
+          code: 'INVALID_USAGE_DATA',
+          message: `currency must match the selected revenue-share pricing option (${revenueShare.currency}).`,
+          field: `usage[${i}].currency`,
+        });
+        continue;
+      }
+      const expectedCost = roundCurrency(record.commissionable_value * revenueShare.rate, record.currency);
+      if (Math.abs(roundCurrency(record.vendor_cost, record.currency) - expectedCost) > Number.EPSILON) {
+        errors.push({
+          code: 'INVALID_USAGE_DATA',
+          message: `vendor_cost must equal round_currency(commissionable_value × commission_rate); expected ${expectedCost}.`,
+          field: `usage[${i}].vendor_cost`,
+        });
+        continue;
+      }
+      const previouslyAcceptedCost = session.usageRecords
+        .filter(existing => existing.mediaBuyId === record.media_buy_id && existing.pricingOptionId === revenueShare.pricingOptionId)
+        .reduce((sum, existing) => sum + existing.vendorCost, 0);
+      const cumulativeCost = roundCurrency(previouslyAcceptedCost + record.vendor_cost, record.currency);
+      if (cumulativeCost > revenueShare.budget) {
+        errors.push({
+          code: 'INVALID_USAGE_DATA',
+          message: `cumulative vendor_cost ${cumulativeCost} exceeds the package commission budget ${revenueShare.budget}.`,
+          field: `usage[${i}].vendor_cost`,
+        });
+        continue;
+      }
     }
 
     // Validate creative_id exists if provided
@@ -8035,11 +10116,15 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
     // Store the usage record
     session.usageRecords.push({
       account: record.account as import('./types.js').AccountRef,
+      mediaBuyId: record.media_buy_id,
       creativeId: record.creative_id,
       signalAgentSegmentId: record.signal_agent_segment_id,
       pricingOptionId: record.pricing_option_id,
       impressions: record.impressions,
       mediaSpend: record.media_spend,
+      conversions: record.conversions,
+      conversionValue: record.conversion_value,
+      commissionableValue: record.commissionable_value,
       vendorCost: record.vendor_cost,
       currency: record.currency,
       final: record.final,
@@ -8144,7 +10229,7 @@ export async function executeTrainingAgentTool(
     return { success: false, error: `Unknown tool: ${toolName}` };
   }
   try {
-    const result = await Promise.resolve(handler(args, ctx));
+    const result = await Promise.resolve(handler(args, { ...ctx, servedAdcpVersion: versionResolution.servedVersion }));
     return { success: true, data: addServedAdcpVersion(result, versionResolution.servedVersion) as object };
   } catch (error) {
     logger.error({ error, tool: toolName }, 'Training agent in-process tool error');
@@ -8359,7 +10444,10 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     if (skipHandler) {
       // toolResult already set from idempotency replay path above
     } else try {
-      const result = await Promise.resolve(handler((handlerArgs as ToolArgs) || {}, ctx));
+      const result = await Promise.resolve(handler(
+        (handlerArgs as ToolArgs) || {},
+        { ...ctx, servedAdcpVersion },
+      ));
       const resultObj = result as Record<string, unknown> & {
         errors?: Array<{ code: string; message: string; field?: string; details?: unknown; recovery?: string }>;
       };

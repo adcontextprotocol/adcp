@@ -3,6 +3,7 @@ import {
   checkCostCap,
   recordCost,
   formatCapExceededMessage,
+  releaseCertificationReserve,
   resolveUserTier,
   buildSlackCostOptions,
   DAILY_BUDGET_USD,
@@ -36,6 +37,45 @@ describe('checkCostCap', () => {
     expect(result.ok).toBe(true);
     expect(result.remainingUsd).toBe(DAILY_BUDGET_USD.member_free);
     expect(result.spentCents).toBe(0);
+  });
+
+  it('uses a bounded certification reserve after the normal tier budget', async () => {
+    // $5.50 exceeds the free-member budget but stays within a $1 completion reserve.
+    await recordCost('u-certification', 'claude-sonnet-4-6', {
+      input_tokens: 1_833_334,
+      output_tokens: 0,
+    });
+
+    expect((await checkCostCap('u-certification', 'member_free')).ok).toBe(false);
+    const withReserve = await checkCostCap('u-certification', 'member_free', {
+      certificationReserveUsd: 1,
+    });
+    expect(withReserve.ok).toBe(true);
+    expect(withReserve.usedCertificationReserve).toBe(true);
+    expect(withReserve.remainingUsd).toBeCloseTo(0.5, 4);
+  });
+
+  it('admits only one concurrent completion-reserve call per user', async () => {
+    await recordCost('u-reserve-lease', 'claude-sonnet-4-6', {
+      input_tokens: 1_833_334,
+      output_tokens: 0,
+    });
+    const first = await checkCostCap('u-reserve-lease', 'member_free', {
+      certificationReserveUsd: 1,
+    });
+    const concurrent = await checkCostCap('u-reserve-lease', 'member_free', {
+      certificationReserveUsd: 1,
+    });
+
+    expect(first.ok).toBe(true);
+    expect(first.certificationLeaseId).toBeTruthy();
+    expect(concurrent.ok).toBe(false);
+    expect(concurrent.reserveBusy).toBe(true);
+
+    await releaseCertificationReserve('u-reserve-lease', first.certificationLeaseId);
+    expect((await checkCostCap('u-reserve-lease', 'member_free', {
+      certificationReserveUsd: 1,
+    })).ok).toBe(true);
   });
 
   it('blocks the call that crosses the daily budget', async () => {
@@ -180,7 +220,7 @@ describe('formatCapExceededMessage', () => {
       tier: 'member_free',
     });
     expect(msg).toContain('daily conversation limit');
-    expect(msg).toContain('try again tomorrow');
+    expect(msg).toContain('try again in about 1 hour');
     expect(msg).toContain('/dashboard/membership');
     expect(msg).toContain('Upgrade');
     expect(msg).not.toContain('$5.50');
@@ -232,13 +272,15 @@ describe('resolveUserTier', () => {
   });
 });
 
-describe('rolling 24h window semantics', () => {
-  // Meat of the "rolling daily budget" invariant — charges older than
-  // 24h fall out of the sum. Uses fake timers so we can fast-forward
-  // through the window without a real DB TTL.
+describe('calendar-day (UTC midnight) reset semantics', () => {
+  // #6048 — the daily budget resets at UTC midnight, not 24h after the
+  // triggering charge. A user capped at 6pm UTC must be unblocked at
+  // the next UTC midnight, not at 6pm the following day. Uses fake
+  // timers so we can fast-forward across the boundary without a real
+  // DB TTL.
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-04-22T12:00:00Z'));
+    vi.setSystemTime(new Date('2026-04-22T18:00:00Z'));
     __setCostTrackerStore(__createInMemoryCostStore());
   });
 
@@ -246,31 +288,33 @@ describe('rolling 24h window semantics', () => {
     vi.useRealTimers();
   });
 
-  it('expires charges older than 24h so the cap resets on their anniversary', async () => {
-    // Record a big charge that exhausts the anonymous cap at T0.
-    // Opus is $15/M-token input, so 200_001 tokens = just over $3.
+  it('stays blocked until UTC midnight even if 24h has not elapsed since the charge', async () => {
     const tokensToExceedCap = Math.ceil((DAILY_BUDGET_USD.anonymous * 1_000_000) / 15) + 1;
-    await recordCost('u-roll', 'claude-opus-4-7', { input_tokens: tokensToExceedCap, output_tokens: 0 });
-    expect((await checkCostCap('u-roll', 'anonymous')).ok).toBe(false);
+    await recordCost('u-cal', 'claude-opus-4-7', { input_tokens: tokensToExceedCap, output_tokens: 0 });
+    expect((await checkCostCap('u-cal', 'anonymous')).ok).toBe(false);
 
-    // At T+23h the charge is still in-window — still blocked.
-    vi.advanceTimersByTime(23 * 60 * 60 * 1000);
-    expect((await checkCostCap('u-roll', 'anonymous')).ok).toBe(false);
-
-    // At T+24h+1ms the original charge has aged out. The cap has
-    // fresh headroom and the user is allowed again.
-    vi.advanceTimersByTime(60 * 60 * 1000 + 1);
-    const result = await checkCostCap('u-roll', 'anonymous');
+    // 14h later (08:00 UTC the next day) is well short of 24h since
+    // the charge, but past UTC midnight — the cap must have reset.
+    vi.setSystemTime(new Date('2026-04-23T08:00:00Z'));
+    const result = await checkCostCap('u-cal', 'anonymous');
     expect(result.ok).toBe(true);
     expect(result.spentCents).toBe(0);
   });
 
-  it('retryAfterMs counts down as individual charges age out (not fixed to a daily boundary)', async () => {
-    // Three separate charges 30 min apart. When the cap trips on
-    // the third, `retryAfterMs` reflects the OLDEST charge's
-    // remaining time — not a fixed midnight or similar boundary.
-    // Each charge ~$1 (a third of the anonymous cap), so all three
-    // together push past $3.
+  it('stays capped right up to 23:59:59.999 UTC on the day of the charge', async () => {
+    const tokensToExceedCap = Math.ceil((DAILY_BUDGET_USD.anonymous * 1_000_000) / 15) + 1;
+    await recordCost('u-cal2', 'claude-opus-4-7', { input_tokens: tokensToExceedCap, output_tokens: 0 });
+
+    vi.setSystemTime(new Date('2026-04-22T23:59:59.999Z'));
+    expect((await checkCostCap('u-cal2', 'anonymous')).ok).toBe(false);
+
+    vi.setSystemTime(new Date('2026-04-23T00:00:00.000Z'));
+    expect((await checkCostCap('u-cal2', 'anonymous')).ok).toBe(true);
+  });
+
+  it('retryAfterMs reflects time until the next UTC midnight, not a per-charge anniversary', async () => {
+    // At 18:00 UTC, next midnight is 6h away regardless of when
+    // within today's window the charges landed.
     const perChargeTokens = Math.ceil((DAILY_BUDGET_USD.anonymous * 1_000_000) / 15 / 3) + 1;
     await recordCost('u-slide', 'claude-opus-4-7', { input_tokens: perChargeTokens, output_tokens: 0 });
     vi.advanceTimersByTime(30 * 60 * 1000);
@@ -280,10 +324,20 @@ describe('rolling 24h window semantics', () => {
 
     const result = await checkCostCap('u-slide', 'anonymous');
     expect(result.ok).toBe(false);
-    // Oldest charge is ~60 min old → retry in ~23h.
+    // Now is 19:00 UTC (18:00 + two 30min advances) → 5h to midnight.
     const retryHours = (result.retryAfterMs ?? 0) / 3_600_000;
-    expect(retryHours).toBeGreaterThan(22.9);
-    expect(retryHours).toBeLessThan(23.1);
+    expect(retryHours).toBeGreaterThan(4.9);
+    expect(retryHours).toBeLessThan(5.1);
+  });
+
+  it('does not count a charge from a previous UTC day toward today\'s budget', async () => {
+    await recordCost('u-yesterday', 'claude-opus-4-7', { input_tokens: 10_000_000, output_tokens: 0 });
+    expect((await checkCostCap('u-yesterday', 'anonymous')).ok).toBe(false);
+
+    vi.setSystemTime(new Date('2026-04-23T00:00:01.000Z'));
+    const result = await checkCostCap('u-yesterday', 'anonymous');
+    expect(result.ok).toBe(true);
+    expect(result.spentCents).toBe(0);
   });
 });
 

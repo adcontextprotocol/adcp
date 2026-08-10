@@ -42,6 +42,8 @@ POST https://you.com/adcp/webhook/create_media_buy/agent_123/route_abc123
   }
 ```
 
+Webhook v1 retains this legacy unpadded Base64URL encoding throughout AdCP 3.x; it does not inherit the 3.2 request-signing migration to RFC 8941 padded Base64. SDKs select the webhook parser from the configured callback route, never as fallback after request-profile parsing fails.
+
 If you're using the `@adcp/sdk` library, this entire flow is handled automatically. As a **buyer**, configure `webhookUrlTemplate` and your agent URL on the client; `push_notification_config` is injected into every outgoing task call, and incoming webhooks are verified against the seller's JWKS automatically. As a **seller emitting webhooks**, publish a signing JWK at your brand.json `agents[]` entry. New signers use `adcp_use: "request-signing"`; if you want webhook-only key material, publish a second `request-signing` JWK with a distinct `kid`.
 
 :::warning Legacy HMAC fallback (deprecated)
@@ -250,7 +252,7 @@ This inner result object is valid delivery-report content, but it is **not valid
 
 The top-level `status` is the async webhook status (`completed`, `failed`, `working`, and so on). The nested `media_buy_deliveries[].status` is the media buy lifecycle or reporting state (`active`, `paused`, `reporting_delayed`, and so on). Do not collapse the two fields.
 
-For delivery-report data events such as `scheduled`, `final`, `delayed`, and `adjusted`, `notification_id` is absent by design; dedupe the transport event with `idempotency_key`. The `aggregated_totals` field is API-only for `get_media_buy_delivery` responses and must not be emitted in reporting webhook result payloads.
+For delivery-report data events such as `scheduled`, `final`, `delayed`, `adjusted`, and `window_update`, `notification_id` is absent by design; dedupe the transport event with `idempotency_key`. The `aggregated_totals` field is API-only for `get_media_buy_delivery` responses and must not be emitted in reporting webhook result payloads.
 
 Signatures and content digests are computed over the exact raw JSON bytes sent as this full envelope. Re-serializing just the `result` object, adding whitespace, or changing field order before verification changes the bytes and breaks signature validation.
 
@@ -335,7 +337,11 @@ Signature: sig1=:<base64url-unpadded>:
 Content-Digest: sha-256=:<base64url-unpadded>:
 ```
 
+These two binary headers use the webhook-v1 legacy encoding. The AdCP 3.2 request profile uses RFC 8941 padded Base64 instead; a receiver selects one parser from the trusted route/profile and never tries both.
+
 Covered components are fixed: `@method`, `@target-uri`, `@authority`, `content-type`, `content-digest`. `content-digest` is REQUIRED — the body is the event; a signature that doesn't cover it isn't protecting the attack surface that matters.
+
+Property-list change payloads retain a required body-level `signature: "rfc9421"` compatibility marker through 3.x because the previously published schema required a string at that location without defining interoperable signature semantics. Receivers MUST accept any string in that field from an older 3.x sender, ignore it for authentication, and verify only the HTTP signature headers above. Property-list registration exposes no legacy authentication selector, so this delivery surface is RFC 9421-only. The marker is removed in 4.0. Collection-list webhook schema and behavior remain unchanged; migrating that contract requires separately versioned work.
 
 **Verification** follows the 14-step [request verifier checklist](/docs/building/by-layer/L1/security#verifier-checklist-requests) with three webhook substitutions:
 
@@ -604,7 +610,7 @@ This section is the transport half of the [Snapshot and log contract](/docs/prot
 
 ### Delivery semantics
 
-- **At-least-once delivery.** Sellers MAY re-fire the same logical event under retry. Receivers MUST dedupe transport retries by `idempotency_key`. For state-shaped events that also carry a typed `notification_id` (see [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v3/core/mcp-webhook-payload.json) and [snapshot-and-log Rule 1](/docs/protocol/snapshot-and-log#1-two-distinct-ids-per-fire-and-per-state)), receivers MUST also track `notification_id` to correlate fires to current snapshot state — seeing the same `notification_id` under two different `idempotency_key` values is a re-emission signal, not a transport retry.
+- **At-least-once delivery.** Sellers MAY re-fire the same logical event under retry. Receivers MUST dedupe transport retries by `idempotency_key`. For state-shaped events that also carry a typed `notification_id` (see [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v3/core/mcp-webhook-payload.json) and [snapshot-and-log Rule 1](/docs/protocol/snapshot-and-log#1-separate-transport-event-and-resource-identity)), receivers MUST also track `notification_id` to correlate fires to current snapshot state — seeing the same `notification_id` under two different `idempotency_key` values is a re-emission signal, not a transport retry.
 - **No ordering guarantee.** Two events on the same resource within seconds MAY arrive out of order. Receivers MUST reconcile via the resource snapshot rather than treating webhook ordering as canonical.
 - **Idempotent application.** Apply the same payload twice and the resulting receiver state MUST be identical.
 

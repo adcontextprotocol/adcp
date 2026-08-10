@@ -16,6 +16,7 @@ const threadMocks = vi.hoisted(() => ({
   getThreadByExternalId: vi.fn(),
   getOrCreateThread: vi.fn(),
   getThreadMessages: vi.fn(),
+  getRecoverableClientTurn: vi.fn(),
   addMessage: vi.fn(),
   addMessageFeedback: vi.fn(),
 }));
@@ -126,6 +127,7 @@ describe('mounted Addie web-thread ownership', () => {
       message_count: 0,
     });
     threadMocks.getThreadMessages.mockReset().mockResolvedValue([]);
+    threadMocks.getRecoverableClientTurn.mockReset().mockResolvedValue(null);
     threadMocks.addMessage.mockReset().mockResolvedValue({
       message_id: '33333333-3333-4333-8333-333333333333',
     });

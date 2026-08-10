@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   completeAttempt: vi.fn(),
   completeModule: vi.fn(),
   checkAndAwardCredentials: vi.fn(),
+  hasEffectiveMembershipForUser: vi.fn(),
   query: vi.fn(),
 }));
 
@@ -33,6 +34,7 @@ vi.mock('../../src/db/certification-db.js', () => ({
   completeAttempt: mocks.completeAttempt,
   completeModule: mocks.completeModule,
   checkAndAwardCredentials: mocks.checkAndAwardCredentials,
+  hasEffectiveMembershipForUser: mocks.hasEffectiveMembershipForUser,
 }));
 
 vi.mock('../../src/db/client.js', () => ({
@@ -61,6 +63,7 @@ describe('certification attempt recovery', () => {
     mocks.getTracks.mockResolvedValue([]);
     mocks.getDeltaStatus.mockResolvedValue({ active: false, status: 'not_required' });
     mocks.checkAndAwardCredentials.mockResolvedValue([]);
+    mocks.hasEffectiveMembershipForUser.mockResolvedValue(true);
   });
 
   it('surfaces an in-progress specialist attempt across handler sessions', async () => {

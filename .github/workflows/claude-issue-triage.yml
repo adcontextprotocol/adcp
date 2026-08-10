@@ -16,10 +16,6 @@ name: Claude Issue Triage
 # Required repo secrets:
 #   CLAUDE_ROUTINE_TRIAGE_URL    — full /fire URL including routine ID
 #   CLAUDE_ROUTINE_TRIAGE_TOKEN  — bearer token for that routine
-#   TRIAGE_DISPATCH_PAT          — PAT for reaction on the /triage-triggering
-#                                  comment (same secret as slash-command-dispatch.yml)
-#
-# Token last rotated: 2026-04-23 — rotate every 90 days.
 
 on:
   issues:
@@ -31,8 +27,8 @@ on:
 
 permissions:
   contents: read
-  issues: read
-  pull-requests: read
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: claude-triage-${{ github.event.issue.number || github.event.client_payload.github.payload.issue.number }}
@@ -78,28 +74,142 @@ jobs:
         id: ctx
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "issues" ]; then
-            echo "number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
-            echo "kind=auto" >> "$GITHUB_OUTPUT"
-            echo "action=${{ github.event.action }}" >> "$GITHUB_OUTPUT"
-            echo "commenter=" >> "$GITHUB_OUTPUT"
-            echo "args=" >> "$GITHUB_OUTPUT"
-            echo "comment_id=" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "issue_comment" ]; then
-            echo "number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
-            echo "kind=comment" >> "$GITHUB_OUTPUT"
-            echo "action=created" >> "$GITHUB_OUTPUT"
-            echo "commenter=${{ github.event.comment.user.login }}" >> "$GITHUB_OUTPUT"
-            echo "args=" >> "$GITHUB_OUTPUT"
-            echo "comment_id=${{ github.event.comment.id }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "number=${{ github.event.client_payload.github.payload.issue.number }}" >> "$GITHUB_OUTPUT"
-            echo "kind=manual" >> "$GITHUB_OUTPUT"
-            echo "action=triage" >> "$GITHUB_OUTPUT"
-            echo "commenter=${{ github.event.client_payload.github.payload.comment.user.login }}" >> "$GITHUB_OUTPUT"
-            echo "args=${{ github.event.client_payload.slash_command.args.all }}" >> "$GITHUB_OUTPUT"
-            echo "comment_id=${{ github.event.client_payload.github.payload.comment.id }}" >> "$GITHUB_OUTPUT"
-          fi
+          # Parse the event file as data. Never splice github.event fields into
+          # this shell program: slash arguments are comment-controlled even
+          # though slash-command-dispatch restricts dispatch to writers.
+          node --input-type=commonjs <<'TRIAGE_CONTEXT_NODE'
+          const fs = require('node:fs');
+
+          const SUPPORTED_ISSUE_ACTIONS = new Set(['opened', 'reopened']);
+          const SUPPORTED_MANUAL_ARGS = new Set(['', 'execute', 'clarify', 'defer']);
+          const LOGIN_PATTERN = /^(?=.{1,39}$)[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?$/;
+
+          function requireEnv(name) {
+            const value = process.env[name];
+            if (!value) throw new Error(`${name} is required`);
+            return value;
+          }
+
+          function requireObject(value, name) {
+            if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+              throw new Error(`${name} must be an object`);
+            }
+            return value;
+          }
+
+          function requireAction(value, allowed, name = 'action') {
+            if (typeof value !== 'string' || !allowed.has(value)) {
+              throw new Error(`${name} is not supported`);
+            }
+            return value;
+          }
+
+          function requirePositiveInteger(value, name) {
+            if (!Number.isSafeInteger(value) || value <= 0) {
+              throw new Error(`${name} must be a positive integer`);
+            }
+            return String(value);
+          }
+
+          function requireActor(value, name) {
+            const actor = requireObject(value, name);
+            if (actor.type === 'Bot') throw new Error(`${name}.type must not be Bot`);
+            if (typeof actor.login !== 'string' || !LOGIN_PATTERN.test(actor.login)) {
+              throw new Error(`${name}.login is invalid`);
+            }
+            return actor.login;
+          }
+
+          function requireSender(event, name = 'sender') {
+            requireActor(event.sender, name);
+          }
+
+          function buildContext(eventName, rawEvent) {
+            const event = requireObject(rawEvent, 'event');
+
+            if (eventName === 'issues') {
+              requireSender(event);
+              const action = requireAction(event.action, SUPPORTED_ISSUE_ACTIONS);
+              const issue = requireObject(event.issue, 'issue');
+              return {
+                number: requirePositiveInteger(issue.number, 'issue.number'),
+                kind: 'auto',
+                action,
+                commenter: '',
+                args: '',
+                comment_id: '',
+              };
+            }
+
+            if (eventName === 'issue_comment') {
+              requireSender(event);
+              requireAction(event.action, new Set(['created']));
+              const issue = requireObject(event.issue, 'issue');
+              const comment = requireObject(event.comment, 'comment');
+              return {
+                number: requirePositiveInteger(issue.number, 'issue.number'),
+                kind: 'comment',
+                action: 'created',
+                commenter: requireActor(comment.user, 'comment.user'),
+                args: '',
+                comment_id: requirePositiveInteger(comment.id, 'comment.id'),
+              };
+            }
+
+            if (eventName === 'repository_dispatch') {
+              requireAction(event.action, new Set(['triage-command']));
+              const clientPayload = requireObject(event.client_payload, 'client_payload');
+              const slashCommand = requireObject(clientPayload.slash_command, 'slash_command');
+              if (slashCommand.command !== 'triage') {
+                throw new Error('slash_command.command must be triage');
+              }
+              const slashArgs = requireObject(slashCommand.args, 'slash_command.args');
+              if (typeof slashArgs.all !== 'string') {
+                throw new Error('slash_command.args.all must be a string');
+              }
+              const args = slashArgs.all.trim();
+              if (!SUPPORTED_MANUAL_ARGS.has(args)) {
+                throw new Error('slash_command.args.all is not an allowed modifier');
+              }
+
+              const github = requireObject(clientPayload.github, 'client_payload.github');
+              const payload = requireObject(github.payload, 'client_payload.github.payload');
+              requireAction(payload.action, new Set(['created']), 'client_payload.github.payload.action');
+              requireSender(payload, 'client_payload.github.payload.sender');
+              const issue = requireObject(payload.issue, 'client_payload.github.payload.issue');
+              const comment = requireObject(payload.comment, 'client_payload.github.payload.comment');
+              return {
+                number: requirePositiveInteger(issue.number, 'client_payload.github.payload.issue.number'),
+                kind: 'manual',
+                action: 'triage',
+                commenter: requireActor(comment.user, 'client_payload.github.payload.comment.user'),
+                args,
+                comment_id: requirePositiveInteger(comment.id, 'client_payload.github.payload.comment.id'),
+              };
+            }
+
+            throw new Error(`event ${eventName} is not supported`);
+          }
+
+          try {
+            const eventPath = requireEnv('GITHUB_EVENT_PATH');
+            const eventName = requireEnv('GITHUB_EVENT_NAME');
+            const outputPath = requireEnv('GITHUB_OUTPUT');
+            const rawEvent = JSON.parse(fs.readFileSync(eventPath, 'utf8'));
+            const context = buildContext(eventName, rawEvent);
+            const output = Object.entries(context).map(([key, value]) => {
+              if (typeof value !== 'string' || value.includes('\n') || value.includes('\r')) {
+                throw new Error(`${key} is not a canonical scalar`);
+              }
+              return `${key}=${value}`;
+            }).join('\n');
+            fs.appendFileSync(outputPath, `${output}\n`, 'utf8');
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`::error::Invalid triage event context: ${message}`);
+            process.exitCode = 1;
+          }
+          TRIAGE_CONTEXT_NODE
 
       - name: POST to routine /fire
         id: fire
@@ -270,8 +380,8 @@ jobs:
         if: steps.ctx.outputs.kind == 'manual' && success() && steps.ctx.outputs.comment_id != ''
         uses: peter-evans/create-or-update-comment@v5
         with:
-          token: ${{ secrets.TRIAGE_DISPATCH_PAT }}
-          repository: ${{ github.event.client_payload.github.payload.repository.full_name }}
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
           comment-id: ${{ steps.ctx.outputs.comment_id }}
           reactions: "+1"
 
@@ -279,7 +389,7 @@ jobs:
         if: steps.ctx.outputs.kind == 'manual' && failure() && steps.ctx.outputs.comment_id != ''
         uses: peter-evans/create-or-update-comment@v5
         with:
-          token: ${{ secrets.TRIAGE_DISPATCH_PAT }}
-          repository: ${{ github.event.client_payload.github.payload.repository.full_name }}
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
           comment-id: ${{ steps.ctx.outputs.comment_id }}
           reactions: "-1"

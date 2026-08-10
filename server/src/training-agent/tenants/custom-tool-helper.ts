@@ -10,7 +10,7 @@
 
 import { z } from 'zod';
 import { wrapEnvelope } from '@adcp/sdk/server';
-import type { AdcpCustomToolConfig } from '@adcp/sdk/server';
+import type { LegacyAdcpCustomToolConfig as AdcpCustomToolConfig } from '@adcp/sdk/server';
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
@@ -156,10 +156,10 @@ async function releaseClaim(claim: IdempotencyClaim | null): Promise<void> {
 export function customToolFor(
   name: string,
   description: string,
-  inputSchema: Record<string, z.ZodTypeAny>,
+  inputSchema: Record<string, z.ZodTypeAny> | z.ZodTypeAny,
   handler: LegacyHandler,
   options: CustomToolOptions = {},
-): AdcpCustomToolConfig<Record<string, z.ZodTypeAny>, undefined> {
+): AdcpCustomToolConfig<any, undefined> {
   return {
     description,
     inputSchema,

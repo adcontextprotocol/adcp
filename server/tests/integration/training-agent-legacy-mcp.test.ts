@@ -7,6 +7,9 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
+import { createHash, randomUUID } from 'node:crypto';
+import { buildCatalog } from '../../src/training-agent/product-factory.js';
+import { getCanonicalBase } from '../../src/training-agent/canonical-base.js';
 
 vi.hoisted(() => {
   process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token-for-legacy-mcp';
@@ -165,7 +168,7 @@ describe('Tenant routes via host-based dispatch (no /api/training-agent prefix)'
     expect(names.has('activate_signal')).toBe(true);
   });
 
-  it('exposes all six tenants via _training_agent_tenants in adagents.json', async () => {
+  it('exposes all seven tenants via _training_agent_tenants in adagents.json', async () => {
     const res = await request(app).get('/.well-known/adagents.json');
     expect(res.status).toBe(200);
     const body = res.body as {
@@ -183,15 +186,17 @@ describe('Tenant routes via host-based dispatch (no /api/training-agent prefix)'
     expect(body.authorized_agents.find(a => a.url.endsWith('/signals/mcp'))?.authorization_type).toBe('signal_tags');
     // Discovery extension lists every tenant with its specialism declaration.
     const ids = body._training_agent_tenants.map(t => t.tenant_id).sort();
-    expect(ids).toEqual(['brand', 'creative', 'creative-builder', 'governance', 'sales', 'signals']);
+    expect(ids).toEqual(['brand', 'creative', 'creative-builder', 'governance', 'sales', 'si', 'signals']);
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'brand')?.specialisms).toContain('brand-rights');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'governance')?.specialisms).toContain('content-standards');
+    expect(body._training_agent_tenants.find(t => t.tenant_id === 'si')?.specialisms).toContain('sponsored-intelligence');
     // Tools surface so a developer can pick the right URL without trial.
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'sales')?.tools).toContain('get_products');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'signals')?.tools).toContain('get_signals');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'creative-builder')?.tools).toContain('build_creative');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'creative-builder')?.tools).not.toContain('get_products');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'governance')?.tools).toContain('check_governance');
+    expect(body._training_agent_tenants.find(t => t.tenant_id === 'si')?.tools).toContain('si_initiate_session');
   });
 
   it('routes /brand/mcp to the brand tenant', async () => {
@@ -205,6 +210,159 @@ describe('Tenant routes via host-based dispatch (no /api/training-agent prefix)'
     const tools = (res.body.result?.tools ?? []) as Array<{ name: string }>;
     const names = new Set(tools.map(t => t.name));
     expect(names.has('get_brand_identity')).toBe(true);
+  });
+
+  it('accepts the 3.2 context-only execution shape through the pinned SDK transport overlay', async () => {
+    const keyId = createHash('sha256')
+      .update('test-token-for-legacy-mcp')
+      .digest('hex')
+      .slice(0, 32);
+    const caller = `https://training-agent.adcontextprotocol.org/authenticated/${keyId}`;
+    const planId = `plan-transport-${randomUUID()}`;
+    const call = (id: number, name: string, args: Record<string, unknown>) => request(app)
+      .post('/governance/mcp')
+      .set('Authorization', AUTH)
+      .set('Content-Type', 'application/json')
+      .set('Accept', 'application/json, text/event-stream')
+      .send({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } });
+
+    const synced = await call(10, 'sync_plans', {
+      idempotency_key: `sync-${randomUUID()}`,
+      plans: [{
+        plan_id: planId,
+        brand: { domain: 'transport-overlay.example' },
+        objectives: 'Prove source-aligned governance transport validation.',
+        budget: { total: 1000, currency: 'USD', reallocation_threshold: 1000 },
+        flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+      }],
+    });
+    expect(synced.body.result?.structuredContent?.adcp_error).toBeUndefined();
+
+    const intent = await call(11, 'check_governance', {
+      idempotency_key: `intent-${randomUUID()}`,
+      plan_id: planId,
+      brand: { domain: 'transport-overlay.example' },
+      caller,
+      target_agent: caller,
+      tool: 'create_media_buy',
+      payload: {
+        total_budget: { amount: 100, currency: 'USD' },
+      },
+    });
+    const context = intent.body.result?.structuredContent?.governance_context;
+    expect(context).toEqual(expect.any(String));
+
+    const execution = await call(12, 'check_governance', {
+      idempotency_key: `execution-${randomUUID()}`,
+      caller,
+      governance_context: context,
+      phase: 'purchase',
+      planned_delivery: { total_budget: 80, currency: 'USD' },
+    });
+    const body = execution.body.result?.structuredContent;
+    expect(body?.adcp_error, JSON.stringify(execution.body)).toBeUndefined();
+    expect(body?.verdict).toBe('approved');
+    expect(body).not.toHaveProperty('plan_id');
+  });
+
+  it('propagates authenticated agent identity through governed service tenants', async () => {
+    const keyId = createHash('sha256')
+      .update('test-token-for-legacy-mcp')
+      .digest('hex')
+      .slice(0, 32);
+    const caller = `https://training-agent.adcontextprotocol.org/authenticated/${keyId}`;
+    const brand = { domain: `governed-transport-${randomUUID()}.example` };
+    const account = { brand, operator: brand.domain };
+    const planId = `plan-governed-transport-${randomUUID()}`;
+    let callId = 20;
+    const call = (tenant: string, name: string, args: Record<string, unknown>) => request(app)
+      .post(`/${tenant}/mcp`)
+      .set('Authorization', AUTH)
+      .set('Content-Type', 'application/json')
+      .set('Accept', 'application/json, text/event-stream')
+      .send({
+        jsonrpc: '2.0',
+        id: callId++,
+        method: 'tools/call',
+        params: { name, arguments: args },
+      });
+
+    const synced = await call('governance', 'sync_plans', {
+      idempotency_key: `sync-${randomUUID()}`,
+      brand,
+      plans: [{
+        plan_id: planId,
+        brand,
+        objectives: 'Verify authenticated identity reaches governed service handlers.',
+        budget: { total: 10_000, currency: 'USD', reallocation_threshold: 10_000 },
+        flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+      }],
+    });
+    expect(synced.body.result?.structuredContent?.adcp_error, JSON.stringify(synced.body)).toBeUndefined();
+
+    const product = buildCatalog()[0]!.product;
+    const salesPayload = {
+      idempotency_key: `buy-${randomUUID()}`,
+      account,
+      brand,
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: product.pricing_options[0]!.pricing_option_id,
+        budget: 5_000,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+      }],
+    };
+    const salesIntent = await call('governance', 'check_governance', {
+      idempotency_key: `check-${randomUUID()}`,
+      brand,
+      plan_id: planId,
+      caller,
+      target_agent: `${getCanonicalBase()}/sales`,
+      tool: 'create_media_buy',
+      payload: salesPayload,
+    });
+    const salesContext = salesIntent.body.result?.structuredContent?.governance_context;
+    expect(salesContext, JSON.stringify(salesIntent.body)).toEqual(expect.any(String));
+
+    const created = await call('sales', 'create_media_buy', {
+      ...salesPayload,
+      governance_context: salesContext,
+    });
+    const createdBody = created.body.result?.structuredContent;
+    expect(createdBody?.adcp_error, JSON.stringify(created.body)).toBeUndefined();
+    expect(createdBody?.media_buy_id).toEqual(expect.any(String));
+
+    const signalPayload = {
+      idempotency_key: `signal-${randomUUID()}`,
+      account,
+      signal_agent_segment_id: 'trident_likely_ev_buyers',
+      pricing_option_id: 'po_trident_ev_cpm',
+      destinations: [{ type: 'agent', agent_url: 'https://activation-target.example' }],
+    };
+    const signalIntent = await call('governance', 'check_governance', {
+      idempotency_key: `check-${randomUUID()}`,
+      brand,
+      plan_id: planId,
+      caller,
+      target_agent: `${getCanonicalBase()}/signals`,
+      purchase_type: 'signal_activation',
+      proposed_commitment: { amount: 3.5, currency: 'USD' },
+      tool: 'activate_signal',
+      payload: signalPayload,
+    });
+    const signalContext = signalIntent.body.result?.structuredContent?.governance_context;
+    expect(signalContext, JSON.stringify(signalIntent.body)).toEqual(expect.any(String));
+
+    const activated = await call('signals', 'activate_signal', {
+      ...signalPayload,
+      governance_context: signalContext,
+    });
+    const activatedBody = activated.body.result?.structuredContent;
+    expect(activatedBody?.adcp_error, JSON.stringify(activated.body)).toBeUndefined();
+    expect(activatedBody?.deployments?.[0]?.is_live).toBe(true);
   });
 
   it('returns signing headers on tenant OPTIONS preflight', async () => {

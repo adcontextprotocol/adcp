@@ -61,7 +61,10 @@ Returns an array of media buys with current status, creative approval state, and
 | `status` | Current status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`). Maps to `media_buy_status` on `create_media_buy` / `update_media_buy` success responses (3.1 vocabulary note above). |
 | `status_as_of` | ISO 8601 timestamp when the seller last refreshed the returned media-buy-level `status` from its source of truth. For rolled-up statuses, this MUST NOT be later than the oldest upstream status observation that could affect the returned roll-up. Optional; omitted or `null` makes no freshness assertion, and buyers MUST NOT infer live status from absence. Use this to interpret cached or rolled-up statuses separately from `updated_at`, which means the media buy's last modification time. |
 | `currency` | ISO 4217 currency for media-buy-level monetary values |
-| `total_budget` | Total campaign budget (in `currency`) |
+| `total_budget` | Hard aggregate lifetime budget (in `currency`) |
+| `budget_allocation` | Fixed or seller-optimized cross-package allocation configuration. Omission means fixed for legacy buys. |
+| `pacing` | Aggregate media-buy pacing strategy |
+| `bidding` | Media-buy-authored bidding policy. Packages that inherit it omit their own `bidding` block. |
 | `creative_deadline` | Creative upload deadline (ISO 8601) |
 | `confirmed_at` | ISO 8601 timestamp when the seller committed to this media buy. May be `null` until seller commitment occurs in deferred/manual approval flows; stable after it is set. |
 | `cancellation` | Cancellation metadata (present only when `status` is `canceled`). Object with `canceled_at` (ISO 8601), `canceled_by` (`"buyer"` or `"seller"`), and optional `reason`. |
@@ -78,8 +81,13 @@ Returns an array of media buys with current status, creative approval state, and
 |-------|-------------|
 | `package_id` | Seller's package identifier |
 | `product_id` | Product identifier this package is purchased from. For packages created from an explicit `create_media_buy` package request, sellers MUST echo the request package's `product_id` on every response package object that represents that requested package. |
-| `currency` | Optional package-level currency override (defaults to media buy `currency`) |
-| `bid_price` | Current bid price for auction-based packages (in package `currency` if present, otherwise media buy `currency`) |
+| `budget` | Hard lifetime package spend cap in `media_buy.currency`. In seller-optimized mode this is not a current allocation and may be absent. |
+| `min_spend_target` | Soft lifetime package spend target in `media_buy.currency` accepted for seller-optimized allocation. |
+| `pacing` | Package pacing preference. It is subordinate to media-buy aggregate `pacing` and cannot cause aggregate delivery to exceed that strategy. |
+| `currency` | Legacy/external-buy package denomination. For AdCP-authored buys this equals `media_buy.currency`; it does not reinterpret canonical budget or bidding amounts. |
+| `bidding` | Package-authored bidding override. `{automatic: true}` explicitly overrides media-buy controls; omission inherits media-buy `bidding`. |
+| `bid_price` | Deprecated legacy bid representation; 3.2 sellers should normalize and echo `bidding`. |
+| `optimization_goals` | Current package objective functions, separate from currency-bearing `bidding` policy. |
 | `format_ids` | Legacy named-format IDs supplied on `create_media_buy`, echoed whenever the original request included them, including dual-emission cases where another selector won precedence. |
 | `format_option_refs` | Structured 3.1+ format option references supplied on `create_media_buy`, echoed whenever the original request included them. |
 | `format_kind` | Direct canonical selector supplied on `create_media_buy`, echoed whenever the original request included it, including informational-echo cases where another selector won precedence. |
@@ -94,7 +102,8 @@ Returns an array of media buys with current status, creative approval state, and
 | `creative_deadline` | Per-package creative deadline (ISO 8601). When absent, the media buy's `creative_deadline` applies. |
 | `context` | Opaque package-level correlation data echoed unchanged from the `create_media_buy` package request. Sellers MUST include persisted context when the package was created through AdCP with context, and MAY omit it for packages created outside AdCP or without context. Buyers targeting mixed seller populations can use the per-package correlation value they included on create, commonly `context.buyer_ref`, to map `package_id` back to their line items when a legacy create response did not echo `product_id`. |
 | `creative_approvals` | Array of creative approval states (see below) |
-| `format_ids_pending` | Format IDs from `format_ids_to_provide` not yet uploaded |
+| `formats_pending` | Canonical package-time format declarations from `formats_to_provide` that do not yet have creative coverage. Full declarations let buyers select a compatible creative agent even when no option ID exists. |
+| `format_ids_pending` | **Deprecated in 3.2.** Legacy named-format projection of `formats_pending` for older 3.x peers. |
 | `snapshot_unavailable_reason` | Reason code when `include_snapshot: true` but no snapshot is returned for this package |
 | `snapshot` | Near-real-time delivery snapshot (when `include_snapshot: true`) |
 
@@ -143,7 +152,7 @@ History entries are **append-only** — sellers MUST NOT modify or delete previo
 
 **`not_delivering`** means the package is within its scheduled flight but has delivered zero impressions for at least one full staleness cycle. Implementers must not return `not_delivering` until `staleness_seconds` have elapsed since package activation — a new package with no impressions in its first minutes is expected, not a problem. Check `start_time` to confirm the package is within its flight before acting on this status.
 
-Money fields use this currency precedence: `snapshot.currency` -> `package.currency` -> `media_buy.currency`.
+For AdCP-authored buys, budget constraints and canonical bidding always use `media_buy.currency`. `snapshot.currency` identifies the reporting denomination for snapshot spend, and legacy/external buys may still carry `package.currency`; neither changes the denomination of buyer-authored 3.2 controls.
 
 ### Webhook Activity
 
@@ -151,15 +160,16 @@ When `include_webhook_activity: true`, each returned media buy MAY carry a `webh
 
 The record shape, request-field names, scoping, retention floor, three-state presence, and cardinality rules are uniform across AdCP resources that adopt this surface. See [Webhook activity log pattern](/docs/protocol/snapshot-and-log#webhook-activity-log-pattern) on the snapshot/log contract page for the cross-resource normative section — the rules below restate it for the media-buy call site and add the media-buy-specific capability gate.
 
-The surface covers both delivery-report notification types (`scheduled`, `final`, `delayed`, `adjusted`) and health notification types (`impairment`). All share the same webhook delivery contract and the same buyer-side debug need.
+The surface covers both delivery-report notification types (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`) and health notification types (`impairment`). All share the same webhook delivery contract and the same buyer-side debug need.
 
 | Field | Description |
 |-------|-------------|
 | `idempotency_key` | Equals the `idempotency_key` carried in the webhook payload itself ([§ Dedup by `idempotency_key`](/docs/building/by-layer/L3/webhooks#dedup-by-idempotency_key)). Stable across retries of the same logical fire — buyers correlate this surface with their own endpoint logs via this exact field. Reference it when filing support tickets. |
+| `notification_id` | Optional event-layer id copied from the webhook payload when the notification type defines one. Sellers SHOULD populate it on newly recorded attempts and MUST preserve the payload value when they do. It may be absent on retained records created before 3.2; point-in-time delivery-report fires do not define it. |
 | `subscriber_id` | Identifies which registered webhook subscriber received this fire. Absent in single-subscriber configurations; populated under multi-subscriber buys (4.0+, see [#3009](https://github.com/adcontextprotocol/adcp/issues/3009)). |
 | `fired_at` | ISO 8601 timestamp when the seller initiated this attempt. |
 | `completed_at` | ISO 8601 timestamp when the response was observed (or terminal failure). Null while `status` is `pending`. |
-| `notification_type` | Verbatim from the webhook payload: `scheduled`, `final`, `delayed`, `adjusted`, `impairment`. |
+| `notification_type` | Verbatim from the webhook payload: `scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`. |
 | `sequence_number` | Sequence number from the webhook payload — useful for spotting stale-sequence drops or gaps. Absent when the notification type does not carry one. |
 | `attempt` | 1-indexed retry counter for this logical fire. Initial fire is `attempt: 1`. |
 | `status` | `success`, `failed`, `timeout`, `connection_error`, or `pending`. See semantics below. |
@@ -364,8 +374,9 @@ if (validated.errors?.length > 0) {
 for (const mediaBuy of validated.media_buys) {
   for (const pkg of mediaBuy.packages) {
     // Check for missing creatives
-    if (pkg.format_ids_pending?.length > 0) {
-      console.log(`Package ${pkg.package_id}: missing formats ${pkg.format_ids_pending.map(f => f.id).join(', ')}`);
+    if (pkg.formats_pending?.length > 0) {
+      const labels = pkg.formats_pending.map(f => f.format_option_id ?? f.format_kind);
+      console.log(`Package ${pkg.package_id}: missing formats ${labels.join(', ')}`);
     }
 
     // Check approval states
@@ -396,9 +407,9 @@ async def main():
     for media_buy in result.media_buys:
         for pkg in media_buy.packages:
             # Check for missing creatives
-            if pkg.format_ids_pending:
-                ids = [f.id for f in pkg.format_ids_pending]
-                print(f"Package {pkg.package_id}: missing formats {', '.join(ids)}")
+            if pkg.formats_pending:
+                labels = [f.format_option_id or f.format_kind for f in pkg.formats_pending]
+                print(f"Package {pkg.package_id}: missing formats {', '.join(labels)}")
 
             # Check approval states
             for approval in pkg.creative_approvals or []:
@@ -502,8 +513,8 @@ const [mediaBuy] = validated.media_buys;
 const issues = [];
 
 for (const pkg of mediaBuy.packages) {
-  if (pkg.format_ids_pending?.length > 0) {
-    issues.push(`Package ${pkg.package_id}: ${pkg.format_ids_pending.length} format(s) not yet uploaded`);
+  if (pkg.formats_pending?.length > 0) {
+    issues.push(`Package ${pkg.package_id}: ${pkg.formats_pending.length} format(s) not yet uploaded`);
   }
 
   const rejected = (pkg.creative_approvals ?? []).filter(a => a.approval_status === 'rejected');
@@ -534,8 +545,8 @@ async def main():
     issues = []
 
     for pkg in media_buy.packages:
-        if pkg.format_ids_pending:
-            issues.append(f"Package {pkg.package_id}: {len(pkg.format_ids_pending)} format(s) not yet uploaded")
+        if pkg.formats_pending:
+            issues.append(f"Package {pkg.package_id}: {len(pkg.formats_pending)} format(s) not yet uploaded")
 
         rejected = [a for a in (pkg.creative_approvals or []) if a.approval_status == 'rejected']
         if rejected:

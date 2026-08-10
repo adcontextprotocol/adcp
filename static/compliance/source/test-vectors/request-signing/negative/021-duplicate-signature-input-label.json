@@ -1,6 +1,7 @@
 {
   "name": "Signature-Input header declares label 'sig1' twice (malformed structured dictionary)",
   "spec_reference": "#verifier-checklist-requests step 1 (RFC 9421 §4.1 Signature-Input is a Dictionary; duplicate keys malformed)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

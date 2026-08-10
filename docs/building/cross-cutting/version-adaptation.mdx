@@ -15,6 +15,10 @@ Three versions move at the same time when you ship an AdCP agent or client:
 
 Official SDKs ship three concrete mechanisms so adopters don't carry the translation matrix in handler code. This page is the recipe per mechanism. For the conceptual background see the [SDK stack — Version adaptation section](/docs/building/cross-cutting/sdk-stack#version-adaptation). For the spec-side rules see [Versioning](/docs/reference/versioning).
 
+<Warning>
+AdCP v2.5 is end of life. The v2.5 examples below describe a temporary migration bridge for existing integrations, not a supported production configuration. New integrations must use v3.
+</Warning>
+
 ## Mechanism 1 — Pin the spec version per call
 
 Use this when you're a **client** talking to a peer that's pinned to an older (or newer beta) spec version. The SDK runs your request and the peer's response through adapter modules so your handler code stays on the canonical (current) shape.
@@ -159,10 +163,10 @@ This is the third mechanism rather than a fallback to the first: negotiation tel
 
 ## Putting it together
 
-A typical multi-version production setup:
+A supported multi-version production setup, with an optional migration-only bridge for an end-of-life v2.5 peer:
 
 1. **Server**: declare `supported_versions: ['3.0', '3.1']` in capabilities. The SDK accepts both on the wire and returns `VERSION_UNSUPPORTED` to anyone outside the set. (Only declare a version your handlers actually satisfy.)
-2. **Client (per peer)**: pin `adcpVersion` (e.g., `'v2.5'`) based on what the registry or peer's capabilities advertise. The client-side adapters translate the wire shape so your application code stays on the current spec.
+2. **Client (per peer)**: pin `adcpVersion` to a supported release based on what the registry or peer's capabilities advertise. Use `'v2.5'` only as a short-lived migration bridge for an existing end-of-life peer; the client-side adapters translate its wire shape so your application code stays on the current spec.
 3. **SDK upgrades**: bump the SDK on your schedule; switch to the new entry point per specialism over time; keep the rest on the legacy import until you're ready.
 
 The combined effect: **one handler codebase, three version axes, no fork.**

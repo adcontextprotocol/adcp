@@ -27,6 +27,21 @@ describe('schema release discovery status', () => {
     });
   });
 
+  it('marks v2 releases deprecated without removing them from aliases', () => {
+    expect(isSelectableRelease('2.5.3')).toBe(true);
+    expect(getReleaseMetadata('2.5.3')).toEqual({
+      stability: 'stable',
+      prerelease: false,
+      deprecated: true,
+    });
+
+    const discovery = buildRootSchemaDiscovery();
+    expect(discovery.aliases.v2).toBe('2.5.3');
+    expect(discovery.aliases['v2.5']).toBe('2.5.3');
+    expect(discovery.versions.find(({ version }: { version: string }) => version === '2.5.3'))
+      .toMatchObject({ deprecated: true });
+  });
+
   it('excludes non-selectable versions from stable aliases and latest', () => {
     const discovery = buildRootSchemaDiscovery();
     const withdrawn = discovery.versions.find(({ version }: { version: string }) => version === '3.1.3');

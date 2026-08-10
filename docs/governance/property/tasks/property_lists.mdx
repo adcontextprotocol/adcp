@@ -145,13 +145,13 @@ Configure webhooks via `update_property_list` to receive notifications when the 
   },
   "resolved_at": "2026-01-03T18:00:00Z",
   "cache_valid_until": "2026-01-04T18:00:00Z",
-  "signature": "..."
+  "signature": "rfc9421"
 }
 ```
 
 The webhook payload includes counts but NOT the actual properties. This keeps payloads small and avoids redundant data transfer when recipients may not need the full list immediately.
 
-Recipients MUST verify the `signature` before processing and MUST dedupe by `idempotency_key` so retried deliveries of the same change event are ignored.
+Recipients MUST verify the delivery's RFC 9421 `Signature`, `Signature-Input`, and `Content-Digest` HTTP headers before processing, following the [webhook profile](/docs/building/by-layer/L1/security#webhook-callbacks). The required body-level `signature: "rfc9421"` is a deprecated compatibility marker retained through 3.x; receivers MUST ignore it for authentication. Recipients MUST also dedupe by `idempotency_key` so retried deliveries of the same change event are ignored.
 
 ### Webhook Use Cases
 

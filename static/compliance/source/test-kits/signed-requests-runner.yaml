@@ -3,8 +3,9 @@
 # Applies to: universal/signed-requests.yaml (gated on
 # `request_signing.supported: true` in get_adcp_capabilities).
 #
-# The signed-requests storyboard grades an agent's RFC 9421 verifier against 28
-# conformance vectors at /compliance/{version}/test-vectors/request-signing/.
+# The signed-requests storyboard's current black-box contract grades the legacy
+# 3.1 RFC 9421 profile against conformance vectors at
+# /compliance/{version}/test-vectors/request-signing/negative/.
 # Most vectors are pure black-box: the runner constructs a signed HTTP request,
 # sends it, and checks the response. Three negative vectors assert behavior that
 # depends on verifier state the runner cannot set from the outside:

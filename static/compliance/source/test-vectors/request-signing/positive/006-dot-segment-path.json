@@ -1,6 +1,7 @@
 {
   "name": "URL path has a /./ segment; canonicalization collapses it",
   "spec_reference": "#adcp-rfc-9421-profile (@target-uri canonicalization step 5: remove_dot_segments)",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

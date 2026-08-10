@@ -345,9 +345,7 @@ phases:
           creatives:
             - creative_id: "native_trail_pro"
               name: "Trail Pro 3000 - Native"
-              format_id:
-                agent_url: "https://social-platform.example.com"
-                id: "native_feed"
+              format_kind: "native_in_feed"
               assets:
                 image:
                   asset_type: "image"
@@ -491,9 +489,7 @@ phases:
           creatives:
             - creative_id: "acme_dpa_spring_2026"
               name: "Acme Outdoor — Spring DPA template"
-              format_id:
-                agent_url: "https://creative.adcontextprotocol.org"
-                id: "product_carousel_3_to_10"
+              format_kind: "image_carousel"
               assets:
                 impression_pixel:
                   asset_type: "url"
@@ -641,9 +637,7 @@ phases:
           creatives:
             - creative_id: "sales_social_substitution_probe_creative_v1"
               name: "Substitution safety probe DPA"
-              format_id:
-                agent_url: "https://creative.adcontextprotocol.org"
-                id: "product_carousel_3_to_10"
+              format_kind: "image_carousel"
               assets:
                 product_catalog:
                   asset_type: "catalog"
@@ -692,9 +686,7 @@ phases:
           format: "html"
           item_limit: 5
           creative_manifest:
-            format_id:
-              agent_url: "https://creative.adcontextprotocol.org"
-              id: "product_carousel_3_to_10"
+            format_kind: "image_carousel"
             assets:
               product_catalog:
                 asset_type: "catalog"

@@ -30,6 +30,7 @@ import { decrypt } from '../../src/db/encryption.js';
 const RUN_SUFFIX = Math.random().toString(36).slice(2, 8);
 const TEST_USER_ID = `user_test_oauth_${RUN_SUFFIX}`;
 const TEST_ORG_ID = `org_test_oauth_${RUN_SUFFIX}`;
+const SECOND_ORG_ID = `org_test_oauth_second_${RUN_SUFFIX}`;
 const TEST_AGENT_URL = 'https://agent.example.com';
 const OTHER_AGENT_URL = 'https://another-agent.example.com';
 
@@ -118,6 +119,27 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
        ON CONFLICT (workos_organization_id) DO UPDATE SET agents = EXCLUDED.agents, updated_at = NOW()`,
       [TEST_ORG_ID, JSON.stringify([{ url: TEST_AGENT_URL, name: 'Test agent' }])],
     );
+    // A second organization owned by the same user lets focused tests
+    // register the same URL in both orgs. It stays empty by default so the
+    // legacy URL-only test cases remain deterministic.
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+       VALUES ($1, 'Second OAuth Integration Org', NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      [SECOND_ORG_ID],
+    );
+    await pool.query(
+      `INSERT INTO organization_memberships (workos_organization_id, workos_user_id, email, role, created_at, updated_at)
+       VALUES ($1, $2, 'oauth-int@test.com', 'admin', NOW(), NOW())
+       ON CONFLICT (workos_organization_id, workos_user_id) DO NOTHING`,
+      [SECOND_ORG_ID, TEST_USER_ID],
+    );
+    await pool.query(
+      `INSERT INTO member_profiles (workos_organization_id, display_name, slug, agents, created_at, updated_at)
+       VALUES ($1, 'Second OAuth Integration Org', 'test-oauth-integration-second', $2::jsonb, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE SET agents = EXCLUDED.agents, updated_at = NOW()`,
+      [SECOND_ORG_ID, JSON.stringify([])],
+    );
 
     server = new HTTPServer();
     await server.start(0);
@@ -126,10 +148,10 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
 
   afterAll(async () => {
     // Tear down in FK order.
-    await pool.query('DELETE FROM agent_contexts WHERE organization_id = $1', [TEST_ORG_ID]);
-    await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = $1', [TEST_ORG_ID]);
-    await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = $1', [TEST_ORG_ID]);
-    await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query('DELETE FROM agent_contexts WHERE organization_id = ANY($1)', [[TEST_ORG_ID, SECOND_ORG_ID]]);
+    await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = ANY($1)', [[TEST_ORG_ID, SECOND_ORG_ID]]);
+    await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = ANY($1)', [[TEST_ORG_ID, SECOND_ORG_ID]]);
+    await pool.query('DELETE FROM organizations WHERE workos_organization_id = ANY($1)', [[TEST_ORG_ID, SECOND_ORG_ID]]);
     await server?.stop();
     await closeDatabase();
   });
@@ -137,7 +159,11 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
   beforeEach(async () => {
     // Clear saved credentials between tests so each case starts from a
     // known state. Also reset the SDK-exchange mock.
-    await pool.query('DELETE FROM agent_contexts WHERE organization_id = $1', [TEST_ORG_ID]);
+    await pool.query('DELETE FROM agent_contexts WHERE organization_id = ANY($1)', [[TEST_ORG_ID, SECOND_ORG_ID]]);
+    await pool.query(
+      'UPDATE member_profiles SET agents = $2::jsonb WHERE workos_organization_id = $1',
+      [SECOND_ORG_ID, JSON.stringify([])],
+    );
     exchangeMock.mockReset();
     // Reset the Postgres-backed rate-limit counter for brand:* keys. Both
     // save and test endpoints run through `brandCreationRateLimiter` (60/hr),
@@ -146,6 +172,13 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
     // within an hour eventually trigger 429 flakes.
     await pool.query("DELETE FROM rate_limit_hits WHERE key LIKE 'brand:%'");
   });
+
+  async function registerAgentInSecondOrg(): Promise<void> {
+    await pool.query(
+      'UPDATE member_profiles SET agents = $2::jsonb WHERE workos_organization_id = $1',
+      [SECOND_ORG_ID, JSON.stringify([{ url: TEST_AGENT_URL, name: 'Shared test agent' }])],
+    );
+  }
 
   // ── PUT /connect ────────────────────────────────────────────────
 
@@ -235,6 +268,54 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       expect(res.body.agent_context_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     });
 
+    it('creates the OAuth context in the explicitly selected organization', async () => {
+      await registerAgentInSecondOrg();
+      const res = await request(app)
+        .put(url)
+        .send({ organization_id: SECOND_ORG_ID });
+      expect(res.status).toBe(200);
+
+      const stored = await pool.query(
+        'SELECT organization_id FROM agent_contexts WHERE id = $1',
+        [res.body.agent_context_id],
+      );
+      expect(stored.rows).toEqual([{ organization_id: SECOND_ORG_ID }]);
+    });
+
+    it('does not fall back to another org when the selected org lacks ownership', async () => {
+      const res = await request(app)
+        .put(url)
+        .send({ organization_id: 'org_not_owned' });
+      expect(res.status).toBe(403);
+
+      const stored = await pool.query(
+        'SELECT id FROM agent_contexts WHERE organization_id = ANY($1)',
+        [[TEST_ORG_ID, SECOND_ORG_ID]],
+      );
+      expect(stored.rows).toHaveLength(0);
+    });
+
+    it('fails closed when organization is omitted and multiple orgs own the URL', async () => {
+      await registerAgentInSecondOrg();
+
+      const res = await request(app).put(url).send({});
+      expect(res.status).toBe(403);
+
+      const stored = await pool.query(
+        'SELECT id FROM agent_contexts WHERE organization_id = ANY($1)',
+        [[TEST_ORG_ID, SECOND_ORG_ID]],
+      );
+      expect(stored.rows).toHaveLength(0);
+    });
+
+    it('rejects a malformed selected organization instead of falling back', async () => {
+      const res = await request(app)
+        .put(url)
+        .send({ organization_id: [] });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/organization_id/);
+    });
+
     it('returns 403 for an agent the user does not own', async () => {
       const res = await request(app)
         .put(`/api/registry/agents/${encodeURIComponent(OTHER_AGENT_URL)}/connect`)
@@ -301,7 +382,8 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       );
       expect(r.rows[0]).toMatchObject({
         oauth_cc_scope: 'adcp',
-        oauth_cc_resource: TEST_AGENT_URL,
+        // scalar resources are stored with the v1s: prefix to prevent codec collisions
+        oauth_cc_resource: `v1s:${TEST_AGENT_URL}`,
         oauth_cc_auth_method: 'body',
       });
     });
@@ -327,6 +409,47 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       const res = await request(app).put(url).send(missing);
       expect(res.status).toBe(400);
       expect(res.body.error).toMatch(/client_id/);
+    });
+
+    it('saves an array resource and stores it with the v1a: storage prefix', async () => {
+      const resources = ['https://api1.example.com', 'https://api2.example.com'];
+      await request(app)
+        .put(url)
+        .send({ ...validBody, resource: resources })
+        .expect(200);
+
+      const r = await pool.query(
+        `SELECT oauth_cc_resource FROM agent_contexts WHERE organization_id = $1 AND agent_url = $2`,
+        [TEST_ORG_ID, TEST_AGENT_URL],
+      );
+      // Verify the typed codec prefix is written to the TEXT column
+      expect(r.rows[0].oauth_cc_resource).toBe(`v1a:${JSON.stringify(resources)}`);
+    });
+
+    it('codec collision: scalar resource starting with "v1a:" round-trips as a scalar string', async () => {
+      // A scalar value whose text starts with "v1a:" would be decoded as an array if stored
+      // bare. The encoder writes it as "v1s:v1a:..." so the decoder returns the original scalar.
+      const collisionValue = 'v1a:["https://a"]';
+      await request(app)
+        .put(url)
+        .send({ ...validBody, resource: collisionValue })
+        .expect(200);
+
+      const r = await pool.query(
+        `SELECT oauth_cc_resource FROM agent_contexts WHERE organization_id = $1 AND agent_url = $2`,
+        [TEST_ORG_ID, TEST_AGENT_URL],
+      );
+      // DB column must be the v1s:-tagged form
+      expect(r.rows[0].oauth_cc_resource).toBe(`v1s:${collisionValue}`);
+
+      // Round-trip via the test endpoint: the SDK should receive the original scalar
+      exchangeMock.mockResolvedValueOnce({ access_token: 'tok', token_type: 'Bearer' });
+      const testRes = await request(app).post(`${url}/test`).send({});
+      expect(testRes.status).toBe(200);
+      expect(exchangeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ resource: collisionValue }),
+        expect.anything(),
+      );
     });
 
     it('returns 403 for an agent the user does not own', async () => {
@@ -401,12 +524,37 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       });
     });
 
+    it('passes a decoded resource array to the exchange mock after save/load round-trip', async () => {
+      const resources = ['https://api1.example.com', 'https://api2.example.com'];
+      await request(app).put(saveUrl).send({ ...validBody, resource: resources }).expect(200);
+      exchangeMock.mockResolvedValueOnce({ access_token: 'tok', token_type: 'Bearer' });
+
+      const res = await request(app).post(testUrl).send({});
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+
+      // The credentials passed to the SDK exchange must carry the decoded array
+      expect(exchangeMock).toHaveBeenCalledWith(
+        expect.objectContaining({ resource: resources }),
+        expect.anything(),
+      );
+    });
+
     it('returns 403 when the user does not own the agent', async () => {
       const res = await request(app)
         .post(`/api/registry/agents/${encodeURIComponent(OTHER_AGENT_URL)}/oauth-client-credentials/test`)
         .send({});
       expect(res.status).toBe(403);
     });
+
+    it('returns 400 when PUT receives an empty resource array', async () => {
+      const res = await request(app)
+        .put(saveUrl)
+        .send({ ...validBody, resource: [] });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/array/i);
+    });
+
   });
 
   // ── GET /auth-status ────────────────────────────────────────────
@@ -429,6 +577,39 @@ describe('registry-api OAuth credential endpoints (integration)', () => {
       const res = await request(app).get(statusUrl).expect(200);
       expect(res.body).toMatchObject({ has_auth: true, auth_type: 'bearer' });
     });
+
+    it('reports auth only from the explicitly selected organization', async () => {
+      await registerAgentInSecondOrg();
+      await request(app)
+        .put(`/api/registry/agents/${encodeURIComponent(TEST_AGENT_URL)}/connect`)
+        .send({
+          auth_token: 'second-org-bearer',
+          auth_type: 'bearer',
+          organization_id: SECOND_ORG_ID,
+        })
+        .expect(200);
+
+      const secondOrg = await request(app)
+        .get(statusUrl)
+        .query({ org: SECOND_ORG_ID })
+        .expect(200);
+      expect(secondOrg.body).toMatchObject({ has_auth: true, auth_type: 'bearer' });
+
+      const firstOrg = await request(app)
+        .get(statusUrl)
+        .query({ org: TEST_ORG_ID })
+        .expect(200);
+      expect(firstOrg.body).toMatchObject({ has_auth: false, agent_context_id: null });
+    });
+
+    it.each(['org[]=org_a', 'org[0]=org_a', 'org.value=org_a'])(
+      'rejects malformed org query %s instead of reading an arbitrary context',
+      async (query) => {
+        const res = await request(app).get(`${statusUrl}?${query}`);
+        expect(res.status).toBe(400);
+        expect(res.body.error).toMatch(/org/);
+      },
+    );
 
     it('canonicalizes the requested URL before ownership and auth-context lookup', async () => {
       await request(app)

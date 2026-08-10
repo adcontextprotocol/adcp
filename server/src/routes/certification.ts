@@ -18,6 +18,13 @@ import {
   CredentialRecoveryConflictError,
   ensureCertifierCredential,
 } from '../services/certification-credential-issuance.js';
+import {
+  confirmCertificationContribution,
+  getCertificationContributions,
+  getCertificationExperienceMetrics,
+  getCertificationModuleExperience,
+  recordCertificationExperienceEvent,
+} from '../services/certification-experience.js';
 
 const logger = createLogger('certification-routes');
 
@@ -335,10 +342,101 @@ export function createCertificationRouters() {
         certDb.getPublicUserCredentials(userId),
       ]);
 
-      res.json({ progress, trackProgress, certifications, credentials });
+      const experiences = await Promise.all(
+        progress
+          .filter(item => item.status === 'in_progress')
+          .map(item => getCertificationModuleExperience(userId, item.module_id)),
+      );
+      const experienceByModule = new Map(
+        experiences.filter(Boolean).map(experience => [experience!.module_id, experience]),
+      );
+      res.json({
+        progress: progress.map(item => ({
+          ...item,
+          experience: experienceByModule.get(item.module_id) ?? null,
+        })),
+        trackProgress,
+        certifications,
+        credentials,
+      });
     } catch (error) {
       logger.error({ error }, 'Failed to get certification progress');
       res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/me/certification/modules/:id/experience — authoritative learner-facing state
+  userRouter.get('/certification/modules/:id/experience', async (req, res) => {
+    try {
+      const experience = await getCertificationModuleExperience(req.user!.id, req.params.id.toUpperCase());
+      if (!experience) return res.status(404).json({ error: 'Module not found' });
+      res.json(experience);
+    } catch (error) {
+      logger.error({ error, moduleId: req.params.id }, 'Failed to get module experience');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/me/certification/modules/:id/resume — resolve a true resume target
+  userRouter.post('/certification/modules/:id/resume', async (req, res) => {
+    try {
+      const moduleId = req.params.id.toUpperCase();
+      const experience = await getCertificationModuleExperience(req.user!.id, moduleId);
+      if (!experience || (experience.status !== 'in_progress' && experience.status !== 'evidence_complete')) {
+        return res.status(409).json({ error: 'Module is not in progress' });
+      }
+      res.json(experience);
+    } catch (error) {
+      logger.error({ error, moduleId: req.params.id }, 'Failed to resume module');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Count a resume only after the chat UI successfully loaded the stored thread.
+  userRouter.post('/certification/modules/:id/resumed', async (req, res) => {
+    try {
+      const moduleId = req.params.id.toUpperCase();
+      const conversationId = typeof req.body?.conversation_id === 'string'
+        ? req.body.conversation_id
+        : null;
+      const experience = await getCertificationModuleExperience(req.user!.id, moduleId);
+      if (!conversationId || !experience || experience.resume_conversation_id !== conversationId) {
+        return res.status(409).json({ error: 'Resume target does not match current module progress' });
+      }
+      await recordCertificationExperienceEvent({
+        userId: req.user!.id,
+        moduleId,
+        threadId: conversationId,
+        eventType: 'module_resumed',
+        metadata: { checkpoint_saved_at: experience.checkpoint?.saved_at ?? null },
+      });
+      res.json({ success: true });
+    } catch (error) {
+      logger.error({ error, moduleId: req.params.id }, 'Failed to confirm module resume');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  userRouter.get('/certification/contributions', async (req, res) => {
+    try {
+      res.json({ contributions: await getCertificationContributions(req.user!.id) });
+    } catch (error) {
+      logger.error({ error }, 'Failed to get certification contributions');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  userRouter.post('/certification/contributions/:id/confirm', async (req, res) => {
+    try {
+      const issueUrl = typeof req.body?.issue_url === 'string' ? req.body.issue_url.trim() : '';
+      if (!issueUrl) return res.status(400).json({ error: 'GitHub issue URL is required' });
+      const contribution = await confirmCertificationContribution(req.user!.id, req.params.id, issueUrl);
+      if (!contribution) return res.status(404).json({ error: 'Contribution not found' });
+      res.json({ contribution });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to verify contribution';
+      logger.warn({ error, contributionId: req.params.id }, 'Failed to confirm certification contribution');
+      res.status(422).json({ error: message });
     }
   });
 
@@ -1009,12 +1107,17 @@ export function createCertificationRouters() {
 
   // POST /api/admin/certification/backfill-badges — retry Certifier for credentials missing data
   let backfillInProgress = false;
-  adminRouter.post('/backfill-badges', async (_req, res) => {
+  adminRouter.post('/backfill-badges', async (req, res) => {
     if (backfillInProgress) {
       return res.status(409).json({ error: 'Backfill already in progress' });
     }
     backfillInProgress = true;
     try {
+      const requestedCursor = req.body?.cursor;
+      if (requestedCursor != null && !isUuid(requestedCursor)) {
+        return res.status(400).json({ error: 'cursor must be a valid UUID' });
+      }
+
       const { isCertifierConfigured } = await import('../services/certifier-client.js');
 
       if (!isCertifierConfigured()) {
@@ -1037,37 +1140,84 @@ export function createCertificationRouters() {
       }
 
       // Then: backfill badges for credentials missing them
-      const needsBadgeUrl = await query<{
+      type BadgeBackfillRow = {
         id: string; workos_user_id: string; credential_id: string;
+        tier: number;
         certifier_credential_id: string | null; certifier_public_id: string | null;
-      }>(
-        `SELECT uc.id, uc.workos_user_id, uc.credential_id,
-                uc.certifier_credential_id, uc.certifier_public_id
-         FROM user_credentials uc
-         JOIN certification_credentials cc ON cc.id = uc.credential_id
-         WHERE uc.certifier_badge_url IS NULL
-           AND cc.certifier_group_id IS NOT NULL
-         LIMIT 50`
-      );
+      };
 
       let updated = 0;
+      let skippedInactive = 0;
+      let examined = 0;
+      let processed = 0;
       const errors: string[] = [];
+      let cursor: string | null = requestedCursor ?? null;
+      const MAX_EXAMINED = 500;
 
-      for (const row of needsBadgeUrl.rows) {
-        try {
-          const result = await ensureCertifierCredential({
-            userId: row.workos_user_id,
-            credentialId: row.credential_id,
-          });
-          if (result.badgeUrl) updated++;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          errors.push(`${row.credential_id}/${row.workos_user_id}: ${msg}`);
-          logger.error({ error: err, row }, 'Backfill failed for credential');
+      // Keyset pagination prevents inactive paid rows (which intentionally
+      // retain a null badge URL) from occupying the same LIMIT 50 forever and
+      // starving eligible rows later in the result set.
+      while (processed < 50 && examined < MAX_EXAMINED) {
+        const page: { rows: BadgeBackfillRow[] } = await query<BadgeBackfillRow>(
+          `SELECT uc.id, uc.workos_user_id, uc.credential_id, cc.tier,
+                  uc.certifier_credential_id, uc.certifier_public_id
+           FROM user_credentials uc
+           JOIN certification_credentials cc ON cc.id = uc.credential_id
+           WHERE uc.certifier_badge_url IS NULL
+             AND cc.certifier_group_id IS NOT NULL
+             AND ($1::uuid IS NULL OR uc.id > $1::uuid)
+           ORDER BY uc.id
+           LIMIT 50`,
+          [cursor],
+        );
+        if (page.rows.length === 0) break;
+
+        for (const row of page.rows as BadgeBackfillRow[]) {
+          cursor = row.id;
+          examined++;
+          let counted = false;
+          try {
+            if (row.tier > 1) {
+              const active = await certDb.hasEffectiveMembershipForUser(row.workos_user_id);
+              if (!active) {
+                skippedInactive++;
+                continue;
+              }
+            }
+            processed++;
+            counted = true;
+            const result = await ensureCertifierCredential({
+              userId: row.workos_user_id,
+              credentialId: row.credential_id,
+            });
+            if (result.badgeUrl) updated++;
+          } catch (err) {
+            // Membership lookup failures also consume one unit of the bounded
+            // batch, while known-inactive rows do not.
+            if (!counted) processed++;
+            const msg = err instanceof Error ? err.message : String(err);
+            errors.push(`${row.credential_id}/${row.workos_user_id}: ${msg}`);
+            logger.error({ error: err, row }, 'Backfill failed for credential');
+          }
+          if (processed >= 50) break;
         }
+        if (page.rows.length < 50) break;
       }
 
-      res.json({ total: needsBadgeUrl.rows.length, updated, errors, credentialsAwarded });
+      // A cursor lets operators resume after the per-request scan bound. This
+      // prevents a large inactive backlog from creating an unbounded admin
+      // request while still allowing later eligible rows to be reached.
+      const hasMore = processed >= 50 || examined >= MAX_EXAMINED;
+
+      res.json({
+        total: examined,
+        updated,
+        skipped_inactive: skippedInactive,
+        errors,
+        credentialsAwarded,
+        has_more: hasMore,
+        next_cursor: hasMore ? cursor : null,
+      });
     } catch (error) {
       logger.error({ error }, 'Failed to backfill badges');
       res.status(500).json({ error: 'Internal server error' });
@@ -1079,8 +1229,11 @@ export function createCertificationRouters() {
   // GET /api/admin/certification/overview — aggregate metrics
   adminRouter.get('/overview', async (_req, res) => {
     try {
-      const metrics = await certDb.getAdminOverviewMetrics();
-      res.json(metrics);
+      const [metrics, experience] = await Promise.all([
+        certDb.getAdminOverviewMetrics(),
+        getCertificationExperienceMetrics(),
+      ]);
+      res.json({ ...metrics, experience });
     } catch (error) {
       logger.error({ error }, 'Failed to get admin overview metrics');
       res.status(500).json({ error: 'Internal server error' });
@@ -1338,6 +1491,13 @@ export function createCertificationRouters() {
         if (!moduleId) {
           return res.status(409).json({ error: 'Attempt has no capstone module to reconcile' });
         }
+        const module = await certDb.getModule(moduleId);
+        if (!module) {
+          return res.status(409).json({ error: 'Attempt capstone module was not found' });
+        }
+        if (!module.is_free && !(await certDb.hasEffectiveMembershipForUser(attempt.workos_user_id))) {
+          return res.status(409).json({ error: 'Active membership is required to reconcile this paid attempt' });
+        }
 
         const warnings: string[] = [];
         try {
@@ -1371,6 +1531,16 @@ export function createCertificationRouters() {
         scoreValues.reduce((sum, s) => sum + s, 0) / scoreValues.length
       );
       const passing = scoreValues.every(s => s >= 70) && overallScore >= 70;
+
+      if (passing && attempt.module_id) {
+        const module = await certDb.getModule(attempt.module_id);
+        if (!module) {
+          return res.status(409).json({ error: 'Attempt module was not found' });
+        }
+        if (!module.is_free && !(await certDb.hasEffectiveMembershipForUser(attempt.workos_user_id))) {
+          return res.status(409).json({ error: 'Active membership is required to complete this paid attempt' });
+        }
+      }
 
       let updated;
       try {
@@ -1449,6 +1619,9 @@ export function createCertificationRouters() {
       const mod = await certDb.getModule(moduleId);
       if (!mod) {
         return res.status(404).json({ error: 'Module not found' });
+      }
+      if (!mod.is_free && !(await certDb.hasEffectiveMembershipForUser(userId))) {
+        return res.status(409).json({ error: 'Active membership is required to complete this paid module' });
       }
 
       const scoreResult = validateModuleCompletionScores(effectiveScores, mod.assessment_criteria);

@@ -9,16 +9,34 @@
  * agent-supplied address become the Stripe customer of record, which
  * cross-contaminated two distinct organizations (Triton/Encypher, Apr 2026).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
 process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
+
+const { mockCreatePortalSession, mockListMemberships } = vi.hoisted(() => ({
+  mockCreatePortalSession: vi.fn(),
+  mockListMemberships: vi.fn(),
+}));
+
+vi.mock('../../src/billing/stripe-client.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/billing/stripe-client.js')>()),
+  createCustomerPortalSession: mockCreatePortalSession,
+}));
+
+vi.mock('../../src/auth/workos-client.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/auth/workos-client.js')>()),
+  getWorkos: () => ({
+    userManagement: { listOrganizationMemberships: mockListMemberships },
+  }),
+}));
 
 const {
   BILLING_TOOLS,
   createBillingToolHandlers,
 } = await import('../../src/addie/mcp/billing-tools.js');
 const { ADMIN_TOOLS } = await import('../../src/addie/mcp/admin-tools.js');
+const { OrganizationDatabase } = await import('../../src/db/organization-db.js');
 
 function getToolSchema(name: string, source: typeof BILLING_TOOLS | typeof ADMIN_TOOLS) {
   const tool = source.find((t) => t.name === name);
@@ -78,6 +96,104 @@ describe('send_invoice / confirm_send_invoice tools', () => {
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/sign(?:ed)? in/i);
   });
+});
+
+describe('get_billing_portal tool', () => {
+  beforeEach(() => {
+    mockCreatePortalSession.mockReset();
+    mockListMemberships.mockReset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function memberContext(role: 'owner' | 'admin' | 'member' = 'member') {
+    return {
+      is_mapped: true,
+      is_member: true,
+      workos_user: { workos_user_id: 'user_123', email: 'member@example.test' },
+      organization: {
+        workos_organization_id: 'org_123',
+        name: 'Acme Corp',
+        subscription_status: 'active',
+        is_personal: false,
+        membership_tier: 'company_standard',
+      },
+      org_membership: { role, member_count: 3, joined_at: null },
+    };
+  }
+
+  function liveMembership(opts: {
+    role?: 'owner' | 'admin' | 'member';
+    status?: 'active' | 'inactive';
+    organizationId?: string;
+  } = {}) {
+    return {
+      id: 'om_live',
+      userId: 'user_123',
+      organizationId: opts.organizationId ?? 'org_123',
+      role: { slug: opts.role ?? 'member' },
+      status: opts.status ?? 'active',
+    };
+  }
+
+  it('denies an ordinary live organization member before any Stripe call', async () => {
+    mockListMemberships.mockResolvedValue({ data: [liveMembership()] });
+    const handlers = createBillingToolHandlers({
+      ...memberContext('owner'), // stale cached owner must not authorize
+    });
+
+    const result = JSON.parse(await handlers.get('get_billing_portal')!({}));
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/owners and admins/i);
+    expect(mockCreatePortalSession).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['inactive owner', liveMembership({ role: 'owner', status: 'inactive' })],
+    ['owner in another organization', liveMembership({ role: 'owner', organizationId: 'org_other' })],
+  ])('denies %s before any Stripe call', async (_label, membership) => {
+    mockListMemberships.mockResolvedValue({ data: [membership] });
+    const handlers = createBillingToolHandlers(memberContext('owner'));
+
+    const result = JSON.parse(await handlers.get('get_billing_portal')!({}));
+
+    expect(result.success).toBe(false);
+    expect(mockCreatePortalSession).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when live role resolution fails', async () => {
+    mockListMemberships.mockRejectedValue(new Error('WorkOS unavailable'));
+    const handlers = createBillingToolHandlers(memberContext('owner'));
+
+    const result = JSON.parse(await handlers.get('get_billing_portal')!({}));
+
+    expect(result.success).toBe(false);
+    expect(mockCreatePortalSession).not.toHaveBeenCalled();
+  });
+
+  it.each(['owner', 'admin'] as const)(
+    'allows a live %s even when cached context is stale',
+    async (role) => {
+      mockListMemberships.mockResolvedValue({ data: [liveMembership({ role })] });
+      vi.spyOn(OrganizationDatabase.prototype, 'getOrganization').mockResolvedValueOnce({
+        workos_organization_id: 'org_123',
+        stripe_customer_id: 'cus_123',
+      } as never);
+      mockCreatePortalSession.mockResolvedValueOnce('https://billing.stripe.test/session');
+      const handlers = createBillingToolHandlers(memberContext('member'));
+
+      const result = JSON.parse(await handlers.get('get_billing_portal')!({}));
+
+      expect(result.success).toBe(true);
+      expect(mockCreatePortalSession).toHaveBeenCalledWith(
+        'cus_123',
+        'https://agenticadvertising.org/dashboard/membership',
+      );
+    },
+  );
 });
 
 describe('send_payment_request admin tool', () => {

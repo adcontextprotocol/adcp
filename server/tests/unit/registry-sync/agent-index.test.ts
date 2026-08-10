@@ -9,7 +9,7 @@ function makeProfile(overrides: Partial<AgentProfile> & { agent_url: string }): 
     categories: [],
     tags: [],
     delivery_types: [],
-    format_ids: [],
+    format_kinds: [],
     property_count: 0,
     publisher_count: 0,
     has_tmp: false,
@@ -106,6 +106,18 @@ describe('AgentIndex', () => {
     it('handles OR within a filter dimension', () => {
       const results = index.search({ channels: ['ctv', 'audio'] });
       expect(results).toHaveLength(4); // 3 ctv + 1 audio
+    });
+
+    it('filters by canonical format kind', () => {
+      index.upsert(makeProfile({
+        agent_url: 'https://video.example.com',
+        format_kinds: ['video'],
+      }));
+
+      const results = index.search({ format_kinds: ['video'] });
+
+      expect(results.map(result => result.agent_url)).toEqual(['https://video.example.com']);
+      expect(results[0].matched_filters).toEqual(['format_kinds']);
     });
 
     it('applies AND across filter dimensions', () => {

@@ -49,7 +49,7 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 | `include_webhook_activity` | boolean | No | Include recent webhook fires per creative (default: false). See [Webhook activity](#webhook-activity). |
 | `webhook_activity_limit` | integer | No | Maximum `webhook_activity[]` records per creative when `include_webhook_activity: true` (default: 50, range 1–200). |
 | `account` | [AccountRef](/docs/building/by-layer/L2/accounts-and-agents#account-references) | No | Account reference for pricing. When provided with `include_pricing`, the agent returns `pricing_options` from this account's rate card on each creative. |
-| `fields` | array | No | Specific fields to return (omit for all fields). Includes `"assets"` for local fallback filtering and `"pricing_options"` for sparse selection. |
+| `fields` | array | No | Specific fields to return (omit for all fields). Includes `"assets"` for local fallback filtering, `"pricing_options"` for sparse selection, and `"rights"` / `"rights_attestation_evaluations"` for rights readback. Selecting evaluations automatically includes `creative_id` and `rights`. |
 
 ## Filtering options
 
@@ -58,7 +58,8 @@ The `filters` object supports these optional, composable filters:
 | Filter | Type | Description |
 |--------|------|-------------|
 | `accounts` | [AccountRef](/docs/building/by-layer/L2/accounts-and-agents#account-references)[] | Filter by owning accounts |
-| `format_ids` | FormatID[] | Filter by structured format IDs |
+| `format_kinds` | CanonicalFormatKind[] | Filter by canonical format kinds |
+| `format_ids` | FormatID[] | Deprecated named-format compatibility filter |
 | `asset_types` | AssetContentType[] | Filter by asset types directly assigned to top-level creative asset slots; values within the array use OR logic |
 | `statuses` | [CreativeStatus](/docs/creative/specification#creative-status-lifecycle)[] | Filter by approval status |
 | `tags` | string[] | Filter by tags (all must match) |
@@ -80,18 +81,13 @@ The `filters` object supports these optional, composable filters:
 
 `asset_types` matches a creative when at least one direct object value in the top-level `creative.assets` map has an exact `asset_type` value in the requested set. Multiple requested values use **OR logic**. Array-valued slots are not inspected, and matching does not recurse into nested asset fields such as `cards[].media`; broader traversal is deferred.
 
-All active filter fields compose with **AND logic**. For example, the following request returns published-post creatives that also match the requested legacy format identity; a creative satisfying only one condition is excluded:
+All active filter fields compose with **AND logic**. For example, the following request returns published-post creatives that also match the requested canonical format kind; a creative satisfying only one condition is excluded:
 
 ```json
 {
   "filters": {
     "asset_types": ["published_post"],
-    "format_ids": [
-      {
-        "agent_url": "https://creative.example.com",
-        "id": "existing_post"
-      }
-    ]
+    "format_kinds": ["native_in_feed"]
   }
 }
 ```
@@ -165,12 +161,7 @@ The response provides creative data with optional enrichment:
     {
       "creative_id": "ft_88201",
       "name": "Holiday Sale - Medium Rectangle",
-      "format_id": {
-        "agent_url": "https://creative.example.com",
-        "id": "display_static",
-        "width": 300,
-        "height": 250
-      },
+      "format_kind": "image",
       "status": "approved",
       "created_date": "2026-01-15T10:30:00Z",
       "updated_date": "2026-01-15T14:20:00Z",
@@ -202,12 +193,18 @@ The response provides creative data with optional enrichment:
 |-------|------|-------------|
 | `creative_id` | string | Unique creative identifier |
 | `name` | string | Human-readable name |
-| `format_id` | object | Structured format reference |
+| `format_kind` | string | Canonical format kind |
+| `format_option_ref` | object | Optional exact publisher/product option reference |
+| `format_id` | object | Deprecated 3.x named-format compatibility field |
 | `status` | string | Approval status |
 | `created_date` | string | Creation timestamp |
 | `updated_date` | string | Last modified timestamp |
 | `assets` | object | Creative assets (images, text, URLs, etc.) |
+| `localization` | object | Exact materialized locale assets, buyer-assigned variant identities, and default/unmatched policy for localized creatives. |
+| `localization_unavailable` | object | Fail-closed per-item errors and retryability when exact localization readback cannot be constructed. Mutually exclusive with `localization`. |
 | `tags` | string[] | Tags for categorization |
+| `rights` | array | Exact retained rights constraints and portable references. Presentation only; not proof of seller verification. |
+| `rights_attestation_evaluations` | array | Seller-produced, freshness-bounded grant evaluations. Each reference must exactly match one reference in the returned `rights` array. |
 | `concept_id` | string | Creative concept ID |
 | `concept_name` | string | Human-readable concept name |
 | `variables` | array | DCO variable definitions (when `include_variables=true`) |
@@ -216,6 +213,52 @@ The response provides creative data with optional enrichment:
 | `snapshot_unavailable_reason` | string | Why snapshot is missing — `SNAPSHOT_UNSUPPORTED`, `SNAPSHOT_TEMPORARILY_UNAVAILABLE`, or `SNAPSHOT_PERMISSION_DENIED` |
 | `items` | array | Items for multi-asset formats (when `include_items=true`) |
 | `pricing_options` | [VendorPricingOption](/docs/creative/specification#pricing)[] | Pricing options for this creative (when `include_pricing=true` and `account` provided). Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Same pattern as `get_signals` and `list_content_standards`. |
+
+### Rights attestation readback
+
+Selecting `fields: ["rights_attestation_evaluations"]` automatically includes `creative_id` and `rights`. Every evaluation's `{rights_id, content_digest, reference}` must select exactly one retained constraint and one byte-for-byte equal `attestation_refs` entry. The evaluation array is complete rather than independently truncated: because `rights` has no item ceiling, neither does its evaluation readback. A `verified` result is reusable only when the seller retrieves the byte-identical result from its own local evaluation store keyed by `(evaluated_by, reference_digest)`, for that exact unchanged grant, and only until `valid_until`. The `evaluated_by` string alone is not provenance; buyer-authored and foreign-seller readback fails closed. The result is not a serving authorization and does not replace use, country, time, package, or impression-cap checks. When the seller advertises `media_buy.rights_attestations.requirement: "required"`, every applicable constraint on a serving-eligible creative needs at least one current verified result.
+
+### Localized creative readback
+
+For a localized creative, top-level `creative_id` identifies the creative and
+`localization` is the authoritative locale-topology round trip. The localization
+object lists exactly one source plus every materialized target variant;
+source-only monolingual topology therefore contains one variant. It preserves
+the originating request's exact source ID/locale, target ID/locale set, default
+ID, unmatched action, and any explicit locale fallback rules. Each entry
+returns complete resolved assets under its buyer-assigned `locale_variant_id`; no seller- or
+platform-assigned variant ID is required. The top-level creative `status` is the
+single review lifecycle for the complete locale set.
+
+Verifiers enforce unique locale and buyer locale-variant ID values, exactly one
+source role, a default ID that references one variant, unique fallback language
+ranges whose IDs reference stored variants, and
+equality between source readback assets and top-level creative assets.
+These rules are machine-readable in `x-adcp-validation` because draft-07
+`uniqueItems` compares whole objects and cannot express uniqueness or reference
+integrity by property.
+
+This object is atomic. If the seller omits a requested locale, normalizes it
+to a different locale, or loses an asset or identity, the seller returns
+`localization_unavailable` instead of a partial `localization` object. The item
+remains in the current page and counts toward `query_summary.returned` and
+pagination. Buyers may use its base metadata but MUST NOT infer locale
+eligibility. Selecting `fields: ["localization"]` automatically includes the
+creative ID, status, assets, format identity, and unavailable state
+needed to interpret this result.
+
+At delivery, sellers apply strict RFC 4647 Lookup: progressively truncate the
+requested range and match only an equal seller-eligible canonical tag. A
+selected product or placement `locale_policy` first filters this readback with
+RFC 4647 Basic Filtering; it never mutates or removes the globally stored
+variants. When no variant matches for a preference, sellers apply the most-specific explicit
+`locale_fallbacks` rule for that preference before moving to the next one. When
+all preferences miss both paths, they follow `unmatched_locale_action`: serve
+`default_locale_variant_id` or do not serve.
+The ordered preference list itself comes from the seller's serving environment;
+AdCP neither carries it here nor defines how browser, content, geography, user,
+app, or platform signals produce it or their precedence.
+The chosen `locale_variant_id` is reported by `get_creative_delivery`.
 
 ### Pricing
 
@@ -277,7 +320,7 @@ When a creative is destroyed via [`creative.purged`](https://adcontextprotocol.o
 
 The `status` field on a tombstone is **frozen at its pre-purge value** (in the example above, `"approved"` is what the creative was right before purge — not a current claim). Buyers MUST treat the creative as gone: assignments, serving operations, and delivery reads no longer apply. The presence of the `purge` block is the unambiguous signal.
 
-Hard-purged creatives (`purge_kind: hard`, used for legal erasure under GDPR Article 17 / CCPA / equivalent) retain no tombstone; the [`creative.purged`](https://adcontextprotocol.org/schemas/v3/creative/creative-purged-webhook.json) webhook is the only signal. See [snapshot-and-log § Rule 4 carve-out](/docs/protocol/snapshot-and-log#account-level-adopters-3-1) for the rationale.
+Hard-purged creatives (`purge_kind: hard`, used for legal erasure under GDPR Article 17 / CCPA / equivalent) retain no tombstone; the [`creative.purged`](https://adcontextprotocol.org/schemas/v3/creative/creative-purged-webhook.json) webhook is the only signal. See the [snapshot-and-log conforming-pairs catalog](/docs/protocol/snapshot-and-log#current-conforming-pairs) for the recovery exclusion.
 
 ### Webhook activity
 
@@ -298,6 +341,7 @@ Correlate to your endpoint logs by `idempotency_key`. Each record's `notificatio
   "webhook_activity": [
     {
       "idempotency_key": "whk_01HW9D2T3VXQ5M7K9N1P3R5S7U",
+      "notification_id": "cs_ft88201_2026_05_18a",
       "subscriber_id": "buyer-primary",
       "fired_at": "2026-05-18T14:20:00Z",
       "completed_at": "2026-05-18T14:20:00Z",
@@ -376,25 +420,12 @@ List all approved creatives in a specific concept, including DCO variable defini
 
 ### Format-specific query
 
-Find creatives matching specific format IDs across concepts:
+Find canonical image creatives across concepts:
 
 ```json
 {
   "filters": {
-    "format_ids": [
-      {
-        "agent_url": "https://creative.example.com",
-        "id": "display_static",
-        "width": 300,
-        "height": 250
-      },
-      {
-        "agent_url": "https://creative.example.com",
-        "id": "display_static",
-        "width": 728,
-        "height": 90
-      }
-    ],
+    "format_kinds": ["image"],
     "statuses": ["approved"]
   }
 }
@@ -420,7 +451,7 @@ Get minimal creative data for a selection dropdown:
 
 ```json
 {
-  "fields": ["creative_id", "name", "format_id", "status"],
+  "fields": ["creative_id", "name", "format_kind", "status"],
   "include_assignments": false,
   "filters": {
     "statuses": ["approved"]
@@ -456,5 +487,5 @@ Find active creatives with delivery snapshots to identify stale or dormant asset
 - [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery) - Detailed performance analytics with date ranges, variant breakdowns, and full delivery metrics
 - [`build_creative`](/docs/creative/task-reference/build_creative) - Build manifests from library creatives or generate from scratch
 - [`sync_creatives`](/docs/creative/task-reference/sync_creatives) - Upload and manage creative assets on any agent hosting a creative library
-- [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) - Discover supported creative formats
+- [Canonical formats](/docs/creative/canonical-formats) - Discover product, publisher, and creative-agent format declarations
 - [`preview_creative`](/docs/creative/task-reference/preview_creative) - Generate previews of creative manifests

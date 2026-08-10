@@ -2,7 +2,7 @@ name: Check Testable Snippets
 
 on:
   pull_request:
-    branches: [main, '2.6.x']
+    branches: [main]
     paths:
       - 'docs/**/*.md'
       - 'docs/**/*.mdx'
@@ -15,14 +15,14 @@ jobs:
   check-snippets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0  # Need full history for diff
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Check for untested code snippets
         run: |

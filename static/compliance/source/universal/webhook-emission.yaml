@@ -82,11 +82,12 @@ narrative: |
   themselves out of the signing phase via `webhook_auth_mode == 'hmac_legacy'`.
 
   **Clean seam**: the runner does NOT reimplement signature verification or
-  idempotency dedup. It delegates to `@adcp/client` primitives —
-  `AsyncHandlerConfig.webhookDedup`, `WebhookMetadata.idempotency_key`, and
-  the 9421 webhook verifier once that lands in the client library. The same
-  code that production receivers rely on is what the conformance runner
-  exercises; a single bug fix in the library covers both surfaces.
+  idempotency dedup. It delegates dedup to `@adcp/client` primitives —
+  `AsyncHandlerConfig.webhookDedup` and `WebhookMetadata.idempotency_key` —
+  and signature verification to `@adcp/sdk/signing`'s published
+  `verifyWebhookSignature`. The same code that production receivers rely on
+  is what the conformance runner exercises; a single bug fix in the library
+  covers both surfaces.
 
 agent:
   interaction_model: webhook_emitter
@@ -665,17 +666,14 @@ phases:
       `authentication` block on `push_notification_config`); the agent is
       graded on the signatures it emits in that mode.
 
-      Verification is delegated to the `@adcp/client` 9421 webhook verifier
-      (see test-kits/webhook-receiver-runner.yaml client_primitives section).
-      Until the client verifier lands in a published release, this phase
-      grades as `not_applicable` rather than skipping silently — operators
-      get an explicit "verifier not yet available" signal instead of a
-      false-pass.
+      Verification is delegated to `@adcp/sdk/signing`'s published 9421
+      webhook verifier (see the test-kit client_primitives section).
 
       Negative conformance — signatures that MUST be rejected with a specific
-      webhook_signature_* error code — is tested via static conformance
-      vectors at `/compliance/{version}/test-vectors/webhook-signing/`
-      (follow-up), not by this phase. This phase only grades positive-path
+      webhook_signature_* error code — is tested via the published executable
+      conformance vectors at
+      `/compliance/{version}/test-vectors/webhook-signing/`, including stale
+      signature and content-digest tamper cases. This phase grades positive-path
       agents emitting conformant signatures on live traffic.
 
     steps:
@@ -707,7 +705,7 @@ phases:
       - id: expect_signature_valid
         title: "Assert webhook signature verifies under the 9421 profile"
         narrative: |
-          Runner delegates to the @adcp/client 9421 webhook verifier (14-step
+          Runner delegates to the @adcp/sdk/signing 9421 webhook verifier (14-step
           checklist). A passing signature means: covered components include
           `@method`, `@target-uri`, `@authority`, `content-type`,
           `content-digest`; `tag` is `adcp/webhook-signing/v1`; `alg` is
@@ -728,8 +726,7 @@ phases:
           (e.g., signature_invalid, signature_expired, signature_key_unknown,
           signature_digest_mismatch, signature_tag_invalid). If the payload
           omits or mismatches the registered operation_id, it will not match
-          this payload assertion. Not_applicable if the client library doesn't
-          yet implement 9421 webhook verification.
+          this payload assertion.
 
 grading:
   pass_criteria: |
@@ -744,10 +741,7 @@ grading:
     signing_keys_published — there is no exemption for "HMAC legacy mode."
     Agents that advertise no webhook-emitting operations grade the entire
     universal as not_applicable. Runners without a webhook receiver grade the
-    entire universal as not_applicable. signature_validity may grade
-    not_applicable if the runner's `@adcp/client` 9421 webhook verifier is
-    not yet available; this is an explicit operator signal, not a silent
-    skip.
+    entire universal as not_applicable.
   report_format: |
     Per-phase pass/fail/not_applicable, with per-step error codes on failure.
     Retry-stability failures include a diff of the observed keys across

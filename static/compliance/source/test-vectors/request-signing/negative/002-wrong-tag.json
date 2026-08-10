@@ -1,6 +1,7 @@
 {
   "name": "Signature tag is not adcp/request-signing/v1",
   "spec_reference": "#verifier-checklist-requests step 3",
+  "signing_profile_version": "3.1",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",

@@ -11,27 +11,27 @@ This page demonstrates the testable documentation feature with complete, working
 
 ## JavaScript Example
 
-### List Creative Formats
+### Discover Creative Capabilities
 
 ```javascript
 import { testAgent } from '@adcp/sdk/testing';
 
-const result = await testAgent.listCreativeFormats({});
+const result = await testAgent.getAdcpCapabilities({});
 
-console.log(`✓ Found ${result.data?.formats?.length || 0} creative formats`);
+console.log(`✓ Found ${result.data?.creative?.supported_formats?.length || 0} creative capabilities`);
 ```
 
 ## Python Example
 
-### List Creative Formats
+### Discover Creative Capabilities
 
 ```python
 import asyncio
 from adcp.testing import test_agent
 
 async def list_formats():
-    result = await test_agent.simple.list_creative_formats()
-    print(f"✓ Found {len(result.formats)} supported creative formats")
+    result = await test_agent.simple.get_adcp_capabilities()
+    print(f"✓ Found {len(result.creative.supported_formats)} creative capabilities")
 
 asyncio.run(list_formats())
 ```
@@ -43,7 +43,7 @@ asyncio.run(list_formats())
 ```bash requires-env=ADCP_AUTH_TOKEN
 uvx adcp \
   https://test-agent.adcontextprotocol.org/creative/mcp \
-  list_creative_formats \
+  get_adcp_capabilities \
   '{}' \
   --auth $ADCP_AUTH_TOKEN
 ```

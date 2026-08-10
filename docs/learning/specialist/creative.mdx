@@ -44,8 +44,8 @@ The following `specialisms` fall under the `creative` domain. Each has its own c
 ### Core creative tasks
 
 <CardGroup cols={2}>
-  <Card title="list_creative_formats" icon="list" href="/docs/creative/task-reference/list_creative_formats">
-    Format discovery: what specs does each publisher require?
+  <Card title="Canonical format capabilities" icon="list" href="/docs/protocol/get_adcp_capabilities">
+    Discover what a creative agent can build, validate, and preview.
   </Card>
   <Card title="build_creative" icon="hammer" href="/docs/creative/task-reference/build_creative">
     Creative generation and transformation from brand assets.
@@ -167,9 +167,9 @@ See the [Quickstart](/docs/quickstart) for a walkthrough of your first call.
 
 5. **Transformation agent pricing** — Using the sandbox transformation agent from exercise 1, with pricing enabled:
    - Establish an account with the transformation agent
-   - `list_creative_formats` with `account` and `include_pricing: true` — observe `pricing_options` on each format (per-unit pricing)
+   - `list_transformers` with `account` and `include_pricing: true` — observe `pricing_options` on each format (per-unit pricing)
    - `build_creative` with `account` — examine `pricing_option_id`, `vendor_cost`, and `consumption` (expect non-zero `vendor_cost` at build time, unlike the CPM ad server)
-   - Compare: ad server discovers pricing on `list_creatives`, transformation agent discovers pricing on `list_creative_formats`. Ad server has zero build cost (CPM accrues at serve time), transformation agent has non-zero build cost (per-unit pricing)
+   - Compare: ad server discovers pricing on `list_creatives`, transformation agent discovers pricing on `list_transformers`. Ad server has zero build cost (CPM accrues at serve time), transformation agent has non-zero build cost (per-unit pricing)
 
 <Note>
 **Vendor pricing is consistent across protocols**
@@ -192,7 +192,7 @@ Vendors often offer multiple pricing options per creative — volume/commitment 
 ### Cross-platform skills
 
 7. **Format discovery** — Query sandbox agents for supported formats, compare requirements across publishers
-8. **Cross-platform adaptation** — Adapt one concept across display, video, and native formats using `build_creative` with `target_format_ids`
+8. **Cross-platform adaptation** — Adapt one concept across display, video, and native formats using `build_creative` with `target_capability_ids`
 9. **Compliance** — Configure provenance metadata and disclosure requirements for AI-generated creatives
 10. **Preview modes** — Run `preview_creative` as `request_type: "single"`, then `"batch"` (submit 5 creatives in one call and measure the speedup), then `"variant"` against a prior `get_creative_delivery` result. Compare `output_format: "url"` vs `"html"` for rendering latency.
 11. **Tracker-slot audit** — For each sandbox format, inspect the `assets` array and determine whether it supports third-party measurement. Explain why assigning a DoubleVerify pixel to a broadcast spot won't work, and which `billing_measurement` vendor would instead.
@@ -206,7 +206,7 @@ Vendors often offer multiple pricing options per creative — volume/commitment 
 | Cross-platform adaptation | 15% | Adapts creatives across display, video, native, preview, measurement, and broadcast workflows |
 | Canonical formats | 10% | Reads `format_options[]`, selects `format_kind` and `format_option_id`, explains single-option, multi-option, and `v1_format_ref[]` fan-out cardinality, maps `asset_source` values to buyer-provided, agent-synthesized, seller-rendered, seller-designed, and publisher-hosted workflows, and explains canonical-first/product-second validation order |
 | Compliance | 25% | Configures disclosures, provenance, and regulatory requirements |
-| Pricing and accounts | 15% | Understands rate cards, reads pricing from `list_creatives` and `list_creative_formats`, interprets build costs, closes the `report_usage` loop |
+| Pricing and accounts | 15% | Understands rate cards, reads pricing from `list_creatives` and `list_transformers`, interprets build costs, closes the `report_usage` loop |
 | Analytical skill | 15% | Interprets creative feature evaluation and delivery results |
 
 Passing threshold: 70%.

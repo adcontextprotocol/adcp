@@ -38,5 +38,24 @@
       "node_modules/@adcp/sdk/dist/lib/types/schemas.generated.mjs",
       "schemas.generated.js"
     ]
+  },
+  {
+    "id": "sdk-rc11-storyboard-product-wire",
+    "title": "SDK rc.11 storyboard product-wire routing fix",
+    "kind": "installed_sdk_runtime_patch",
+    "status": "temporary",
+    "owner": "training-agent",
+    "upstream": "adcontextprotocol/adcp-client#2495",
+    "problem": "The rc.11 storyboard task map forces get_products onto a legacy-only wire even though the AdCP 3.1 migration scenario grades the transitional dual response. The rc.11 runtime and explicit legacy client fixes supersede the other two downstream rc.10 workarounds.",
+    "localBehavior": "Patch both compiled SDK module formats after installation so the storyboard runner leaves get_products wire selection unspecified while retaining explicit legacy routing for other creative tasks.",
+    "removalCondition": "Remove the patch script, Docker invocations, and ledger entry after an SDK release stops injecting the legacy-only wire hint for storyboard get_products and both current and released-3.0 storyboard matrices pass without the patch.",
+    "paths": [
+      "scripts/patch-sdk-rc11.mjs",
+      "tests/patch-sdk-rc11.test.cjs"
+    ],
+    "terms": [
+      "node_modules/@adcp/sdk/dist/lib/testing/storyboard/task-map.js",
+      "node_modules/@adcp/sdk/dist/lib/testing/storyboard/task-map.mjs"
+    ]
   }
 ]

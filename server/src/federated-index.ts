@@ -443,6 +443,17 @@ export class FederatedIndexService {
   }
 
   /**
+   * Get an agent's properties for one publisher without walking the agent's
+   * full publisher network.
+   */
+  async getPropertiesForAgentDomain(
+    agentUrl: string,
+    publisherDomain: string,
+  ): Promise<DiscoveredProperty[]> {
+    return this.db.getPropertiesForAgentDomain(agentUrl, publisherDomain);
+  }
+
+  /**
    * Get all publisher domains for an agent (from properties).
    */
   async getPublisherDomainsForAgent(agentUrl: string): Promise<string[]> {

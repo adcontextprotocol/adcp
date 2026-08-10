@@ -26,7 +26,7 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "2.6.0"
+version: "2.9.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
@@ -56,6 +56,7 @@ authored_check_kinds:
   - error_code
   - on_401_require_header
   - resource_equals_agent_url
+  - oauth_metadata_graph
   - any_of
   - refs_resolve
   - a2a_submitted_artifact
@@ -156,7 +157,8 @@ validation_result:
                               # field_value_or_absent | field_contains |
                               # status_code | http_status | http_status_in |
                               # error_code | on_401_require_header |
-                              # resource_equals_agent_url | any_of | refs_resolve |
+                              # resource_equals_agent_url | oauth_metadata_graph |
+                              # any_of | refs_resolve |
                               # a2a_submitted_artifact | field_less_than |
                               # field_equals_context | upstream_traffic |
                               # canonical_format_satisfaction |
@@ -263,6 +265,11 @@ validation_result:
                               #                          local_satisfied mirrors the expected
                               #                          local package/product satisfaction
                               #                          verdict.
+                              #   oauth_metadata_graph → exact object:
+                              #                          { profile: "adcp/oauth-metadata-graph/v1",
+                              #                          require_authorization_servers: true,
+                              #                          follow_all_authorization_servers: true,
+                              #                          probe_advertised_endpoints: true }.
                               #   cross_response_field_equal
                               #                       → object { path } — the JSON path
                               #                          asserted equal across every
@@ -336,6 +343,11 @@ validation_result:
                               #                          package/product satisfaction verdict,
                               #                          and rejection summarizes format-related
                               #                          rejection evidence when the task failed.
+                              #   oauth_metadata_graph → object { code, url?, issuer?,
+                              #                          field?, http_status?, detail? }
+                              #                          naming the first deterministic graph
+                              #                          failure. `code` comes from the canonical
+                              #                          list in test-kits/oauth-setup-runner.yaml.
                               #   cross_response_field_equal
                               #                       → object { observed_values: [...] } —
                               #                          the values observed at `path` on
@@ -604,6 +616,21 @@ validation_result:
                               # capability v{expires_after_version};
                               # promoted at v{runner_capability_version}]".
 
+session_lifecycle:
+  description: |
+    Transport session hygiene for streamable-HTTP MCP agents. Runners SHOULD
+    establish one MCP session per storyboard and reuse it across that
+    storyboard's steps, matching how production buyer agents operate: a fresh
+    session per call spends 4-5 protocol round trips on handshake alone
+    (initialize, initialized, tools/list, call, close), multiplying per-step
+    wall time ~5x and attributing runner-side session overhead to the agent
+    under test. Runners SHOULD close sessions gracefully at storyboard end,
+    and SHOULD treat an HTTP 404 on a known-terminated session id as terminal
+    rather than retryable — the streamable-HTTP session layer answers
+    expired-session requests 404 without an agent-visible error, so reconnect
+    loops against dead sessions generate silent 4xx volume that is easily
+    misread as rate limiting.
+
 request:
   description: |
     Exact request the runner sent, per transport. Runners MUST redact secrets
@@ -797,7 +824,8 @@ skip_result:
     - reason                  # not_applicable | no_phases |
                               # prerequisite_failed | missing_tool |
                               # missing_test_controller |
-                              # unsatisfied_contract | peer_branch_taken |
+                              # fixture_unavailable | unsatisfied_contract |
+                              # peer_branch_taken |
                               # peer_substituted | requirement_unmet
     - detail                  # human-readable explanation citing the
                               # declared supported_protocols / specialisms
@@ -835,6 +863,19 @@ skip_result:
     missing_test_controller: |
       The storyboard requires comply_test_controller and the agent did not
       advertise it. Applies only to deterministic_testing phases.
+    fixture_unavailable: |
+      The item was selected and the agent declared the tested pathway, but the
+      runner's test kit cannot synthesize a valid input satisfying the agent's
+      declared contract. The storyboard grades not_applicable; this reason MUST
+      NOT produce a failed validation, increment failed-step counts, or cascade
+      prerequisite_failed to downstream phases. detail MUST begin with
+      `creative_asset_fixture_unavailable:` and name the unavailable slot id,
+      asset type, and any unsatisfied constraint.
+
+      This reason is runner-owned and distinct from `not_applicable` (an agent
+      capability/applicability gate evaluated false) and
+      `unsatisfied_contract` (a declared harness contract was required but not
+      in scope, which follows that contract's fail-or-skip semantics).
     unsatisfied_contract: |
       A test-kit harness contract (e.g., signed-requests-runner) is not in
       scope for this grading run. detail MUST cite the contract key. Per
@@ -1076,6 +1117,23 @@ notice:
                               # Lets consumers link the notice to the
                               # exact capability flag without parsing the
                               # message string.
+    - capability_pointer      # RFC 6901 JSON Pointer to the location in the
+                              # agent's `get_adcp_capabilities` response that
+                              # motivated the notice
+                              # (e.g., "/account/supported_billing",
+                              # "/specialisms/0"). Use this when the notice
+                              # originates from schema validation, whose
+                              # errors are already RFC 6901, or when the
+                              # location is an array element that has no
+                              # unambiguous dotted form. Same pointer
+                              # convention as `validation_result.json_pointer`
+                              # above.
+                              #
+                              # Distinct from `capability_path`, which names
+                              # the capability flag: an emitter MAY set both,
+                              # and when it does `capability_pointer` MUST
+                              # resolve to the node named by `capability_path`
+                              # or to a position within it.
     - reference_url           # optional spec or issue URL with more context
                               # (e.g., the upstream issue tracking the
                               # deprecation, or the relevant section in
@@ -1124,6 +1182,33 @@ notice:
         field was material to the scenario's intent. Agents should
         declare all spec-defined fields they support in their
         inputSchema.
+    capabilities_response_schema_invalid:
+      severity: info
+      spec_source: protocol/get-adcp-capabilities-response.json
+      message_template: |
+        The agent's `get_adcp_capabilities` response failed schema
+        validation at {capability_pointer}. Track results are computed
+        against a capabilities response the runner could not trust, so
+        failures in dependent steps may share this single root cause.
+        Fix this first, then re-read the track results.
+      notes: |
+        Emitted on `run_summary.notices` when the runner validates the
+        agent's capabilities response and validation fails. One notice per
+        failing validation error, each carrying its own
+        `capability_pointer`, so a response with three violations produces
+        three notices rather than one aggregate. Because these share a
+        `code`, consumers dedupe them by (`code`, `capability_pointer`)
+        per the run_summary.notices rule below.
+
+        The runner MUST still execute and report the storyboards it would
+        otherwise have run. This notice explains the results, it does not
+        replace them, and suppressing downstream failures would hide
+        genuine defects behind a preflight line.
+
+        This code covers schema-invalid capabilities responses only. A
+        capabilities response that is schema-valid but stale, cached, or
+        otherwise unrepresentative is a different condition and MUST NOT
+        reuse this code (see adcontextprotocol/adcp#6206).
 
 cascade_rules:
   description: |
@@ -1141,7 +1226,9 @@ cascade_rules:
     collapsed. Steps that skip with `peer_substituted` do NOT trigger the
     cascade — the `provides_state_for` mechanism already waived it (see
     `skip_result.reasons.peer_substituted`). Steps that skip with
-    `not_applicable`, `missing_tool`, or `missing_test_controller` do NOT
+    `fixture_unavailable` never trigger the cascade because the runner-owned
+    coverage gap grades the entire storyboard not_applicable. Steps that skip
+    with `not_applicable`, `missing_tool`, or `missing_test_controller` do NOT
     trigger the cascade when the `sole_stateful_step_exemption` below applies.
     A stateful step's genuine failure or `peer_branch_taken` skip does NOT
     cascade onto a sibling phase that shares its `branch_set.id` under `any_of`
@@ -1342,9 +1429,13 @@ run_summary:
                                   # emit the same code on step_result.notices
                                   # AND run_summary.notices when an advisory
                                   # is both step-specific and run-wide;
-                                  # consumers dedupe by `code`. See the
-                                  # notice block above for shape and
-                                  # canonical_codes.
+                                  # consumers dedupe by `code`, or by
+                                  # (`code`, `capability_pointer`) when
+                                  # `capability_pointer` is present, since a
+                                  # code that reports one location per
+                                  # occurrence emits several notices sharing
+                                  # that code. See the notice block above for
+                                  # shape and canonical_codes.
     - validations_advisory_failed # count of validation_result entries with
                                   # passed: false and severity: advisory.
                                   # These do NOT contribute to steps_failed

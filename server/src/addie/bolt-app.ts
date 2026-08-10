@@ -29,6 +29,7 @@ import type {
 } from '@slack/bolt/dist/Assistant';
 import type { Router } from 'express';
 import { createLogger } from '../logger.js';
+import { deliverAndRecordDirectMessage } from './direct-message-delivery.js';
 
 const logger = createLogger('addie-bolt-app');
 import { sanitizeSpeakerName } from './prompts.js';
@@ -45,7 +46,7 @@ import { getPool } from '../db/client.js';
 import { linkDomain } from '../db/organization-domains-db.js';
 import {
   isKnowledgeReady,
-  createKnowledgeToolHandlers,
+  createSlackKnowledgeRequestTools,
   createUserScopedBookmarkHandler,
 } from './mcp/knowledge-search.js';
 import { registerBaselineTools } from './register-baseline-tools.js';
@@ -1021,7 +1022,7 @@ async function buildRequestContext(
  */
 async function createUserScopedTools(
   memberContext: MemberContext | null,
-  slackUserId?: string,
+  slackUserId: string,
   threadId?: string,
   threadContext?: ThreadContext | null
 ): Promise<UserScopedToolsResult> {
@@ -1033,6 +1034,16 @@ async function createUserScopedTools(
   };
   let allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
+
+  const slackKnowledge = createSlackKnowledgeRequestTools(
+    slackUserId
+      ? { kind: 'slack-user', slackUserId }
+      : { kind: 'public-only' },
+  );
+  allTools.push(...slackKnowledge.tools);
+  for (const [name, handler] of slackKnowledge.handlers) {
+    allHandlers.set(name, handler);
+  }
 
   // Re-register Google Docs tools with user context for per-user rate
   // limiting (see tool-rate-limiter.ts). The boot-time registration
@@ -1095,10 +1106,10 @@ async function createUserScopedTools(
   }
   logger.debug('Addie Bolt: AdCP protocol tools enabled');
 
-  // Auth graders — RFC 9421 signing + OAuth handshake diagnosis. Available
-  // to every user; the underlying graders only probe the target agent's
-  // public surface and live-side-effect vectors are opt-in.
-  const authGraderHandlers = createAuthGraderToolHandlers();
+  // Auth graders use a stable WorkOS identity when mapped and a namespaced
+  // Slack identity otherwise, so unmapped Slack users cannot bypass limits.
+  const authGraderCallerId = memberContext?.workos_user?.workos_user_id ?? `slack:${slackUserId}`;
+  const authGraderHandlers = createAuthGraderToolHandlers(authGraderCallerId);
   allTools.push(...AUTH_GRADER_TOOLS);
   for (const [name, handler] of authGraderHandlers) {
     allHandlers.set(name, handler);
@@ -1246,19 +1257,6 @@ async function createUserScopedTools(
   // Override bookmark_resource handler with user-scoped version (for attribution)
   if (slackUserId) {
     allHandlers.set('bookmark_resource', createUserScopedBookmarkHandler(slackUserId));
-  }
-
-  // Override Slack search handlers with user-scoped versions (for private channel access control)
-  if (slackUserId) {
-    const userScopedKnowledgeHandlers = createKnowledgeToolHandlers(slackUserId);
-    const searchSlackHandler = userScopedKnowledgeHandlers.get('search_slack');
-    const getChannelActivityHandler = userScopedKnowledgeHandlers.get('get_channel_activity');
-    if (searchSlackHandler) {
-      allHandlers.set('search_slack', searchSlackHandler);
-    }
-    if (getChannelActivityHandler) {
-      allHandlers.set('get_channel_activity', getChannelActivityHandler);
-    }
   }
 
   // Remove enrollment tools in public channels (covers all handler paths,
@@ -3628,21 +3626,70 @@ async function handleDirectMessage(
   // 2. Regular DMs: response threads to the user's message (Slack shows
   //    threaded DM replies inline, so UX is unchanged)
   const replyThreadTs = event.thread_ts || event.ts;
-  let responseTs: string | undefined;
-  try {
-    const postResult = await boltApp.client.chat.postMessage({
-      channel: channelId,
-      text: wrapUrlsForSlack(outputValidation.sanitized),
-      thread_ts: replyThreadTs,
-    });
-    responseTs = postResult.ts;
-  } catch (error) {
-    logger.error({ error }, 'Addie Bolt: Failed to send DM response');
-  }
+
+  const assistantFlagged = response.flagged || outputValidation.flagged;
+  const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
+  const boltClient = boltApp.client;
+  const assistantMessage = {
+    thread_id: thread.thread_id,
+    role: 'assistant' as const,
+    content: outputValidation.sanitized,
+    tools_used: response.tools_used,
+    tool_calls: response.tool_executions?.map(exec => ({
+      name: exec.tool_name,
+      input: exec.parameters,
+      result: exec.result,
+      duration_ms: exec.duration_ms,
+      is_error: exec.is_error,
+    })),
+    model: AddieModelConfig.chat,
+    latency_ms: Date.now() - startTime,
+    tokens_input: response.usage?.input_tokens,
+    tokens_output: response.usage?.output_tokens,
+    flagged: assistantFlagged,
+    flag_reason: flagReason || undefined,
+    timing: response.timing ? {
+      system_prompt_ms: response.timing.system_prompt_ms,
+      total_llm_ms: response.timing.total_llm_ms,
+      total_tool_ms: response.timing.total_tool_execution_ms,
+      iterations: response.timing.iterations,
+    } : undefined,
+    tokens_cache_creation: response.usage?.cache_creation_input_tokens,
+    tokens_cache_read: response.usage?.cache_read_input_tokens,
+    active_rule_ids: response.active_rule_ids,
+  };
+  const delivery = await deliverAndRecordDirectMessage({
+    channelId,
+    userId,
+    threadId: thread.thread_id,
+    assistantMessage,
+    userMessageFlagged,
+    assistantFlagged,
+    flagReason: [inputValidation.reason, flagReason].filter(Boolean).join('; '),
+    dependencies: {
+      postMessage: () => boltClient.chat.postMessage({
+        channel: channelId,
+        text: wrapUrlsForSlack(outputValidation.sanitized),
+        thread_ts: replyThreadTs,
+      }),
+      addMessage: (message) => threadService.addMessage(message),
+      flagThread: (threadId, reason) => threadService.flagThread(threadId, reason),
+    },
+  });
 
   // If no permanent thread existed, save the user's message ts as the permanent
   // thread so the orchestrator will continue in this same thread later.
-  if (!permThreadTs) {
+  if (delivery.permanentFailure) {
+    try {
+      const rel = cachedRel ?? await relationshipDb.getRelationshipBySlackId(userId);
+      if (rel?.slack_dm_channel_id === channelId) {
+        await relationshipDb.clearSlackDmThread(rel.id, channelId);
+        logger.info({ userId, channelId }, 'Addie Bolt: Cleared unwritable permanent DM thread');
+      }
+    } catch (error) {
+      logger.debug({ error, userId }, 'Addie Bolt: Could not clear unwritable permanent thread');
+    }
+  } else if (!permThreadTs) {
     try {
       const rel = cachedRel ?? await relationshipDb.getRelationshipBySlackId(userId);
       if (rel && !rel.slack_dm_thread_ts) {
@@ -3651,55 +3698,6 @@ async function handleDirectMessage(
       }
     } catch (error) {
       logger.debug({ error, userId }, 'Addie Bolt: Could not save permanent thread');
-    }
-  }
-
-  // Log assistant response to unified thread
-  const assistantFlagged = response.flagged || outputValidation.flagged;
-  const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-
-  try {
-    await threadService.addMessage({
-      thread_id: thread.thread_id,
-      role: 'assistant',
-      content: outputValidation.sanitized,
-      tools_used: response.tools_used,
-      tool_calls: response.tool_executions?.map(exec => ({
-        name: exec.tool_name,
-        input: exec.parameters,
-        result: exec.result,
-        duration_ms: exec.duration_ms,
-        is_error: exec.is_error,
-      })),
-      model: AddieModelConfig.chat,
-      latency_ms: Date.now() - startTime,
-      tokens_input: response.usage?.input_tokens,
-      tokens_output: response.usage?.output_tokens,
-      flagged: assistantFlagged,
-      flag_reason: flagReason || undefined,
-      timing: response.timing ? {
-        system_prompt_ms: response.timing.system_prompt_ms,
-        total_llm_ms: response.timing.total_llm_ms,
-        total_tool_ms: response.timing.total_tool_execution_ms,
-        iterations: response.timing.iterations,
-      } : undefined,
-      tokens_cache_creation: response.usage?.cache_creation_input_tokens,
-      tokens_cache_read: response.usage?.cache_read_input_tokens,
-      active_rule_ids: response.active_rule_ids,
-    });
-  } catch (error) {
-    logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save assistant message');
-  }
-
-  // Flag the thread if any message was flagged
-  if (userMessageFlagged || assistantFlagged) {
-    try {
-      await threadService.flagThread(
-        thread.thread_id,
-        [inputValidation.reason, flagReason].filter(Boolean).join('; ')
-      );
-    } catch (error) {
-      logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to flag thread');
     }
   }
 
@@ -3717,14 +3715,14 @@ async function handleDirectMessage(
     tools_used: response.tools_used,
     model: AddieModelConfig.chat,
     latency_ms: Date.now() - startTime,
-    flagged: userMessageFlagged || assistantFlagged,
-    flag_reason: [inputValidation.reason, flagReason].filter(Boolean).join('; ') || undefined,
+    delivery_status: delivery.delivered ? 'delivered' : 'failed',
+    flagged: userMessageFlagged || assistantFlagged || !delivery.delivered,
+    flag_reason: [
+      inputValidation.reason,
+      flagReason,
+      delivery.delivered ? undefined : `Slack delivery failed: ${delivery.errorCode ?? 'unknown_error'}`,
+    ].filter(Boolean).join('; ') || undefined,
   });
-
-  logger.info(
-    { userId, channelId, latencyMs: Date.now() - startTime },
-    'Addie Bolt: DM response sent'
-  );
 }
 
 /**

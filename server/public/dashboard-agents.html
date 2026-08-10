@@ -172,6 +172,11 @@
       font-size: var(--text-xs);
     }
     .agent-track-detail h4 { margin: 0 0 var(--space-2); font-size: var(--text-sm); }
+    .track-coverage-gap-note {
+      color: var(--color-warning-700);
+      font-size: var(--text-xs);
+      margin-top: var(--space-1);
+    }
     .track-scenario { padding: var(--space-1) 0; border-bottom: 1px solid var(--color-gray-200); }
     .track-scenario:last-child { border-bottom: none; }
     .track-scenario-name { font-weight: var(--font-semibold); }
@@ -1239,12 +1244,13 @@
     // Fetches compliance + history + auth for a single agent. Always returns
     // an object — on failure, loadError is populated so the renderer can
     // distinguish "server says unknown" from "we couldn't load".
-    async function fetchAgentState(agent) {
+    async function fetchAgentState(agent, organizationId) {
       const encoded = encodeURIComponent(agent.url);
+      const orgQuery = organizationId ? `?org=${encodeURIComponent(organizationId)}` : '';
       const endpoints = [
         `/api/registry/agents/${encoded}/compliance`,
         `/api/registry/agents/${encoded}/compliance/history?limit=10`,
-        `/api/registry/agents/${encoded}/auth-status`,
+        `/api/registry/agents/${encoded}/auth-status${orgQuery}`,
       ];
       const settled = await Promise.allSettled(
         endpoints.map(u => fetchWithRetry(u, { credentials: 'include' })),
@@ -1405,7 +1411,7 @@
               const agent = queue.shift();
               if (!agent) break;
               try {
-                const state = await fetchAgentState(agent);
+                const state = await fetchAgentState(agent, currentOrgId);
                 if (cancellation.cancelled) break;
                 agentCompliance.set(state.url, state);
                 swapAgentCard(state.url);
@@ -2285,7 +2291,7 @@
         } else if (status === 'opted_out') {
           hint = 'Compliance monitoring is opted out for this agent — no badges will issue. Re-enable monitoring to be eligible.';
         } else if (status === 'passing' && declaredSpecialisms.length === 0) {
-          hint = 'Storyboards are passing, but your agent isn\'t declaring any specialisms in <code>get_adcp_capabilities</code> — without that declaration, AAO doesn\'t know which badges to issue. <a href="/docs/building/aao-verified#declare-specialisms" target="_blank" rel="noopener">How to declare specialisms</a>.';
+          hint = 'Storyboards are passing, but your agent isn\'t declaring any specialisms in <code>get_adcp_capabilities</code> — without that declaration, AAO doesn\'t know which badges to issue. <a href="/docs/building/verification/aao-verified#declare-specialisms" target="_blank" rel="noopener">How to declare specialisms</a>.';
         } else if (status === 'passing') {
           if (tierEligibleSentence) {
             hint = `Storyboards are passing. ${tierEligibleSentence}. Your badge should issue ${nextCheckCopy}.`;
@@ -2296,10 +2302,10 @@
           }
         } else if (status === 'failing' || status === 'degraded') {
           hint = declaredSpecialisms.length === 0
-            ? 'Storyboards are failing — fix the failing storyboards in this card to earn AAO Verified (Spec). <a href="/docs/building/aao-verified" target="_blank" rel="noopener">Learn more</a>.'
-            : 'Some declared specialisms are failing — fix the failing storyboards in this card to earn AAO Verified (Spec). <a href="/docs/building/aao-verified" target="_blank" rel="noopener">Learn more</a>.';
+            ? 'Storyboards are failing — fix the failing storyboards in this card to earn AAO Verified (Spec). <a href="/docs/building/verification/aao-verified" target="_blank" rel="noopener">Learn more</a>.'
+            : 'Some declared specialisms are failing — fix the failing storyboards in this card to earn AAO Verified (Spec). <a href="/docs/building/verification/aao-verified" target="_blank" rel="noopener">Learn more</a>.';
         } else {
-          hint = `Compliance check will run ${nextCheckCopy}. Earn AAO Verified (Spec) by declaring specialisms in <code>get_adcp_capabilities</code> and passing their storyboards. <a href="/docs/building/aao-verified" target="_blank" rel="noopener">Learn more</a>.`;
+          hint = `Compliance check will run ${nextCheckCopy}. Earn AAO Verified (Spec) by declaring specialisms in <code>get_adcp_capabilities</code> and passing their storyboards. <a href="/docs/building/verification/aao-verified" target="_blank" rel="noopener">Learn more</a>.`;
         }
 
         const renderSpecialismChip = (s) => {
@@ -2442,12 +2448,6 @@
           </div>`;
       }).join('');
 
-      // Surface the (Live) upgrade path inline when no badge holds it yet.
-      const hasLive = badges.some(b => Array.isArray(b.verification_modes) && b.verification_modes.includes('live'));
-      const liveHint = hasLive
-        ? ''
-        : '<div class="verification-eligibility-hint">Want <strong>(Live)</strong> too? Once AAO\'s canonical-campaign runner ships in 3.1, agents that flow real production traffic will earn the <strong>(Live)</strong> qualifier on the same badge — same URL, no embed swap. <a href="/docs/building/aao-verified#verified-live" target="_blank" rel="noopener">Learn more</a>.</div>';
-
       // Header count: "1 badge" / "N badges" / "N badges across M roles"
       // The "across M roles" suffix only appears when at least one role
       // has parallel-version badges (i.e. distinctRoleCount < badges.length).
@@ -2465,7 +2465,6 @@
             <span style="font-weight: normal; text-transform: none; letter-spacing: 0;">${badgeCountSummary}</span>
           </div>
           ${rowsHtml}
-          ${liveHint}
           ${buildNoticesSectionHtml(cs)}
         </div>`;
     }
@@ -2503,7 +2502,7 @@
           checkbox.checked = !checkbox.checked;
           return;
         }
-        const state = await fetchAgentState({ url: agentUrl });
+        const state = await fetchAgentState({ url: agentUrl }, pageState.orgId);
         pageState.complianceMap.set(agentUrl, state);
         swapAgentCard(agentUrl);
       } catch {
@@ -2560,7 +2559,7 @@
       }
       if (auto) pageState.autoRetriedAgents.add(agentUrl);
       try {
-        const state = await fetchAgentState({ url: agentUrl });
+        const state = await fetchAgentState({ url: agentUrl }, pageState.orgId);
         pageState.complianceMap.set(agentUrl, state);
         // Clear any prior auto-retry marker UNLESS we hit another 429
         // — keeping the marker on a back-to-back 429 is what drives
@@ -2753,7 +2752,11 @@
       saveBtn.textContent = 'Saving...';
 
       try {
-        const body = { auth_token: authToken, auth_type: authType };
+        const body = {
+          auth_token: authToken,
+          auth_type: authType,
+          organization_id: pageState.orgId,
+        };
 
         const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/connect', {
           method: 'PUT',
@@ -2826,7 +2829,12 @@
       saveBtn.textContent = 'Saving...';
 
       try {
-        const body = { token_endpoint: tokenEndpoint, client_id: clientId, client_secret: clientSecret };
+        const body = {
+          token_endpoint: tokenEndpoint,
+          client_id: clientId,
+          client_secret: clientSecret,
+          organization_id: pageState.orgId,
+        };
         if (scope) body.scope = scope;
         if (resource) body.resource = resource;
         if (audience) body.audience = audience;
@@ -2997,6 +3005,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
+          body: JSON.stringify({ organization_id: pageState.orgId }),
         });
         const data = await res.json().catch(() => ({}));
 
@@ -3062,7 +3071,7 @@
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({}),
+            body: JSON.stringify({ organization_id: pageState.orgId }),
           });
           if (!connectRes.ok) {
             const data = await connectRes.json().catch(() => ({}));
@@ -3114,7 +3123,7 @@
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({}),
+            body: JSON.stringify({ organization_id: pageState.orgId }),
           });
           if (!connectRes.ok) {
             const data = await connectRes.json().catch(() => ({}));
@@ -3256,6 +3265,7 @@
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ organization_id: pageState.orgId }),
         });
         const data = await res.json().catch(() => ({}));
 
@@ -3418,6 +3428,14 @@
       }
     });
 
+    function buildTrackCoverageGapNote(trackData) {
+      if (!trackData.has_coverage_gap_skip || trackData.status !== 'partial') return '';
+      return '<div class="track-coverage-gap-note">'
+        + 'Badge eligibility is storyboard-level. One or more storyboards in this track '
+        + 'have a coverage-gap skip and do not count as passing, even when every scenario that ran passed.'
+        + '</div>';
+    }
+
     // Track pill click — fetch history and show scenario details for that track
     document.addEventListener('click', async function(e) {
       const trackBtn = e.target.closest('.agent-track[data-track]');
@@ -3458,9 +3476,11 @@
             : trackData.status === 'partial' ? 'Partial' : trackData.status;
 
           let html = '<h4>' + escapeHtml(track) + ' — ' + escapeHtml(statusLabel) + '</h4>';
-          html += '<div>' + parseInt(trackData.passed_count, 10) + ' of ' + parseInt(trackData.scenario_count, 10) + ' scenarios passing';
+          html += '<div>' + Number(trackData.passed_count) + ' of ' + Number(trackData.scenario_count) + ' scenarios passing';
           if (trackData.duration_ms) html += ' (' + (trackData.duration_ms / 1000).toFixed(1) + 's)';
           html += '</div>';
+
+          html += buildTrackCoverageGapNote(trackData);
 
           if (trackData.scenarios) {
             for (const s of trackData.scenarios) {
@@ -3588,7 +3608,8 @@
 
         try {
           const storyboardStatusMapPromise = loadStoryboardStatusMap(agentUrl);
-          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/applicable-storyboards', { credentials: 'include' });
+          const orgQuery = pageState.orgId ? '?org=' + encodeURIComponent(pageState.orgId) : '';
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/applicable-storyboards' + orgQuery, { credentials: 'include' });
 
           if (res.ok) {
             const data = await res.json();
@@ -3907,7 +3928,7 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ context, dry_run: true }),
+            body: JSON.stringify({ context, dry_run: true, organization_id: pageState.orgId }),
           });
           const result = await res.json();
           if (!res.ok) {
@@ -4001,6 +4022,7 @@
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ organization_id: pageState.orgId }),
           });
 
           if (res.status === 429) {
@@ -4107,6 +4129,7 @@
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ organization_id: pageState.orgId }),
           });
 
           if (res.status === 429) {

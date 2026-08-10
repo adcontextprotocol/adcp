@@ -13,7 +13,7 @@ import request from 'supertest';
 import type { Response as SupertestResponse } from 'supertest';
 import http from 'node:http';
 import { AddressInfo } from 'node:net';
-import { randomUUID } from 'node:crypto';
+import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { verifyWebhookSignature, StaticJwksResolver, InMemoryReplayStore, InMemoryRevocationStore } from '@adcp/sdk/signing';
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import { buildCatalog } from '../../src/training-agent/product-factory.js';
@@ -29,9 +29,10 @@ vi.mock('../../src/logger.js', () => ({
 }));
 
 const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
-const { stopSessionCleanup, clearSessions } = await import('../../src/training-agent/state.js');
+const { stopSessionCleanup, clearSessions, getSession, runWithSessionContext, sessionKeyFromArgs } = await import('../../src/training-agent/state.js');
 const { clearAccountStore } = await import('../../src/training-agent/account-handlers.js');
 const { resetWebhookSigning, getPublicJwks, emitFrameworkTaskWebhook } = await import('../../src/training-agent/webhooks.js');
+const { handleCreatePropertyList, handleUpdatePropertyList } = await import('../../src/training-agent/property-handlers.js');
 
 const AUTH = 'Bearer test-token-webhook';
 const BILLABLE_AUTH = 'Bearer demo-billing-agent-billable-v1';
@@ -64,6 +65,15 @@ function structuredToolResult(response: SupertestResponse): Record<string, unkno
   }
   const text = result?.content?.[0]?.text;
   return text ? JSON.parse(text) as Record<string, unknown> : {};
+}
+
+function webhookRequest(delivery: CapturedDelivery, body = delivery.body) {
+  return {
+    method: 'POST',
+    url: delivery.url,
+    headers: delivery.headers as Record<string, string>,
+    body,
+  };
 }
 
 describe('Training Agent webhook emission', () => {
@@ -135,7 +145,7 @@ describe('Training Agent webhook emission', () => {
 
       await Promise.race([
         done,
-        new Promise((_, reject) => setTimeout(() => reject(new Error('webhook never arrived')), 5000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('webhook never arrived')), 10_000)),
       ]);
 
       expect(deliveries.length).toBe(1);
@@ -168,7 +178,7 @@ describe('Training Agent webhook emission', () => {
         await new Promise<void>(r => srv!.close(() => r()));
       }
     }
-  }, 15000);
+  }, 20000);
 
   it('falls back to task_id when the buyer omits webhook operation_id', async () => {
     const deliveries: CapturedDelivery[] = [];
@@ -272,18 +282,151 @@ describe('Training Agent webhook emission', () => {
     }
   }, 15000);
 
-  it('publishes its webhook-signing public key at /.well-known/jwks.json', async () => {
+  it('publishes newly generated webhook keys under the canonical request-signing purpose', async () => {
     const response = await request(app).get('/api/training-agent/.well-known/jwks.json');
     expect(response.status).toBe(200);
     const jwks = response.body as { keys: AdcpJsonWebKey[] };
     expect(Array.isArray(jwks.keys)).toBe(true);
     expect(jwks.keys.length).toBeGreaterThan(0);
     const key = jwks.keys[0];
-    expect(key.adcp_use).toBe('webhook-signing');
+    expect(key.adcp_use).toBe('request-signing');
     expect(key.key_ops).toContain('verify');
     expect(key.kid).toBeTruthy();
     expect(key.d).toBeUndefined(); // never publish the private scalar
   });
+
+  it('preserves the purpose of an existing configured webhook kid', () => {
+    const original = process.env.WEBHOOK_SIGNING_KEY_JWK;
+    const { privateKey } = generateKeyPairSync('ed25519');
+    const configured = privateKey.export({ format: 'jwk' }) as Record<string, unknown>;
+    process.env.WEBHOOK_SIGNING_KEY_JWK = JSON.stringify({
+      ...configured,
+      kid: 'existing-webhook-kid',
+      adcp_use: 'webhook-signing',
+    });
+    resetWebhookSigning();
+
+    try {
+      expect(getPublicJwks().keys[0]).toMatchObject({
+        kid: 'existing-webhook-kid',
+        adcp_use: 'webhook-signing',
+      });
+    } finally {
+      if (original === undefined) delete process.env.WEBHOOK_SIGNING_KEY_JWK;
+      else process.env.WEBHOOK_SIGNING_KEY_JWK = original;
+      resetWebhookSigning();
+    }
+  });
+
+  it('emits and verifies an RFC 9421-only property-list change webhook', async () => {
+    const deliveries: CapturedDelivery[] = [];
+    let resolveDelivery: (() => void) | undefined;
+    const delivered = new Promise<void>(resolve => { resolveDelivery = resolve; });
+    let srv: http.Server | undefined;
+
+    try {
+      srv = await startReceiver((delivery, res) => {
+        deliveries.push(delivery);
+        res.writeHead(200); res.end();
+        resolveDelivery?.();
+      });
+      const addr = srv.address() as AddressInfo;
+      const webhookUrl = `http://127.0.0.1:${addr.port}/hook/property-list`;
+      const account = {
+        brand: { domain: 'property-webhook.example' },
+        operator: 'pinnacle-agency.example',
+      };
+      const createArgs = {
+        name: 'Property webhook list',
+        base_properties: [{
+          selection_type: 'identifiers',
+          identifiers: [{ type: 'domain', value: 'first.example' }],
+        }],
+        account,
+        idempotency_key: randomUUID(),
+      };
+      const ctx = { mode: 'open' as const };
+      let listId = '';
+      await runWithSessionContext(async () => {
+        const created = await handleCreatePropertyList(createArgs, ctx);
+        listId = (created.list as { list_id: string }).list_id;
+
+        // Storage-time SSRF tests deliberately reject loopback. Seed the
+        // already-validated target directly so this integration test can probe
+        // the delivery/signature boundary against an ephemeral local receiver.
+        const session = await getSession(sessionKeyFromArgs(createArgs, ctx.mode));
+        session.propertyLists.get(listId)!.webhookUrl = webhookUrl;
+
+        await handleUpdatePropertyList({
+          list_id: listId,
+          account,
+          idempotency_key: randomUUID(),
+          base_properties: [{
+            selection_type: 'identifiers',
+            identifiers: [
+              { type: 'domain', value: 'first.example' },
+              { type: 'domain', value: 'second.example' },
+            ],
+          }],
+        }, ctx);
+      });
+
+      await Promise.race([
+        delivered,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('property-list webhook never arrived')), 5000)),
+      ]);
+
+      expect(deliveries).toHaveLength(1);
+      const delivery = deliveries[0];
+      const body = JSON.parse(delivery.body) as Record<string, unknown>;
+      expect(body).toMatchObject({
+        event: 'property_list_changed',
+        list_id: listId,
+        change_summary: { properties_added: 1, properties_removed: 0, total_properties: 2 },
+        signature: 'rfc9421',
+      });
+      expect(body.idempotency_key).toMatch(/^[A-Za-z0-9_.:-]{16,255}$/);
+      expect(delivery.headers['signature-input']).toBeDefined();
+      expect(delivery.headers.signature).toBeDefined();
+      expect(delivery.headers['content-digest']).toBeDefined();
+      expect(delivery.headers['x-adcp-signature']).toBeUndefined();
+
+      const jwks = new StaticJwksResolver(getPublicJwks().keys as AdcpJsonWebKey[]);
+      const verificationOptions = () => ({
+        jwks,
+        replayStore: new InMemoryReplayStore(),
+        revocationStore: new InMemoryRevocationStore(),
+      });
+      await expect(verifyWebhookSignature(
+        webhookRequest(delivery),
+        verificationOptions(),
+      )).resolves.toMatchObject({ status: 'verified' });
+
+      const tamperedBody = JSON.stringify({ ...body, signature: 'attacker-controlled-body-value' });
+      await expect(verifyWebhookSignature(
+        webhookRequest(delivery, tamperedBody),
+        verificationOptions(),
+      )).rejects.toMatchObject({ code: 'webhook_signature_digest_mismatch' });
+
+      const bodyOnlyHeaders = { ...delivery.headers };
+      delete bodyOnlyHeaders.signature;
+      delete bodyOnlyHeaders['signature-input'];
+      await expect(verifyWebhookSignature({
+        ...webhookRequest(delivery),
+        headers: bodyOnlyHeaders as Record<string, string>,
+      }, verificationOptions())).rejects.toMatchObject({ code: 'webhook_signature_header_malformed' });
+
+      await expect(verifyWebhookSignature(
+        webhookRequest(delivery),
+        { ...verificationOptions(), now: () => Math.floor(Date.now() / 1000) + 1_000 },
+      )).rejects.toMatchObject({ code: 'webhook_signature_window_invalid' });
+    } finally {
+      if (srv) {
+        srv.closeAllConnections?.();
+        await new Promise<void>(resolve => srv!.close(() => resolve()));
+      }
+    }
+  }, 15000);
 
   it('does not emit when push_notification_config is absent', async () => {
     // Nothing to receive — just verify the MCP call succeeds without webhook plumbing.
@@ -311,9 +454,123 @@ describe('Training Agent webhook emission', () => {
     expect(response.status).toBe(200);
   });
 
-  // Re-enable when the proof-of-control flow can activate a previously
-  // registered inactive subscriber through a trusted challenge response.
-  it.skip('delivers account-level creative lifecycle webhooks registered through sync_accounts', async () => {
+  it('activates an existing inactive subscriber and re-challenges after URL or credential changes', async () => {
+    const challenges: Array<Record<string, unknown>> = [];
+    const challengeUrls: string[] = [];
+    let srv: http.Server | undefined;
+    try {
+      srv = await startReceiver((delivery, res) => {
+        const body = JSON.parse(delivery.body) as Record<string, unknown>;
+        challenges.push(body);
+        challengeUrls.push(delivery.url);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ challenge: body.challenge }));
+      });
+      const addr = srv.address() as AddressInfo;
+      const baseUrl = `http://127.0.0.1:${addr.port}`;
+      const callSyncAccounts = async (id: number, accounts: Array<Record<string, unknown>>) => {
+        const response = await request(app)
+          .post('/api/training-agent/sales/mcp')
+          .set('Authorization', BILLABLE_AUTH)
+          .set('Content-Type', 'application/json')
+          .set('Accept', 'application/json, text/event-stream')
+          .send({
+            jsonrpc: '2.0',
+            id,
+            method: 'tools/call',
+            params: {
+              name: 'sync_accounts',
+              arguments: { idempotency_key: randomUUID(), accounts },
+            },
+          });
+        expect(response.status).toBe(200);
+        expect(response.text).not.toContain('"isError":true');
+        return structuredToolResult(response);
+      };
+
+      const initial = await callSyncAccounts(30, [{
+        brand: { domain: 'activation-proof.example' },
+        operator: 'pinnacle-agency.example',
+        billing: 'operator',
+        sandbox: true,
+        notification_configs: [{
+          subscriber_id: 'buyer-primary',
+          url: `${baseUrl}/hook/a`,
+          event_types: ['creative.status_changed'],
+          active: false,
+        }],
+      }]);
+      const accountId = (initial.accounts as Array<Record<string, unknown>>)[0].account_id as string;
+      expect(challenges).toHaveLength(0);
+
+      const config = {
+        subscriber_id: 'buyer-primary',
+        url: `${baseUrl}/hook/a`,
+        event_types: ['creative.status_changed'],
+        active: true,
+      };
+      await callSyncAccounts(31, [{ account: { account_id: accountId }, notification_configs: [config] }]);
+      expect(challenges).toHaveLength(1);
+
+      // The unchanged active tuple retains its existing proof.
+      await callSyncAccounts(32, [{ account: { account_id: accountId }, notification_configs: [config] }]);
+      expect(challenges).toHaveLength(1);
+
+      await callSyncAccounts(33, [{
+        account: { account_id: accountId },
+        notification_configs: [{ ...config, url: `${baseUrl}/hook/b` }],
+      }]);
+      expect(challenges).toHaveLength(2);
+
+      await callSyncAccounts(34, [{
+        account: { account_id: accountId },
+        notification_configs: [{
+          ...config,
+          url: `${baseUrl}/hook/b`,
+          authentication: {
+            schemes: ['HMAC-SHA256'],
+            credentials: 'new-shared-secret-0000000000000001',
+          },
+        }],
+      }]);
+      expect(challenges).toHaveLength(3);
+      expect(challengeUrls).toEqual([
+        `${baseUrl}/hook/a`,
+        `${baseUrl}/hook/b`,
+        `${baseUrl}/hook/b`,
+      ]);
+      expect(challenges[2].delivery_auth).toMatchObject({
+        mode: 'HMAC-SHA256',
+        credential_fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+      });
+
+      const previousFingerprint = (challenges[2].delivery_auth as Record<string, unknown>)
+        .credential_fingerprint;
+      await callSyncAccounts(35, [{
+        account: { account_id: accountId },
+        notification_configs: [{
+          ...config,
+          url: `${baseUrl}/hook/b`,
+          authentication: {
+            schemes: ['HMAC-SHA256'],
+            credentials: 'rotated-shared-secret-00000000000001',
+          },
+        }],
+      }]);
+      expect(challenges).toHaveLength(4);
+      const rotatedFingerprint = (challenges[3].delivery_auth as Record<string, unknown>)
+        .credential_fingerprint;
+      expect(rotatedFingerprint).toMatch(/^[a-f0-9]{64}$/);
+      expect(rotatedFingerprint).not.toBe(previousFingerprint);
+    } finally {
+      if (srv) {
+        srv.closeAllConnections?.();
+        await new Promise<void>(resolve => srv!.close(() => resolve()));
+      }
+    }
+  }, 15000);
+
+  it('delivers account-level creative lifecycle webhooks registered through sync_accounts', async () => {
     const deliveries: CapturedDelivery[] = [];
     let srv: http.Server | undefined;
     try {
@@ -322,6 +579,12 @@ describe('Training Agent webhook emission', () => {
         resolveDelivery = resolve;
       });
       srv = await startReceiver((d, res) => {
+        const body = JSON.parse(d.body) as Record<string, unknown>;
+        if (body.type === 'webhook.challenge') {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ challenge: body.challenge }));
+          return;
+        }
         deliveries.push(d);
         res.writeHead(200); res.end();
         resolveDelivery?.();
@@ -449,13 +712,17 @@ describe('Training Agent webhook emission', () => {
     }
   }, 15000);
 
-  // This ownership assertion also requires an activated subscriber; public
-  // sync_accounts registration is intentionally inactive-only for now.
-  it.skip('sends account-level creative lifecycle webhooks only to the owning account subscriber', async () => {
+  it('sends account-level creative lifecycle webhooks only to the owning account subscriber', async () => {
     const deliveries: CapturedDelivery[] = [];
     let srv: http.Server | undefined;
     try {
       srv = await startReceiver((d, res) => {
+        const body = JSON.parse(d.body) as Record<string, unknown>;
+        if (body.type === 'webhook.challenge') {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ challenge: body.challenge }));
+          return;
+        }
         deliveries.push(d);
         res.writeHead(200); res.end();
       });

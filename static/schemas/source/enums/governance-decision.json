@@ -8,7 +8,7 @@
   "enumDescriptions": {
     "approved": "Proceed as planned — the action is governance-approved",
     "denied": "Do not proceed — the action is blocked by governance policy",
-    "conditions": "Approved if the caller accepts the listed conditions and re-calls check_governance with adjusted parameters"
+    "conditions": "Counterproposal only — apply the listed adjustments and re-call check_governance with consultation_context; this verdict does not authorize execution"
   },
   "$comment": "get-plan-audit-logs-response.json summary.statuses carries an additional 'human_reviewed' counter that is NOT a valid governance decision value — it is a supplementary count of checks that went through human review, not a check outcome. See get-plan-audit-logs-response.json summary.statuses for the full stats shape."
 }

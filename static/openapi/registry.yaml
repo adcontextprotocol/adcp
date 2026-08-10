@@ -144,7 +144,8 @@ components:
             - brand_json
             - community
             - enriched
-          description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment."
+            - stub
+          description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched` > `stub`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment. `stub`: a minimal organization-derived placeholder awaiting stronger evidence."
         live_brand_json:
           type: object
           properties:
@@ -223,6 +224,7 @@ components:
             - brand_json
             - community
             - enriched
+            - stub
         has_manifest:
           type: boolean
         verified:
@@ -597,10 +599,41 @@ components:
         creative_capabilities:
           type: object
           properties:
-            formats_supported:
+            supported_formats:
               type: array
               items:
-                type: string
+                type: object
+                properties:
+                  capability_id:
+                    type: string
+                  format:
+                    type: object
+                    properties:
+                      format_kind:
+                        type: string
+                      publisher_domain:
+                        type: string
+                      format_option_id:
+                        type: string
+                      params:
+                        type: object
+                        additionalProperties: {}
+                    required:
+                      - format_kind
+                    additionalProperties: {}
+                  operations:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - build
+                        - validate
+                        - preview
+                    minItems: 1
+                required:
+                  - format
+                  - operations
+                additionalProperties: {}
             can_generate:
               type: boolean
             can_validate:
@@ -608,10 +641,11 @@ components:
             can_preview:
               type: boolean
           required:
-            - formats_supported
+            - supported_formats
             - can_generate
             - can_validate
             - can_preview
+          additionalProperties: {}
         signals_capabilities:
           type: object
           properties:
@@ -1167,6 +1201,10 @@ components:
               format_kind:
                 type: string
                 description: Canonical format discriminator, such as `image`, `video_hosted`, `native_in_feed`, or `custom`.
+              sample_render_url:
+                type: string
+                pattern: ^https:\/\/
+                description: Optional public HTTPS page where a human can inspect a sample render of this catalog format using publisher- or community-mirror-provided example assets. Informational only; this is not a renderer endpoint, buyer-asset preview, validation result, creative approval, proof of publisher acceptance, or live delivery guarantee.
               params:
                 type: object
                 additionalProperties: {}
@@ -1190,7 +1228,66 @@ components:
             required:
               - display_name
               - format_kind
-          description: Display-oriented summary of top-level adagents.json `formats[]`, normalized for publisher pages and agent discovery clients. Each entry preserves `format_kind`, `format_option_id`, and canonical params.
+          description: Lossy display-oriented summary of top-level adagents.json `formats[]`, normalized for publisher pages and eligibility discovery. It preserves `format_kind`, `format_option_id`, params, property scope, preference, and experimental status, but omits `v1_format_ref`, `canonical_formats_only`, `applies_to_channels`, `publisher_domain`, and custom `format_shape`/`format_schema`. Fetch the canonical document at hosting.resolved_url (or hosting.expected_url when self-hosted) for creative validation.
+        placements:
+          type: array
+          items:
+            type: object
+            properties:
+              placement_id:
+                type: string
+              name:
+                type: string
+              description:
+                type: string
+              property_ids:
+                type: array
+                items:
+                  type: string
+              property_tags:
+                type: array
+                items:
+                  type: string
+              collection_ids:
+                type: array
+                items:
+                  type: string
+              channels:
+                type: array
+                items:
+                  type: string
+              tags:
+                type: array
+                items:
+                  type: string
+              format_options:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    format_option_id:
+                      type: string
+                    format_kind:
+                      type: string
+                      description: Resolved canonical format kind accepted by this placement.
+                    params:
+                      type: object
+                      additionalProperties: {}
+                      description: Resolved canonical narrowing for this placement format.
+                  required:
+                    - format_kind
+                description: Placement format references resolved against the same response's top-level formats plus any inline canonical declarations.
+              source:
+                type: string
+                enum:
+                  - adagents_json
+                  - community
+                description: Publisher-origin placements are adagents_json; moderator-maintained catalog placements are community.
+            required:
+              - placement_id
+              - name
+              - source
+          description: Eligibility-oriented publisher placement summaries. Present only when the request includes `include=placements`; format references are resolved to canonical kind/params so callers can join property → placement → format without a second origin fetch.
         authorized_agents:
           type: array
           items:
@@ -3149,6 +3246,11 @@ components:
           type: array
           items:
             type: string
+          description: Deprecated 3.x named-format profile projection.
+        format_kinds:
+          type: array
+          items:
+            type: string
         property_count:
           type: integer
         publisher_count:
@@ -3490,6 +3592,20 @@ components:
           type: integer
         collection_count:
           type: integer
+        format_count:
+          type: integer
+          minimum: 0
+          description: Number of top-level formats[] declarations after the revision.
+        placement_count:
+          type: integer
+          minimum: 0
+          description: Number of top-level placements[] declarations after the revision.
+        changed_fields:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          description: Semantic top-level adagents.json fields changed by this revision, including formats or placements. Present on newly emitted 3.2 change events.
         discovery_method:
           type: string
         manager_domain:
@@ -3659,6 +3775,10 @@ components:
                 type:
                   - string
                   - "null"
+              first_failure_validations:
+                type: array
+                items: {}
+                description: Validation evidence for the first failure. Populated only for owners and empty for other callers.
               last_tested_at:
                 type:
                   - string
@@ -3681,9 +3801,10 @@ components:
               - first_failed_step_title
               - first_failed_step_task
               - first_failure_message
+              - first_failure_validations
               - last_tested_at
               - last_passed_at
-          description: Owner-scoped per-storyboard diagnostics used by the dashboard. Empty for non-owners.
+          description: Public per-storyboard verdicts and aggregate step counts. First-failure diagnostic fields are populated only for owners; scalar diagnostics are null and validation evidence is empty for other callers.
         notices:
           type: array
           items: {}
@@ -4168,6 +4289,9 @@ components:
             - invalid_url
             - invalid_env_reference
             - invalid_auth_method_value
+            - array_too_many
+            - array_too_few
+            - aggregate_too_long
           description: Stable rejection tag. UI maps this to operator-friendly prose.
         field:
           type: string
@@ -5308,9 +5432,10 @@ paths:
               - brand_json
               - enriched
               - community
-            description: "Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed."
+              - stub
+            description: "Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed; stub = organization-derived placeholder awaiting stronger evidence."
           required: false
-          description: "Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed."
+          description: "Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed; stub = organization-derived placeholder awaiting stronger evidence."
           name: source
           in: query
       responses:
@@ -5338,6 +5463,8 @@ paths:
                         type: integer
                       enriched:
                         type: integer
+                      stub:
+                        type: integer
                       houses:
                         type: integer
                       sub_brands:
@@ -5350,6 +5477,7 @@ paths:
                       - brand_json
                       - community
                       - enriched
+                      - stub
                       - houses
                       - sub_brands
                       - with_manifest
@@ -6192,7 +6320,7 @@ paths:
     get:
       operationId: listAgents
       summary: List agents
-      description: List all agents in the registry. Optionally enrich with health checks, capabilities, and property summaries via query parameters. Measurement-vendor filters (`metric_id`, `accreditation`, `q`) imply `type=measurement` when `type` is unset; an explicit `type` other than `measurement` returns 400.
+      description: List all agents in the registry. Optionally enrich with health checks, capabilities, and property summaries via query parameters. Measurement-vendor filters (`metric_id`, `accreditation`, `q`) imply `type=measurement`. Canonical creative-capability filters (`format_kind`, `publisher_domain`, `format_option_id`, `capability_id`, `creative_operation`) match any endpoint exposing that creative surface, including mixed sales/creative agents; add an explicit `type` only to narrow by primary registry classification.
       tags:
         - Agent Discovery
       parameters:
@@ -6245,10 +6373,10 @@ paths:
               - type: array
                 items:
                   type: string
-            description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable (each value is OR'd within the param, AND'd with other filters). Implies `type=measurement`."
+            description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable; multiple values are AND'd (vendor must carry all named metrics). When combined with `accreditation`, a cross-product AND applies — each (metric_id, accreditation) pair must be covered by the same metrics element. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`."
             example: attention_units
           required: false
-          description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable (each value is OR'd within the param, AND'd with other filters). Implies `type=measurement`."
+          description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable; multiple values are AND'd (vendor must carry all named metrics). When combined with `accreditation`, a cross-product AND applies — each (metric_id, accreditation) pair must be covered by the same metrics element. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`."
           name: metric_id
           in: query
         - schema:
@@ -6257,10 +6385,10 @@ paths:
               - type: array
                 items:
                   type: string
-            description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response)."
+            description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable; multiple values are AND'd. When combined with `metric_id`, a cross-product AND applies — see `metric_id` description. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response)."
             example: MRC
           required: false
-          description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response)."
+          description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable; multiple values are AND'd. When combined with `metric_id`, a cross-product AND applies — see `metric_id` description. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response)."
           name: accreditation
           in: query
         - schema:
@@ -6271,6 +6399,61 @@ paths:
           required: false
           description: "Measurement-vendor filter: case-insensitive substring match against `measurement.metrics[].metric_id`. v1 scope: metric_id only (description/standard search is a follow-up). Max 64 chars; SQL wildcard characters are escaped. Implies `type=measurement`."
           name: q
+          in: query
+        - schema:
+            anyOf:
+              - type: string
+              - type: array
+                items:
+                  type: string
+            description: "Canonical creative-capability filter: exact match on creative.supported_formats[].format.format_kind. Repeatable with OR semantics. Matches standalone creative agents and mixed-role endpoints."
+            example: video_hosted
+          required: false
+          description: "Canonical creative-capability filter: exact match on creative.supported_formats[].format.format_kind. Repeatable with OR semantics. Matches standalone creative agents and mixed-role endpoints."
+          name: format_kind
+          in: query
+        - schema:
+            type: string
+            description: "Canonical creative-capability filter: exact publisher_domain on the same supported-format entry. Pair with format_option_id to find endpoints claiming an exact publisher format."
+            example: shorts.streamhaus.example
+          required: false
+          description: "Canonical creative-capability filter: exact publisher_domain on the same supported-format entry. Pair with format_option_id to find endpoints claiming an exact publisher format."
+          name: publisher_domain
+          in: query
+        - schema:
+            type: string
+            description: "Canonical creative-capability filter: exact publisher format_option_id on the same supported-format entry."
+            example: spotlight_video
+          required: false
+          description: "Canonical creative-capability filter: exact publisher format_option_id on the same supported-format entry."
+          name: format_option_id
+          in: query
+        - schema:
+            type: string
+            description: "Canonical creative-capability filter: exact endpoint-local creative.supported_formats[].capability_id."
+          required: false
+          description: "Canonical creative-capability filter: exact endpoint-local creative.supported_formats[].capability_id."
+          name: capability_id
+          in: query
+        - schema:
+            anyOf:
+              - type: string
+                enum:
+                  - build
+                  - validate
+                  - preview
+              - type: array
+                items:
+                  type: string
+                  enum:
+                    - build
+                    - validate
+                    - preview
+            description: "Canonical creative-capability filter: required supported operation on the same format entry. Repeatable with OR semantics."
+            example: build
+          required: false
+          description: "Canonical creative-capability filter: required supported operation on the same format entry. Repeatable with OR semantics."
+          name: creative_operation
           in: query
         - schema:
             type: array
@@ -6850,6 +7033,15 @@ paths:
           required: true
           name: domain
           in: query
+        - schema:
+            type: string
+            enum:
+              - placements
+            description: Set to placements to include eligibility-oriented placement summaries with resolved canonical format options.
+          required: false
+          description: Set to placements to include eligibility-oriented placement summaries with resolved canonical format options.
+          name: include
+          in: query
       responses:
         "200":
           description: Publisher lookup result
@@ -6863,6 +7055,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: Publisher lookup exceeded its bounded read deadline
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - publisher_lookup_timeout
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - code
+                  - retry_after
   /api/registry/publisher/{domain}/adagents/revalidate:
     post:
       operationId: revalidatePublisherAdagents
@@ -7008,6 +7219,148 @@ paths:
                 required:
                   - error
                   - retry_after
+  /api/registry/brand/{domain}/force-crawl:
+    post:
+      operationId: forceBrandCrawl
+      summary: Force a synchronous brand.json crawl
+      description: |-
+        Admin-only support endpoint that fetches a domain's live `/.well-known/brand.json`, persists valid origin evidence, and returns the before/after state. A verified owner remains labeled `source: hosted` because that field describes identity provenance; `new_source_type: brand_json` and `promoted: true` confirm that live origin evidence was adopted.
+
+        **Rate limits:** 5 minutes per domain, 30 requests per user per hour.
+      tags:
+        - Brand Discovery
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            example: brand.example
+          required: true
+          name: domain
+          in: path
+      responses:
+        "200":
+          description: Synchronous crawl result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domain:
+                    type: string
+                  previous_source:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - hosted
+                      - brand_json
+                      - community
+                      - enriched
+                      - stub
+                      - null
+                  new_source:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - hosted
+                      - brand_json
+                      - community
+                      - enriched
+                      - stub
+                      - null
+                  previous_source_type:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - brand_json
+                      - community
+                      - enriched
+                      - stub
+                      - null
+                  new_source_type:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - brand_json
+                      - community
+                      - enriched
+                      - stub
+                      - null
+                  promoted:
+                    type: boolean
+                    description: True when the crawl replaced lower-trust stored evidence with live brand.json evidence.
+                  brand_json_found:
+                    type: boolean
+                  live_variant:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - authoritative_location
+                      - house_redirect
+                      - brand_agent
+                      - house_portfolio
+                      - brand_canonical
+                      - null
+                  has_manifest:
+                    type: boolean
+                  checked_at:
+                    type: string
+                    format: date-time
+                required:
+                  - domain
+                  - previous_source
+                  - new_source
+                  - previous_source_type
+                  - new_source_type
+                  - promoted
+                  - brand_json_found
+                  - live_variant
+                  - has_manifest
+                  - checked_at
+        "400":
+          description: Invalid domain format, private IP, or unresolvable domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - retry_after
+        "500":
+          description: Crawl failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/publisher/authorization:
     get:
       operationId: lookupPublisherAgentAuthorization
@@ -7090,6 +7443,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: Publisher authorization lookup exceeded its bounded read deadline
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - publisher_lookup_timeout
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - code
+                  - retry_after
   /api/registry/validate/product-authorization:
     post:
       operationId: validateProductAuthorization
@@ -8047,8 +8419,8 @@ paths:
   /api/public/agent-formats:
     get:
       operationId: getAgentFormats
-      summary: Get agent formats
-      description: Fetch creative formats from a creative agent.
+      summary: Get creative-agent format capabilities
+      description: Fetch get_adcp_capabilities creative.supported_formats[] from a creative agent, falling back to the deprecated list_creative_formats catalog for 3.1-compatible agents.
       tags:
         - Agent Probing
       parameters:
@@ -8059,7 +8431,7 @@ paths:
           in: query
       responses:
         "200":
-          description: Creative formats
+          description: Canonical creative capabilities
           content:
             application/json:
               schema:
@@ -8073,6 +8445,119 @@ paths:
                 required:
                   - success
                   - formats
+        "400":
+          description: Missing agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  retryAfter:
+                    type: integer
+                required:
+                  - error
+                  - message
+        "502":
+          description: Agent discovery failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Connection timeout
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
+  /api/public/agent-publishers:
+    get:
+      operationId: getAgentPublishers
+      summary: Get agent publisher properties
+      description: Fetch public list_authorized_properties data from a sales agent.
+      tags:
+        - Agent Probing
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: url
+          in: query
+      responses:
+        "200":
+          description: Publisher properties
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  properties:
+                    type: array
+                    items: {}
+                required:
+                  - success
+                  - properties
+        "400":
+          description: Missing agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  retryAfter:
+                    type: integer
+                required:
+                  - error
+                  - message
+        "502":
+          description: Agent discovery failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Connection timeout
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
   /api/public/agent-products:
     get:
       operationId: getAgentProducts
@@ -8102,6 +8587,48 @@ paths:
                 required:
                   - success
                   - products
+        "400":
+          description: Missing agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  retryAfter:
+                    type: integer
+                required:
+                  - error
+                  - message
+        "502":
+          description: Agent discovery failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Connection timeout
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
   /api/public/validate-publisher:
     get:
       operationId: validatePublisher
@@ -8596,7 +9123,7 @@ paths:
       operationId: getRegistryFeed
       summary: Registry change feed
       description: |-
-        Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days. The `freshness` object reports when the response was generated, the newest matching event currently visible to the feed, and the resulting feed lag.
+        Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days. The `freshness` object reports when the response was generated, the newest matching event currently visible to the feed, and the resulting feed lag. `publisher.adagents_changed` covers semantic changes in every top-level catalog field, including formats-only and placements-only revisions; new 3.2 events identify them in `payload.changed_fields`.
 
         Type filtering supports glob patterns: `property.*` matches `property.created`, `property.updated`, etc.
       tags:
@@ -9147,10 +9674,11 @@ paths:
                           type: array
                           items:
                             type: string
-                        format_ids:
+                        format_kinds:
                           type: array
-                          items: {}
-                          description: Creative format identifiers supported by this agent
+                          items:
+                            type: string
+                          description: Canonical format kinds present in this agent's indexed inventory profile
                         property_count:
                           type: integer
                         publisher_count:
@@ -9178,7 +9706,7 @@ paths:
                         - categories
                         - tags
                         - delivery_types
-                        - format_ids
+                        - format_kinds
                         - property_count
                         - publisher_count
                         - has_tmp
@@ -9213,7 +9741,7 @@ paths:
       operationId: requestCrawl
       summary: Request domain re-crawl
       description: |-
-        Trigger an immediate re-crawl of a publisher domain after updating adagents.json. The crawl runs asynchronously — returns 202 immediately.
+        Trigger an immediate re-crawl of a publisher domain after updating adagents.json. The crawl runs asynchronously in the accepting process — returns 202 immediately. The response `crawl_request_id` correlates accepted, running, completed, skipped, and failed lifecycle logs; a 202 does not by itself mean the mirror write completed.
 
         **Rate limits:** 5 minutes per domain, 30 requests per user per hour.
       tags:
@@ -9247,9 +9775,14 @@ paths:
                       - Crawl request accepted
                   domain:
                     type: string
+                  crawl_request_id:
+                    type: string
+                    format: uuid
+                    description: Correlation ID for crawl lifecycle logs; acceptance is not completion.
                 required:
                   - message
                   - domain
+                  - crawl_request_id
         "400":
           description: Invalid domain format, private IP, or unresolvable domain
           content:
@@ -9276,6 +9809,25 @@ paths:
                     description: Seconds to wait before retrying
                 required:
                   - error
+                  - retry_after
+        "503":
+          description: A full crawl is active; the request was not accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - crawl_temporarily_unavailable
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - code
                   - retry_after
   /api/registry/manager-revalidation-request:
     post:
@@ -10487,6 +11039,15 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization before its credentials are used.
       responses:
         "200":
           description: Snapshot refreshed
@@ -10636,6 +11197,13 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+        - schema:
+            type: string
+            description: Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations.
+          required: false
+          description: Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations.
+          name: org
+          in: query
       responses:
         "200":
           description: Auth status
@@ -10695,6 +11263,9 @@ paths:
                     - bearer
                     - basic
                   description: "Auth type (default: bearer)"
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
       responses:
         "200":
           description: Connection result
@@ -10780,9 +11351,16 @@ paths:
                   maxLength: 1024
                   description: Space-separated OAuth scope values.
                 resource:
-                  type: string
-                  maxLength: 2048
-                  description: RFC 8707 resource indicator.
+                  anyOf:
+                    - type: string
+                      maxLength: 2048
+                    - type: array
+                      items:
+                        type: string
+                        maxLength: 2048
+                      minItems: 1
+                      maxItems: 8
+                  description: RFC 8707 resource indicator. Accepts a single URI string or an array of 1–8 URI strings for multi-resource authorization servers (Keycloak strict, AWS Cognito multi-RS).
                 audience:
                   type: string
                   maxLength: 2048
@@ -10793,6 +11371,9 @@ paths:
                     - basic
                     - body
                   description: "Client-credentials placement: basic (HTTP Basic header, RFC 6749 §2.3.1 preferred) or body (form fields). SDK default is basic."
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
               required:
                 - token_endpoint
                 - client_id
@@ -10866,6 +11447,15 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
       responses:
         "200":
           description: "Result of the token exchange. `ok: true` on 2xx from the AS; `ok: false` with a typed error otherwise (HTTP response itself is still 200 — the error payload carries the rejection kind so UI can branch on it)."
@@ -10968,6 +11558,13 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+        - schema:
+            type: string
+            description: Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations.
+          required: false
+          description: Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations.
+          name: org
+          in: query
       responses:
         "200":
           description: Bundles the agent will be tested against, driven by its declared capabilities
@@ -11613,6 +12210,9 @@ paths:
                 dry_run:
                   type: boolean
                   description: "Dry run mode (default: true)"
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
       responses:
         "200":
           description: Step execution result
@@ -11741,6 +12341,15 @@ paths:
           required: true
           name: storyboardId
           in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
       responses:
         "200":
           description: Storyboard run result with annotated phases
@@ -11942,6 +12551,15 @@ paths:
           required: true
           name: storyboardId
           in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
       responses:
         "200":
           description: Side-by-side comparison results

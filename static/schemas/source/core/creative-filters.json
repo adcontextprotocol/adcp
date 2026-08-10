@@ -104,11 +104,19 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Filter by structured format IDs. Returns creatives that match any of these formats.",
+      "deprecated": true,
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Filter legacy named-format creatives. Use `format_kinds` for canonical libraries.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       },
       "minItems": 1
+    },
+    "format_kinds": {
+      "type": "array",
+      "description": "Filter by canonical format kinds. Returns creatives matching any supplied kind.",
+      "items": { "$ref": "/schemas/core/canonical-format-kind.json" },
+      "minItems": 1,
+      "uniqueItems": true
     },
     "asset_types": {
       "type": "array",

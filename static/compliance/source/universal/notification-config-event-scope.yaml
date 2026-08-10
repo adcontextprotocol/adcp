@@ -9,7 +9,8 @@ required_tools:
 
 narrative: |
   `notification-type.json` historically contained both media-buy-anchored
-  event types (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) and
+  event types (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`,
+  `impairment`) and
   account-anchored event types (`creative.*`, `product.*`, `signal.*`,
   `wholesale_feed.bulk_change`). Account-level notification config schemas now
   expose only account-anchored event types so media-buy registrations fail

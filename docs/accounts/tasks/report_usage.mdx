@@ -5,13 +5,13 @@ description: "report_usage sends consumption data to AdCP vendor agents after ca
 testable: false
 ---
 
-Reports how a vendor's service was consumed after campaign delivery. Called by orchestrators to inform a vendor agent (signals, governance, creative) what was used so the vendor can track earned revenue and verify billing.
+Reports how a vendor's service was consumed after campaign delivery. Called by orchestrators to inform a vendor agent (signals, governance, creative) what was used so the vendor can track earned revenue and verify billing. It is also used against the sales agent itself when a media buy names the buyer or a measurement vendor as the billing authority.
 
 Each usage record is self-contained — it carries its own `account` and `media_buy_id`. A single request can span multiple accounts and campaigns.
 
 **Response Time**: ~1s.
 
-**Request Schema**: [`/schemas/v3/account/report-usage-request.json`](https://adcontextprotocol.org/schemas/v3/account/report-usage-request.json)
+{/* Add the /schemas/v3/ request link once the revenue-share fields ship in a stable release. */}
 **Response Schema**: [`/schemas/v3/account/report-usage-response.json`](https://adcontextprotocol.org/schemas/v3/account/report-usage-response.json)
 
 ## Request Parameters
@@ -34,10 +34,16 @@ Each record requires `account`, `vendor_cost`, and `currency`. Additional fields
 | `pricing_option_id` | string | Vendor: Yes | Pricing option from the vendor's discovery response (`get_signals`, `list_creatives`, `list_content_standards`, `list_property_lists`) or execution response (`build_creative`). The vendor uses this to verify the correct rate was applied. |
 | `impressions` | number | Signals: Yes | Impressions delivered |
 | `media_spend` | number | percent_of_media: Yes | Media spend for percent-of-media cost verification |
+| `media_buy_id` | string | Revenue share: Yes | Media buy whose selected package pricing is being reconciled. |
+| `conversions` | number | No | Number of attributed conversion events. Optional analytics context for revenue share. |
+| `conversion_value` | number | No | Total attributed conversion value. Optional analytics context; not the revenue-share billing basis. |
+| `commissionable_value` | number | Revenue share: Yes | Settled attributed value eligible for commission. The seller verifies `vendor_cost = round_currency(commissionable_value × commission_rate)`. |
 | `signal_agent_segment_id` | string | Signals: Yes | Signal identifier from `get_signals` |
 | `creative_id` | string | Creative: Yes | Creative identifier from `build_creative` or `list_creatives`. Links usage to a specific creative for billing verification. A `build_creative` variant leaf earns a `creative_id` only when trafficked/added to the library — discarded best-of-N or fan-out variants are never reported here; their charge is the inline per-leaf `vendor_cost` on the `build_creative` response (the authoritative record for untrafficked leaves). |
 | `build_variant_id` | string | No | When the reported `creative_id` was promoted from a specific `build_creative` variant leaf but differs from that source id, carry the source `build_variant_id` for reconciliation. On the canonical path where `creative_id` is the kept `build_variant_id`, omit this field. |
 | `property_list_id` | string | Property lists: Yes | Property list identifier from `list_property_lists`. Links usage to a specific property list for billing verification. |
+
+For revenue-share records, `pricing_option_id` identifies the agreed rate and commission basis. `currency` must match the selected option, and `vendor_cost` must not exceed the package's commission budget.
 
 ## Response
 
@@ -166,6 +172,8 @@ If some records fail validation, the response identifies how many were accepted:
 
 Always include `idempotency_key` in production usage. If a request times out or returns a network error, retry with the same key — the server will return the original result without double-counting.
 
+An idempotent replay is transparent: the server returns the original response unchanged and does not emit a `DUPLICATE_REQUEST` error or advisory.
+
 Generate a fresh UUID per request, not per usage record. If you need to report additional records for the same period, submit a new request with a new key.
 
 ## Reporting cadence
@@ -181,7 +189,6 @@ Report upon campaign completion to close out the final period.
 | `ACCOUNT_NOT_FOUND` | Account reference in a usage record not found or not accessible | Verify via `list_accounts`; re-run `sync_accounts` if needed |
 | `INVALID_USAGE_DATA` | A usage record has missing or invalid fields | Check required fields for your vendor type |
 | `INVALID_PRICING_OPTION` | `pricing_option_id` not found on this account | Verify `pricing_option_id` from the vendor's discovery response |
-| `DUPLICATE_REQUEST` | Request with this `idempotency_key` was already accepted | Safe to ignore — original response is returned unchanged |
 
 ## Next Steps
 

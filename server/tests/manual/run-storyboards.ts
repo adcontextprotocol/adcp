@@ -101,6 +101,11 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
   // on its own.
   app.use('/api/training-agent', createTrainingAgentRouter({
     ...(isThreeZeroCompatRun && { storyboardCompat: { version: '3.0' as const } }),
+    // The matrix intentionally drives every storyboard through one embedded
+    // server in a few seconds. Feature work can legitimately add MCP calls;
+    // production throttling is outside this exhaustive functional matrix and
+    // must not turn it into an order-dependent request-count test.
+    disableRateLimit: true,
   }));
   return await new Promise((resolve, reject) => {
     const srv = http.createServer(app);
@@ -114,10 +119,10 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
       // (/api/training-agent/<tenant>/mcp). Required — there's no
       // single-URL fallback after the v5 monolith was retired.
       // Common values: signals, sales, governance, creative,
-      // creative-builder, brand.
+      // creative-builder, brand, si.
       const tenantPath = process.env.TENANT_PATH;
       if (!tenantPath) {
-        throw new Error('TENANT_PATH env required (one of: signals, sales, governance, creative, creative-builder, brand)');
+        throw new Error('TENANT_PATH env required (one of: signals, sales, governance, creative, creative-builder, brand, si)');
       }
       const localAgentBaseUrl = `http://127.0.0.1:${addr.port}/api/training-agent`;
       resolve({

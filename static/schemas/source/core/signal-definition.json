@@ -260,13 +260,11 @@
       "additionalProperties": false
     },
     "subject_type": {
-      "type": "string",
-      "enum": ["individual", "household", "business", "contextual", "none"],
+      "$ref": "/schemas/enums/audience-subject-type.json",
       "description": "What kind of subject this signal characterizes."
     },
     "resolution_method": {
-      "type": "string",
-      "enum": ["deterministic_id", "probabilistic_device", "browser", "geographic", "content_signal", "mixed"],
+      "$ref": "/schemas/enums/audience-resolution-method.json",
       "description": "How the subject is resolved at decision time."
     },
     "id_types": {

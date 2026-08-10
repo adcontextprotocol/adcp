@@ -10,13 +10,17 @@ import { once } from "node:events";
 import type { Request, RequestHandler } from "express";
 import { z } from "zod";
 import escapeHtml from "escape-html";
-import { findOwnerOrgForUser } from "../services/agent-ownership.js";
-import { CreativeAgentClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
+import {
+  findOwnerOrgForUser,
+  isOrgOwnerOfAgent,
+  resolveOwnerOrgForUser,
+} from "../services/agent-ownership.js";
+import { AdCPClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
 import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex, listAllComplianceStoryboards } from "@adcp/sdk/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
-import { query } from "../db/client.js";
+import { query, withDatabaseDeadline } from "../db/client.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
@@ -35,6 +39,7 @@ import {
 import {
   comply,
   complianceResultToDbInput,
+  isNonExecutableCoverageGapScenario,
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
   computeSpecialismStatus,
@@ -111,7 +116,7 @@ import { CatalogDatabase } from "../db/catalog-db.js";
 import type { AdAgentsManager } from "../adagents-manager.js";
 import type { HealthChecker } from "../health.js";
 import type { CrawlerService } from "../crawler.js";
-import type { CapabilityDiscovery } from "../capabilities.js";
+import { sanitizeCreativeCapabilities, type CapabilityDiscovery } from "../capabilities.js";
 import { aaoHostedBrandJsonUrl, aaoHostedAdagentsJsonUrl, expectedAdagentsJsonUrl } from "../config/aao.js";
 import { canonicalTargetUri } from "@adcp/sdk/signing";
 import { fetchBrandContext, fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "../services/brandfetch.js";
@@ -143,6 +148,7 @@ import { getDevUser, isDevModeEnabled } from "../middleware/auth.js";
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
 import { resolveCallerOrgId } from "./helpers/resolve-caller-org.js";
 import { canonicalizeAgentUrl, PublisherDatabase } from "../db/publisher-db.js";
+import { buildCreativeCapabilities } from "../creative-agent/task-handlers.js";
 import {
   AuthorizationSnapshotDatabase,
   EvidenceValidationError,
@@ -215,11 +221,29 @@ type PublisherFormatSummary = {
   format_option_id?: string;
   display_name: string;
   format_kind: string;
+  sample_render_url?: string;
   params?: Record<string, unknown>;
   applies_to_property_ids?: string[];
   applies_to_property_tags?: string[];
   seller_preference?: string;
   experimental?: boolean;
+};
+
+type PublisherPlacementSummary = {
+  placement_id: string;
+  name: string;
+  description?: string;
+  property_ids?: string[];
+  property_tags?: string[];
+  collection_ids?: string[];
+  channels?: string[];
+  tags?: string[];
+  format_options?: Array<{
+    format_option_id?: string;
+    format_kind: string;
+    params?: Record<string, unknown>;
+  }>;
+  source: 'adagents_json' | 'community';
 };
 
 function recordOrNull(value: unknown): Record<string, unknown> | null {
@@ -230,6 +254,17 @@ function recordOrNull(value: unknown): Record<string, unknown> | null {
 
 function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function httpsUrlOrUndefined(value: unknown): string | undefined {
+  const raw = stringOrUndefined(value);
+  if (!raw) return undefined;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function stringArray(value: unknown, cap = 8): string[] {
@@ -365,6 +400,7 @@ function summarizeFormats(
         format_option_id: optionId,
         display_name: displayName,
         format_kind: formatKind,
+        sample_render_url: httpsUrlOrUndefined(format.sample_render_url),
         params,
         applies_to_property_ids: appliesToPropertyIds,
         applies_to_property_tags: appliesToPropertyTags,
@@ -375,9 +411,115 @@ function summarizeFormats(
     .filter((format): format is PublisherFormatSummary => !!format)
     .slice(0, 100);
 }
+
+function summarizePlacements(
+  manifest: Record<string, unknown> | null | undefined,
+  source: 'adagents_json' | 'community',
+): PublisherPlacementSummary[] {
+  const rawPlacements = Array.isArray(manifest?.placements) ? manifest.placements : [];
+  const rawFormats = Array.isArray(manifest?.formats) ? manifest.formats : [];
+  const formatsById = new Map<string, Record<string, unknown>>();
+  for (const raw of rawFormats) {
+    const format = recordOrNull(raw);
+    const id = format && stringOrUndefined(format.format_option_id);
+    if (format && id) formatsById.set(id, format);
+  }
+
+  return rawPlacements.flatMap(raw => {
+    const placement = recordOrNull(raw);
+    const placementId = placement && stringOrUndefined(placement.placement_id);
+    const name = placement && stringOrUndefined(placement.name);
+    if (!placement || !placementId || !name) return [];
+
+    const rawOptions = Array.isArray(placement.format_options) ? placement.format_options : [];
+    const formatOptions = rawOptions.flatMap(rawOption => {
+      const option = recordOrNull(rawOption);
+      if (!option) return [];
+      const optionId = stringOrUndefined(option.format_option_id);
+      const resolved = optionId && !stringOrUndefined(option.format_kind)
+        ? formatsById.get(optionId)
+        : option;
+      if (!resolved) return [];
+      const formatKind = stringOrUndefined(resolved.format_kind);
+      const params = recordOrNull(resolved.params);
+      if (!formatKind || !params) return [];
+      return [{ format_option_id: optionId ?? stringOrUndefined(resolved.format_option_id), format_kind: formatKind, params }];
+    });
+
+    return [{
+      placement_id: placementId,
+      name,
+      description: stringOrUndefined(placement.description),
+      property_ids: stringArray(placement.property_ids, 500),
+      property_tags: stringArray(placement.property_tags, 500),
+      collection_ids: stringArray(placement.collection_ids, 500),
+      channels: stringArray(placement.channels, 100),
+      tags: stringArray(placement.tags, 100),
+      format_options: formatOptions.length ? formatOptions : undefined,
+      source,
+    }];
+  }).slice(0, 500);
+}
 import { AAO_UA_COMPLIANCE } from "../config/user-agents.js";
 
 const logger = createLogger("registry-api");
+const PUBLISHER_LOOKUP_TIMEOUT_MS = 8_000;
+const PUBLISHER_LOOKUP_SLOW_PHASE_MS = 500;
+
+class PublisherLookupTimeoutError extends Error {
+  constructor(readonly phase: string) {
+    super(`Publisher lookup timed out during ${phase}`);
+    this.name = "PublisherLookupTimeoutError";
+  }
+}
+
+async function publisherLookupPhase<T>(
+  work: () => Promise<T>,
+  deadlineMs: number,
+  domain: string,
+  phase: string,
+): Promise<T> {
+  const startedAt = Date.now();
+  const remainingMs = deadlineMs - startedAt;
+  if (remainingMs <= 0) throw new PublisherLookupTimeoutError(phase);
+
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      withDatabaseDeadline(deadlineMs, work),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new PublisherLookupTimeoutError(phase)),
+          remainingMs,
+        );
+        timeout.unref();
+      }),
+    ]);
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error
+      ? String(error.code)
+      : "";
+    const message = error instanceof Error ? error.message : "";
+    if (
+      code === "57014" // statement_timeout
+      || code === "55P03" // lock_timeout
+      || message.includes("timeout exceeded when trying to connect")
+    ) {
+      throw new PublisherLookupTimeoutError(phase);
+    }
+    throw error;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    const durationMs = Date.now() - startedAt;
+    if (durationMs >= PUBLISHER_LOOKUP_SLOW_PHASE_MS) {
+      logger.warn(
+        { domain, phase, duration_ms: durationMs },
+        "Slow publisher lookup phase",
+      );
+    }
+  }
+}
+
 const complianceTarget = hostedComplianceTarget();
 const complianceOptions = hostedComplianceOptions(complianceTarget);
 const badgeEligibilityMetadata = (eligibleVersions: readonly string[]) => ({
@@ -630,6 +772,27 @@ registry.registerPath({
   },
 });
 
+const PublicAgentProxyErrorResponses = {
+  400: { description: "Missing agent URL", content: { "application/json": { schema: ErrorSchema } } },
+  429: {
+    description: "Rate limit exceeded",
+    content: {
+      "application/json": {
+        schema: z.object({
+          error: z.string(),
+          message: z.string(),
+          retryAfter: z.number().int().optional(),
+        }),
+      },
+    },
+  },
+  502: { description: "Agent discovery failed", content: { "application/json": { schema: ErrorSchema } } },
+  504: {
+    description: "Connection timeout",
+    content: { "application/json": { schema: z.object({ error: z.string(), message: z.string() }) } },
+  },
+} as const;
+
 registry.registerPath({
   method: "get",
   path: "/api/brands/resolve",
@@ -794,8 +957,8 @@ registry.registerPath({
       search: z.string().optional(),
       limit: z.string().optional().openapi({ type: 'integer', example: 100 }),
       offset: z.string().optional().openapi({ type: 'integer', example: 0 }),
-      source: z.enum(['hosted', 'brand_json', 'enriched', 'community']).optional().openapi({
-        description: 'Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed.',
+      source: z.enum(['hosted', 'brand_json', 'enriched', 'community', 'stub']).optional().openapi({
+        description: 'Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed; stub = organization-derived placeholder awaiting stronger evidence.',
       }),
     }),
   },
@@ -812,6 +975,7 @@ registry.registerPath({
               brand_json: z.number().int(),
               community: z.number().int(),
               enriched: z.number().int(),
+              stub: z.number().int(),
               houses: z.number().int(),
               sub_brands: z.number().int(),
               with_manifest: z.number().int(),
@@ -919,8 +1083,8 @@ function storedBrandJsonVariant(
 function resolvedStoredBrandSource(brand: {
   workos_organization_id?: string;
   domain_verified?: boolean;
-  source_type: 'brand_json' | 'community' | 'enriched';
-}): 'hosted' | 'brand_json' | 'community' | 'enriched' {
+  source_type: 'brand_json' | 'community' | 'enriched' | 'stub';
+}): 'hosted' | 'brand_json' | 'community' | 'enriched' | 'stub' {
   return brand.workos_organization_id && brand.domain_verified === true
     ? 'hosted'
     : brand.source_type;
@@ -936,6 +1100,7 @@ const RESOLVED_BRAND_SOURCE_PRIORITY: Record<ResolvedBrandResponse["source"], nu
   brand_json: 2,
   community: 3,
   enriched: 4,
+  stub: 5,
 };
 
 function storedBrandResolutionResponse(
@@ -1273,7 +1438,7 @@ registry.registerPath({
   summary: "List agents",
   description:
     "List all agents in the registry. Optionally enrich with health checks, capabilities, and property summaries via query parameters. " +
-    "Measurement-vendor filters (`metric_id`, `accreditation`, `q`) imply `type=measurement` when `type` is unset; an explicit `type` other than `measurement` returns 400.",
+    "Measurement-vendor filters (`metric_id`, `accreditation`, `q`) imply `type=measurement`. Canonical creative-capability filters (`format_kind`, `publisher_domain`, `format_option_id`, `capability_id`, `creative_operation`) match any endpoint exposing that creative surface, including mixed sales/creative agents; add an explicit `type` only to narrow by primary registry classification.",
   tags: ["Agent Discovery"],
   request: {
     query: z.object({
@@ -1283,16 +1448,38 @@ registry.registerPath({
       properties: z.enum(["true"]).optional(),
       compliance: z.enum(["true"]).optional(),
       metric_id: z.union([z.string(), z.array(z.string())]).optional().openapi({
-        description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable (each value is OR'd within the param, AND'd with other filters). Implies `type=measurement`.",
+        description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable; multiple values are AND'd (vendor must carry all named metrics). When combined with `accreditation`, a cross-product AND applies — each (metric_id, accreditation) pair must be covered by the same metrics element. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`.",
         example: "attention_units",
       }),
       accreditation: z.union([z.string(), z.array(z.string())]).optional().openapi({
-        description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response).",
+        description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable; multiple values are AND'd. When combined with `metric_id`, a cross-product AND applies — see `metric_id` description. Duplicate values are ignored. Maximum 20 unique values; maximum 100 cross-product pairs. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response).",
         example: "MRC",
       }),
       q: z.string().max(64).optional().openapi({
         description: "Measurement-vendor filter: case-insensitive substring match against `measurement.metrics[].metric_id`. v1 scope: metric_id only (description/standard search is a follow-up). Max 64 chars; SQL wildcard characters are escaped. Implies `type=measurement`.",
         example: "attention",
+      }),
+      format_kind: z.union([z.string(), z.array(z.string())]).optional().openapi({
+        description: "Canonical creative-capability filter: exact match on creative.supported_formats[].format.format_kind. Repeatable with OR semantics. Matches standalone creative agents and mixed-role endpoints.",
+        example: "video_hosted",
+      }),
+      publisher_domain: z.string().optional().openapi({
+        description: "Canonical creative-capability filter: exact publisher_domain on the same supported-format entry. Pair with format_option_id to find endpoints claiming an exact publisher format.",
+        example: "shorts.streamhaus.example",
+      }),
+      format_option_id: z.string().optional().openapi({
+        description: "Canonical creative-capability filter: exact publisher format_option_id on the same supported-format entry.",
+        example: "spotlight_video",
+      }),
+      capability_id: z.string().optional().openapi({
+        description: "Canonical creative-capability filter: exact endpoint-local creative.supported_formats[].capability_id.",
+      }),
+      creative_operation: z.union([
+        z.enum(["build", "validate", "preview"]),
+        z.array(z.enum(["build", "validate", "preview"])),
+      ]).optional().openapi({
+        description: "Canonical creative-capability filter: required supported operation on the same format entry. Repeatable with OR semantics.",
+        example: "build",
       }),
       verification_mode: z.array(z.enum(["spec", "live"])).optional().openapi({
         description:
@@ -1551,11 +1738,20 @@ registry.registerPath({
   request: {
     query: z.object({
       domain: z.string().openapi({ example: "voxmedia.com" }),
+      include: z.literal("placements").optional().openapi({ description: "Set to placements to include eligibility-oriented placement summaries with resolved canonical format options." }),
     }),
   },
   responses: {
     200: { description: "Publisher lookup result", content: { "application/json": { schema: PublisherLookupResultSchema } } },
     400: { description: "Missing domain", content: { "application/json": { schema: ErrorSchema } } },
+    503: {
+      description: "Publisher lookup exceeded its bounded read deadline",
+      content: { "application/json": { schema: z.object({
+        error: z.string(),
+        code: z.literal("publisher_lookup_timeout"),
+        retry_after: z.number().int(),
+      }) } },
+    },
   },
 });
 
@@ -1583,6 +1779,21 @@ const PublisherAdagentsRevalidationResultSchema = z.object({
   resolved_url: z.string().optional(),
   discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain", "adagents_authoritative"]).optional(),
   manager_domain: z.string().optional(),
+});
+
+const BrandForceCrawlResultSchema = z.object({
+  domain: z.string(),
+  previous_source: z.enum(["hosted", "brand_json", "community", "enriched", "stub"]).nullable(),
+  new_source: z.enum(["hosted", "brand_json", "community", "enriched", "stub"]).nullable(),
+  previous_source_type: z.enum(["brand_json", "community", "enriched", "stub"]).nullable(),
+  new_source_type: z.enum(["brand_json", "community", "enriched", "stub"]).nullable(),
+  promoted: z.boolean().openapi({
+    description: "True when the crawl replaced lower-trust stored evidence with live brand.json evidence.",
+  }),
+  brand_json_found: z.boolean(),
+  live_variant: z.enum(["authoritative_location", "house_redirect", "brand_agent", "house_portfolio", "brand_canonical"]).nullable(),
+  has_manifest: z.boolean(),
+  checked_at: z.string().datetime(),
 });
 
 registry.registerPath({
@@ -1618,6 +1829,40 @@ registry.registerPath({
         },
       },
     },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/brand/{domain}/force-crawl",
+  operationId: "forceBrandCrawl",
+  summary: "Force a synchronous brand.json crawl",
+  description:
+    "Admin-only support endpoint that fetches a domain's live `/.well-known/brand.json`, persists valid origin evidence, and returns the before/after state. A verified owner remains labeled `source: hosted` because that field describes identity provenance; `new_source_type: brand_json` and `promoted: true` confirm that live origin evidence was adopted.\n\n**Rate limits:** 5 minutes per domain, 30 requests per user per hour.",
+  tags: ["Brand Discovery"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      domain: z.string().openapi({ example: "brand.example" }),
+    }),
+  },
+  responses: {
+    200: { description: "Synchronous crawl result", content: { "application/json": { schema: BrandForceCrawlResultSchema } } },
+    400: { description: "Invalid domain format, private IP, or unresolvable domain", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Admin access required", content: { "application/json": { schema: ErrorSchema } } },
+    429: {
+      description: "Rate limit exceeded",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            retry_after: z.number().int(),
+          }),
+        },
+      },
+    },
+    500: { description: "Crawl failed", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -1659,6 +1904,14 @@ registry.registerPath({
     },
     400: { description: "Missing domain or agent", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "No authorization record for this agent on this publisher", content: { "application/json": { schema: ErrorSchema } } },
+    503: {
+      description: "Publisher authorization lookup exceeded its bounded read deadline",
+      content: { "application/json": { schema: z.object({
+        error: z.string(),
+        code: z.literal("publisher_lookup_timeout"),
+        retry_after: z.number().int(),
+      }) } },
+    },
   },
 });
 
@@ -2070,12 +2323,27 @@ registry.registerPath({
   method: "get",
   path: "/api/public/agent-formats",
   operationId: "getAgentFormats",
-  summary: "Get agent formats",
-  description: "Fetch creative formats from a creative agent.",
+  summary: "Get creative-agent format capabilities",
+  description: "Fetch get_adcp_capabilities creative.supported_formats[] from a creative agent, falling back to the deprecated list_creative_formats catalog for 3.1-compatible agents.",
   tags: ["Agent Probing"],
   request: { query: z.object({ url: z.string() }) },
   responses: {
-    200: { description: "Creative formats", content: { "application/json": { schema: z.object({ success: z.boolean(), formats: z.array(z.unknown()) }) } } },
+    200: { description: "Canonical creative capabilities", content: { "application/json": { schema: z.object({ success: z.boolean(), formats: z.array(z.unknown()) }) } } },
+    ...PublicAgentProxyErrorResponses,
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/public/agent-publishers",
+  operationId: "getAgentPublishers",
+  summary: "Get agent publisher properties",
+  description: "Fetch public list_authorized_properties data from a sales agent.",
+  tags: ["Agent Probing"],
+  request: { query: z.object({ url: z.string() }) },
+  responses: {
+    200: { description: "Publisher properties", content: { "application/json": { schema: z.object({ success: z.boolean(), properties: z.array(z.unknown()) }) } } },
+    ...PublicAgentProxyErrorResponses,
   },
 });
 
@@ -2089,6 +2357,7 @@ registry.registerPath({
   request: { query: z.object({ url: z.string() }) },
   responses: {
     200: { description: "Products", content: { "application/json": { schema: z.object({ success: z.boolean(), products: z.array(z.unknown()) }) } } },
+    ...PublicAgentProxyErrorResponses,
   },
 });
 
@@ -2340,7 +2609,8 @@ const AgentEventPayloadSchema = z
     category_taxonomy: z.string().nullable().optional(),
     tags: z.array(z.string()).optional(),
     delivery_types: z.array(z.string()).optional(),
-    format_ids: z.array(z.string()).optional(),
+    format_ids: z.array(z.string()).optional().openapi({ description: "Deprecated 3.x named-format profile projection." }),
+    format_kinds: z.array(z.string()).optional(),
     property_count: z.number().int().optional(),
     publisher_count: z.number().int().optional(),
     has_tmp: z.boolean().optional(),
@@ -2452,6 +2722,9 @@ const PublisherEventPayloadSchema = z
     agent_count: z.number().int().optional(),
     property_count: z.number().int().optional(),
     collection_count: z.number().int().optional(),
+    format_count: z.number().int().nonnegative().optional().openapi({ description: "Number of top-level formats[] declarations after the revision." }),
+    placement_count: z.number().int().nonnegative().optional().openapi({ description: "Number of top-level placements[] declarations after the revision." }),
+    changed_fields: z.array(z.string()).min(1).optional().openapi({ description: "Semantic top-level adagents.json fields changed by this revision, including formats or placements. Present on newly emitted 3.2 change events." }),
     discovery_method: z.string().optional(),
     manager_domain: z.string().nullable().optional(),
     source: z.string().optional(),
@@ -2526,7 +2799,7 @@ registry.registerPath({
   operationId: "getRegistryFeed",
   summary: "Registry change feed",
   description:
-    "Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days. The `freshness` object reports when the response was generated, the newest matching event currently visible to the feed, and the resulting feed lag.\n\nType filtering supports glob patterns: `property.*` matches `property.created`, `property.updated`, etc.",
+    "Poll a cursor-based feed of registry changes. Events are ordered by UUID v7 event_id for monotonic cursor progression. The feed retains events for 90 days. The `freshness` object reports when the response was generated, the newest matching event currently visible to the feed, and the resulting feed lag. `publisher.adagents_changed` covers semantic changes in every top-level catalog field, including formats-only and placements-only revisions; new 3.2 events identify them in `payload.changed_fields`.\n\nType filtering supports glob patterns: `property.*` matches `property.created`, `property.updated`, etc.",
   tags: ["Change Feed"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -2762,7 +3035,7 @@ registry.registerPath({
               categories: z.array(z.string()),
               tags: z.array(z.string()),
               delivery_types: z.array(z.string()),
-              format_ids: z.array(z.unknown()).openapi({ description: "Creative format identifiers supported by this agent" }),
+              format_kinds: z.array(z.string()).openapi({ description: "Canonical format kinds present in this agent's indexed inventory profile" }),
               property_count: z.number().int(),
               publisher_count: z.number().int(),
               has_tmp: z.boolean(),
@@ -2788,7 +3061,7 @@ registry.registerPath({
   operationId: "requestCrawl",
   summary: "Request domain re-crawl",
   description:
-    "Trigger an immediate re-crawl of a publisher domain after updating adagents.json. The crawl runs asynchronously — returns 202 immediately.\n\n**Rate limits:** 5 minutes per domain, 30 requests per user per hour.",
+    "Trigger an immediate re-crawl of a publisher domain after updating adagents.json. The crawl runs asynchronously in the accepting process — returns 202 immediately. The response `crawl_request_id` correlates accepted, running, completed, skipped, and failed lifecycle logs; a 202 does not by itself mean the mirror write completed.\n\n**Rate limits:** 5 minutes per domain, 30 requests per user per hour.",
   tags: ["Agent Discovery"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -2810,12 +3083,27 @@ registry.registerPath({
           schema: z.object({
             message: z.literal("Crawl request accepted"),
             domain: z.string(),
+            crawl_request_id: z.string().uuid().openapi({
+              description: "Correlation ID for crawl lifecycle logs; acceptance is not completion.",
+            }),
           }),
         },
       },
     },
     400: { description: "Invalid domain format, private IP, or unresolvable domain", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    503: {
+      description: "A full crawl is active; the request was not accepted",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            code: z.literal("crawl_temporarily_unavailable"),
+            retry_after: z.number().int(),
+          }),
+        },
+      },
+    },
     429: {
       description: "Rate limit exceeded",
       content: {
@@ -3486,6 +3774,15 @@ registry.registerPath({
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL", example: "https%3A%2F%2Fvastlint.org%2Fmcp" }),
     }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            organization_id: z.string().optional().openapi({ description: "Selected organization ID. The caller must own the agent in this organization before its credentials are used." }),
+          }),
+        },
+      },
+    },
   },
   responses: {
     200: {
@@ -3554,6 +3851,9 @@ registry.registerPath({
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
     }),
+    query: z.object({
+      org: z.string().optional().openapi({ description: "Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations." }),
+    }),
   },
   responses: {
     200: { description: "Auth status", content: { "application/json": { schema: AgentAuthStatusSchema } } },
@@ -3582,6 +3882,7 @@ registry.registerPath({
           schema: z.object({
             auth_token: z.string().max(4096).optional().openapi({ description: "Bearer or basic auth token" }),
             auth_type: z.enum(["bearer", "basic"]).optional().openapi({ description: "Auth type (default: bearer)" }),
+            organization_id: z.string().optional().openapi({ description: "Selected organization ID. The caller must own the agent in this organization." }),
           }),
         },
       },
@@ -3628,9 +3929,10 @@ registry.registerPath({
             client_id: z.string().max(2048).openapi({ description: "OAuth client ID. May be a `$ENV:VAR_NAME` reference." }),
             client_secret: z.string().max(8192).openapi({ description: "OAuth client secret. May be a `$ENV:VAR_NAME` reference. Stored encrypted at rest." }),
             scope: z.string().max(1024).optional().openapi({ description: "Space-separated OAuth scope values." }),
-            resource: z.string().max(2048).optional().openapi({ description: "RFC 8707 resource indicator." }),
+            resource: z.union([z.string().max(2048), z.array(z.string().max(2048)).min(1).max(8)]).optional().openapi({ description: 'RFC 8707 resource indicator. Accepts a single URI string or an array of 1–8 URI strings for multi-resource authorization servers (Keycloak strict, AWS Cognito multi-RS).' }),
             audience: z.string().max(2048).optional().openapi({ description: "Audience parameter for audience-validating authorization servers." }),
             auth_method: z.enum(["basic", "body"]).optional().openapi({ description: "Client-credentials placement: basic (HTTP Basic header, RFC 6749 §2.3.1 preferred) or body (form fields). SDK default is basic." }),
+            organization_id: z.string().optional().openapi({ description: "Selected organization ID. The caller must own the agent in this organization." }),
           }),
         },
       },
@@ -3673,6 +3975,15 @@ registry.registerPath({
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
     }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            organization_id: z.string().optional().openapi({ description: "Selected organization ID. The caller must own the agent in this organization." }),
+          }),
+        },
+      },
+    },
   },
   responses: {
     200: {
@@ -3720,6 +4031,9 @@ registry.registerPath({
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+    query: z.object({
+      org: z.string().optional().openapi({ description: "Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations." }),
     }),
   },
   responses: {
@@ -4068,6 +4382,7 @@ registry.registerPath({
           schema: z.object({
             context: z.record(z.string(), z.unknown()).optional().openapi({ description: "Optional context object for the step" }),
             dry_run: z.boolean().optional().openapi({ description: "Dry run mode (default: true)" }),
+            organization_id: z.string().optional().openapi({ description: "Selected organization ID. The caller must own the agent in this organization." }),
           }),
         },
       },
@@ -4169,6 +4484,15 @@ registry.registerPath({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
       storyboardId: z.string(),
     }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            organization_id: z.string().optional().openapi({ description: "Selected organization ID. The caller must own the agent in this organization." }),
+          }),
+        },
+      },
+    },
   },
   responses: {
     200: {
@@ -4224,6 +4548,15 @@ registry.registerPath({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
       storyboardId: z.string(),
     }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            organization_id: z.string().optional().openapi({ description: "Selected organization ID. The caller must own the agent in this organization." }),
+          }),
+        },
+      },
+    },
   },
   responses: {
     200: {
@@ -4256,6 +4589,33 @@ registry.registerPath({
 
 export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   return createRegistryApiRouters(config).router;
+}
+
+function parseRequestedOrganizationId(value: unknown):
+  | { ok: true; organizationId: string | undefined }
+  | { ok: false } {
+  if (value === undefined) return { ok: true, organizationId: undefined };
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 255 ||
+    value !== value.trim()
+  ) {
+    return { ok: false };
+  }
+  return { ok: true, organizationId: value };
+}
+
+function parseRequestedOrganizationQuery(query: Record<string, unknown>):
+  | { ok: true; organizationId: string | undefined }
+  | { ok: false } {
+  // Express's simple query parser preserves bracketed keys literally, so
+  // `?org[]=...` would otherwise look like an omitted `org`. Reject alternate
+  // object/array spellings rather than silently falling back to another org.
+  if (Object.keys(query).some(key => key !== "org" && (key.startsWith("org[") || key.startsWith("org.")))) {
+    return { ok: false };
+  }
+  return parseRequestedOrganizationId(query.org);
 }
 
 export function createRegistryApiRouters(config: RegistryApiConfig): { router: Router; v1AgentsRouter: Router } {
@@ -5592,10 +5952,49 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string" && x.length > 0);
         return [];
       };
-      const metricIds = toArray(req.query.metric_id);
-      const accreditations = toArray(req.query.accreditation);
+      // Deduplicate before limit checks so repeated values don't inflate counts.
+      const metricIds = [...new Set(toArray(req.query.metric_id))];
+      const accreditations = [...new Set(toArray(req.query.accreditation))];
       const qParam = typeof req.query.q === "string" ? req.query.q : undefined;
       const hasMeasurementFilter = metricIds.length > 0 || accreditations.length > 0 || (qParam !== undefined && qParam.length > 0);
+      const formatKinds = toArray(req.query.format_kind);
+      const creativeOperations = toArray(req.query.creative_operation);
+      const publisherDomain = typeof req.query.publisher_domain === "string" ? req.query.publisher_domain : undefined;
+      const formatOptionId = typeof req.query.format_option_id === "string" ? req.query.format_option_id : undefined;
+      const capabilityId = typeof req.query.capability_id === "string" ? req.query.capability_id : undefined;
+      const hasCreativeFilter = formatKinds.length > 0 || creativeOperations.length > 0 || Boolean(publisherDomain || formatOptionId || capabilityId);
+
+      if (hasMeasurementFilter && hasCreativeFilter) {
+        return res.status(400).json({
+          error: "measurement and creative capability filters cannot be combined",
+        });
+      }
+
+      // Per-filter and cross-product limits. No route rate-limiter exists on this
+      // endpoint, so we bound the M×N @> predicate count here to prevent
+      // inadvertent (or adversarial) query cost spikes and to stay well below
+      // PostgreSQL's 65 535 bind-parameter ceiling.
+      const METRIC_ID_LIMIT = 20;
+      const ACCREDITATION_LIMIT = 20;
+      const FILTER_PAIR_LIMIT = 100;
+      if (metricIds.length > METRIC_ID_LIMIT) {
+        return res.status(400).json({
+          error: `metric_id: too many values (${metricIds.length}); maximum is ${METRIC_ID_LIMIT}`,
+        });
+      }
+      if (accreditations.length > ACCREDITATION_LIMIT) {
+        return res.status(400).json({
+          error: `accreditation: too many values (${accreditations.length}); maximum is ${ACCREDITATION_LIMIT}`,
+        });
+      }
+      if (metricIds.length > 0 && accreditations.length > 0) {
+        const pairCount = metricIds.length * accreditations.length;
+        if (pairCount > FILTER_PAIR_LIMIT) {
+          return res.status(400).json({
+            error: `metric_id × accreditation cross-product (${metricIds.length} × ${accreditations.length} = ${pairCount}) exceeds the ${FILTER_PAIR_LIMIT}-pair limit`,
+          });
+        }
+      }
 
       if (hasMeasurementFilter) {
         if (type && type !== "measurement") {
@@ -5604,6 +6003,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           });
         }
         type = "measurement" as AgentType;
+      }
+
+      if (hasCreativeFilter) {
+        const invalidOperations = creativeOperations.filter((operation) => !["build", "validate", "preview"].includes(operation));
+        if (invalidOperations.length > 0) {
+          return res.status(400).json({
+            error: `Invalid creative_operation value(s): ${invalidOperations.join(", ")}`,
+            valid_values: ["build", "validate", "preview"],
+          });
+        }
       }
 
       // Length cap on q. Wildcards (% _) get rejected outright rather than
@@ -5661,6 +6070,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           metric_ids: metricIds,
           accreditations,
           q: qFilter,
+        });
+        federatedAgents = federatedAgents.filter((fa) => matchingUrls.has(fa.url));
+      }
+      if (hasCreativeFilter) {
+        const matchingUrls = await agentSnapshotDb.filterCreativeAgents({
+          format_kinds: formatKinds,
+          publisher_domain: publisherDomain,
+          format_option_id: formatOptionId,
+          capability_id: capabilityId,
+          operations: creativeOperations,
         });
         federatedAgents = federatedAgents.filter((fa) => matchingUrls.has(fa.url));
       }
@@ -5770,6 +6189,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               };
               if (h.stats_json) {
                 enrichedAgent.stats = h.stats_json;
+              }
+              // The health snapshot comes from the latest tools/list probe;
+              // the capability catalog can lag on a separate crawl cadence.
+              // Keep the legacy capabilities count fresh for consumers that
+              // have not yet moved to health.tools_count.
+              if (enrichedAgent.capabilities && h.tools_count != null) {
+                enrichedAgent.capabilities.tools_count = h.tools_count;
               }
             }
           }
@@ -5998,7 +6424,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           },
         });
       } catch (err) {
-        logger.warn({ err, agentUrl, userId }, "Owner membership lookup failed");
+        logger.error({ err, agentUrl, userId }, "Owner membership lookup failed");
         ownerMembership = {
           is_owner: false,
           membership_tier: null,
@@ -6009,9 +6435,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       }
 
       const encodedUrl = encodeURIComponent(agentUrl);
-      const storyboardStatusesForOwner = ownerMembership.is_owner
-        ? storyboardStatuses.map(s => serializeStoryboardStatus(s))
-        : [];
+      const serializedStoryboardStatuses = storyboardStatuses.map(s =>
+        serializeStoryboardStatus(s, { includeDiagnostics: ownerMembership.is_owner }),
+      );
 
       res.json({
         agent_url: agentUrl,
@@ -6033,11 +6459,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         check_interval_hours: metadata?.check_interval_hours ?? 12,
         declared_specialisms: declaredSpecialisms,
         specialism_status: specialismStatus,
-        // Owner-scoped: failing storyboard names and step counts for the
-        // dashboard hover states. Non-owners get an empty array so public
-        // registry consumers keep the same response shape without receiving
-        // implementation-level diagnostics.
-        storyboard_statuses: storyboardStatusesForOwner,
+        // Public per-storyboard verdicts and aggregate step counts explain
+        // storyboards_passing/storyboards_total. First-failure details stay
+        // owner-scoped; non-owner entries carry null scalar diagnostics and
+        // empty validation evidence.
+        storyboard_statuses: serializedStoryboardStatuses,
         // Advisory notices from the latest run. Forward-compat: unknown codes
         // and severities are passed through verbatim (runner-output-contract.yaml).
         notices,
@@ -6568,6 +6994,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     try {
       const canonicalUrl = canonicalizeAgentUrl(agentUrl);
       if (!canonicalUrl) return null;
+      if (!(await isOrgOwnerOfAgent(orgId, userId, canonicalUrl))) {
+        logger.warn({ orgId, agentUrl: canonicalUrl }, "Refusing to create agent context outside owning organization");
+        return null;
+      }
       let context = await agentContextDb.getByOrgAndUrl(orgId, canonicalUrl);
       if (!context) {
         context = await agentContextDb.create({
@@ -6808,16 +7238,24 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(401).json({ error: "Authentication required" });
       }
 
+      const orgSelection = parseRequestedOrganizationId(req.body?.organization_id);
+      if (!orgSelection.ok) {
+        return res.status(400).json({ error: "organization_id must be a non-empty organization ID" });
+      }
+      const ownerOrgId = await resolveOwnerOrgForUser(
+        req.user.id,
+        agentUrl,
+        orgSelection.organizationId,
+      );
+
       // Owner OR AAO admin. Admin escape hatch lets staff fix things for
       // any registered agent (mirrors how admin tools work elsewhere).
       // Dev-admin fallback is gated behind `isDevModeEnabled()` to match
       // `requireAdmin`'s pattern in middleware/auth.ts — in production
       // (no DEV_USER_EMAIL/DEV_USER_ID) this branch never fires.
       const isStaticAdmin = isStaticAdminRequest(req);
-      const [isOwner, isAaoAdmin] = await Promise.all([
-        verifyAgentOwnership(req.user.id, agentUrl),
-        isWebUserAAOAdmin(req.user.id),
-      ]);
+      const isOwner = ownerOrgId !== null;
+      const isAaoAdmin = await isWebUserAAOAdmin(req.user.id);
       const isDevAdmin = isDevModeEnabled() && getDevUser(req)?.isAdmin === true;
       if (!isOwner && !isAaoAdmin && !isDevAdmin && !isStaticAdmin) {
         return res.status(403).json({ error: "You do not have permission to refresh this agent" });
@@ -6856,7 +7294,6 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // route still scopes auth to the caller's own org so an AAO admin
       // refreshing someone else's agent probes anonymously rather than
       // accidentally running with the owner's tokens.
-      const ownerOrgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
       let resolvedAuth: SdkAuth | undefined;
       if (ownerOrgId) {
         const auth = await resolveUserAgentAuth(agentContextDb, ownerOrgId, agentUrl, logger);
@@ -7108,18 +7545,6 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(401).json({ error: "Authentication required" });
       }
 
-      // Verify ownership and get org ID in one query
-      const orgResult = await query(
-        `SELECT mp.workos_organization_id
-         FROM member_profiles mp
-         JOIN organization_memberships om
-           ON om.workos_organization_id = mp.workos_organization_id
-         WHERE mp.agents @> $1::jsonb
-           AND om.workos_user_id = $2
-         LIMIT 1`,
-        [JSON.stringify([{ url: agentUrl }]), req.user.id],
-      );
-
       const noAuthResponse = {
         has_auth: false,
         agent_context_id: null,
@@ -7130,11 +7555,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         has_oauth_client_credentials: false,
       };
 
-      if (orgResult.rows.length === 0) {
+      const orgSelection = parseRequestedOrganizationQuery(req.query);
+      if (!orgSelection.ok) {
+        return res.status(400).json({ error: "org must be a non-empty organization ID" });
+      }
+      const requestedOrgId = orgSelection.organizationId;
+      const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, requestedOrgId);
+      if (!orgId) {
         return res.json(noAuthResponse);
       }
-
-      const orgId = orgResult.rows[0].workos_organization_id;
       const context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
 
       if (!context) {
@@ -7208,23 +7637,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         authTokenToStore = normalized.stored;
       }
 
-      // Verify ownership and get org ID in a single query
-      const orgResult = await query(
-        `SELECT mp.workos_organization_id
-         FROM member_profiles mp
-         JOIN organization_memberships om
-           ON om.workos_organization_id = mp.workos_organization_id
-         WHERE mp.agents @> $1::jsonb
-           AND om.workos_user_id = $2
-         LIMIT 1`,
-        [JSON.stringify([{ url: agentUrl }]), req.user.id],
-      );
-
-      if (orgResult.rows.length === 0) {
+      const orgSelection = parseRequestedOrganizationId(req.body?.organization_id);
+      if (!orgSelection.ok) {
+        return res.status(400).json({ error: "organization_id must be a non-empty organization ID" });
+      }
+      const requestedOrgId = orgSelection.organizationId;
+      const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, requestedOrgId);
+      if (!orgId) {
         return res.status(403).json({ error: "You do not have permission to modify this agent" });
       }
-
-      const orgId = orgResult.rows[0].workos_organization_id;
 
       // Get or create agent context
       let context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
@@ -7304,20 +7725,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(400).json({ error: parsed.error, code: parsed.code, field: parsed.field });
         }
 
-        const orgResult = await query<{ workos_organization_id: string }>(
-          `SELECT mp.workos_organization_id
-           FROM member_profiles mp
-           JOIN organization_memberships om
-             ON om.workos_organization_id = mp.workos_organization_id
-           WHERE mp.agents @> $1::jsonb
-             AND om.workos_user_id = $2
-           LIMIT 1`,
-          [JSON.stringify([{ url: agentUrl }]), req.user.id],
-        );
-        if (orgResult.rows.length === 0) {
+        const orgSelection = parseRequestedOrganizationId(req.body?.organization_id);
+        if (!orgSelection.ok) {
+          return res.status(400).json({ error: "organization_id must be a non-empty organization ID" });
+        }
+        const requestedOrgId = orgSelection.organizationId;
+        const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, requestedOrgId);
+        if (!orgId) {
           return res.status(403).json({ error: "You do not have permission to modify this agent" });
         }
-        const orgId = orgResult.rows[0].workos_organization_id;
 
         let context = await agentContextDb.getByOrgAndUrl(orgId, agentUrl);
         if (!context) {
@@ -7383,7 +7799,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+        const orgSelection = parseRequestedOrganizationId(req.body?.organization_id);
+        if (!orgSelection.ok) {
+          return res.status(400).json({ error: "organization_id must be a non-empty organization ID" });
+        }
+        const requestedOrgId = orgSelection.organizationId;
+        const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, requestedOrgId);
         if (!orgId) {
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
@@ -7483,7 +7904,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       return res.status(401).json({ error: "Authentication required" });
     }
 
-    const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+    const orgSelection = parseRequestedOrganizationQuery(req.query);
+    if (!orgSelection.ok) {
+      return res.status(400).json({ error: "org must be a non-empty organization ID" });
+    }
+    const requestedOrgId = orgSelection.organizationId;
+    const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, requestedOrgId);
     if (!orgId) {
       return res.status(403).json({ error: "You do not have permission to test this agent" });
     }
@@ -7645,7 +8071,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+        const orgSelection = parseRequestedOrganizationId(req.body?.organization_id);
+        if (!orgSelection.ok) {
+          return res.status(400).json({ error: "organization_id must be a non-empty organization ID" });
+        }
+        const requestedOrgId = orgSelection.organizationId;
+        const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, requestedOrgId);
         if (!orgId) {
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
@@ -7771,7 +8202,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+        const orgSelection = parseRequestedOrganizationId(req.body?.organization_id);
+        if (!orgSelection.ok) {
+          return res.status(400).json({ error: "organization_id must be a non-empty organization ID" });
+        }
+        const requestedOrgId = orgSelection.organizationId;
+        const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, requestedOrgId);
         if (!orgId) {
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
@@ -7865,35 +8301,6 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           steps_total: 0,
         };
         const serializedStoryboardStatus = serializeStoryboardRunStatus(storyboardStatus);
-        const isRunnerApplicabilitySkip = (scenarioId: string, step: {
-          skip_reason?: string;
-          step_id?: unknown;
-          requirement?: unknown;
-        }): boolean => {
-          switch (step.skip_reason) {
-            case 'capability_unsupported':
-              return true;
-            case 'missing_test_kit_contract':
-              return scenarioId === 'idempotency/rate_limit_replay_invariant' &&
-                step.step_id === 'expect_rate_limit_not_replayed';
-            case 'requirement_unmet':
-              return step.requirement === 'webhook_receiver';
-            default:
-              return false;
-          }
-        };
-        const isControllerCoverageGapScenario = (scenario: { scenario?: unknown; steps?: any[] }): boolean => {
-          const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
-          const scenarioId = typeof scenario.scenario === 'string' ? scenario.scenario : '';
-          return steps.length > 0 && steps.every((step) => {
-            if (!step?.skipped) return false;
-            return step.skip_reason === 'peer_branch_taken' ||
-              step.skip_reason === 'peer_substituted' ||
-              step.skip_reason === 'missing_test_controller' ||
-              (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller') ||
-              isRunnerApplicabilitySkip(scenarioId, step);
-          });
-        };
         const uiDiagnostics = (dbInput.step_diagnostics ?? []).map((diagnostic) => ({
           run_id: run.id,
           agent_url: agentUrl,
@@ -7917,7 +8324,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
                   t.scenarios.filter((s) => s.scenario === step.comply_scenario),
                 )
               : [];
-            const executableScenarios = matchingScenarios.filter((s) => !isControllerCoverageGapScenario(s));
+            const executableScenarios = matchingScenarios.filter(
+              (s) => !isNonExecutableCoverageGapScenario(s),
+            );
 
             const passed = executableScenarios.length > 0
               ? executableScenarios.every((s) => s.overall_passed)
@@ -7981,7 +8390,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        const orgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+        const orgSelection = parseRequestedOrganizationId(req.body?.organization_id);
+        if (!orgSelection.ok) {
+          return res.status(400).json({ error: "organization_id must be a non-empty organization ID" });
+        }
+        const requestedOrgId = orgSelection.organizationId;
+        const orgId = await resolveOwnerOrgForUser(req.user.id, agentUrl, requestedOrgId);
         if (!orgId) {
           return res.status(403).json({ error: "You do not have permission to test this agent" });
         }
@@ -8262,16 +8676,23 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     if (!rawDomain) {
       return res.status(400).json({ error: "Missing required query param: domain" });
     }
+    const include = typeof req.query.include === 'string' ? req.query.include : undefined;
+    if (include !== undefined && include !== 'placements') {
+      return res.status(400).json({ error: "Invalid include value; expected placements" });
+    }
 
+    const lookupDeadlineMs = Date.now() + PUBLISHER_LOOKUP_TIMEOUT_MS;
+    let publisherLookupDomain = rawDomain;
     try {
       const domain = extractDomain(rawDomain);
+      publisherLookupDomain = domain;
       if (!isValidDomain(domain)) {
         return res.status(400).json({ error: "Invalid domain" });
       }
       const memberDb = new MemberDatabase();
       const federatedIndex = crawler.getFederatedIndex();
 
-      const [profile, properties, authorizations, adagentsValid, hostedProperty, brandRow, cachedAdagentsRow] = await Promise.all([
+      const [profile, properties, authorizations, adagentsValid, hostedProperty, brandRow, cachedAdagentsRow] = await publisherLookupPhase(() => Promise.all([
         memberDb.getProfileByDomain(domain),
         federatedIndex.getPropertiesForDomain(domain),
         federatedIndex.getAuthorizationsForDomain(domain),
@@ -8310,7 +8731,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
              FROM publishers WHERE domain = $1 LIMIT 1`,
           [domain],
         ).then(r => r.rows[0] ?? null),
-      ]);
+      ]), lookupDeadlineMs, domain, "initial_record_load");
       const cachedAdagentsManifest = cachedAdagentsRow?.adagents_json ?? null;
       const cachedAdagentsLastValidated = cachedAdagentsRow?.last_validated ?? null;
       const cachedHttpStatus = cachedAdagentsRow?.last_http_status ?? null;
@@ -8351,7 +8772,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // but never landed a brand_manifest. We were treating those rows
       // as "already crawled" and refusing to retry — leaving publishers
       // who actually serve a brand.json forever marked as missing one.
-      const brandNeverCrawled = !brandRow || !brandRow.has_brand_manifest;
+      const verifiedOwnerNeedsOriginEvidence = Boolean(
+        brandRow?.workos_organization_id
+        && brandRow.domain_verified === true
+        && brandRow.source_type !== 'brand_json'
+      );
+      const brandNeverCrawled = !brandRow || !brandRow.has_brand_manifest || verifiedOwnerNeedsOriginEvidence;
       // Bypass the per-domain auto-crawl debounce when the brand row is
       // stale-without-manifest for >1h. Without this, a heavily-trafficked
       // publisher whose brand.json went live AFTER our first crawl gets
@@ -8429,9 +8855,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         // already validated — any rewrite would mean a discrepancy.
         let crawlSafe = false;
         try {
-          const validated = await validateCrawlDomain(domain);
+          const validated = await publisherLookupPhase(
+            () => validateCrawlDomain(domain),
+            lookupDeadlineMs,
+            domain,
+            "auto_crawl_domain_validation",
+          );
           crawlSafe = validated === domain;
         } catch (err) {
+          if (err instanceof PublisherLookupTimeoutError) throw err;
           logger.debug({ err, domain }, 'Auto-crawl skipped — validateCrawlDomain rejected');
         }
         if (crawlSafe) {
@@ -8621,7 +9053,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         };
       });
 
-      const hostedBrand = await brandDb.getHostedBrandByDomain(domain);
+      const hostedBrand = await publisherLookupPhase(
+        () => brandDb.getHostedBrandByDomain(domain),
+        lookupDeadlineMs,
+        domain,
+        "hosted_brand_load",
+      );
       const brandManifest = hostedBrand?.brand_json
         ?? (brandRow?.brand_manifest as Record<string, unknown> | null | undefined)
         ?? null;
@@ -8694,20 +9131,34 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           ? authorizations.slice(0, PER_AGENT_ROLLUP_CAP)
           : authorizations;
       const agentPropertyCounts = new Map<string, number>();
-      await Promise.all(
-        agentsToRollup.map(async a => {
-          const agentProps = await federatedIndex.getPropertiesForAgent(a.agent_url);
-          const matching = agentProps.filter(
-            p => p.publisher_domain === domain && p.id && propertyDbIdSet.has(p.id),
-          );
-          agentPropertyCounts.set(a.agent_url, matching.length);
-        }),
-      );
+      await publisherLookupPhase(async () => {
+        const concurrency = 4;
+        for (let i = 0; i < agentsToRollup.length; i += concurrency) {
+          await Promise.all(agentsToRollup.slice(i, i + concurrency).map(async a => {
+            const agentProps = await federatedIndex.getPropertiesForAgentDomain(
+              a.agent_url,
+              domain,
+            );
+            const matching = agentProps.filter(
+              p => p.publisher_domain === domain && p.id && propertyDbIdSet.has(p.id),
+            );
+            agentPropertyCounts.set(a.agent_url, matching.length);
+          }));
+        }
+      }, lookupDeadlineMs, domain, "per_agent_property_rollup");
 
       // What-we-have summary. The page leads with "you have an
       // adagents.json" / "you have a brand.json" — this block exposes
       // that signal so the client doesn't have to derive it from a
       // cocktail of nullable flags.
+      const brandOriginCrawlInFlight = autoCrawlTriggered && verifiedOwnerNeedsOriginEvidence;
+      const brandFileStatus = brandOriginCrawlInFlight
+        ? 'checking'
+        : brandRow?.has_brand_manifest
+          ? 'present'
+          : autoCrawlTriggered
+            ? 'checking'
+            : 'unknown';
       const files = {
         adagents_json: {
           status: cachedSourceType === 'community' && cachedAdagentsManifest
@@ -8731,12 +9182,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           // without a manifest from a prior failed crawl). `unknown`
           // = row exists with no manifest and we didn't re-trigger
           // (debounced).
-          status: brandRow?.has_brand_manifest
-            ? 'present'
-            : autoCrawlTriggered
-              ? 'checking'
-              : 'unknown',
-          name: brandRow?.has_brand_manifest ? brandRow.brand_name : undefined,
+          status: brandFileStatus,
+          name: brandFileStatus === 'present' ? brandRow?.brand_name : undefined,
         } as { status: 'present' | 'unknown' | 'checking'; name?: string },
       };
 
@@ -8751,6 +9198,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         properties: projectedProperties,
         brand: summarizeBrandManifest(brandManifest, files.brand_json.name),
         formats: summarizeFormats(cachedAdagentsManifest, projectedProperties),
+        ...(include === 'placements' && cachedAdagentsManifest
+          ? { placements: summarizePlacements(cachedAdagentsManifest, cachedSourceType === 'community' ? 'community' : 'adagents_json') }
+          : {}),
         authorized_agents: authorizations.map(a => {
           if (skipRollup) {
             return {
@@ -8786,6 +9236,22 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         auto_crawl_triggered: autoCrawlTriggered || undefined,
       });
     } catch (error) {
+      if (error instanceof PublisherLookupTimeoutError) {
+        logger.warn(
+          {
+            domain: publisherLookupDomain,
+            phase: error.phase,
+            timeout_ms: PUBLISHER_LOOKUP_TIMEOUT_MS,
+          },
+          "Publisher lookup deadline exceeded",
+        );
+        res.setHeader("Retry-After", "5");
+        return res.status(503).json({
+          error: "Publisher lookup temporarily unavailable",
+          code: "publisher_lookup_timeout",
+          retry_after: 5,
+        });
+      }
       logger.error({ err: error, path: req.path }, "Publisher lookup failed");
       res.status(500).json({ error: "Publisher lookup failed" });
     }
@@ -8797,8 +9263,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     if (!rawDomain || !rawAgent) {
       return res.status(400).json({ error: "Missing required query params: domain, agent" });
     }
+    const lookupDeadlineMs = Date.now() + PUBLISHER_LOOKUP_TIMEOUT_MS;
+    let publisherLookupDomain = rawDomain;
     try {
       const domain = extractDomain(rawDomain);
+      publisherLookupDomain = domain;
       if (!isValidDomain(domain)) {
         return res.status(400).json({ error: "Invalid domain" });
       }
@@ -8810,10 +9279,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       }
       const federatedIndex = crawler.getFederatedIndex();
 
-      const [properties, authorizations] = await Promise.all([
+      const [properties, authorizations] = await publisherLookupPhase(() => Promise.all([
         federatedIndex.getPropertiesForDomain(domain),
         federatedIndex.getAuthorizationsForDomain(domain),
-      ]);
+      ]), lookupDeadlineMs, domain, "authorization_record_load");
 
       const auth = authorizations.find(a => canonicalizeAgentUrl(a.agent_url) === agentUrl);
       if (!auth) {
@@ -8828,7 +9297,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       const propertyDbIdSet = new Set(
         properties.map(p => p.id).filter((id): id is string => Boolean(id)),
       );
-      const agentProps = await federatedIndex.getPropertiesForAgent(agentUrl);
+      const agentProps = await publisherLookupPhase(
+        () => federatedIndex.getPropertiesForAgentDomain(agentUrl, domain),
+        lookupDeadlineMs,
+        domain,
+        "authorization_property_rollup",
+      );
       const matched = agentProps.filter(
         p => p.publisher_domain === domain && p.id && propertyDbIdSet.has(p.id),
       );
@@ -8853,6 +9327,22 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         unauthorized_properties: unauthorized,
       });
     } catch (error) {
+      if (error instanceof PublisherLookupTimeoutError) {
+        logger.warn(
+          {
+            domain: publisherLookupDomain,
+            phase: error.phase,
+            timeout_ms: PUBLISHER_LOOKUP_TIMEOUT_MS,
+          },
+          "Publisher authorization lookup deadline exceeded",
+        );
+        res.setHeader("Retry-After", "5");
+        return res.status(503).json({
+          error: "Publisher authorization lookup temporarily unavailable",
+          code: "publisher_lookup_timeout",
+          retry_after: 5,
+        });
+      }
       logger.error({ err: error, path: req.path }, "Publisher authorization lookup failed");
       return res.status(500).json({ error: "Publisher authorization lookup failed" });
     }
@@ -9320,9 +9810,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       if (agentType === "creative") {
         try {
-          const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
-          const formats = await creativeClient.listFormats();
-          stats.format_count = formats.length;
+          const capabilityClient = new AdCPClient([{
+            id: "creative-capability-discovery",
+            name: "Creative capability discovery",
+            agent_uri: url,
+            protocol: "mcp",
+          }], withSdkSafeTransport({})).agent("creative-capability-discovery");
+          const result = await capabilityClient.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
+          const creative = (result.data as Record<string, unknown> | undefined)?.creative as Record<string, unknown> | undefined;
+          stats.format_count = Array.isArray(creative?.supported_formats) ? creative.supported_formats.length : 0;
         } catch (statsError) {
           logger.debug({ err: statsError, url }, "Failed to fetch creative formats");
           stats.format_count = 0;
@@ -9353,7 +9849,105 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  router.get("/public/agent-formats", async (req, res) => {
+  const PUBLIC_AGENT_RESPONSE_BYTES = 1024 * 1024;
+  const PUBLIC_AGENT_OUTPUT_BYTES = 512 * 1024;
+  const PUBLIC_AGENT_TIMEOUT_MS = 10_000;
+  const PUBLIC_AGENT_MAX_ITEMS = 200;
+
+  function publicAgentTransportOptions() {
+    return withSdkSafeTransport({
+      transport: {
+        maxResponseBytes: PUBLIC_AGENT_RESPONSE_BYTES,
+        requestTimeoutMs: PUBLIC_AGENT_TIMEOUT_MS,
+      },
+    });
+  }
+
+  function boundedString(value: unknown, maxLength: number): string | undefined {
+    return typeof value === "string" && value.length > 0
+      ? value.slice(0, maxLength)
+      : undefined;
+  }
+
+  function assertPublicAgentOutputSize(payload: unknown): void {
+    if (Buffer.byteLength(JSON.stringify(payload), "utf8") > PUBLIC_AGENT_OUTPUT_BYTES) {
+      throw new Error("Public agent discovery payload exceeds output limit");
+    }
+  }
+
+  function normalizePublicProperties(rawProperties: unknown[]): Array<Record<string, unknown>> {
+    return rawProperties.slice(0, PUBLIC_AGENT_MAX_ITEMS).flatMap(value => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+      const property = value as Record<string, unknown>;
+      const identifier = boundedString(property.identifier, 512);
+      const domain = boundedString(property.domain, 253);
+      if (!identifier && !domain) return [];
+
+      const tags = Array.isArray(property.tags)
+        ? property.tags
+          .slice(0, 20)
+          .map(tag => boundedString(tag, 64))
+          .filter((tag): tag is string => Boolean(tag))
+        : undefined;
+
+      return [{
+        ...(identifier && { identifier }),
+        ...(domain && { domain }),
+        type: boundedString(property.type, 64) ?? "domain",
+        ...(boundedString(property.country, 64) && { country: boundedString(property.country, 64) }),
+        ...(boundedString(property.description, 2_000) && { description: boundedString(property.description, 2_000) }),
+        ...(tags?.length && { tags }),
+        // Verification is registry-owned. Never trust peer-supplied verified,
+        // verification_url, or verification_error fields on this proxy.
+      }];
+    });
+  }
+
+  function projectLegacyFormatsForPublicDiscovery(legacyFormats: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+    return legacyFormats.slice(0, PUBLIC_AGENT_MAX_ITEMS).flatMap((legacyFormat, index) => {
+      const reviewedProjection = buildCreativeCapabilities([legacyFormat]);
+      if (reviewedProjection.length > 0) return reviewedProjection;
+
+      const formatId = legacyFormat.format_id && typeof legacyFormat.format_id === "object"
+        ? boundedString((legacyFormat.format_id as Record<string, unknown>).id, 256)
+        : undefined;
+      const rawAssets = Array.isArray(legacyFormat.assets) ? legacyFormat.assets : [];
+      const assets = rawAssets.filter((asset): asset is Record<string, unknown> =>
+        Boolean(asset && typeof asset === "object" && !Array.isArray(asset))
+      );
+      const imageAsset = assets.find(asset => asset.asset_type === "image");
+      const requirements = imageAsset?.requirements && typeof imageAsset.requirements === "object"
+        ? imageAsset.requirements as Record<string, unknown>
+        : undefined;
+      const minWidth = requirements?.min_width;
+      const maxWidth = requirements?.max_width;
+      const minHeight = requirements?.min_height;
+      const maxHeight = requirements?.max_height;
+      const hasFixedImageSize = typeof minWidth === "number"
+        && minWidth === maxWidth
+        && typeof minHeight === "number"
+        && minHeight === maxHeight;
+
+      // The legacy `type: display` catalog shape used by 3.1 sellers does
+      // not carry the optional `canonical` annotation. A concrete image
+      // asset is enough to project it safely for this read-only UI.
+      if (!imageAsset) return [];
+      const stableId = (formatId ?? `legacy_${index + 1}`)
+        .replace(/[^a-zA-Z0-9_-]/g, "_")
+        .slice(0, 256);
+      return [{
+        capability_id: `preview_${stableId}`,
+        operations: ["preview"],
+        ...(boundedString(legacyFormat.name, 512) && { description: boundedString(legacyFormat.name, 512) }),
+        format: {
+          format_kind: "image",
+          params: hasFixedImageSize ? { width: minWidth, height: minHeight } : {},
+        },
+      }];
+    });
+  }
+
+  router.get("/public/agent-formats", registryReadRateLimiter, async (req, res) => {
     const { url } = req.query;
 
     if (!url || typeof url !== "string") {
@@ -9361,24 +9955,58 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
 
     try {
-      const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
-      const formats = await creativeClient.listFormats();
+      const capabilityClient = new AdCPClient([{
+        id: "creative-capability-discovery",
+        name: "Creative capability discovery",
+        agent_uri: url,
+        protocol: "mcp",
+      }], publicAgentTransportOptions()).agent("creative-capability-discovery");
+      let formats: unknown[] = [];
+      let capabilityError: unknown;
 
-      return res.json({
+      try {
+        const result = await capabilityClient.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
+        const creative = (result.data as Record<string, unknown> | undefined)?.creative;
+        formats = creative
+          ? (await sanitizeCreativeCapabilities(creative)).supported_formats
+          : [];
+      } catch (error) {
+        capabilityError = error;
+        logger.debug({ err: error, url }, "Canonical creative capability discovery failed; trying legacy formats");
+      }
+
+      if (formats.length === 0) {
+        try {
+          const legacyResult = await capabilityClient.listCreativeFormatsLegacy(
+            {},
+            undefined,
+            { timeout: PUBLIC_AGENT_TIMEOUT_MS },
+          );
+          if (!legacyResult.success) {
+            throw new Error(legacyResult.error || "Legacy creative format discovery failed");
+          }
+          const legacyData = legacyResult.data as unknown;
+          const legacyFormats = Array.isArray(legacyData)
+            ? legacyData
+            : legacyData && typeof legacyData === "object" && Array.isArray((legacyData as Record<string, unknown>).formats)
+              ? (legacyData as { formats: unknown[] }).formats
+              : [];
+          const projectedFormats = projectLegacyFormatsForPublicDiscovery(
+            legacyFormats.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === "object" && !Array.isArray(entry))),
+          );
+          formats = (await sanitizeCreativeCapabilities({ supported_formats: projectedFormats })).supported_formats;
+        } catch (error) {
+          if (capabilityError) throw error;
+          logger.debug({ err: error, url }, "Legacy creative format discovery failed");
+        }
+      }
+
+      const payload = {
         success: true,
-        formats: formats.map((format) => {
-          return {
-            format_id: format.format_id,
-            name: format.name,
-            description: format.description,
-            example_url: format.example_url,
-            renders: format.renders,
-            assets: format.assets,
-            output_format_ids: format.output_format_ids,
-            agent_url: format.agent_url,
-          };
-        }),
-      });
+        formats,
+      };
+      assertPublicAgentOutputSize(payload);
+      return res.json(payload);
     } catch (error) {
       logger.warn({ err: error, url }, "Agent formats fetch failed");
 
@@ -9390,7 +10018,58 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  router.get("/public/agent-products", async (req, res) => {
+  router.get("/public/agent-publishers", registryReadRateLimiter, async (req, res) => {
+    const { url } = req.query;
+
+    if (!url || typeof url !== "string") {
+      return res.status(400).json({ error: "URL is required" });
+    }
+
+    try {
+      const client = new SingleAgentClient({
+        id: "publisher-discovery",
+        name: "publisher-discovery-client",
+        agent_uri: url,
+        protocol: "mcp",
+      }, publicAgentTransportOptions());
+      const result = await client.executeTaskLegacy(
+        "list_authorized_properties",
+        {},
+        undefined,
+        { timeout: PUBLIC_AGENT_TIMEOUT_MS },
+      );
+      if (!result.success) {
+        throw new Error(result.error || "Publisher discovery failed");
+      }
+      const data = result.data as unknown;
+      const rawProperties = Array.isArray(data)
+        ? data
+        : data && typeof data === "object" && Array.isArray((data as Record<string, unknown>).properties)
+          ? (data as { properties: unknown[] }).properties
+          : data && typeof data === "object" && Array.isArray((data as Record<string, unknown>).publisher_domains)
+            ? (data as { publisher_domains: string[] }).publisher_domains.map(domain => ({
+                identifier: domain,
+                domain,
+                type: "domain",
+              }))
+            : [];
+      const properties = normalizePublicProperties(rawProperties);
+
+      const payload = { success: true, properties };
+      assertPublicAgentOutputSize(payload);
+      return res.json(payload);
+    } catch (error) {
+      logger.warn({ err: error, url }, "Agent publishers fetch failed");
+
+      if (error instanceof Error && error.name === "TimeoutError") {
+        return res.status(504).json({ error: "Connection timeout", message: "Agent did not respond within the timeout period" });
+      }
+
+      return res.status(502).json({ error: "Failed to fetch publishers" });
+    }
+  });
+
+  router.get("/public/agent-products", registryReadRateLimiter, async (req, res) => {
     const { url } = req.query;
 
     if (!url || typeof url !== "string") {
@@ -9403,27 +10082,33 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         name: "products-discovery-client",
         agent_uri: url,
         protocol: "mcp",
-      }, withSdkSafeTransport({}));
+      }, publicAgentTransportOptions());
 
-      const result = await client.getProducts({ buying_mode: 'wholesale' });
-      const products = result.data?.products || [];
+      const result = await client.getProducts(
+        { buying_mode: 'wholesale' },
+        undefined,
+        { timeout: PUBLIC_AGENT_TIMEOUT_MS },
+      );
+      const products = (result.data?.products || []).slice(0, PUBLIC_AGENT_MAX_ITEMS);
 
-      return res.json({
+      const payload = {
         success: true,
         products: products.map((p: any) => ({
-          product_id: p.product_id,
-          name: p.name,
-          description: p.description,
-          property_type: p.property_type,
-          property_name: p.property_name,
-          pricing_model: p.pricing_model,
+          product_id: boundedString(p.product_id, 512),
+          name: boundedString(p.name, 512),
+          description: boundedString(p.description, 2_000),
+          property_type: boundedString(p.property_type, 128),
+          property_name: boundedString(p.property_name, 512),
+          pricing_model: boundedString(p.pricing_model, 128),
           base_rate: p.base_rate,
-          currency: p.currency,
-          format_ids: p.format_ids,
-          delivery_channels: p.delivery_channels,
-          targeting_capabilities: p.targeting_capabilities,
+          currency: boundedString(p.currency, 16),
+          format_options: Array.isArray(p.format_options) ? p.format_options.slice(0, 50) : undefined,
+          delivery_channels: Array.isArray(p.delivery_channels) ? p.delivery_channels.slice(0, 50) : undefined,
+          targeting_capabilities: Array.isArray(p.targeting_capabilities) ? p.targeting_capabilities.slice(0, 100) : undefined,
         })),
-      });
+      };
+      assertPublicAgentOutputSize(payload);
+      return res.json(payload);
     } catch (error) {
       logger.warn({ err: error, url }, "Agent products fetch failed");
 
@@ -10308,6 +10993,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           categories: parseCSV(req.query.categories as string),
           tags: parseCSV(req.query.tags as string),
           delivery_types: parseCSV(req.query.delivery_types as string),
+          format_kinds: parseCSV(req.query.format_kinds as string),
           has_tmp: req.query.has_tmp !== undefined ? req.query.has_tmp === 'true' : undefined,
           min_properties: rawMinProps,
           cursor: (req.query.cursor as string) || undefined,
@@ -10315,8 +11001,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         };
 
         const response = await profilesDb.search(searchQuery);
+        const results = response.results.map(result => {
+          const { format_ids: _deprecatedFormatIds, ...rest } = result;
+          return { ...rest, format_kinds: result.format_kinds ?? [] };
+        });
 
-        return res.json(response);
+        return res.json({ ...response, results });
       } catch (error: any) {
         if (error?.message?.includes('Invalid cursor')) {
           return res.status(400).json({ error: "Invalid cursor format" });
@@ -10452,6 +11142,19 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     return normalizedDomain;
   }
 
+  /** Release the reservation when synchronous crawler admission rejects. */
+  function releaseCrawlRateLimit(req: import('express').Request, rateLimitKey: string): void {
+    crawlRequestRateLimits.delete(rateLimitKey);
+    const memberId = req.user?.id || 'anonymous';
+    const memberState = memberCrawlCounts.get(memberId);
+    if (!memberState) return;
+    if (memberState.count <= 1) {
+      memberCrawlCounts.delete(memberId);
+    } else {
+      memberState.count--;
+    }
+  }
+
   if (!authMiddleware) throw new Error('requireAuth middleware is required for crawl-request endpoint');
 
   router.post("/registry/publisher/:domain/adagents/revalidate", authMiddleware, async (req, res) => {
@@ -10482,16 +11185,111 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  router.post("/registry/crawl-request", authMiddleware, async (req, res) => {
+  router.post("/registry/brand/:domain/force-crawl", authMiddleware, async (req, res) => {
     try {
-      const normalizedDomain = await validateAndRateLimitCrawl(req, res, req.body?.domain?.toLowerCase?.()?.trim?.() || '');
+      if (!req.user && !isStaticAdminRequest(req)) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      if (!(await isRegistryAdminRequest(req))) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const rawDomain = typeof req.params.domain === 'string'
+        ? extractDomain(req.params.domain)
+        : '';
+      if (!rawDomain || !isValidDomain(rawDomain)) {
+        return res.status(400).json({ error: "Invalid domain" });
+      }
+
+      const normalizedDomain = await validateAndRateLimitCrawl(
+        req,
+        res,
+        rawDomain,
+        rawDomain,
+      );
       if (!normalizedDomain) return;
 
-      crawler.crawlSingleDomain(normalizedDomain).catch((err: Error) => {
-        logger.error({ err, domain: normalizedDomain }, "Crawl request failed");
+      const previous = await brandDb.getDiscoveredBrandByDomain(normalizedDomain);
+      const crawlResult = await crawler.scanBrandForDomain(normalizedDomain);
+      const current = await brandDb.getDiscoveredBrandByDomain(normalizedDomain);
+
+      const previousSource = previous ? resolvedStoredBrandSource(previous) : null;
+      const newSource = current ? resolvedStoredBrandSource(current) : null;
+      const promoted = previous?.source_type !== 'brand_json'
+        && current?.source_type === 'brand_json'
+        && crawlResult.valid;
+
+      return res.json({
+        domain: normalizedDomain,
+        previous_source: previousSource,
+        new_source: newSource,
+        previous_source_type: previous?.source_type ?? null,
+        new_source_type: current?.source_type ?? null,
+        promoted,
+        brand_json_found: crawlResult.valid,
+        live_variant: crawlResult.variant,
+        has_manifest: current?.has_brand_manifest ?? false,
+        checked_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error({ error, path: req.path }, "Failed to force brand.json crawl");
+      return res.status(500).json({ error: "Failed to force brand.json crawl" });
+    }
+  });
+
+  router.post("/registry/crawl-request", authMiddleware, async (req, res) => {
+    try {
+      const rateLimitKey = req.body?.domain?.toLowerCase?.()?.trim?.() || '';
+      const normalizedDomain = await validateAndRateLimitCrawl(req, res, rateLimitKey);
+      if (!normalizedDomain) return;
+
+      const crawlRequestId = randomUUID();
+      const crawlTask = crawler.tryStartSingleDomainCrawl(normalizedDomain, {
+        requestId: crawlRequestId,
+        source: "api:crawl-request",
+      });
+      if (!crawlTask) {
+        releaseCrawlRateLimit(req, rateLimitKey);
+        logger.warn(
+          {
+            domain: normalizedDomain,
+            crawl_request_id: crawlRequestId,
+            crawl_status: "not_accepted",
+            reason: "full_crawl_in_progress",
+          },
+          "Crawl request not accepted",
+        );
+        res.setHeader("Retry-After", "5");
+        return res.status(503).json({
+          error: "A full crawl is in progress; retry the crawl request",
+          code: "crawl_temporarily_unavailable",
+          retry_after: 5,
+        });
+      }
+      logger.info(
+        {
+          domain: normalizedDomain,
+          crawl_request_id: crawlRequestId,
+          crawl_status: "accepted",
+        },
+        "Crawl request accepted",
+      );
+      crawlTask.catch((err: Error) => {
+        logger.debug(
+          {
+            err,
+            domain: normalizedDomain,
+            crawl_request_id: crawlRequestId,
+          },
+          "Accepted crawl task settled with error",
+        );
       });
 
-      return res.status(202).json({ message: "Crawl request accepted", domain: normalizedDomain });
+      return res.status(202).json({
+        message: "Crawl request accepted",
+        domain: normalizedDomain,
+        crawl_request_id: crawlRequestId,
+      });
     } catch (error) {
       logger.error({ error }, "Failed to process crawl request");
       return res.status(500).json({ error: "Failed to process crawl request" });

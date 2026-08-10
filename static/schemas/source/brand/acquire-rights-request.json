@@ -11,7 +11,15 @@
   ],
   "x-status": "experimental",
   "x-mutates-state": true,
+  "x-governed-commitment": { "scope": "always" },
   "properties": {
+    "governance_context": {
+      "type": "string",
+      "description": "Opaque intent authorization for this rights commitment. Required when governance applies to the resolved account.",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
+    },
     "rights_id": {
       "type": "string",
       "description": "Rights offering identifier from get_rights response",
@@ -28,7 +36,7 @@
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
-      "description": "Account context for this acquisition. Used by the brand agent to resolve any governance agent previously bound for this brand+operator pair via sync_governance. When both an inline governance_context token (on the protocol envelope) and a bound governance agent are present, the inline token wins — brand agents MUST consult the agent identified by the inline token. When the request omits both `account` and an inline governance_context token, the brand agent treats the acquisition as ungoverned and the CPM-projection rule on `campaign.estimated_impressions` does not apply (sellers MAY refuse to transact ungoverned requests as a matter of commercial policy). Pass a natural key (brand, operator, optional sandbox) or a seller-assigned account_id from list_accounts."
+      "description": "Account context for this acquisition. Used by the brand agent to resolve any governance agent previously bound for this brand+operator pair via sync_governance. When both an inline governance_context token and a bound governance agent are present, the token is verified against that resolved relationship. An agent advertising adcp.governance_enforcement for acquire_rights MUST resolve an account and returns ACCOUNT_REQUIRED when neither the request nor an existing resource supplies one; it MUST NOT infer that a missing token means ungoverned. Legacy non-claiming agents may continue to treat omission of both fields as ungoverned during 3.x. Pass a natural key (brand, operator, optional sandbox) or a seller-assigned account_id from list_accounts."
     },
     "campaign": {
       "type": "object",
@@ -56,10 +64,25 @@
         },
         "format_ids": {
           "type": "array",
-          "description": "Creative formats that will be produced",
+          "deprecated": true,
+          "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named formats that will be produced. Use `format_kinds` and optional `format_option_refs`.",
           "items": {
             "$ref": "/schemas/core/format-id.json"
           }
+        },
+        "format_kinds": {
+          "type": "array",
+          "description": "Canonical creative format kinds that will be produced under the rights grant.",
+          "items": { "$ref": "/schemas/core/canonical-format-kind.json" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "format_option_refs": {
+          "type": "array",
+          "description": "Exact canonical publisher or product format options covered by the planned rights use, when kind alone is insufficient.",
+          "items": { "$ref": "/schemas/core/format-option-ref.json" },
+          "minItems": 1,
+          "uniqueItems": true
         },
         "estimated_impressions": {
           "type": "integer",

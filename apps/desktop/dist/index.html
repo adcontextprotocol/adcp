@@ -203,12 +203,10 @@
 
       // Listen for auth events from Tauri (for OAuth callback)
       await listen('auth-success', (e) => {
-        console.log('auth-success event received:', e);
         loadChatWithAuth(e.payload.user);
       });
 
       await listen('auth-error', (e) => {
-        console.log('auth-error event received:', e);
         alert('Authentication failed: ' + e.payload);
         showLogin();
       });
@@ -234,15 +232,14 @@
     async function checkAuthState() {
       try {
         const authState = await invoke('get_auth_state');
-        console.log('Auth state:', authState);
 
         if (authState.is_authenticated) {
           loadChatWithAuth(authState.user);
         } else {
           showLogin();
         }
-      } catch (e) {
-        console.error('Failed to check auth state:', e);
+      } catch {
+        console.error('Failed to check auth state');
         showLogin();
       }
     }

@@ -1,28 +1,43 @@
 id: media_buy_seller/governance_approved
 version: "1.0.0"
-title: "Seller creates buy when governance approves"
+title: "Seller commits a buy only after governance approval"
 category: media_buy_seller
-summary: "Verifies that the seller creates a media buy when governance approves the transaction."
+summary: "Verifies the approved intent and binary execution checks, durable media-buy commit, and auditable governance outcome."
 track: media_buy
+requires:
+  - multi_agent
+default_agent: sales
 required_tools:
+  - sync_plans
+  - sync_accounts
   - sync_governance
   - get_products
+  - check_governance
   - create_media_buy
+  - get_media_buys
+  - get_plan_audit_logs
+  - report_plan_outcome
+
+requires_capability:
+  path: media_buy.governance_aware
+  equals: true
 
 narrative: |
-  This is a multi-agent test. The test harness sets up a permissive governance plan on
-  a governance agent with a $100K budget, then registers that agent with the seller.
-  The buyer creates a $25K buy which falls within limits.
+  This multi-agent test sets up a permissive governance plan, registers the
+  governance agent with the seller, and checks the buyer's exact proposed
+  `create_media_buy` request at intent time. Only an approved intent supplies
+  the `governance_context` sent to the seller.
 
-  When the seller calls check_governance during create_media_buy, the governance agent
-  approves. The seller must confirm the buy normally.
-
-  By default, the governance agent is the training agent at test-agent.adcontextprotocol.org.
-  Override by supplying a different `governance_agent_url` in the run's initial context
-  (e.g., via `--context` on `adcp storyboard run` once the CLI supports it).
+  During `create_media_buy`, the seller presents that authorization and its
+  planned delivery to the registered governance agent. Execution is binary:
+  only `approved` permits the seller to commit the buy. The scenario proves the
+  commit through `get_media_buys`, reads the governance audit log to observe the
+  seller's execution check, and reports the completed outcome. It never treats
+  a seller-to-buyer `governance_context` echo as evidence of consultation.
 
 context:
   governance_agent_url: "https://test-agent.adcontextprotocol.org"
+  seller_agent_url: "https://seller.example.com"
 
 agent:
   interaction_model: media_buy_seller
@@ -38,7 +53,10 @@ caller:
 
 prerequisites:
   description: |
-    A governance agent that supports sync_plans and check_governance.
+    A multi-agent runner with `sales` and `governance` agents. The governance
+    agent supports plan synchronization, intent and execution checks, audit
+    reads, and outcome reporting. The sales agent supports governance
+    registration, media-buy creation, and media-buy readback.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
@@ -47,13 +65,20 @@ fixtures:
     - product_id: "outdoor_display_q2"
       delivery_type: "guaranteed"
       channels: ["display"]
-      format_ids:
-        - id: "display_300x250"
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
     - product_id: "outdoor_video_q2"
       delivery_type: "guaranteed"
       channels: ["video"]
-      format_ids:
-        - id: "video_15s"
+      format_options:
+        - format_option_id: "video_15s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 15000
   pricing_options:
     - product_id: "outdoor_display_q2"
       pricing_option_id: "cpm_standard"
@@ -76,6 +101,7 @@ phases:
     steps:
       - id: sync_plans
         title: "Create permissive governance plan"
+        agent: governance
         task: sync_plans
         schema_ref: "governance/sync-plans-request.json"
         response_schema_ref: "governance/sync-plans-response.json"
@@ -98,6 +124,9 @@ phases:
                 start: "2020-01-01T00:00:00Z"
                 end: "2099-06-30T23:59:59Z"
               countries: ["US", "CA"]
+        context_outputs:
+          - name: plan_id
+            path: "plans[0].plan_id"
         validations:
           - check: response_schema
             description: "Response matches sync-plans-response.json schema"
@@ -107,6 +136,7 @@ phases:
     steps:
       - id: sync_accounts
         title: "Establish account with seller"
+        agent: sales
         task: sync_accounts
         schema_ref: "account/sync-accounts-request.json"
         response_schema_ref: "account/sync-accounts-response.json"
@@ -131,6 +161,7 @@ phases:
 
       - id: sync_governance
         title: "Register governance agent with seller"
+        agent: sales
         task: sync_governance
         schema_ref: "account/sync-governance-request.json"
         response_schema_ref: "account/sync-governance-response.json"
@@ -159,6 +190,7 @@ phases:
     steps:
       - id: get_products_brief
         title: "Discover products"
+        agent: sales
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
@@ -190,8 +222,72 @@ phases:
             path: "products"
             description: "Response contains products"
 
+      - id: check_governance_intent
+        title: "Authorize the exact proposed buy"
+        agent: governance
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        expected: |
+          The permissive plan approves the exact downstream request and returns
+          the bounded authorization context used by the seller.
+        sample_request:
+          plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
+          target_agent: "$context.seller_agent_url"
+          tool: "create_media_buy"
+          purchase_type: "media_buy"
+          proposed_commitment:
+            amount: 25000
+            currency: "USD"
+          payload:
+            brand:
+              domain: "acmeoutdoor.example"
+            account:
+              brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+            total_budget:
+              amount: 25000
+              currency: "USD"
+            start_time: "asap"
+            end_time: "2099-06-30T23:59:59Z"
+            packages:
+              - product_id: "$context.product_1_id"
+                budget: 15000
+                pricing_option_id: "$context.pricing_option_1_id"
+              - product_id: "$context.product_2_id"
+                budget: 10000
+                pricing_option_id: "$context.pricing_option_2_id"
+            idempotency_key: "$generate:uuid_v4#governance_approved_create_media_buy"
+        context_outputs:
+          - name: approved_check_id
+            path: "check_id"
+          - name: governance_context
+            path: "governance_context"
+        validations:
+          - check: response_schema
+            description: "Approved response matches check-governance-response.json"
+          - check: field_value
+            path: "verdict"
+            value: "approved"
+            description: "The exact proposed request is approved"
+          - check: field_value
+            path: "check_type"
+            value: "intent"
+            description: "The buyer obtains intent authorization before execution"
+          - check: field_present
+            path: "governance_context"
+            description: "Approval supplies the seller authorization context"
+          - check: field_present
+            path: "expires_at"
+            description: "Authorization has a bounded lifetime"
+
       - id: create_media_buy
-        title: "Create buy (governance approves)"
+        title: "Commit the governance-approved buy"
+        agent: sales
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -199,8 +295,9 @@ phases:
         comply_scenario: create_media_buy
         stateful: true
         expected: |
-          The buy succeeds — governance approved because the $25K buy is within
-          the plan's $100K budget.
+          The seller verifies the approved intent and obtains an `approved`
+          execution verdict before committing. The response need not echo the
+          authorization context.
         sample_request:
           brand:
             domain: "acmeoutdoor.example"
@@ -208,6 +305,9 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+          total_budget:
+            amount: 25000
+            currency: "USD"
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
@@ -217,7 +317,123 @@ phases:
             - product_id: "$context.product_2_id"
               budget: 10000
               pricing_option_id: "$context.pricing_option_2_id"
-          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_approved_buy_approved_create_media_buy"
+          idempotency_key: "$generate:uuid_v4#governance_approved_create_media_buy"
+          governance_context: "$context.governance_context"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller identifies the buy committed after execution approval"
+
+  - id: committed_state_and_evidence
+    title: "Prove the commit and governance execution check"
+    narrative: |
+      The buyer reads authoritative seller state, then reads the governance
+      audit trail. Together these checks prove both sides of the contract: a
+      buy was durably committed and the seller performed the required binary
+      execution check before that commit.
+    steps:
+      - id: get_media_buys_readback
+        title: "Read back the committed media buy"
+        agent: sales
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: false
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_equals_context
+            path: "media_buys[0].media_buy_id"
+            context_key: "media_buy_id"
+            description: "Readback returns the buy created after approval"
+          - check: field_value
+            path: "media_buys[0].total_budget"
+            value: 25000
+            description: "Readback proves the authorized budget was committed"
+          - check: field_value
+            path: "media_buys[0].currency"
+            value: "USD"
+            description: "Readback preserves the authorized currency"
+
+      - id: get_plan_audit_logs_execution
+        title: "Observe the seller's execution approval"
+        agent: governance
+        task: get_plan_audit_logs
+        schema_ref: "governance/get-plan-audit-logs-request.json"
+        response_schema_ref: "governance/get-plan-audit-logs-response.json"
+        doc_ref: "/governance/campaign/tasks/get_plan_audit_logs"
+        stateful: false
+        expected: |
+          The audit trail contains the buyer's intent approval followed by the
+          seller's approved execution check for create_media_buy.
+        sample_request:
+          plan_ids:
+            - "$context.plan_id"
+          include_entries: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-plan-audit-logs-response.json schema"
+          - check: field_value
+            path: "plans[0].entries[1].type"
+            value: "check"
+            description: "The seller interaction is recorded as a governance check"
+          - check: field_value
+            path: "plans[0].entries[1].tool"
+            value: "create_media_buy"
+            description: "The observed execution check governs create_media_buy"
+          - check: field_value
+            path: "plans[0].entries[1].check_type"
+            value: "execution"
+            description: "The seller performed a binary execution check"
+          - check: field_value
+            path: "plans[0].entries[1].verdict"
+            value: "approved"
+            description: "Only an approved execution verdict preceded commit"
+
+  - id: outcome_reporting
+    title: "Close the governance accountability loop"
+    steps:
+      - id: report_plan_outcome
+        title: "Report the completed governed action"
+        agent: governance
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        stateful: true
+        sample_request:
+          plan_id: "$context.plan_id"
+          check_id: "$context.approved_check_id"
+          governance_context: "$context.governance_context"
+          purchase_type: "media_buy"
+          outcome: "completed"
+          seller_response:
+            seller_reference: "$context.media_buy_id"
+            committed_budget: 25000
+            packages:
+              - budget: 15000
+              - budget: 10000
+          idempotency_key: "$generate:uuid_v4#governance_approved_report_outcome"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema"
+          - check: field_present
+            path: "outcome_id"
+            description: "Governance stores an auditable outcome record"
+          - check: field_value
+            path: "outcome_state"
+            value: "accepted"
+            description: "The completed governed action is accepted"

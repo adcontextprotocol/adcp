@@ -93,10 +93,22 @@ export interface AgentCapabilities {
     can_list_properties: boolean;
   };
   creative_capabilities?: {
-    formats_supported: string[];
+    supported_formats: Array<{
+      capability_id?: string;
+      format: {
+        format_kind: string;
+        publisher_domain?: string;
+        format_option_id?: string;
+        params?: Record<string, unknown>;
+        [key: string]: unknown;
+      };
+      operations: Array<'build' | 'validate' | 'preview'>;
+      [key: string]: unknown;
+    }>;
     can_generate: boolean;
     can_validate: boolean;
     can_preview: boolean;
+    [key: string]: unknown;
   };
   signals_capabilities?: {
     audience_types: string[];
@@ -568,7 +580,7 @@ export interface DiscoveredBrand {
   brand_agent_capabilities?: string[];
   has_brand_manifest: boolean;
   brand_manifest?: Record<string, unknown>;
-  source_type: 'brand_json' | 'community' | 'enriched';
+  source_type: 'brand_json' | 'community' | 'enriched' | 'stub';
   review_status?: 'pending' | 'approved';
   discovered_at: Date;
   last_validated?: Date;
@@ -609,7 +621,7 @@ export interface ResolvedBrand {
   migration_warnings?: Array<{ field: string; message: string; suggestion?: string }>;
   brand_agent_url?: string;
   brand_manifest?: Record<string, unknown>;
-  source: 'hosted' | 'brand_json' | 'community' | 'enriched';
+  source: 'hosted' | 'brand_json' | 'community' | 'enriched' | 'stub';
 }
 
 /**

@@ -94,7 +94,7 @@ import {
 import { MemberDatabase } from '../../db/member-db.js';
 import { ensureMemberProfileExists } from '../../services/member-profile-autopublish.js';
 import { updateBrandIdentity, BrandIdentityError } from '../../services/brand-identity.js';
-import { canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
+import { assertValidBrandDomain, canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
 import { isOrgOwnerOfAgent } from '../../services/agent-ownership.js';
 import { getBrandPrimaryDomain } from '../../services/brand-domain-resolver.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
@@ -142,6 +142,10 @@ import {
   guardPersonalWorkspaceDomainSelection,
   type PersonalWorkspaceDomainSelectionResult,
 } from '../../services/org-selection-guard.js';
+import {
+  recordCertificationExperienceEvent,
+  upsertCertificationContribution,
+} from '../../services/certification-experience.js';
 
 const logger = createLogger('addie-member-tools');
 const complianceTarget = hostedComplianceTarget();
@@ -936,6 +940,7 @@ const PRICING_ALIASES: Record<string, string> = {
   'flat': 'flat_rate', 'flat rate': 'flat_rate', 'sponsorship': 'flat_rate',
   'cost per view': 'cpv',
   'cost per action': 'cpa', 'cost per acquisition': 'cpa',
+  'revenue share': 'revenue_share', 'rev share': 'revenue_share', 'commission': 'revenue_share',
 };
 
 function normalizeChannel(ch: string): string {
@@ -943,11 +948,51 @@ function normalizeChannel(ch: string): string {
   return CHANNEL_ALIASES[key] ?? key;
 }
 
+/**
+ * Return searchable format labels from the canonical product declaration.
+ * Legacy aliases remain useful search terms during the 3.x migration, but
+ * canonical-only options must remain visible even when they have no alias.
+ */
+function productFormatLabels(product: Record<string, unknown>): string[] {
+  const labels = new Set<string>();
+  if (Array.isArray(product.format_options)) {
+    for (const rawOption of product.format_options) {
+      if (!rawOption || typeof rawOption !== 'object' || Array.isArray(rawOption)) continue;
+      const option = rawOption as Record<string, unknown>;
+      if (typeof option.format_kind === 'string') labels.add(option.format_kind);
+      if (typeof option.format_option_id === 'string') labels.add(option.format_option_id);
+      const params = option.params as Record<string, unknown> | undefined;
+      if (typeof params?.width === 'number' && typeof params?.height === 'number') {
+        labels.add(`${params.width}x${params.height}`);
+      }
+      if (Array.isArray(option.v1_format_ref)) {
+        for (const rawRef of option.v1_format_ref) {
+          const ref = rawRef as Record<string, unknown> | undefined;
+          if (typeof ref?.id === 'string') labels.add(ref.id);
+        }
+      }
+    }
+  }
+  // Tolerate dual/older peers without making the legacy arm authoritative.
+  if (Array.isArray(product.format_ids)) {
+    for (const rawRef of product.format_ids) {
+      const ref = rawRef as Record<string, unknown> | undefined;
+      if (typeof ref?.id === 'string') labels.add(ref.id);
+    }
+  }
+  return [...labels];
+}
+
 const GITHUB_SEARCH_BANNED_QUALIFIERS = /(^|\s)(repo|org|user|is)\s*:/i;
 const GITHUB_BODY_MAX_CHARS = 4000;
 const GITHUB_COMMENT_MAX_CHARS = 1000;
 const GITHUB_MAX_COMMENTS = 10;
 const GITHUB_DIFF_MAX_CHARS = 12000;
+// Keep generated issue links below a conservative cross-client URL ceiling.
+// This reduces the risk of Slack splitting a query string or GitHub clearing
+// an oversized prefill. Longer drafts still get a complete copyable preview
+// and a short link that pre-fills the title only.
+const GITHUB_PREFILL_URL_MAX_CHARS = 2000;
 
 type ParsedRepo =
   | { ok: true; org: string; repo: string }
@@ -1931,6 +1976,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
           minItems: 1,
         },
         advertiser: { type: 'string', description: 'Advertiser name from the IO' },
+        advertiser_domain: { type: 'string', description: 'Advertiser brand domain (for example, brand.example). Required to construct or execute create_media_buy.' },
+        account_id: { type: 'string', description: 'Seller-assigned advertiser account ID. Required to construct or execute create_media_buy.' },
         currency: { type: 'string', description: 'Currency for all line items (default: USD)' },
         execute: { type: 'boolean', description: 'If true, actually call create_media_buy on the agent. If false (default), only construct the JSON.', default: false },
       },
@@ -2038,7 +2085,13 @@ export const MEMBER_TOOLS: AddieTool[] = [
             client_id: { type: 'string', description: 'OAuth client ID. May be a `$ENV:VAR_NAME` reference — the SDK resolves at exchange time.' },
             client_secret: { type: 'string', description: 'OAuth client secret. May be a `$ENV:VAR_NAME` reference. Stored encrypted at rest regardless.' },
             scope: { type: 'string', description: 'Space-separated OAuth scope values (optional).' },
-            resource: { type: 'string', description: 'RFC 8707 resource indicator (optional).' },
+            resource: {
+              oneOf: [
+                { type: 'string', maxLength: 2048, description: 'Single resource URI (max 2048 chars).' },
+                { type: 'array', items: { type: 'string', maxLength: 2048 }, minItems: 1, maxItems: 8, description: '1–8 resource URIs for multi-resource authorization servers (each max 2048 chars).' },
+              ],
+              description: 'RFC 8707 resource indicator. Accepts a single URI string or an array of 1–8 for multi-resource authorization servers (Keycloak strict mode, AWS Cognito with multiple resource servers).',
+            },
             audience: { type: 'string', description: 'Audience parameter for audience-validating authorization servers like Auth0, Okta, Azure AD (optional).' },
             auth_method: { type: 'string', enum: ['basic', 'body'], description: 'Where to put client credentials on the token request. "basic" (default, RFC 6749 §2.3.1 preferred): HTTP Basic header. "body": form fields.' },
           },
@@ -2354,7 +2407,8 @@ async function callApi(
  */
 export function createMemberToolHandlers(
   memberContext: MemberContext | null,
-  slackUserId?: string
+  slackUserId?: string,
+  certificationModuleContext?: { moduleId?: string },
 ): Map<string, (input: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
@@ -5640,10 +5694,9 @@ export function createMemberToolHandlers(
       }
       const briefResults: BriefResult[] = await Promise.all(briefsToRun.map(async (brief): Promise<BriefResult> => {
         try {
-          const result = await client.executeTask('get_products', {
+          const result = await client.getProducts({
             buying_mode: 'brief',
             brief: brief.brief,
-            brand: { name: 'Test Brand', url: 'https://example.com' },
           });
 
           if (!result.success) {
@@ -5666,12 +5719,7 @@ export function createMemberToolHandlers(
             if (Array.isArray(p.channels)) {
               for (const ch of p.channels) if (typeof ch === 'string') channelsFound.add(ch);
             }
-            if (Array.isArray(p.format_ids)) {
-              for (const fid of p.format_ids) {
-                const f = fid as Record<string, unknown>;
-                if (typeof f.id === 'string') formatsFound.add(f.id);
-              }
-            }
+            for (const label of productFormatLabels(p)) formatsFound.add(label);
             if (Array.isArray(p.pricing_options)) {
               for (const po of p.pricing_options) {
                 const pricing = po as Record<string, unknown>;
@@ -5865,10 +5913,9 @@ export function createMemberToolHandlers(
       const client = multiClient.agent('target');
 
       const result = await Promise.race([
-        client.executeTask('get_products', {
+        client.getProducts({
           buying_mode: 'brief',
           brief,
-          brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
         }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Agent did not respond within 30 seconds')), 30000)),
       ]);
@@ -5900,13 +5947,8 @@ export function createMemberToolHandlers(
         if (Array.isArray(p.channels)) {
           for (const ch of p.channels) if (typeof ch === 'string') { channels.push(ch); allChannels.add(ch); }
         }
-        const formatIds: string[] = [];
-        if (Array.isArray(p.format_ids)) {
-          for (const fid of p.format_ids) {
-            const f = fid as Record<string, unknown>;
-            if (typeof f.id === 'string') { formatIds.push(f.id); allFormats.add(f.id); }
-          }
-        }
+        const formatIds = productFormatLabels(p);
+        for (const label of formatIds) allFormats.add(label);
         const pricingOpts: Array<{ pricing_option_id: string; pricing_model: string; price?: number; currency?: string; minimum_spend?: number }> = [];
         if (Array.isArray(p.pricing_options)) {
           for (const po of p.pricing_options) {
@@ -6078,10 +6120,30 @@ export function createMemberToolHandlers(
     const agentUrl = input.agent_url as string;
     const lineItems = ((input.line_items as Array<Record<string, unknown>>) || []).slice(0, 20);
     const advertiser = input.advertiser as string | undefined;
+    const advertiserDomainInput = input.advertiser_domain as string | undefined;
+    const accountId = typeof input.account_id === 'string' && input.account_id.trim()
+      ? input.account_id.trim()
+      : undefined;
     const currency = (input.currency as string) || 'USD';
     const shouldExecute = (input.execute as boolean) || false;
 
     if (!lineItems.length) return '**Error:** line_items array is required and must have at least one item.';
+
+    let advertiserDomain: string | undefined;
+    if (advertiserDomainInput) {
+      try {
+        advertiserDomain = canonicalizeBrandDomain(advertiserDomainInput);
+        assertValidBrandDomain(advertiserDomain);
+      } catch {
+        return '**Error:** advertiser_domain must be a valid public brand domain.';
+      }
+    }
+    if (shouldExecute && !advertiserDomain) {
+      return '**Error:** advertiser_domain is required when execute is true.';
+    }
+    if (shouldExecute && !accountId) {
+      return '**Error:** account_id is required when execute is true.';
+    }
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
@@ -6102,9 +6164,10 @@ export function createMemberToolHandlers(
 
       // Get full catalog via wholesale mode
       const result = await Promise.race([
-        client.executeTask('get_products', {
+        client.getProducts({
           buying_mode: 'wholesale',
-          brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
+          ...(advertiserDomain && { brand: { domain: advertiserDomain } }),
+          ...(accountId && { account: { account_id: accountId } }),
         }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Agent did not respond within 30 seconds')), 30000)),
       ]);
@@ -6138,7 +6201,14 @@ export function createMemberToolHandlers(
         matched_product?: { product_id: string; name: string; match_quality: string; match_reasons: string[] };
         matched_pricing?: { pricing_option_id: string; pricing_model: string; agent_rate?: number; io_rate?: number; rate_context: { label: string; context: string } };
         unmapped_reasons?: string[];
-        proposed_package?: Record<string, unknown>;
+        proposed_package?: {
+          product_id: string;
+          pricing_option_id: string;
+          budget: number;
+          bid_price?: number;
+          start_time?: string;
+          end_time?: string;
+        };
       }
 
       const lineItemResults: LineItemResult[] = [];
@@ -6203,11 +6273,9 @@ export function createMemberToolHandlers(
           }
 
           // Format match (+2)
-          if (liFormat && Array.isArray(p.format_ids)) {
+          if (liFormat) {
             const liFormatLower = liFormat.toLowerCase();
-            const matched = (p.format_ids as Array<Record<string, unknown>>).some(fid =>
-              ((fid.id as string) || '').toLowerCase().includes(liFormatLower)
-            );
+            const matched = productFormatLabels(p).some(label => label.toLowerCase().includes(liFormatLower));
             if (matched) {
               score += 2;
               reasons.push(`format:${liFormat}`);
@@ -6291,10 +6359,10 @@ export function createMemberToolHandlers(
         if (liBudget && (status === 'mapped' || status === 'partial')) mappableBudget += liBudget;
 
         const proposedPackage = bestPricing ? {
-          product_id: bestProduct.product_id,
+          product_id: bestProduct.product_id as string,
           pricing_option_id: bestPricing.pricing_option_id,
           budget: liBudget || 0,
-          ...(bestPricing.pricing_model !== 'flat_rate' && liRate ? { bid_price: liRate } : {}),
+          ...(!['flat_rate', 'revenue_share'].includes(bestPricing.pricing_model) && liRate ? { bid_price: liRate } : {}),
           ...(liStartDate ? { start_time: liStartDate } : {}),
           ...(liEndDate ? { end_time: liEndDate } : {}),
         } : undefined;
@@ -6318,10 +6386,10 @@ export function createMemberToolHandlers(
       const earliestStart = allStartDates.length > 0 ? allStartDates.sort()[0] : new Date().toISOString();
       const latestEnd = allEndDates.length > 0 ? allEndDates.sort().reverse()[0] : new Date(Date.now() + 30 * 86400000).toISOString();
 
-      const proposedRequest = mappedPackages.length > 0 ? {
+      const proposedRequest = mappedPackages.length > 0 && advertiserDomain && accountId ? {
         idempotency_key: randomUUID(),
-        brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
-        account: { account_id: advertiser || 'test-account' },
+        brand: { domain: advertiserDomain },
+        account: { account_id: accountId },
         start_time: earliestStart,
         end_time: latestEnd,
         packages: mappedPackages,
@@ -6417,6 +6485,13 @@ export function createMemberToolHandlers(
         output += `### Proposed create_media_buy Request\n\n`;
         output += `This is the exact JSON a buyer agent would send to execute the mapped line items:\n\n`;
         output += '```json\n' + JSON.stringify(proposedRequest, null, 2) + '\n```\n\n';
+      } else if (mappedPackages.length > 0) {
+        output += `### Proposed create_media_buy Request\n\n`;
+        const missingFields = [
+          !advertiserDomain && '`advertiser_domain`',
+          !accountId && '`account_id`',
+        ].filter(Boolean).join(' and ');
+        output += `Provide ${missingFields} to construct the exact buyer request. Real identifiers are required; the tool will not fabricate them.\n\n`;
       }
 
       if (executeResult) {
@@ -6474,6 +6549,43 @@ export function createMemberToolHandlers(
   // ============================================
   // GITHUB ISSUE DRAFTING
   // ============================================
+  const activeCertification = () => {
+    const userId = memberContext?.workos_user?.workos_user_id;
+    if (!userId || !certificationModuleContext?.moduleId) return null;
+    return { userId, moduleId: certificationModuleContext.moduleId };
+  };
+
+  const trackCertificationContribution = async (input: {
+    repository: string;
+    title: string;
+    status: 'drafted' | 'submitted';
+    draftUrl?: string;
+    issueNumber?: number;
+    issueUrl?: string;
+  }) => {
+    const active = activeCertification();
+    if (!active) return;
+    try {
+      await upsertCertificationContribution({
+        userId: active.userId,
+        moduleId: active.moduleId,
+        ...input,
+      });
+      await recordCertificationExperienceEvent({
+        userId: active.userId,
+        moduleId: active.moduleId,
+        eventType: input.status === 'submitted' ? 'contribution_submitted' : 'contribution_drafted',
+        metadata: {
+          repository: input.repository,
+          title: input.title,
+          issue_number: input.issueNumber ?? null,
+        },
+      });
+    } catch (error) {
+      logger.error({ error }, 'Failed to track certification contribution');
+    }
+  };
+
   handlers.set('draft_github_issue', async (input) => {
     const title = input.title as string;
     let body = input.body as string;
@@ -6506,29 +6618,40 @@ export function createMemberToolHandlers(
       params.set('labels', labels.join(','));
     }
 
-    const issueUrl = `https://github.com/${org}/${repo}/issues/new?${params.toString()}`;
+    const newIssueUrl = `https://github.com/${org}/${repo}/issues/new`;
+    const issueUrl = `${newIssueUrl}?${params.toString()}`;
 
-    // Check URL length - browsers/GitHub have practical limits (~8000 chars)
+    // Avoid body-prefilled links that are likely to be truncated or rejected
+    // across browsers, Slack clients, and Addie's streamed responses.
     const urlLength = issueUrl.length;
-    const URL_LENGTH_WARNING_THRESHOLD = 6000;
-    const URL_LENGTH_MAX = 8000;
 
     // Build response with the draft details and link
     let response = `## GitHub Issue Draft\n\n`;
+    let reliableDraftUrl = issueUrl;
 
-    if (urlLength > URL_LENGTH_MAX) {
-      // URL too long - provide manual instructions instead
-      response += `⚠️ **Issue body is too long for a pre-filled URL.**\n\n`;
-      response += `Please create the issue manually:\n`;
-      response += `1. Go to https://github.com/${org}/${repo}/issues/new\n`;
-      response += `2. Copy the title and body from the preview below\n\n`;
+    if (urlLength > GITHUB_PREFILL_URL_MAX_CHARS) {
+      response += `⚠️ **This draft is too long for a reliable pre-filled link.**\n\n`;
+      const shortParams = new URLSearchParams();
+      shortParams.set('title', title);
+      if (labels.length > 0) {
+        shortParams.set('labels', labels.join(','));
+      }
+      const titlePrefillUrl = `${newIssueUrl}?${shortParams.toString()}`;
+      reliableDraftUrl = titlePrefillUrl.length <= GITHUB_PREFILL_URL_MAX_CHARS
+        ? titlePrefillUrl
+        : newIssueUrl;
+
+      if (titlePrefillUrl.length <= GITHUB_PREFILL_URL_MAX_CHARS) {
+        response += `**👉 [Open GitHub with the title pre-filled](${titlePrefillUrl})**\n\n`;
+        response += `Copy the body from the preview below, then submit the issue.\n\n`;
+      } else {
+        response += `Please create the issue manually:\n`;
+        response += `1. Go to ${newIssueUrl}\n`;
+        response += `2. Copy the title and body from the preview below\n\n`;
+      }
     } else {
       response += `I've drafted a GitHub issue for you. Click the link below to create it:\n\n`;
       response += `**👉 [Create Issue on GitHub](${issueUrl})**\n\n`;
-
-      if (urlLength > URL_LENGTH_WARNING_THRESHOLD) {
-        response += `⚠️ _Note: The issue body is quite long. If the link doesn't work, you may need to shorten it or copy/paste manually._\n\n`;
-      }
     }
 
     response += `---\n\n`;
@@ -6541,6 +6664,13 @@ export function createMemberToolHandlers(
     response += `\n**Body:**\n\n${body}\n\n`;
     response += `---\n\n`;
     response += `_Note: You'll need to be signed in to GitHub to create the issue. Feel free to edit the title, body, or labels before submitting._`;
+
+    await trackCertificationContribution({
+      repository: `${org}/${repo}`,
+      title,
+      status: 'drafted',
+      draftUrl: reliableDraftUrl,
+    });
 
     return response;
   });
@@ -6629,6 +6759,13 @@ export function createMemberToolHandlers(
           });
           if (retryResponse.ok) {
             const issue = await retryResponse.json() as { html_url: string; number: number };
+            await trackCertificationContribution({
+              repository: `${org}/${repo}`,
+              title,
+              status: 'submitted',
+              issueNumber: issue.number,
+              issueUrl: issue.html_url,
+            });
             return `Issue created: [#${issue.number}](${issue.html_url})`;
           }
         }
@@ -6637,6 +6774,13 @@ export function createMemberToolHandlers(
 
       const issue = await response.json() as { html_url: string; number: number };
       logger.info({ issueUrl: issue.html_url, repo }, 'create_github_issue: Issue created');
+      await trackCertificationContribution({
+        repository: `${org}/${repo}`,
+        title,
+        status: 'submitted',
+        issueNumber: issue.number,
+        issueUrl: issue.html_url,
+      });
       return `Issue created: [#${issue.number}](${issue.html_url})`;
     } catch (error) {
       logger.error({ error, repo }, 'create_github_issue: Failed to create issue');

@@ -109,6 +109,8 @@ describe('EVAL_TOOL_DEFINITIONS', () => {
   it('test_io_execution requires line_items parameter', () => {
     const tool = EVAL_TOOL_DEFINITIONS.find((t) => t.name === 'test_io_execution');
     expect(tool!.inputSchema.required).toContain('line_items');
+    expect(tool!.inputSchema.properties).toHaveProperty('advertiser_domain');
+    expect(tool!.inputSchema.properties).toHaveProperty('account_id');
   });
 
   it('evaluate_agent_quality has tracks param', () => {
