@@ -2718,7 +2718,11 @@ const AuthorizationEventPayloadSchema = z
     exclusive: z.boolean().optional(),
     effective_from: z.string().optional(),
     effective_until: z.string().optional(),
-    signing_keys: z.array(z.record(z.string(), z.unknown())).optional(),
+    // Nullable because caa_event_payload emits {"signing_keys": null} on
+    // base-row events where the publisher declared no pin (the common case).
+    // Absent (undefined) on 'add'-phantom override events which never carry
+    // signing_keys. `.nullable().optional()` admits both.
+    signing_keys: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
     evidence: z.string().optional(),
     disputed: z.boolean().optional(),
     created_by: z.string().nullable().optional(),

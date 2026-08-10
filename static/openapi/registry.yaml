@@ -3529,7 +3529,9 @@ components:
         effective_until:
           type: string
         signing_keys:
-          type: array
+          type:
+            - array
+            - "null"
           items:
             type: object
             additionalProperties: {}
@@ -9457,6 +9459,14 @@ paths:
                         updated_at:
                           type: string
                           format: date-time
+                        signing_keys:
+                          type:
+                            - array
+                            - "null"
+                          items:
+                            type: object
+                            additionalProperties: {}
+                          description: Publisher-pinned JWK set (authorized_agents[*].signing_keys) from the source adagents.json. Consumers verifying inbound TMP signatures key on kid → JWK. Null when the publisher declared no keys; consumers fall back to the agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx).
                         override_applied:
                           type: boolean
                         override_reason:
@@ -9477,6 +9487,7 @@ paths:
                         - expires_at
                         - created_at
                         - updated_at
+                        - signing_keys
                         - override_applied
                         - override_reason
                   count:
