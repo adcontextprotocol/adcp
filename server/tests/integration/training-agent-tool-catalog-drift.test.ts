@@ -145,11 +145,14 @@ describe('tool-catalog drift detection', () => {
     const compatibilityCatalog = toolsForTenant('sales', {
       storyboardCompat: { version: '3.0' },
     });
-    expect(compatibilityCatalog).not.toEqual(expect.arrayContaining([
+    const splitTools = [
       'list_products',
       'recommend_products',
       'refine_proposal',
       'finalize_proposals',
-    ]));
+    ];
+    for (const tool of splitTools) {
+      expect(compatibilityCatalog).not.toContain(tool);
+    }
   });
 });
