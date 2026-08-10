@@ -180,6 +180,82 @@ describe('catalog_agent_authorizations writer projection', () => {
       expect(rows[1].authorized_for).toBe('video');
     });
 
+    it('projects signing_keys[] JWK array into the row', async () => {
+      const keys = [
+        { kid: 'k1', kty: 'OKP', crv: 'Ed25519', x: 'AAAA', alg: 'EdDSA', use: 'sig' },
+        { kid: 'k2', kty: 'OKP', crv: 'Ed25519', x: 'BBBB' },
+      ];
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([
+          { url: TEST_AGENT_RAW, authorized_for: 'display', signing_keys: keys },
+        ]),
+      });
+
+      const { rows } = await pool.query<{ signing_keys: unknown[] | null }>(
+        `SELECT signing_keys FROM catalog_agent_authorizations
+          WHERE publisher_domain = $1`,
+        [TEST_PUB]
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].signing_keys).toEqual(keys);
+    });
+
+    it('leaves signing_keys NULL when the manifest entry has none', async () => {
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([{ url: TEST_AGENT_RAW, authorized_for: 'display' }]),
+      });
+      const { rows } = await pool.query<{ signing_keys: unknown[] | null }>(
+        `SELECT signing_keys FROM catalog_agent_authorizations
+          WHERE publisher_domain = $1`,
+        [TEST_PUB]
+      );
+      expect(rows[0].signing_keys).toBeNull();
+    });
+
+    it('re-crawl replaces signing_keys (rotation semantics)', async () => {
+      const initial = [{ kid: 'old', kty: 'OKP', crv: 'Ed25519', x: 'AAAA' }];
+      const rotated = [{ kid: 'new', kty: 'OKP', crv: 'Ed25519', x: 'BBBB' }];
+
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([{ url: TEST_AGENT_RAW, signing_keys: initial }]),
+      });
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([{ url: TEST_AGENT_RAW, signing_keys: rotated }]),
+      });
+
+      const { rows } = await pool.query<{ signing_keys: unknown[] | null }>(
+        `SELECT signing_keys FROM catalog_agent_authorizations
+          WHERE publisher_domain = $1`,
+        [TEST_PUB]
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].signing_keys).toEqual(rotated);
+    });
+
+    it('re-crawl that drops signing_keys clears the column to NULL', async () => {
+      const initial = [{ kid: 'old', kty: 'OKP', crv: 'Ed25519', x: 'AAAA' }];
+
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([{ url: TEST_AGENT_RAW, signing_keys: initial }]),
+      });
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([{ url: TEST_AGENT_RAW }]),
+      });
+
+      const { rows } = await pool.query<{ signing_keys: unknown[] | null }>(
+        `SELECT signing_keys FROM catalog_agent_authorizations
+          WHERE publisher_domain = $1`,
+        [TEST_PUB]
+      );
+      expect(rows[0].signing_keys).toBeNull();
+    });
+
     it('rejects URLs containing internal whitespace or control chars', async () => {
       // Embedded \t, \n, etc. land as canonical and become unmatchable by
       // exact-match readers. canonicalizeAgentUrl must reject them.

@@ -2917,6 +2917,13 @@ const AuthorizationRowSchema = z.object({
   expires_at: z.string().datetime().nullable(),
   created_at: z.string().datetime(),
   updated_at: z.string().datetime(),
+  signing_keys: z.array(z.record(z.string(), z.unknown())).nullable().openapi({
+    description:
+      "Publisher-pinned JWK set (authorized_agents[*].signing_keys) from the source " +
+      "adagents.json. Consumers verifying inbound TMP signatures key on kid → JWK. " +
+      "Null when the publisher declared no keys; consumers fall back to the " +
+      "agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx).",
+  }),
   override_applied: z.boolean(),
   override_reason: z.string().nullable(),
 });

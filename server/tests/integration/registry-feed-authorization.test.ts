@@ -212,6 +212,103 @@ describe('446_authorization_feed_emitter triggers', () => {
       expect(modified).toHaveLength(1);
     });
 
+    it('INSERT with signing_keys → payload carries the JWK array', async () => {
+      const keys = [
+        { kid: 'k1', kty: 'OKP', crv: 'Ed25519', x: 'AAAA', alg: 'EdDSA', use: 'sig' },
+      ];
+      await pool.query(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, publisher_domain, evidence, signing_keys)
+         VALUES ($1, $1, $2, 'adagents_json', $3::jsonb)`,
+        [TEST_AGENT, TEST_PUB, JSON.stringify(keys)]
+      );
+      const [ev] = await eventsForFixtures('authorization.granted');
+      expect(ev.payload.signing_keys).toEqual(keys);
+    });
+
+    it('INSERT with no signing_keys → payload signing_keys is null', async () => {
+      await pool.query(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, publisher_domain, evidence)
+         VALUES ($1, $1, $2, 'adagents_json')`,
+        [TEST_AGENT, TEST_PUB]
+      );
+      const [ev] = await eventsForFixtures('authorization.granted');
+      expect(ev.payload.signing_keys).toBeNull();
+    });
+
+    it('re-writing the byte-identical signing_keys JSONB does NOT emit modified', async () => {
+      const keys = [{ kid: 'k1', kty: 'OKP', crv: 'Ed25519', x: 'AAAA' }];
+      const inserted = await pool.query<{ id: string }>(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, publisher_domain, evidence, signing_keys)
+         VALUES ($1, $1, $2, 'adagents_json', $3::jsonb)
+         RETURNING id`,
+        [TEST_AGENT, TEST_PUB, JSON.stringify(keys)]
+      );
+      await pool.query(
+        `UPDATE catalog_agent_authorizations SET signing_keys = $2::jsonb WHERE id = $1`,
+        [inserted.rows[0].id, JSON.stringify(keys)]
+      );
+      const modified = await eventsForFixtures('authorization.modified');
+      expect(modified).toHaveLength(0);
+    });
+
+    it('UPDATE signing_keys NULL → non-NULL emits authorization.modified', async () => {
+      const inserted = await pool.query<{ id: string }>(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, publisher_domain, evidence)
+         VALUES ($1, $1, $2, 'adagents_json')
+         RETURNING id`,
+        [TEST_AGENT, TEST_PUB]
+      );
+      const keys = [{ kid: 'k1', kty: 'OKP', crv: 'Ed25519', x: 'AAAA' }];
+      await pool.query(
+        `UPDATE catalog_agent_authorizations SET signing_keys = $2::jsonb WHERE id = $1`,
+        [inserted.rows[0].id, JSON.stringify(keys)]
+      );
+      const modified = await eventsForFixtures('authorization.modified');
+      expect(modified).toHaveLength(1);
+      expect(modified[0].payload.signing_keys).toEqual(keys);
+    });
+
+    it('UPDATE signing_keys non-NULL → NULL emits authorization.modified', async () => {
+      const keys = [{ kid: 'k1', kty: 'OKP', crv: 'Ed25519', x: 'AAAA' }];
+      const inserted = await pool.query<{ id: string }>(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, publisher_domain, evidence, signing_keys)
+         VALUES ($1, $1, $2, 'adagents_json', $3::jsonb)
+         RETURNING id`,
+        [TEST_AGENT, TEST_PUB, JSON.stringify(keys)]
+      );
+      await pool.query(
+        `UPDATE catalog_agent_authorizations SET signing_keys = NULL WHERE id = $1`,
+        [inserted.rows[0].id]
+      );
+      const modified = await eventsForFixtures('authorization.modified');
+      expect(modified).toHaveLength(1);
+      expect(modified[0].payload.signing_keys).toBeNull();
+    });
+
+    it('UPDATE signing_keys on a live row → authorization.modified with new keys', async () => {
+      const initial = [{ kid: 'old', kty: 'OKP', crv: 'Ed25519', x: 'AAAA' }];
+      const rotated = [{ kid: 'new', kty: 'OKP', crv: 'Ed25519', x: 'BBBB' }];
+      const inserted = await pool.query<{ id: string }>(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, publisher_domain, evidence, signing_keys)
+         VALUES ($1, $1, $2, 'adagents_json', $3::jsonb)
+         RETURNING id`,
+        [TEST_AGENT, TEST_PUB, JSON.stringify(initial)]
+      );
+      await pool.query(
+        `UPDATE catalog_agent_authorizations SET signing_keys = $2::jsonb WHERE id = $1`,
+        [inserted.rows[0].id, JSON.stringify(rotated)]
+      );
+      const modified = await eventsForFixtures('authorization.modified');
+      expect(modified).toHaveLength(1);
+      expect(modified[0].payload.signing_keys).toEqual(rotated);
+    });
+
     it('UPDATE that touches no externally-visible field → NO event', async () => {
       const inserted = await pool.query<{ id: string }>(
         `INSERT INTO catalog_agent_authorizations
