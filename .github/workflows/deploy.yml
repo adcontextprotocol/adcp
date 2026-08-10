@@ -178,13 +178,22 @@ jobs:
           set -eo pipefail
           echo "Waiting for all app machines to converge on the same image..."
 
+          # Verify the deployed value matches the checked-in kill-switch value.
+          # This keeps the gate useful for both queue enablement and an
+          # intentional emergency disablement.
+          expected_queue=$(sed -nE 's/^[[:space:]]*PUBLISHER_CRAWL_QUEUE_ENABLED[[:space:]]*=[[:space:]]*"(true|false)"[[:space:]]*$/\1/p' fly.toml)
+          if [ "$expected_queue" != "true" ] && [ "$expected_queue" != "false" ]; then
+            echo "::error::fly.toml must define PUBLISHER_CRAWL_QUEUE_ENABLED exactly once as \"true\" or \"false\""
+            exit 1
+          fi
+
           # `flyctl deploy` can return while an immediate replacement is still
           # transitioning through `replacing`. Require every web/worker machine
           # to be started and on one digest, but give Fly a bounded settle window.
           for attempt in $(seq 1 12); do
             if ! machines=$(flyctl machines list --json); then
               echo "attempt ${attempt}/12: Fly Machines API request failed"
-            elif ! summary=$(echo "$machines" | jq -ce '
+            elif ! summary=$(echo "$machines" | jq -ce --arg expected_queue "$expected_queue" '
                 if type != "array" then error("expected Fly machines JSON array") else . end |
                 [.[] | select(.config.metadata.fly_process_group == "web" or .config.metadata.fly_process_group == "worker")] |
                 {
@@ -192,7 +201,7 @@ jobs:
                   started: ([.[] | select(.state == "started")] | length),
                   web: ([.[] | select(.config.metadata.fly_process_group == "web")] | length),
                   worker: ([.[] | select(.config.metadata.fly_process_group == "worker")] | length),
-                  queue_enabled: ([.[] | select(.config.env.PUBLISHER_CRAWL_QUEUE_ENABLED == "true")] | length),
+                  queue_matching: ([.[] | select(.config.env.PUBLISHER_CRAWL_QUEUE_ENABLED == $expected_queue)] | length),
                   images: ([.[] | select(.state == "started") | .image_ref.digest] | unique)
                 }'); then
               echo "attempt ${attempt}/12: invalid Fly Machines API response"
@@ -201,14 +210,14 @@ jobs:
               started=$(echo "$summary" | jq -r '.started')
               web=$(echo "$summary" | jq -r '.web')
               worker=$(echo "$summary" | jq -r '.worker')
-              queue_enabled=$(echo "$summary" | jq -r '.queue_enabled')
+              queue_matching=$(echo "$summary" | jq -r '.queue_matching')
               image_count=$(echo "$summary" | jq -r '.images | length')
 
-              echo "attempt ${attempt}/12: total=${total} started=${started} web=${web} worker=${worker} queue_enabled=${queue_enabled} image_count=${image_count}"
+              echo "attempt ${attempt}/12: total=${total} started=${started} web=${web} worker=${worker} queue_expected=${expected_queue} queue_matching=${queue_matching} image_count=${image_count}"
               if [ "$web" -ge 2 ] && [ "$worker" -ge 1 ] && \
-                [ "$started" -eq "$total" ] && [ "$queue_enabled" -eq "$total" ] && \
+                [ "$started" -eq "$total" ] && [ "$queue_matching" -eq "$total" ] && \
                 [ "$image_count" -eq 1 ]; then
-                echo "✅ All ${started} web/worker machines are started on one image with the crawl queue enabled"
+                echo "✅ All ${started} web/worker machines are started on one image with crawl queue=${expected_queue}"
                 exit 0
               fi
             fi
@@ -320,12 +329,12 @@ jobs:
       - name: Setup Node.js for artifact build
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '24'
-          cache: 'npm'
+          node-version: "24"
+          cache: "npm"
 
       - name: Install dependencies for artifact build
         env:
-          PUPPETEER_SKIP_DOWNLOAD: 'true'
+          PUPPETEER_SKIP_DOWNLOAD: "true"
         run: npm ci
 
       - name: Publish latest artifacts to R2
