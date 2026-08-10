@@ -5,6 +5,9 @@ description: "Full index of AdCP protocols and specialisms an agent can claim �
 "og:title": "AdCP — Compliance Catalog"
 ---
 
+import ComplianceErrorCodes from "/docs/snippets/compliance-error-codes.mdx";
+import ComplianceStoryboardInventory from "/docs/snippets/compliance-storyboard-inventory.mdx";
+
 Every AdCP agent declares its `supported_protocols` and `specialisms` in `get_adcp_capabilities`. Each declaration maps to a compliance bundle at `/compliance/{version}/` that the storyboard runner executes to verify the claim.
 
 <Note>
@@ -15,53 +18,21 @@ This page is the human-readable index of that taxonomy. The machine-readable equ
 
 ## Universal storyboards
 
-Every agent runs every storyboard in `/compliance/{version}/universal/` regardless of which protocols or specialisms it claims. A few are *capability-gated* — they only run when the agent advertises the relevant capability — but the storyboard is still universal in scope: any agent claiming the capability is graded by it. Failing a universal storyboard fails overall compliance.
+Every agent runs every graded storyboard in `/compliance/{version}/universal/` regardless of which protocols or specialisms it claims. A few are *capability-gated* — they only run when the agent advertises the relevant capability — but the storyboard is still universal in scope: any agent claiming the capability is graded by it. Failing a universal storyboard fails overall compliance. Non-executable schemas and support fixtures shipped in the universal bundle are not runner scenarios and do not appear in this table.
 
-{/* Lint: scripts/lint-universal-storyboard-doc-parity.cjs keeps this table in sync with static/compliance/source/universal/. Add a row (kebab-case slug) when you add a graded storyboard; remove the row when one is deleted. The build fails on drift. */}
+{/* Generated from the compliance inventory; scripts/lint-universal-storyboard-doc-parity.cjs validates the literal slugs in the snippet. */}
 
-| Storyboard | Purpose |
-|-----------|---------|
-| `capability-discovery` | `get_adcp_capabilities` shape, protocol/specialism declarations, version advertising |
-| `comply-controller-mode-gate` | Sandbox/live isolation for sellers that expose `comply_test_controller` on a shared endpoint — live-mode principals must be refused before scenario dispatch |
-| `schema-validation` | Request and response schema conformance, ISO 8601 timestamps, temporal invariants |
-| `schema-validation-signals` | Response schema compliance for signals — required fields on every signal; gated on `get_signals` |
-| `version-negotiation` | Release-precision `adcp.supported_versions` advertisement and response-envelope `adcp_version` echo; advisory in 3.1, promoted in later cuts |
-| `v3-envelope-integrity` | v3 protocol envelopes MUST NOT carry the v2 legacy `task_status` or `response_status` fields — `status` is the single canonical lifecycle field in v3. |
-| `error-compliance` | Structured error shape, published error codes, transport binding, no existence leaks across tenants |
-| `error-compliance-signals` | Error handling for signals protocol — nonexistent signal IDs, missing fields, VERSION_UNSUPPORTED, transport binding; discovery phases are gated on `get_signals`; activation phases run only for agents that claim activation support such as `signal-marketplace` |
-| `stale-response-advisory` | `STALE_RESPONSE` wire placement — advisory rides in `errors[]` on a populated success response with transport success preserved; stale-cache forcing steps gated on `comply_test_controller` with `force_upstream_unavailable` |
-| `idempotency` | `idempotency_key` scoping, replay semantics, `IDEMPOTENCY_CONFLICT`, `replayed: true`, declared TTL |
-| `read-tool-idempotency` | Read-only task wrappers accept the 3.1 every-request `idempotency_key` envelope without strict request-wrapper rejection; includes the 3.1 omitted-key grace probe. |
-| `canonical-format-validate-input` | Canonical-format `validate_input` result semantics — structural pass/fail across required slots and `unvalidatable_nondeterministic` for seeded product declarations. Gated on agents that advertise `validate_input`; the seeded-product branch also requires `comply_test_controller` seeding support. |
-| `security` | **Authentication baseline — unauth rejection, static-credential enforcement (Bearer API key or HTTP Basic), OAuth discovery + RFC 9728 audience binding.** See [Authentication](/docs/building/by-layer/L2/authentication). |
-| `oauth-setup` | Complete RFC 9728 protected-resource and RFC 8414 authorization-server metadata graph — resource/issuer consistency, every referenced authorization server, and passive endpoint reachability. Gated on `oauth.supported: true`; RFC 7591 registration transactions are out of scope. |
-| `webhook-emission` | Outbound webhook conformance — stable `idempotency_key` across retries; RFC 9421 webhook signing (or HMAC fallback if the buyer opted in). Runs for any agent that accepts `push_notification_config` on any operation. |
-| `webhook-receiver-envelope` | Buyer receiver replay conformance: accepts full MCP webhook envelopes, rejects bare delivery-result payloads, verifies signatures over raw body bytes, and dedupes retries by `idempotency_key`. |
-| `agent-notification-configs` | Agent-level `capabilities.changed` registration: revision-fenced capability declaration, NO_AUTH rejection, and dry-run clear semantics for `sync_agent_notification_configs`. |
-| `notification-config-event-scope` | `sync_accounts.accounts[].notification_configs[]` semantic validation — account-level subscribers reject media-buy-anchored notification types (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`) even though they are valid values in the shared notification-type enum. |
-| `notification-config-lifecycle` | Account-level `notification_configs[]` lifecycle on `sync_accounts`: paused registration, durable `list_accounts` echo, subscriber-keyed replacement, and clear-all semantics. |
-| `notification-config-rejections` | Semantic `notification_configs[]` request rejection path for duplicate `subscriber_id` values. |
-| `wholesale-feed-products` | Product wholesale feed versioning — bootstrap responses carry `wholesale_feed_version`/`cache_scope`, and matching `if_wholesale_feed_version` probes return `unchanged` without product rows. |
-| `wholesale-feed-signals` | Signals wholesale feed versioning — bootstrap responses carry `wholesale_feed_version`/`cache_scope`, and matching `if_wholesale_feed_version` probes return `unchanged` without signal rows. |
-| `wholesale-feed-products-scope-isolation` | Product wholesale feed cache-scope isolation — a `wholesale_feed_version` minted under one `cache_scope` must not short-circuit (`unchanged: true`) a request the seller resolves to a different `cache_scope`. |
-| `wholesale-feed-signals-scope-isolation` | Signals wholesale feed cache-scope isolation — a `wholesale_feed_version` minted under one `cache_scope` must not short-circuit (`unchanged: true`) a request the agent resolves to a different `cache_scope`. |
-| `wholesale-feed-product-webhooks` | Account-level `notification_configs[]` registration for agents that advertise product wholesale feed webhook events. |
-| `wholesale-feed-signal-webhooks` | Account-level `notification_configs[]` registration for agents that advertise signal wholesale feed webhook events. |
-| `wholesale-feed-bulk-webhooks` | Account-level `notification_configs[]` registration for agents that advertise `wholesale_feed.bulk_change`. |
-| `pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_creatives` response from a continuation page through to terminal. |
-| `get-products-pagination-integrity` | `get_products` wholesale pagination semantics — walks a seeded product feed from continuation to terminal while preserving brief/refine as capped curated/refined answers, not feed enumeration. |
-| `get-signals-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `get_signals` response under a broad query — page 1 must be non-terminal against any non-trivial signal set, page 2 follows the cursor. |
-| `pagination-integrity-list-accounts` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_accounts` response — storyboard bootstraps three accounts via `sync_accounts`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
-| `pagination-integrity-creative-formats` | Deprecated named-format compatibility check for agents that still expose paginated `list_creative_formats`. |
-| `get-media-buys-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `get_media_buys` response — storyboard seeds three media buys via `seed_media_buy`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
-| `content-standards-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_content_standards` response — storyboard bootstraps three content standards configurations via `create_content_standards`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
-| `collection-lists-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_collection_lists` response — storyboard bootstraps three collection lists via `create_collection_list`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
-| `property-lists-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_property_lists` response — storyboard bootstraps three property lists via `create_property_list`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
-| `deterministic-testing` | `comply_test_controller` state-machine verification — skipped if `capabilities.compliance_testing.supported: false`. |
-| `signed-requests` | RFC 9421 transport-layer request-signing verification — skipped if `request_signing.supported: false`. |
-| `billing-gate-dispatch` | `sync_accounts.billing` rejection dispatch — `BILLING_NOT_SUPPORTED` (capability gate, with `error.details.scope`) vs `BILLING_NOT_PERMITTED_FOR_AGENT` (per-buyer-agent commercial-relationship gate, with the clamped `rejected_billing` + `suggested_billing` shape). Capability phase skipped when the seller supports all three `billing` values; per-agent phases skipped when the test kit does not declare `commercial_relationship: passthrough_only`. |
+<ComplianceStoryboardInventory />
 
 Capability-gated rows (`deterministic-testing`, `oauth-setup`, `signed-requests`) are skipped when the corresponding capability is absent or advertises `supported: false`; they cannot be claimed and partially implemented. Declaring `supported: true` and failing the storyboard is non-conformant — omit the capability or declare `false` rather than ship a partial implementation. The `billing-gate-dispatch` and `comply-controller-mode-gate` rows are precondition-gated rather than ordinary capability-gated rows: each phase grades `not_applicable` when its precondition is not met. Sellers wanting full coverage of the per-agent billing gate SHOULD ship a test kit with `commercial_relationship: passthrough_only` declared so the per-agent phases run.
+
+## Standard error codes
+
+{/* Using latest because the generated taxonomy includes error codes not yet
+    present in the current v3 release. Update to the v3 alias after the next release. */}
+The compliance suite verifies that standard errors use the recovery classifications and remediation guidance defined by the canonical [`error-code.json`](https://adcontextprotocol.org/schemas/latest/enums/error-code.json) taxonomy. The vocabulary remains open: agents must also handle unknown codes using the response's `recovery` value.
+
+<ComplianceErrorCodes />
 
 ## Protocols
 

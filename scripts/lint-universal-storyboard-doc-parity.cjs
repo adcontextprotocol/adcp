@@ -100,6 +100,43 @@ function extractTableTokens(section) {
   return tokens;
 }
 
+function expandImportedSnippets(content, section, filePath, repoRoot) {
+  const snippets = [];
+  const errors = [];
+  const importPattern = /^import\s+([A-Za-z][A-Za-z0-9_]*)\s+from\s+["']([^"']+\.mdx)["'];?\s*$/gm;
+  for (const match of content.matchAll(importPattern)) {
+    const [, component, importPath] = match;
+    if (!new RegExp(`<${component}(?:\\s|/|>)`).test(section)) continue;
+    const resolved = importPath.startsWith('/')
+      ? path.resolve(repoRoot, importPath.slice(1))
+      : path.resolve(path.dirname(filePath), importPath);
+    const relative = path.relative(repoRoot, resolved);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      errors.push(`snippet import ${importPath} resolves outside the repository`);
+      continue;
+    }
+    let stat;
+    try {
+      stat = fs.lstatSync(resolved);
+    } catch {
+      errors.push(`snippet import ${importPath} does not exist`);
+      continue;
+    }
+    if (!stat.isFile()) {
+      errors.push(`snippet import ${importPath} is not a regular file`);
+      continue;
+    }
+    const realPath = fs.realpathSync(resolved);
+    const realRelative = path.relative(fs.realpathSync(repoRoot), realPath);
+    if (realRelative.startsWith('..') || path.isAbsolute(realRelative)) {
+      errors.push(`snippet import ${importPath} resolves outside the repository`);
+      continue;
+    }
+    snippets.push(fs.readFileSync(resolved, 'utf8'));
+  }
+  return { content: [section, ...snippets].join('\n'), errors };
+}
+
 /**
  * Run the lint. Returns an array of error strings (empty = clean).
  * Pass `{ sourceDir, repoRoot }` to override default paths (used by tests).
@@ -119,10 +156,13 @@ function lint({ sourceDir = DEFAULT_SOURCE_DIR, repoRoot = REPO_ROOT } = {}) {
       continue;
     }
 
+    const expanded = expandImportedSnippets(content, section, filePath, repoRoot);
+    errors.push(...expanded.errors.map(error => `${check.relpath}: ${error}`));
+
     // Forward parity
     const missingFromDoc = items
       .map(item => check.tokenForItem(item))
-      .filter(token => !section.includes('`' + token + '`'));
+      .filter(token => !expanded.content.includes('`' + token + '`'));
     if (missingFromDoc.length) {
       errors.push(
         `${check.relpath}: universal-storyboards table is missing rows for ${missingFromDoc.map(t => '`' + t + '`').join(', ')}.\n` +
@@ -132,7 +172,7 @@ function lint({ sourceDir = DEFAULT_SOURCE_DIR, repoRoot = REPO_ROOT } = {}) {
 
     // Reverse parity
     const knownTokens = new Set(items.map(item => check.tokenForItem(item)));
-    const tableTokens = extractTableTokens(section);
+    const tableTokens = extractTableTokens(expanded.content);
     const ghostTokens = [...tableTokens].filter(t => !knownTokens.has(t));
     if (ghostTokens.length) {
       errors.push(
@@ -163,5 +203,6 @@ module.exports = {
   discoverGradedUniversal,
   extractSection,
   extractTableTokens,
+  expandImportedSnippets,
   DOC_CHECKS,
 };
