@@ -294,7 +294,6 @@ export class CrawlerService {
             () => client.query('SELECT pg_advisory_unlock_shared(hashtextextended($1, 0))', [intentKey]),
             'shared intent lock release after contention',
           );
-          sharedIntentAcquired = false;
         }
         client.off('error', onConnectionError);
         await closeClient();
@@ -316,7 +315,6 @@ export class CrawlerService {
               () => client.query('SELECT pg_advisory_unlock_shared(hashtextextended($1, 0))', [intentKey]),
               'shared intent lock release after publisher contention',
             );
-            sharedIntentAcquired = false;
           }
           client.off('error', onConnectionError);
           await closeClient();
@@ -329,7 +327,6 @@ export class CrawlerService {
           () => client.query('SELECT pg_advisory_unlock_shared(hashtextextended($1, 0))', [intentKey]),
           'shared intent lock release after admission',
         );
-        sharedIntentAcquired = false;
       }
 
       let released = false;
