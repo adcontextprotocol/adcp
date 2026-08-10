@@ -66,6 +66,7 @@ export interface AdagentsAuthorizedAgent {
     property_ids?: string[];
     property_tags?: string[];
   }>;
+  signing_keys?: Array<Record<string, unknown>>;
 }
 
 export interface AdagentsManifest {
@@ -1857,6 +1858,14 @@ export class PublisherDatabase {
     const authorizedFor = typeof entry.authorized_for === 'string'
       ? entry.authorized_for.slice(0, 500)
       : null;
+    // Publisher-pinned JWK set. Adagents.json schema stores it inline on
+    // the authorized_agents entry, so it applies uniformly to every row
+    // this entry projects (per-property fan-out shares the same keys).
+    // Null when the publisher didn't declare a pin — consumers fall back
+    // to the agent-hosted JWKS per spec R-2.
+    const signingKeys = Array.isArray(entry.signing_keys) && entry.signing_keys.length > 0
+      ? JSON.stringify(entry.signing_keys)
+      : null;
 
     const variant = entry.authorization_type;
 
@@ -2050,8 +2059,8 @@ export class PublisherDatabase {
       await client.query(
         `INSERT INTO catalog_agent_authorizations
            (agent_url, agent_url_canonical, property_rid, property_id_slug,
-            publisher_domain, authorized_for, evidence, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, 'adagents_json', 'system')
+            publisher_domain, authorized_for, signing_keys, evidence, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, 'adagents_json', 'system')
          ON CONFLICT (agent_url_canonical,
                       (COALESCE(property_rid::text, '')),
                       (COALESCE(publisher_domain, '')),
@@ -2059,7 +2068,8 @@ export class PublisherDatabase {
                 WHERE deleted_at IS NULL
          DO UPDATE SET
            authorized_for = EXCLUDED.authorized_for,
-           updated_at = NOW()`,
+           signing_keys   = EXCLUDED.signing_keys,
+           updated_at     = NOW()`,
         [
           agentRaw,
           agentCanonical,
@@ -2067,6 +2077,7 @@ export class PublisherDatabase {
           target.slug,
           isPropertyScope ? null : publisherDomain,
           authorizedFor,
+          signingKeys,
         ]
       );
     }

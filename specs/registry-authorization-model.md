@@ -432,7 +432,7 @@ In-process lookup against the local copy is sub-microsecond. Daily feed pull is 
 
 - **`granted`** — a new row is visible in the effective set. Fired on base-row insert, on `add`-override insert, or on `suppress`-override supersede (a row that was hidden becomes visible again).
 - **`revoked`** — a row is no longer in the effective set. Fired on base-row soft-delete, on `add`-override supersede, or on `suppress`-override insert (a row that was visible becomes hidden).
-- **`modified`** — a row's body changed but its identity didn't. Fired on base-row UPDATE that changes any of `authorized_for`, `expires_at`, or `disputed`. Override insert/supersede emits `granted`/`revoked` instead — the visibility transition is the relevant signal.
+- **`modified`** — a row's body changed but its identity didn't. Fired on base-row UPDATE that changes any of `authorized_for`, `expires_at`, `disputed`, or `signing_keys`. Override insert/supersede emits `granted`/`revoked` instead — the visibility transition is the relevant signal.
 
 The event payload is the `v_effective_agent_authorizations` row as it exists post-change (or pre-change for `revoked`):
 
@@ -453,6 +453,7 @@ The event payload is the `v_effective_agent_authorizations` row as it exists pos
     "disputed": false,
     "created_by": "...",
     "expires_at": "...",
+    "signing_keys": [ { "kid": "...", "kty": "OKP", "crv": "Ed25519", "x": "..." } ],
     "override_applied": false,
     "override_reason": null
   }
@@ -465,6 +466,8 @@ Two things to note:
 - **Override insert can fan out into many events.** A `suppress` override matching N base rows under one publisher fires N `revoked` events (one per affected base row) plus zero events for the override itself. An `add` override fires exactly one `granted` event (the override is the sole basis for the effective row). This keeps consumer logic simple — no special override handling; just apply each event's payload to the local copy.
 
 The change-feed PR (4b-feed) adds the `entity_type='authorization'` filter to the existing `/api/registry/feed` endpoint and the emitter that produces these events on writer transactions and override-table changes.
+
+**`signing_keys` on the payload.** Publisher-pinned JWKs from `authorized_agents[*].signing_keys` in `adagents.json`. Consumers that verify inbound TMP signatures (adcp-go `LazyAuthorizationKeyStore`) key on `kid → JWK`. Null when the publisher declared no keys — consumers fall back to the agent-hosted JWKS per spec R-2 (`docs/governance/property/adagents.mdx`). Rotation is a body change: replacing the key set on a live row emits `modified`. Per `specs/registry-change-feed.md` §Advisory identity material the feed is change-detection, not a trust anchor — consumers MUST re-verify against the publisher's own `adagents.json` before acting on identity changes. `signing_keys` is null on `evidence='agent_claim' | 'community' | 'adagents_authoritative' | 'override'` rows: those trust sources do not carry a publisher-pinned key set.
 
 ### Trust model
 

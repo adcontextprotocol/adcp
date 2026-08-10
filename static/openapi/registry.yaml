@@ -3529,10 +3529,11 @@ components:
         effective_until:
           type: string
         signing_keys:
-          type: array
+          type:
+            - array
+            - "null"
           items:
-            type: object
-            additionalProperties: {}
+            $ref: "#/components/schemas/SigningKey"
         evidence:
           type: string
         disputed:
@@ -3562,6 +3563,44 @@ components:
       required:
         - agent_url
         - publisher_domain
+      additionalProperties: {}
+    SigningKey:
+      type: object
+      properties:
+        kid:
+          type: string
+          description: Key identifier for selecting the correct signing key.
+        kty:
+          type: string
+          description: JWK key type, such as 'OKP', 'EC', or 'RSA'.
+        alg:
+          type: string
+          description: Expected signing algorithm for this key, such as 'EdDSA' or 'RS256'.
+        use:
+          type: string
+          description: Optional JWK use value. Typically 'sig' for signing keys.
+        crv:
+          type: string
+          description: Curve name for OKP or EC keys, such as 'Ed25519' or 'P-256'.
+        x:
+          type: string
+          description: Base64url-encoded public key x coordinate or public key value for OKP keys.
+        y:
+          type: string
+          description: Base64url-encoded public key y coordinate for EC keys.
+        n:
+          type: string
+          description: Base64url-encoded RSA modulus.
+        e:
+          type: string
+          description: Base64url-encoded RSA public exponent.
+        revoked_at:
+          type: string
+          format: date-time
+          description: Optional revocation timestamp. When present, verifiers MUST reject any signature produced with this key whose signing epoch is at or after this timestamp. The key may continue to appear in the trust anchor during a grace period so caches that have not yet refreshed still find the key and can evaluate the revocation marker.
+      required:
+        - kid
+        - kty
       additionalProperties: {}
     PublisherEventPayload:
       type: object
@@ -9457,6 +9496,13 @@ paths:
                         updated_at:
                           type: string
                           format: date-time
+                        signing_keys:
+                          type:
+                            - array
+                            - "null"
+                          items:
+                            $ref: "#/components/schemas/SigningKey"
+                          description: Publisher-pinned JWK set (authorized_agents[*].signing_keys) from the source adagents.json. Consumers verifying inbound TMP signatures key on kid → JWK. Null when the publisher declared no keys; consumers fall back to the agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx).
                         override_applied:
                           type: boolean
                         override_reason:
@@ -9477,6 +9523,7 @@ paths:
                         - expires_at
                         - created_at
                         - updated_at
+                        - signing_keys
                         - override_applied
                         - override_reason
                   count:
