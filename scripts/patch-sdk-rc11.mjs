@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const EXPECTED_VERSION = '13.0.0-rc.11';
+const EXPECTED_VERSION = '13.0.0-rc.13';
 const packageJson = JSON.parse(fs.readFileSync(path.resolve('node_modules/@adcp/sdk/package.json'), 'utf8'));
 
 if (packageJson.version !== EXPECTED_VERSION) {
@@ -25,7 +25,7 @@ const storyboardTaskMaps = storyboardTaskMapFiles.map(relative => {
   const file = path.resolve(relative);
   const source = fs.readFileSync(file, 'utf8');
   if (!source.includes(patchedCallParams) && !source.includes(originalCallParams)) {
-    throw new Error(`Unexpected rc.11 storyboard task-map shape in ${relative}`);
+    throw new Error(`Unexpected ${EXPECTED_VERSION} storyboard task-map shape in ${relative}`);
   }
   return { file, source };
 });
@@ -41,6 +41,6 @@ for (const { file, source } of storyboardTaskMaps) {
 for (const relative of storyboardTaskMapFiles) {
   const source = fs.readFileSync(path.resolve(relative), 'utf8');
   if (!source.includes(patchedCallParams)) {
-    throw new Error(`@adcp/sdk rc.11 storyboard task-map patch verification failed for ${relative}`);
+    throw new Error(`@adcp/sdk ${EXPECTED_VERSION} storyboard task-map patch verification failed for ${relative}`);
   }
 }

@@ -126,6 +126,7 @@ describe('run_conformance_against_my_agent Addie tool', () => {
       passed_count: 2,
       failed_count: 0,
       skipped_count: 0,
+      validations_advisory_failed: 1,
       total_duration_ms: 123,
       phases: [
         {
@@ -134,7 +135,22 @@ describe('run_conformance_against_my_agent Addie tool', () => {
           passed: true,
           duration_ms: 50,
           steps: [
-            { step_id: 's1', phase_id: 'p1', title: 'discover', task: 'discover', passed: true },
+            {
+              step_id: 's1',
+              phase_id: 'p1',
+              title: 'discover',
+              task: 'discover',
+              passed: true,
+              validations: [
+                {
+                  id: 'creative_recommendation',
+                  check: 'field_value',
+                  passed: false,
+                  severity: 'advisory',
+                  description: 'A recommended field is absent',
+                },
+              ],
+            },
             { step_id: 's2', phase_id: 'p1', title: 'query', task: 'query', passed: true },
           ],
         },
@@ -147,6 +163,9 @@ describe('run_conformance_against_my_agent Addie tool', () => {
     });
     expect(out).toMatch(/PASSED/);
     expect(out).toMatch(/2 \/ 0 \/ 0/);
+    expect(out).toContain('Advisory validations failed:** 1');
+    expect(out).toContain('[ADVISORY] failed validations');
+    expect(out).toContain('"id": "creative_recommendation"');
     expect(out).toMatch(/Setup/);
     expect(out).toMatch(/discover/);
   });
