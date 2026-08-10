@@ -7219,6 +7219,33 @@ paths:
                 required:
                   - error
                   - retry_after
+        "503":
+          description: Publisher crawl is temporarily busy
+          headers:
+            Retry-After:
+              schema:
+                type: string
+                description: Seconds to wait before retrying
+              required: true
+              description: Seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - publisher_crawl_busy
+                  retry_after:
+                    type: integer
+                    description: Seconds to wait before retrying
+                required:
+                  - error
+                  - code
+                  - retry_after
   /api/registry/brand/{domain}/force-crawl:
     post:
       operationId: forceBrandCrawl
@@ -9812,6 +9839,13 @@ paths:
                   - retry_after
         "503":
           description: The durable crawl queue is temporarily unavailable; the request was not accepted
+          headers:
+            Retry-After:
+              schema:
+                type: string
+                description: Seconds to wait before retrying
+              required: true
+              description: Seconds to wait before retrying
           content:
             application/json:
               schema:
@@ -9823,6 +9857,7 @@ paths:
                     type: string
                     enum:
                       - crawl_queue_unavailable
+                      - crawl_queue_at_capacity
                   retry_after:
                     type: integer
                 required:
@@ -9932,10 +9967,30 @@ paths:
                 $ref: "#/components/schemas/Error"
         "503":
           description: Crawl status is temporarily unavailable
+          headers:
+            Retry-After:
+              schema:
+                type: string
+                description: Seconds to wait before retrying
+              required: true
+              description: Seconds to wait before retrying
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - crawl_status_unavailable
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - code
+                  - retry_after
   /api/registry/manager-revalidation-request:
     post:
       operationId: requestManagerRevalidation

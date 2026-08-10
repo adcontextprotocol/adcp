@@ -128,12 +128,45 @@ terminal `failed` request, correct the reported error category and submit a new
 crawl request after the per-domain rate-limit window; the old request remains
 as the audit record.
 
+Workers claim no more requests than they can start immediately. Each active
+publisher crawl holds a PostgreSQL shared global execution lock and an
+exclusive per-domain lock for the fetch/write lifecycle; the periodic full
+crawl holds the exclusive global lock. These session locks use dedicated
+connections outside the application pool, so crawl concurrency does not consume
+the connections needed by heartbeats, status reads, or mirror transactions. The
+locks prevent an expired or duplicate attempt from overwriting newer mirror
+state. The mirror transaction
+also verifies the current request lease token before committing. Publisher GET
+requests do not acquire these locks and continue to serve the last committed
+mirror state while crawling is delayed or unavailable.
+
+Dedicated lock-session operations are bounded at 10 seconds. The periodic full
+crawl may wait up to two minutes for the global lock, plus the 10-second
+database-operation margin. A missed keepalive or unlock deadline invalidates
+the lock and forcibly closes its dedicated connection so a wedged socket cannot
+hold a queue worker or request lease indefinitely.
+
+For the first deployment, use Fly's `immediate` strategy and leave
+`PUBLISHER_CRAWL_QUEUE_ENABLED=false`. Immediate replacement prevents an old
+image, which does not participate in the new PostgreSQL execution locks, from
+overlapping a new worker. After every machine runs the lock-participating image,
+set the gate to `true` and restart that image before accepting requests. Keep
+that consumer-capable image available for rollback; rolling back to an older
+image pauses queued work and removes status lookup until the new image is
+restored, but does not delete committed requests. Restore the normal rolling
+strategy only after every deployable image participates in these locks.
+
+Admission returns `crawl_queue_at_capacity` with `503` and `Retry-After` when
+10,000 active requests are already queued or running. This is backpressure, not
+acceptance; retry later rather than inserting or editing queue rows manually.
+
 Operational logs include `crawl_request_id`, attempt count,
-`accepted_to_terminal_ms`, queue depth, oldest-active age, and expired-lease
-count. A `Publisher crawl request queue requires attention` warning means a
-lease is expired or an active request is older than five minutes. Confirm that
-the worker process is healthy, then use the status endpoint to determine
-whether the request recovered before escalating.
+`accepted_to_terminal_ms`, queue depth, oldest-due lateness, reclaimed-lease
+count, and final-attempt lease expirations. A `Publisher crawl request queue
+requires attention` warning means a lease is expired or due work is more than
+five minutes late; requests intentionally waiting in retry backoff do not
+trigger it. Confirm that the worker process is healthy, then use the status
+endpoint to determine whether the request recovered before escalating.
 
 For brand manifests, use the same body shape:
 

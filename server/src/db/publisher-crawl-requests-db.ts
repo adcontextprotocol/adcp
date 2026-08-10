@@ -39,6 +39,12 @@ export interface ClaimedPublisherCrawlRequest extends PublisherCrawlRequest {
   lease_owner: string;
   lease_token: string;
   lease_expires_at: Date;
+  was_reclaimed: boolean;
+}
+
+export interface ClaimPublisherCrawlRequestsResult {
+  requests: ClaimedPublisherCrawlRequest[];
+  terminalizedExpired: number;
 }
 
 export class CrawlRequestRateLimitError extends Error {
@@ -53,6 +59,13 @@ export class CrawlRequestRateLimitError extends Error {
   }
 }
 
+export class CrawlQueueCapacityError extends Error {
+  constructor(readonly capacity: number) {
+    super('Publisher crawl queue is at capacity');
+    this.name = 'CrawlQueueCapacityError';
+  }
+}
+
 export interface CreatePublisherCrawlRequestInput {
   id: string;
   domain: string;
@@ -62,6 +75,7 @@ export interface CreatePublisherCrawlRequestInput {
   domainWindowMs?: number;
   requesterWindowMs?: number;
   requesterLimit?: number;
+  activeQueueCapacity?: number;
 }
 
 export interface PublisherCrawlQueueHealth {
@@ -70,7 +84,8 @@ export interface PublisherCrawlQueueHealth {
   deferred: number;
   retrying: number;
   expired_leases: number;
-  oldest_active_at: Date | null;
+  oldest_due_at: Date | null;
+  oldest_running_at: Date | null;
 }
 
 function retryAfterSeconds(retryAt: Date): number {
@@ -87,6 +102,7 @@ export class PublisherCrawlRequestsDatabase {
     const domainWindowMs = input.domainWindowMs ?? 5 * 60_000;
     const requesterWindowMs = input.requesterWindowMs ?? 60 * 60_000;
     const requesterLimit = input.requesterLimit ?? 30;
+    const activeQueueCapacity = input.activeQueueCapacity ?? 10_000;
     const client = await getClient();
     let transactionStarted = false;
     try {
@@ -94,6 +110,17 @@ export class PublisherCrawlRequestsDatabase {
       transactionStarted = true;
       await client.query("SELECT set_config('statement_timeout', '5000ms', true)");
       await client.query("SELECT set_config('lock_timeout', '2000ms', true)");
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        'publisher-crawl-capacity',
+      ]);
+      const capacity = await client.query<{ active_count: string }>(
+        `SELECT COUNT(*)::text AS active_count
+           FROM publisher_crawl_requests
+          WHERE status IN ('queued', 'running', 'deferred', 'retrying')`,
+      );
+      if (Number(capacity.rows[0]?.active_count ?? 0) >= activeQueueCapacity) {
+        throw new CrawlQueueCapacityError(activeQueueCapacity);
+      }
       const requesterKey = input.requesterType === 'user'
         ? input.requestedByUserId
         : 'static_admin';
@@ -169,7 +196,7 @@ export class PublisherCrawlRequestsDatabase {
     workerId: string,
     limit: number,
     leaseMs: number,
-  ): Promise<ClaimedPublisherCrawlRequest[]> {
+  ): Promise<ClaimPublisherCrawlRequestsResult> {
     const client = await getClient();
     let transactionStarted = false;
     try {
@@ -180,7 +207,7 @@ export class PublisherCrawlRequestsDatabase {
 
       // An expired final attempt is terminal; do not leave it permanently
       // running merely because it is no longer eligible for another claim.
-      await client.query(
+      const expiredFinal = await client.query(
         `UPDATE publisher_crawl_requests
             SET status = 'failed',
                 completed_at = NOW(),
@@ -193,12 +220,15 @@ export class PublisherCrawlRequestsDatabase {
                 last_error = COALESCE(last_error, 'Worker lease expired after the final attempt')
           WHERE status = 'running'
             AND lease_expires_at <= NOW()
-            AND attempts >= max_attempts`,
+            AND attempts >= max_attempts
+            AND pg_try_advisory_xact_lock(
+              hashtextextended('publisher-crawl-fence:' || id::text, 0)
+            )`,
       );
 
       const result = await client.query<ClaimedPublisherCrawlRequest>(
-        `WITH due AS (
-           SELECT id
+        `WITH candidates AS MATERIALIZED (
+           SELECT id, status = 'running' AS was_reclaimed
              FROM publisher_crawl_requests
             WHERE attempts < max_attempts
               AND (
@@ -208,6 +238,12 @@ export class PublisherCrawlRequestsDatabase {
             ORDER BY available_at ASC, created_at ASC
             FOR UPDATE SKIP LOCKED
             LIMIT $2
+         ), due AS (
+           SELECT *
+             FROM candidates
+            WHERE pg_try_advisory_xact_lock(
+              hashtextextended('publisher-crawl-fence:' || id::text, 0)
+            )
          )
          UPDATE publisher_crawl_requests AS requests
             SET status = 'running',
@@ -222,11 +258,16 @@ export class PublisherCrawlRequestsDatabase {
                 updated_at = NOW()
            FROM due
           WHERE requests.id = due.id
-         RETURNING requests.*`,
+         RETURNING requests.*,
+                   COALESCE((SELECT due.was_reclaimed FROM due WHERE due.id = requests.id), false)
+                     AS was_reclaimed`,
         [workerId, Math.max(1, Math.min(limit, 100)), leaseMs],
       );
       await client.query('COMMIT');
-      return result.rows;
+      return {
+        requests: result.rows,
+        terminalizedExpired: expiredFinal.rowCount ?? 0,
+      };
     } catch (error) {
       if (transactionStarted) await client.query('ROLLBACK');
       throw error;
@@ -384,7 +425,8 @@ export class PublisherCrawlRequestsDatabase {
       deferred: string;
       retrying: string;
       expired_leases: string;
-      oldest_active_at: Date | null;
+      oldest_due_at: Date | null;
+      oldest_running_at: Date | null;
     }>(
       `SELECT COUNT(*) FILTER (WHERE status = 'queued')::text AS queued,
               COUNT(*) FILTER (WHERE status = 'running')::text AS running,
@@ -393,10 +435,12 @@ export class PublisherCrawlRequestsDatabase {
               COUNT(*) FILTER (
                 WHERE status = 'running' AND lease_expires_at <= NOW()
               )::text AS expired_leases,
-              MIN(created_at) FILTER (
-                WHERE status IN ('queued', 'running', 'deferred', 'retrying')
-              ) AS oldest_active_at
-         FROM publisher_crawl_requests`,
+              MIN(available_at) FILTER (
+                WHERE status IN ('queued', 'deferred', 'retrying') AND available_at <= NOW()
+              ) AS oldest_due_at,
+              MIN(last_attempted_at) FILTER (WHERE status = 'running') AS oldest_running_at
+         FROM publisher_crawl_requests
+        WHERE status IN ('queued', 'running', 'deferred', 'retrying')`,
     );
       const row = result.rows[0];
       return {
@@ -405,7 +449,8 @@ export class PublisherCrawlRequestsDatabase {
         deferred: Number(row.deferred),
         retrying: Number(row.retrying),
         expired_leases: Number(row.expired_leases),
-        oldest_active_at: row.oldest_active_at,
+        oldest_due_at: row.oldest_due_at,
+        oldest_running_at: row.oldest_running_at,
       };
     });
   }

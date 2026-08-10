@@ -1,4 +1,5 @@
 import type { Agent, FederatedAgent } from "./types.js";
+import type { Client } from "pg";
 import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } from "@adcp/sdk";
 import { sanitizeAdagentsProperty } from "./discovery/property-index-guard.js";
 import { FederatedIndexService } from "./federated-index.js";
@@ -6,7 +7,14 @@ import type { DiscoveredAgent } from "./db/federated-index-db.js";
 import { AdAgentsManager, type AdAgentsValidationResult } from "./adagents-manager.js";
 import { BrandManager, type BrandValidationResult } from "./brand-manager.js";
 import { BrandDatabase } from "./db/brand-db.js";
-import { PublisherDatabase, adagentsChangedFields, canonicalizeAgentUrl, type AdagentsManifest, type AdagentsAuthorizedAgent } from "./db/publisher-db.js";
+import {
+  PublisherCrawlLeaseLostError,
+  PublisherDatabase,
+  adagentsChangedFields,
+  canonicalizeAgentUrl,
+  type AdagentsManifest,
+  type AdagentsAuthorizedAgent,
+} from "./db/publisher-db.js";
 import { canonicalizePublisherDomain } from "./services/publisher-domain.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { CapabilityDiscovery } from "./capabilities.js";
@@ -18,7 +26,7 @@ import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { createLogger } from "./logger.js";
 import type { CatalogEventsDatabase, WriteEventInput } from "./db/catalog-events-db.js";
 import type { AgentInventoryProfilesDatabase, ProfileUpsertInput } from "./db/agent-inventory-profiles-db.js";
-import { query, withDatabaseDeadline } from "./db/client.js";
+import { getDedicatedClient, query, withDatabaseDeadline } from "./db/client.js";
 import { PropertyDatabase } from "./db/property-db.js";
 import { verifyHostedPropertyOrigin } from "./services/hosted-property-origin-verifier.js";
 import { insertTypeReclassification } from "./db/type-reclassification-log-db.js";
@@ -38,14 +46,18 @@ const log = createLogger('crawler');
 // point. A dedicated aggregate profile query can replace this guard later.
 const INVENTORY_PROFILE_PUBLISHER_FANOUT_CAP = 1_000;
 const SINGLE_DOMAIN_CRAWL_DB_DEADLINE_MS = 60_000;
-const PUBLISHER_CRAWL_QUEUE_BATCH_SIZE = 10;
 const PUBLISHER_CRAWL_QUEUE_CONCURRENCY = 4;
 const PUBLISHER_CRAWL_LEASE_MS = 2 * 60_000;
 const PUBLISHER_CRAWL_HEARTBEAT_MS = 30_000;
 const PUBLISHER_CRAWL_DEFER_MS = 30_000;
 const PUBLISHER_CRAWL_RETENTION_MS = 30 * 24 * 60 * 60_000;
+const CRAWL_EXECUTION_LOCK_OPERATION_TIMEOUT_MS = 10_000;
 
 export type SingleDomainCrawlOutcome = 'completed' | 'invalid';
+
+export function isPublisherCrawlQueueEnabled(): boolean {
+  return process.env.PUBLISHER_CRAWL_QUEUE_ENABLED === 'true';
+}
 
 function unknownClassificationProbeDue(
   snapshot: AgentCapabilitiesSnapshotRow | undefined,
@@ -115,6 +127,22 @@ export interface PublisherAdagentsRevalidationResult {
 export interface SingleDomainCrawlContext {
   requestId?: string;
   source?: string;
+  leaseToken?: string;
+  isLeaseValid?: () => boolean;
+}
+
+interface CrawlExecutionLock {
+  isValid(): boolean;
+  release(): Promise<void>;
+}
+
+class CrawlExecutionLockLostError extends Error {
+  readonly code = 'crawl_execution_lock_lost';
+
+  constructor() {
+    super('Crawl execution lock ownership was lost');
+    this.name = 'CrawlExecutionLockLostError';
+  }
 }
 
 export class CrawlerService {
@@ -123,6 +151,7 @@ export class CrawlerService {
   private lastCrawl: Date | null = null;
   private lastResult: CrawlResult | null = null;
   private intervalId: NodeJS.Timeout | null = null;
+  private fullCrawlLockRetryTimer: NodeJS.Timeout | null = null;
   private federatedIndex: FederatedIndexService;
   private adAgentsManager: AdAgentsManager;
   private brandManager: BrandManager;
@@ -137,6 +166,8 @@ export class CrawlerService {
   private profilesDb?: AgentInventoryProfilesDatabase;
   private crawlRequestsDb: PublisherCrawlRequestsDatabase;
   private publisherCrawlWorkerId: string;
+  private coordinateCrawlsAcrossInstances: boolean;
+  private crawlLockClientFactory?: () => Promise<Client>;
 
   constructor(options?: {
     eventsDb?: CatalogEventsDatabase;
@@ -158,9 +189,153 @@ export class CrawlerService {
     this.eventsDb = options?.eventsDb;
     this.profilesDb = options?.profilesDb;
     this.crawlRequestsDb = options?.crawlRequestsDb ?? new PublisherCrawlRequestsDatabase();
+    this.coordinateCrawlsAcrossInstances = true;
     this.publisherCrawlWorkerId = options?.crawlWorkerId
       ?? process.env.FLY_MACHINE_ID
       ?? `worker-${process.pid}-${Date.now().toString(36)}`;
+  }
+
+  private async tryAcquireCrawlExecutionLock(
+    domain?: string,
+    waitMs: number = 0,
+  ): Promise<CrawlExecutionLock | null> {
+    const client: Client = await (this.crawlLockClientFactory
+      ? this.crawlLockClientFactory()
+      : getDedicatedClient());
+    const globalKey = 'registry:crawl-execution';
+    const publisherKey = domain ? `registry:publisher:${canonicalizePublisherDomain(domain)}` : null;
+    let lockConnectionValid = true;
+    let keepaliveInFlight = false;
+    const onConnectionError = (error: Error) => {
+      if (!lockConnectionValid) return;
+      lockConnectionValid = false;
+      log.error({ error, domain }, 'Crawl execution lock connection failed; ownership lost');
+    };
+    const destroyConnection = (): void => {
+      if (!client.connection.stream.destroyed) client.connection.stream.destroy();
+    };
+    const runBounded = async <T>(
+      operation: () => Promise<T>,
+      label: string,
+      timeoutMs: number = CRAWL_EXECUTION_LOCK_OPERATION_TIMEOUT_MS,
+    ): Promise<T> => {
+      let timeout: NodeJS.Timeout | undefined;
+      const deadline = new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          const error = Object.assign(
+            new Error(`Crawl execution lock ${label} exceeded ${timeoutMs}ms`),
+            { code: 'crawl_lock_operation_timeout' },
+          );
+          onConnectionError(error);
+          destroyConnection();
+          reject(error);
+        }, timeoutMs);
+      });
+      try {
+        return await Promise.race([operation(), deadline]);
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
+    };
+    const closeClient = async (): Promise<void> => {
+      try {
+        await runBounded(() => client.end(), 'connection close');
+      } catch {
+        destroyConnection();
+      }
+    };
+    client.on('error', onConnectionError);
+    try {
+      if (!domain && waitMs > 0) {
+        await runBounded(() => client.query("SELECT set_config('lock_timeout', $1, false)", [
+          `${Math.max(1, Math.min(waitMs, 300_000))}ms`,
+        ]), 'lock timeout setup');
+        await runBounded(
+          () => client.query('SELECT pg_advisory_lock(hashtextextended($1, 0))', [globalKey]),
+          'global lock acquisition',
+          Math.min(waitMs + CRAWL_EXECUTION_LOCK_OPERATION_TIMEOUT_MS, 310_000),
+        );
+      }
+      const global = !domain && waitMs > 0
+        ? { rows: [{ acquired: true }] }
+        : await runBounded(() => client.query<{ acquired: boolean }>(
+            domain
+              ? 'SELECT pg_try_advisory_lock_shared(hashtextextended($1, 0)) AS acquired'
+              : 'SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS acquired',
+            [globalKey],
+          ), 'global lock acquisition');
+      if (!global.rows[0]?.acquired) {
+        client.off('error', onConnectionError);
+        await closeClient();
+        return null;
+      }
+
+      if (publisherKey) {
+        const publisher = await runBounded(() => client.query<{ acquired: boolean }>(
+          'SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS acquired',
+          [publisherKey],
+        ), 'publisher lock acquisition');
+        if (!publisher.rows[0]?.acquired) {
+          await runBounded(
+            () => client.query('SELECT pg_advisory_unlock_shared(hashtextextended($1, 0))', [globalKey]),
+            'global lock release after contention',
+          );
+          client.off('error', onConnectionError);
+          await closeClient();
+          return null;
+        }
+      }
+
+      let released = false;
+      const keepalive = setInterval(() => {
+        if (keepaliveInFlight || !lockConnectionValid) return;
+        keepaliveInFlight = true;
+        runBounded(() => client.query('SELECT 1'), 'keepalive')
+          .catch((error) => onConnectionError(error instanceof Error ? error : new Error('Lock keepalive failed')))
+          .finally(() => { keepaliveInFlight = false; });
+      }, 15_000);
+      keepalive.unref();
+      return {
+        isValid: () => lockConnectionValid,
+        release: async () => {
+          if (released) return;
+          released = true;
+          clearInterval(keepalive);
+          try {
+            if (publisherKey) {
+              await runBounded(
+                () => client.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [publisherKey]),
+                'publisher lock release',
+              );
+              await runBounded(
+                () => client.query('SELECT pg_advisory_unlock_shared(hashtextextended($1, 0))', [globalKey]),
+                'global lock release',
+              );
+            } else {
+              await runBounded(
+                () => client.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [globalKey]),
+                'global lock release',
+              );
+              if (waitMs > 0) {
+                await runBounded(() => client.query('RESET lock_timeout'), 'lock timeout reset');
+              }
+            }
+          } catch (error) {
+            log.error({ error, domain }, 'Failed to release crawl execution lock; connection discarded');
+          } finally {
+            client.off('error', onConnectionError);
+            await closeClient();
+          }
+        },
+      };
+    } catch (error) {
+      client.off('error', onConnectionError);
+      await closeClient();
+      if (error && typeof error === 'object' && 'code' in error && error.code === '55P03') {
+        return null;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -188,6 +363,30 @@ export class CrawlerService {
       log.debug('Crawl already in progress, skipping');
       return this.lastResult || this.emptyResult();
     }
+
+    const executionLock = this.coordinateCrawlsAcrossInstances
+      ? await this.tryAcquireCrawlExecutionLock(undefined, PUBLISHER_CRAWL_LEASE_MS)
+      : null;
+    if (this.coordinateCrawlsAcrossInstances && !executionLock) {
+      log.warn('Another crawl owns the global execution lock; retrying full crawl shortly');
+      if (!this.fullCrawlLockRetryTimer) {
+        this.fullCrawlLockRetryTimer = setTimeout(() => {
+          this.fullCrawlLockRetryTimer = null;
+          this.crawlAllAgents(agents).catch((err) => {
+            log.error({ err }, 'Full crawl execution-lock retry failed');
+          });
+        }, 30_000);
+        this.fullCrawlLockRetryTimer.unref();
+      }
+      return this.lastResult || this.emptyResult();
+    }
+    if (this.fullCrawlLockRetryTimer) {
+      clearTimeout(this.fullCrawlLockRetryTimer);
+      this.fullCrawlLockRetryTimer = null;
+    }
+    const assertExecutionLock = (): void => {
+      if (executionLock && !executionLock.isValid()) throw new CrawlExecutionLockLostError();
+    };
 
     this.crawling = true;
 
@@ -254,6 +453,7 @@ export class CrawlerService {
     }
 
       const result = await this.crawler.crawlAgents(agentInfos);
+      assertExecutionLock();
 
       this.lastCrawl = new Date();
       this.lastResult = result;
@@ -282,10 +482,12 @@ export class CrawlerService {
 
       // Snapshot pre-crawl state for diffing
       const preCrawlAgents = await this.snapshotAgentState();
+      assertExecutionLock();
 
       // Populate federated index from PropertyIndex and adagents.json files,
       // including any publisher-domain claims returned by sales_candidate probes.
-      const crawledDomains = await this.populateFederatedIndex(agents);
+      const crawledDomains = await this.populateFederatedIndex(agents, assertExecutionLock);
+      assertExecutionLock();
 
       // Promote or back off sales_candidates based on positive PropertyIndex evidence.
       // Absence of an error is not sufficient — the agent must have returned publisher-domain
@@ -293,6 +495,7 @@ export class CrawlerService {
       if (salesCandidates.length > 0) {
         const index = getPropertyIndex();
         for (const candidate of salesCandidates) {
+          assertExecutionLock();
           const auth = index.getAgentAuthorizations(candidate.agent_url);
           try {
             if (auth && auth.publisher_domains.length > 0) {
@@ -311,22 +514,35 @@ export class CrawlerService {
       }
 
       // Build and upsert inventory profiles
+      assertExecutionLock();
       const builtProfiles = await this.buildInventoryProfiles();
 
       // Diff and produce events (after profiles are built so discovery events include profile data)
+      assertExecutionLock();
       await this.produceEventsFromDiff(preCrawlAgents, builtProfiles);
 
       // Scan brand.json for all crawled domains + all hosted brand domains
       const hostedDomains = await this.brandDb.listAllHostedBrandDomains();
       const brandDomains = [...new Set([...crawledDomains, ...hostedDomains])];
-      await this.scanBrandsForDomains(brandDomains);
+      assertExecutionLock();
+      await this.scanBrandsForDomains(brandDomains, assertExecutionLock);
 
       return result;
     } catch (error) {
       log.error({ err: error }, 'Crawl failed');
+      if (error instanceof CrawlExecutionLockLostError && !this.fullCrawlLockRetryTimer) {
+        this.fullCrawlLockRetryTimer = setTimeout(() => {
+          this.fullCrawlLockRetryTimer = null;
+          this.crawlAllAgents(agents).catch((err) => {
+            log.error({ err }, 'Full crawl lock-loss retry failed');
+          });
+        }, 30_000);
+        this.fullCrawlLockRetryTimer.unref();
+      }
       throw error;
     } finally {
       this.crawling = false;
+      await executionLock?.release();
     }
   }
 
@@ -349,6 +565,10 @@ export class CrawlerService {
       clearInterval(this.intervalId);
       this.intervalId = null;
       log.info('Periodic crawl stopped');
+    }
+    if (this.fullCrawlLockRetryTimer) {
+      clearTimeout(this.fullCrawlLockRetryTimer);
+      this.fullCrawlLockRetryTimer = null;
     }
   }
 
@@ -403,13 +623,14 @@ export class CrawlerService {
   /**
    * Scan a single domain for brand.json and upsert discovered/verified brand data.
    */
-  async scanBrandForDomain(domain: string): Promise<{
+  async scanBrandForDomain(domain: string, assertExecutionLock?: () => void): Promise<{
     found: boolean;
     valid: boolean;
     variant: BrandValidationResult['variant'] | null;
     manifestPersisted: boolean;
   }> {
     const result = await this.brandManager.validateDomain(domain, { skipCache: true });
+    assertExecutionLock?.();
     if (!result.valid || !result.raw_data) {
       return {
         found: result.status_code !== undefined && result.status_code !== 404,
@@ -551,15 +772,20 @@ export class CrawlerService {
     }
   }
 
-  private async scanBrandsForDomains(domains: string[]): Promise<void> {
+  private async scanBrandsForDomains(
+    domains: string[],
+    assertExecutionLock?: () => void,
+  ): Promise<void> {
     const CONCURRENCY = 5;
     log.debug({ domainCount: domains.length }, 'Scanning brand.json');
 
     for (let i = 0; i < domains.length; i += CONCURRENCY) {
       await Promise.all(domains.slice(i, i + CONCURRENCY).map(async (domain) => {
         try {
-          await this.scanBrandForDomain(domain);
+          assertExecutionLock?.();
+          await this.scanBrandForDomain(domain, assertExecutionLock);
         } catch (err) {
+          if (err instanceof CrawlExecutionLockLostError) throw err;
           log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Brand scan failed');
         }
       }));
@@ -597,7 +823,10 @@ export class CrawlerService {
    * This is called after the PropertyCrawler finishes to persist data to PostgreSQL.
    * Returns the set of domains that were crawled (for brand scanning).
    */
-  private async populateFederatedIndex(agents: Agent[]): Promise<Set<string>> {
+  private async populateFederatedIndex(
+    agents: Agent[],
+    assertExecutionLock: () => void = () => undefined,
+  ): Promise<Set<string>> {
     log.debug('Populating federated index');
     const index = getPropertyIndex();
 
@@ -626,6 +855,7 @@ export class CrawlerService {
 
         try {
           const validation = await this.adAgentsManager.validateDomain(pubConfig.domain);
+          assertExecutionLock();
           processedDomains.add(pubConfig.domain);
 
           if (validation.valid && validation.raw_data?.authorized_agents) {
@@ -647,6 +877,7 @@ export class CrawlerService {
 
             // Record agents
             for (const authorizedAgent of validation.raw_data.authorized_agents) {
+              assertExecutionLock();
               if (!authorizedAgent.url) continue;
 
               await this.federatedIndex.recordAgentFromAdagentsJson(
@@ -698,6 +929,7 @@ export class CrawlerService {
             });
           }
         } catch (err) {
+          if (err instanceof CrawlExecutionLockLostError) throw err;
           log.warn({ domain: pubConfig.domain, err: err instanceof Error ? err.message : err }, 'Publisher crawl failed');
         }
       }
@@ -715,6 +947,7 @@ export class CrawlerService {
         try {
           // Check if domain has valid adagents.json
           const validation = await this.adAgentsManager.validateDomain(domain);
+          assertExecutionLock();
           await this.federatedIndex.recordPublisherFromAgent(
             domain,
             agent.url,
@@ -739,6 +972,7 @@ export class CrawlerService {
             );
 
             for (const authorizedAgent of validation.raw_data.authorized_agents) {
+              assertExecutionLock();
               if (!authorizedAgent.url) continue;
 
               await this.federatedIndex.recordAgentFromAdagentsJson(
@@ -765,6 +999,7 @@ export class CrawlerService {
             await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
           }
         } catch (err) {
+          if (err instanceof CrawlExecutionLockLostError) throw err;
           log.error({ domain, err }, 'Failed to process domain');
         }
       }
@@ -784,6 +1019,7 @@ export class CrawlerService {
         for (const domain of auth.publisher_domains) {
           try {
             const validation = await this.adAgentsManager.validateDomain(domain);
+            assertExecutionLock();
             // Always write the agent_claim row so this discovered agent's authorization
             // edge is recorded even when the domain was already processed by step 1/2.
             await this.federatedIndex.recordPublisherFromAgent(domain, da.agent_url, validation.valid);
@@ -802,6 +1038,7 @@ export class CrawlerService {
               });
 
               for (const authorizedAgent of validation.raw_data.authorized_agents) {
+                assertExecutionLock();
                 if (!authorizedAgent.url) continue;
                 await this.federatedIndex.recordAgentFromAdagentsJson(
                   authorizedAgent.url, domain,
@@ -822,16 +1059,19 @@ export class CrawlerService {
               await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
             }
           } catch (err) {
+            if (err instanceof CrawlExecutionLockLostError) throw err;
             log.error({ domain, agentUrl: da.agent_url, err }, 'Failed to process DB-discovered sales agent domain');
           }
         }
       }
     } catch (err) {
+      if (err instanceof CrawlExecutionLockLostError) throw err;
       log.warn({ err }, 'Failed to process DB-discovered sales agents; skipping step 2b');
     }
 
     // Log stats
     try {
+      assertExecutionLock();
       const stats = await this.federatedIndex.getStats();
       log.info({
         agents: stats.discovered_agents,
@@ -1258,6 +1498,8 @@ export class CrawlerService {
       managerDomain?: string;
       eventActor?: string;
       eventSource?: string;
+      crawlRequestId?: string;
+      crawlRequestLeaseToken?: string;
     },
   ): Promise<boolean> {
     try {
@@ -1278,6 +1520,8 @@ export class CrawlerService {
           : 'pipeline:catalog_crawl',
         publisherEventActor: meta?.eventActor,
         publisherEventSource: meta?.eventSource,
+        crawlRequestId: meta?.crawlRequestId,
+        crawlRequestLeaseToken: meta?.crawlRequestLeaseToken,
       });
 
       // The writer atomically enqueues MANAGERDOMAIN dependants with the
@@ -1290,6 +1534,8 @@ export class CrawlerService {
       }
       return true;
     } catch (err) {
+      if (err instanceof CrawlExecutionLockLostError) throw err;
+      if (err instanceof PublisherCrawlLeaseLostError) throw err;
       log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Publisher cache write failed');
       return false;
     }
@@ -1484,11 +1730,28 @@ export class CrawlerService {
     options: { force?: boolean } = {},
   ): Promise<PublisherAdagentsRevalidationResult> {
     const normalizedDomain = canonicalizePublisherDomain(domain);
+    const executionLock = this.coordinateCrawlsAcrossInstances
+      ? await this.tryAcquireCrawlExecutionLock(normalizedDomain)
+      : null;
+    if (this.coordinateCrawlsAcrossInstances && !executionLock) {
+      throw Object.assign(new Error('Another crawl owns this publisher'), {
+        code: 'crawl_deferred',
+      });
+    }
+    const assertExecutionLock = (): void => {
+      if (executionLock && !executionLock.isValid()) {
+        throw Object.assign(new Error('Publisher crawl execution lock was lost'), {
+          code: 'crawl_execution_lock_lost',
+        });
+      }
+    };
+    try {
     if (options.force) {
       log.info({ domain: normalizedDomain }, 'Force revalidation requested; live origin validation is always performed');
     }
     const checkedAt = new Date();
     const validation = await this.adAgentsManager.validateDomain(normalizedDomain);
+    assertExecutionLock();
     const persisted = await this.persistPublisherAdagentsValidation(
       normalizedDomain,
       validation,
@@ -1502,6 +1765,7 @@ export class CrawlerService {
     }
 
     if (persisted.affectedAgentUrls.size > 0) {
+      assertExecutionLock();
       await this.buildInventoryProfiles({
         agentUrls: [...persisted.affectedAgentUrls],
         deleteStale: false,
@@ -1509,6 +1773,9 @@ export class CrawlerService {
     }
 
     return this.summarizePublisherAdagentsRevalidation(normalizedDomain, validation, checkedAt);
+    } finally {
+      await executionLock?.release();
+    }
   }
 
   /**
@@ -2041,6 +2308,26 @@ export class CrawlerService {
       });
     }
 
+    const executionLock = this.coordinateCrawlsAcrossInstances
+      ? await this.tryAcquireCrawlExecutionLock(domain)
+      : null;
+    if (this.coordinateCrawlsAcrossInstances && !executionLock) {
+      throw Object.assign(new Error('Another crawl owns this publisher'), {
+        code: 'crawl_deferred',
+      });
+    }
+
+    const assertLease = (): void => {
+      if (executionLock && !executionLock.isValid()) {
+        throw Object.assign(new Error('Publisher crawl execution lock was lost'), {
+          code: 'crawl_execution_lock_lost',
+        });
+      }
+      if (context.isLeaseValid && !context.isLeaseValid()) {
+        throw Object.assign(new PublisherCrawlLeaseLostError(), { code: 'crawl_lease_lost' });
+      }
+    };
+
     log.info(
       { ...lifecycleContext, crawl_status: 'running', crawl_stage: stage },
       'Single domain crawl started',
@@ -2050,6 +2337,7 @@ export class CrawlerService {
       return await withDatabaseDeadline(Date.now() + SINGLE_DOMAIN_CRAWL_DB_DEADLINE_MS, async () => {
       stage = 'origin_validation';
       const validation = await this.adAgentsManager.validateDomain(domain);
+      assertLease();
 
       if (!validation.valid || !validation.raw_data?.authorized_agents) {
         await this.recordFailedAdagentsFetch(domain, {
@@ -2086,6 +2374,8 @@ export class CrawlerService {
           managerDomain: validation.manager_domain,
           eventActor: 'api:crawl-request',
           eventSource: 'crawl_request',
+          crawlRequestId: context.requestId,
+          crawlRequestLeaseToken: context.leaseToken,
         },
       );
       if (!cachePersisted) {
@@ -2093,6 +2383,7 @@ export class CrawlerService {
       }
 
       stage = 'authorization_projection';
+      assertLease();
       const affectedAgentUrls = new Set<string>();
       const existingAuthorizations = await this.federatedIndex.getAuthorizationsForDomain(domain);
       for (const auth of existingAuthorizations) {
@@ -2102,6 +2393,7 @@ export class CrawlerService {
 
       // Record agents and properties
       for (const authorizedAgent of validation.raw_data.authorized_agents) {
+        assertLease();
         if (!authorizedAgent.url) continue;
         affectedAgentUrls.add(canonicalizeAgentUrl(authorizedAgent.url) ?? authorizedAgent.url);
 
@@ -2126,6 +2418,7 @@ export class CrawlerService {
         }
       }
       await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
+      assertLease();
 
       // Scan brand.json for this domain
       stage = 'brand_scan';
@@ -2137,6 +2430,7 @@ export class CrawlerService {
 
       // Rebuild profiles for affected agents
       stage = 'inventory_profile_refresh';
+      assertLease();
       await this.buildInventoryProfiles({
         agentUrls: [...affectedAgentUrls],
         deleteStale: false,
@@ -2165,6 +2459,8 @@ export class CrawlerService {
         'Single domain crawl failed',
       );
       throw err;
+    } finally {
+      await executionLock?.release();
     }
   }
 
@@ -2186,6 +2482,10 @@ export class CrawlerService {
   private publisherCrawlLastHealthLogAt = 0;
 
   startPeriodicPublisherCrawlRequests(intervalSeconds: number = 5): void {
+    if (!isPublisherCrawlQueueEnabled()) {
+      log.info('Durable publisher crawl request queue disabled by rollout gate');
+      return;
+    }
     const run = () => {
       this.processPublisherCrawlRequestQueue().catch((err) => {
         log.error({ err }, 'Publisher crawl request queue tick failed');
@@ -2204,18 +2504,39 @@ export class CrawlerService {
     retried: number;
     failed: number;
     deferred: number;
+    lostLease: number;
   }> {
-    const stats = { claimed: 0, completed: 0, invalid: 0, retried: 0, failed: 0, deferred: 0 };
+    const stats = {
+      claimed: 0,
+      completed: 0,
+      invalid: 0,
+      retried: 0,
+      failed: 0,
+      deferred: 0,
+      lostLease: 0,
+    };
     if (this.publisherCrawlQueueProcessing || this.crawling) return stats;
 
     this.publisherCrawlQueueProcessing = true;
     try {
-      const requests = await this.crawlRequestsDb.claimDue(
+      const claim = await this.crawlRequestsDb.claimDue(
         this.publisherCrawlWorkerId,
-        PUBLISHER_CRAWL_QUEUE_BATCH_SIZE,
+        PUBLISHER_CRAWL_QUEUE_CONCURRENCY,
         PUBLISHER_CRAWL_LEASE_MS,
       );
+      const requests = claim.requests;
       stats.claimed = requests.length;
+      const reclaimed = requests.filter((request) => request.was_reclaimed).length;
+      if (reclaimed > 0 || claim.terminalizedExpired > 0) {
+        log.warn(
+          {
+            crawl_queue_reclaimed: reclaimed,
+            crawl_queue_terminalized_expired: claim.terminalizedExpired,
+            crawl_worker_id: this.publisherCrawlWorkerId,
+          },
+          'Publisher crawl request leases expired',
+        );
+      }
       if (requests.length === 0) {
         await this.maybeLogPublisherCrawlQueueHealth();
         await this.maybeRetainPublisherCrawlRequests();
@@ -2252,8 +2573,10 @@ export class CrawlerService {
 
   private async processClaimedPublisherCrawlRequest(
     request: ClaimedPublisherCrawlRequest,
-  ): Promise<'completed' | 'invalid' | 'retried' | 'failed' | 'deferred'> {
+  ): Promise<'completed' | 'invalid' | 'retried' | 'failed' | 'deferred' | 'lostLease'> {
     let heartbeatInFlight = false;
+    let leaseValid = true;
+    let leaseExpiresAtMs = request.lease_expires_at.getTime();
     const heartbeat = setInterval(() => {
       if (heartbeatInFlight) return;
       heartbeatInFlight = true;
@@ -2261,13 +2584,17 @@ export class CrawlerService {
         .heartbeat(request.id, request.lease_token, PUBLISHER_CRAWL_LEASE_MS)
         .then((renewed) => {
           if (!renewed) {
+            leaseValid = false;
             log.warn(
               { crawl_request_id: request.id, domain: request.publisher_domain },
               'Publisher crawl request lease was not renewed',
             );
+          } else {
+            leaseExpiresAtMs = Date.now() + PUBLISHER_CRAWL_LEASE_MS;
           }
         })
         .catch((err) => {
+          if (Date.now() >= leaseExpiresAtMs) leaseValid = false;
           log.warn(
             { err, crawl_request_id: request.id, domain: request.publisher_domain },
             'Publisher crawl request heartbeat failed',
@@ -2283,6 +2610,8 @@ export class CrawlerService {
       const outcome = await this.crawlSingleDomain(request.publisher_domain, {
         requestId: request.id,
         source: request.source,
+        leaseToken: request.lease_token,
+        isLeaseValid: () => leaseValid && Date.now() < leaseExpiresAtMs,
       });
       const recorded = await this.crawlRequestsDb.markCompleted(
         request.id,
@@ -2294,6 +2623,7 @@ export class CrawlerService {
           { crawl_request_id: request.id, domain: request.publisher_domain, crawl_status: outcome },
           'Publisher crawl request completion lost its lease',
         );
+        return 'lostLease';
       } else {
         log.info(
           {
@@ -2308,6 +2638,14 @@ export class CrawlerService {
       }
       return outcome;
     } catch (error) {
+      if (error instanceof PublisherCrawlLeaseLostError
+        || (error && typeof error === 'object' && 'code' in error && error.code === 'crawl_lease_lost')) {
+        log.warn(
+          { crawl_request_id: request.id, domain: request.publisher_domain },
+          'Publisher crawl request stopped after losing its lease',
+        );
+        return 'lostLease';
+      }
       const errorCode = error && typeof error === 'object' && 'code' in error
         && typeof error.code === 'string' && /^[a-zA-Z0-9_.:-]{1,100}$/.test(error.code)
         ? error.code
@@ -2318,12 +2656,13 @@ export class CrawlerService {
           ? 'Full crawl in progress; publisher crawl deferred'
           : 'Publisher crawl execution failed';
       if (errorCode === 'crawl_deferred') {
-        await this.crawlRequestsDb.markDeferred(
+        const deferred = await this.crawlRequestsDb.markDeferred(
           request.id,
           request.lease_token,
           PUBLISHER_CRAWL_DEFER_MS,
           errorMessage,
         );
+        if (!deferred) return 'lostLease';
         return 'deferred';
       }
 
@@ -2338,7 +2677,7 @@ export class CrawlerService {
           { crawl_request_id: request.id, domain: request.publisher_domain },
           'Publisher crawl request failure lost its lease',
         );
-        return 'retried';
+        return 'lostLease';
       }
       log[updated.status === 'failed' ? 'error' : 'warn'](
         {
@@ -2363,12 +2702,24 @@ export class CrawlerService {
   private async maybeRetainPublisherCrawlRequests(): Promise<void> {
     const now = Date.now();
     if (now - this.publisherCrawlLastRetentionAt < 60 * 60_000) return;
-    const deleted = await this.crawlRequestsDb.deleteTerminalBefore(
-      new Date(now - PUBLISHER_CRAWL_RETENTION_MS),
-    );
-    this.publisherCrawlLastRetentionAt = now;
+    const batchSize = 1_000;
+    let deleted = 0;
+    let lastBatch = 0;
+    for (let batch = 0; batch < 10; batch++) {
+      lastBatch = await this.crawlRequestsDb.deleteTerminalBefore(
+        new Date(now - PUBLISHER_CRAWL_RETENTION_MS),
+        batchSize,
+      );
+      deleted += lastBatch;
+      if (lastBatch < batchSize) break;
+    }
+    // A full final batch means more history may remain. Schedule another
+    // bounded drain in one minute instead of waiting an hour.
+    this.publisherCrawlLastRetentionAt = lastBatch === batchSize
+      ? now - 59 * 60_000
+      : now;
     if (deleted > 0) {
-      log.info({ deleted }, 'Expired publisher crawl request history removed');
+      log.info({ deleted, retention_backlog_remaining: lastBatch === batchSize }, 'Expired publisher crawl request history removed');
     }
   }
 
@@ -2377,16 +2728,17 @@ export class CrawlerService {
     if (now - this.publisherCrawlLastHealthLogAt < 60_000) return;
     const health = await this.crawlRequestsDb.getQueueHealth();
     this.publisherCrawlLastHealthLogAt = now;
-    const oldestActiveAgeMs = health.oldest_active_at
-      ? now - health.oldest_active_at.getTime()
+    const oldestDueLatenessMs = health.oldest_due_at
+      ? now - health.oldest_due_at.getTime()
       : 0;
     const context = {
       ...health,
-      oldest_active_at: health.oldest_active_at?.toISOString() ?? null,
-      oldest_active_age_ms: oldestActiveAgeMs,
+      oldest_due_at: health.oldest_due_at?.toISOString() ?? null,
+      oldest_due_lateness_ms: oldestDueLatenessMs,
+      oldest_running_at: health.oldest_running_at?.toISOString() ?? null,
       crawl_worker_id: this.publisherCrawlWorkerId,
     };
-    if (health.expired_leases > 0 || oldestActiveAgeMs > 5 * 60_000) {
+    if (health.expired_leases > 0 || oldestDueLatenessMs > 5 * 60_000) {
       log.warn(context, 'Publisher crawl request queue requires attention');
     } else {
       log.info(context, 'Publisher crawl request queue healthy');
@@ -2457,13 +2809,15 @@ export class CrawlerService {
 
       for (const { domain, valid } of results) {
         if (valid) {
-          found++;
           // Run full single-domain crawl to record agents/properties
+          let persisted = false;
           try {
-            await this.crawlSingleDomainForCatalog(domain);
+            persisted = await this.crawlSingleDomainForCatalog(domain);
           } catch (err) {
             log.error({ domain, err }, 'Catalog domain crawl failed for domain');
           }
+          if (!persisted) continue;
+          found++;
 
           // Mark as found in queue
           await query(
@@ -2666,15 +3020,28 @@ export class CrawlerService {
     }
   }
 
-  private async crawlSingleDomainForCatalog(domain: string): Promise<void> {
+  private async crawlSingleDomainForCatalog(domain: string): Promise<boolean> {
+    const executionLock = this.coordinateCrawlsAcrossInstances
+      ? await this.tryAcquireCrawlExecutionLock(domain)
+      : null;
+    if (this.coordinateCrawlsAcrossInstances && !executionLock) return false;
+    const assertExecutionLock = (): void => {
+      if (executionLock && !executionLock.isValid()) {
+        throw Object.assign(new Error('Publisher crawl execution lock was lost'), {
+          code: 'crawl_execution_lock_lost',
+        });
+      }
+    };
+    try {
     const validation = await this.adAgentsManager.validateDomain(domain);
+    assertExecutionLock();
     if (!validation.valid || !validation.raw_data?.authorized_agents) {
       await this.recordFailedAdagentsFetch(domain, {
         statusCode: validation.status_code,
         responseBytes: validation.response_bytes,
         resolvedUrl: validation.resolved_url,
       });
-      return;
+      return false;
     }
 
     await this.cacheAdagentsManifest(
@@ -2692,6 +3059,7 @@ export class CrawlerService {
     );
 
     for (const authorizedAgent of validation.raw_data.authorized_agents) {
+      assertExecutionLock();
       if (!authorizedAgent.url) continue;
 
       await this.federatedIndex.recordAgentFromAdagentsJson(
@@ -2715,7 +3083,10 @@ export class CrawlerService {
       }
     }
     await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
-
+    return true;
+    } finally {
+      await executionLock?.release();
+    }
   }
 
   private async processWithConcurrency<T, R>(
@@ -2724,17 +3095,25 @@ export class CrawlerService {
     fn: (item: T) => Promise<R>
   ): Promise<R[]> {
     const results: R[] = [];
+    const errors: unknown[] = [];
     let index = 0;
 
     async function worker() {
       while (index < items.length) {
         const i = index++;
-        results[i] = await fn(items[i]);
+        try {
+          results[i] = await fn(items[i]);
+        } catch (error) {
+          errors.push(error);
+        }
       }
     }
 
     const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
     await Promise.all(workers);
+    if (errors.length > 0) {
+      throw new AggregateError(errors, `${errors.length} publisher crawl worker(s) failed`);
+    }
     return results;
   }
 }

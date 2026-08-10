@@ -116,6 +116,7 @@ import { CatalogDatabase } from "../db/catalog-db.js";
 import type { AdAgentsManager } from "../adagents-manager.js";
 import type { HealthChecker } from "../health.js";
 import type { CrawlerService } from "../crawler.js";
+import { isPublisherCrawlQueueEnabled } from "../crawler.js";
 import { sanitizeCreativeCapabilities, type CapabilityDiscovery } from "../capabilities.js";
 import { aaoHostedBrandJsonUrl, aaoHostedAdagentsJsonUrl, expectedAdagentsJsonUrl } from "../config/aao.js";
 import { canonicalTargetUri } from "@adcp/sdk/signing";
@@ -158,7 +159,10 @@ import {
 } from "../db/authorization-snapshot-db.js";
 import { createHash, randomUUID } from "crypto";
 import { createGzip, constants as zlibConstants } from "zlib";
-import { CrawlRequestRateLimitError } from "../db/publisher-crawl-requests-db.js";
+import {
+  CrawlQueueCapacityError,
+  CrawlRequestRateLimitError,
+} from "../db/publisher-crawl-requests-db.js";
 
 type PublisherBrandSummary = {
   name?: string;
@@ -1830,6 +1834,21 @@ registry.registerPath({
         },
       },
     },
+    503: {
+      description: "Publisher crawl is temporarily busy",
+      headers: z.object({
+        "Retry-After": z.string().openapi({ description: "Seconds to wait before retrying" }),
+      }),
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            code: z.literal("publisher_crawl_busy"),
+            retry_after: z.number().int().openapi({ description: "Seconds to wait before retrying" }),
+          }),
+        },
+      },
+    },
   },
 });
 
@@ -3095,11 +3114,14 @@ registry.registerPath({
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     503: {
       description: "The durable crawl queue is temporarily unavailable; the request was not accepted",
+      headers: z.object({
+        "Retry-After": z.string().openapi({ description: "Seconds to wait before retrying" }),
+      }),
       content: {
         "application/json": {
           schema: z.object({
             error: z.string(),
-            code: z.literal("crawl_queue_unavailable"),
+            code: z.enum(["crawl_queue_unavailable", "crawl_queue_at_capacity"]),
             retry_after: z.number().int(),
           }),
         },
@@ -3156,7 +3178,21 @@ registry.registerPath({
     400: { description: "Invalid crawl request ID", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Crawl request not found", content: { "application/json": { schema: ErrorSchema } } },
-    503: { description: "Crawl status is temporarily unavailable", content: { "application/json": { schema: ErrorSchema } } },
+    503: {
+      description: "Crawl status is temporarily unavailable",
+      headers: z.object({
+        "Retry-After": z.string().openapi({ description: "Seconds to wait before retrying" }),
+      }),
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            code: z.literal("crawl_status_unavailable"),
+            retry_after: z.number().int(),
+          }),
+        },
+      },
+    },
   },
 });
 
@@ -11200,6 +11236,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
   if (!authMiddleware) throw new Error('requireAuth middleware is required for crawl-request endpoint');
 
   router.post("/registry/publisher/:domain/adagents/revalidate", authMiddleware, async (req, res) => {
+    let reservedDomain: string | null = null;
     try {
       if (!req.user && !isStaticAdminRequest(req)) {
         return res.status(401).json({ error: "Authentication required" });
@@ -11215,13 +11252,25 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(400).json({ error: "Invalid domain" });
       }
 
-      const normalizedDomain = await validateAndRateLimitCrawl(req, res, rawDomain, rawDomain);
-      if (!normalizedDomain) return;
+      reservedDomain = await validateAndRateLimitCrawl(req, res, rawDomain, rawDomain);
+      if (!reservedDomain) return;
 
       const force = req.query.force === 'true' || req.query.force === '1';
-      const result = await crawler.revalidatePublisherAdagents(normalizedDomain, { force });
+      const result = await crawler.revalidatePublisherAdagents(reservedDomain, { force });
       return res.json(result);
     } catch (error) {
+      const errorCode = error instanceof Error
+        ? (error as Error & { code?: string }).code
+        : undefined;
+      if (errorCode === 'crawl_deferred' || errorCode === 'crawl_execution_lock_lost') {
+        if (reservedDomain) releaseCrawlRateLimit(req, reservedDomain);
+        res.setHeader('Retry-After', '5');
+        return res.status(503).json({
+          error: "Publisher crawl is temporarily busy",
+          code: "publisher_crawl_busy",
+          retry_after: 5,
+        });
+      }
       logger.error({ error, path: req.path }, "Failed to revalidate publisher adagents.json");
       return res.status(500).json({ error: "Failed to revalidate publisher adagents.json" });
     }
@@ -11280,6 +11329,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
   });
 
   router.post("/registry/crawl-request", authMiddleware, async (req, res) => {
+    if (!isPublisherCrawlQueueEnabled()) {
+      res.setHeader('Retry-After', '60');
+      return res.status(503).json({
+        error: 'Crawl queue is temporarily unavailable',
+        code: 'crawl_queue_unavailable',
+        retry_after: 60,
+      });
+    }
     const rateLimitKey = req.body?.domain?.toLowerCase?.()?.trim?.() || '';
     try {
       const normalizedDomain = await validateAndRateLimitCrawl(req, res, rateLimitKey);
@@ -11311,6 +11368,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
               ? 'Rate limit exceeded for this domain'
               : 'Hourly crawl request limit exceeded',
             retry_after: error.retryAfterSeconds,
+          });
+        }
+        if (error instanceof CrawlQueueCapacityError) {
+          res.setHeader('Retry-After', '60');
+          return res.status(503).json({
+            error: 'Crawl queue is temporarily at capacity',
+            code: 'crawl_queue_at_capacity',
+            retry_after: 60,
           });
         }
         throw error;

@@ -49,8 +49,15 @@ CREATE INDEX idx_publisher_crawl_requests_domain_created
   ON publisher_crawl_requests (publisher_domain, created_at DESC);
 
 CREATE INDEX idx_publisher_crawl_requests_user_created
-  ON publisher_crawl_requests (requested_by_user_id, created_at DESC)
-  WHERE requested_by_user_id IS NOT NULL;
+  ON publisher_crawl_requests (requester_type, requested_by_user_id, created_at DESC);
+
+CREATE INDEX idx_publisher_crawl_requests_active_status_available
+  ON publisher_crawl_requests (status, available_at, created_at)
+  WHERE status IN ('queued', 'running', 'deferred', 'retrying');
+
+CREATE INDEX idx_publisher_crawl_requests_terminal_completed
+  ON publisher_crawl_requests (completed_at, id)
+  WHERE status IN ('completed', 'invalid', 'failed');
 
 COMMENT ON TABLE publisher_crawl_requests IS
   'Durable, client-visible lifecycle for explicit publisher recrawls. Terminal rows are retained temporarily for status and audit, then removed by the worker retention sweep.';

@@ -12,7 +12,9 @@ primary_region = 'iad'
 [deploy]
   release_command = "node dist/db/migrate.js"
   release_command_timeout = "15m"
-  strategy = "rolling"
+  # One-time safety requirement for migration 540: old images do not
+  # participate in the new PostgreSQL crawl-execution locks.
+  strategy = "immediate"
 
 [processes]
   web = "node dist/index.js"
@@ -23,6 +25,9 @@ primary_region = 'iad'
   BASE_URL = "https://agenticadvertising.org"
   # Disabled - migrations now run via release_command
   RUN_MIGRATIONS = "false"
+  # Two-phase rollout gate. Enable only after every machine runs a
+  # lock-participating queue consumer; a Fly secret may override this value.
+  PUBLISHER_CRAWL_QUEUE_ENABLED = "false"
   # Use pre-cloned repos from Docker build, skip runtime git fetch.
   # Production image has no git binary — unsetting this degrades gracefully
   # (repos skip indexing) but does not crash.
@@ -90,4 +95,3 @@ primary_region = 'iad'
   memory = "4gb"
   cpu_kind = "performance"
   cpus = 2
-

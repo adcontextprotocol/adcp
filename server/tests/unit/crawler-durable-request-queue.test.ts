@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { CrawlerService } from '../../src/crawler.js';
 
 function claimedRequest() {
   const now = new Date();
@@ -15,6 +16,7 @@ function claimedRequest() {
     lease_owner: 'worker-1',
     lease_token: '11111111-1111-4111-8111-111111111111',
     lease_expires_at: new Date(now.getTime() + 60_000),
+    was_reclaimed: false,
     heartbeat_at: now,
     last_attempted_at: now,
     last_error_code: null,
@@ -27,9 +29,11 @@ function claimedRequest() {
 }
 
 async function makeContext() {
-  const { CrawlerService } = await import('../../src/crawler.js');
   const crawlRequestsDb = {
-    claimDue: vi.fn().mockResolvedValue([claimedRequest()]),
+    claimDue: vi.fn().mockResolvedValue({
+      requests: [claimedRequest()],
+      terminalizedExpired: 0,
+    }),
     heartbeat: vi.fn().mockResolvedValue(true),
     markCompleted: vi.fn().mockResolvedValue(true),
     markDeferred: vi.fn().mockResolvedValue(true),
@@ -41,7 +45,8 @@ async function makeContext() {
       deferred: 0,
       retrying: 0,
       expired_leases: 0,
-      oldest_active_at: null,
+      oldest_due_at: null,
+      oldest_running_at: null,
     }),
   };
   const ctx = Object.create((CrawlerService as any).prototype);
@@ -68,12 +73,14 @@ describe('CrawlerService durable publisher request worker', () => {
       retried: 0,
       failed: 0,
       deferred: 0,
+      lostLease: 0,
     });
     expect(crawlRequestsDb.markCompleted).toHaveBeenCalledWith(
       claimedRequest().id,
       claimedRequest().lease_token,
       'completed',
     );
+    expect(crawlRequestsDb.claimDue).toHaveBeenCalledWith('worker-1', 4, 120_000);
   });
 
   it('records a publisher-invalid terminal outcome without retrying', async () => {
@@ -120,5 +127,46 @@ describe('CrawlerService durable publisher request worker', () => {
       'crawl_origin_temporarily_unavailable',
       'Publisher origin was temporarily unavailable',
     );
+  });
+
+  it('reports a lost lease instead of a successful terminal outcome', async () => {
+    const { ctx, crawlRequestsDb } = await makeContext();
+    crawlRequestsDb.markCompleted.mockResolvedValue(false);
+
+    const result = await ctx.processPublisherCrawlRequestQueue();
+
+    expect(result.completed).toBe(0);
+    expect(result.lostLease).toBe(1);
+  });
+
+  it('drains sibling workers before releasing the batch guard after a transition error', async () => {
+    const { ctx, crawlRequestsDb } = await makeContext();
+    const first = claimedRequest();
+    const second = { ...claimedRequest(), id: '22222222-2222-4222-8222-222222222222' };
+    crawlRequestsDb.claimDue.mockResolvedValue({
+      requests: [first, second],
+      terminalizedExpired: 0,
+    });
+    let releaseSecond!: () => void;
+    const secondPending = new Promise<void>((resolve) => { releaseSecond = resolve; });
+    ctx.crawlSingleDomain
+      .mockRejectedValueOnce(new Error('crawl failed'))
+      .mockImplementationOnce(async () => {
+        await secondPending;
+        return 'completed';
+      });
+    crawlRequestsDb.markFailedAttempt.mockRejectedValueOnce(new Error('transition failed'));
+
+    const processing = ctx.processPublisherCrawlRequestQueue();
+    await vi.waitFor(() => expect(crawlRequestsDb.markFailedAttempt).toHaveBeenCalledOnce());
+    expect(ctx.publisherCrawlQueueProcessing).toBe(true);
+    releaseSecond();
+    await expect(processing).rejects.toThrow('publisher crawl worker(s) failed');
+    expect(crawlRequestsDb.markCompleted).toHaveBeenCalledWith(
+      second.id,
+      second.lease_token,
+      'completed',
+    );
+    expect(ctx.publisherCrawlQueueProcessing).toBe(false);
   });
 });
