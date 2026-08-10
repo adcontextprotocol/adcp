@@ -866,6 +866,44 @@ export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
   private isWorker: boolean = false;
+
+  private startWorkerCrawlers(): void {
+    // Drain durable explicit publisher recrawl requests first. Admission is
+    // persisted by the web process before it returns 202; the worker claims
+    // requests with expiring leases so deploys and crashes cannot lose work.
+    // The initial full crawl gets a fixed 30-second startup delay so already-
+    // due requests can run instead of being starved by consecutive deploys.
+    const publisherCrawlQueueStarted =
+      this.crawler.startPeriodicPublisherCrawlRequests(5); // 5-second tick
+
+    // Start periodic registry crawler for all registered agents. Re-fetches
+    // the agent list on every tick so newly registered agents are picked up
+    // without a restart. Sales agents drive publisher adagents.json
+    // discovery; signals/buying/creative agents still need health +
+    // capability snapshots on the same cycle. `viewerHasApiAccess` defaults
+    // to false — members_only agents are intentionally excluded from the
+    // periodic crawl (the public-facing registry surface is the target);
+    // owner-triggered probes for members_only agents go through
+    // POST /api/registry/agents/:encodedUrl/refresh. Fixes #4213.
+    logger.debug('Starting registry crawler');
+    this.crawler.startPeriodicCrawl(
+      () => this.agentService.listAgents(),
+      360,
+      publisherCrawlQueueStarted ? 30 : 0,
+    ); // Crawl every 6 hours
+
+    // Crawl catalog domains for adagents.json (demand-driven queue)
+    this.crawler.startPeriodicCatalogCrawl(30); // Process queue every 30 minutes
+
+    // Drain manager_revalidation_queue (#4200 item 2) — fan-out
+    // re-validation when a manager rotates its adagents.json.
+    this.crawler.startPeriodicManagerRevalidation(5); // 5-minute tick
+
+    // Re-verify AAO-hosted origins on a TTL so a transferred domain or a
+    // removed origin pointer lapses the owner lock (bind-on-verify, #5752),
+    // releasing the domain for re-claim.
+    this.crawler.startPeriodicHostedOriginReverification(60); // hourly tick
+  }
   private agentService: AgentService;
   private validator: AgentValidator;
   private healthChecker: HealthChecker;
@@ -9760,34 +9798,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     logger.info({ isWorker }, 'Process role resolved');
 
     if (isWorker) {
-      // Start periodic registry crawler for all registered agents. Re-fetches
-      // the agent list on every tick so newly registered agents are picked up
-      // without a restart. Sales agents drive publisher adagents.json
-      // discovery; signals/buying/creative agents still need health +
-      // capability snapshots on the same cycle. `viewerHasApiAccess` defaults
-      // to false — members_only agents are intentionally excluded from the
-      // periodic crawl (the public-facing registry surface is the target);
-      // owner-triggered probes for members_only agents go through
-      // POST /api/registry/agents/:encodedUrl/refresh. Fixes #4213.
-      logger.debug('Starting registry crawler');
-      this.crawler.startPeriodicCrawl(() => this.agentService.listAgents(), 360); // Crawl every 6 hours
-
-      // Crawl catalog domains for adagents.json (demand-driven queue)
-      this.crawler.startPeriodicCatalogCrawl(30); // Process queue every 30 minutes
-
-      // Drain durable explicit publisher recrawl requests. Admission is
-      // persisted by the web process before it returns 202; the worker claims
-      // requests with expiring leases so deploys and crashes cannot lose work.
-      this.crawler.startPeriodicPublisherCrawlRequests(5); // 5-second tick
-
-      // Drain manager_revalidation_queue (#4200 item 2) — fan-out
-      // re-validation when a manager rotates its adagents.json.
-      this.crawler.startPeriodicManagerRevalidation(5); // 5-minute tick
-
-      // Re-verify AAO-hosted origins on a TTL so a transferred domain or a
-      // removed origin pointer lapses the owner lock (bind-on-verify, #5752),
-      // releasing the domain for re-claim.
-      this.crawler.startPeriodicHostedOriginReverification(60); // hourly tick
+      this.startWorkerCrawlers();
 
       // Register and start all scheduled jobs
       registerAllJobs();
@@ -9881,6 +9892,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
     // Only stop background services that were started on this machine
     if (this.isWorker) {
+      // Stop every crawler scheduler before awaiting other drains. In-flight
+      // durable work remains protected by its expiring database lease.
+      await this.crawler.stopPeriodicCrawlers();
       jobScheduler.stopAll();
 
       import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {

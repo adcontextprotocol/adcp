@@ -101,14 +101,114 @@ describe('CrawlerService single-domain profile rebuild', () => {
     expect(ctx.crawling).toBe(false);
   });
 
+  it('admits only one in-process full-crawl coordination attempt', async () => {
+    const ctx = Object.create((CrawlerService as any).prototype);
+    let resolveIntent!: (value: boolean) => void;
+    const intentPending = new Promise<boolean>((resolve) => { resolveIntent = resolve; });
+    const ensureFullCrawlIntentLock = vi.fn().mockReturnValue(intentPending);
+    const lastResult = { marker: 'last-result' };
+    Object.assign(ctx, {
+      crawling: false,
+      fullCrawlCoordinationInProgress: false,
+      crawlerSchedulersStopping: false,
+      coordinateCrawlsAcrossInstances: true,
+      fullCrawlIntentLock: null,
+      ensureFullCrawlIntentLock,
+      scheduleFullCrawlLockRetry: vi.fn(),
+      lastResult,
+    });
+
+    const first = ctx.crawlAllAgents([]);
+    await vi.waitFor(() => expect(ensureFullCrawlIntentLock).toHaveBeenCalledOnce());
+    await expect(ctx.crawlAllAgents([])).resolves.toBe(lastResult);
+    resolveIntent(false);
+    await expect(first).resolves.toBe(lastResult);
+
+    expect(ensureFullCrawlIntentLock).toHaveBeenCalledOnce();
+    expect(ctx.fullCrawlCoordinationInProgress).toBe(false);
+  });
+
+  it('does not open coordination sessions after crawler shutdown begins', async () => {
+    const ctx = Object.create((CrawlerService as any).prototype);
+    const ensureFullCrawlIntentLock = vi.fn();
+    const lastResult = { marker: 'last-result' };
+    Object.assign(ctx, {
+      crawling: false,
+      fullCrawlCoordinationInProgress: false,
+      crawlerSchedulersStopping: true,
+      coordinateCrawlsAcrossInstances: true,
+      ensureFullCrawlIntentLock,
+      lastResult,
+    });
+
+    await expect(ctx.crawlAllAgents([])).resolves.toBe(lastResult);
+    expect(ensureFullCrawlIntentLock).not.toHaveBeenCalled();
+  });
+
+  it('retains full-crawl intent across an execution-lock timeout retry', async () => {
+    const ctx = Object.create((CrawlerService as any).prototype);
+    const releaseIntent = vi.fn().mockResolvedValue(undefined);
+    const intentLock = { isValid: () => true, release: releaseIntent };
+    const lastResult = { marker: 'last-result' };
+    Object.assign(ctx, {
+      crawling: false,
+      fullCrawlCoordinationInProgress: false,
+      crawlerSchedulersStopping: false,
+      coordinateCrawlsAcrossInstances: true,
+      fullCrawlIntentLock: intentLock,
+      fullCrawlLockRetryTimer: null,
+      tryAcquireCrawlExecutionLock: vi.fn().mockResolvedValue(null),
+      lastResult,
+    });
+
+    await expect(ctx.crawlAllAgents([])).resolves.toBe(lastResult);
+
+    expect(ctx.fullCrawlIntentLock).toBe(intentLock);
+    expect(releaseIntent).not.toHaveBeenCalled();
+    expect(ctx.fullCrawlLockRetryTimer).not.toBeNull();
+    clearTimeout(ctx.fullCrawlLockRetryTimer);
+    ctx.fullCrawlLockRetryTimer = null;
+    await ctx.releaseFullCrawlIntentLock();
+  });
+
+  it('retains full-crawl intent when an execution retry timer already exists', async () => {
+    const ctx = Object.create((CrawlerService as any).prototype);
+    const releaseIntent = vi.fn().mockResolvedValue(undefined);
+    const intentLock = { isValid: () => true, release: releaseIntent };
+    const existingRetryTimer = setTimeout(() => undefined, 60_000);
+    Object.assign(ctx, {
+      crawling: false,
+      fullCrawlCoordinationInProgress: false,
+      crawlerSchedulersStopping: false,
+      coordinateCrawlsAcrossInstances: true,
+      fullCrawlIntentLock: intentLock,
+      fullCrawlLockRetryTimer: existingRetryTimer,
+      tryAcquireCrawlExecutionLock: vi.fn().mockResolvedValue(null),
+    });
+
+    await ctx.crawlAllAgents([]);
+
+    expect(ctx.fullCrawlIntentLock).toBe(intentLock);
+    expect(ctx.fullCrawlLockRetryTimer).toBe(existingRetryTimer);
+    expect(releaseIntent).not.toHaveBeenCalled();
+    clearTimeout(existingRetryTimer);
+    ctx.fullCrawlLockRetryTimer = null;
+    await ctx.releaseFullCrawlIntentLock();
+  });
+
   it('aborts a full crawl before persistence when its execution lock is lost', async () => {
     const ctx = Object.create((CrawlerService as any).prototype);
     const release = vi.fn().mockResolvedValue(undefined);
+    const releaseIntent = vi.fn().mockResolvedValue(undefined);
     const populateFederatedIndex = vi.fn();
     Object.assign(ctx, {
       crawling: false,
       fullCrawlLockRetryTimer: null,
       coordinateCrawlsAcrossInstances: true,
+      fullCrawlIntentLock: {
+        isValid: () => true,
+        release: releaseIntent,
+      },
       tryAcquireCrawlExecutionLock: vi.fn().mockResolvedValue({
         isValid: () => false,
         release,
@@ -127,7 +227,10 @@ describe('CrawlerService single-domain profile rebuild', () => {
     });
     expect(populateFederatedIndex).not.toHaveBeenCalled();
     expect(release).toHaveBeenCalledOnce();
+    expect(releaseIntent).not.toHaveBeenCalled();
     if (ctx.fullCrawlLockRetryTimer) clearTimeout(ctx.fullCrawlLockRetryTimer);
+    await ctx.releaseFullCrawlIntentLock();
+    expect(releaseIntent).toHaveBeenCalledOnce();
   });
 
   it('does not write catalog state when another crawl owns the domain lock', async () => {
@@ -151,6 +254,8 @@ describe('CrawlerService single-domain profile rebuild', () => {
       const query = vi.fn()
         .mockResolvedValueOnce({ rows: [{ acquired: true }] })
         .mockResolvedValueOnce({ rows: [{ acquired: true }] })
+        .mockResolvedValueOnce({ rows: [{ acquired: true }] })
+        .mockResolvedValueOnce({ rows: [{ pg_advisory_unlock_shared: true }] })
         .mockImplementationOnce(() => new Promise(() => undefined));
       const client = {
         query,
