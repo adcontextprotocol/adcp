@@ -109,6 +109,147 @@ describe('deriveStoryboardStatuses', () => {
     })).toBe(false);
   });
 
+  it('classifies controller skips and their prerequisite cascades as non-executable', () => {
+    expect(isNonExecutableCoverageGapScenario({
+      scenario: 'stale_response_advisory/stale_response_forcing',
+      steps: [
+        {
+          passed: true,
+          skipped: true,
+          skip_reason: 'missing_test_controller',
+          step: 'Force upstream dependency unavailable',
+        },
+        {
+          passed: false,
+          skipped: true,
+          skip_reason: 'prerequisite_failed',
+          step: 'STALE_RESPONSE in errors[] on populated success response',
+          warnings: ['Skipped: prior stateful step "force_upstream_unavailable" skipped (missing_test_controller); state never materialized.'],
+        },
+      ],
+    })).toBe(true);
+  });
+
+  it('does not hide a genuine cascade after an unrelated controller skip', () => {
+    const result = makeResult([
+      {
+        scenario: 'mixed_roots/exercise',
+        passed: false,
+        steps: [
+          {
+            passed: true,
+            skipped: true,
+            skip_reason: 'missing_test_controller',
+            step: 'Controller setup',
+          },
+          {
+            passed: false,
+            step: 'Seller operation',
+            task: 'get_products',
+            error: 'Seller assertion failed',
+          },
+          {
+            passed: false,
+            skipped: true,
+            skip_reason: 'prerequisite_failed',
+            step: 'Dependent read',
+            warnings: ['Skipped: prior stateful step failed.'],
+          },
+        ],
+      },
+    ]);
+
+    expect(isNonExecutableCoverageGapScenario(result.tracks[0].scenarios[0])).toBe(false);
+    expect(deriveStoryboardStatuses(result)).toEqual([
+      {
+        storyboard_id: 'mixed_roots',
+        status: 'failing',
+        steps_passed: 0,
+        steps_total: 2,
+        failure_count: 1,
+        skipped_count: 1,
+        first_failed_step_id: 'seller_operation',
+        first_failed_step_title: 'Seller operation',
+        first_failed_step_task: 'get_products',
+        first_failure_message: 'Seller assertion failed',
+      },
+    ]);
+  });
+
+  it('does not hide a production missing-tool cascade after a neutral missing-tool skip', () => {
+    const result = makeResult([
+      {
+        scenario: 'mixed_missing_tools/exercise',
+        passed: false,
+        steps: [
+          {
+            passed: true,
+            skipped: true,
+            skip_reason: 'missing_tool',
+            step: 'Preview the creative',
+            task: 'preview_creative',
+            warnings: ['Required tool "preview_creative" not advertised; agent tools: [get_products].'],
+          },
+          {
+            passed: false,
+            skipped: true,
+            skip_reason: 'missing_tool',
+            step: 'Create media buy',
+            task: 'create_media_buy',
+            warnings: ['Agent did not advertise tool "create_media_buy"; agent tools: [get_products].'],
+          },
+          {
+            passed: false,
+            skipped: true,
+            skip_reason: 'prerequisite_failed',
+            step: 'Read media buy',
+            task: 'get_media_buys',
+            warnings: ['Skipped: prior stateful step "create_buy" skipped (missing_tool); state never materialized.'],
+          },
+        ],
+      },
+    ]);
+
+    expect(deriveStoryboardStatuses(result)).toEqual([
+      {
+        storyboard_id: 'mixed_missing_tools',
+        status: 'failing',
+        steps_passed: 0,
+        steps_total: 2,
+        failure_count: 1,
+        skipped_count: 1,
+        first_failed_step_id: 'create_media_buy',
+        first_failed_step_title: 'Create media buy',
+        first_failed_step_task: 'create_media_buy',
+        first_failure_message: 'Agent did not advertise tool "create_media_buy"; agent tools: [get_products].',
+      },
+    ]);
+  });
+
+  it('keeps same-reason cross-phase missing-tool cascades executable in the UI', () => {
+    expect(isNonExecutableCoverageGapScenario({
+      scenario: 'mixed_missing_tools/downstream_phase',
+      steps: [
+        {
+          passed: true,
+          skipped: true,
+          skip_reason: 'missing_tool',
+          step: 'Preview the creative',
+          task: 'preview_creative',
+          warnings: ['Required tool "preview_creative" not advertised; agent tools: [get_products].'],
+        },
+        {
+          passed: false,
+          skipped: true,
+          skip_reason: 'prerequisite_failed',
+          step: 'Read media buy',
+          task: 'get_media_buys',
+          warnings: ['Skipped: prior stateful step "create_buy" skipped (missing_tool); state never materialized.'],
+        },
+      ],
+    })).toBe(false);
+  });
+
   it('emits one entry per storyboard the runner produced data for', () => {
     const result = makeResult([
       { scenario: 'signal_owned/capability_discovery', passed: true, steps: [{ passed: true }] },
@@ -399,7 +540,6 @@ describe('deriveStoryboardStatuses', () => {
             skipped: true,
             skip_reason: 'missing_tool',
             step: 'Preview the display creative',
-            step_id: 'preview_display',
             task: 'preview_creative',
             warnings: ['Required tool "preview_creative" not advertised; agent tools: [build_creative].'],
           },
@@ -408,8 +548,8 @@ describe('deriveStoryboardStatuses', () => {
             skipped: true,
             skip_reason: 'prerequisite_failed',
             step: 'Build a VAST tag for the video creative',
-            step_id: 'build_video_tag',
             task: 'build_creative',
+            warnings: ['Skipped: prior stateful step "preview_display" skipped (missing_tool); state never materialized.'],
           },
         ],
       },

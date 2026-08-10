@@ -45,7 +45,6 @@ describe('compliance result adapter', () => {
               steps: [
                 {
                   step: 'Force upstream dependency unavailable',
-                  step_id: 'force_upstream_unavailable',
                   task: 'comply_test_controller',
                   skipped: true,
                   skip_reason: 'missing_test_controller',
@@ -53,12 +52,11 @@ describe('compliance result adapter', () => {
                 },
                 {
                   step: 'STALE_RESPONSE in errors[] on populated success response',
-                  step_id: 'stale_response_wire_placement',
                   task: 'get_products',
                   skipped: true,
-                  skip_reason: 'missing_test_controller',
+                  skip_reason: 'prerequisite_failed',
                   passed: false,
-                  error: 'prior stateful step force_upstream_unavailable skipped; state never materialized',
+                  error: 'Skipped: prior stateful step "force_upstream_unavailable" skipped (missing_test_controller); state never materialized.',
                 },
               ],
             },
