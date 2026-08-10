@@ -28,18 +28,18 @@ Without a test controller, compliance testing is observational: fire an action, 
 |-------|-----------------------|---------------------------------|
 | **Creative** | Sync → observe initial status | Walk `processing` → `approved` → `archived`; force `rejected` with reason |
 | **Account** | Read existing statuses | Force `suspended` → verify operation gates → reactivate |
-| **SI sessions** | Initiate → message → terminate | Force `terminated` with timeout reason → verify `SESSION_NOT_FOUND` on next call |
-| **Reporting** | Call `get_media_buy_delivery` → hope data exists | Simulate delivery → verify rollups |
+| **SI sessions** | Initiate → message → terminate | Force `terminated` with timeout reason → verify [`SESSION_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-session-not-found) on next call |
+| **Reporting** | Call [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) → hope data exists | Simulate delivery → verify rollups |
 | **Budgeting** | Create buy with budget → read back | Simulate spend to threshold → verify alerts and `payment_required` |
 | **Media buy** | Create → pause → resume | Force seller-initiated `rejected` → verify terminal state |
 
 ## Sandbox gating
 
-Sellers MUST NOT expose `comply_test_controller` on production deployments — to anyone, on any surface. The tool MUST be absent from `tools/list` (MCP) and from the agent card's `skills[]` (A2A); the `compliance_testing` block MUST be absent from `get_adcp_capabilities`; dispatch MUST return the transport's standard unknown-tool error (e.g., JSON-RPC `-32601 Method not found` for MCP, the unknown-skill rejection for A2A) — indistinguishable from the same-transport response of a seller that does not implement the tool. A production deployment that exposes the tool on any of these surfaces is non-conformant regardless of whether dispatch is gated.
+Sellers MUST NOT expose `comply_test_controller` on production deployments — to anyone, on any surface. The tool MUST be absent from `tools/list` (MCP) and from the agent card's `skills[]` (A2A); the `compliance_testing` block MUST be absent from [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities); dispatch MUST return the transport's standard unknown-tool error (e.g., JSON-RPC `-32601 Method not found` for MCP, the unknown-skill rejection for A2A) — indistinguishable from the same-transport response of a seller that does not implement the tool. A production deployment that exposes the tool on any of these surfaces is non-conformant regardless of whether dispatch is gated.
 
 The canonical pattern is two deployments: one production (no controller wired), one sandbox/staging (controller wired for all comers). Sellers expose `comply_test_controller` only on sandbox/staging deployments; any principal that can authenticate to such a deployment can call it.
 
-Sellers MAY instead run a single deployment with mixed sandbox/live principals and project the tool per-principal, gating on the resolved account's mode. This is an implementation pattern, not the canonical model. Sellers picking this pattern MUST gate all three surfaces consistently: `tools/list` (or `skills[]`), the `compliance_testing` capability block, and dispatch. Partial projection — e.g., gating `tools/list` but leaving the `compliance_testing` block visible to live principals, or returning `FORBIDDEN` (rather than unknown-tool) to a live principal who probes by name — is non-conformant; it reopens the discovery side channel that deployment-scoping closes.
+Sellers MAY instead run a single deployment with mixed sandbox/live principals and project the tool per-principal, gating on the resolved account's mode. This is an implementation pattern, not the canonical model. Sellers picking this pattern MUST gate all three surfaces consistently: `tools/list` (or `skills[]`), the `compliance_testing` capability block, and dispatch. Partial projection — e.g., gating `tools/list` but leaving the `compliance_testing` block visible to live principals, or returning [`FORBIDDEN`](/docs/building/by-layer/L3/comply-test-controller#error-codes) (rather than unknown-tool) to a live principal who probes by name — is non-conformant; it reopens the discovery side channel that deployment-scoping closes.
 
 `FORBIDDEN` is reserved for the in-sandbox case where the caller is authorized to call the controller but `params` reference a non-sandbox account. Sandbox gating is enforced per-request on the account reference, not just at tool registration time.
 
@@ -54,7 +54,7 @@ The storyboard runner MUST treat the presence of `comply_test_controller` in `to
 Sellers that implement compliance test controller MUST:
 - Only expose the tool in sandbox mode (see sandbox gating above)
 - Enforce the same state transition rules as production — invalid transitions MUST return errors
-- Reflect forced state changes in subsequent reads (`list_creatives`, `get_media_buys`, etc.)
+- Reflect forced state changes in subsequent reads ([`list_creatives`](/docs/creative/task-reference/list_creatives), [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), etc.)
 
 ```json
 {
@@ -232,14 +232,14 @@ The submitted-arm wire shape is otherwise implementation-dependent: most sellers
 
 Shape the next curated discovery call from the caller's authenticated sandbox
 account (account + principal pair) into a status-specific response arm.
-`force_get_products_arm` applies only to `get_products` with
+`force_get_products_arm` applies only to [`get_products`](/docs/media-buy/task-reference/get_products) with
 `buying_mode: "brief"` or `"refine"`.
 The `rejected` arm is introduced in AdCP 3.2. During the beta, callers using release-
 precision negotiation can pin `adcp_version: "3.2-beta.0"`, while callers using the
 legacy major-only envelope can send `adcp_major_version: 3` when the seller
 resolves that request to 3.2. The controller call and matching `get_products`
 call MUST negotiate the same served release.
-`force_get_signals_arm` applies only to `get_signals` with
+`force_get_signals_arm` applies only to [`get_signals`](/docs/signals/tasks/get_signals) with
 `discovery_mode: "brief"` (or omitted, where brief is the default). Wholesale
 feed reads are synchronous feed access and MUST NOT consume these directives or
 return the Submitted arm solely because a directive exists.
@@ -249,7 +249,7 @@ buyers cannot reliably trigger async discovery or a seller-controlled business
 decline from request shape alone, but conformance needs deterministic coverage.
 The submitted envelope carries only `status` and `task_id` (plus optional
 advisory fields such as `message`); terminal `products[]`, `proposals[]`, or
-`signals[]` land on task completion through `get_task_status` (legacy
+`signals[]` land on task completion through [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) (legacy
 `tasks/get`) and any registered push notification. The rejected get_products
 arm carries `status: "rejected"`, `reason`, and optional `suggestions[]`, with no
 products, proposals, errors, or envelope-level adcp_error.
@@ -349,8 +349,8 @@ The submitted → completed lifecycle is otherwise non-deterministic — real ta
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `task_id` | string | Yes | Task to resolve. MUST resolve within the caller's authenticated sandbox account; sellers MUST return `NOT_FOUND` (not `FORBIDDEN`, per the multi-tenant convention above) for `task_id`s belonging to other accounts. Typically captured from the prior `create_media_buy` submitted-envelope response (or registered via `force_create_media_buy_arm`). |
-| `result` | [`async-response-data`](https://adcontextprotocol.org/schemas/v3/core/async-response-data.json) | Yes | Completion payload to record. Validates against the same `anyOf` union the push-notification webhook and `tasks/get` polling responses use. For `create_media_buy`, this is a `CreateMediaBuyResponse` with `media_buy_id` and `packages`. Sellers MUST emit `INVALID_PARAMS` if `result` does not validate against the response branch for the task's original method. Sellers MAY reject `result` payloads exceeding 256 KB with `INVALID_PARAMS`; storyboards MUST stay below this. |
+| `task_id` | string | Yes | Task to resolve. MUST resolve within the caller's authenticated sandbox account; sellers MUST return [`NOT_FOUND`](/docs/building/by-layer/L3/comply-test-controller#error-codes) (not [`FORBIDDEN`](/docs/building/by-layer/L3/comply-test-controller#error-codes), per the multi-tenant convention above) for `task_id`s belonging to other accounts. Typically captured from the prior `create_media_buy` submitted-envelope response (or registered via `force_create_media_buy_arm`). |
+| `result` | [`async-response-data`](https://adcontextprotocol.org/schemas/v3/core/async-response-data.json) | Yes | Completion payload to record. Validates against the same `anyOf` union the push-notification webhook and `tasks/get` polling responses use. For `create_media_buy`, this is a `CreateMediaBuyResponse` with `media_buy_id` and `packages`. Sellers MUST emit [`INVALID_PARAMS`](/docs/building/by-layer/L3/comply-test-controller#error-codes) if `result` does not validate against the response branch for the task's original method. Sellers MAY reject `result` payloads exceeding 256 KB with `INVALID_PARAMS`; storyboards MUST stay below this. |
 
 **Example:**
 
@@ -381,7 +381,7 @@ The submitted → completed lifecycle is otherwise non-deterministic — real ta
 }
 ```
 
-Source state MUST be `submitted`, `working`, or `input-required`; any other source returns `INVALID_TRANSITION`. Sellers MUST emit `NOT_FOUND` if `task_id` is unknown to the caller's account, and `INVALID_TRANSITION` if the task is already terminal (`completed` / `failed` / `canceled`). Forcing a task to `failed` is out of scope for this scenario; the input-required arm of `force_create_media_buy_arm` covers the buyer-input-needed failure path.
+Source state MUST be `submitted`, `working`, or `input-required`; any other source returns [`INVALID_TRANSITION`](/docs/building/by-layer/L3/comply-test-controller#error-codes). Sellers MUST emit `NOT_FOUND` if `task_id` is unknown to the caller's account, and `INVALID_TRANSITION` if the task is already terminal (`completed` / `failed` / `canceled`). Forcing a task to `failed` is out of scope for this scenario; the input-required arm of `force_create_media_buy_arm` covers the buyer-input-needed failure path.
 
 **Replay semantics.** An identical replay after successful completion is an idempotent no-op and reports `previous_state: "completed"` and `current_state: "completed"`. A replay with a different result after the task is terminal returns `INVALID_TRANSITION`; terminal results cannot be overwritten.
 
@@ -418,7 +418,7 @@ Transitions an SI session to a terminal status. Enables testing timeout and term
 
 ### `simulate_delivery`
 
-Injects synthetic delivery data for a media buy. Subsequent calls to `get_media_buy_delivery` MUST reflect this data. Delivery simulation is additive — each call adds to existing delivery totals.
+Injects synthetic delivery data for a media buy. Subsequent calls to [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) MUST reflect this data. Delivery simulation is additive — each call adds to existing delivery totals.
 
 **Delivery and budget are independent systems.** `simulate_delivery` records what the ad server would report. `simulate_budget_spend` records what the billing system would track. A seller's production system may or may not couple these — the test controller does not assume coupling.
 
@@ -464,7 +464,7 @@ Injects synthetic delivery data for a media buy. Subsequent calls to `get_media_
 
 Simulates budget consumption to a specified percentage. Enables testing budget threshold alerts and `payment_required` transitions without waiting for real spend. This is the only scenario that affects account-level financial state.
 
-After calling `simulate_budget_spend`, the seller MUST reflect the simulated consumption in `get_account_financials`. Specifically:
+After calling `simulate_budget_spend`, the seller MUST reflect the simulated consumption in [`get_account_financials`](/docs/accounts/tasks/get_account_financials). Specifically:
 - `total_spend` (or equivalent) MUST reflect the simulated amount
 - `remaining_budget` (or equivalent) MUST be reduced accordingly
 - Budget utilization percentages MUST match `spend_percentage`
@@ -556,7 +556,7 @@ Adds (or upserts) a pricing option on an existing seeded product. Use this when 
 
 ### `seed_creative`
 
-Creates a creative fixture at a specific lifecycle status. Lets governance and delivery storyboards reference a pre-approved creative without round-tripping `sync_creatives` first.
+Creates a creative fixture at a specific lifecycle status. Lets governance and delivery storyboards reference a pre-approved creative without round-tripping [`sync_creatives`](/docs/creative/task-reference/sync_creatives) first.
 
 **Params:**
 
@@ -679,7 +679,7 @@ Seeds a measurement vendor's `get_adcp_capabilities.measurement.metrics[]` snaps
 
   Concretely: `seed_product` before `seed_pricing_option`; `seed_product`, `seed_creative`, and `seed_plan` all before `seed_media_buy` when the fixture references them. Storyboards that declare a `fixtures:` block MUST list entries in an order the runner can topologically sort — sellers that receive a `seed_pricing_option` for a product that does not exist, or a `seed_media_buy` referencing a creative/product/plan that was not seeded first, MUST return `INVALID_PARAMS` rather than auto-create the parent.
 - **Sandbox scope.** Seeded fixtures exist only for the authenticated sandbox account. `NOT_FOUND` applies the same way as for `force_*` — a seller that cannot see the parent product for the caller's account MUST return `NOT_FOUND`, not silently fall back to another tenant.
-- **Capability advertisement.** Sellers that do not implement a given seed scenario MUST return `UNKNOWN_SCENARIO` for that scenario name. The runner treats `UNKNOWN_SCENARIO` on a `seed_*` as a coverage gap for storyboards whose `prerequisites.controller_seeding` requires the scenario — those storyboards are graded `not_applicable`, not failed. This applies to **unfamiliar** `seed_*` names as well: a runner may emit a scenario the seller has never seen because the enum is open-for-extension (see below). Sellers and runners MUST respond with `UNKNOWN_SCENARIO` rather than schema-reject an unrecognized scenario value.
+- **Capability advertisement.** Sellers that do not implement a given seed scenario MUST return [`UNKNOWN_SCENARIO`](/docs/building/by-layer/L3/comply-test-controller#error-codes) for that scenario name. The runner treats `UNKNOWN_SCENARIO` on a `seed_*` as a coverage gap for storyboards whose `prerequisites.controller_seeding` requires the scenario — those storyboards are graded `not_applicable`, not failed. This applies to **unfamiliar** `seed_*` names as well: a runner may emit a scenario the seller has never seen because the enum is open-for-extension (see below). Sellers and runners MUST respond with `UNKNOWN_SCENARIO` rather than schema-reject an unrecognized scenario value.
 - **Open-for-extension enum.** The `scenario` enum adds new values over time (new seed scenarios land as specialisms demand them). Runners and sellers MUST accept scenario strings they do not recognize and respond with `UNKNOWN_SCENARIO` rather than hard-fail schema validation — otherwise every new enum value becomes a breaking change for stale implementations.
 
 ## Response shape
@@ -760,7 +760,7 @@ Seeds a measurement vendor's `get_adcp_capabilities.measurement.metrics[]` snaps
 }
 ```
 
-The `simulated` field echoes back the values injected by this call. The `cumulative` field returns running totals across additive counters and spend for this media buy, plus the latest non-additive reach-window and viewability state, so callers can verify expected state before checking `get_media_buy_delivery`.
+The `simulated` field echoes back the values injected by this call. The `cumulative` field returns running totals across additive counters and spend for this media buy, plus the latest non-additive reach-window and viewability state, so callers can verify expected state before checking [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery).
 
 **`simulate_budget_spend` response:**
 
@@ -782,14 +782,14 @@ Controllers MUST use structured error codes so the storyboard runner can assert 
 
 | Error code | When |
 |---|---|
-| `INVALID_TRANSITION` | Requested state-machine transition is not valid (e.g., `archived → processing`, `canceled → paused`) |
-| `INVALID_STATE` | Operation is not permitted for the resource's current status (e.g., re-seeding a fixture that already exists with a diverging shape) |
-| `NOT_FOUND` | Entity does not exist or caller does not have access (multi-tenant sandboxes SHOULD treat "not yours" as "not found") |
-| `UNKNOWN_SCENARIO` | Scenario not implemented by this seller |
-| `INVALID_PARAMS` | Missing or malformed params, or precondition not met (e.g., `simulate_budget_spend` on an entity with no budget configured) |
-| `FORBIDDEN` | Production account referenced from a sandbox connection |
-| `JCS_NON_FINITE_NUMBER` | Digest-mode `query_upstream_traffic` cannot canonicalize a parsed JSON-like value tree containing `NaN`, `+Infinity`, or `-Infinity`; controllers must not coerce these values, and runners grade the affected validation `not_applicable` |
-| `INTERNAL_ERROR` | Transient seller-side failure (e.g., sandbox database unavailable). The runner SHOULD retry once before treating as a failure. |
+| [`INVALID_TRANSITION`](/docs/building/by-layer/L3/comply-test-controller#error-codes) | Requested state-machine transition is not valid (e.g., `archived → processing`, `canceled → paused`) |
+| [`INVALID_STATE`](/docs/building/by-layer/L3/comply-test-controller#error-codes) | Operation is not permitted for the resource's current status (e.g., re-seeding a fixture that already exists with a diverging shape) |
+| [`NOT_FOUND`](/docs/building/by-layer/L3/comply-test-controller#error-codes) | Entity does not exist or caller does not have access (multi-tenant sandboxes SHOULD treat "not yours" as "not found") |
+| [`UNKNOWN_SCENARIO`](/docs/building/by-layer/L3/comply-test-controller#error-codes) | Scenario not implemented by this seller |
+| [`INVALID_PARAMS`](/docs/building/by-layer/L3/comply-test-controller#error-codes) | Missing or malformed params, or precondition not met (e.g., `simulate_budget_spend` on an entity with no budget configured) |
+| [`FORBIDDEN`](/docs/building/by-layer/L3/comply-test-controller#error-codes) | Production account referenced from a sandbox connection |
+| [`JCS_NON_FINITE_NUMBER`](/docs/building/by-layer/L3/comply-test-controller#error-codes) | Digest-mode `query_upstream_traffic` cannot canonicalize a parsed JSON-like value tree containing `NaN`, `+Infinity`, or `-Infinity`; controllers must not coerce these values, and runners grade the affected validation `not_applicable` |
+| [`INTERNAL_ERROR`](/docs/building/by-layer/L3/comply-test-controller#error-codes) | Transient seller-side failure (e.g., sandbox database unavailable). The runner SHOULD retry once before treating as a failure. |
 
 <Note>
 **Controller-specific enum.** The `error` field on controller responses uses a controller-specific vocabulary defined in [`comply-test-controller-response.json`](https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json), distinct from the canonical seller-response [`error-code.json`](https://adcontextprotocol.org/schemas/v3/enums/error-code.json) enum that governs task-level errors. `INVALID_TRANSITION` is controller-specific (state-machine primitives expose the transition-vs-state distinction that seller-level error codes collapse into `INVALID_STATE`). Storyboard assertions on controller responses use `path: "error"` or direct `field_value` checks, not `check: error_code` — the shape-agnostic `error_code` check is for task-response errors (`adcp_error` / payload `errors[]`), not the controller's own response schema.
@@ -829,7 +829,7 @@ A seller may implement the test controller without supporting every scenario. Th
 
 Sellers that implement `list_scenarios` MUST respond with scenario names that appear verbatim in the `scenario` enum of [`comply-test-controller-request.json`](https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json). Custom seller-specific scenario names are not part of the compliance contract; storyboard runners will not dispatch to scenarios outside the canonical enum, so listing them serves no purpose. A seller that supports `seed_product` MUST respond with the string `"seed_product"` — not `"create_test_product"` or any other variant.
 
-Sellers that do not implement `list_scenarios` SHOULD return an error with `UNKNOWN_SCENARIO`. When this happens, the runner tries each scenario individually and treats `UNKNOWN_SCENARIO` responses as coverage gaps (not failures). This means early implementers who skip `list_scenarios` are not penalized — the runner discovers supported scenarios through trial.
+Sellers that do not implement `list_scenarios` SHOULD return an error with [`UNKNOWN_SCENARIO`](/docs/building/by-layer/L3/comply-test-controller#error-codes). When this happens, the runner tries each scenario individually and treats `UNKNOWN_SCENARIO` responses as coverage gaps (not failures). This means early implementers who skip `list_scenarios` are not penalized — the runner discovers supported scenarios through trial.
 
 ### Observational mode (default)
 
@@ -844,11 +844,11 @@ When `comply_test_controller` is available:
 - The runner walks every reachable state in each lifecycle
 - Forces edge cases: terminal states, invalid transitions, error codes
 - Validates that forced state changes are reflected in subsequent reads
-- Tests operation gates (e.g., `create_media_buy` blocked when account is `suspended`)
+- Tests operation gates (e.g., [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) blocked when account is `suspended`)
 
 The runner distinguishes three outcome categories in deterministic mode:
 - **Scenario not supported** — returned by `list_scenarios` or `UNKNOWN_SCENARIO` error. Reported as a coverage gap, not a failure.
-- **Transition correctly rejected** — controller returned `INVALID_TRANSITION` for an invalid state change. This is a pass.
+- **Transition correctly rejected** — controller returned [`INVALID_TRANSITION`](/docs/building/by-layer/L3/comply-test-controller#error-codes) for an invalid state change. This is a pass.
 - **Unexpected failure** — controller returned an error for a transition that should be valid, or succeeded on a transition that should fail. This is a compliance failure.
 
 ### Example: creative lifecycle in deterministic mode
@@ -916,7 +916,7 @@ The runner distinguishes three outcome categories in deterministic mode:
 | **Functional compliance** | Pass all storyboards in observational mode | Tools exist, respond correctly, and complete buyer-initiated flows |
 | **Stateful compliance** | Pass all storyboards in deterministic mode | State machines enforce correct transitions, error codes match spec, operation gates block correctly |
 
-**Specialism-scoped seed requirements.** Stateful compliance also requires that sellers implement the `seed_*` scenarios covering the specialisms they certify against. The `UNKNOWN_SCENARIO` → `not_applicable` grading is for honest coverage reporting on missing surface area, not a blanket opt-out from conformance — a seller certifying `sales-non-guaranteed` MUST implement at least `seed_product` and `seed_pricing_option`; a seller certifying `creative-ad-server` MUST implement `seed_creative`; a seller certifying `governance-delivery-monitor` MUST implement `seed_plan` (and `seed_media_buy` where the storyboard requires it). The storyboard authors in `static/compliance/source/specialisms/` declare the fixtures their storyboards need; sellers match that list to the specialisms on their cert.
+**Specialism-scoped seed requirements.** Stateful compliance also requires that sellers implement the `seed_*` scenarios covering the specialisms they certify against. The [`UNKNOWN_SCENARIO`](/docs/building/by-layer/L3/comply-test-controller#error-codes) → `not_applicable` grading is for honest coverage reporting on missing surface area, not a blanket opt-out from conformance — a seller certifying `sales-non-guaranteed` MUST implement at least `seed_product` and `seed_pricing_option`; a seller certifying `creative-ad-server` MUST implement `seed_creative`; a seller certifying `governance-delivery-monitor` MUST implement `seed_plan` (and `seed_media_buy` where the storyboard requires it). The storyboard authors in `static/compliance/source/specialisms/` declare the fixtures their storyboards need; sellers match that list to the specialisms on their cert.
 
 ## Implementation guidance
 
@@ -934,7 +934,7 @@ The runner distinguishes three outcome categories in deterministic mode:
 3. Run observational mode as the baseline — it works everywhere
 4. Layer deterministic scenarios on top when the controller is available
 5. Report which mode was used and distinguish coverage gaps from failures
-6. Test the controller's transition validation itself — invalid transitions should return `INVALID_TRANSITION`, not silently succeed
+6. Test the controller's transition validation itself — invalid transitions should return [`INVALID_TRANSITION`](/docs/building/by-layer/L3/comply-test-controller#error-codes), not silently succeed
 
 ## Design decisions
 
@@ -942,6 +942,6 @@ The runner distinguishes three outcome categories in deterministic mode:
 
 2. **Tests are self-contained.** Each test SHOULD create dedicated entities (media buys, creatives, accounts) rather than reusing existing ones. This ensures additive simulation calls (`simulate_delivery`) start from known-zero state without needing a reset mechanism. No `reset` scenario is needed. Compliance testers SHOULD use unique identifiers (e.g., UUIDs) for test entities to avoid collisions when multiple storyboard runner instances run against the same sandbox concurrently. Sandbox entity cleanup (e.g., TTL-based expiration) is the seller's responsibility.
 
-3. **Delivery simulation uses a synthetic marker.** `simulate_delivery` records MAY include a `synthetic: true` field that sellers can use internally for bookkeeping. The runner ignores this marker — it validates `get_media_buy_delivery` responses against the same schema regardless. This lowers the implementation bar for sellers without affecting test correctness.
+3. **Delivery simulation uses a synthetic marker.** `simulate_delivery` records MAY include a `synthetic: true` field that sellers can use internally for bookkeeping. The runner ignores this marker — it validates [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) responses against the same schema regardless. This lowers the implementation bar for sellers without affecting test correctness.
 
 4. **One tool, many scenarios.** The single-tool design keeps context window cost to ~500 tokens vs ~1,400 for seven separate tools. Sellers implement one sandbox gate. The runner detects one tool. The `list_scenarios` introspection handles partial implementations without requiring per-tool presence detection.

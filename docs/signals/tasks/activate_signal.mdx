@@ -22,18 +22,18 @@ The `activate_signal` task handles the entire activation lifecycle, including:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `idempotency_key` | string | Yes | Client-generated unique key for this request. Prevents duplicate activations on retries. MUST be unique per (seller, request) pair. Min 16 chars. See [Idempotency](/docs/building/by-layer/L1/security#idempotency) for normative semantics. |
-| `signal_agent_segment_id` | string | Yes | Opaque signal handle from `get_signals` for the signal to activate |
+| `signal_agent_segment_id` | string | Yes | Opaque signal handle from [`get_signals`](/docs/signals/tasks/get_signals) for the signal to activate |
 | `action` | string | No | `"activate"` (default) or `"deactivate"`. Deactivating removes segments from downstream platforms for data governance compliance (GDPR, CCPA). |
 | `destinations` | Destination[] | Yes | Target destination(s) for activation (see Destination Object below) |
-| `account` | [AccountRef](/docs/building/by-layer/L2/accounts-and-agents#account-references) | No | Account for this activation. Associates with a commercial relationship established via `sync_accounts`. |
-| `pricing_option_id` | string | Yes (if signal has pricing options) | The pricing option selected from `pricing_options` in the [`get_signals`](/docs/signals/tasks/get_signals) response. Records the buyer's pricing commitment at activation time. Pass this same value in subsequent `report_usage` calls. |
+| `account` | [AccountRef](/docs/building/by-layer/L2/accounts-and-agents#account-references) | No | Account for this activation. Associates with a commercial relationship established via [`sync_accounts`](/docs/accounts/tasks/sync_accounts). |
+| `pricing_option_id` | string | Yes (if signal has pricing options) | The pricing option selected from `pricing_options` in the [`get_signals`](/docs/signals/tasks/get_signals) response. Records the buyer's pricing commitment at activation time. Pass this same value in subsequent [`report_usage`](/docs/accounts/tasks/report_usage) calls. |
 | `governance_context` | string | Conditional | Opaque approval context returned by [`check_governance`](/docs/governance/campaign/tasks/check_governance) for this activation. Required when the activation account has a registered governance agent. |
 
 ## Governance
 
-Signal activation is a spend-commit event when the selected signal carries activation, usage, or CPM fees. For governed accounts, the buyer-side orchestrator MUST call `check_governance` before `activate_signal` with `purchase_type: "signal_activation"` and a normalized activation payload that includes the spend basis, such as `total_budget` or `budget`.
+Signal activation is a spend-commit event when the selected signal carries activation, usage, or CPM fees. For governed accounts, the buyer-side orchestrator MUST call [`check_governance`](/docs/governance/campaign/tasks/check_governance) before `activate_signal` with `purchase_type: "signal_activation"` and a normalized activation payload that includes the spend basis, such as `total_budget` or `budget`.
 
-When `check_governance` approves the activation, pass the returned `governance_context` into `activate_signal`. If the account has a governance agent registered via `sync_governance` and the request omits a valid `governance_context`, the signal agent MUST reject the request with `PERMISSION_DENIED`. If `check_governance` denies the activation, the buyer MUST NOT call `activate_signal`.
+When `check_governance` approves the activation, pass the returned `governance_context` into `activate_signal`. If the account has a governance agent registered via [`sync_governance`](/docs/accounts/tasks/sync_governance) and the request omits a valid `governance_context`, the signal agent MUST reject the request with [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied). If `check_governance` denies the activation, the buyer MUST NOT call `activate_signal`.
 
 ### Destination Object
 
@@ -142,7 +142,7 @@ The activation key tells the buyer how to reference the signal on the destinatio
 
 **Platform destinations** — The `activation_key` contains a `segment_id`, a platform-native identifier. The signal agent pushed segment data to the DSP; the buyer references this key when configuring campaign targeting on that platform. The buyer is responsible for ensuring the activation platform matches where it will run campaigns.
 
-**Agent destinations** — The `activation_key` confirms the signal is live on the sales agent. The SA records the activation internally and can apply signal-based targeting when fulfilling media buys through `create_media_buy`. When the seller exposes selectable signals through inline `Product.signal_targeting_options` or through `get_signals` for wholesale products that omit inline options, the buyer selects those signals in `packages[].targeting_overlay.signal_targeting_groups`, carrying the selected `signal_ref`, `pricing_option_id` when required, and any separate seller execution handle required by the product option or signal result. The buyer does not need to know which DSP the SA uses — downstream platform coordination is the SA's responsibility.
+**Agent destinations** — The `activation_key` confirms the signal is live on the sales agent. The SA records the activation internally and can apply signal-based targeting when fulfilling media buys through [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). When the seller exposes selectable signals through inline `Product.signal_targeting_options` or through [`get_signals`](/docs/signals/tasks/get_signals) for wholesale products that omit inline options, the buyer selects those signals in `packages[].targeting_overlay.signal_targeting_groups`, carrying the selected `signal_ref`, `pricing_option_id` when required, and any separate seller execution handle required by the product option or signal result. The buyer does not need to know which DSP the SA uses — downstream platform coordination is the SA's responsibility.
 
 **Choosing a destination type**: Use `type: "platform"` when buying directly on a DSP. Use `type: "agent"` when buying through a Sales Agent — the SA coordinates its own DSP targeting as an implementation detail.
 
@@ -493,7 +493,7 @@ Warnings about suboptimal configuration are conveyed in the `message` field. The
 ## Error Codes
 
 ### Activation Errors
-- `REFERENCE_NOT_FOUND`: Referenced `signal_agent_segment_id` doesn't exist or is not accessible to the calling account (`error.field` identifies the failing parameter)
+- [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found): Referenced `signal_agent_segment_id` doesn't exist or is not accessible to the calling account (`error.field` identifies the failing parameter)
 - `ACTIVATION_FAILED`: Could not activate signal for unspecified reasons
 - `ALREADY_ACTIVATED`: Signal already active on the specified platform/account
 - `DEPLOYMENT_UNAUTHORIZED`: Can't deploy to platform/account due to permissions

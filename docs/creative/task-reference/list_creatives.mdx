@@ -101,7 +101,7 @@ Agents that do not implement `asset_types` MUST ignore that field and apply all 
 </Note>
 
 <Note>
-For published-post reference products, `list_creatives` is limited to the downstream publisher identities the seller is authorized to inspect. If a product requires a second platform connection such as `publisher_identity` and it is missing, the seller should return `AUTHORIZATION_REQUIRED` with `error.details.missing_connections[]`. It should not present `list_creatives` as global platform post search.
+For published-post reference products, `list_creatives` is limited to the downstream publisher identities the seller is authorized to inspect. If a product requires a second platform connection such as `publisher_identity` and it is missing, the seller should return [`AUTHORIZATION_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-authorization-required) with `error.details.missing_connections[]`. It should not present `list_creatives` as global platform post search.
 </Note>
 
 
@@ -212,7 +212,7 @@ The response provides creative data with optional enrichment:
 | `snapshot` | object | Delivery snapshot (when `include_snapshot=true`) |
 | `snapshot_unavailable_reason` | string | Why snapshot is missing — `SNAPSHOT_UNSUPPORTED`, `SNAPSHOT_TEMPORARILY_UNAVAILABLE`, or `SNAPSHOT_PERMISSION_DENIED` |
 | `items` | array | Items for multi-asset formats (when `include_items=true`) |
-| `pricing_options` | [VendorPricingOption](/docs/creative/specification#pricing)[] | Pricing options for this creative (when `include_pricing=true` and `account` provided). Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Same pattern as `get_signals` and `list_content_standards`. |
+| `pricing_options` | [VendorPricingOption](/docs/creative/specification#pricing)[] | Pricing options for this creative (when `include_pricing=true` and `account` provided). Vendors may offer multiple options (volume tiers, context-specific rates, different models per product line). Same pattern as [`get_signals`](/docs/signals/tasks/get_signals) and [`list_content_standards`](/docs/governance/content-standards/tasks/list_content_standards). |
 
 ### Rights attestation readback
 
@@ -258,7 +258,7 @@ all preferences miss both paths, they follow `unmatched_locale_action`: serve
 The ordered preference list itself comes from the seller's serving environment;
 AdCP neither carries it here nor defines how browser, content, geography, user,
 app, or platform signals produce it or their precedence.
-The chosen `locale_variant_id` is reported by `get_creative_delivery`.
+The chosen `locale_variant_id` is reported by [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery).
 
 ### Pricing
 
@@ -277,7 +277,7 @@ When `include_pricing=true` and `account` is provided, each creative includes `p
 }
 ```
 
-The buyer passes the applied `pricing_option_id` (from the `build_creative` response) in `report_usage` for billing verification. Vendors may offer multiple options — volume/commitment tiers, context-specific rates (premium vs. standard placements), or entirely different pricing models for different product lines. This is the same pattern used by [signals](/docs/signals/tasks/get_signals) and [content standards](/docs/governance/content-standards/index).
+The buyer passes the applied `pricing_option_id` (from the [`build_creative`](/docs/creative/task-reference/build_creative) response) in [`report_usage`](/docs/accounts/tasks/report_usage) for billing verification. Vendors may offer multiple options — volume/commitment tiers, context-specific rates (premium vs. standard placements), or entirely different pricing models for different product lines. This is the same pattern used by [signals](/docs/signals/tasks/get_signals) and [content standards](/docs/governance/content-standards/index).
 
 ### Delivery snapshot
 
@@ -324,9 +324,9 @@ Hard-purged creatives (`purge_kind: hard`, used for legal erasure under GDPR Art
 
 ### Webhook activity
 
-When `include_webhook_activity: true`, each returned creative carries a `webhook_activity[]` array of the most recent fires scoped to that creative — `creative.status_changed` and `creative.purged` deliveries. This is the buyer's debug surface for "did the publisher fire? did my endpoint receive it? was the retry trail clean?" — the same shape and contract as `webhook_activity[]` on `get_media_buys`. See [Webhook activity log pattern](/docs/protocol/snapshot-and-log#webhook-activity-log-pattern) for the full normative contract (retention, three-state presence, request-field conventions).
+When `include_webhook_activity: true`, each returned creative carries a `webhook_activity[]` array of the most recent fires scoped to that creative — `creative.status_changed` and `creative.purged` deliveries. This is the buyer's debug surface for "did the publisher fire? did my endpoint receive it? was the retry trail clean?" — the same shape and contract as `webhook_activity[]` on [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). See [Webhook activity log pattern](/docs/protocol/snapshot-and-log#webhook-activity-log-pattern) for the full normative contract (retention, three-state presence, request-field conventions).
 
-**To subscribe** to these fires, register a [`notification_configs[]`](/docs/accounts/tasks/sync_accounts#account-level-webhook-subscriptions) entry on the account via `sync_accounts`. The seller fires per-subscriber against each entry whose `event_types[]` includes the type. `webhook_activity[]` on this read is the buyer-side debug log of what actually fired.
+**To subscribe** to these fires, register a [`notification_configs[]`](/docs/accounts/tasks/sync_accounts#account-level-webhook-subscriptions) entry on the account via [`sync_accounts`](/docs/accounts/tasks/sync_accounts). The seller fires per-subscriber against each entry whose `event_types[]` includes the type. `webhook_activity[]` on this read is the buyer-side debug log of what actually fired.
 
 Three-state presence applies:
 
@@ -358,7 +358,7 @@ Correlate to your endpoint logs by `idempotency_key`. Each record's `notificatio
 }
 ```
 
-Buyers diagnose "no fires arrived" by combining: (a) subscriber registration state on `list_accounts.accounts[].notification_configs[]` — is the right URL active with the right `event_types[]`? — and (b) seller capability declaration via `get_adcp_capabilities` — does the seller support the event types I subscribed to? Field omission on `webhook_activity` alone does not distinguish "seller doesn't surface the log" from "no fires occurred."
+Buyers diagnose "no fires arrived" by combining: (a) subscriber registration state on `list_accounts.accounts[].notification_configs[]` — is the right URL active with the right `event_types[]`? — and (b) seller capability declaration via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) — does the seller support the event types I subscribed to? Field omission on `webhook_activity` alone does not distinguish "seller doesn't surface the log" from "no fires occurred."
 
 ### Buyer handler (end-to-end)
 
@@ -395,7 +395,7 @@ Two pitfalls this handler avoids: (1) applying state from the webhook payload di
 ## Account requirements
 
 <Note>
-Creative agents that host a library should implement the [accounts protocol](/docs/accounts/overview) (`sync_accounts` / `list_accounts`) so buyers can establish access before querying creatives. This is the same accounts protocol used by sales agents for media buys — there is no separate version. Sales agents that already implement the accounts protocol for media buys do not need to do anything additional.
+Creative agents that host a library should implement the [accounts protocol](/docs/accounts/overview) ([`sync_accounts`](/docs/accounts/tasks/sync_accounts) / [`list_accounts`](/docs/accounts/tasks/list_accounts)) so buyers can establish access before querying creatives. This is the same accounts protocol used by sales agents for media buys — there is no separate version. Sales agents that already implement the accounts protocol for media buys do not need to do anything additional.
 </Note>
 
 ## Examples

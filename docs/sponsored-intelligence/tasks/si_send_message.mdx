@@ -5,7 +5,7 @@ description: "si_send_message is the AdCP task for exchanging messages in an act
 ---
 
 <Note>
-**Experimental.** Sponsored Intelligence (`si_get_offering`, `si_initiate_session`, `si_send_message`, `si_terminate_session`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any of these tasks MUST declare `sponsored_intelligence.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+**Experimental.** Sponsored Intelligence ([`si_get_offering`](/docs/sponsored-intelligence/tasks/si_get_offering), [`si_initiate_session`](/docs/sponsored-intelligence/tasks/si_initiate_session), `si_send_message`, [`si_terminate_session`](/docs/sponsored-intelligence/tasks/si_terminate_session)) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any of these tasks MUST declare `sponsored_intelligence.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
 </Note>
 
 Send a message within an active SI session. The host invokes this task to relay user messages and action responses to the brand agent.
@@ -14,7 +14,7 @@ Send a message within an active SI session. The host invokes this task to relay 
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `session_id` | string | Yes | Session ID from `si_initiate_session` |
+| `session_id` | string | Yes | Session ID from [`si_initiate_session`](/docs/sponsored-intelligence/tasks/si_initiate_session) |
 | `message` | string | No | User's text message |
 | `action_response` | object | No | Response to a UI action (button click, form submit) |
 | `sponsored_context_receipt` | object | No | Host receipt for sponsored context accepted or explicitly rejected from a prior SI response |
@@ -43,7 +43,7 @@ When the user interacts with a UI element:
 
 ### Sponsored Context Receipts
 
-If a prior `si_initiate_session` or `si_send_message` response included `sponsored_context`, the host decides whether it can honor the declared `context_use` and `disclosure_obligation` before presenting, comparing, or otherwise using that context. On a subsequent `si_send_message` request, the host MAY include `sponsored_context_receipt` alongside a normal `message` or `action_response` to make that decision visible to the brand/seller.
+If a prior [`si_initiate_session`](/docs/sponsored-intelligence/tasks/si_initiate_session) or `si_send_message` response included `sponsored_context`, the host decides whether it can honor the declared `context_use` and `disclosure_obligation` before presenting, comparing, or otherwise using that context. On a subsequent `si_send_message` request, the host MAY include `sponsored_context_receipt` alongside a normal `message` or `action_response` to make that decision visible to the brand/seller.
 
 For accepted receipts, `accepted_context_use` must match the declaration's `context_use`, and `disclosure_commitment.status` must be `accepted` when disclosure was required. For rejected receipts, omit `accepted_context_use` and `disclosure_commitment`; use `rejection_reason` when the host wants to explain why the context was not accepted or used.
 
@@ -211,7 +211,7 @@ When you receive `session_status: "pending_handoff"`:
 1. **For `type: "transaction"`** - Initiate ACP checkout with the provided intent and context
 2. **For `type: "complete"`** - The conversation is done; return to normal chat
 
-The host should call `si_terminate_session` after handling the handoff to properly close the session.
+The host should call [`si_terminate_session`](/docs/sponsored-intelligence/tasks/si_terminate_session) after handling the handoff to properly close the session.
 
 ## Key Points
 

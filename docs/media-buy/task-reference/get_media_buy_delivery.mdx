@@ -12,7 +12,7 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 
 ## Scope
 
-`get_media_buy_delivery` works on any `media_buy_id` returned by [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), regardless of how the underlying campaign was created. Sales agents MUST NOT refuse delivery reporting — or narrow its coverage — on the basis that the buy originated outside AdCP. If delivery data for a buy is genuinely unavailable (e.g., the ad server has not yet reported a flight), the seller returns the buy in `media_buy_deliveries` with zero or partial metrics; the seller does not omit it and does not return `MEDIA_BUY_NOT_FOUND` for an account-owned buy.
+`get_media_buy_delivery` works on any `media_buy_id` returned by [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), regardless of how the underlying campaign was created. Sales agents MUST NOT refuse delivery reporting — or narrow its coverage — on the basis that the buy originated outside AdCP. If delivery data for a buy is genuinely unavailable (e.g., the ad server has not yet reported a flight), the seller returns the buy in `media_buy_deliveries` with zero or partial metrics; the seller does not omit it and does not return [`MEDIA_BUY_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-media-buy-not-found) for an account-owned buy.
 
 **Request Schema**: [`/schemas/v3/media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json)
 **Response Schema**: [`/schemas/v3/media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json)
@@ -58,7 +58,7 @@ Returns delivery report with aggregated totals and per-media-buy breakdowns:
 ### Media Buy Delivery Object
 
 <Note>
-**3.1 vocabulary note.** `get_media_buy_delivery` returns the lifecycle state on a nested `media_buy_deliveries[].status` field (no envelope collision — nested at depth 1). `create_media_buy` and `update_media_buy` success responses return the same lifecycle state on a top-level **`media_buy_status`** field (added in 3.1 to avoid colliding with the envelope task-status `status`). Same enum, two field names in 3.1 — the cascade unifies in 4.0 ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905)). See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status) for the full picture.
+**3.1 vocabulary note.** `get_media_buy_delivery` returns the lifecycle state on a nested `media_buy_deliveries[].status` field (no envelope collision — nested at depth 1). [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) and [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) success responses return the same lifecycle state on a top-level **`media_buy_status`** field (added in 3.1 to avoid colliding with the envelope task-status `status`). Same enum, two field names in 3.1 — the cascade unifies in 4.0 ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905)). See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status) for the full picture.
 </Note>
 
 | Field | Description |
@@ -604,7 +604,7 @@ asyncio.run(main())
 
 ### Context-Based Queries
 - If no `media_buy_ids` provided, returns all media buys from current session context
-- Context established by previous operations (e.g., `create_media_buy`)
+- Context established by previous operations (e.g., [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy))
 
 ### Status Filtering
 - Defaults to `["active"]` if not specified
@@ -619,7 +619,7 @@ asyncio.run(main())
 - Date format: `YYYY-MM-DD`
 - **Start-inclusive, end-exclusive**: `start_date` is included, `end_date` is excluded. For example, `start_date: "2026-01-01"` and `end_date: "2026-01-02"` returns data for January 1st only.
 - Products declare date range support in `reporting_capabilities.date_range_support`
-- Products with `date_range_support: "lifetime_only"` reject requests that include `start_date`/`end_date` with a `DATE_RANGE_NOT_SUPPORTED` error
+- Products with `date_range_support: "lifetime_only"` reject requests that include `start_date`/`end_date` with an [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) error
 - Products with `date_range_support: "date_range"` accept date parameters and filter delivery data accordingly
 - Daily breakdown may be truncated for long date ranges to reduce response size
 
@@ -644,14 +644,15 @@ asyncio.run(main())
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `AUTH_MISSING` | No credentials presented | Provide credentials via auth header |
-| `AUTH_INVALID` | Credentials rejected (expired / revoked) | Human credential rotation required; do not auto-retry |
-| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify `media_buy_id`; for legacy correlation use `get_media_buys` + `context.internal_campaign_id` |
-| `INVALID_DATE_RANGE` | Invalid start/end dates | Use YYYY-MM-DD format, ensure start < end |
-| `DATE_RANGE_NOT_SUPPORTED` | Product only supports lifetime reporting | Omit `start_date` and `end_date`. Check `reporting_capabilities.date_range_support` on the product. |
-| `UNSUPPORTED_GRANULARITY` | Requested `time_granularity` is not in the product's `windowed_pull_granularities` | Re-issue with a granularity from `error.details.supported_granularities`, or omit `time_granularity` to fall back to cumulative date-range pulls. See [Windowed pull recovery](#windowed-pull-recovery). |
-| `CONTEXT_REQUIRED` | No media buys in context | Provide media_buy_ids explicitly |
-| `INVALID_STATUS_FILTER` | Invalid status value | Use valid status: pending_creatives, pending_start, active, paused, completed |
+| [`AUTH_MISSING`](/docs/building/verification/compliance-catalog#error-code-auth-missing) | No credentials presented | Provide credentials via auth header |
+| [`AUTH_INVALID`](/docs/building/verification/compliance-catalog#error-code-auth-invalid) | Credentials rejected (expired / revoked) | Human credential rotation required; do not auto-retry |
+| [`MEDIA_BUY_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-media-buy-not-found) | Media buy doesn't exist | Verify `media_buy_id`; for legacy correlation use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) + `context.internal_campaign_id` |
+| [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | A date string or filter violates its schema constraints | Use YYYY-MM-DD dates and a documented status value |
+| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | Only one date is present, or `end_date` is not after `start_date` | Supply both dates with `start_date < end_date`, or omit both for lifetime delivery |
+| [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | Product only supports lifetime reporting | Omit `start_date` and `end_date`. Check `reporting_capabilities.date_range_support` on the product. |
+| [`UNSUPPORTED_GRANULARITY`](/docs/building/verification/compliance-catalog#error-code-unsupported-granularity) | Requested `time_granularity` is not in the product's `windowed_pull_granularities` | Re-issue with a granularity from `error.details.supported_granularities`, or omit `time_granularity` to fall back to cumulative date-range pulls. See [Windowed pull recovery](#windowed-pull-recovery). |
+
+A valid query with no matching media buys succeeds with an empty `media_buy_deliveries` array.
 
 ## Package-Level Metrics
 
@@ -849,7 +850,7 @@ Slices are ordered by `window_start` ascending; consecutive rows are contiguous 
 
 ### Spec contract
 
-- **Capability-scoped MUST** — sellers MUST honor `time_granularity` requests for any value in `windowed_pull_granularities`. Pulls outside the declared set return `UNSUPPORTED_GRANULARITY`.
+- **Capability-scoped MUST** — sellers MUST honor `time_granularity` requests for any value in `windowed_pull_granularities`. Pulls outside the declared set return [`UNSUPPORTED_GRANULARITY`](/docs/building/verification/compliance-catalog#error-code-unsupported-granularity).
 - **Asymmetric is honest** — sellers MAY emit higher-frequency webhooks than they expose for pull. Declaring `available_reporting_frequencies: ["hourly", "daily"]` with `windowed_pull_granularities: ["daily"]` is valid; the buyer treats the hourly webhook as primary at that frequency.
 - **Same-shape recovery** — slice payloads mirror webhook fire payloads at the same granularity so a buyer's reconciliation pipeline does not branch on transport path.
 
@@ -900,7 +901,7 @@ The `audience_source` field indicates where the audience segment originated:
 
 | Source | Description | Targetable? |
 |--------|-------------|-------------|
-| `synced` | Buyer's first-party data via `sync_audiences` | Yes — use `audience_include`/`audience_exclude` |
+| `synced` | Buyer's first-party data via [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) | Yes — use `audience_include`/`audience_exclude` |
 | `platform` | Seller's native segments (interest, behavioral) | No — informational |
 | `third_party` | External data provider segments | No — informational |
 | `lookalike` | Platform-generated expansion from a seed | No — informational |

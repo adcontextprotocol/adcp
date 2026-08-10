@@ -31,7 +31,7 @@ Each record requires `account`, `vendor_cost`, and `currency`. Additional fields
 | `account` | [AccountRef](/docs/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account for this record — by `account_id` or `{ brand, operator }`. |
 | `vendor_cost` | number | Yes | Amount owed to the vendor for this record, in `currency` |
 | `currency` | string | Yes | ISO 4217 currency code |
-| `pricing_option_id` | string | Vendor: Yes | Pricing option from the vendor's discovery response (`get_signals`, `list_creatives`, `list_content_standards`, `list_property_lists`) or execution response (`build_creative`). The vendor uses this to verify the correct rate was applied. |
+| `pricing_option_id` | string | Vendor: Yes | Pricing option from the vendor's discovery response ([`get_signals`](/docs/signals/tasks/get_signals), [`list_creatives`](/docs/creative/task-reference/list_creatives), [`list_content_standards`](/docs/governance/content-standards/tasks/list_content_standards), [`list_property_lists`](/docs/governance/property/tasks/property_lists#list_property_lists)) or execution response ([`build_creative`](/docs/creative/task-reference/build_creative)). The vendor uses this to verify the correct rate was applied. |
 | `impressions` | number | Signals: Yes | Impressions delivered |
 | `media_spend` | number | percent_of_media: Yes | Media spend for percent-of-media cost verification |
 | `media_buy_id` | string | Revenue share: Yes | Media buy whose selected package pricing is being reconciled. |
@@ -186,9 +186,9 @@ Report upon campaign completion to close out the final period.
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `ACCOUNT_NOT_FOUND` | Account reference in a usage record not found or not accessible | Verify via `list_accounts`; re-run `sync_accounts` if needed |
-| `INVALID_USAGE_DATA` | A usage record has missing or invalid fields | Check required fields for your vendor type |
-| `INVALID_PRICING_OPTION` | `pricing_option_id` not found on this account | Verify `pricing_option_id` from the vendor's discovery response |
+| [`ACCOUNT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-account-not-found) | Account reference in a usage record not found or not accessible | Verify via [`list_accounts`](/docs/accounts/tasks/list_accounts); re-run [`sync_accounts`](/docs/accounts/tasks/sync_accounts) if needed |
+| [`INVALID_USAGE_DATA`](/docs/building/verification/compliance-catalog#error-code-invalid-usage-data) | A usage record has missing or invalid fields | Check required fields for your vendor type |
+| [`INVALID_PRICING_OPTION`](/docs/building/verification/compliance-catalog#error-code-invalid-pricing-option) | `pricing_option_id` not found on this account | Verify `pricing_option_id` from the vendor's discovery response |
 
 ## Next Steps
 

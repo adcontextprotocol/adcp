@@ -9,7 +9,7 @@ The [Conformance Specification](/docs/building/verification/conformance#conforma
 
 ## From declaration to graded scenarios
 
-When your agent declares a specialism in `get_adcp_capabilities`, the runner:
+When your agent declares a specialism in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities), the runner:
 
 1. Fetches the specialism manifest at `/compliance/{version}/specialisms/{id}/`.
 2. Reads the manifest's `requires_scenarios` list — an ordered set of scenario IDs the runner must grade.
@@ -41,7 +41,7 @@ To answer "what do I need to pass?", start with the profile you are trying to sa
 | **Verified (Sandbox)** | Does the registered production endpoint pass the sandbox verification profile under `account.sandbox: true`, with sandbox isolation enforced and only Sandbox-acceptable skips present? |
 | **Specific buyer requirement** | Which verified modes, protocols, specialisms, optional capabilities, operational behaviors, and skip classes does this buyer require? |
 
-A buyer requirement profile can be stricter than the public badge. For example, the public Sandbox profile can accept a capability-gated proposal storyboard being skipped when `media_buy.supports_proposals: false`; a buyer that requires proposal workflows can treat the same skip as a blocker. Conversely, a production endpoint omitting `comply_test_controller` can be acceptable for the Sandbox badge, while a buyer doing deterministic integration testing may ask for a separate dev/staging endpoint that exposes it.
+A buyer requirement profile can be stricter than the public badge. For example, the public Sandbox profile can accept a capability-gated proposal storyboard being skipped when `media_buy.supports_proposals: false`; a buyer that requires proposal workflows can treat the same skip as a blocker. Conversely, a production endpoint omitting [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) can be acceptable for the Sandbox badge, while a buyer doing deterministic integration testing may ask for a separate dev/staging endpoint that exposes it.
 
 The storyboard runner should not encode those buyer decisions. It should emit typed evidence that a verification policy or buyer profile can evaluate consistently.
 
@@ -67,7 +67,7 @@ Seven of these run unconditionally for any `sales-guaranteed` agent. The eighth 
 
 ## Capability gates
 
-A scenario or phase can declare a `requires_capability` block. The runner reads the named path from your `get_adcp_capabilities` response and checks it against the expected value. If the check fails (the capability is absent or false), the scenario or phase is skipped — the `skip` block will appear in runner output with `reason: not_applicable` — and does not contribute to `steps_failed`.
+A scenario or phase can declare a `requires_capability` block. The runner reads the named path from your [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) response and checks it against the expected value. If the check fails (the capability is absent or false), the scenario or phase is skipped — the `skip` block will appear in runner output with `reason: not_applicable` — and does not contribute to `steps_failed`.
 
 ```yaml
 # /compliance/{version}/protocols/media-buy/scenarios/proposal_finalize/ (source: static/compliance/source/protocols/media-buy/scenarios/proposal_finalize.yaml)
@@ -77,7 +77,7 @@ requires_capability:
   equals: true
 ```
 
-The gate is evaluated against your agent's live `get_adcp_capabilities` response at run time — the same call the runner makes during the universal `capability_discovery` storyboard.
+The gate is evaluated against your agent's live `get_adcp_capabilities` response at run time — the same call the runner makes during the universal [`capability_discovery`](/compliance/latest/universal/capability-discovery.yaml) storyboard.
 
 Phase-level gates use the same shape and scope only the phase that declares the block. Universal storyboards use this for protocol-specific phase families, for example deterministic testing skips its SI session phase when an agent does not declare `sponsored_intelligence` while still running media-buy or creative phases the agent does declare.
 
@@ -95,7 +95,7 @@ Phase-level gates use the same shape and scope only the phase that declares the 
 }
 ```
 
-**Runner behavior:** all eight `requires_scenarios` run, including `proposal_finalize`. Priya's platform is graded on the full proposal lifecycle — brief with proposals, refine, finalize, and execute via `create_media_buy`.
+**Runner behavior:** all eight `requires_scenarios` run, including `proposal_finalize`. Priya's platform is graded on the full proposal lifecycle — brief with proposals, refine, finalize, and execute via [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy).
 
 ---
 
@@ -174,7 +174,7 @@ Runner summaries distinguish **failure** from **coverage**:
 | `steps_failed = 0`, with `missing_test_controller` skips | Deterministic-test-surface coverage gap | Run a dev/staging deterministic pass or publish the skipped lifecycle coverage explicitly |
 | Any `missing_tool`, `requirement_unmet`, or `unsatisfied_contract` skip for a declared protocol or specialism | The seller declared a claim the runner could not fully test | Fix the missing surface or narrow the declaration |
 
-This distinction matters for production-path sandbox runs. A seller can run the storyboard suite against the real production endpoint under sandbox-flagged traffic and get **zero failures** while still seeing a `partial` summary because the production endpoint correctly does not expose `comply_test_controller`. That result says: "the buyer-visible sandbox path passed every assertion the runner could grade, but controller-seeded lifecycle scenarios were skipped." It is useful evidence for sandbox readiness, but it is not the same as full deterministic specialism coverage.
+This distinction matters for production-path sandbox runs. A seller can run the storyboard suite against the real production endpoint under sandbox-flagged traffic and get **zero failures** while still seeing a `partial` summary because the production endpoint correctly does not expose [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller). That result says: "the buyer-visible sandbox path passed every assertion the runner could grade, but controller-seeded lifecycle scenarios were skipped." It is useful evidence for sandbox readiness, but it is not the same as full deterministic specialism coverage.
 
 For full coverage, run the same declared scope against a dev or staging endpoint that exposes the controller, or pre-seed the required state and configure the runner to assert seeded-state coverage. For a production-only seller, publish the skipped coverage list alongside the zero-failure result so buyers can see exactly what was and was not graded.
 
