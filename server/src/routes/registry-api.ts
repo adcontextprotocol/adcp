@@ -11307,7 +11307,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         releaseCrawlRateLimit(req, rateLimitKey);
         if (error instanceof CrawlRequestRateLimitError) {
           return res.status(429).json({
-            error: error.message,
+            error: error.scope === 'domain'
+              ? 'Rate limit exceeded for this domain'
+              : 'Hourly crawl request limit exceeded',
             retry_after: error.retryAfterSeconds,
           });
         }
