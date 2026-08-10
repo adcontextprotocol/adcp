@@ -6,7 +6,7 @@ description: "AdCP Sponsored Intelligence task reference. Four tasks covering th
 ---
 
 <Note>
-**Experimental.** Sponsored Intelligence (`si_get_offering`, `si_initiate_session`, `si_send_message`, `si_terminate_session`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any of these tasks MUST declare `sponsored_intelligence.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+**Experimental.** Sponsored Intelligence ([`si_get_offering`](/docs/sponsored-intelligence/tasks/si_get_offering), [`si_initiate_session`](/docs/sponsored-intelligence/tasks/si_initiate_session), [`si_send_message`](/docs/sponsored-intelligence/tasks/si_send_message), [`si_terminate_session`](/docs/sponsored-intelligence/tasks/si_terminate_session)) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any of these tasks MUST declare `sponsored_intelligence.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
 </Note>
 
 The Sponsored Intelligence Protocol defines four tasks for managing conversational brand experiences:
@@ -24,9 +24,9 @@ flowchart LR
 
 ### Two Entry Points
 
-**With pre-session lookup** (dotted line): Host calls `si_get_offering` first to show products before consent. The `offering_token` carries what was shown into the session.
+**With pre-session lookup** (dotted line): Host calls [`si_get_offering`](/docs/sponsored-intelligence/tasks/si_get_offering) first to show products before consent. The `offering_token` carries what was shown into the session.
 
-**Direct session** (solid line): Host calls `si_initiate_session` directly. Brand agent shows products as part of the conversation and tracks them internally.
+**Direct session** (solid line): Host calls [`si_initiate_session`](/docs/sponsored-intelligence/tasks/si_initiate_session) directly. Brand agent shows products as part of the conversation and tracks them internally.
 
 Both are valid. Use pre-session lookup for sponsored search results where you want to preview products before asking the user to engage.
 
@@ -34,10 +34,10 @@ Both are valid. Use pre-session lookup for sponsored search results where you wa
 
 | Task | Description | Initiator |
 |------|-------------|-----------|
-| [`si_get_offering`](./si_get_offering) | Get offering details, availability, and matching products (anonymous) | Host |
-| [`si_initiate_session`](./si_initiate_session) | Start a conversation with a brand agent | Host |
-| [`si_send_message`](./si_send_message) | Exchange messages within an active session | Host |
-| [`si_terminate_session`](./si_terminate_session) | End the session with appropriate handoff | Either |
+| [`si_get_offering`](/docs/sponsored-intelligence/tasks/si_get_offering) | Get offering details, availability, and matching products (anonymous) | Host |
+| [`si_initiate_session`](/docs/sponsored-intelligence/tasks/si_initiate_session) | Start a conversation with a brand agent | Host |
+| [`si_send_message`](/docs/sponsored-intelligence/tasks/si_send_message) | Exchange messages within an active session | Host |
+| [`si_terminate_session`](/docs/sponsored-intelligence/tasks/si_terminate_session) | End the session with appropriate handoff | Either |
 
 ## Transport Options
 

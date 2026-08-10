@@ -43,6 +43,8 @@ test('error-code rendering is sorted, escaped, and deterministic', () => {
   assert.match(first, /^---\ntitle: Compliance Error Codes\n/);
   assert.match(first, /"og:title": "AdCP — Compliance Error Codes"/);
   assert.ok(first.indexOf('`A_CODE`') < first.indexOf('`Z_CODE`'));
+  assert.match(first, /<a id="error-code-a-code"><\/a>/);
+  assert.equal((first.match(/id="error-code-a-code"/g) ?? []).length, 1);
   assert.match(first, /&lt;tags&gt;/);
   assert.match(first, /&#123;values&#125;/);
   assert.match(first, /pipes \|/);

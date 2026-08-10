@@ -12,7 +12,7 @@ Retrieve the current operational state of media buys: configuration, creative ap
 
 ## Scope of Results
 
-Sales agents MUST return every media buy owned by the authenticated account, regardless of how the buy was created — via AdCP `create_media_buy`, via the seller's own APIs, via manual trafficking, via legacy or third-party systems. Scope is **account ownership**, not creation surface. A `media_buy_id` returned here identifies any order in the seller's ad server accessible to the authenticated caller.
+Sales agents MUST return every media buy owned by the authenticated account, regardless of how the buy was created — via AdCP [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy), via the seller's own APIs, via manual trafficking, via legacy or third-party systems. Scope is **account ownership**, not creation surface. A `media_buy_id` returned here identifies any order in the seller's ad server accessible to the authenticated caller.
 
 Any media buy returned by `get_media_buys` MUST be reachable by every task in its `valid_actions`. Sales agents MUST NOT mark a buy read-only, hide it, or refuse updates on the basis that it was not originally created via AdCP. When an action is unavailable for business reasons (contractual obligations, platform constraints, policy), the seller MUST omit only that action from `valid_actions` — never the whole set, and never merely because the buy was created outside AdCP. A seller that returns non-AdCP buys with a systematically empty `valid_actions` is non-conformant; that pattern is indistinguishable from hiding the buy.
 
@@ -51,7 +51,7 @@ Returns an array of media buys with current status, creative approval state, and
 ### Media Buy Object
 
 <Note>
-**3.1 vocabulary note.** `get_media_buys` returns the lifecycle state on a nested `media_buys[].status` field (no envelope collision — nested at depth 1). `create_media_buy` and `update_media_buy` success responses return the same state on a top-level **`media_buy_status`** field (added in 3.1 to avoid colliding with the envelope task-status `status`). Same enum, two field names in 3.1 — the cascade unifies in 4.0 ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905)). Buyers maintaining cross-call state should treat the two as the same logical value. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status) for the full picture.
+**3.1 vocabulary note.** `get_media_buys` returns the lifecycle state on a nested `media_buys[].status` field (no envelope collision — nested at depth 1). [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) and [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) success responses return the same state on a top-level **`media_buy_status`** field (added in 3.1 to avoid colliding with the envelope task-status `status`). Same enum, two field names in 3.1 — the cascade unifies in 4.0 ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905)). Buyers maintaining cross-call state should treat the two as the same logical value. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status) for the full picture.
 </Note>
 
 | Field | Description |
@@ -205,7 +205,7 @@ The surface covers both delivery-report notification types (`scheduled`, `final`
 
 Sellers whose declared `propagation_surfaces` does not include `webhook` MUST omit the field; opting in via `include_webhook_activity: true` does not override that.
 
-**Diagnosing an unexpected omission.** When you expected fires but got an omitted field, two observables let you discriminate the cause without filing a ticket: (1) check your own `push_notification_config` registration state for this buy — if not registered, that's the cause; (2) check the seller's `capabilities.media_buy.propagation_surfaces` via `get_adcp_capabilities` — if `webhook` is absent, that's the cause. When both check out, "seller does not persist fire history" is the remaining cause; that's a seller-side gap and warrants an operator ticket.
+**Diagnosing an unexpected omission.** When you expected fires but got an omitted field, two observables let you discriminate the cause without filing a ticket: (1) check your own `push_notification_config` registration state for this buy — if not registered, that's the cause; (2) check the seller's `capabilities.media_buy.propagation_surfaces` via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) — if `webhook` is absent, that's the cause. When both check out, "seller does not persist fire history" is the remaining cause; that's a seller-side gap and warrants an operator ticket.
 
 **Privacy:**
 
@@ -335,7 +335,7 @@ The `valid_actions` array tells agents what operations are permitted on a media 
 
 | Status | Expected `valid_actions` |
 |--------|------------------------|
-| `pending_creatives` | `pause`, `cancel`, `sync_creatives` |
+| `pending_creatives` | `pause`, `cancel`, [`sync_creatives`](/docs/creative/task-reference/sync_creatives) |
 | `pending_start` | `pause`, `cancel`, `sync_creatives` |
 | `active` | `pause`, `cancel`, `update_budget`, `update_dates`, `update_packages`, `add_packages`, `sync_creatives` |
 | `paused` | `resume`, `cancel`, `update_budget`, `update_dates`, `update_packages`, `add_packages`, `sync_creatives` |
@@ -345,7 +345,7 @@ The `valid_actions` array tells agents what operations are permitted on a media 
 
 Sellers MAY omit actions based on business rules (e.g., omit `cancel` when the media buy has contractual obligations that prevent cancellation).
 
-For creative changes, `sync_creatives` in `valid_actions` is a legacy creative-change action label, not proof that the `sync_creatives` task exists. Use the creative path the seller advertises: `sync_creatives` and `creative_assignments` for sellers with `creative.has_creative_library: true`, or `packages[].creatives` on `update_media_buy` for inline-only sellers.
+For creative changes, `sync_creatives` in `valid_actions` is a legacy creative-change action label, not proof that the `sync_creatives` task exists. Use the creative path the seller advertises: `sync_creatives` and `creative_assignments` for sellers with `creative.has_creative_library: true`, or `packages[].creatives` on [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) for inline-only sellers.
 
 ## Common Scenarios
 
@@ -566,7 +566,7 @@ asyncio.run(main())
 
 ## Snapshot vs. `get_media_buy_delivery`
 
-| | `get_media_buys` (with snapshot) | `get_media_buy_delivery` |
+| | `get_media_buys` (with snapshot) | [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) |
 |---|---|---|
 | **Purpose** | Operational monitoring | Reporting and reconciliation |
 | **Freshness** | Minutes (entity-level stats) | Hours (batch report jobs) |
@@ -610,10 +610,11 @@ Use cursor pagination for broad status queries to avoid large payloads:
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `MEDIA_BUY_NOT_FOUND` | Media buy ID does not exist | Verify `media_buy_id` |
-| `CONTEXT_REQUIRED` | No media buys found for the requested scope | Provide valid IDs/refs or broaden `status_filter`/pagination scope |
-| `AUTH_MISSING` | No credentials presented | Provide credentials via auth header |
-| `AUTH_INVALID` | Credentials rejected (expired / revoked) | Human credential rotation required; do not auto-retry |
+| [`MEDIA_BUY_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-media-buy-not-found) | Media buy ID does not exist | Verify `media_buy_id` |
+| [`AUTH_MISSING`](/docs/building/verification/compliance-catalog#error-code-auth-missing) | No credentials presented | Provide credentials via auth header |
+| [`AUTH_INVALID`](/docs/building/verification/compliance-catalog#error-code-auth-invalid) | Credentials rejected (expired / revoked) | Human credential rotation required; do not auto-retry |
+
+A valid query with no matching media buys succeeds with an empty `media_buys` array.
 
 ## Next Steps
 

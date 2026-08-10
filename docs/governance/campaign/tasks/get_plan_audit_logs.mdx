@@ -8,7 +8,7 @@ description: "get_plan_audit_logs retrieves governance state, budget tracking, a
 # get_plan_audit_logs
 
 <Note>
-**Experimental.** Campaign governance (`sync_plans`, `check_governance`, `report_plan_outcome`, `get_plan_audit_logs`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+**Experimental.** Campaign governance ([`sync_plans`](/docs/governance/campaign/tasks/sync_plans), [`check_governance`](/docs/governance/campaign/tasks/check_governance), [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome), `get_plan_audit_logs`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
 </Note>
 
 Retrieve governance state and audit trail for a plan, multiple plans, or an entire portfolio. Returns budget tracking, validation history, and compliance summary.
@@ -264,7 +264,7 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].entries[].explanation` | string | Human-readable explanation of the governance decision (present for `check` entries). |
 | `plans[].entries[].policies_evaluated` | array | Registry policy IDs evaluated during this check. |
 | `plans[].entries[].categories_evaluated` | array | Governance categories evaluated (e.g., `budget_authority`, `regulatory_compliance`). **Agent-internal labels**, not a protocol-level enum — each string is defined by the governance agent's policy model. Since one governance agent per account composes all specialist review (legal, brand safety, category-specialist reviewers) behind its single endpoint, `categories_evaluated` and `findings[].details` are how internal decomposition surfaces for audit. Consumers MUST treat values as opaque labels: pattern-matching against a fixed list is not safe across agents. |
-| `plans[].entries[].findings` | array | Findings from this check, mirroring the complete `check_governance` finding shape so binding-digest inputs round-trip without loss, including `source_plan_id`, `details`, and `uncertainty_reason` when present. |
+| `plans[].entries[].findings` | array | Findings from this check, mirroring the complete [`check_governance`](/docs/governance/campaign/tasks/check_governance) finding shape so binding-digest inputs round-trip without loss, including `source_plan_id`, `details`, and `uncertainty_reason` when present. |
 | `plans[].entries[].governance_context` | string | Opaque governance context identifying the governed action this entry belongs to. |
 | `plans[].entries[].plan_hash` | string | Audit-layer binding to the plan revision this attestation was evaluated over — `base64url_no_pad(SHA-256(JCS(plan_payload)))` per [Plan binding and audit](/docs/governance/campaign/specification#plan-binding-and-audit). Present on `check` entries. Auditors and buyer-side compliance tooling verify by recomputing over the retained plan revision and byte-comparing the decoded 32-byte digests. |
 | `plans[].entries[].runtime_attestations` | array | Ordered `{ reference, evaluation }` pairs retained for a runtime-attestation check. Recompute each `evaluation.reference_digest` from RFC 8785 JCS of its paired `reference` before recomputing the binding digest. |
@@ -279,16 +279,16 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 
 ## Authorization
 
-The request schema does not carry an envelope `account` field — tenant identity is resolved from the submitted IDs. The governance agent MUST verify that the authenticated principal is authorized for every `plan_ids` member, every plan expanded from `portfolio_plan_ids`, and every governed action addressed by `governance_contexts`. When any element fails the authorization check the governance agent MUST fail closed with a generic `PLAN_NOT_FOUND` response — the error body MUST NOT distinguish "unauthorized" from "not found" or name the offending ID. See [Agent and Account Isolation](/docs/building/by-layer/L1/security#agent-and-account-isolation) for the pattern and existence-leak guardrails.
+The request schema does not carry an envelope `account` field — tenant identity is resolved from the submitted IDs. The governance agent MUST verify that the authenticated principal is authorized for every `plan_ids` member, every plan expanded from `portfolio_plan_ids`, and every governed action addressed by `governance_contexts`. When any element fails the authorization check the governance agent MUST fail closed with a generic [`PLAN_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-plan-not-found) response — the error body MUST NOT distinguish "unauthorized" from "not found" or name the offending ID. See [Agent and Account Isolation](/docs/building/by-layer/L1/security#agent-and-account-isolation) for the pattern and existence-leak guardrails.
 
 ## Error codes
 
 | Code | Recovery | Description |
 |------|----------|-------------|
-| `PLAN_NOT_FOUND` | correctable | No plan with this ID, or the authenticated principal is not authorized for it. The two cases MUST be indistinguishable in the response to prevent plan-ID enumeration. |
+| [`PLAN_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-plan-not-found) | correctable | No plan with this ID, or the authenticated principal is not authorized for it. The two cases MUST be indistinguishable in the response to prevent plan-ID enumeration. |
 
 ## Related tasks
 
-- [`sync_plans`](./sync_plans) -- Push or update plans
-- [`check_governance`](./check_governance) -- Validate actions against the plan
-- [`report_plan_outcome`](./report_plan_outcome) -- Report outcomes to update plan state
+- [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) -- Push or update plans
+- [`check_governance`](/docs/governance/campaign/tasks/check_governance) -- Validate actions against the plan
+- [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) -- Report outcomes to update plan state

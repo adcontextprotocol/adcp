@@ -19,7 +19,7 @@ Offered only by agents that set `creative.supports_transformers: true` in [`get_
 
 ## Why transformers
 
-The set of render knobs a creative agent exposes — and their legal values — is **account-specific and dynamic**. Your configured voices aren't a global enum or a list you hold; the *agent* knows them, and the set changes when you add one. So discovery flows agent → buyer, the same way `get_products` surfaces account-scoped inventory. `list_transformers` is that discovery surface for creative build capability.
+The set of render knobs a creative agent exposes — and their legal values — is **account-specific and dynamic**. Your configured voices aren't a global enum or a list you hold; the *agent* knows them, and the set changes when you add one. So discovery flows agent → buyer, the same way [`get_products`](/docs/media-buy/task-reference/get_products) surfaces account-scoped inventory. `list_transformers` is that discovery surface for creative build capability.
 
 The agent chooses granularity: a distinct voice or model may be its own transformer, or a single transformer may expose `voice`/`model` as an enumerable `config` param. Either way you use the same call — list transformers, expand a param if you want its values.
 
@@ -54,7 +54,7 @@ Each transformer carries:
 
 | Field | Description |
 |-------|-------------|
-| `transformer_id` | Stable id; pass to `build_creative` `transformer_id` |
+| `transformer_id` | Stable id; pass to [`build_creative`](/docs/creative/task-reference/build_creative) `transformer_id` |
 | `name` | Human-readable name |
 | `input_formats` / `output_capability_ids` | Canonical declarations it accepts and creative capabilities it produces. A `build_creative` target MUST be a subset of `output_capability_ids`. Omitted `input_formats` means it builds from a brief or raw assets. |
 | `params` | Config knobs (see [Transformer Param](https://adcontextprotocol.org/schemas/v3/core/transformer-param.json)): `field`, `type`, `value_source` (`inline`/`range`/`enumerable`/`free_text`), `allowed_values`/`minimum`/`maximum`, `options[]`+`options_cursor` (when expanded), `max_length` (for `free_text`), `default`. `free_text` is an open buyer-authored string (e.g. a `negative_prompt`); a param MUST NOT be a generation-count knob — count rides `max_variants`/`max_creatives`. |
@@ -129,8 +129,8 @@ Pass the chosen `transformer_id` and a typed `config` (keyed by each param's `fi
 
 | Code | Meaning | Recovery |
 |------|---------|----------|
-| `AUTH_MISSING` | `include_pricing` requested without a resolvable account | Supply `account` / authenticate |
-| `INVALID_REQUEST` | Malformed filter or pagination cursor | Correct the request |
+| [`AUTH_MISSING`](/docs/building/verification/compliance-catalog#error-code-auth-missing) | `include_pricing` requested without a resolvable account | Supply `account` / authenticate |
+| [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | Malformed filter or pagination cursor | Correct the request |
 
 Unknown `expand_params` (a `field` no transformer exposes) are ignored, not an error — the param simply returns no `options`.
 

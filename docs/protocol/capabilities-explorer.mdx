@@ -22,7 +22,7 @@ The authoritative schema lives at [`static/schemas/source/protocol/get-adcp-capa
 
 ## Top-level domains
 
-The 14 domains below are the entire top-level surface of `get_adcp_capabilities`. Every capability flag eventually nests under one of these. New top-level keys are extremely rare and should not be the first move — see the gate questions at the end of this page.
+The 14 domains below are the entire top-level surface of [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). Every capability flag eventually nests under one of these. New top-level keys are extremely rare and should not be the first move — see the gate questions at the end of this page.
 
 ### `adcp` — core protocol identity
 
@@ -52,7 +52,7 @@ Valid values cover `media_buy`, `creative`, `signals`, `governance`, `sponsored_
 
 How accounts are negotiated; whether one is required before product discovery; what billing models are supported.
 
-- **`required_for_products`** — boolean. If true, `get_products` requires an established account.
+- **`required_for_products`** — boolean. If true, [`get_products`](/docs/media-buy/task-reference/get_products) requires an established account.
 - **`authorization_endpoint`** — OAuth/auth URL for account negotiation.
 - **`require_operator_auth`** — declares whether operator-level authentication is required.
 - **`supported_billing`** — array of billing models (e.g. `prepaid`, `monthly_invoice`).
@@ -198,7 +198,7 @@ The protocol surface beyond capabilities discovery (reporting, attribution tasks
 
 ### `compliance_testing` — deterministic test scenarios
 
-Declares the agent supports `comply_test_controller` and which scenarios are honored.
+Declares the agent supports [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) and which scenarios are honored.
 
 - **`scenarios`** — array of compliance scenario IDs the agent supports.
 

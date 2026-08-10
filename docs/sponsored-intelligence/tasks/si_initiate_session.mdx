@@ -5,7 +5,7 @@ description: "si_initiate_session is the AdCP task that starts a Sponsored Intel
 ---
 
 <Note>
-**Experimental.** Sponsored Intelligence (`si_get_offering`, `si_initiate_session`, `si_send_message`, `si_terminate_session`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any of these tasks MUST declare `sponsored_intelligence.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+**Experimental.** Sponsored Intelligence ([`si_get_offering`](/docs/sponsored-intelligence/tasks/si_get_offering), `si_initiate_session`, [`si_send_message`](/docs/sponsored-intelligence/tasks/si_send_message), [`si_terminate_session`](/docs/sponsored-intelligence/tasks/si_terminate_session)) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any of these tasks MUST declare `sponsored_intelligence.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
 </Note>
 
 Start a conversational session with a brand agent. The host platform invokes this task when a user expresses interest in engaging with a brand.
@@ -20,13 +20,13 @@ Start a conversational session with a brand agent. The host platform invokes thi
 | `placement` | string | No | Where the session was triggered (e.g., "chatgpt_search") |
 | `offering_id` | string | No | Brand-specific offering reference to apply |
 | `supported_capabilities` | object | No | What the host platform supports |
-| `offering_token` | string | No | Token from `si_get_offering` for correlation |
+| `offering_token` | string | No | Token from [`si_get_offering`](/docs/sponsored-intelligence/tasks/si_get_offering) for correlation |
 | `sponsored_context_receipt` | object | No | Host receipt for sponsored context accepted before session initiation |
 | `context` | object | No | Opaque correlation data echoed unchanged in the response (see [application context](/docs/building/by-layer/L2/context-sessions#application-context-context)) |
 
 ### Offering Token
 
-If a host performed a [`si_get_offering`](./si_get_offering) lookup before initiating, include the token for **session continuity**:
+If a host performed a [`si_get_offering`](/docs/sponsored-intelligence/tasks/si_get_offering) lookup before initiating, include the token for **session continuity**:
 
 ```json
 {

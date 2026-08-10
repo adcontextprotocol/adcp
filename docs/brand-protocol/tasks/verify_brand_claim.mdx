@@ -14,7 +14,7 @@ Ask a brand-agent a verification question about a facet of its identity. **This 
 | `property` | "Is this site / app / property one of yours?" | Inventory onboarding, creative clearance, fraud escalation |
 | `trademark` | "Is this trademark yours?" | Creative-clearance gates, licensee-posture confirmation |
 
-The brand-agent answers using its own data — which is brand.json plus the richer states (`pending_review`, `transferring`, `licensed_in`, etc.) that the static file can't express. The tool is one specific-question affordance on top of the same identity surface `get_brand_identity` reads.
+The brand-agent answers using its own data — which is brand.json plus the richer states (`pending_review`, `transferring`, `licensed_in`, etc.) that the static file can't express. The tool is one specific-question affordance on top of the same identity surface [`get_brand_identity`](/docs/brand-protocol/tasks/get_brand_identity) reads.
 
 For high-volume verification (portfolio refresh, creative-clearance batches, crawler scans), use the bulk variant [`verify_brand_claims`](/docs/brand-protocol/tasks/verify_brand_claims) — same per-claim semantics, one round-trip and one rate-limit slot for the whole batch.
 
@@ -36,7 +36,7 @@ Shortcuts kill the trust model. Without the reciprocation step, a malicious or m
 
 ## Capability discovery
 
-The brand-agent advertises this task in its `get_adcp_capabilities` response. An agent that supports only some claim types declares this via the per-tool capability extension:
+The brand-agent advertises this task in its [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) response. An agent that supports only some claim types declares this via the per-tool capability extension:
 
 ```json
 {
@@ -53,7 +53,7 @@ The brand-agent advertises this task in its `get_adcp_capabilities` response. An
 }
 ```
 
-When `supported_claim_types` is omitted, the agent advertises support for all four. Consumers MUST check before relying on a specific claim type; unsupported types return `UNSUPPORTED_CLAIM_TYPE` (see [Error handling](#error-handling)).
+When `supported_claim_types` is omitted, the agent advertises support for all four. Consumers MUST check before relying on a specific claim type; unsupported types return [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) (see [Error handling](#error-handling)).
 
 ### Minimum viable adoption
 
@@ -64,7 +64,7 @@ A brand-agent doesn't have to ship all four claim types at once. Pick the slice 
 - **Trademark only** — creative-clearance pipelines that need licensee posture (the differentiator from registry crawls).
 - **All four** — full coverage; recommended for AAO-hosted agents serving many member configurations.
 
-Advertise only the types you implement. Partners check `supported_claim_types` and route accordingly; unsupported types return `UNSUPPORTED_CLAIM_TYPE` cleanly.
+Advertise only the types you implement. Partners check `supported_claim_types` and route accordingly; unsupported types return `UNSUPPORTED_FEATURE` cleanly.
 
 ## Authorization tiers
 
@@ -380,17 +380,17 @@ Agents SHOULD set `signed_response.payload.exp` no later than the HTTP freshness
 
 | Error code | Cause |
 |---|---|
-| `AUTH_INVALID` | Caller's signed envelope did not verify. |
-| `RATE_LIMITED` | Agent has rate-limited the caller per `{caller_identity, claim_type, claim-target}`. Agents SHOULD return `Retry-After` and prefer returning cached prior answer. |
-| `UNSUPPORTED_CLAIM_TYPE` | The agent does not implement the requested `claim_type`. Check `supported_claim_types` via `get_adcp_capabilities`. |
-| `INVALID_INPUT` | Required `claim` fields are missing or malformed (e.g., `subsidiary_domain` not a valid hostname). |
-| `AMBIGUOUS_MATCH` | For `claim_type: "trademark"` — multiple registrations match. Narrow with `registry`, `number`, or `countries`. |
+| [`AUTH_INVALID`](/docs/building/verification/compliance-catalog#error-code-auth-invalid) | Caller's signed envelope did not verify. |
+| [`RATE_LIMITED`](/docs/building/verification/compliance-catalog#error-code-rate-limited) | Agent has rate-limited the caller per `{caller_identity, claim_type, claim-target}`. Agents SHOULD return `Retry-After` and prefer returning cached prior answer. |
+| [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | The agent does not implement the requested `claim_type`. Check `supported_claim_types` via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). |
+| [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | Required `claim` fields are missing or malformed (e.g., `subsidiary_domain` not a valid hostname). |
+| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | For `claim_type: "trademark"` — multiple registrations match. Narrow with `registry`, `number`, or `countries`. |
 
 ```json
 {
   "errors": [
     {
-      "code": "UNSUPPORTED_CLAIM_TYPE",
+      "code": "UNSUPPORTED_FEATURE",
       "message": "claim_type 'property' is not supported by this agent. Supported: subsidiary, parent, trademark."
     }
   ]

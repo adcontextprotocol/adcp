@@ -11,7 +11,7 @@ Each AdCP protocol defines tasks that agents implement depending on their role. 
 
 **Legend**: **Required** — the specification mandates implementation. **Conditional** — required when the agent has a specific capability. **Optional** — the specification recommends but does not mandate.
 
-Some tasks span protocols. For example, `sync_creatives` is defined in the Creative Protocol but may also be implemented by Media Buy sales agents. Canonical format discovery itself is no longer a shared task: each owning surface publishes its declaration directly.
+Some tasks span protocols. For example, [`sync_creatives`](/docs/creative/task-reference/sync_creatives) is defined in the Creative Protocol but may also be implemented by Media Buy sales agents. Canonical format discovery itself is no longer a shared task: each owning surface publishes its declaration directly.
 
 ## Shared
 
@@ -19,12 +19,12 @@ Every AdCP agent, regardless of protocol, implements:
 
 | Task | Requirement | Reference |
 |------|------------|-----------|
-| `get_adcp_capabilities` | Required | [Capability discovery](/docs/protocol/get_adcp_capabilities) |
-| `sync_agent_notification_configs` | Conditional | Required when `get_adcp_capabilities.adcp.capability_changes.notifications.supported` is `true`; registers caller-scoped agent-level `capabilities.changed` webhooks. Sellers MUST reject registrations without a stable authenticated principal. |
+| [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) | Required | [Capability discovery](/docs/protocol/get_adcp_capabilities) |
+| [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs) | Conditional | Required when `get_adcp_capabilities.adcp.capability_changes.notifications.supported` is `true`; registers caller-scoped agent-level `capabilities.changed` webhooks. Sellers MUST reject registrations without a stable authenticated principal. |
 
-Caller-scope RBAC introspection is not a standalone task. Sellers that support scope introspection return a per-account `authorization` object on `sync_accounts` and `list_accounts` responses. See [Accounts Protocol — Caller authorization](/docs/accounts/overview#caller-authorization).
+Caller-scope RBAC introspection is not a standalone task. Sellers that support scope introspection return a per-account `authorization` object on [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and [`list_accounts`](/docs/accounts/tasks/list_accounts) responses. See [Accounts Protocol — Caller authorization](/docs/accounts/overview#caller-authorization).
 
-AdCP task lifecycle state is application-layer state, not MCP-native or A2A-native task state. 3.x sellers MAY advertise non-colliding AdCP aliases for polling and reconciliation: `get_task_status` for legacy `tasks/get`, and `list_tasks` for legacy `tasks/list`. These aliases are optional compatibility surfaces in 3.x; callers MUST continue to support the legacy names through the 3.x line. Alias and legacy request payloads use the same snake_case shape, including the optional `account` scope used to keep task visibility within the caller's authenticated account + principal pair.
+AdCP task lifecycle state is application-layer state, not MCP-native or A2A-native task state. 3.x sellers MAY advertise non-colliding AdCP aliases for polling and reconciliation: [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) for legacy `tasks/get`, and [`list_tasks`](https://adcontextprotocol.org/schemas/v3/protocol/list-tasks-request.json) for legacy `tasks/list`. These aliases are optional compatibility surfaces in 3.x; callers MUST continue to support the legacy names through the 3.x line. Alias and legacy request payloads use the same snake_case shape, including the optional `account` scope used to keep task visibility within the caller's authenticated account + principal pair.
 
 ## Media Buy Protocol
 
@@ -32,19 +32,19 @@ AdCP task lifecycle state is application-layer state, not MCP-native or A2A-nati
 
 | Task | Requirement | Notes |
 |------|------------|-------|
-| `get_products` | Required | Inventory discovery |
-| `get_adcp_capabilities` | Required | Agent capabilities; sellable formats remain product-scoped in `get_products` |
-| `create_media_buy` | Required | Campaign creation and order confirmation |
-| `update_media_buy` | Required | Budget, targeting, pause, cancel |
-| `get_media_buys` | Required | Operational state retrieval |
-| `get_media_buy_delivery` | Required | Delivery metrics at the package level; `reporting_capabilities` MUST be included on every product |
-| `provide_performance_feedback` | Required | Accept buyer optimization signals |
-| `sync_creatives` | Conditional | Required when the sales agent hosts a creative library (Creative Protocol task) |
-| `list_creatives` | Optional | Creative catalog browsing (Creative Protocol task) |
-| `sync_catalogs` | Optional | Product/inventory catalog sync |
-| `sync_event_sources` | Optional | Conversion tracking setup |
-| `log_event` | Conditional | Required when event sources are configured |
-| `sync_audiences` | Optional | First-party CRM audience upload |
+| [`get_products`](/docs/media-buy/task-reference/get_products) | Required | Inventory discovery |
+| [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) | Required | Agent capabilities; sellable formats remain product-scoped in `get_products` |
+| [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) | Required | Campaign creation and order confirmation |
+| [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) | Required | Budget, targeting, pause, cancel |
+| [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) | Required | Operational state retrieval |
+| [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) | Required | Delivery metrics at the package level; `reporting_capabilities` MUST be included on every product |
+| [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) | Required | Accept buyer optimization signals |
+| [`sync_creatives`](/docs/creative/task-reference/sync_creatives) | Conditional | Required when the sales agent hosts a creative library (Creative Protocol task) |
+| [`list_creatives`](/docs/creative/task-reference/list_creatives) | Optional | Creative catalog browsing (Creative Protocol task) |
+| [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) | Optional | Product/inventory catalog sync |
+| [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) | Optional | Conversion tracking setup |
+| [`log_event`](/docs/media-buy/task-reference/log_event) | Conditional | Required when event sources are configured |
+| [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) | Optional | First-party CRM audience upload |
 
 Sales agents MUST also support at least one transport (MCP or A2A) and declare `media_buy` in `supported_protocols`.
 
@@ -68,13 +68,13 @@ Orchestrators are not MCP/A2A servers — they call sales agent tasks. Conforman
 
 | Task | Requirement | Notes |
 |------|------------|-------|
-| `get_adcp_capabilities` | Required | Canonical creative capability discovery through `creative.supported_formats[]` |
-| `list_transformers` | Conditional | Required when the agent advertises `creative.supports_transformers: true` |
-| `build_creative` | Optional | Generation, transformation, or library retrieval |
-| `preview_creative` | Optional | Preview rendering |
-| `list_creatives` | Conditional | Required when `has_creative_library: true` |
-| `sync_creatives` | Conditional | Required when the agent accepts creative uploads |
-| `get_creative_delivery` | Optional | Variant-level delivery metrics |
+| [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) | Required | Canonical creative capability discovery through `creative.supported_formats[]` |
+| [`list_transformers`](/docs/creative/task-reference/list_transformers) | Conditional | Required when the agent advertises `creative.supports_transformers: true` |
+| [`build_creative`](/docs/creative/task-reference/build_creative) | Optional | Generation, transformation, or library retrieval |
+| [`preview_creative`](/docs/creative/task-reference/preview_creative) | Optional | Preview rendering |
+| [`list_creatives`](/docs/creative/task-reference/list_creatives) | Conditional | Required when `has_creative_library: true` |
+| [`sync_creatives`](/docs/creative/task-reference/sync_creatives) | Conditional | Required when the agent accepts creative uploads |
+| [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery) | Optional | Variant-level delivery metrics |
 
 Creative agents MUST publish accurate canonical capability declarations. Exact publisher-format claims carry publisher identity; generic claims carry an honest parameter envelope.
 
@@ -86,8 +86,8 @@ Creative agents MUST publish accurate canonical capability declarations. Exact p
 
 | Task | Requirement | Notes |
 |------|------------|-------|
-| `get_signals` | Required | Signal discovery |
-| `activate_signal` | Required | Signal activation on decisioning platforms |
+| [`get_signals`](/docs/signals/tasks/get_signals) | Required | Signal discovery |
+| [`activate_signal`](/docs/signals/tasks/activate_signal) | Required | Signal activation on decisioning platforms |
 
 Signal agents MUST enforce access control for private signals and activation keys.
 
@@ -99,13 +99,16 @@ Signal agents MUST enforce access control for private signals and activation key
 
 | Task | Requirement | Notes |
 |------|------------|-------|
-| `get_brand_identity` | Required | Core identity is public; authorized callers get deeper data |
-| `get_rights` | Conditional | Required when the agent manages brand rights |
-| `acquire_rights` | Conditional | Required when the agent manages brand rights |
-| `update_rights` | Conditional | Required when the agent manages brand rights |
-| `creative_approval` | Conditional | Required when the agent reviews AI-generated content |
+| [`get_brand_identity`](/docs/brand-protocol/tasks/get_brand_identity) | Required | Core identity is public; authorized callers get deeper data |
+| [`get_rights`](/docs/brand-protocol/tasks/get_rights) | Conditional | Required when the agent manages brand rights |
+| [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights) | Conditional | Required when the agent manages brand rights |
+| [`update_rights`](/docs/brand-protocol/tasks/update_rights) | Conditional | Required when the agent manages brand rights |
 
 Brand agents MUST declare `brand` in `supported_protocols`.
+
+Creative approval is delivered to the `approval_webhook` declared by
+[`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights); its
+`creative-approval-request.json` shape is a webhook payload, not an AdCP task.
 
 **Reference**: [Brand Protocol](/docs/brand-protocol) · [Building a brand agent](/docs/brand-protocol/building-a-brand-agent)
 
@@ -115,11 +118,11 @@ Brand agents MUST declare `brand` in `supported_protocols`.
 
 | Task | Requirement | Notes |
 |------|------------|-------|
-| `sync_accounts` | Conditional | Buyer-declared accounts (`require_operator_auth: false`) — buyer declares brand/operator pairs; account-id namespaces may use this only for settings updates unless a future explicit capability declares provisioning |
-| `list_accounts` | Conditional / recommended | Account-id namespaces (`require_operator_auth: true`) MUST expose it when a credential can access multiple accounts and SHOULD return a singleton otherwise. Buyer-declared-account sellers (`require_operator_auth: false`) SHOULD expose it as the cold-start recovery read for stateless buyers. |
-| `sync_governance` | Conditional | Required when the buyer uses campaign governance |
-| `report_usage` | Conditional | Required when the agent charges for services |
-| `get_account_financials` | Optional | Financial summary per account |
+| [`sync_accounts`](/docs/accounts/tasks/sync_accounts) | Conditional | Buyer-declared accounts (`require_operator_auth: false`) — buyer declares brand/operator pairs; account-id namespaces may use this only for settings updates unless a future explicit capability declares provisioning |
+| [`list_accounts`](/docs/accounts/tasks/list_accounts) | Conditional / recommended | Account-id namespaces (`require_operator_auth: true`) MUST expose it when a credential can access multiple accounts and SHOULD return a singleton otherwise. Buyer-declared-account sellers (`require_operator_auth: false`) SHOULD expose it as the cold-start recovery read for stateless buyers. |
+| [`sync_governance`](/docs/accounts/tasks/sync_governance) | Conditional | Required when the buyer uses campaign governance |
+| [`report_usage`](/docs/accounts/tasks/report_usage) | Conditional | Required when the agent charges for services |
+| [`get_account_financials`](/docs/accounts/tasks/get_account_financials) | Optional | Financial summary per account |
 
 Agents MUST implement at least one of `sync_accounts` or `list_accounts` depending on their account model. An agent MAY implement both. Buyer-declared-account sellers SHOULD implement both: `sync_accounts` establishes the relationship, while `list_accounts` lets a stateless buyer recover the seller's acknowledged `(brand, operator, sandbox)` portfolio without already possessing the natural keys it lost.
 
@@ -131,10 +134,10 @@ Agents MUST implement at least one of `sync_accounts` or `list_accounts` dependi
 
 | Task | Requirement | Notes |
 |------|------------|-------|
-| `sync_plans` | Required | Plan creation and amendment |
-| `check_governance` | Required | Validation at purchase, modification, and delivery phases |
-| `report_plan_outcome` | Required | Outcome reporting and budget commitment |
-| `get_plan_audit_logs` | Required | Audit trail retrieval |
+| [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) | Required | Plan creation and amendment |
+| [`check_governance`](/docs/governance/campaign/tasks/check_governance) | Required | Validation at purchase, modification, and delivery phases |
+| [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) | Required | Outcome reporting and budget commitment |
+| [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) | Required | Audit trail retrieval |
 
 **Reference**: [Campaign Governance Specification](/docs/governance/campaign/specification)
 
@@ -144,12 +147,12 @@ Agents MUST implement at least one of `sync_accounts` or `list_accounts` dependi
 
 | Task | Requirement | Notes |
 |------|------------|-------|
-| `create_property_list` | Required | List creation with filters |
-| `get_property_list` | Required | Resolved property retrieval |
-| `update_property_list` | Required | List modification |
-| `delete_property_list` | Required | List removal |
-| `list_property_lists` | Required | List enumeration |
-| `validate_property_delivery` | Optional | Post-campaign compliance validation |
+| [`create_property_list`](/docs/governance/property/tasks/property_lists#create_property_list) | Required | List creation with filters |
+| [`get_property_list`](/docs/governance/property/tasks/property_lists#get_property_list) | Required | Resolved property retrieval |
+| [`update_property_list`](/docs/governance/property/tasks/property_lists#update_property_list) | Required | List modification |
+| [`delete_property_list`](/docs/governance/property/tasks/property_lists#delete_property_list) | Required | List removal |
+| [`list_property_lists`](/docs/governance/property/tasks/property_lists#list_property_lists) | Required | List enumeration |
+| [`validate_property_delivery`](/docs/governance/property/tasks/validate_property_delivery) | Optional | Post-campaign compliance validation |
 
 **Reference**: [Property Governance Specification](/docs/governance/property/specification)
 
@@ -159,11 +162,11 @@ Agents MUST implement at least one of `sync_accounts` or `list_accounts` dependi
 
 | Task | Requirement | Notes |
 |------|------------|-------|
-| `create_collection_list` | Required | List creation with collection sources and filters |
-| `get_collection_list` | Required | Resolved collection retrieval |
-| `update_collection_list` | Required | List modification |
-| `list_collection_lists` | Required | List enumeration |
-| `delete_collection_list` | Required | List removal |
+| [`create_collection_list`](/docs/governance/collection/tasks/collection_lists#create_collection_list) | Required | List creation with collection sources and filters |
+| [`get_collection_list`](/docs/governance/collection/tasks/collection_lists#get_collection_list) | Required | Resolved collection retrieval |
+| [`update_collection_list`](/docs/governance/collection/tasks/collection_lists#update_collection_list) | Required | List modification |
+| [`list_collection_lists`](/docs/governance/collection/tasks/collection_lists#list_collection_lists) | Required | List enumeration |
+| [`delete_collection_list`](/docs/governance/collection/tasks/collection_lists#delete_collection_list) | Required | List removal |
 
 **Reference**: [Collection Governance](/docs/governance/collection)
 
@@ -173,13 +176,13 @@ Agents MUST implement at least one of `sync_accounts` or `list_accounts` dependi
 
 | Task | Requirement | Notes |
 |------|------------|-------|
-| `create_content_standards` | Required | Standards creation |
-| `get_content_standards` | Required | Standards retrieval |
-| `list_content_standards` | Required | Standards enumeration |
-| `update_content_standards` | Required | Standards modification |
-| `calibrate_content` | Optional | Seller calibration against standards |
-| `validate_content_delivery` | Optional | Post-delivery content compliance |
-| `get_media_buy_artifacts` | Optional | Artifact retrieval for validation |
+| [`create_content_standards`](/docs/governance/content-standards/tasks/create_content_standards) | Required | Standards creation |
+| [`get_content_standards`](/docs/governance/content-standards/tasks/get_content_standards) | Required | Standards retrieval |
+| [`list_content_standards`](/docs/governance/content-standards/tasks/list_content_standards) | Required | Standards enumeration |
+| [`update_content_standards`](/docs/governance/content-standards/tasks/update_content_standards) | Required | Standards modification |
+| [`calibrate_content`](/docs/governance/content-standards/tasks/calibrate_content) | Optional | Seller calibration against standards |
+| [`validate_content_delivery`](/docs/governance/content-standards/tasks/validate_content_delivery) | Optional | Post-delivery content compliance |
+| [`get_media_buy_artifacts`](/docs/governance/content-standards/tasks/get_media_buy_artifacts) | Optional | Artifact retrieval for validation |
 
 **Reference**: [Content Standards](/docs/governance/content-standards)
 
@@ -189,7 +192,7 @@ Agents MUST implement at least one of `sync_accounts` or `list_accounts` dependi
 
 | Task | Requirement | Notes |
 |------|------------|-------|
-| `get_creative_features` | Required | Security scanning, content categorization |
+| [`get_creative_features`](/docs/governance/creative/get_creative_features) | Required | Security scanning, content categorization |
 
 **Reference**: [Creative Governance](/docs/governance/creative)
 
@@ -199,10 +202,10 @@ Agents MUST implement at least one of `sync_accounts` or `list_accounts` dependi
 
 | Task | Requirement | Notes |
 |------|------------|-------|
-| `si_get_offering` | Optional | Pre-session offering lookup |
-| `si_initiate_session` | Required | Session creation with consent |
-| `si_send_message` | Required | Conversational messaging |
-| `si_terminate_session` | Required | Session cleanup |
+| [`si_get_offering`](/docs/sponsored-intelligence/tasks/si_get_offering) | Optional | Pre-session offering lookup |
+| [`si_initiate_session`](/docs/sponsored-intelligence/tasks/si_initiate_session) | Required | Session creation with consent |
+| [`si_send_message`](/docs/sponsored-intelligence/tasks/si_send_message) | Required | Conversational messaging |
+| [`si_terminate_session`](/docs/sponsored-intelligence/tasks/si_terminate_session) | Required | Session cleanup |
 
 Brand agents MUST declare `sponsored_intelligence` in `supported_protocols`.
 

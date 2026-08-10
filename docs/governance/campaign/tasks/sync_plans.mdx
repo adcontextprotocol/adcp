@@ -8,7 +8,7 @@ description: "sync_plans pushes campaign plans with budget limits, channels, fli
 # sync_plans
 
 <Note>
-**Experimental.** Campaign governance (`sync_plans`, `check_governance`, `report_plan_outcome`, `get_plan_audit_logs`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+**Experimental.** Campaign governance (`sync_plans`, [`check_governance`](/docs/governance/campaign/tasks/check_governance), [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome), [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs)) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
 </Note>
 
 Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, authorized markets, and compliance policies -- and serves as the source of truth for all validation.
@@ -111,7 +111,7 @@ Plans originate in external systems -- an agency's planning tool, a brand's budg
 
 Syncing a plan that already exists (same `plan_id`) updates it. The governance agent increments the version and re-evaluates any active campaigns against the updated rules. This handles mid-flight amendments like budget increases or channel additions. Content-standards versions follow a separate pinned-at-buy rule — see [content standards versioning](/docs/governance/content-standards/index#versioning-and-mid-flight-amendments).
 
-Multiple campaigns (identified by `governance_context` in `check_governance` and `report_plan_outcome`) can reference the same plan. The governance agent tracks budget across all campaigns tied to a plan.
+Multiple campaigns (identified by `governance_context` in [`check_governance`](/docs/governance/campaign/tasks/check_governance) and [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome)) can reference the same plan. The governance agent tracks budget across all campaigns tied to a plan.
 
 The plan specifies campaign context -- budget, channels, flight dates, and authorized markets. The governance agent resolves applicable policies from the brand's compliance configuration, but plans can also reference registry policies directly via `policy_ids` and include campaign-specific rules via `custom_policies`. This supports both centralized policy management (brand-level) and campaign-specific overrides when the buying team needs additional requirements for a particular campaign.
 
@@ -120,7 +120,7 @@ The plan specifies campaign context -- budget, channels, flight dates, and autho
 1. **Geo enforcement** -- The governance agent rejects governed actions targeting outside the plan's markets. A plan with `regions: ["US-MA"]` blocks actions that don't explicitly target Massachusetts.
 2. **Policy resolution** -- The agent finds all policies whose jurisdictions overlap with the plan's markets. A plan with `countries: ["US"]` is subject to all US federal and state-level policies. A plan with only `regions: ["US-MA"]` is subject to Massachusetts-specific and federal policies.
 
-These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and `create_media_buy` -- ensuring consistent geo vocabulary across the protocol. A pharma campaign running nationally uses `countries: ["US"]`; a cannabis campaign limited to legal states uses `regions: ["US-CO", "US-CA", "US-MA"]`.
+These fields use the same ISO codes and semantics as `product-filters`, `offerings`, and [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) -- ensuring consistent geo vocabulary across the protocol. A pharma campaign running nationally uses `countries: ["US"]`; a cannabis campaign limited to legal states uses `regions: ["US-CO", "US-CA", "US-MA"]`.
 
 ## Plan-hash preimage
 
@@ -175,7 +175,7 @@ Each plan item a buyer supplies here is the preimage the governance agent hashes
 | `plans[].plan_id` | string | Plan identifier. |
 | `plans[].status` | enum | `active` (sync succeeded) or `error` (sync failed). This is the sync result status, not the plan lifecycle status. |
 | `plans[].version` | number | Plan version (increments on each sync). |
-| `plans[].categories` | array | Validation categories the governance agent reports as active for this plan. Category labels come from the agent's internal policy model, not `get_adcp_capabilities`. |
+| `plans[].categories` | array | Validation categories the governance agent reports as active for this plan. Category labels come from the agent's internal policy model, not [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). |
 | `plans[].categories[].category_id` | string | Opaque agent-internal validation label for display and audit. Common vocabulary includes `budget_authority`, `strategic_alignment`, `bias_fairness`, `regulatory_compliance`, `seller_verification`, and `brand_policy`. An agent that actually evaluated accessibility may use the documented label `accessibility_compliance`, but clients MUST NOT treat it as a protocol enum, policy activation, or typed format guarantee. |
 | `plans[].categories[].status` | enum | `active` or `inactive`. |
 | `plans[].resolved_policies` | array | Policies the governance agent will enforce for this plan. Includes explicitly referenced and auto-applied policies. |
@@ -213,7 +213,7 @@ Plans can declare audience targeting constraints using the `audience` field. Eac
 }
 ```
 
-The governance agent evaluates seller targeting against these constraints during `check_governance`. Signal references enable structural matching; descriptions require semantic comparison.
+The governance agent evaluates seller targeting against these constraints during [`check_governance`](/docs/governance/campaign/tasks/check_governance). Signal references enable structural matching; descriptions require semantic comparison.
 
 ### Restricted attributes
 
@@ -231,12 +231,12 @@ Policy categories are distinct from `brand.industries`. Industries describe what
 
 | Code | Recovery | Description |
 |------|----------|-------------|
-| `INVALID_REQUEST` | correctable | Plan is missing required fields or has invalid values. `error.field` identifies the offending plan field. |
-| `REFERENCE_NOT_FOUND` | correctable | Brand domain could not be resolved via the Brand Protocol. The governance agent cannot determine applicable compliance policies without a valid brand reference. `error.field` MUST identify the brand field that failed to resolve. |
-| `VALIDATION_ERROR` | correctable | Cannot reduce budget below the amount already committed (on plan update). `error.field` identifies the budget field. |
+| [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | correctable | Plan is missing required fields or has invalid values. `error.field` identifies the offending plan field. |
+| [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found) | correctable | Brand domain could not be resolved via the Brand Protocol. The governance agent cannot determine applicable compliance policies without a valid brand reference. `error.field` MUST identify the brand field that failed to resolve. |
+| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | correctable | Cannot reduce budget below the amount already committed (on plan update). `error.field` identifies the budget field. |
 
 ## Related tasks
 
-- [`check_governance`](./check_governance) -- Validate actions against this plan
-- [`report_plan_outcome`](./report_plan_outcome) -- Report outcomes back to update plan state
-- [`get_plan_audit_logs`](./get_plan_audit_logs) -- View plan state and audit trail
+- [`check_governance`](/docs/governance/campaign/tasks/check_governance) -- Validate actions against this plan
+- [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) -- Report outcomes back to update plan state
+- [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) -- View plan state and audit trail
