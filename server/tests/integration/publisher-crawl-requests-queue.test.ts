@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Pool } from 'pg';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Client, type Pool } from 'pg';
 import { closeDatabase, initializeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import {
@@ -58,6 +58,12 @@ describe('durable publisher crawl request queue', () => {
       requesterType: 'user',
       requestedByUserId: 'durable-crawl-test-user',
     });
+  }
+
+  async function releaseLocks(...locks: Array<{ release(): Promise<void> } | null | undefined>) {
+    for (const lock of locks) {
+      await lock?.release().catch(() => undefined);
+    }
   }
 
   it('persists admission before exposing a queued request', async () => {
@@ -232,6 +238,86 @@ describe('durable publisher crawl request queue', () => {
     const fullAfterRelease = await secondWorker.tryAcquireCrawlExecutionLock();
     expect(fullAfterRelease).not.toBeNull();
     await fullAfterRelease.release();
+  });
+
+  it('retains full-crawl intent across execution-lock timeout and rejects later publishers', async () => {
+    const { CrawlerService } = await import('../../src/crawler.js');
+    const publisherWorker = Object.create((CrawlerService as any).prototype);
+    const fullWorker = Object.create((CrawlerService as any).prototype);
+    const laterPublisherWorker = Object.create((CrawlerService as any).prototype);
+    let activePublisher: { release(): Promise<void> } | null = null;
+    let fullIntent: ({ isValid(): boolean } & { release(): Promise<void> }) | null = null;
+    let retriedExecution: { release(): Promise<void> } | null = null;
+    try {
+      activePublisher = await publisherWorker.tryAcquireCrawlExecutionLock('active.example');
+      expect(activePublisher).not.toBeNull();
+
+      fullIntent = await fullWorker.tryAcquireFullCrawlIntentLock();
+      expect(fullIntent).not.toBeNull();
+      const timedOutExecution = await fullWorker.tryAcquireCrawlExecutionLock(undefined, 50);
+      expect(timedOutExecution).toBeNull();
+      expect(fullIntent.isValid()).toBe(true);
+
+      const laterPublisher = await laterPublisherWorker.tryAcquireCrawlExecutionLock('later.example');
+      expect(laterPublisher).toBeNull();
+
+      await activePublisher.release();
+      activePublisher = null;
+      retriedExecution = await fullWorker.tryAcquireCrawlExecutionLock(undefined, 1_000);
+      expect(retriedExecution).not.toBeNull();
+    } finally {
+      await releaseLocks(activePublisher, retriedExecution, fullIntent);
+    }
+  });
+
+  it('releases temporary publisher intent when the per-domain lock is contended', async () => {
+    const { CrawlerService } = await import('../../src/crawler.js');
+    const firstPublisher = Object.create((CrawlerService as any).prototype);
+    const secondPublisher = Object.create((CrawlerService as any).prototype);
+    const fullWorker = Object.create((CrawlerService as any).prototype);
+    let domainLock: { release(): Promise<void> } | null = null;
+    let fullIntent: { release(): Promise<void> } | null = null;
+    try {
+      domainLock = await firstPublisher.tryAcquireCrawlExecutionLock('same.example');
+      expect(domainLock).not.toBeNull();
+
+      const contended = await secondPublisher.tryAcquireCrawlExecutionLock('same.example');
+      expect(contended).toBeNull();
+      fullIntent = await fullWorker.tryAcquireFullCrawlIntentLock();
+      expect(fullIntent).not.toBeNull();
+    } finally {
+      await releaseLocks(domainLock, fullIntent);
+    }
+  });
+
+  it('releases full-crawl intent when its dedicated database session dies', async () => {
+    const { CrawlerService } = await import('../../src/crawler.js');
+    const fullWorker = Object.create((CrawlerService as any).prototype);
+    const publisherWorker = Object.create((CrawlerService as any).prototype);
+    let intentClient: Client | undefined;
+    fullWorker.crawlLockClientFactory = async () => {
+      intentClient = new Client({
+        connectionString: process.env.DATABASE_URL
+          || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
+      });
+      await intentClient.connect();
+      return intentClient;
+    };
+    let fullIntent: ({ isValid(): boolean } & { release(): Promise<void> }) | null = null;
+    let publisher: { release(): Promise<void> } | null = null;
+    try {
+      fullIntent = await fullWorker.tryAcquireFullCrawlIntentLock();
+      expect(fullIntent).not.toBeNull();
+      await expect(publisherWorker.tryAcquireCrawlExecutionLock('blocked.example')).resolves.toBeNull();
+
+      (intentClient as any).connection.stream.destroy();
+      await vi.waitFor(() => expect(fullIntent?.isValid()).toBe(false));
+
+      publisher = await publisherWorker.tryAcquireCrawlExecutionLock('unblocked.example');
+      expect(publisher).not.toBeNull();
+    } finally {
+      await releaseLocks(publisher, fullIntent);
+    }
   });
 
   it('defers full-crawl contention without consuming an attempt', async () => {
