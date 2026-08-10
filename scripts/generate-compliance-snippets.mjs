@@ -71,25 +71,43 @@ function readJson(filePath) {
   }
 }
 
+function mapOutsideCodeSpans(value, transformProse, transformCode = code => code) {
+  const text = String(value);
+  const codeSpanPattern = /(`+)([\s\S]*?)\1/g;
+  const parts = [];
+  let cursor = 0;
+  for (const match of text.matchAll(codeSpanPattern)) {
+    parts.push(transformProse(text.slice(cursor, match.index)));
+    parts.push(match[1], transformCode(match[2]), match[1]);
+    cursor = match.index + match[0].length;
+  }
+  parts.push(transformProse(text.slice(cursor)));
+  return parts.join('');
+}
+
 function escapeTableCell(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/{/g, '&#123;')
-    .replace(/}/g, '&#125;')
-    .replace(/\|/g, '&#124;')
+  return mapOutsideCodeSpans(
+    value,
+    prose => prose
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/{/g, '&#123;')
+      .replace(/}/g, '&#125;')
+      .replace(/\|/g, '&#124;'),
+    code => code.replace(/\|/g, '\\|'),
+  )
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 function escapeMdxBlock(value) {
-  return String(value)
+  return mapOutsideCodeSpans(value, prose => prose
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/{/g, '&#123;')
-    .replace(/}/g, '&#125;')
+    .replace(/}/g, '&#125;'))
     .trim();
 }
 

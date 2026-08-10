@@ -9,6 +9,8 @@ import {
   GENERATED_MARKER,
   assertCatalogConsumesOutputs,
   assertCompleteErrorTaxonomy,
+  escapeMdxBlock,
+  escapeTableCell,
   loadGradedStoryboards,
   renderErrorCodes,
   writeOrCheck,
@@ -45,6 +47,17 @@ test('error-code rendering is sorted, escaped, and deterministic', () => {
   assert.match(first, /&#123;values&#125;/);
   assert.match(first, /pipes \|/);
   assert.match(first, /ampersands &amp;/);
+});
+
+test('MDX escaping preserves code-span contents while escaping prose', () => {
+  assert.equal(
+    escapeMdxBlock('Use `{value} <tag> & more` after {input}.'),
+    'Use `{value} <tag> & more` after &#123;input&#125;.',
+  );
+  assert.equal(
+    escapeTableCell('Use `{value} <tag> & left|right` after {input}.'),
+    'Use `{value} <tag> & left\\|right` after &#123;input&#125;.',
+  );
 });
 
 test('error taxonomy rejects duplicate codes and malformed metadata', () => {
