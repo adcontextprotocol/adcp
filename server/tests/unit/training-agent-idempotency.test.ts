@@ -462,7 +462,6 @@ describe('training agent idempotency middleware', () => {
       const identity = {
         adcp_version: '3.2-beta.0',
         brand: BRAND,
-        brand: BRAND,
       };
 
       const first = await call(server, 'get_products', {
