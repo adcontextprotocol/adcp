@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "description": "Compliance bundles available from a published @adcp/sdk npm package. Hosted grading must not use any other checked-in bundle.",
+  "npm_tags": ["adcp-3.0", "latest", "rc"],
   "published_versions": [
     "3.0.0",
     "3.0.1",

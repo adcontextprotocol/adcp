@@ -41,6 +41,9 @@ jobs:
         continue-on-error: true
         run: npm audit --omit=dev --audit-level=high
 
+      - name: Check hosted compliance publication manifest
+        run: npm run check:published-compliance
+
       - name: Check immutable release artifacts
         run: |
           set -euo pipefail
