@@ -215,6 +215,23 @@ describe('Perspectives crawlability routes', () => {
     expect(res.text).toContain('<pubDate>Mon, 01 Jun 2026 12:00:00 GMT</pubDate>');
   });
 
+  it('returns 404 for a missing published perspective while serving the article shell', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(app())
+      .get('/perspectives/does-not-exist')
+      .set('Host', 'agenticadvertising.org');
+
+    expect(res.status).toBe(404);
+    expect(res.headers['content-type']).toContain('text/html');
+    expect(res.text).toContain('id="loadingState"');
+    expect(res.text).toContain('id="mainContent"');
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringContaining("p.status = 'published'"),
+      ['does-not-exist']
+    );
+  });
+
   it('serves working group post canonical pages with server-rendered social meta tags', async () => {
     queryMock.mockResolvedValueOnce({
       rows: [{

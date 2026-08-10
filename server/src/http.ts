@@ -146,6 +146,7 @@ import { sendWelcomeEmail, sendUserSignupEmail, sendDuplicateSubscriptionNotice,
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { pendingConfirmationsDb } from "./db/pending-confirmations-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
+import { resolveEscalationsForPerspective } from "./db/escalation-db.js";
 import { serveHtmlWithMetaTags, enrichUserWithMembership, enrichUserWithAdmin } from "./utils/html-config.js";
 import { complete, isLLMConfigured } from "./utils/llm.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
@@ -2930,6 +2931,11 @@ export class HTTPServer {
         );
         if (result.rows.length > 0) {
           article = result.rows[0];
+        } else {
+          // The article shell renders its own "Article Not Found" state after
+          // hydration. Preserve that UI while returning the correct HTTP
+          // status to crawlers and other clients.
+          res.status(404);
         }
       } catch (error) {
         logger.warn({ error, slug }, 'Failed to fetch article for meta tags');
@@ -6622,14 +6628,47 @@ export class HTTPServer {
         const { id } = req.params;
         if (!isUuid(id)) return res.status(400).json({ error: 'Invalid content ID' });
         const pool = getPool();
-        const result = await pool.query(
-          `DELETE FROM perspectives WHERE id = $1 RETURNING id, title`,
-          [id]
-        );
-        if (result.rows.length === 0) {
-          return res.status(404).json({ error: 'Content not found' });
+        const client = await pool.connect();
+        let deletedContent: { id: string; title: string };
+        let resolvedEscalationIds: number[];
+        try {
+          await client.query('BEGIN');
+          const existing = await client.query<{ id: string; title: string }>(
+            `SELECT id, title FROM perspectives WHERE id = $1 FOR UPDATE`,
+            [id]
+          );
+          if (existing.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Content not found' });
+          }
+
+          resolvedEscalationIds = await resolveEscalationsForPerspective(
+            id,
+            req.user!.id,
+            'Auto-resolved: content deleted by admin',
+            client
+          );
+          const result = await client.query<{ id: string; title: string }>(
+            `DELETE FROM perspectives WHERE id = $1 RETURNING id, title`,
+            [id]
+          );
+          if (result.rows.length === 0) {
+            throw new Error('Perspective disappeared while holding its delete lock');
+          }
+          deletedContent = result.rows[0];
+          await client.query('COMMIT');
+        } catch (error) {
+          await client.query('ROLLBACK').catch(rollbackError => {
+            logger.warn({ err: rollbackError, contentId: id }, 'Failed to roll back admin content delete');
+          });
+          throw error;
+        } finally {
+          client.release();
         }
-        logger.info({ contentId: id, title: result.rows[0].title }, 'Admin deleted content');
+        logger.info(
+          { contentId: id, title: deletedContent.title, resolvedEscalationIds },
+          'Admin deleted content'
+        );
         res.json({ success: true });
       } catch (error) {
         logger.error({ err: error }, 'DELETE /api/admin/content/:id error');
@@ -6762,15 +6801,47 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         if (status === 'published') {
           updates.push(`published_at = COALESCE(published_at, NOW())`);
         }
-        const result = await pool.query(
-          `UPDATE perspectives SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${values.length + 1} RETURNING *`,
-          [...values, id]
-        );
-        if (result.rows.length === 0) {
-          return res.status(404).json({ error: 'Content not found' });
+        const client = await pool.connect();
+        let updatedContent: Record<string, unknown>;
+        let resolvedEscalationIds: number[] = [];
+        try {
+          await client.query('BEGIN');
+          const existing = await client.query<{ id: string }>(
+            `SELECT id FROM perspectives WHERE id = $1 FOR UPDATE`,
+            [id]
+          );
+          if (existing.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Content not found' });
+          }
+
+          const result = await client.query<Record<string, unknown>>(
+            `UPDATE perspectives SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${values.length + 1} RETURNING *`,
+            [...values, id]
+          );
+          if (result.rows.length === 0) {
+            throw new Error('Perspective disappeared while holding its status lock');
+          }
+          updatedContent = result.rows[0];
+          if (status === 'archived') {
+            resolvedEscalationIds = await resolveEscalationsForPerspective(
+              id,
+              req.user!.id,
+              'Auto-resolved: content archived by admin',
+              client
+            );
+          }
+          await client.query('COMMIT');
+        } catch (error) {
+          await client.query('ROLLBACK').catch(rollbackError => {
+            logger.warn({ err: rollbackError, contentId: id }, 'Failed to roll back admin content status update');
+          });
+          throw error;
+        } finally {
+          client.release();
         }
-        logger.info({ contentId: id, status }, 'Admin updated content status');
-        res.json(result.rows[0]);
+        logger.info({ contentId: id, status, resolvedEscalationIds }, 'Admin updated content status');
+        res.json(updatedContent);
       } catch (error) {
         logger.error({ err: error }, 'PUT /api/admin/content/:id/status error');
         res.status(500).json({ error: 'Failed to update status' });
