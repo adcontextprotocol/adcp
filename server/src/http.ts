@@ -1603,6 +1603,7 @@ export class HTTPServer {
   ]);
 
   private static readonly BRIDGE_CHECK_TTL = 10 * 60 * 1000; // 10 minutes
+  private static readonly BRIDGE_CHECK_PARAM = '_bridge_checked';
 
   // Helper to check if request is from adcontextprotocol.org (requires redirect to AAO for auth)
   // Session cookies are scoped to agenticadvertising.org, so auth pages on AdCP must redirect
@@ -1621,13 +1622,29 @@ export class HTTPServer {
     }
   }
 
+  // Add a server-visible fallback marker to the bridge return URL. Normally
+  // the bridge-checked cookie prevents a second bounce, but browsers with
+  // cookies disabled need a one-request escape hatch too.
+  private static markBridgeReturnTo(returnTo: string): string {
+    if (returnTo === '/') return `/?${HTTPServer.BRIDGE_CHECK_PARAM}=1`;
+    const marked = new URL(returnTo);
+    marked.searchParams.set(HTTPServer.BRIDGE_CHECK_PARAM, '1');
+    return marked.toString();
+  }
+
   // Redirect through AAO session bridge if on AdCP without a session cookie.
   // Returns true if a redirect was issued (caller should return early).
   private bridgeIfNeeded(req: express.Request, res: express.Response): boolean {
-    // Skip the bridge for clients that don't send cookies (agents, curl, bots).
-    // They will never have a session to bridge, so the redirect is pointless
-    // and creates an infinite loop for clients without a cookie jar.
-    if (!req.headers.cookie) return false;
+    if (req.query?.[HTTPServer.BRIDGE_CHECK_PARAM] === '1') return false;
+
+    // Skip the bridge for cookie-less non-navigation clients (agents, curl,
+    // bots). A browser's first top-level visit may also have no AdCP cookie,
+    // but Fetch Metadata identifies a top-level document navigation that can
+    // pick up an existing AgenticAdvertising.org session through the bridge.
+    const isTopLevelDocumentNavigation =
+      req.headers['sec-fetch-mode'] === 'navigate' &&
+      req.headers['sec-fetch-dest'] === 'document';
+    if (!req.headers.cookie && !isTopLevelDocumentNavigation) return false;
 
     if (this.isAdcpDomain(req) && !req.cookies?.['wos-session'] && !req.cookies?.['bridge-checked']) {
       const currentUrl = `https://${req.hostname}${req.originalUrl}`;
@@ -8202,7 +8219,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       });
 
       // CodeQL: returnTo validated by isAllowedAdcpUrl check above
-      res.redirect(returnTo); // lgtm[js/server-side-unvalidated-url-redirection]
+      res.redirect(HTTPServer.markBridgeReturnTo(returnTo)); // lgtm[js/server-side-unvalidated-url-redirection]
     });
 
     // GET /auth/bridge-callback - Handles no-session case (redirect back from bridge without session)
@@ -8222,7 +8239,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       });
 
       // CodeQL: returnTo validated by isAllowedAdcpUrl check above
-      res.redirect(returnTo); // lgtm[js/server-side-unvalidated-url-redirection]
+      res.redirect(HTTPServer.markBridgeReturnTo(returnTo)); // lgtm[js/server-side-unvalidated-url-redirection]
     });
 
     // GET /api/me - Get current user info
