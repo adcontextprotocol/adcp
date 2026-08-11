@@ -24,6 +24,7 @@ vi.mock('../../src/middleware/rate-limit.js', () => {
     bulkResolveRateLimiter: pass,
     brandBulkDomainRateLimiter: pass,
     brandCreationRateLimiter: pass,
+    capabilityProbeRateLimiter: pass,
     storyboardEvalRateLimiter: pass,
     storyboardStepRateLimiter: pass,
     agentReadRateLimiter: pass,
