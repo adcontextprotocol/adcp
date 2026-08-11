@@ -17,6 +17,7 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
 const DEFAULT_DOC_PATH = path.join(ROOT, 'docs', 'building', 'by-layer', 'L1', 'request-signing.mdx');
+const DEFAULT_GRADING_DOC_PATH = path.join(ROOT, 'docs', 'building', 'verification', 'grading.mdx');
 const DEFAULT_CONTRACT_ROOT = path.join(
   ROOT,
   'static',
@@ -110,15 +111,61 @@ function extractDocCodeClaims(markdown) {
   return codes;
 }
 
+function extractFencedBlocks(markdown) {
+  const blocks = [];
+  const pattern = /^\s*(`{3,}|~{3,})[^\r\n]*\r?\n([\s\S]*?)^\s*\1\s*$/gm;
+  for (const match of markdown.matchAll(pattern)) blocks.push(match[2]);
+  return blocks;
+}
+
+function extractVerifyVectorCommands(block) {
+  return block
+    .replace(/\\\r?\n/g, ' ')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('#'))
+    .filter(line => /\bsigning\s+verify-vector\b/.test(line));
+}
+
+function lintVerifyVectorGuidance(markdown, displayPath) {
+  const errors = [];
+  const commands = extractFencedBlocks(markdown).flatMap(extractVerifyVectorCommands);
+  if (commands.length === 0) {
+    errors.push(`${displayPath}: missing signing verify-vector invocation`);
+  }
+
+  for (const command of commands) {
+    if (/\bcompliance\/cache\/[^\s`"']+/.test(command)) {
+      errors.push(`${displayPath}: verify-vector invocations must not use package-internal compliance/cache paths`);
+    }
+    if (!/(?:^|\s)--vector(?:\s|=)/m.test(command)) {
+      errors.push(`${displayPath}: signing verify-vector invocation must pass --vector`);
+    }
+    if (!/(?:^|\s)--keys(?:\s|=)/m.test(command)) {
+      errors.push(`${displayPath}: signing verify-vector invocation must pass --keys`);
+    }
+  }
+
+  if (/\b(?:reads?|reading)\s+(?:a\s+)?vector\s+from\s+stdin\b/i.test(markdown)) {
+    errors.push(`${displayPath}: signing verify-vector reads local files, not stdin`);
+  }
+  return errors;
+}
+
 function lint({
   root = ROOT,
   docPath = DEFAULT_DOC_PATH,
+  gradingDocPath = DEFAULT_GRADING_DOC_PATH,
   contractRoot = DEFAULT_CONTRACT_ROOT,
 } = {}) {
   const contractCodes = collectContractCodes(contractRoot);
   const docCodes = extractDocCodeClaims(fs.readFileSync(docPath, 'utf8'));
   const displayPath = path.relative(root, docPath) || docPath;
+  const gradingDisplayPath = path.relative(root, gradingDocPath) || gradingDocPath;
   const errors = [];
+
+  errors.push(...lintVerifyVectorGuidance(fs.readFileSync(docPath, 'utf8'), displayPath));
+  errors.push(...lintVerifyVectorGuidance(fs.readFileSync(gradingDocPath, 'utf8'), gradingDisplayPath));
 
   if (docCodes === null) {
     errors.push(`${displayPath}: missing expected "### Error codes" section`);
@@ -164,5 +211,8 @@ module.exports = {
   collectContractCodes,
   extractDocCodeClaims,
   extractErrorCodesSection,
+  extractFencedBlocks,
+  extractVerifyVectorCommands,
+  lintVerifyVectorGuidance,
   lint,
 };
