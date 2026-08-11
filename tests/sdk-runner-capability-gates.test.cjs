@@ -125,3 +125,62 @@ test('billing gate skips per-agent phases when agent billing is not supported', 
     ]
   );
 });
+
+test('create_media_buy async storyboard requires its advertised controller scenario', async () => {
+  const storyboardPath = path.join(
+    __dirname,
+    '..',
+    'static',
+    'compliance',
+    'source',
+    'protocols',
+    'media-buy',
+    'scenarios',
+    'create_media_buy_async.yaml'
+  );
+  const storyboard = YAML.parse(fs.readFileSync(storyboardPath, 'utf8'));
+
+  assert.deepEqual(storyboard.requires_capability, {
+    path: 'compliance_testing.scenarios',
+    contains: 'force_create_media_buy_arm',
+  });
+
+  const result = await runStoryboard('https://agent.example/mcp', storyboard, {
+    _profile: {
+      tools: ['get_adcp_capabilities', 'create_media_buy', 'comply_test_controller'],
+      raw_capabilities: {
+        compliance_testing: {
+          scenarios: ['force_account_status'],
+        },
+      },
+    },
+    agentTools: ['get_adcp_capabilities', 'create_media_buy', 'comply_test_controller'],
+  });
+
+  assert.equal(result.overall_passed, true);
+  assert.equal(result.skipped_count, 1);
+  assert.equal(result.phases[0].phase_id, 'capability_unsupported');
+  assert.equal(result.phases[0].steps[0].skip_reason, 'capability_unsupported');
+  assert.match(result.phases[0].steps[0].error, /force_create_media_buy_arm/);
+
+  // Strip executable work to isolate the affirmative gate path without
+  // dispatching the compliance controller over the network.
+  const advertisedResult = await runStoryboard(
+    'https://agent.example/mcp',
+    { ...storyboard, prerequisites: undefined, fixtures: undefined, phases: [] },
+    {
+      _profile: {
+        tools: ['get_adcp_capabilities', 'create_media_buy', 'comply_test_controller'],
+        raw_capabilities: {
+          compliance_testing: {
+            scenarios: ['force_create_media_buy_arm'],
+          },
+        },
+      },
+      agentTools: ['get_adcp_capabilities', 'create_media_buy', 'comply_test_controller'],
+    }
+  );
+
+  assert.equal(advertisedResult.overall_passed, true);
+  assert.equal(advertisedResult.phases[0].phase_id, 'no_phases');
+});
