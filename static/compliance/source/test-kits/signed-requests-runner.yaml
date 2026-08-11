@@ -4,8 +4,9 @@
 # `request_signing.supported: true` in get_adcp_capabilities).
 #
 # The signed-requests storyboard's current black-box contract grades the legacy
-# 3.1 RFC 9421 profile against conformance vectors at
-# /compliance/{version}/test-vectors/request-signing/negative/.
+# 3.1 RFC 9421 profile against all conformance vectors in the `positive/` and
+# `negative/` directories under
+# `/compliance/{version}/test-vectors/request-signing/`.
 # Most vectors are pure black-box: the runner constructs a signed HTTP request,
 # sends it, and checks the response. Three negative vectors assert behavior that
 # depends on verifier state the runner cannot set from the outside:

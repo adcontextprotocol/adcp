@@ -717,9 +717,25 @@ The spec ships legacy-profile wire vectors, dedicated 3.2 wire vectors, and the 
 - **Profile-3.2 wire vectors**: body-bound positives and rejections of malformed RFC 8941 `sf-binary`
 
 ```bash
-# Debug a single vector
-adcp signing verify-vector \
-  --vector compliance/cache/3.0.0/test-vectors/request-signing/positive/001-basic-post.json
+# Debug a single vector with the matching public key fixture.
+# Use "latest" for convenience. Pin and record exact released values for both
+# versions when you need to reproduce a verifier debugging run.
+VECTOR_VERSION=latest
+SDK_VERSION=latest
+VECTOR_DIR="$(mktemp -d)"
+trap 'rm -rf "$VECTOR_DIR"' EXIT
+VECTOR_BASE="https://adcontextprotocol.org/compliance/${VECTOR_VERSION}/test-vectors/request-signing"
+
+curl --fail --silent --show-error \
+  --output "${VECTOR_DIR}/vector.json" \
+  "${VECTOR_BASE}/positive/001-basic-post.json"
+curl --fail --silent --show-error \
+  --output "${VECTOR_DIR}/keys.json" \
+  "${VECTOR_BASE}/keys.json"
+
+npx "@adcp/sdk@${SDK_VERSION}" signing verify-vector \
+  --vector "${VECTOR_DIR}/vector.json" \
+  --keys "${VECTOR_DIR}/keys.json"
 ```
 
 ### Grade your verifier

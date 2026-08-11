@@ -2,4 +2,4 @@
 "adcontextprotocol": patch
 ---
 
-Remove hard-coded request-signing conformance vector counts from the compliance runner header and request-signing documentation. The guidance now describes the applicable profile and vector directories without totals, so future fixture additions cannot make the prose stale. Comment and documentation text only — no schema, runner logic, or generated artifact is affected.
+Remove hard-coded request-signing conformance vector counts from the compliance runner header and request-signing documentation. The examples now cover both vector directories without totals and explicitly supply matching local vector and key inputs instead of relying on package-internal cache paths. This changes only protocol comments and documentation, not schemas or runner behavior; documentation drift linting and its regression tests are also hardened to preserve the corrected CLI guidance.
