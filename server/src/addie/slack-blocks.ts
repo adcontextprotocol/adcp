@@ -135,6 +135,73 @@ export function planStreamStopFailureFallback(streamedLen: number): StreamStopFa
   return streamedLen > 0 ? 'delivery-notice' : 'full-response';
 }
 
+export type StreamTurnCompletion<T> =
+  | { kind: 'discard-interrupted' }
+  | { kind: 'persist'; response: T; source: 'stream' | 'fallback' };
+
+/**
+ * Decide whether a completed async stream produced a persistable assistant
+ * turn. A terminal stream_error always wins over a response/fallback: the
+ * recovery copy tells the user the turn was not saved, so the handler must
+ * return before title updates or assistant-message persistence.
+ */
+export function resolveStreamTurnCompletion<T>(
+  streamWasInterrupted: boolean,
+  response: T | undefined,
+  createFallback: () => T,
+): StreamTurnCompletion<T> {
+  if (streamWasInterrupted) return { kind: 'discard-interrupted' };
+  if (response !== undefined) return { kind: 'persist', response, source: 'stream' };
+  return { kind: 'persist', response: createFallback(), source: 'fallback' };
+}
+
+export type SlackStreamErrorCategory =
+  | 'overloaded'
+  | 'rate_limited'
+  | 'timeout'
+  | 'connection_interrupted'
+  | 'upstream_error';
+
+export interface SlackStreamErrorSummary {
+  category: SlackStreamErrorCategory;
+  publicMessage: string;
+  followupRecoveryText: string;
+  inlineRecoveryText: string;
+}
+
+/**
+ * Convert provider exception prose into a bounded public/audit-safe summary.
+ * Raw upstream messages can contain request details and must not be copied into
+ * Slack recovery text or structured interaction telemetry.
+ */
+export function summarizeSlackStreamError(reason: string): SlackStreamErrorSummary {
+  const normalized = reason.toLowerCase();
+  let category: SlackStreamErrorCategory;
+  let publicMessage: string;
+  if (normalized.includes('overload') || normalized.includes('busy') || normalized.includes('high demand')) {
+    category = 'overloaded';
+    publicMessage = 'The AI service is temporarily overloaded';
+  } else if (normalized.includes('rate') || normalized.includes('429')) {
+    category = 'rate_limited';
+    publicMessage = 'The AI service is temporarily rate limited';
+  } else if (normalized.includes('timeout') || normalized.includes('timed out')) {
+    category = 'timeout';
+    publicMessage = 'The AI service timed out';
+  } else if (normalized.includes('connection') || normalized.includes('mid-reply')) {
+    category = 'connection_interrupted';
+    publicMessage = 'The connection broke mid-reply';
+  } else {
+    category = 'upstream_error';
+    publicMessage = 'The AI service interrupted the response';
+  }
+  return {
+    category,
+    publicMessage,
+    followupRecoveryText: `_(${publicMessage} — the rest of that response didn't make it. Ask again and I'll start over.)_`,
+    inlineRecoveryText: `\n\n_(${publicMessage} — I didn't save this response. Ask again and I'll start over.)_`,
+  };
+}
+
 /**
  * Cap a top-level `text` notification fallback. Slack will accept up to
  * 40k, but there's no reason to send the full reply twice — clamp to one
