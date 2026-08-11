@@ -1644,6 +1644,14 @@
       return 'Not tested';
     }
 
+    function pickStoryboardBlockingReason(statuses) {
+      if (!Array.isArray(statuses) || statuses.length === 0) return null;
+      for (const reason of ['failing', 'partial', 'untested']) {
+        if (statuses.some(row => row?.status === reason)) return reason;
+      }
+      return null;
+    }
+
     function finiteCount(value) {
       const n = Number(value);
       return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
@@ -2242,6 +2250,8 @@
 
       const declaredSpecialisms = Array.isArray(cs?.declared_specialisms) ? cs.declared_specialisms : [];
       const specialismStatus = (cs && typeof cs.specialism_status === 'object' && cs.specialism_status) ? cs.specialism_status : {};
+      const storyboardStatuses = Array.isArray(cs?.storyboard_statuses) ? cs.storyboard_statuses : [];
+      const storyboardBlockingReason = pickStoryboardBlockingReason(storyboardStatuses);
       const checkIntervalHours = Number.isFinite(cs?.check_interval_hours) && cs.check_interval_hours > 0 ? cs.check_interval_hours : 12;
 
       // "On the next heartbeat" is jargon; surface the actual interval so
@@ -2269,6 +2279,21 @@
       const tierNotEligibleSentence = tierLabel && !tierEligible
         ? `Your tier (<strong>${escapeHtml(tierLabel)}</strong>) is not eligible — <a href="/membership" target="_blank" rel="noopener">upgrade to earn badges</a>`
         : null;
+      const storyboardBadgeGuidance = (action) => {
+        const declarationRequirement = declaredSpecialisms.length === 0
+          ? 'Your agent must also declare specialisms in <code>get_adcp_capabilities</code>'
+          : null;
+        if (tierNotEligibleSentence) {
+          return `${action}. ${declarationRequirement ? declarationRequirement + '. ' : ''}${tierNotEligibleSentence}.`;
+        }
+        if (tierEligible) {
+          if (declarationRequirement) {
+            return `${action}. ${declarationRequirement} before it can earn AAO Verified (Spec).`;
+          }
+          return `${action} to earn AAO Verified (Spec).`;
+        }
+        return `${action}. ${declarationRequirement ? declarationRequirement + '. ' : ''}Badge issuance also requires an API-access membership tier.`;
+      };
 
       // No badges yet — show diagnostic hint scoped to the actual situation.
       // The branch order here mirrors pickVerificationHint() in
@@ -2301,9 +2326,14 @@
             hint = `Storyboards are passing — your badge should issue ${nextCheckCopy}. If it doesn't, check that your AAO membership is on an API-access tier.`;
           }
         } else if (status === 'failing' || status === 'degraded') {
-          hint = declaredSpecialisms.length === 0
-            ? 'Storyboards are failing — fix the failing storyboards in this card to earn AAO Verified (Spec). <a href="/docs/building/verification/aao-verified" target="_blank" rel="noopener">Learn more</a>.'
-            : 'Some declared specialisms are failing — fix the failing storyboards in this card to earn AAO Verified (Spec). <a href="/docs/building/verification/aao-verified" target="_blank" rel="noopener">Learn more</a>.';
+          if (storyboardBlockingReason === 'partial') {
+            hint = storyboardBadgeGuidance('Some storyboards have partial results — review the incomplete checks in this card, then re-test');
+          } else if (storyboardBlockingReason === 'untested') {
+            hint = storyboardBadgeGuidance('Some storyboards have not been tested yet — run the applicable untested storyboards in this card');
+          } else {
+            hint = storyboardBadgeGuidance('Some storyboards are failing — fix the failing storyboards in this card, then re-test');
+          }
+          hint += ' <a href="/docs/building/verification/aao-verified" target="_blank" rel="noopener">Learn more</a>.';
         } else {
           hint = `Compliance check will run ${nextCheckCopy}. Earn AAO Verified (Spec) by declaring specialisms in <code>get_adcp_capabilities</code> and passing their storyboards. <a href="/docs/building/verification/aao-verified" target="_blank" rel="noopener">Learn more</a>.`;
         }
