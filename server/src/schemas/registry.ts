@@ -10,6 +10,10 @@ import { z } from "zod";
 import { ADCP_SPECIALISMS, VERIFICATION_MODES } from "../services/adcp-taxonomy.js";
 import { VALID_BADGE_ROLES } from "../services/badge-svg.js";
 import {
+  PUBLIC_COMPLIANCE_NOTICE_LIMITS,
+  PublicComplianceNoticeSchema,
+} from "./public-compliance-notice.js";
+import {
   extendZodWithOpenApi,
   OpenAPIRegistry,
 } from "@asteasolutions/zod-to-openapi";
@@ -808,7 +812,7 @@ export const AgentComplianceDetailSchema = z
       last_tested_at: z.string().nullable(),
       last_passed_at: z.string().nullable(),
     })).optional().openapi({ description: "Public per-storyboard verdicts and aggregate step counts. First-failure diagnostic fields are populated only for owners; scalar diagnostics are null and validation evidence is empty for other callers." }),
-    notices: z.array(z.any()).optional().openapi({ description: "Run-summary notices from the latest non-dry-run compliance run. Unknown codes/severities are preserved verbatim." }),
+    notices: z.array(PublicComplianceNoticeSchema.openapi("PublicComplianceNotice")).max(PUBLIC_COMPLIANCE_NOTICE_LIMITS.maxNotices).optional().openapi({ description: "Public-safe run-summary notices from the latest non-dry-run compliance run. Unknown code/severity values are preserved verbatim; private fields are omitted." }),
     observations: z.array(z.object({
       category: z.string(),
       severity: z.string(),

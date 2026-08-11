@@ -59,6 +59,10 @@ import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
 import { validateCrawlDomain, validateExternalUrl } from "../utils/url-security.js";
 import {
+  projectPublicComplianceNotices,
+  type PublicComplianceNotice,
+} from "./public-compliance-notices.js";
+import {
   registry,
   ResolvedBrandSchema,
   ResolvedPropertySchema,
@@ -6506,9 +6510,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // advisories emitted by the runner (e.g., deprecated specialism names,
       // future-required capabilities). Forward-compat: unknown codes/severities
       // are passed through verbatim; callers MUST NOT filter on these values.
-      let notices: Awaited<ReturnType<typeof complianceDb.getLatestNotices>> = [];
+      let notices: PublicComplianceNotice[] = [];
       try {
-        notices = await complianceDb.getLatestNotices(agentUrl);
+        notices = projectPublicComplianceNotices(await complianceDb.getLatestNotices(agentUrl));
       } catch (err) {
         logger.warn({ err, agentUrl }, "Notices query failed (column may not exist yet)");
       }
@@ -6615,8 +6619,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         // owner-scoped; non-owner entries carry null scalar diagnostics and
         // empty validation evidence.
         storyboard_statuses: serializedStoryboardStatuses,
-        // Advisory notices from the latest run. Forward-compat: unknown codes
-        // and severities are passed through verbatim (runner-output-contract.yaml).
+        // Advisory notices from the latest run. Unknown code/severity values
+        // remain verbatim, while private and oversized fields are excluded.
         notices,
         observations,
         // Owner-scoped: content is null/false for anonymous and cross-org
