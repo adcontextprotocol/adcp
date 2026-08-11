@@ -195,7 +195,7 @@ Send `include_result: true` to receive the terminal task payload on the polled r
 
 AdCP 3.2 deliberately keeps the polling envelope's `result` property generic. Draft-07 cannot select a `$ref` dynamically from the sibling `task_type` value without enumerating every task, and embedding that enumeration made `get_task_status` grow whenever any async-capable tool grew. Exact result validation is still required; it is selected through the release manifest instead of duplicated into the polling schema.
 
-The release [`manifest.json`](https://adcontextprotocol.org/schemas/v3/manifest.json) therefore publishes `task_result_resolution`. For a terminal result, first check `terminal_schema_overrides[task_type]`; when no override exists, replace `{task_type}` in `/tools/{task_type}/response_schema`. A tool's canonical response schema already contains its task-local terminal branches, including the structured `get_products` rejection. SDK generators SHOULD use that rule to expose a generic relationship equivalent to:
+The release `manifest.json` artifact therefore publishes `task_result_resolution`. For a terminal result, first check `terminal_schema_overrides[task_type]`; when no override exists, replace `{task_type}` in `/tools/{task_type}/response_schema`. A tool's canonical response schema already contains its task-local terminal branches, including the structured `get_products` rejection. SDK generators SHOULD use that rule to expose a generic relationship equivalent to:
 
 ```ts
 type ToolTaskType = Extract<ToolName, TaskType>;
