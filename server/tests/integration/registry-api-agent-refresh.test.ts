@@ -150,14 +150,18 @@ function makeComplianceResult(options: { specialisms?: string[]; storyboardId?: 
       tracks_failed: 0,
       tracks_skipped: 0,
       tracks_partial: 0,
-      notices: [
-        {
-          severity: 'info',
-          code: 'fixture_notice',
-          message: 'Fixture notice',
-        },
-      ],
     },
+    notices: [
+      {
+        severity: 'info',
+        code: 'fixture_notice',
+        message: 'Fixture notice',
+        capability_pointer: '/account/supported_billing/0',
+        docs_url: 'https://example.com/adcp/fixture-notice',
+        storyboard_ids: [storyboardId],
+        future_runner_field: { remediation: 'Update the declared billing mode.' },
+      },
+    ],
     tracks: [{
       track: 'media-buy',
       status: 'pass',
@@ -330,7 +334,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     );
 
     const latestRun = await pool.query(
-      `SELECT triggered_by, triggered_org_id
+      `SELECT triggered_by, triggered_org_id, notices_json
        FROM agent_compliance_runs
        WHERE agent_url = $1
        ORDER BY tested_at DESC
@@ -341,6 +345,21 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
       triggered_by: 'owner_test',
       triggered_org_id: TEST_ORG_ID,
     });
+    expect(latestRun.rows[0].notices_json).toEqual([{
+      severity: 'info',
+      code: 'fixture_notice',
+      message: 'Fixture notice',
+      capability_pointer: '/account/supported_billing/0',
+      docs_url: 'https://example.com/adcp/fixture-notice',
+      storyboard_ids: ['media_buy_seller'],
+      future_runner_field: { remediation: 'Update the declared billing mode.' },
+    }]);
+
+    const publicCompliance = await request(app)
+      .get(`/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance`)
+      .send();
+    expect(publicCompliance.status).toBe(200);
+    expect(publicCompliance.body.notices).toEqual(latestRun.rows[0].notices_json);
   });
 
   it('admin can refresh an agent they do not own', async () => {

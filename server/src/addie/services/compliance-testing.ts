@@ -43,6 +43,7 @@ import type {
   StepDiagnosticEntry,
   LifecycleStage,
   TriggeredBy,
+  NoticeEntry,
 } from '../../db/compliance-db.js';
 
 const logger = createLogger('addie-compliance-testing');
@@ -1216,6 +1217,17 @@ export function complianceResultToDbInput(
   }));
 
   const { overall_status, tracks_passed, tracks_failed, tracks_partial } = effectiveRunStatus(result);
+  const resultWithCompatibleNotices = result as unknown as {
+    notices?: NoticeEntry[] | null;
+    summary?: { notices?: NoticeEntry[] | null };
+  };
+  // Current SDK results expose notices at the top level. Preserve an explicit
+  // empty top-level array so a clean run clears any older advisory state; only
+  // payloads that omit the field entirely fall back to the legacy summary
+  // location.
+  const notices = resultWithCompatibleNotices.notices !== undefined
+    ? resultWithCompatibleNotices.notices
+    : resultWithCompatibleNotices.summary?.notices ?? null;
 
   return {
     agent_url: agentUrl,
@@ -1237,10 +1249,9 @@ export function complianceResultToDbInput(
     storyboard_statuses: deriveStoryboardStatuses(result, storyboardIds),
     replace_storyboard_statuses: !storyboardIds?.length,
     step_diagnostics: extractFailingStepDiagnostics(result),
-    // Forward-compat: notices are an optional field in the runner output
-    // contract (run_summary.notices). Unknown codes/severities are stored
-    // verbatim — do not filter or validate the values here.
-    notices_json: (result.summary as any).notices ?? null,
+    // Unknown fields, codes, and severities are stored verbatim for forward
+    // compatibility with newer runner contracts.
+    notices_json: notices,
   };
 }
 
