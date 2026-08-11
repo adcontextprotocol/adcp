@@ -1,5 +1,7 @@
 import express from "express";
 import cookieParser from "cookie-parser";
+import DOMPurify from "isomorphic-dompurify";
+import { Marked } from "marked";
 import { csrfProtection } from "./middleware/csrf.js";
 import { slowResponseTracker } from "./middleware/slow-response.js";
 import { requestMetrics } from "./middleware/request-metrics.js";
@@ -59,10 +61,11 @@ import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
 import { formatPerspectiveUrlAsMarkdownDestination, normalizePerspectiveExternalUrl } from "./utils/perspective-url.js";
+import { decodeHtmlEntities } from "./utils/html-entities.js";
 import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
-import { sendNewsletterConfirmation, SLACK_INVITE_URL } from "./notifications/email.js";
+import { sendNewsletterConfirmation } from "./notifications/email.js";
 import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
 import { getAssetData as getPerspectiveAssetData } from "./db/perspective-asset-db.js";
 import { generatePerspectiveCard, compositePerspectiveCard } from "./services/perspective-cards.js";
@@ -147,7 +150,7 @@ import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { pendingConfirmationsDb } from "./db/pending-confirmations-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
 import { resolveEscalationsForPerspective } from "./db/escalation-db.js";
-import { serveHtmlWithMetaTags, enrichUserWithMembership, enrichUserWithAdmin } from "./utils/html-config.js";
+import { serveHtmlWithMetaTags, injectMetaTagsIntoHtml, enrichUserWithMembership, enrichUserWithAdmin } from "./utils/html-config.js";
 import { complete, isLLMConfigured } from "./utils/llm.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 import { BansDatabase } from "./db/bans-db.js";
@@ -171,7 +174,12 @@ const __dirname = path.dirname(__filename);
 
 const logger = createLogger('http-server');
 const PUBLIC_SITE_URL = 'https://agenticadvertising.org';
+const SLACK_JOIN_GUIDE_URL = 'https://docs.adcontextprotocol.org/docs/community/joining-slack';
 const PERSPECTIVES_CRAWLER_LIMIT = 200;
+const STORIES_NEWS_LIMIT = 8;
+const ARTICLE_MARKDOWN_CACHE_TTL_MS = 60 * 1000;
+const ARTICLE_MARKDOWN_CACHE_MAX_ENTRIES = 200;
+const MAX_ARTICLE_MARKDOWN_BYTES = 256_000;
 
 interface PublicPerspectiveCrawlerItem {
   slug: string;
@@ -182,6 +190,57 @@ interface PublicPerspectiveCrawlerItem {
   author_name: string | null;
   published_at: Date | string | null;
   updated_at: Date | string | null;
+}
+
+interface StoriesPerspectiveItem {
+  slug: string;
+  title: string;
+  subtitle: string | null;
+  category: string | null;
+  excerpt: string | null;
+  external_url: string | null;
+  author_name: string | null;
+  featured_image_url: string | null;
+  published_at: Date | string | null;
+  tags: string[] | null;
+  content_origin: string;
+}
+
+interface StoriesNewsItem {
+  title: string;
+  source_url: string;
+  summary: string | null;
+  addie_notes: string | null;
+  relevance_tags: string[] | null;
+  feed_name: string | null;
+}
+
+interface PublicPerspectiveArticle {
+  slug: string;
+  title: string;
+  subtitle: string | null;
+  category: string | null;
+  excerpt: string | null;
+  content: string | null;
+  author_name: string | null;
+  author_title: string | null;
+  author_slug: string | null;
+  featured_image_url: string | null;
+  published_at: Date | string | null;
+  updated_at: Date | string | null;
+  tags: string[] | null;
+  like_count: number | null;
+}
+
+interface StoriesSsrFragments {
+  officialCards: string[];
+  memberCards: string[];
+  newsItems: string[];
+}
+
+interface TimedValue<T> {
+  value: T;
+  expiresAt: number;
 }
 
 interface WorkingGroupPostMetaData {
@@ -277,6 +336,7 @@ async function getPublicPerspectiveCrawlerItems(limit = PERSPECTIVES_CRAWLER_LIM
      FROM perspectives p
      LEFT JOIN working_groups wg ON wg.id = p.working_group_id
      WHERE p.status = 'published'
+       AND p.is_members_only = false
        AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
        AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
      ORDER BY p.published_at DESC NULLS LAST, p.created_at DESC
@@ -351,6 +411,289 @@ function buildPerspectivesRss(items: PublicPerspectiveCrawlerItem[]): string {
 ${entries}
   </channel>
 </rss>`;
+}
+
+function replaceOpeningTagById(
+  html: string,
+  id: string,
+  update: (openingTag: string) => string
+): string {
+  const idIndex = html.indexOf(`id="${id}"`);
+  if (idIndex === -1) return html;
+  const tagStart = html.lastIndexOf('<', idIndex);
+  const tagEnd = html.indexOf('>', idIndex);
+  if (tagStart === -1 || tagEnd === -1) return html;
+  const openingTag = html.slice(tagStart, tagEnd + 1);
+  return html.slice(0, tagStart) + update(openingTag) + html.slice(tagEnd + 1);
+}
+
+function replaceElementInnerHtml(html: string, id: string, innerHtml: string): string {
+  const idIndex = html.indexOf(`id="${id}"`);
+  if (idIndex === -1) return html;
+  const tagStart = html.lastIndexOf('<', idIndex);
+  const tagEnd = html.indexOf('>', idIndex);
+  if (tagStart === -1 || tagEnd === -1) return html;
+  const tagMatch = html.slice(tagStart, tagEnd + 1).match(/^<([a-zA-Z0-9-]+)/);
+  if (!tagMatch) return html;
+  const closingTag = `</${tagMatch[1]}>`;
+  const closingIndex = html.indexOf(closingTag, tagEnd + 1);
+  if (closingIndex === -1) return html;
+  return html.slice(0, tagEnd + 1) + innerHtml + html.slice(closingIndex);
+}
+
+function showElementById(html: string, id: string): string {
+  return replaceOpeningTagById(html, id, (openingTag) => openingTag
+    .replace(/\shidden(?=[\s>])/i, '')
+    .replace(/display\s*:\s*none\s*;?/gi, ''));
+}
+
+function hideElementById(html: string, id: string): string {
+  return replaceOpeningTagById(html, id, (openingTag) => (
+    /\shidden(?=[\s>])/i.test(openingTag)
+      ? openingTag
+      : openingTag.replace(/>$/, ' hidden>')
+  ));
+}
+
+function storyTopics(tags: string[] | null | undefined): string[] {
+  return Array.isArray(tags)
+    ? tags.filter((tag): tag is string => typeof tag === 'string' && tag.length > 0)
+    : [];
+}
+
+function buildStoriesPerspectiveCard(item: StoriesPerspectiveItem): string {
+  const externalUrl = normalizePerspectiveExternalUrl(item.external_url);
+  const href = externalUrl ?? `/perspectives/${encodeURIComponent(item.slug)}`;
+  const topics = storyTopics(item.tags).join(',');
+  const image = absolutePublicUrl(item.featured_image_url)
+    ?? `/api/perspectives/${encodeURIComponent(item.slug)}/card.png`;
+  const excerpt = item.excerpt || item.subtitle || '';
+  const externalAttributes = externalUrl ? ' target="_blank" rel="noopener noreferrer"' : '';
+
+  return `<a href="${escapeHtml(href)}" class="card" data-topics="${escapeHtml(topics)}"${externalAttributes}>
+    <img src="${escapeHtml(image)}" alt="" class="card-cover" loading="lazy">
+    <div class="card-body">
+      <span class="card-badge">${escapeHtml(item.category || 'Perspective')}</span>
+      <h3 class="card-title">${escapeHtml(item.title || 'Untitled')}</h3>
+      ${excerpt ? `<p class="card-excerpt">${escapeHtml(excerpt)}</p>` : ''}
+      ${item.author_name ? `<span class="card-meta">${escapeHtml(item.author_name)}</span>` : ''}
+    </div>
+  </a>`;
+}
+
+const STORY_NEWS_TAG_MAP: Record<string, string> = {
+  'media-buying': 'buy-side',
+  'programmatic': 'buy-side',
+  'retail-media': 'retail-media',
+  'ai-agents': 'agentic',
+  'adcp': 'protocol',
+  'signals': 'protocol',
+  'creative': 'content',
+};
+
+function buildStoriesNewsItem(item: StoriesNewsItem): string | null {
+  const href = normalizePerspectiveExternalUrl(item.source_url);
+  if (!href) return null;
+  const topics = storyTopics(item.relevance_tags)
+    .map((tag) => STORY_NEWS_TAG_MAP[tag])
+    .filter((tag, index, all): tag is string => !!tag && all.indexOf(tag) === index)
+    .join(',');
+  const title = decodeHtmlEntities(item.title || '');
+  const summary = decodeHtmlEntities(item.summary || item.addie_notes || '');
+  const source = decodeHtmlEntities(item.feed_name || '');
+
+  return `<a href="${escapeHtml(href)}" class="news-item" target="_blank" rel="noopener noreferrer" data-topics="${escapeHtml(topics)}">
+    <div class="news-item-body">
+      ${source ? `<div class="news-item-source">${escapeHtml(source)}</div>` : ''}
+      <h3 class="news-item-title">${escapeHtml(title)}</h3>
+      ${summary ? `<p class="news-item-summary">${escapeHtml(summary)}</p>` : ''}
+    </div>
+  </a>`;
+}
+
+async function loadStoriesSsrFragments(): Promise<StoriesSsrFragments> {
+  const pool = getPool();
+  const [perspectivesResult, newsResult] = await Promise.all([
+    pool.query<StoriesPerspectiveItem>(
+      `SELECT
+         p.slug, p.title, p.subtitle, p.category, p.excerpt, p.external_url,
+         p.author_name, p.featured_image_url, p.published_at, p.tags, p.content_origin
+       FROM perspectives p
+       LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+       WHERE p.status = 'published'
+         AND p.is_members_only = false
+         AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
+         AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
+       ORDER BY p.published_at DESC NULLS LAST, p.created_at DESC
+       LIMIT 100`
+    ),
+    pool.query<StoriesNewsItem>(
+      `SELECT
+         k.title, k.source_url, k.summary, k.addie_notes, k.relevance_tags,
+         f.name AS feed_name
+       FROM addie_knowledge k
+       LEFT JOIN perspectives p ON k.source_url = p.external_url
+       LEFT JOIN industry_feeds f ON p.feed_id = f.id
+       CROSS JOIN LATERAL (
+         SELECT nc.id
+         FROM notification_channels nc
+         WHERE nc.website_enabled = true
+           AND nc.is_active = true
+           AND nc.slack_channel_id = ANY(COALESCE(k.human_routing_override, k.notification_channel_ids))
+         LIMIT 1
+       ) nc
+       WHERE k.fetch_status = 'success'
+         AND k.publication_status != 'rejected'
+         AND COALESCE(k.human_quality_override, k.quality_score) >= 3
+       ORDER BY
+         CASE WHEN k.publication_status = 'featured' THEN 0 ELSE 1 END,
+         COALESCE(k.published_at, k.created_at) DESC
+       LIMIT $1`,
+      [STORIES_NEWS_LIMIT]
+    ),
+  ]);
+  return {
+    officialCards: perspectivesResult.rows
+      .filter((item) => item.content_origin === 'official')
+      .map(buildStoriesPerspectiveCard),
+    memberCards: perspectivesResult.rows
+      .filter((item) => item.content_origin !== 'official')
+      .map(buildStoriesPerspectiveCard),
+    newsItems: newsResult.rows
+      .map(buildStoriesNewsItem)
+      .filter((item): item is string => item !== null),
+  };
+}
+
+async function injectStoriesSsrContent(html: string): Promise<string> {
+  const { officialCards, memberCards, newsItems } = await loadStoriesSsrFragments();
+
+  html = replaceElementInnerHtml(html, 'research-grid', officialCards.join('\n'));
+  html = replaceElementInnerHtml(html, 'perspectives-grid', memberCards.join('\n'));
+  html = replaceElementInnerHtml(html, 'news-list', newsItems.join('\n'));
+  if (officialCards.length === 0) html = hideElementById(html, 'research-section');
+  if (memberCards.length === 0) html = hideElementById(html, 'perspectives-section');
+  if (newsItems.length === 0) html = hideElementById(html, 'news-section');
+  return html;
+}
+
+const articleMarkdown = new Marked();
+const articleMarkdownCache = new Map<string, TimedValue<string>>();
+
+const ARTICLE_MARKDOWN_SANITIZE_CONFIG = {
+  ALLOWED_TAGS: [
+    'p', 'br', 'strong', 'em', 'a', 'ul', 'ol', 'li',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code',
+    'img', 'hr', 'del', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+  ],
+  ALLOWED_ATTR: ['href', 'src', 'alt', 'title'],
+  ALLOW_DATA_ATTR: false,
+  ALLOWED_URI_REGEXP: /^(?:https:|\/(?!\/)|#)/i,
+};
+
+function renderArticleMarkdown(markdown: string | null, cacheKey: string): string {
+  if (!markdown) return '';
+  if (Buffer.byteLength(markdown, 'utf8') > MAX_ARTICLE_MARKDOWN_BYTES) {
+    logger.warn({ cacheKey }, 'Skipping oversized public perspective content');
+    return '<p>Article content is temporarily unavailable.</p>';
+  }
+  const cached = articleMarkdownCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  articleMarkdownCache.delete(cacheKey);
+
+  const rendered = articleMarkdown.parse(markdown, { async: false }) as string;
+  const sanitized = DOMPurify.sanitize(rendered, ARTICLE_MARKDOWN_SANITIZE_CONFIG);
+  if (articleMarkdownCache.size >= ARTICLE_MARKDOWN_CACHE_MAX_ENTRIES) {
+    const oldestKey = articleMarkdownCache.keys().next().value;
+    if (oldestKey) articleMarkdownCache.delete(oldestKey);
+  }
+  articleMarkdownCache.set(cacheKey, {
+    value: sanitized,
+    expiresAt: Date.now() + ARTICLE_MARKDOWN_CACHE_TTL_MS,
+  });
+  return sanitized;
+}
+
+async function getPublicPerspectiveArticle(slug: string): Promise<PublicPerspectiveArticle | null> {
+  const result = await getPool().query<PublicPerspectiveArticle>(
+    `SELECT
+       p.slug, p.title, p.subtitle, p.category, p.excerpt, p.content,
+       p.author_name, p.author_title, p.featured_image_url,
+       p.published_at, p.updated_at, p.tags, p.like_count,
+       u.slug AS author_slug
+     FROM perspectives p
+     LEFT JOIN users u ON u.workos_user_id = p.author_user_id AND u.is_public = true
+     LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+     WHERE p.slug = $1 AND p.status = 'published'
+       AND p.is_members_only = false
+       AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
+    [slug]
+  );
+  return result.rows[0] ?? null;
+}
+
+function formatArticleDisplayDate(value: Date | string | null): string {
+  const date = coerceDate(value);
+  if (!date) return '';
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date);
+}
+
+function articleAuthorInitials(name: string): string {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+}
+
+function injectPerspectiveArticleContent(html: string, article: PublicPerspectiveArticle): string {
+  const date = formatArticleDisplayDate(article.published_at);
+  const authorHref = article.author_slug
+    ? `/community/people/${encodeURIComponent(article.author_slug)}`
+    : '/community/';
+  const headerAuthor = article.author_name
+    ? `<a id="headerAuthorLink" class="article-header-author" href="${escapeHtml(authorHref)}">
+        <span id="headerAuthorAvatar" class="article-header-avatar">${escapeHtml(articleAuthorInitials(article.author_name))}</span>
+        <span id="headerAuthorName">${escapeHtml(article.author_name)}</span>
+      </a>`
+    : '<a id="headerAuthorLink" class="article-header-author" href="#" style="display: none;"></a>';
+  const headerMeta = `${headerAuthor}
+      <span class="article-header-dot" id="headerMetaDot"${article.author_name && date ? '' : ' style="display: none;"'}>&middot;</span>
+      <span id="headerDate">${escapeHtml(date)}</span>`;
+  const tags = storyTopics(article.tags).map((tag) => (
+    `<a class="article-tag" href="/stories?topic=${encodeURIComponent(tag)}">${escapeHtml(tag)}</a>`
+  )).join('');
+
+  html = replaceElementInnerHtml(html, 'heroTitle', escapeHtml(article.title));
+  html = replaceElementInnerHtml(html, 'heroSubtitle', escapeHtml(article.subtitle || ''));
+  html = replaceElementInnerHtml(html, 'heroCategory', escapeHtml(article.category || 'Article'));
+  html = replaceElementInnerHtml(html, 'articleHeaderMeta', headerMeta);
+  html = replaceElementInnerHtml(html, 'articleDate', escapeHtml(date));
+  html = replaceElementInnerHtml(html, 'likeCount', String(article.like_count || 0));
+  html = replaceElementInnerHtml(html, 'articleTags', tags);
+  const articleCacheKey = `${article.slug}:${metaDate(article.updated_at) || ''}`;
+  html = replaceElementInnerHtml(html, 'articleContent', renderArticleMarkdown(article.content, articleCacheKey));
+  if (article.author_name) {
+    const authorTitle = article.author_title ? `, ${article.author_title}` : '';
+    html = replaceElementInnerHtml(
+      html,
+      'authorInfo',
+      `<p><strong id="authorName">${escapeHtml(article.author_name)}</strong><span id="authorTitle">${escapeHtml(authorTitle)}</span></p>`
+    );
+    html = showElementById(html, 'authorInfo');
+  }
+  if (tags) html = showElementById(html, 'articleTags');
+  if (article.author_name || date) html = showElementById(html, 'articleHeaderMeta');
+  html = hideElementById(html, 'loadingState');
+  html = showElementById(html, 'heroSection');
+  html = showElementById(html, 'mainContent');
+  html = replaceOpeningTagById(html, 'mainContent', (openingTag) => (
+    openingTag.includes('data-server-rendered=')
+      ? openingTag
+      : openingTag.replace(/>$/, ' data-server-rendered="true">')
+  ));
+  return html;
 }
 
 function buildRobotsTxt(baseUrl: string, hostLabel: string): string {
@@ -1142,6 +1485,16 @@ export class HTTPServer {
           }
           filePath = path.join(publicPath, ...segments, 'index.html');
           html = await fs.readFile(filePath, 'utf-8');
+        }
+
+        if (urlPath === '/stories' || urlPath === '/stories/' || urlPath === '/stories/index.html') {
+          try {
+            html = await injectStoriesSsrContent(html);
+          } catch (error) {
+            // Keep the client-rendered fallback available if a content query
+            // fails; a transient feed problem should not take down Stories.
+            logger.warn({ error }, 'Failed to server-render Stories content');
+          }
         }
 
         // Cross-domain session bridge: if on AdCP without a session cookie,
@@ -2443,7 +2796,7 @@ export class HTTPServer {
 
       res.json({
         authEnabled: AUTH_ENABLED,
-        slackInviteUrl: SLACK_INVITE_URL,
+        slackInviteUrl: SLACK_JOIN_GUIDE_URL,
         user,
       });
     });
@@ -2942,34 +3295,15 @@ export class HTTPServer {
       }
     });
 
-    // Perspectives detail page - serves article content with SSR meta tags for social sharing
+    // Perspectives detail page - serves article content and metadata in the
+    // initial HTML so search engines and LLM crawlers do not need JavaScript.
     this.app.get("/perspectives/:slug", async (req, res) => {
       const { slug } = req.params;
 
-      // Fetch article data for meta tags (social crawlers don't execute JS)
-      interface ArticleMetaData {
-        title: string;
-        excerpt?: string;
-        subtitle?: string;
-        featured_image_url?: string;
-        author_name?: string;
-        published_at?: string;
-        updated_at?: string;
-      }
-      let article: ArticleMetaData | null = null;
+      let article: PublicPerspectiveArticle | null = null;
       try {
-        const pool = getPool();
-        const result = await pool.query(
-          `SELECT p.title, p.excerpt, p.subtitle, p.featured_image_url, p.author_name, p.published_at, p.updated_at
-           FROM perspectives p
-           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
-           WHERE p.slug = $1 AND p.status = 'published'
-             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
-          [slug]
-        );
-        if (result.rows.length > 0) {
-          article = result.rows[0];
-        } else {
+        article = await getPublicPerspectiveArticle(slug);
+        if (!article) {
           // The article shell renders its own "Article Not Found" state after
           // hydration. Preserve that UI while returning the correct HTTP
           // status to crawlers and other clients.
@@ -2979,17 +3313,40 @@ export class HTTPServer {
         logger.warn({ error, slug }, 'Failed to fetch article for meta tags');
       }
 
-      // Serve HTML with meta tags injected
-      await serveHtmlWithMetaTags(req, res, 'perspectives/article.html', article ? {
+      if (!article) {
+        await serveHtmlWithMetaTags(req, res, 'perspectives/article.html');
+        return;
+      }
+
+      const articlePath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/perspectives/article.html')
+        : path.join(__dirname, '../public/perspectives/article.html');
+      let html = await fs.readFile(articlePath, 'utf-8');
+      html = injectMetaTagsIntoHtml(html, {
         title: article.title,
         description: article.excerpt || article.subtitle || article.title,
         image: article.featured_image_url || 'https://agenticadvertising.org/AAo-social.png',
-        url: `https://agenticadvertising.org/perspectives/${slug}`,
+        url: `${PUBLIC_SITE_URL}/perspectives/${encodeURIComponent(slug)}`,
         type: 'article',
-        author: article.author_name,
-        publishedAt: article.published_at,
-        modifiedAt: article.updated_at,
-      } : undefined);
+        author: article.author_name || undefined,
+        publishedAt: metaDate(article.published_at),
+        modifiedAt: metaDate(article.updated_at),
+      });
+      html = injectPerspectiveArticleContent(html, article);
+
+      const user = await getUserFromRequest(req, res);
+      await enrichUserWithMembership(user);
+      await enrichUserWithAdmin(user);
+      const configScript = getAppConfigScript(user);
+      html = html.includes('</head>')
+        ? html.replace('</head>', `${configScript}\n</head>`)
+        : html.replace('<body', `${configScript}\n<body`);
+
+      res.setHeader('Content-Type', 'text/html');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.send(html);
     });
 
     // Legacy redirects
@@ -6188,6 +6545,7 @@ export class HTTPServer {
            FROM perspectives p
            LEFT JOIN working_groups wg ON wg.id = p.working_group_id
            WHERE p.status = 'published'
+             AND p.is_members_only = false
              AND p.content_type = 'article'
              AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
              AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
@@ -6267,6 +6625,7 @@ export class HTTPServer {
           LEFT JOIN users u ON u.workos_user_id = p.author_user_id AND u.is_public = true
           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
           WHERE p.status = 'published'
+            AND p.is_members_only = false
             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
             ${authored ? "AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))" : ''}
           ORDER BY p.published_at DESC NULLS LAST
@@ -6312,7 +6671,8 @@ export class HTTPServer {
           ) pa_report ON true
           WHERE p.slug = $1
             AND (
-              (p.status = 'published' AND (p.working_group_id IS NULL OR wg.slug = 'editorial'))
+              (p.status = 'published' AND p.is_members_only = false
+                AND (p.working_group_id IS NULL OR wg.slug = 'editorial'))
               OR ($2::text IS NOT NULL AND p.status IN ('draft', 'pending_review') AND (
                 p.author_user_id = $2
                 OR EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id AND ca.user_id = $2)
@@ -6351,7 +6711,7 @@ export class HTTPServer {
           `SELECT p.id, pa.file_name
            FROM perspectives p
            JOIN perspective_assets pa ON pa.perspective_id = p.id AND pa.asset_type = 'report'
-           WHERE p.slug = $1 AND p.status = 'published'
+           WHERE p.slug = $1 AND p.status = 'published' AND p.is_members_only = false
            LIMIT 1`,
           [slug]
         );
@@ -6384,16 +6744,20 @@ export class HTTPServer {
       try {
         const { slug } = req.params;
         const now = Date.now();
-        const cached = cardImageCache.get(slug);
-        if (cached && cached.expires > now) {
-          res.set('Content-Type', 'image/png');
-          res.set('Cache-Control', 'public, max-age=86400');
-          return res.send(cached.buffer);
-        }
-
+        // Re-check public eligibility before consulting the image cache so a
+        // visibility change cannot leave a cached card anonymously available.
         const perspective = await getPerspectiveWithIllustration(slug);
         if (!perspective) {
           return res.status(404).send('Not found');
+        }
+
+        const cached = cardImageCache.get(slug);
+        if (cached && cached.expires > now) {
+          res.set('Content-Type', 'image/png');
+          // Visibility is checked above on every request. Require shared caches
+          // to revalidate too, so unpublishing a perspective revokes its card.
+          res.set('Cache-Control', 'public, max-age=0, must-revalidate');
+          return res.send(cached.buffer);
         }
 
         const cardOpts = {
@@ -6419,7 +6783,7 @@ export class HTTPServer {
         cardImageCache.set(slug, { buffer: png, expires: now + 86400000 });
 
         res.set('Content-Type', 'image/png');
-        res.set('Cache-Control', 'public, max-age=86400');
+        res.set('Cache-Control', 'public, max-age=0, must-revalidate');
         return res.send(png);
       } catch (error) {
         logger.error({ err: error, slug: req.params.slug }, 'Card image generation error');
@@ -6442,11 +6806,15 @@ export class HTTPServer {
         const userId = req.user?.id ?? null;
 
         const perspResult = await pool.query(
-          `SELECT p.id FROM perspectives p
+          `SELECT p.id,
+                  (p.status = 'published' AND p.is_members_only = false
+                    AND (p.working_group_id IS NULL OR wg.slug = 'editorial')) AS is_public
+           FROM perspectives p
            LEFT JOIN working_groups wg ON wg.id = p.working_group_id
            WHERE p.slug = $1
              AND (
-               (p.status = 'published' AND (p.working_group_id IS NULL OR wg.slug = 'editorial'))
+               (p.status = 'published' AND p.is_members_only = false
+                 AND (p.working_group_id IS NULL OR wg.slug = 'editorial'))
                OR ($2::text IS NOT NULL AND p.status IN ('draft', 'pending_review') AND (
                  p.author_user_id = $2
                  OR EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id AND ca.user_id = $2)
@@ -6458,7 +6826,8 @@ export class HTTPServer {
           return res.status(404).send('Not found');
         }
 
-        const asset = await getPerspectiveAssetData(perspResult.rows[0].id, filename);
+        const { id, is_public: isPublic } = perspResult.rows[0];
+        const asset = await getPerspectiveAssetData(id, filename);
         if (!asset) {
           return res.status(404).send('Asset not found');
         }
@@ -6467,7 +6836,10 @@ export class HTTPServer {
         res.setHeader('Content-Type', contentType);
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Content-Security-Policy', "default-src 'none'");
-        res.setHeader('Cache-Control', 'public, max-age=86400');
+        res.setHeader(
+          'Cache-Control',
+          isPublic ? 'public, max-age=0, must-revalidate' : 'private, no-store'
+        );
         res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(asset.file_name)}"`);
         res.setHeader('Content-Length', asset.file_data.length);
         res.send(asset.file_data);

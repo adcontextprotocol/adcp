@@ -68,4 +68,4 @@ For security questions that are not sensitive vulnerability reports:
 - **Documentation**: https://docs.adcontextprotocol.org/docs/building/implementation/security
 - **GitHub Discussions**: Security category
 - **Email**: security@adcontextprotocol.org
-- **Slack**: https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg
+- **Slack**: https://docs.adcontextprotocol.org/docs/community/joining-slack

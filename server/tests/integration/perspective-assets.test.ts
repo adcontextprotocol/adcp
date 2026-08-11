@@ -276,7 +276,7 @@ describe('Perspective Assets Integration Tests', () => {
       expect(response.headers['content-type']).toBe('image/png');
       expect(response.headers['x-content-type-options']).toBe('nosniff');
       expect(response.headers['content-security-policy']).toBe("default-src 'none'");
-      expect(response.headers['cache-control']).toBe('public, max-age=86400');
+      expect(response.headers['cache-control']).toBe('public, max-age=0, must-revalidate');
       expect(response.body).toBeInstanceOf(Buffer);
     });
 

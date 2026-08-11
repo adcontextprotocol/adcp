@@ -421,6 +421,7 @@ export class CommunityDatabase {
        FROM perspectives p
        LEFT JOIN content_authors ca ON ca.perspective_id = p.id
        WHERE p.status = 'published'
+         AND p.is_members_only = false
          AND (p.author_user_id = $1 OR p.proposer_user_id = $1 OR ca.user_id = $1)
        ORDER BY p.published_at DESC
        LIMIT 20`,
