@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.13
+
+### Patch Changes
+
+- b09c757: Gate the `create_media_buy` submitted-arm compliance storyboard on the seller advertising `force_create_media_buy_arm` under `compliance_testing.scenarios`. Sellers without that sandbox-only forcing capability now skip the whole storyboard before its independent downstream phase can incorrectly fail their otherwise conformant synchronous or provisional media-buy flow.
+- 2bc2054: Skip the per-agent billing permission phases when a seller does not advertise agent billing, preventing capability-level `BILLING_NOT_SUPPORTED` responses from being graded as failures against the narrower `BILLING_NOT_PERMITTED_FOR_AGENT` contract.
+
 ## 3.1.12
 
 ### Patch Changes
