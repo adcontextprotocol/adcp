@@ -2216,7 +2216,7 @@ async function handleUserMessage({
       model: AddieModelConfig.chat,
       latency_ms: Date.now() - startTime,
       flagged: true,
-      flag_reason: `stream_interrupted:${streamInterruptCategory || 'upstream_error'}`,
+      flag_reason: `stream_interrupted:${streamInterruptCategory}`,
     });
     // The assistant turn is intentionally discarded, but an input already
     // flagged by sanitizeInput must still promote its parent thread into the
