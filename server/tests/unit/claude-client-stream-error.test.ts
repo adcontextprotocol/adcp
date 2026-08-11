@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 /**
  * Mid-stream upstream-failure event surface (#4797).
@@ -94,6 +94,14 @@ beforeEach(() => {
   __setCostTrackerStore(__createInMemoryCostStore());
   // Default stub: keyword-only Error. Per-test overrides flip to APIError.
   streamStubFactory = makeKeywordErrorStub;
+  vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: () => void) => {
+    callback();
+    return 0;
+  }) as typeof setTimeout);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('processMessageStream — mid-stream upstream failure (#4797)', () => {
@@ -178,10 +186,26 @@ describe('processMessageStream — mid-stream upstream failure (#4797)', () => {
     expect(evt.deltasBeforeError).toBe(1);
   });
 
-  it('does not retry after a non-text tool-input delta', async () => {
+  it('safely retries after a buffered tool-input delta', async () => {
     let streamCalls = 0;
     streamStubFactory = () => {
       streamCalls++;
+      if (streamCalls === 2) {
+        const recovered = {
+          stop_reason: 'end_turn',
+          content: [{ type: 'text', text: 'Recovered response.' }],
+          usage: { input_tokens: 4, output_tokens: 3 },
+        };
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield {
+              type: 'content_block_delta',
+              delta: { type: 'text_delta', text: 'Recovered response.' },
+            };
+          },
+          finalMessage: vi.fn().mockResolvedValue(recovered),
+        } as unknown as ReturnType<typeof makeKeywordErrorStub>;
+      }
       return {
         async *[Symbol.asyncIterator]() {
           yield {
@@ -205,9 +229,13 @@ describe('processMessageStream — mid-stream upstream failure (#4797)', () => {
       events.push(event);
     }
 
-    expect(streamCalls).toBe(1);
-    expect(events.filter((event) => event.type === 'text')).toHaveLength(0);
-    const streamError = events.find((event): event is Extract<StreamEvent, { type: 'stream_error' }> => event.type === 'stream_error');
-    expect(streamError?.deltasBeforeError).toBe(1);
+    expect(streamCalls).toBe(2);
+    expect(events.filter((event) => event.type === 'retry')).toHaveLength(1);
+    expect(events.filter((event) => event.type === 'stream_error')).toHaveLength(0);
+    expect(events.filter((event) => event.type === 'text')).toEqual([
+      { type: 'text', text: 'Recovered response.' },
+    ]);
+    const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
+    expect(done?.response.text).toBe('Recovered response.');
   });
 });

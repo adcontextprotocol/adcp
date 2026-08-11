@@ -1692,12 +1692,13 @@ export class AddieClaudeClient {
         let currentResponse: Anthropic.Beta.BetaMessage | null = null;
         const textChunks: string[] = [];
 
-        // Retry loop for streaming API calls (handles overloaded_error)
-        // Only retries if no content has been received yet (safe retry)
+        // Retry loop for streaming API calls (handles overloaded_error).
+        // Logical-turn buffering means no model output is exposed and no
+        // custom tool executes until a complete response is assembled, so a
+        // failed sample is safe to discard and retry even after deltas arrive.
         const maxStreamRetries = 3;
         let streamRetryCount = 0;
         let streamSucceeded = false;
-        let hasReceivedContent = false;
         let receivedDeltaCount = 0;
 
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
@@ -1715,9 +1716,6 @@ export class AddieClaudeClient {
               if (event.type === 'content_block_delta') {
                 totalReceivedDeltas++;
                 receivedDeltaCount++;
-                // Any delta (text, tool JSON, thinking, etc.) means the model
-                // has started a sample and repeating the prompt is unsafe.
-                hasReceivedContent = true;
                 const delta = event.delta;
                 if ('text' in delta && delta.text) {
                   textChunks.push(delta.text);
@@ -1738,39 +1736,31 @@ export class AddieClaudeClient {
             const stats = this.buildPayloadDebugStats(effectiveModel, systemBlocks, customTools, messages, iteration);
             this.logPromptOverflow(streamError, stats, 'processMessageStream');
 
-            // Once any content is received, retry could produce a different sample.
-            const canRetry = !hasReceivedContent &&
-                             isRetryableError(streamError) &&
+            const retryable = isRetryableError(streamError);
+            const canRetry = retryable &&
                              streamRetryCount <= maxStreamRetries;
 
             if (!canRetry) {
-              // Check if this is exhausted retries on a retryable error before any delta.
-              // If so, wrap in RetriesExhaustedError for consistent error handling
-              const isExhausted = !hasReceivedContent &&
-                                  isRetryableError(streamError) &&
-                                  streamRetryCount > maxStreamRetries;
+              const isExhausted = retryable && streamRetryCount > maxStreamRetries;
               if (isExhausted) {
+                if (receivedDeltaCount > 0) {
+                  const errorMsg = streamError instanceof Error ? streamError.message : String(streamError);
+                  const reason = errorMsg.includes('overloaded') ? 'API is busy' :
+                                errorMsg.includes('rate') ? 'Rate limited' :
+                                errorMsg.includes('timeout') ? 'Request timed out' :
+                                'Connection broke mid-reply';
+                  streamErrorEmitted = true;
+                  yield {
+                    type: 'stream_error',
+                    reason,
+                    deltasBeforeError: receivedDeltaCount,
+                    tool_executions: [...toolExecutions],
+                    certification_reserve_used: certificationReserveUsed,
+                  };
+                }
                 throw new RetriesExhaustedError(streamError, streamRetryCount);
               }
-              // Mid-stream failure: deltas were received, so retry is unsafe
-              // even though terminal buffering has not exposed them. Yield a
-              // stream_error and discard the buffered partial turn (#4797).
-              if (hasReceivedContent && isRetryableError(streamError)) {
-                const errorMsg = streamError instanceof Error ? streamError.message : String(streamError);
-                const reason = errorMsg.includes('overloaded') ? 'API is busy' :
-                              errorMsg.includes('rate') ? 'Rate limited' :
-                              errorMsg.includes('timeout') ? 'Request timed out' :
-                              'Connection broke mid-reply';
-                streamErrorEmitted = true;
-                yield {
-                  type: 'stream_error',
-                  reason,
-                  deltasBeforeError: receivedDeltaCount,
-                  tool_executions: [...toolExecutions],
-                  certification_reserve_used: certificationReserveUsed,
-                };
-              }
-              // Not retryable or content was already received - rethrow.
+              // Non-retryable failures are surfaced by the outer error path.
               throw streamError;
             }
 
@@ -1807,7 +1797,7 @@ export class AddieClaudeClient {
 
             await new Promise(resolve => setTimeout(resolve, totalDelay));
 
-            // Reset for retry (safe since no content was received yet)
+            // Discard the failed, never-exposed sample before retrying.
             textChunks.length = 0;
             receivedDeltaCount = 0;
             currentResponse = null;
