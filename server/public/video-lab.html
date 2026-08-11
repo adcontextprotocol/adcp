@@ -70,6 +70,15 @@
       transition: transform 0.15s;
     }
     details.advanced[open] summary::before { transform: rotate(90deg); }
+    .guidance-active {
+      margin-left: auto;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: var(--color-warning-50);
+      color: var(--color-warning-700);
+      font-size: 10px;
+      font-weight: 600;
+    }
     details.advanced .settings-body {
       padding: 0 16px 16px;
       display: grid;
@@ -461,7 +470,7 @@
       </div>
 
       <details class="advanced" id="advanced-settings">
-        <summary>Advanced settings</summary>
+        <summary>Advanced settings <span class="guidance-active" id="guidance-active" hidden>Session guidance active</span></summary>
         <div class="settings-body">
           <div class="setting-row">
             <label for="opt-greeting">Custom greeting</label>
@@ -469,9 +478,9 @@
             <span class="hint-inline">First words Addie speaks. Leave blank to use the default.</span>
           </div>
           <div class="setting-row">
-            <label for="opt-context">Conversational context</label>
-            <textarea id="opt-context" maxlength="2000" placeholder="e.g. You're at AAO Foundry talking to publishers. Lead with how AdCP unlocks programmatic for them."></textarea>
-            <span class="hint-inline">Extra context appended to Addie's system prompt this session.</span>
+            <label for="opt-context">Session guidance</label>
+            <textarea id="opt-context" maxlength="2000" placeholder="Example: This is a publisher demo at AgenticAdvertising.org Foundry. Focus on how AdCP helps publishers sell programmatically."></textarea>
+            <span class="hint-inline">Tell Addie the audience, setting, and topics to emphasize. Saved in this browser and applied to calls from this lab; it cannot request actions, grant permissions, or act as confirmation.</span>
           </div>
           <div class="setting-row">
             <label for="opt-duration">Max call duration</label>
@@ -594,6 +603,10 @@
     function saveSettings(s) {
       try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch {}
     }
+    function updateSessionGuidanceIndicator(value) {
+      const indicator = document.getElementById('guidance-active');
+      if (indicator) indicator.hidden = !String(value || '').trim();
+    }
     function readSettingsFromForm() {
       return {
         greeting: document.getElementById('opt-greeting').value,
@@ -612,11 +625,13 @@
       document.getElementById('opt-greenscreen').checked = !!s.greenscreen;
       document.getElementById('opt-language').value = s.language || '';
       document.getElementById('opt-disable-fillers').checked = !!s.disableFillers;
+      updateSessionGuidanceIndicator(s.extraContext);
     }
     function persistSettingsFromForm() {
       const s = readSettingsFromForm();
       saveSettings(s);
       document.getElementById('opt-duration-display').textContent = String(s.durationMin);
+      updateSessionGuidanceIndicator(s.extraContext);
     }
 
     const $ = (id) => document.getElementById(id);
