@@ -4,7 +4,15 @@
   "title": "List Products Response",
   "description": "Product offers and continuation state. This response never contains proposals or proposal-lifecycle fields.",
   "type": "object",
+  "discriminator": {
+    "propertyName": "outcome"
+  },
   "properties": {
+    "outcome": {
+      "type": "string",
+      "enum": ["listed", "unchanged"],
+      "description": "Whether this response carries a product page or confirms that the selected feed has not changed."
+    },
     "products": {
       "type": "array",
       "items": { "$ref": "/schemas/core/product.json" }
@@ -17,16 +25,20 @@
     "feed_version": { "type": "string", "description": "Opaque version of the selected offer feed." },
     "pricing_version": { "type": "string", "description": "Opaque version of the selected pricing layer." },
     "cache_scope": { "type": "string", "enum": ["public", "account"] },
-    "unchanged": { "type": "boolean", "const": true },
     "incomplete": { "$ref": "/schemas/media-buy/get-products-response.json#/properties/incomplete" }
   },
   "oneOf": [
     {
-      "required": ["products"],
-      "not": { "required": ["unchanged"] }
+      "properties": {
+        "outcome": { "type": "string", "const": "listed" }
+      },
+      "required": ["outcome", "products"]
     },
     {
-      "required": ["unchanged", "feed_version", "cache_scope"],
+      "properties": {
+        "outcome": { "type": "string", "const": "unchanged" }
+      },
+      "required": ["outcome", "feed_version", "cache_scope"],
       "not": { "required": ["products"] }
     }
   ],
@@ -34,7 +46,8 @@
     "anyOf": [
       { "required": ["proposals"] },
       { "required": ["refinement_applied"] },
-      { "required": ["pagination"] }
+      { "required": ["pagination"] },
+      { "required": ["unchanged"] }
     ]
   },
   "additionalProperties": true

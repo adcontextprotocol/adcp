@@ -183,7 +183,31 @@ describe('training agent idempotency middleware', () => {
         },
       });
       expect(result.isError).toBeFalsy();
+      expect(result.parsed.outcome).toBe('listed');
       expect(result.parsed.products).toEqual(expect.any(Array));
+    });
+
+    it('uses the list_products outcome discriminator for conditional feed reads', async () => {
+      const first = await call(server, 'list_products', { brand: BRAND });
+      expect(first.isError).toBeFalsy();
+      expect(first.parsed).toMatchObject({
+        outcome: 'listed',
+        products: expect.any(Array),
+        feed_version: expect.any(String),
+      });
+
+      const unchanged = await call(server, 'list_products', {
+        brand: BRAND,
+        if_feed_version: first.parsed.feed_version,
+      });
+      expect(unchanged.isError).toBeFalsy();
+      expect(unchanged.parsed).toMatchObject({
+        outcome: 'unchanged',
+        feed_version: first.parsed.feed_version,
+        cache_scope: 'public',
+      });
+      expect(unchanged.parsed).not.toHaveProperty('products');
+      expect(unchanged.parsed).not.toHaveProperty('unchanged');
     });
 
     it('validates compact linked and envelope fields against the source schema', async () => {
@@ -475,6 +499,7 @@ describe('training agent idempotency middleware', () => {
 
       const listed = await call(server, 'list_products', identity);
       expect(listed.isError).toBeFalsy();
+      expect(listed.parsed.outcome).toBe('listed');
       expect(listed.parsed.replayed).toBeUndefined();
       expect(listed.parsed.products).toEqual(first.parsed.products);
     });
@@ -583,6 +608,7 @@ describe('training agent idempotency middleware', () => {
         brand: BRAND,
         brief: 'cross-channel sports',
       });
+      expect(requested.parsed.outcome).toBe('proposed');
       const proposalId = (requested.parsed.proposals as Array<{ proposal_id: string }>)[0].proposal_id;
       const key = `proposal-refine-${randomUUID()}`;
       const first = await call(server, 'refine_proposals', {

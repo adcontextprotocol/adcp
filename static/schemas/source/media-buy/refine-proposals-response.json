@@ -10,6 +10,9 @@
       "minItems": 1,
       "items": {
         "type": "object",
+        "discriminator": {
+          "propertyName": "outcome"
+        },
         "properties": {
           "source_proposal_id": {
             "type": "string",
@@ -43,8 +46,8 @@
         "required": ["source_proposal_id", "outcome"],
         "oneOf": [
           {
-            "properties": { "outcome": { "const": "revised" } },
-            "required": ["proposal"],
+            "properties": { "outcome": { "type": "string", "const": "revised" } },
+            "required": ["outcome", "proposal"],
             "not": {
               "anyOf": [
                 { "required": ["reason"] },
@@ -53,13 +56,13 @@
             }
           },
           {
-            "properties": { "outcome": { "const": "partial" } },
-            "required": ["proposal", "notes"],
+            "properties": { "outcome": { "type": "string", "const": "partial" } },
+            "required": ["outcome", "proposal", "notes"],
             "not": { "required": ["reason"] }
           },
           {
-            "properties": { "outcome": { "const": "unable" } },
-            "required": ["reason"],
+            "properties": { "outcome": { "type": "string", "const": "unable" } },
+            "required": ["outcome", "reason"],
             "not": { "required": ["proposal"] }
           }
         ],

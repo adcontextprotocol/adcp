@@ -3138,8 +3138,28 @@ async function runTests() {
   );
   await testSchemaValidation(
     '/schemas/media-buy/list-products-response.json',
-    { products: [] },
+    { outcome: 'listed', products: [] },
     'list_products treats no matches as an empty successful product page'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/list-products-response.json',
+    { outcome: 'unchanged', feed_version: 'feed-v2', cache_scope: 'public' },
+    'list_products explicitly discriminates an unchanged feed response'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/request-proposals-response.json',
+    {
+      outcome: 'proposed',
+      proposals: [{
+        proposal_id: 'proposal-1',
+        name: 'Draft premium video plan',
+        allocations: [{ product_id: 'premium-video', allocation_percentage: 100 }],
+        proposal_status: 'draft',
+        expires_at: '2027-06-30T23:59:59Z'
+      }],
+      products: [{ ...productBase, product_id: 'premium-video' }]
+    },
+    'request_proposals explicitly discriminates a successful proposal response'
   );
   await testSchemaValidation(
     '/schemas/media-buy/request-proposals-response.json',
@@ -3165,6 +3185,7 @@ async function runTests() {
         proposal_status: 'draft',
         expires_at: '2027-06-30T23:59:59Z'
       }],
+      outcome: 'proposed',
       products: [{ ...productBase, product_id: 'premium-video' }],
       reason: 'This must not appear on the success arm.'
     },

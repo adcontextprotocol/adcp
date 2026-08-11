@@ -23,3 +23,5 @@ testable: true
 ```
 
 Every returned allocation references the exact `product_id` whose pricing and forecast the seller used. The returned `proposal_id` is the only linkage needed by [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), [`finalize_proposals`](/docs/media-buy/task-reference/finalize_proposals), and [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy).
+
+The response uses `outcome: "proposed"` for a successful draft set and `outcome: "rejected"` with a reason when the seller cannot construct an actionable plan.

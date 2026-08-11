@@ -12772,6 +12772,7 @@ describe('proposal lifecycle', () => {
       brief: 'social engagement display',
     });
     expect(requestError).toBeFalsy();
+    expect(requested.outcome).toBe('proposed');
     expect(requested).not.toHaveProperty('pagination');
     expect(requested).not.toHaveProperty('refinement_applied');
     const source = (requested.proposals as Array<Record<string, unknown>>)[0];

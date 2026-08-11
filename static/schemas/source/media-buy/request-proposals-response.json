@@ -4,8 +4,11 @@
   "title": "Request Proposals Response",
   "description": "One or more draft media-plan proposals and the exact products referenced by their allocations. Returning only products does not satisfy request_proposals.",
   "type": "object",
+  "discriminator": {
+    "propertyName": "outcome"
+  },
   "properties": {
-    "outcome": { "type": "string", "const": "rejected" },
+    "outcome": { "type": "string", "enum": ["proposed", "rejected"] },
     "reason": { "type": "string", "minLength": 1 },
     "suggestions": {
       "type": "array",
@@ -36,10 +39,10 @@
   },
   "oneOf": [
     {
-      "required": ["proposals", "products"],
+      "properties": { "outcome": { "type": "string", "const": "proposed" } },
+      "required": ["outcome", "proposals", "products"],
       "not": {
         "anyOf": [
-          { "required": ["outcome"] },
           { "required": ["reason"] },
           { "required": ["suggestions"] }
         ]

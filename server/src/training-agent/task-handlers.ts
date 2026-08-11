@@ -4359,7 +4359,7 @@ export function projectProductDiscoveryResult(
   if (toolName === 'list_products') {
     if (result.unchanged === true) {
       return {
-        unchanged: true,
+        outcome: 'unchanged',
         ...(typeof result.wholesale_feed_version === 'string' && { feed_version: result.wholesale_feed_version }),
         ...(typeof result.pricing_version === 'string' && { pricing_version: result.pricing_version }),
         ...(typeof result.cache_scope === 'string' && { cache_scope: result.cache_scope }),
@@ -4367,6 +4367,7 @@ export function projectProductDiscoveryResult(
     }
     const pagination = isRecord(result.pagination) ? result.pagination : undefined;
     return {
+      outcome: 'listed',
       products,
       ...(pagination && typeof pagination.cursor === 'string' && { next_cursor: pagination.cursor }),
       ...(typeof result.wholesale_feed_version === 'string' && { feed_version: result.wholesale_feed_version }),
@@ -4379,6 +4380,7 @@ export function projectProductDiscoveryResult(
   if (toolName === 'request_proposals') {
     const outwardProposals = proposals.map(outwardProposal);
     return {
+      outcome: 'proposed',
       proposals: outwardProposals,
       products: supportingProductsForProposals(outwardProposals, products),
       ...(isRecord(result.targeting_resolution) && { targeting_resolution: result.targeting_resolution }),

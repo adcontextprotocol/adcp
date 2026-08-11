@@ -25,3 +25,5 @@ testable: true
 `brand` is an identity-only key. Sellers resolve its canonical manifest from the domain; callers do not send logos, colors, or governance overrides in this request. Catalog ingestion belongs to [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs); discovery accepts only a compact catalog selection under `criteria.catalog`.
 
 The compact criteria deliberately contain only offer characteristics, catalog selection, and policy requirements. The targeting-aware discovery contract is being developed separately in [PR #6203](https://github.com/adcontextprotocol/adcp/pull/6203), so this task does not advertise targeting fields before sellers can enforce them.
+
+The response uses an explicit `outcome`: `listed` carries `products` (which may be empty), while `unchanged` carries `feed_version` and `cache_scope` without repeating the product page.

@@ -224,6 +224,7 @@ describe('Training Agent webhook emission', () => {
       });
       const requested = structuredToolResult(requestedResponse);
       expect(requested).not.toHaveProperty('adcp_error');
+      expect(requested.outcome).toBe('proposed');
       const source = (requested.proposals as Array<Record<string, unknown>>)[0];
 
       const refinedResponse = await call('refine_proposals', {
