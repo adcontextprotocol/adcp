@@ -7,8 +7,7 @@ testable: true
 
 `list_products` is the side-effect-free entry point to the compact product lifecycle. It returns products only—never proposals—and always completes synchronously. Buyers can purchase a listed product directly or pass returned `product_id` values to [`request_proposals`](/docs/media-buy/task-reference/request_proposals) for seller planning.
 
-{/* Using latest because this schema is not yet released. */}
-**Request schema:** [`/schemas/latest/media-buy/list-products-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/list-products-request.json)
+**Request schema:** [`/schemas/v3/media-buy/list-products-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-products-request.json)
 
 ```json
 {
