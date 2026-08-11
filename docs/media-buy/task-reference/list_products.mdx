@@ -26,4 +26,56 @@ testable: true
 
 The compact criteria deliberately contain only offer characteristics, catalog selection, and policy requirements. The targeting-aware discovery contract is being developed separately in [PR #6203](https://github.com/adcontextprotocol/adcp/pull/6203), so this task does not advertise targeting fields before sellers can enforce them.
 
-The response uses an explicit `outcome`: `listed` carries `products` (which may be empty), while `unchanged` carries `feed_version` and `cache_scope` without repeating the product page.
+## Response
+
+Every response has an explicit `outcome`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `outcome` | string | `listed` when the response contains a product page; `unchanged` when a conditional request matches the current feed. |
+| `products` | Product[] | Product offers for this page. Required for `listed`, even when the array is empty; omitted for `unchanged`. |
+| `next_cursor` | string | Cursor for the next page. Omitted on the final page. Pass it as `cursor` in the next request. |
+| `feed_version` | string | Opaque version of the selected offer feed. Pass it as `if_feed_version` on a later request to avoid downloading an unchanged feed. |
+| `pricing_version` | string | Opaque version of the selected pricing layer. Pass it as `if_pricing_version` together with `if_feed_version` when checking both versions. |
+| `cache_scope` | string | Whether the version applies to the seller's `public` feed or an `account`-specific overlay. |
+| `incomplete` | object[] | Optional details about portions of the response the seller could not complete. |
+
+A product page can include continuation and cache state:
+
+```json
+{
+  "outcome": "listed",
+  "products": [],
+  "next_cursor": "page_2",
+  "feed_version": "feed_2026_08_10_1",
+  "pricing_version": "pricing_42",
+  "cache_scope": "account"
+}
+```
+
+To check whether the same selection has changed, repeat the request with `if_feed_version`. Include `if_pricing_version` only when `if_feed_version` is also present:
+
+```json
+{
+  "brand": { "domain": "acmeoutdoor.example" },
+  "criteria": {
+    "offer_filters": {
+      "channels": ["olv"],
+      "pricing_currencies": ["USD"]
+    }
+  },
+  "if_feed_version": "feed_2026_08_10_1",
+  "if_pricing_version": "pricing_42"
+}
+```
+
+If the selected feed and pricing layer still match, the seller can omit `products`:
+
+```json
+{
+  "outcome": "unchanged",
+  "feed_version": "feed_2026_08_10_1",
+  "pricing_version": "pricing_42",
+  "cache_scope": "account"
+}
+```
