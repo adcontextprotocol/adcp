@@ -122,11 +122,13 @@
     "include_pricing": {
       "type": "boolean",
       "default": false,
-      "description": "Include pricing_options on each format. Used by transformation and generation agents that charge per format or per unit of work. Requires account. When false or omitted, pricing is not computed."
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.1. Removed at 4.0.** Use `list_transformers` with `include_pricing` and `account` for transformation and generation pricing. *Legacy 3.x behavior:* include `pricing_options` on each returned format. Requires `account`; when false or omitted, pricing is not computed. Agents supporting the 3.1 format-pricing surface MUST continue to honor this field through 3.x."
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
-      "description": "Account reference for pricing. When provided with include_pricing, the agent returns pricing_options from this account's rate card on each format."
+      "deprecated": true,
+      "description": "**DEPRECATED for `list_creative_formats` in 3.1. Removed at 4.0.** Use the account-scoped `list_transformers` request instead. *Legacy 3.x behavior:* identifies the rate card used when `include_pricing` is true."
     },
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json"
