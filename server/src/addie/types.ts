@@ -132,6 +132,7 @@ export interface AddieTool {
     type: 'object';
     properties: Record<string, unknown>;
     required?: string[];
+    additionalProperties?: boolean | Record<string, unknown>;
   };
 }
 

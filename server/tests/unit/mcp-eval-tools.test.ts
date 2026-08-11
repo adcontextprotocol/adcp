@@ -116,6 +116,7 @@ describe('EVAL_TOOL_DEFINITIONS', () => {
   it('evaluate_agent_quality has tracks param', () => {
     const tool = EVAL_TOOL_DEFINITIONS.find((t) => t.name === 'evaluate_agent_quality');
     expect(tool!.inputSchema.properties).toHaveProperty('tracks');
+    expect(tool!.inputSchema.additionalProperties).toBe(false);
   });
 });
 
