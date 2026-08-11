@@ -68,6 +68,9 @@
     "update_rights": "Brand domain: Update an existing rights grant, including its term, impression cap, pricing option, or pause state",
     "sync_agent_notification_configs": "Protocol domain: Register agent-level webhook subscribers such as capabilities.changed cache-invalidation notifications"
   },
+  "x-task-result-schema-overrides": {
+    "media_buy_delivery": "media-buy/media-buy-delivery-webhook-result.json"
+  },
   "notes": [
     "Task types map to specific AdCP task operations",
     "Each task type belongs to the 'media-buy', 'signals', 'property', 'account', 'creative', or 'brand' domain",

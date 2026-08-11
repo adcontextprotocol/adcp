@@ -25,6 +25,8 @@ AdCP 3.2 adds `list_products`, `request_proposals`, `refine_proposals`, and `dec
 - Each stateful task requires an idempotency key and retains its own replay identity. Retries use the same tool name.
 - Brand input is an identity-only key, catalogs are compact selections, and offer filters are separated from exact targeting and future targeting support.
 - `media_buy.product_discovery_tools` advertises the split surface. Its absence means callers use `get_products` and `buying_modes`.
+- The release manifest labels each legacy fallback as `direct`, `orchestrated`, or `none`, so SDKs can expose the split API without claiming lossy calls are aliases.
+- `task_result_resolution` maps each tracked `task_type` to its tool `response_schema` or a retained 3.x event override, letting SDKs generate `TaskStatus<Result>` without embedding the global async-result union in `getTaskStatus`.
 
 New integrations SHOULD use the split tools. Existing integrations do not need an immediate migration: `get_products` keeps its optional-key 3.x contract, and sellers MUST honor replay protection whenever a key is supplied.
 

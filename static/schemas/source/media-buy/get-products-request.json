@@ -40,6 +40,7 @@
   "x-idempotency-key-required": false,
   "x-operation-family": "get_products",
   "x-deprecated-in": "3.2.0",
+  "x-superseded-by": ["list_products", "request_proposals", "refine_proposals", "decline_proposals"],
   "properties": {
     "idempotency_key": {
       "type": "string",

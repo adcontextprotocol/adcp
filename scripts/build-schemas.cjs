@@ -31,6 +31,8 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const semver = require('semver');
+const Ajv = require('ajv');
+const addFormats = require('ajv-formats');
 const {
   MCP_PROTOCOL_VERSION,
   generateMcpSchemaProjection,
@@ -1016,6 +1018,84 @@ function loadSpecialisms(repoRoot) {
   return out;
 }
 
+function assertAcyclicToolEdges(tools, edgeFor, label) {
+  const visiting = new Set();
+  const visited = new Set();
+  const visit = name => {
+    if (visiting.has(name)) throw new Error(`Manifest generation: ${label} cycle includes ${name}`);
+    if (visited.has(name)) return;
+    visiting.add(name);
+    for (const target of edgeFor(tools.get(name)) || []) visit(target);
+    visiting.delete(name);
+    visited.add(name);
+  };
+  for (const name of tools.keys()) visit(name);
+}
+
+function validateManifestToolRelationships(toolList) {
+  const tools = new Map(toolList.map(tool => [tool.name, tool]));
+  for (const tool of toolList) {
+    const fallback = tool.legacy_fallback;
+    if (fallback?.tool) {
+      const target = tools.get(fallback.tool);
+      if (!target) throw new Error(`Manifest generation: ${tool.name} falls back to unknown tool ${fallback.tool}`);
+      if (fallback.tool === tool.name) throw new Error(`Manifest generation: ${tool.name} cannot fall back to itself`);
+      if (!target.deprecated_in) {
+        throw new Error(`Manifest generation: ${tool.name} fallback target ${fallback.tool} is not deprecated`);
+      }
+    }
+    for (const replacement of tool.superseded_by || []) {
+      const target = tools.get(replacement);
+      if (!target) throw new Error(`Manifest generation: ${tool.name} is superseded by unknown tool ${replacement}`);
+      if (replacement === tool.name) throw new Error(`Manifest generation: ${tool.name} cannot supersede itself`);
+      if (!tool.deprecated_in) {
+        throw new Error(`Manifest generation: active tool ${tool.name} cannot declare superseded_by`);
+      }
+      if (target.deprecated_in) {
+        throw new Error(`Manifest generation: ${tool.name} replacement ${replacement} is also deprecated`);
+      }
+    }
+  }
+  assertAcyclicToolEdges(tools, tool => tool.legacy_fallback?.tool ? [tool.legacy_fallback.tool] : [], 'legacy fallback');
+  assertAcyclicToolEdges(tools, tool => tool.superseded_by || [], 'supersession');
+}
+
+function buildTaskResultResolution(sourceDir, toolsObj) {
+  const taskTypeSchema = JSON.parse(
+    fs.readFileSync(path.join(sourceDir, 'enums', 'task-type.json'), 'utf8')
+  );
+  const terminalSchemaOverrides = taskTypeSchema['x-task-result-schema-overrides'] || {};
+  for (const [taskType, schemaPath] of Object.entries(terminalSchemaOverrides)) {
+    if (!taskTypeSchema.enum.includes(taskType)) {
+      throw new Error(`Manifest generation: task result override names unknown task_type ${taskType}`);
+    }
+    if (toolsObj[taskType]) {
+      throw new Error(`Manifest generation: task result override ${taskType} also names a manifest tool`);
+    }
+    if (typeof schemaPath !== 'string' || !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\.json$/.test(schemaPath)) {
+      throw new Error(`Manifest generation: task result override for ${taskType} has invalid schema path`);
+    }
+    const schemaFile = path.join(sourceDir, ...schemaPath.split('/'));
+    if (!fs.existsSync(schemaFile) || !fs.statSync(schemaFile).isFile()) {
+      throw new Error(`Manifest generation: task result override for ${taskType} does not exist`);
+    }
+    const schema = JSON.parse(fs.readFileSync(schemaFile, 'utf8'));
+    if (schema.$id !== `/schemas/${schemaPath}`) {
+      throw new Error(`Manifest generation: task result override for ${taskType} has mismatched schema identity`);
+    }
+  }
+  for (const taskType of taskTypeSchema.enum) {
+    if (!toolsObj[taskType] && !terminalSchemaOverrides[taskType]) {
+      throw new Error(`Manifest generation: task_type ${taskType} has no tool or terminal schema override`);
+    }
+  }
+  return {
+    discriminator_field: 'task_type',
+    terminal_schema_pointer_template: '/tools/{task_type}/response_schema',
+    terminal_schema_overrides: terminalSchemaOverrides
+  };
+}
+
 function discoverTools(sourceDir) {
   const tools = [];
   const entries = fs.readdirSync(sourceDir, { withFileTypes: true });
@@ -1038,6 +1118,31 @@ function discoverTools(sourceDir) {
       const requestPath = path.join(protoDir, f.name);
       const requestSchema = JSON.parse(fs.readFileSync(requestPath, 'utf8'));
       const responseName = `${toolBase}-response.json`;
+      const responseSchema = `${protocol}/${responseName}`;
+      const legacyFallback = requestSchema['x-legacy-fallback'];
+      if (legacyFallback !== undefined) {
+        const keys = legacyFallback && typeof legacyFallback === 'object' && !Array.isArray(legacyFallback)
+          ? Object.keys(legacyFallback).sort()
+          : [];
+        const mode = legacyFallback?.mode;
+        const expectedKeys = mode === 'none' ? 'mode' : 'mode,tool';
+        if (
+          keys.join(',') !== expectedKeys
+          || !['direct', 'orchestrated', 'none'].includes(mode)
+          || (mode !== 'none' && !/^[a-z][a-z0-9_]*$/.test(legacyFallback.tool))
+        ) {
+          throw new Error(`Manifest generation: ${protocol}/${f.name} has invalid x-legacy-fallback metadata`);
+        }
+      }
+      const supersededBy = requestSchema['x-superseded-by'];
+      if (supersededBy !== undefined && (
+        !Array.isArray(supersededBy)
+        || supersededBy.length === 0
+        || supersededBy.some(name => typeof name !== 'string' || !/^[a-z][a-z0-9_]*$/.test(name))
+        || new Set(supersededBy).size !== supersededBy.length
+      )) {
+        throw new Error(`Manifest generation: ${protocol}/${f.name} has invalid x-superseded-by metadata`);
+      }
       const responsePath = path.join(protoDir, responseName);
       if (!fs.existsSync(responsePath)) {
         // A request with no matching response is a bug, not a tool — surface it.
@@ -1065,14 +1170,17 @@ function discoverTools(sourceDir) {
             : 'none',
         ...(requestSchema['x-added-in'] ? { added_in: requestSchema['x-added-in'] } : {}),
         ...(requestSchema['x-deprecated-in'] ? { deprecated_in: requestSchema['x-deprecated-in'] } : {}),
+        ...(legacyFallback ? { legacy_fallback: legacyFallback } : {}),
+        ...(supersededBy ? { superseded_by: supersededBy } : {}),
         request_schema: `${protocol}/${f.name}`,
-        response_schema: `${protocol}/${responseName}`,
+        response_schema: responseSchema,
         async_response_schemas: asyncVariants
       });
     }
   }
   // Sort tools alphabetically by name for stable output.
   tools.sort((a, b) => a.name.localeCompare(b.name));
+  validateManifestToolRelationships(tools);
   return tools;
 }
 
@@ -1143,7 +1251,9 @@ function buildManifest(sourceDir, urlVersion, semverVersion, repoRoot) {
       async_response_schemas: t.async_response_schemas,
       ...(t.specialisms ? { specialisms: t.specialisms } : {}),
       ...(t.added_in ? { added_in: t.added_in } : {}),
-      ...(t.deprecated_in ? { deprecated_in: t.deprecated_in } : {})
+      ...(t.deprecated_in ? { deprecated_in: t.deprecated_in } : {}),
+      ...(t.legacy_fallback ? { legacy_fallback: t.legacy_fallback } : {}),
+      ...(t.superseded_by ? { superseded_by: t.superseded_by } : {})
     };
   }
 
@@ -1152,6 +1262,7 @@ function buildManifest(sourceDir, urlVersion, semverVersion, repoRoot) {
     adcp_version: semverVersion,
     generated_at: new Date().toISOString(),
     tools: toolsObj,
+    task_result_resolution: buildTaskResultResolution(sourceDir, toolsObj),
     error_code_policy: {
       default_unknown_recovery: 'transient',
       note: "Sellers MAY return platform-specific codes that are not listed in error_codes. Agents MUST classify unknown codes as default_unknown_recovery and SHOULD retry with backoff before surfacing to the operator. Throwing on an unknown code is non-conformant client behavior."
@@ -1163,6 +1274,14 @@ function buildManifest(sourceDir, urlVersion, semverVersion, repoRoot) {
 
 function writeManifest(sourceDir, targetDir, urlVersion, semverVersion, repoRoot) {
   const manifest = buildManifest(sourceDir, urlVersion, semverVersion, repoRoot);
+  const ajv = new Ajv({ allErrors: true, strict: false });
+  addFormats(ajv);
+  const validateManifest = ajv.compile(
+    JSON.parse(fs.readFileSync(path.join(sourceDir, 'manifest.schema.json'), 'utf8'))
+  );
+  if (!validateManifest(manifest)) {
+    throw new Error(`Generated manifest is invalid: ${ajv.errorsText(validateManifest.errors)}`);
+  }
   fs.writeFileSync(
     path.join(targetDir, 'manifest.json'),
     JSON.stringify(manifest, null, 2) + '\n',
@@ -2372,6 +2491,8 @@ module.exports = {
   buildRootSchemaDiscovery,
   isSelectableRelease,
   discoverTools,
+  buildTaskResultResolution,
+  validateManifestToolRelationships,
 };
 
 if (require.main === module) {

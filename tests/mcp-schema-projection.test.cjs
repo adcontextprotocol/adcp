@@ -14,6 +14,10 @@ const {
   normalizeSubstitutions,
 } = require('../scripts/lint-storyboard-sample-request-schema.cjs');
 const {
+  buildTaskResultResolution,
+  validateManifestToolRelationships,
+} = require('../scripts/build-schemas.cjs');
+const {
   JSON_SCHEMA_2020_12,
   MAX_SCHEMA_BYTES,
   MAX_SCHEMA_DEPTH,
@@ -38,6 +42,37 @@ const PARITY_COMPILE_LIMIT = 1_000_000;
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
 }
+
+test('manifest tool relationships reject unknown, self-referential, and cyclic adapters', () => {
+  const legacy = { name: 'legacy_tool', deprecated_in: '3.2.0' };
+  const current = {
+    name: 'current_tool',
+    legacy_fallback: { tool: 'legacy_tool', mode: 'orchestrated' },
+  };
+  assert.doesNotThrow(() => validateManifestToolRelationships([legacy, current]));
+  assert.throws(
+    () => validateManifestToolRelationships([legacy, { ...current, legacy_fallback: { tool: 'missing_tool', mode: 'direct' } }]),
+    /unknown tool/
+  );
+  assert.throws(
+    () => validateManifestToolRelationships([{ ...legacy, legacy_fallback: { tool: 'legacy_tool', mode: 'direct' } }]),
+    /itself/
+  );
+  assert.throws(
+    () => validateManifestToolRelationships([
+      { name: 'legacy_a', deprecated_in: '3.2.0', legacy_fallback: { tool: 'legacy_b', mode: 'direct' } },
+      { name: 'legacy_b', deprecated_in: '3.2.0', legacy_fallback: { tool: 'legacy_a', mode: 'direct' } },
+    ]),
+    /cycle/
+  );
+});
+
+test('task result overrides cannot replace a manifest tool response schema', () => {
+  assert.throws(
+    () => buildTaskResultResolution(SOURCE_DIR, { media_buy_delivery: { response_schema: 'wrong.json' } }),
+    /also names a manifest tool/
+  );
+});
 
 function createValidator(AjvClass) {
   const ajv = new AjvClass({
@@ -341,13 +376,55 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
   const projectionManifest = readJson(path.join(PROJECTION_DIR, 'manifest.json'));
   const storyboardFixtures = collectStoryboardRequestFixtures();
+  const validateCanonicalManifest = createValidator(AjvDraft07).compile(
+    readJson(path.join(SOURCE_DIR, 'manifest.schema.json'))
+  );
+  assert.equal(
+    validateCanonicalManifest(canonicalManifest),
+    true,
+    JSON.stringify(validateCanonicalManifest.errors)
+  );
   assert.equal(projectionManifest.mcp_protocol_version, MCP_PROTOCOL_VERSION);
   assert.equal(projectionManifest.schema_dialect, JSON_SCHEMA_2020_12);
   assert.equal(projectionManifest.annotation_mode, 'full');
   assert.match(projectionManifest.delivery, /downloadable schema artifacts/);
+  assert.deepEqual(canonicalManifest.task_result_resolution, {
+    discriminator_field: 'task_type',
+    terminal_schema_pointer_template: '/tools/{task_type}/response_schema',
+    terminal_schema_overrides: {
+      media_buy_delivery: 'media-buy/media-buy-delivery-webhook-result.json',
+    },
+  });
+  const taskTypes = readJson(path.join(SOURCE_DIR, 'enums', 'task-type.json')).enum;
+  for (const taskType of taskTypes) {
+    const selectedSchema = canonicalManifest.task_result_resolution.terminal_schema_overrides[taskType]
+      || canonicalManifest.tools[taskType]?.response_schema;
+    assert.equal(typeof selectedSchema, 'string', `${taskType} must resolve to a terminal schema`);
+    assert.ok(fs.existsSync(path.join(LATEST_DIR, selectedSchema)), `${taskType} result schema must exist`);
+  }
+  assert.deepEqual(canonicalManifest.tools.get_products.superseded_by, [
+    'list_products',
+    'request_proposals',
+    'refine_proposals',
+    'decline_proposals',
+  ]);
+  assert.deepEqual(canonicalManifest.tools.list_products.legacy_fallback, {
+    tool: 'get_products',
+    mode: 'orchestrated',
+  });
+  assert.equal(canonicalManifest.tools.request_proposals.legacy_fallback.mode, 'orchestrated');
+  assert.equal(canonicalManifest.tools.refine_proposals.legacy_fallback.mode, 'orchestrated');
+  assert.deepEqual(canonicalManifest.tools.decline_proposals.legacy_fallback, { mode: 'none' });
   assert.deepEqual(
     Object.keys(projectionManifest.tools).sort(),
     Object.keys(canonicalManifest.tools).sort()
+  );
+  const projectedTaskStatus = readJson(
+    path.join(PROJECTION_DIR, projectionManifest.tools.get_task_status.outputSchema)
+  );
+  assert.ok(
+    measureSchema(projectedTaskStatus).bytes < 100_000,
+    'generic get_task_status output should not embed the global task-result union'
   );
 
   const seen = new Set();

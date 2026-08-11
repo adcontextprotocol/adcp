@@ -7,6 +7,7 @@
   "x-mutates-state": true,
   "x-operation-family": "refine_proposals",
   "x-added-in": "3.2.0",
+  "x-legacy-fallback": { "tool": "get_products", "mode": "orchestrated" },
   "properties": {
     "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
     "adcp_major_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_major_version" },

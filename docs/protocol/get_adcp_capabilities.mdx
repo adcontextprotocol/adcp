@@ -364,7 +364,7 @@ Media-buy protocol capabilities. Only present if `media_buy` is in `supported_pr
 
 #### product_discovery_tools
 
-AdCP 3.2 sellers use `product_discovery_tools` to advertise any supported subset of `get_products`, `list_products`, `request_proposals`, `refine_proposals`, and `decline_proposals`. When absent, buyers use the legacy `get_products` facade and inspect `buying_modes`. The compact tools share authorization policy with legacy discovery, but each stateful tool has its own idempotency identity: retry with the same tool name and payload.
+AdCP 3.2 sellers use `product_discovery_tools` to advertise any supported subset of `get_products`, `list_products`, `request_proposals`, `refine_proposals`, and `decline_proposals`. When absent, buyers use the legacy `get_products` facade and inspect `buying_modes`. The compact tools share the authorization framework with legacy discovery, but grants remain task-specific and each stateful tool has its own idempotency identity: retry with the same tool name and payload. SDKs use the release manifest's `legacy_fallback` metadata to distinguish a direct one-call translation from a stateful orchestration or an unsupported fallback; see [Same-major tool replacements](/docs/building/cross-cutting/version-adaptation#same-major-tool-replacements).
 
 :::note 3.0 breaking changes
 The following fields have been removed from the capabilities response:

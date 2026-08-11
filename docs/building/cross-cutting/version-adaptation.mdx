@@ -60,6 +60,21 @@ Each SDK ships per-tool adapter modules — pure shape translations (field renam
 
 When AdCP 3.1 ships and you bump the SDK, a new adapter folder appears for the now-legacy 3.0. Your handlers don't move.
 
+### Same-major tool replacements
+
+AdCP 3.2's product lifecycle also replaces one broad 3.x facade with narrower tool names. This is not ordinary version-shape adaptation: some current operations need more than one legacy call, and one has no faithful legacy equivalent. The release manifest makes that distinction machine-readable through `legacy_fallback` on each replacement and `superseded_by` on `get_products`.
+
+| Current SDK method | Legacy peer tool | Fallback mode | Required behavior |
+|---|---|---|---|
+| `listProducts` | `get_products` wholesale | `orchestrated` | Translate the common case directly; when exact `product_ids` are requested, page and filter until every requested ID is found or the feed is exhausted |
+| `requestProposals` | `get_products` brief, then finalize when needed | `orchestrated` | Return only executable committed snapshots; resume the same sequence safely on retry |
+| `refineProposals` | `get_products` refine, then finalize when needed | `orchestrated` | Mint and return executable immutable revisions with source-result correspondence |
+| `declineProposals` | none | `none` | Throw a typed capability error before sending a call; never silently discard terminal feedback |
+
+Client SDKs SHOULD expose the current methods as their primary API and choose the peer path from `media_buy.product_discovery_tools`. A directly advertised current tool always wins. A `direct` fallback may run transparently. An `orchestrated` fallback may run transparently only when the SDK ships a handwritten adapter that preserves the current tool's result completeness, terminal state, atomicity, and idempotency semantics; the manifest classification does not synthesize that state machine. Each underlying legacy mutation needs its own deterministic replay identity, and retrying the current SDK call must resume rather than restart the sequence. Otherwise the SDK MUST throw a typed `CapabilityUnsupportedError` (or language equivalent) carrying `requested_tool`, the peer's advertised tools, and `fallback_mode`. A `none` fallback MUST throw that error before sending a semantically different legacy call.
+
+These tools deliberately retain distinct `operation_family` values. Fallback metadata describes SDK adaptation, not cross-name authorization, idempotency equivalence, task recovery, or webhook identity. A client adapter MUST be authorized for the actual legacy `get_products` call; a grant for a split tool does not transfer across names. Server SDKs may use the inverse pattern—implement the current lifecycle once and derive the deprecated `get_products` facade for 3.x callers—but may advertise only behavior the adapter actually preserves.
+
 ## Mechanism 2 — Migrate SDK majors via co-existence
 
 Use this when you bump your SDK from one major to the next and don't want to rewrite every handler the day you upgrade. Each SDK keeps the prior major's surface available alongside the new entry point.

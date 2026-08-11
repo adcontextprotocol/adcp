@@ -4,7 +4,7 @@
   "title": "AdCP Manifest",
   "description": "Machine-readable registry of every AdCP tool, error code, and specialism for a given AdCP version. SDKs consume this artifact at codegen time to derive their tool/error tables instead of hand-transcribing the spec. Replaces three categories of drift documented in adcp#3725: hand-rolled tool-by-protocol arrays, hand-classified error recovery, and hand-listed specialism→tool mappings.",
   "type": "object",
-  "required": ["adcp_version", "generated_at", "tools", "error_codes", "error_code_policy", "specialisms"],
+  "required": ["adcp_version", "generated_at", "tools", "task_result_resolution", "error_codes", "error_code_policy", "specialisms"],
   "additionalProperties": false,
   "properties": {
     "$schema": {
@@ -25,6 +25,7 @@
       "type": "object",
       "description": "Every tool the AdCP spec defines, keyed by tool name (the snake_case name used in MCP/A2A invocations).",
       "minProperties": 1,
+      "propertyNames": { "$ref": "#/definitions/tool_name" },
       "additionalProperties": {
         "type": "object",
         "required": ["protocol", "mutating", "request_schema", "response_schema", "async_response_schemas"],
@@ -64,17 +65,55 @@
             "description": "Whether callers must, may, or cannot supply idempotency_key for this tool. Optional keys, when supplied, receive the same replay guarantees as required keys."
           },
           "request_schema": {
-            "type": "string",
-            "description": "Path to the request schema, relative to the manifest's directory (e.g., 'media-buy/create-media-buy-request.json')."
+            "$ref": "#/definitions/schema_path"
           },
           "response_schema": {
-            "type": "string",
-            "description": "Path to the synchronous response schema, relative to the manifest's directory."
+            "$ref": "#/definitions/schema_path"
           },
           "async_response_schemas": {
             "type": "array",
             "description": "Paths to the tool's async response variants (typically -submitted, -working, -input-required). Empty array if the tool has no async surface. Buyer agents MUST handle every entry — a tool with async_response_schemas non-empty can return any of these from a non-final task state.",
-            "items": { "type": "string" }
+            "items": { "$ref": "#/definitions/schema_path" }
+          },
+          "legacy_fallback": {
+            "type": "object",
+            "description": "How an SDK exposing this tool's current API may satisfy it against a peer that only exposes a legacy tool. This is caller-side adaptation metadata, not authorization or idempotency equivalence.",
+            "additionalProperties": false,
+            "properties": {
+              "tool": {
+                "$ref": "#/definitions/tool_name",
+                "description": "Legacy peer tool targeted by the adapter."
+              },
+              "mode": {
+                "type": "string",
+                "enum": ["direct", "orchestrated", "none"],
+                "description": "direct: one lossless translated call; orchestrated: the SDK must sequence legacy calls and preserve the current tool's semantics; none: no faithful legacy fallback exists."
+              }
+            },
+            "required": ["mode"],
+            "discriminator": { "propertyName": "mode" },
+            "oneOf": [
+              {
+                "properties": { "mode": { "const": "direct" } },
+                "required": ["mode", "tool"]
+              },
+              {
+                "properties": { "mode": { "const": "orchestrated" } },
+                "required": ["mode", "tool"]
+              },
+              {
+                "properties": { "mode": { "const": "none" } },
+                "required": ["mode"],
+                "not": { "required": ["tool"] }
+              }
+            ]
+          },
+          "superseded_by": {
+            "type": "array",
+            "description": "Current tool names that replace this deprecated facade. This does not imply that each replacement is a one-call alias.",
+            "items": { "$ref": "#/definitions/tool_name" },
+            "minItems": 1,
+            "uniqueItems": true
           },
           "specialisms": {
             "type": "array",
@@ -89,6 +128,28 @@
             "type": "string",
             "description": "Semver of the AdCP release that deprecated this tool. Absent means active."
           }
+        }
+      }
+    },
+    "task_result_resolution": {
+      "type": "object",
+      "description": "Machine-readable rule for resolving the schema of a tracked task result without generating the full async-response-data union as an SDK type. Consumers check terminal_schema_overrides first, then apply terminal_schema_pointer_template.",
+      "required": ["discriminator_field", "terminal_schema_pointer_template", "terminal_schema_overrides"],
+      "additionalProperties": false,
+      "properties": {
+        "discriminator_field": {
+          "type": "string",
+          "const": "task_type"
+        },
+        "terminal_schema_pointer_template": {
+          "type": "string",
+          "const": "/tools/{task_type}/response_schema"
+        },
+        "terminal_schema_overrides": {
+          "type": "object",
+          "description": "Result schemas for retained 3.x task_type values that do not name manifest tools, such as media_buy_delivery.",
+          "propertyNames": { "$ref": "#/definitions/tool_name" },
+          "additionalProperties": { "$ref": "#/definitions/schema_path" }
         }
       }
     },
@@ -166,6 +227,18 @@
           }
         }
       }
+    }
+  },
+  "definitions": {
+    "tool_name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Canonical snake_case tool name safe for use as a manifest JSON Pointer segment."
+    },
+    "schema_path": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\\.json$",
+      "description": "Normalized relative path to a JSON schema within the published release root."
     }
   }
 }
