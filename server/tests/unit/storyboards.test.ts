@@ -244,7 +244,7 @@ describe('wrapper contract', () => {
 
   it('caps hosted aliases at compliance bundles published through npm', () => {
     expect(hostedComplianceTarget('3.0').version).toBe('3.0.18');
-    expect(hostedComplianceTarget('3.1').version).toBe('3.1.11');
+    expect(hostedComplianceTarget('3.1').version).toBe('3.1.13');
     expect(hostedComplianceTarget('3.1-beta').version).toBe('3.1.0-beta.7');
     expect(hostedComplianceTarget('3.1-rc').version).toBe('3.1.0-rc.14');
     expect(() => hostedComplianceTarget('3.1.12')).toThrow(/not available from a published/);
