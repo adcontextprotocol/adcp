@@ -59,7 +59,7 @@ function safeHttpUrl(value: unknown): string | undefined {
     parsed.hash = '';
     const rendered = parsed.toString();
     if (rendered.length > 300) return undefined;
-    let decoded = rendered;
+    let decoded: string;
     try {
       decoded = decodeURIComponent(rendered);
     } catch {
