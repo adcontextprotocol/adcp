@@ -254,6 +254,10 @@
           "$ref": "/schemas/core/date-range.json",
           "description": "Date range with inclusive start and end calendar dates"
         },
+        "opportunity-context": {
+          "$ref": "/schemas/core/opportunity-context.json",
+          "description": "Buyer planning-cycle context shared across proposal request, decline, and purchase"
+        },
         "datetime-range": {
           "$ref": "/schemas/core/datetime-range.json",
           "description": "Datetime range with inclusive start and end timestamps"
@@ -821,6 +825,10 @@
           "$ref": "/schemas/enums/proposal-status.json",
           "description": "Lifecycle status of a proposal (draft or committed)"
         },
+        "proposal-decline-reason": {
+          "$ref": "/schemas/enums/proposal-decline-reason.json",
+          "description": "Machine-readable terminal proposal feedback"
+        },
         "media-buy-status": {
           "$ref": "/schemas/enums/media-buy-status.json",
           "description": "Status of a media buy"
@@ -1311,6 +1319,10 @@
           "$ref": "/schemas/media-buy/proposal-refinement.json",
           "description": "One immutable proposal revision request"
         },
+        "proposal-decline": {
+          "$ref": "/schemas/media-buy/proposal-decline.json",
+          "description": "One terminal decline of an immutable proposal"
+        },
         "get-products-rejected": {
           "$ref": "/schemas/media-buy/get-products-rejected.json",
           "description": "Terminal business rejection arm for a well-formed get_products brief or refinement"
@@ -1329,7 +1341,7 @@
           "request": {
             "$ref": "/schemas/media-buy/get-products-request.json",
             "deprecated": true,
-            "description": "AdCP 3.x compatibility request. New 3.2 callers use list_products, request_proposals, refine_proposals, or finalize_proposals."
+            "description": "AdCP 3.x compatibility request. New 3.2 callers use list_products, request_proposals, refine_proposals, finalize_proposals, or decline_proposals."
           },
           "response": {
             "$ref": "/schemas/media-buy/get-products-response.json",
@@ -1375,6 +1387,16 @@
           "response": {
             "$ref": "/schemas/media-buy/finalize-proposals-response.json",
             "description": "Response payload for finalize_proposals"
+          }
+        },
+        "decline-proposals": {
+          "request": {
+            "$ref": "/schemas/media-buy/decline-proposals-request.json",
+            "description": "Request parameters for terminally declining one or more proposals"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/decline-proposals-response.json",
+            "description": "Ordered decline results for decline_proposals"
           }
         },
         "list-creative-formats": {

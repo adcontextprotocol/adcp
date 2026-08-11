@@ -144,7 +144,7 @@ Vendor agents that support scope introspection attach an `authorization` object 
 | `scope_name` | Optional named scope identifier. Only `attestation_verifier` is standardized (media-buy-specific, binds to the **AAO Verified (Live)** qualifier); agent-defined names MUST use the `custom:` prefix so typos of the standard value fail schema validation rather than pass through. |
 | `read_only` | Convenience flag. When true, mutations return `READ_ONLY_SCOPE` regardless of whether the task is in `allowed_tasks`. Omission is equivalent to `false`. Callers MUST NOT infer read-only from `allowed_tasks` alone. |
 
-**AdCP 3.2 compact product tools.** Authorization names the actual task. A `get_products` grant does not silently authorize `request_proposals`, `refine_proposals`, or `finalize_proposals`; sellers grant the proposal lifecycle explicitly and may scope its compact top-level fields independently. A read-only grant may permit `list_products` but rejects the three mutation-capable proposal tools.
+**AdCP 3.2 compact product tools.** Authorization names the actual task. A `get_products` grant does not silently authorize `request_proposals`, `refine_proposals`, `finalize_proposals`, or `decline_proposals`; sellers grant the proposal lifecycle explicitly and may scope its compact top-level fields independently. A read-only grant may permit `list_products` but rejects the four mutation-capable proposal tools.
 
 ### Semantics of presence and absence
 

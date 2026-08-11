@@ -18,6 +18,12 @@
       "description": "Success response - media buy created successfully",
       "type": "object",
       "properties": {
+        "proposal_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "proposal",
+          "description": "The immutable committed proposal executed by this media buy, echoed when proposal_id was supplied in the request."
+        },
         "media_buy_id": {
           "type": "string",
           "description": "Seller's unique identifier for the created media buy",

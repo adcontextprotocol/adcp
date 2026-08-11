@@ -17,3 +17,5 @@ testable: true
 ```
 
 The seller advertises `max_atomic_finalize_batch_size`. Within that bound, finalization is all-or-nothing: every named proposal is persisted as committed, or none is. Retrying an already successful request returns the original committed snapshots and does not extend their inventory holds.
+
+Finalization changes lifecycle state without changing the proposal's commercial terms, so the committed snapshot retains its `proposal_id`. A declined proposal cannot be finalized; request a new proposal instead.

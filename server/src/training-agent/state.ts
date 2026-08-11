@@ -122,6 +122,16 @@ export function runWithSessionContext<T>(fn: () => Promise<T>): Promise<T> {
   return requestCtx.run(ctx, fn);
 }
 
+/** Force the next getSession() in this request to read durable state again.
+ * Lifecycle handlers call this after acquiring their shared mutex because
+ * account-scope derivation may have populated the request cache before a
+ * competing writer finished. */
+export function evictSessionFromRequestCache(key: string): void {
+  const ctx = requestCtx.getStore();
+  ctx?.sessions.delete(key);
+  ctx?.snapshots.delete(key);
+}
+
 /**
  * Persist sessions that were actually mutated during the current request.
  *

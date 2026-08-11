@@ -4,6 +4,8 @@
     "media_buy_id": "media_buy",
     "package_id": "package",
     "product_id": "product",
+    "proposal_id": "proposal",
+    "opportunity_id": "opportunity",
     "creative_id": "creative",
     "audience_id": "audience",
     "evidence_id": "audience_evidence",

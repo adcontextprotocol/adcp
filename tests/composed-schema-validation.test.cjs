@@ -3098,6 +3098,136 @@ async function runTests() {
     },
     'finalize_proposals rejects duplicate proposal IDs'
   );
+  await testSchemaValidation(
+    '/schemas/media-buy/request-proposals-request.json',
+    {
+      idempotency_key: 'request-proposals-opp-0001',
+      brand: { domain: 'buyer.example' },
+      brief: 'Reach streaming audio listeners in Rome',
+      opportunity: {
+        opportunity_id: 'opp-rome-audio-2027',
+        phase: 'active_sourcing',
+        intent: 'live_rfp',
+        response_deadline: '2027-01-15T17:00:00Z'
+      }
+    },
+    'request_proposals accepts reusable opportunity context'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-request.json',
+    {
+      idempotency_key: 'request-proposals-opp-0002',
+      brand: { domain: 'buyer.example' },
+      brief: 'Reach streaming audio listeners in Rome',
+      opportunity: {
+        opportunity_id: 'opp-rome-audio-closed',
+        status: 'closed',
+        close_reason: 'not_pursued'
+      }
+    },
+    'request_proposals rejects a closed opportunity'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/decline-proposals-request.json',
+    {
+      idempotency_key: 'decline-proposals-0001',
+      declines: [{ proposal_id: 'proposal-1', reason: 'inventory_fit' }],
+      opportunity: {
+        opportunity_id: 'opp-rome-audio-2027',
+        status: 'closed',
+        close_reason: 'not_pursued'
+      }
+    },
+    'decline_proposals accepts terminal proposal and opportunity feedback'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/decline-proposals-request.json',
+    {
+      idempotency_key: 'decline-proposals-0002',
+      declines: [{ proposal_id: 'proposal-1', reason: 'other' }]
+    },
+    'decline_proposals requires detail for an other reason'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/decline-proposals-request.json',
+    {
+      idempotency_key: 'decline-proposals-0003',
+      declines: [{ proposal_id: 'proposal-1', reason: 'price' }],
+      opportunity: {
+        opportunity_id: 'opp-rome-audio-2027',
+        close_reason: 'not_pursued'
+      }
+    },
+    'opportunity close fields require closed status'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/decline-proposals-response.json',
+    {
+      results: [
+        { proposal_id: 'proposal-1', outcome: 'declined' },
+        { proposal_id: 'proposal-2', outcome: 'unable', reason: 'Proposal not found.' }
+      ]
+    },
+    'decline_proposals returns one explicit outcome per proposal'
+  );
+  const proposalExecution = {
+    idempotency_key: 'create-proposal-opportunity-0001',
+    account: { account_id: 'account-opportunity-test' },
+    brand: { domain: 'buyer.example' },
+    proposal_id: 'proposal-1',
+    total_budget: { amount: 50000, currency: 'USD' },
+    start_time: 'asap',
+    end_time: '2027-07-01T00:00:00Z'
+  };
+  await testSchemaValidation(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      ...proposalExecution,
+      opportunity: { opportunity_id: 'opp-rome-audio-2027' }
+    },
+    'create_media_buy permits status omission for inferred close-won'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      ...proposalExecution,
+      opportunity: {
+        opportunity_id: 'opp-rome-audio-2027',
+        status: 'closed',
+        close_reason: 'accepted_with_seller'
+      }
+    },
+    'create_media_buy accepts explicit accepted-with-seller closure'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      ...proposalExecution,
+      opportunity: {
+        opportunity_id: 'opp-rome-audio-2027',
+        status: 'closed',
+        close_reason: 'not_pursued'
+      }
+    },
+    'create_media_buy rejects non-winning explicit opportunity closure'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'create-package-opportunity-0001',
+      account: { account_id: 'account-opportunity-test' },
+      brand: { domain: 'buyer.example' },
+      packages: [{
+        product_id: 'display-standard',
+        pricing_option_id: 'fixed-cpm',
+        budget: 50000
+      }],
+      start_time: 'asap',
+      end_time: '2027-07-01T00:00:00Z',
+      opportunity: { opportunity_id: 'opp-package-mode' }
+    },
+    'create_media_buy restricts opportunity closure to proposal mode'
+  );
   const splitCapabilityBase = {
     status: 'completed',
     adcp: {

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/get-products-request.json",
   "title": "Get Products Request",
-  "description": "AdCP 3.x compatibility request for discovering, refining, or finalizing advertising products and proposals. AdCP 3.2 introduces the narrower list_products, request_proposals, refine_proposals, and finalize_proposals tasks; new callers SHOULD use those tasks. Existing get_products payloads remain valid throughout 3.x.",
+  "description": "AdCP 3.x compatibility request for discovering and changing advertising products and proposals. AdCP 3.2 introduces the narrower list_products, request_proposals, refine_proposals, finalize_proposals, and decline_proposals tasks; new callers SHOULD use those tasks. Existing get_products payloads remain valid throughout 3.x.",
   "type": "object",
   "allOf": [
     {
@@ -144,12 +144,12 @@
                   "finalize"
                 ],
                 "default": "include",
-                "description": "'include' (default): return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response. 'finalize': request firm pricing and inventory hold — transitions a draft proposal to committed with an expires_at hold window. May trigger seller-side approval (HITL). The buyer should not set a time_budget for finalize requests — they represent a commitment to wait for the result. Optional — when omitted, the seller treats the entry as action: 'include'.\n\nFinalize is exclusive within the parent `refine[]` array: see the array-level description for the finalize-exclusivity rule (mixing finalize with non-finalize entries is rejected) and multi-finalize atomicity contract."
+                "description": "'include' (default): return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response. 'finalize': request firm pricing and inventory hold. New callers use the dedicated refine_proposals and finalize_proposals tasks; terminal feedback is available only through decline_proposals.\n\nFinalize is exclusive within the parent `refine[]` array: see the array-level description for the finalize-exclusivity rule (mixing finalize with non-finalize entries is rejected) and multi-finalize atomicity contract."
               },
               "ask": {
                 "type": "string",
                 "minLength": 1,
-                "description": "What the buyer is asking for on this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%'). Ignored when action is 'omit'."
+                "description": "What the buyer is asking for on this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%'). Ignored when action is omit."
               }
             },
             "required": [

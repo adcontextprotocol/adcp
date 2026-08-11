@@ -661,7 +661,7 @@
           "description": "Product-discovery operation names this seller supports. Added in AdCP 3.2 as compact, task-specific contracts that form the 4.0 lifecycle foundation. Sellers may advertise any supported subset while retaining get_products throughout 3.x. Absence means the caller uses the legacy facade. Each stateful split task has its own idempotency identity; callers MUST retry with the same tool name.",
           "items": {
             "type": "string",
-            "enum": ["get_products", "list_products", "request_proposals", "refine_proposals", "finalize_proposals"]
+            "enum": ["get_products", "list_products", "request_proposals", "refine_proposals", "finalize_proposals", "decline_proposals"]
           },
           "minItems": 1,
           "uniqueItems": true

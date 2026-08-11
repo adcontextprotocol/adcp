@@ -136,6 +136,7 @@ const PRODUCT_DISCOVERY_TOOL_NAMES = [
   'request_proposals',
   'refine_proposals',
   'finalize_proposals',
+  'decline_proposals',
 ] as const;
 
 function bearerToken(req: Request): string | undefined {

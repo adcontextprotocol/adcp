@@ -21,6 +21,7 @@ describe('training-agent completion webhook contract', () => {
       request_proposals: 'request_proposals',
       refine_proposals: 'refine_proposals',
       finalize_proposals: 'finalize_proposals',
+      decline_proposals: 'decline_proposals',
       build_creative: 'build_creative',
       update_rights: 'update_rights',
     });
@@ -29,6 +30,7 @@ describe('training-agent completion webhook contract', () => {
       request_proposals: 'media-buy',
       refine_proposals: 'media-buy',
       finalize_proposals: 'media-buy',
+      decline_proposals: 'media-buy',
       build_creative: 'creative',
       update_rights: 'brand',
     });

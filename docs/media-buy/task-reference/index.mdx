@@ -13,6 +13,11 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 | Task | Purpose | Response Time | Phase |
 |------|---------|---------------|-------|
 | [`get_products`](/docs/media-buy/task-reference/get_products) | Discover inventory and refine products | ~60s | Discovery |
+| [`list_products`](/docs/media-buy/task-reference/list_products) | Enumerate structured product offers | ~1s | Discovery |
+| [`request_proposals`](/docs/media-buy/task-reference/request_proposals) | Request seller-authored plans | ~60s | Planning |
+| [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) | Create immutable proposal revisions | ~60s | Planning |
+| [`finalize_proposals`](/docs/media-buy/task-reference/finalize_proposals) | Commit proposal terms and inventory holds | Minutes-Days | Planning |
+| [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) | Record terminal proposal feedback | ~1s | Planning |
 | [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) | Create campaigns from selected products | Minutes-Days | Media Buys |
 | [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) | Modify campaign settings and budgets | Minutes-Days | Media Buys |
 | [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) | View endpoint capabilities, including creative operations | ~1s | Capability |
@@ -65,6 +70,8 @@ Start here to understand what's available and plan your campaign.
 
 - **[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)** - Discover agent capabilities, portfolio, and supported features (protocol-level task)
 - **[`get_products`](/docs/media-buy/task-reference/get_products)** - The core discovery task using natural language briefs
+- **[`list_products`](/docs/media-buy/task-reference/list_products)** - Compact structured product-offer reads
+- **[`request_proposals`](/docs/media-buy/task-reference/request_proposals)**, **[`refine_proposals`](/docs/media-buy/task-reference/refine_proposals)**, **[`finalize_proposals`](/docs/media-buy/task-reference/finalize_proposals)**, and **[`decline_proposals`](/docs/media-buy/task-reference/decline_proposals)** - Explicit proposal lifecycle operations
 - **[Canonical formats](/docs/creative/canonical-formats)** - Understand creative requirements and authority
 
 ### Media Buy Management  
@@ -120,6 +127,7 @@ Schemas are accessible at runtime via the documentation server for validation an
 Task names use snake_case and follow verb-first semantics consistently across Media Buy:
 - `get_*`: Retrieve current state or scoped datasets (for example [`get_products`](/docs/media-buy/task-reference/get_products), [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery))
 - `list_*`: Enumerate collections with optional filtering (for example [`list_creatives`](/docs/creative/task-reference/list_creatives))
+- `request_*`, `refine_*`, `finalize_*`, and `decline_*`: Explicit lifecycle transitions over immutable resources
 - `create_*`: Create new resources ([`create_media_buy`](/docs/media-buy/task-reference/create_media_buy))
 - `update_*`: Apply partial updates to existing resources ([`update_media_buy`](/docs/media-buy/task-reference/update_media_buy))
 - `sync_*`: Reconcile external state into seller systems with upsert-like behavior ([`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs), [`sync_creatives`](/docs/creative/task-reference/sync_creatives), [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources))

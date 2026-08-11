@@ -1383,6 +1383,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('request_proposals');
     expect(toolNames).toContain('refine_proposals');
     expect(toolNames).toContain('finalize_proposals');
+    expect(toolNames).toContain('decline_proposals');
     expect(toolNames).toContain('list_creative_formats');
     expect(toolNames).toContain('create_media_buy');
     expect(toolNames).toContain('get_media_buys');
@@ -1433,7 +1434,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('update_collection_list');
     expect(toolNames).toContain('list_collection_lists');
     expect(toolNames).toContain('delete_collection_list');
-    expect(toolNames).toHaveLength(55);
+    expect(toolNames).toHaveLength(56);
 
     const validateInput = tools.find(t => t.name === 'validate_input');
     expect(validateInput?.inputSchema?.properties?.targets?.maxItems).toBe(50);
@@ -12765,11 +12766,46 @@ describe('proposal lifecycle', () => {
 
   const account = { brand: { domain: 'proposal-test.example' }, operator: 'proposal-test.example' };
 
+  it('serializes concurrent proposal requests without losing returned snapshots', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const requests = await Promise.all([
+      simulateCallTool(server, 'request_proposals', {
+        idempotency_key: `test-${randomUUID()}`,
+        brand: account.brand,
+        brief: 'social engagement display',
+      }),
+      simulateCallTool(server, 'request_proposals', {
+        idempotency_key: `test-${randomUUID()}`,
+        brand: account.brand,
+        brief: 'social engagement display',
+      }),
+    ]);
+    expect(requests.every(request => !request.isError)).toBe(true);
+    const returnedIds = requests.flatMap(request => (
+      request.result.proposals as Array<Record<string, unknown>>
+    ).map(proposal => proposal.proposal_id as string));
+
+    await runWithSessionContext(async () => {
+      const session = await getSession(
+        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+      );
+      const storedIds = new Set(
+        (session.lastGetProductsContext?.proposals ?? []).map(proposal => proposal.proposal_id),
+      );
+      expect(returnedIds.every(proposalId => storedIds.has(proposalId))).toBe(true);
+    });
+  });
+
   it('connects the compact request, refine, finalize, and purchase lifecycle', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
+    const lifecycleOpportunity = {
+      opportunity_id: 'opp-compact-purchase-2027',
+      status: 'open',
+    };
     const { result: requested, isError: requestError } = await simulateCallTool(server, 'request_proposals', {
       brand: account.brand,
       brief: 'social engagement display',
+      opportunity: lifecycleOpportunity,
     });
     expect(requestError).toBeFalsy();
     expect(requested.outcome).toBe('proposed');
@@ -12816,7 +12852,8 @@ describe('proposal lifecycle', () => {
       proposal_status: 'committed',
     });
 
-    const { result: purchased, isError: purchaseError } = await simulateCallTool(server, 'create_media_buy', {
+    const createArgs = {
+      idempotency_key: 'compact-purchase-once-0001',
       account,
       brand: account.brand,
       start_time: '2027-06-01T00:00:00Z',
@@ -12830,9 +12867,372 @@ describe('proposal lifecycle', () => {
           signatory: 'compact-lifecycle-test',
         },
       }),
-    });
+    };
+    for (const [suffix, opportunity] of [
+      ['missing-id', { status: 'closed', close_reason: 'accepted_with_seller' }],
+      ['wrong-close', {
+        opportunity_id: 'opp-create-validation',
+        status: 'closed',
+        close_reason: 'not_pursued',
+      }],
+      ['extra-field', { opportunity_id: 'opp-create-validation', unexpected: true }],
+    ] as const) {
+      const malformed = await simulateCallTool(server, 'create_media_buy', {
+        ...createArgs,
+        idempotency_key: `compact-create-${suffix}-0001`,
+        opportunity,
+      });
+      expect(malformed.isError).toBe(true);
+      expect(malformed.result).toMatchObject({ code: 'INVALID_REQUEST' });
+    }
+    const { result: purchased, isError: purchaseError } = await simulateCallTool(server, 'create_media_buy', createArgs);
     expect(purchaseError, JSON.stringify(purchased)).toBeFalsy();
     expect(purchased.media_buy_id).toEqual(expect.any(String));
+    expect(purchased.proposal_id).toBe(committed.proposal_id);
+    expect(purchased).not.toHaveProperty('__executed');
+    expect(purchased).not.toHaveProperty('__opportunity_update');
+
+    await runWithSessionContext(async () => {
+      const session = await getSession(
+        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+      );
+      const stored = session.lastGetProductsContext?.proposals?.find(
+        proposal => proposal.proposal_id === committed.proposal_id,
+      ) as (Record<string, unknown> | undefined);
+      expect(stored).toMatchObject({
+        __executed: true,
+        __opportunity_update: {
+          opportunity_id: lifecycleOpportunity.opportunity_id,
+          status: 'closed',
+          close_reason: 'accepted_with_seller',
+        },
+      });
+    });
+
+    const exactRetry = await simulateCallTool(server, 'create_media_buy', createArgs);
+    expect(exactRetry.isError).toBeFalsy();
+    expect(exactRetry.result).toMatchObject({
+      media_buy_id: purchased.media_buy_id,
+      proposal_id: committed.proposal_id,
+      replayed: true,
+    });
+
+    const finalizedAgain = await simulateCallTool(server, 'finalize_proposals', {
+      proposal_ids: [committed.proposal_id],
+    });
+    expect(finalizedAgain.isError).toBeFalsy();
+    const finalizedAgainProposal = (finalizedAgain.result.proposals as Array<Record<string, unknown>>)[0];
+    expect(finalizedAgainProposal).not.toHaveProperty('__executed');
+    expect(finalizedAgainProposal).not.toHaveProperty('__opportunity_update');
+
+    const secondExecution = await simulateCallTool(server, 'create_media_buy', {
+      ...createArgs,
+      idempotency_key: 'compact-purchase-once-0002',
+    });
+    expect(secondExecution.isError).toBe(true);
+    expect(secondExecution.result).toMatchObject({ code: 'INVALID_STATE' });
+
+    const declineAfterExecution = await simulateCallTool(server, 'decline_proposals', {
+      declines: [{ proposal_id: committed.proposal_id, reason: 'selected_alternative' }],
+    });
+    expect(declineAfterExecution.isError).toBeFalsy();
+    expect(declineAfterExecution.result).toMatchObject({
+      results: [{ proposal_id: committed.proposal_id, outcome: 'unable' }],
+    });
+  });
+
+  it('serializes competing executions of one compact proposal', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: requested } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+    });
+    const draft = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const { result: finalized } = await simulateCallTool(server, 'finalize_proposals', {
+      proposal_ids: [draft.proposal_id],
+    });
+    const committed = (finalized.proposals as Array<Record<string, unknown>>)[0];
+    const base = {
+      account,
+      brand: account.brand,
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      proposal_id: committed.proposal_id,
+      total_budget: { amount: 50000, currency: 'USD' },
+      ...(committed.insertion_order && {
+        io_acceptance: {
+          io_id: (committed.insertion_order as Record<string, unknown>).io_id,
+          accepted_at: new Date().toISOString(),
+          signatory: 'concurrent-execution-test',
+        },
+      }),
+    };
+    const attempts = await Promise.all([
+      simulateCallTool(server, 'create_media_buy', {
+        ...base,
+        idempotency_key: `test-${randomUUID()}`,
+      }),
+      simulateCallTool(server, 'create_media_buy', {
+        ...base,
+        idempotency_key: `test-${randomUUID()}`,
+      }),
+    ]);
+    expect(attempts.filter(attempt => !attempt.isError)).toHaveLength(1);
+    expect(attempts.filter(attempt => attempt.isError)).toHaveLength(1);
+    expect(attempts.find(attempt => attempt.isError)?.result).toMatchObject({ code: 'INVALID_STATE' });
+  });
+
+  it('serializes execution against terminal decline', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: requested } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+    });
+    const draft = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const { result: finalized } = await simulateCallTool(server, 'finalize_proposals', {
+      proposal_ids: [draft.proposal_id],
+    });
+    const committed = (finalized.proposals as Array<Record<string, unknown>>)[0];
+    const [create, decline] = await Promise.all([
+      simulateCallTool(server, 'create_media_buy', {
+        idempotency_key: `test-${randomUUID()}`,
+        account,
+        brand: account.brand,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        proposal_id: committed.proposal_id,
+        total_budget: { amount: 50000, currency: 'USD' },
+        ...(committed.insertion_order && {
+          io_acceptance: {
+            io_id: (committed.insertion_order as Record<string, unknown>).io_id,
+            accepted_at: new Date().toISOString(),
+            signatory: 'create-decline-race-test',
+          },
+        }),
+      }),
+      simulateCallTool(server, 'decline_proposals', {
+        idempotency_key: `test-${randomUUID()}`,
+        declines: [{ proposal_id: committed.proposal_id, reason: 'timing' }],
+      }),
+    ]);
+    const declineOutcome = ((decline.result.results as Array<Record<string, unknown>> | undefined)?.[0]?.outcome);
+    const terminalSuccesses = Number(!create.isError) + Number(declineOutcome === 'declined');
+    expect(terminalSuccesses).toBe(1);
+    if (create.isError) expect(create.result).toMatchObject({ code: 'INVALID_STATE' });
+    else if (decline.isError) expect(decline.result).toMatchObject({ code: 'CONFLICT' });
+    else expect(declineOutcome).toBe('unable');
+  });
+
+  it('makes proposal decline terminal, semantically idempotent, and opportunity-aware', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const opportunity = {
+      opportunity_id: 'opp-proposal-decline-2027',
+      phase: 'active_sourcing',
+      intent: 'live_rfp',
+    };
+    const { result: requested, isError: requestError } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+      opportunity,
+    });
+    expect(requestError).toBeFalsy();
+    const draft = (requested.proposals as Array<Record<string, unknown>>)[0];
+
+    const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: draft.proposal_id,
+        instructions: 'Prefer social inventory without changing the planning cycle.',
+      }],
+    });
+    expect(refineError).toBeFalsy();
+    const revision = ((refined.results as Array<Record<string, unknown>>)[0].proposal) as Record<string, unknown>;
+    const compactSessionKey = sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous');
+    await runWithSessionContext(async () => {
+      const session = await getSession(compactSessionKey);
+      const storedRevision = session.lastGetProductsContext?.proposals?.find(
+        proposal => proposal.proposal_id === revision.proposal_id,
+      ) as (Record<string, unknown> | undefined);
+      expect(storedRevision?.__opportunity_id).toBe(opportunity.opportunity_id);
+    });
+
+    const { result: finalized, isError: finalizeError } = await simulateCallTool(server, 'finalize_proposals', {
+      proposal_ids: [revision.proposal_id],
+    });
+    expect(finalizeError).toBeFalsy();
+    const committed = (finalized.proposals as Array<Record<string, unknown>>)[0];
+
+    const mismatchedOpportunity = await simulateCallTool(server, 'decline_proposals', {
+      declines: [{ proposal_id: committed.proposal_id, reason: 'inventory_fit' }],
+      opportunity: {
+        opportunity_id: 'opp-some-other-cycle',
+        status: 'closed',
+        close_reason: 'not_pursued',
+      },
+    });
+    expect(mismatchedOpportunity.isError).toBe(true);
+    expect(mismatchedOpportunity.result).toMatchObject({
+      code: 'INVALID_REQUEST',
+      field: 'opportunity.opportunity_id',
+    });
+
+    const declineArgs = {
+      declines: [{
+        proposal_id: committed.proposal_id,
+        reason: 'inventory_fit',
+        detail: 'The original inventory feedback.',
+      }],
+      opportunity: {
+        opportunity_id: opportunity.opportunity_id,
+        status: 'closed',
+        close_reason: 'not_pursued',
+      },
+    };
+    const firstDecline = await simulateCallTool(server, 'decline_proposals', declineArgs);
+    expect(firstDecline.isError).toBeFalsy();
+    expect(firstDecline.result).toMatchObject({
+      results: [{ proposal_id: committed.proposal_id, outcome: 'declined' }],
+    });
+
+    const repeatedDecline = await simulateCallTool(server, 'decline_proposals', {
+      ...declineArgs,
+      declines: [{
+        proposal_id: committed.proposal_id,
+        reason: 'price',
+        detail: 'This later feedback must not overwrite the first record.',
+      }],
+      opportunity: { opportunity_id: opportunity.opportunity_id },
+    });
+    expect(repeatedDecline.isError).toBeFalsy();
+    expect(repeatedDecline.result).toMatchObject({
+      results: [{ proposal_id: committed.proposal_id, outcome: 'declined' }],
+    });
+
+    await runWithSessionContext(async () => {
+      const session = await getSession(compactSessionKey);
+      const stored = session.lastGetProductsContext?.proposals?.find(
+        proposal => proposal.proposal_id === committed.proposal_id,
+      ) as (Record<string, unknown> | undefined);
+      expect(stored).toMatchObject({
+        __declined: true,
+        __decline_reason: 'inventory_fit',
+        __decline_detail: 'The original inventory feedback.',
+        __opportunity_update: {
+          opportunity_id: opportunity.opportunity_id,
+          status: 'closed',
+          close_reason: 'not_pursued',
+        },
+      });
+    });
+
+    const explicitReopen = await simulateCallTool(server, 'decline_proposals', {
+      declines: [{ proposal_id: committed.proposal_id, reason: 'price' }],
+      opportunity: { opportunity_id: opportunity.opportunity_id, status: 'open' },
+    });
+    expect(explicitReopen.isError).toBeFalsy();
+    await runWithSessionContext(async () => {
+      const session = await getSession(compactSessionKey);
+      const stored = session.lastGetProductsContext?.proposals?.find(
+        proposal => proposal.proposal_id === committed.proposal_id,
+      ) as (Record<string, unknown> | undefined);
+      expect(stored?.__opportunity_update).toEqual({
+        opportunity_id: opportunity.opportunity_id,
+        status: 'open',
+      });
+    });
+
+    const finalizeAfterDecline = await simulateCallTool(server, 'finalize_proposals', {
+      proposal_ids: [committed.proposal_id],
+    });
+    expect(finalizeAfterDecline.isError).toBe(true);
+    expect(finalizeAfterDecline.result).toMatchObject({ code: 'INVALID_STATE' });
+
+    const refineAfterDecline = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: committed.proposal_id,
+        instructions: 'Try a different allocation after terminal decline.',
+      }],
+    });
+    expect(refineAfterDecline.isError).toBeFalsy();
+    expect(refineAfterDecline.result).toMatchObject({
+      results: [{ source_proposal_id: committed.proposal_id, outcome: 'unable' }],
+    });
+
+    const purchase = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      proposal_id: committed.proposal_id,
+      total_budget: { amount: 50000, currency: 'USD' },
+      opportunity: {
+        opportunity_id: opportunity.opportunity_id,
+        status: 'closed',
+        close_reason: 'accepted_with_seller',
+      },
+    });
+    expect(purchase.isError).toBe(true);
+    expect(purchase.result).toMatchObject({ code: 'INVALID_STATE' });
+  });
+
+  it('keeps opportunity updates atomic across partial decline outcomes', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const opportunity = { opportunity_id: 'opp-partial-decline-2027', status: 'open' };
+    const { result: requested } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+      opportunity,
+    });
+    const proposal = (requested.proposals as Array<Record<string, unknown>>)[0];
+
+    const decline = await simulateCallTool(server, 'decline_proposals', {
+      declines: [
+        { proposal_id: proposal.proposal_id, reason: 'timing' },
+        { proposal_id: 'proposal-not-visible-to-caller', reason: 'timing' },
+      ],
+      opportunity: {
+        opportunity_id: opportunity.opportunity_id,
+        status: 'closed',
+        close_reason: 'timing_changed',
+      },
+    });
+    expect(decline.isError).toBeFalsy();
+    expect(decline.result).toMatchObject({
+      results: [
+        { proposal_id: proposal.proposal_id, outcome: 'declined' },
+        { proposal_id: 'proposal-not-visible-to-caller', outcome: 'unable' },
+      ],
+    });
+
+    await runWithSessionContext(async () => {
+      const session = await getSession(
+        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+      );
+      const stored = session.lastGetProductsContext?.proposals?.find(
+        candidate => candidate.proposal_id === proposal.proposal_id,
+      ) as (Record<string, unknown> | undefined);
+      expect(stored?.__declined).toBe(true);
+      expect(stored).not.toHaveProperty('__opportunity_update');
+    });
+  });
+
+  it('rejects duplicate decline proposal IDs and cannot decline registry proposals', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const duplicate = await simulateCallTool(server, 'decline_proposals', {
+      declines: [
+        { proposal_id: 'proposal-1', reason: 'price' },
+        { proposal_id: 'proposal-1', reason: 'timing' },
+      ],
+    });
+    expect(duplicate.isError).toBe(true);
+    expect(duplicate.result).toMatchObject({ code: 'INVALID_REQUEST' });
+
+    const registry = await simulateCallTool(server, 'decline_proposals', {
+      declines: [{ proposal_id: 'proposal_1', reason: 'price' }],
+    });
+    expect(registry.isError).toBeFalsy();
+    expect(registry.result).toMatchObject({
+      results: [{ proposal_id: 'proposal_1', outcome: 'unable' }],
+    });
   });
 
   it('omits partial-only notes from a fully revised proposal result', async () => {

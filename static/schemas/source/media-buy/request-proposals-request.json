@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/request-proposals-request.json",
   "title": "Request Proposals Request",
-  "description": "Ask a seller to create one or more actionable media-plan proposals from a brief. Proposal IDs returned here connect refinement, finalization, and purchase.",
+  "description": "Ask a seller to create one or more actionable media-plan proposals from a brief. Each returned proposal_id identifies one immutable commercial snapshot and connects refinement, finalization, decline, and purchase; changed commercial terms require a new proposal_id.",
   "type": "object",
   "x-mutates-state": true,
   "x-operation-family": "request_proposals",
@@ -39,7 +39,18 @@
       "minLength": 1,
       "description": "Campaign goal, strategy, and requirements that are not represented in structured criteria."
     },
-    "criteria": { "$ref": "/schemas/media-buy/product-discovery-criteria.json" }
+    "criteria": { "$ref": "/schemas/media-buy/product-discovery-criteria.json" },
+    "opportunity": {
+      "allOf": [
+        { "$ref": "/schemas/core/opportunity-context.json" },
+        {
+          "properties": {
+            "status": { "const": "open" }
+          }
+        }
+      ],
+      "description": "Optional planning-cycle context that the seller associates with every proposal created by this request."
+    }
   },
   "required": ["idempotency_key", "brand", "brief"],
   "additionalProperties": false

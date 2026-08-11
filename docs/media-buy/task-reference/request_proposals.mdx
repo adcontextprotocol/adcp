@@ -16,12 +16,20 @@ testable: true
   "idempotency_key": "550e8400-e29b-41d4-a716-446655441001",
   "brief": "Reach outdoor enthusiasts with premium video inventory.",
   "brand": { "domain": "acmeoutdoor.example" },
+  "opportunity": {
+    "opportunity_id": "opp_spring_launch_2027",
+    "phase": "active_sourcing",
+    "intent": "live_rfp",
+    "response_deadline": "2027-01-15T17:00:00Z"
+  },
   "criteria": {
     "product_ids": ["product_premium_video"]
   }
 }
 ```
 
-Every returned allocation references the exact `product_id` whose pricing and forecast the seller used. The returned `proposal_id` is the only linkage needed by [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), [`finalize_proposals`](/docs/media-buy/task-reference/finalize_proposals), and [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy).
+Every returned allocation references the exact `product_id` whose pricing and forecast the seller used. The returned `proposal_id` is the only proposal linkage needed by [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), [`finalize_proposals`](/docs/media-buy/task-reference/finalize_proposals), [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals), and [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). Each ID identifies one immutable commercial snapshot; refinement mints a new ID instead of adding a second version field.
+
+`opportunity` is optional shared planning-cycle context and must be open when supplied here. Its buyer-assigned `opportunity_id` can span request, decline, and purchase calls without becoming part of proposal identity. Sellers associate it with every proposal created by the request, and revised proposals inherit the same association.
 
 The response uses `outcome: "proposed"` for a successful draft set and `outcome: "rejected"` with a reason when the seller cannot construct an actionable plan.

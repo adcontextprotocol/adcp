@@ -297,6 +297,7 @@
                       "docs/media-buy/task-reference/request_proposals",
                       "docs/media-buy/task-reference/refine_proposals",
                       "docs/media-buy/task-reference/finalize_proposals",
+                      "docs/media-buy/task-reference/decline_proposals",
                       "docs/media-buy/task-reference/create_media_buy",
                       "docs/media-buy/task-reference/sync_catalogs",
                       "docs/media-buy/task-reference/get_media_buys",

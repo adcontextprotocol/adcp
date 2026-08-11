@@ -30,6 +30,7 @@ describe('product discovery MCP schema parity', () => {
       ['request_proposals', 'request-proposals-request'],
       ['refine_proposals', 'refine-proposals-request'],
       ['finalize_proposals', 'finalize-proposals-request'],
+      ['decline_proposals', 'decline-proposals-request'],
     ] as const) {
       const runtime = tools.get(toolName)!;
       const source = sourceSchema(fileName);
@@ -81,6 +82,9 @@ describe('product discovery MCP schema parity', () => {
     expect(resolveLocalRef(list, list.properties.criteria)).toMatchObject({ additionalProperties: false });
     expect(resolveLocalRef(refineTool, refineTool.properties.refinements.items))
       .toMatchObject({ required: ['proposal_id', 'instructions'], additionalProperties: false });
+    const declineTool = tools.get('decline_proposals')!;
+    expect(resolveLocalRef(declineTool, declineTool.properties.declines.items))
+      .toMatchObject({ required: ['proposal_id', 'reason'], additionalProperties: false });
   });
 
   it('bundles each tools/list input schema as a valid standalone document', () => {

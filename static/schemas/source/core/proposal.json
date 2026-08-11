@@ -2,12 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/proposal.json",
   "title": "Proposal",
-  "description": "A proposed media plan with fixed or seller-optimized budget allocation across products. Committed proposals execute through create_media_buy(proposal_id); draft proposals commit through finalize_proposals (or the legacy get_products finalize form during 3.x).",
+  "description": "A proposed media-plan snapshot with fixed or seller-optimized budget allocation across products. In the AdCP 3.2 split proposal lifecycle, refinement or changed commercial terms produce a new proposal_id while lifecycle and buyer-disposition state may progress on the same snapshot. Legacy get_products proposal behavior remains compatible throughout 3.x. Committed proposals execute through create_media_buy(proposal_id), drafts commit through finalize_proposals, and proposals declined through the split lifecycle cannot execute.",
   "type": "object",
   "properties": {
     "proposal_id": {
       "type": "string",
-      "description": "Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.",
+      "description": "Unique identifier for this commercial snapshot. Used to refine or decline a proposal, finalize a draft, and execute a committed proposal via create_media_buy. For proposals issued by the AdCP 3.2 split tasks, a seller MUST issue a new ID whenever refinement changes terms.",
+      "x-entity": "proposal",
       "maxLength": 255
     },
     "name": {

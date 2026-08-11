@@ -1634,7 +1634,7 @@ import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import {
   controllerFixturePrincipal, getSession, getProductsSessionKeyFromArgs, sessionKeyFromArgs,
   findSessionMatching,
-  runWithSessionContext, flushDirtySessions,
+  runWithSessionContext, flushDirtySessions, evictSessionFromRequestCache,
   getComplianceCreatives, getComplianceCreative,
   getComplianceMediaBuys, getComplianceMediaBuy,
   MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
@@ -2298,7 +2298,10 @@ async function deriveProductDiscoveryAccountScope(
   ctx: TrainingContext,
 ): Promise<string | undefined> {
   const directScope = deriveAccountScope(normalizedArgs, isProductDiscoveryTool(toolName));
-  if (directScope || (toolName !== 'refine_proposals' && toolName !== 'finalize_proposals')) {
+  if (
+    directScope
+    || (toolName !== 'refine_proposals' && toolName !== 'finalize_proposals' && toolName !== 'decline_proposals')
+  ) {
     return directScope;
   }
 
@@ -2307,6 +2310,11 @@ async function deriveProductDiscoveryAccountScope(
         .filter(isRecord)
         .map(refinement => refinement.proposal_id)
         .filter((id): id is string => typeof id === 'string')
+    : toolName === 'decline_proposals' && Array.isArray(originalArgs.declines)
+      ? originalArgs.declines
+          .filter(isRecord)
+          .map(decline => decline.proposal_id)
+          .filter((id): id is string => typeof id === 'string')
     : Array.isArray(originalArgs.proposal_ids)
       ? originalArgs.proposal_ids.filter((id): id is string => typeof id === 'string')
       : [];
@@ -4143,6 +4151,7 @@ const PRODUCT_DISCOVERY_TOOLS = new Set([
   'request_proposals',
   'refine_proposals',
   'finalize_proposals',
+  'decline_proposals',
 ]);
 
 function isProductDiscoveryTool(toolName: string): boolean {
@@ -4161,6 +4170,7 @@ function productDiscoverySourceSchemaName(toolName: string): string | undefined 
     case 'request_proposals': return 'request-proposals-request';
     case 'refine_proposals': return 'refine-proposals-request';
     case 'finalize_proposals': return 'finalize-proposals-request';
+    case 'decline_proposals': return 'decline-proposals-request';
     default: return undefined;
   }
 }
@@ -4280,6 +4290,27 @@ export function normalizeProductDiscoveryArgs(
         : [],
     };
   }
+  if (toolName === 'decline_proposals') {
+    const { declines, ...rest } = domainArgs;
+    return {
+      ...rest,
+      buying_mode: 'refine',
+      __compact_proposal_lifecycle: true,
+      __decline_proposals: true,
+      refine: Array.isArray(declines)
+        ? declines.map(entry => {
+            if (!isRecord(entry)) return entry;
+            return {
+              scope: 'proposal',
+              proposal_id: entry.proposal_id,
+              action: 'decline',
+              reason: entry.reason,
+              ...(typeof entry.detail === 'string' && { detail: entry.detail }),
+            };
+          })
+        : [],
+    };
+  }
   return args;
 }
 
@@ -4307,6 +4338,12 @@ function outwardProposal(proposal: Record<string, unknown>): Record<string, unkn
     __account_id: _accountId,
     __refinement_outcome: _refinementOutcome,
     __refinement_notes: _refinementNotes,
+    __opportunity_id: _opportunityId,
+    __declined: _declined,
+    __decline_reason: _declineReason,
+    __decline_detail: _declineDetail,
+    __executed: _executed,
+    __opportunity_update: _opportunityUpdate,
     ...outward
   } = proposal;
   return outward;
@@ -4434,6 +4471,25 @@ export function projectProductDiscoveryResult(
       products: supportingProductsForProposals(outwardProposals, products),
     };
   }
+  if (toolName === 'decline_proposals') {
+    const requestedDeclines = Array.isArray(originalArgs.declines)
+      ? originalArgs.declines.filter(isRecord)
+      : [];
+    const proposalsById = new Map(proposals.map(proposal => [proposal.proposal_id, proposal]));
+    return {
+      results: requestedDeclines.map(decline => {
+        const proposalId = typeof decline.proposal_id === 'string' ? decline.proposal_id : '';
+        const proposal = proposalsById.get(proposalId);
+        return proposal?.__declined === true
+          ? { proposal_id: proposalId, outcome: 'declined' }
+          : {
+              proposal_id: proposalId,
+              outcome: 'unable',
+              reason: 'The proposal was not found or could not be declined by this authenticated principal.',
+            };
+      }),
+    };
+  }
   return { proposals: selected.map(outwardProposal) };
 }
 
@@ -4478,21 +4534,25 @@ export function validateProductDiscoveryAliasInput(
   const allowedFields: Record<string, ReadonlySet<string>> = {
     list_products: new Set([
       'adcp_version', 'adcp_major_version', 'idempotency_key', 'context_id',
-      'governance_context', 'push_notification_config', 'account_id', 'brand', 'criteria',
+      'context', 'governance_context', 'push_notification_config', 'account_id', 'brand', 'criteria',
       'fields', 'cursor', 'max_results', 'if_feed_version', 'if_pricing_version',
     ]),
     request_proposals: new Set([
       'adcp_version', 'adcp_major_version', 'idempotency_key', 'account_id',
-      'context_id', 'governance_context', 'push_notification_config',
-      'brand', 'brief', 'criteria',
+      'context_id', 'context', 'governance_context', 'push_notification_config',
+      'brand', 'brief', 'criteria', 'opportunity',
     ]),
     refine_proposals: new Set([
       'adcp_version', 'adcp_major_version', 'idempotency_key', 'refinements',
-      'context_id', 'governance_context', 'push_notification_config',
+      'context_id', 'context', 'governance_context', 'push_notification_config',
     ]),
     finalize_proposals: new Set([
       'adcp_version', 'adcp_major_version', 'idempotency_key', 'proposal_ids',
-      'context_id', 'governance_context', 'push_notification_config',
+      'context_id', 'context', 'governance_context', 'push_notification_config',
+    ]),
+    decline_proposals: new Set([
+      'adcp_version', 'adcp_major_version', 'idempotency_key', 'declines', 'opportunity',
+      'context_id', 'context', 'governance_context', 'push_notification_config',
     ]),
   };
   const allowed = allowedFields[toolName];
@@ -4501,7 +4561,12 @@ export function validateProductDiscoveryAliasInput(
     if (unknown) return { message: `${unknown} is not supported by ${toolName}`, field: unknown };
   }
   if (
-    (toolName === 'request_proposals' || toolName === 'refine_proposals' || toolName === 'finalize_proposals')
+    (
+      toolName === 'request_proposals'
+      || toolName === 'refine_proposals'
+      || toolName === 'finalize_proposals'
+      || toolName === 'decline_proposals'
+    )
     && args.idempotency_key == null
   ) {
     return { message: `idempotency_key is required for ${toolName}`, field: 'idempotency_key' };
@@ -4573,6 +4638,42 @@ export function validateProductDiscoveryAliasInput(
       return { message: 'proposal_ids exceeds max_atomic_finalize_batch_size (25)', field: 'proposal_ids' };
     }
   }
+  if (toolName === 'decline_proposals') {
+    if (!Array.isArray(args.declines) || args.declines.length === 0) {
+      return { message: 'declines must contain at least one proposal decline', field: 'declines' };
+    }
+    if (args.declines.length > 25) {
+      return { message: 'declines exceeds the maximum batch size (25)', field: 'declines' };
+    }
+    const proposalIds = new Set<string>();
+    const reasons = new Set([
+      'price', 'inventory_fit', 'audience_fit', 'creative_unsupported', 'measurement_unsupported',
+      'policy', 'timing', 'budget_changed', 'selected_alternative', 'other',
+    ]);
+    for (let index = 0; index < args.declines.length; index += 1) {
+      const entry = args.declines[index];
+      if (!isRecord(entry)) {
+        return { message: 'decline entries must be objects', field: `declines[${index}]` };
+      }
+      if (typeof entry.proposal_id !== 'string' || entry.proposal_id.length === 0) {
+        return { message: 'proposal_id is required for every decline', field: `declines[${index}].proposal_id` };
+      }
+      if (proposalIds.has(entry.proposal_id)) {
+        return { message: 'proposal_id values in declines must be unique', field: `declines[${index}].proposal_id` };
+      }
+      proposalIds.add(entry.proposal_id);
+      if (typeof entry.reason !== 'string' || !reasons.has(entry.reason)) {
+        return { message: 'a supported reason is required for every decline', field: `declines[${index}].reason` };
+      }
+      if (entry.reason === 'other' && !(typeof entry.detail === 'string' && entry.detail.length > 0)) {
+        return { message: 'detail is required when decline reason is other', field: `declines[${index}].detail` };
+      }
+      const unknown = Object.keys(entry).find(field => !['proposal_id', 'reason', 'detail'].includes(field));
+      if (unknown) {
+        return { message: `${unknown} is not supported on proposal declines`, field: `declines[${index}].${unknown}` };
+      }
+    }
+  }
   return undefined;
 }
 
@@ -4580,11 +4681,41 @@ const LIST_PRODUCTS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('list-product
 const REQUEST_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('request-proposals-request');
 const REFINE_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('refine-proposals-request');
 const FINALIZE_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('finalize-proposals-request');
+const DECLINE_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('decline-proposals-request');
+const CREATE_MEDIA_BUY_OPPORTUNITY_INPUT_SCHEMA = {
+  type: 'object',
+  description: 'Planning-cycle closure for proposal execution. Omit status to infer accepted closure, or send closed with accepted_with_seller.',
+  properties: {
+    opportunity_id: { type: 'string', minLength: 1, maxLength: 255, pattern: '^[A-Za-z0-9_.:-]{1,255}$' },
+    phase: { type: 'string', enum: ['exploratory', 'planning', 'active_sourcing'] },
+    intent: { type: 'string', enum: ['test', 'speculative', 'planning', 'live_rfp'] },
+    planning_horizon: {
+      type: 'object',
+      properties: {
+        start: { type: 'string', format: 'date' },
+        end: { type: 'string', format: 'date' },
+      },
+      required: ['start', 'end'],
+      additionalProperties: true,
+    },
+    response_deadline: { type: 'string', format: 'date-time' },
+    status: { type: 'string', const: 'closed' },
+    close_reason: { type: 'string', const: 'accepted_with_seller' },
+    close_detail: { type: 'string', minLength: 1, maxLength: 500 },
+  },
+  required: ['opportunity_id'],
+  allOf: [{
+    if: { required: ['status'] },
+    then: { required: ['close_reason'] },
+    else: { not: { anyOf: [{ required: ['close_reason'] }, { required: ['close_detail'] }] } },
+  }],
+  additionalProperties: false,
+};
 
 const TOOLS = [
   {
     name: 'get_products',
-    description: 'DEPRECATED in AdCP 3.2. Compatibility facade for brief, wholesale, refine, and finalize product flows. New callers use list_products, request_proposals, refine_proposals, and finalize_proposals.',
+    description: 'DEPRECATED in AdCP 3.2. Compatibility facade for brief, wholesale, refine, and finalize product flows. New callers use the dedicated product-discovery lifecycle tools.',
     // Polymorphic: brief/wholesale can be reads, but Submitted responses
     // allocate a task and refine+finalize commits an inventory hold.
     annotations: { readOnlyHint: false, idempotentHint: true },
@@ -4647,6 +4778,13 @@ const TOOLS = [
     inputSchema: FINALIZE_PROPOSALS_INPUT_SCHEMA,
   },
   {
+    name: 'decline_proposals',
+    description: 'Terminally decline one or more immutable proposals. Repeated declines are semantically idempotent and declined proposals cannot be purchased.',
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: DECLINE_PROPOSALS_INPUT_SCHEMA,
+  },
+  {
     name: 'list_creative_formats',
     description: 'DEPRECATED in AdCP 3.2. Legacy named-format compatibility projection only. Sales deliverability comes from get_products format_options[]; creative-agent operations come from get_adcp_capabilities creative.supported_formats[].',
     annotations: { readOnlyHint: true, idempotentHint: true },
@@ -4700,7 +4838,7 @@ const TOOLS = [
   },
   {
     name: 'create_media_buy',
-    description: 'Create a media buy with one or more packages targeting specific products. Requires valid product_id and pricing_option_id from get_products. Not for updating existing buys (use update_media_buy). Cannot add packages to an existing buy after creation.',
+    description: 'Create a media buy either from explicit product packages or by executing one committed proposal_id with total_budget. Package mode uses product_id and pricing_option_id from product discovery. Use update_media_buy for an existing buy.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
@@ -4731,6 +4869,7 @@ const TOOLS = [
           },
         },
         proposal_id: { type: 'string' },
+        opportunity: CREATE_MEDIA_BUY_OPPORTUNITY_INPUT_SCHEMA,
         total_budget: { type: 'object', properties: { amount: { type: 'number' }, currency: { type: 'string' } } },
         start_time: { type: 'string', description: 'ISO 8601 date-time or "asap"' },
         end_time: { type: 'string' },
@@ -4755,6 +4894,7 @@ const TOOLS = [
         },
       },
       required: ['account', 'brand', 'start_time', 'end_time'],
+      dependencies: { opportunity: ['proposal_id'] },
     },
   },
   {
@@ -5089,6 +5229,7 @@ export function productDiscoveryAliasToolDefinitions(): Array<(typeof TOOLS)[num
     || tool.name === 'request_proposals'
     || tool.name === 'refine_proposals'
     || tool.name === 'finalize_proposals'
+    || tool.name === 'decline_proposals'
   )));
 }
 
@@ -5146,6 +5287,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   }
 
   const buyingMode = req.buying_mode ?? 'brief';
+  const proposalLifecycleWrite = buyingMode === 'refine'
+    || (req as unknown as Record<string, unknown>).__require_proposals === true;
+  const compactLifecycleWrite = proposalLifecycleWrite
+    && (req as unknown as Record<string, unknown>).__compact_proposal_lifecycle === true;
   const sessionScope = productDiscoverySessionKey(args, ctx);
   const sessionHash = createHash('sha256').update(sessionScope).digest('hex');
   const principal = 'get-products-session-mutex';
@@ -5153,14 +5298,12 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   const store = getIdempotencyStore();
   let claim = await store.check({ principal, key, payload: { session: sessionHash } });
 
-  // Read discovery only needs the mutex for a short directive-consumption
-  // preflight. Queue behind an active writer/preflight instead of surfacing a
-  // spurious CONFLICT to compare_media_kit-style fan-out. Refine requests keep
-  // the existing non-blocking conflict behavior because the whole operation
-  // mutates proposal/pricing state.
+  // Read discovery and the idempotent split lifecycle queue briefly behind an
+  // active writer. Legacy get_products refine retains its non-blocking CONFLICT
+  // behavior for 3.x compatibility.
   const readLockDeadline = Date.now() + 1_000;
   let readLockBackoffMs = 5;
-  while (buyingMode !== 'refine' && claim.kind !== 'miss') {
+  while ((!proposalLifecycleWrite || compactLifecycleWrite) && claim.kind !== 'miss') {
     const remainingMs = readLockDeadline - Date.now();
     if (remainingMs <= 0) break;
     const jitterMs = Math.floor(Math.random() * Math.max(1, readLockBackoffMs / 2));
@@ -5181,7 +5324,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     };
   }
 
-  if (buyingMode !== 'refine') {
+  if (!proposalLifecycleWrite) {
     let directives: GetProductsReadDirectives = {};
     try {
       const session = await getSession(
@@ -5210,6 +5353,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   }
 
   try {
+    if (compactLifecycleWrite) evictSessionFromRequestCache(sessionScope);
     const result = await handleGetProductsUnlocked(args, ctx, paginationOffset);
     // Keep the mutex until every refine mutation is durable, not just proposal
     // holds, so a following refine request observes the committed context.
@@ -5435,11 +5579,20 @@ async function handleGetProductsUnlocked(
     }
   }
 
-  // Refine mode: apply include/omit/more_like_this/finalize
+  // Refine mode: apply include/omit/more_like_this/finalize. The dedicated
+  // decline_proposals task uses the same internal transaction machinery but
+  // is intentionally not part of the deprecated get_products wire schema.
   type RefineEntry =
     | { scope: 'request'; ask?: string }
     | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string }
-    | { scope: 'proposal'; proposal_id: string; action?: 'include' | 'omit' | 'finalize'; ask?: string };
+    | {
+        scope: 'proposal';
+        proposal_id: string;
+        action?: 'include' | 'omit' | 'finalize' | 'decline';
+        ask?: string;
+        reason?: string;
+        detail?: string;
+      };
 
   type RefinementAppliedEntry =
     | { scope: 'request'; status: 'applied' | 'partial' | 'unable'; notes?: string }
@@ -5448,19 +5601,27 @@ async function handleGetProductsUnlocked(
 
   const immutableRefine = buyingMode === 'refine'
     && (req as unknown as Record<string, unknown>).__immutable_refine === true;
+  const compactLifecycle = buyingMode === 'refine'
+    && (req as unknown as Record<string, unknown>).__compact_proposal_lifecycle === true;
+  const declineProposals = buyingMode === 'refine'
+    && (req as unknown as Record<string, unknown>).__decline_proposals === true;
   const refinementApplied: RefinementAppliedEntry[] = [];
   const proposalOmitIds = new Set<string>();
   const refinedProposalOverrides = new Map<string, Proposal>();
   const explicitlySelectedProposals = new Map<string, Proposal>();
   const stagedProposalCommits = new Map<string, Proposal>();
+  const stagedProposalDeclines = new Map<string, Proposal>();
   let guaranteedOnlyRequested = false;
   if (buyingMode === 'refine' && req.refine) {
     const refineOps = req.refine as unknown as RefineEntry[];
-    const previousProposals = session.lastGetProductsContext?.proposals || getProposals();
+    const previousProposals = session.lastGetProductsContext?.proposals
+      ?? (compactLifecycle ? [] : getProposals());
     const registryProposals = getProposals();
     const resolveProposal = (proposalId: string): Proposal | undefined => {
       const proposal = previousProposals.find(candidate => candidate.proposal_id === proposalId)
-        ?? registryProposals.find(candidate => candidate.proposal_id === proposalId);
+        ?? (compactLifecycle
+          ? undefined
+          : registryProposals.find(candidate => candidate.proposal_id === proposalId));
       if (proposal) return proposal;
       if (isThreeZeroStoryboardCompat(ctx) && proposalId === THREE_ZERO_LEGACY_PROPOSAL_ID) {
         return resolveThreeZeroProposalAlias([...previousProposals, ...registryProposals]);
@@ -5477,6 +5638,11 @@ async function handleGetProductsUnlocked(
 
     const askAckNotes = (ask?: string) =>
       ask ? { notes: `Ask acknowledged but not applied by training agent: ${ask}` } : {};
+    const declineOpportunity = declineProposals
+      && isRecord((req as unknown as Record<string, unknown>).opportunity)
+      ? (req as unknown as Record<string, unknown>).opportunity as Record<string, unknown>
+      : undefined;
+    let everyDeclineApplicable = true;
 
     // Validate entity references before applying any refinements. This keeps
     // failed multi-entry refine calls from partially finalizing earlier entries.
@@ -5498,7 +5664,8 @@ async function handleGetProductsUnlocked(
       if (op.scope !== 'proposal') continue;
       const proposal = resolveProposal(op.proposal_id);
       if (!proposal) {
-        if (immutableRefine) continue;
+        if (declineProposals) everyDeclineApplicable = false;
+        if (immutableRefine || declineProposals) continue;
         return {
           errors: [{
             code: 'PROPOSAL_NOT_FOUND',
@@ -5508,7 +5675,34 @@ async function handleGetProductsUnlocked(
           }] as TaskError[],
         };
       }
+      if (op.action === 'decline') {
+        const internal = proposal as unknown as Record<string, unknown>;
+        if (internal.__executed === true) everyDeclineApplicable = false;
+        if (
+          typeof declineOpportunity?.opportunity_id === 'string'
+          && internal.__opportunity_id !== declineOpportunity.opportunity_id
+        ) {
+          return {
+            errors: [{
+              code: 'INVALID_REQUEST',
+              message: 'Every proposal in decline_proposals must belong to the supplied opportunity_id.',
+              field: 'opportunity.opportunity_id',
+              recovery: 'correctable',
+            }] as TaskError[],
+          };
+        }
+      }
       if (op.action === 'finalize') {
+        if ((proposal as unknown as Record<string, unknown>).__declined === true) {
+          return {
+            errors: [{
+              code: 'INVALID_STATE',
+              message: `Proposal has been declined and cannot be finalized: ${op.proposal_id}`,
+              field: `refine[${opIndex}].proposal_id`,
+              recovery: 'correctable',
+            }] as TaskError[],
+          };
+        }
         if (proposal.expires_at && new Date(proposal.expires_at) < new Date()) {
           return {
             errors: [{
@@ -5614,6 +5808,15 @@ async function handleGetProductsUnlocked(
           proposalOmitIds.add(proposal.proposal_id);
           refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied' });
         } else if (action === 'include') {
+          if (immutableRefine && (proposal as unknown as Record<string, unknown>).__declined === true) {
+            refinementApplied.push({
+              scope: 'proposal',
+              proposal_id: op.proposal_id,
+              status: 'unable',
+              notes: 'Proposal was declined terminally and cannot be refined',
+            });
+            continue;
+          }
           explicitlySelectedProposals.set(proposal.proposal_id, proposal);
           for (const allocation of proposal.allocations) includeIds.add(allocation.product_id);
           if (proposalLifecycle(proposal).proposal_status === 'committed' && op.ask) {
@@ -5717,6 +5920,53 @@ async function handleGetProductsUnlocked(
 
             refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal finalized — pricing committed, inventory held for 24 hours' });
           }
+        } else if (action === 'decline') {
+          const internal = proposal as unknown as Record<string, unknown>;
+          if (internal.__executed === true) {
+            refinementApplied.push({
+              scope: 'proposal',
+              proposal_id: op.proposal_id,
+              status: 'unable',
+              notes: 'Proposal was already executed and cannot be declined',
+            });
+            continue;
+          }
+          const opportunityUpdate = everyDeclineApplicable && declineOpportunity
+            ? {
+                ...(isRecord(internal.__opportunity_update)
+                  ? structuredClone(internal.__opportunity_update)
+                  : {}),
+                ...structuredClone(declineOpportunity),
+              }
+            : undefined;
+          if (opportunityUpdate?.status === 'open') {
+            delete opportunityUpdate.close_reason;
+            delete opportunityUpdate.close_detail;
+          }
+          const declined = {
+            ...proposal,
+            ...(
+              internal.__declined === true
+                ? {}
+                : {
+                    __declined: true,
+                    ...(typeof op.reason === 'string' && { __decline_reason: op.reason }),
+                    ...(typeof op.detail === 'string' && { __decline_detail: op.detail }),
+                  }
+            ),
+            ...(opportunityUpdate && { __opportunity_update: opportunityUpdate }),
+          } as unknown as Proposal;
+          stagedProposalDeclines.set(op.proposal_id, declined);
+          refinedProposalOverrides.set(op.proposal_id, declined);
+          explicitlySelectedProposals.set(op.proposal_id, declined);
+          refinementApplied.push({
+            scope: 'proposal',
+            proposal_id: op.proposal_id,
+            status: 'applied',
+            notes: (proposal as unknown as Record<string, unknown>).__declined === true
+              ? 'Proposal was already declined'
+              : 'Proposal declined terminally',
+          });
         }
       } else if (op.scope === 'request') {
         if (requestsGuaranteedOnlyProducts(op.ask)) {
@@ -5754,14 +6004,15 @@ async function handleGetProductsUnlocked(
     if (guaranteedOnlyRequested) {
       products = products.filter(product => product.delivery_type === 'guaranteed');
     }
-    if (stagedProposalCommits.size > 0) {
+    if (stagedProposalCommits.size > 0 || stagedProposalDeclines.size > 0) {
       // Publish the complete batch with one assignment only after every
       // proposal has been resolved and every committed snapshot constructed.
       // This is the training agent's transaction boundary: no request can
       // observe a prefix of an atomic finalize_proposals batch.
       const prior = session.lastGetProductsContext?.proposals ?? [];
-      const next = prior.map(proposal => stagedProposalCommits.get(proposal.proposal_id) ?? proposal);
-      for (const [proposalId, proposal] of stagedProposalCommits) {
+      const stagedUpdates = new Map([...stagedProposalCommits, ...stagedProposalDeclines]);
+      const next = prior.map(proposal => stagedUpdates.get(proposal.proposal_id) ?? proposal);
+      for (const [proposalId, proposal] of stagedUpdates) {
         if (!prior.some(existing => existing.proposal_id === proposalId)) next.push(proposal);
       }
       session.lastGetProductsContext = {
@@ -5849,6 +6100,7 @@ async function handleGetProductsUnlocked(
     const requestRecord = req as unknown as Record<string, unknown>;
     const requestAccount = isRecord(requestRecord.account) ? requestRecord.account : undefined;
     const requestBrand = isRecord(requestRecord.brand) ? requestRecord.brand : undefined;
+    const requestOpportunity = isRecord(requestRecord.opportunity) ? requestRecord.opportunity : undefined;
     const proposalOwner = JSON.stringify({
       ...(typeof requestAccount?.account_id === 'string' && { account_id: requestAccount.account_id }),
       brand: {
@@ -5870,6 +6122,8 @@ async function handleGetProductsUnlocked(
         ...(typeof requestBrand?.domain === 'string' && { __brand_domain: requestBrand.domain.toLowerCase() }),
         ...(typeof requestBrand?.brand_id === 'string' && { __brand_id: requestBrand.brand_id }),
         ...(typeof requestAccount?.account_id === 'string' && { __account_id: requestAccount.account_id }),
+        ...(typeof requestOpportunity?.opportunity_id === 'string'
+          && { __opportunity_id: requestOpportunity.opportunity_id }),
       };
     });
     if (proposals.length === 0) {
@@ -6919,11 +7173,59 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
 }
 
 export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
+  const proposalId = (args as unknown as Record<string, unknown>).proposal_id;
+  if (typeof proposalId !== 'string') return handleCreateMediaBuyUnlocked(args, ctx);
+
+  // Proposal execution, finalization, and decline all transition the same
+  // principal-owned snapshot. Serialize them on the compact lifecycle session
+  // and persist before releasing so different idempotency keys cannot both
+  // execute one proposal.
+  const sessionScope = sessionKeyFromArgs(
+    {},
+    ctx.mode,
+    ctx.userId,
+    ctx.moduleId,
+    ctx.principal ?? 'anonymous',
+  );
+  const sessionHash = createHash('sha256').update(sessionScope).digest('hex');
+  const principal = 'get-products-session-mutex';
+  const key = `get-products-session:${sessionHash}`;
+  const store = getIdempotencyStore();
+  let claim = await store.check({ principal, key, payload: { session: sessionHash } });
+  const deadline = Date.now() + 2_000;
+  let backoffMs = 5;
+  while (claim.kind !== 'miss' && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, backoffMs));
+    claim = await store.check({ principal, key, payload: { session: sessionHash } });
+    backoffMs = Math.min(backoffMs * 2, 100);
+  }
+  if (claim.kind !== 'miss') {
+    return {
+      errors: [{
+        code: 'CONFLICT',
+        message: 'Another proposal lifecycle request is already updating this session. Retry after a short delay.',
+        recovery: 'transient',
+      }] as TaskError[],
+    };
+  }
+
+  try {
+    evictSessionFromRequestCache(sessionScope);
+    const result = await handleCreateMediaBuyUnlocked(args, ctx);
+    await flushDirtySessions();
+    return result;
+  } finally {
+    await store.release({ principal, key, claimToken: claim.claimToken });
+  }
+}
+
+async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as CreateMediaBuyRequest & ToolArgs & { paused?: boolean };
   const session = await getSession(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     controllerFixtureSessionKey(req, ctx),
   );
+  let executedCompactProposal: Proposal | undefined;
 
   // Consume any single-shot directive registered by
   // comply_test_controller.force_create_media_buy_arm. Runs before all other
@@ -7330,6 +7632,48 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       };
     }
 
+    const internalProposal = proposal as unknown as Record<string, unknown>;
+    const compactProposal = typeof internalProposal.__brand_domain === 'string'
+      || typeof internalProposal.__brand_id === 'string'
+      || typeof internalProposal.__account_id === 'string';
+    if (internalProposal.__declined === true) {
+      return {
+        errors: [{
+          code: 'INVALID_STATE',
+          message: `Proposal "${req.proposal_id}" has been declined and cannot be executed. Request a new proposal before retrying.`,
+          field: 'proposal_id',
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+    if (compactProposal && internalProposal.__executed === true) {
+      return {
+        errors: [{
+          code: 'INVALID_STATE',
+          message: `Proposal "${req.proposal_id}" was already executed. Exact retries must reuse the original idempotency key.`,
+          field: 'proposal_id',
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+    const createOpportunity = isRecord((req as unknown as Record<string, unknown>).opportunity)
+      ? (req as unknown as Record<string, unknown>).opportunity as Record<string, unknown>
+      : undefined;
+    if (
+      typeof internalProposal.__opportunity_id === 'string'
+      && typeof createOpportunity?.opportunity_id === 'string'
+      && createOpportunity.opportunity_id !== internalProposal.__opportunity_id
+    ) {
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'opportunity.opportunity_id does not match the opportunity associated with this proposal.',
+          field: 'opportunity.opportunity_id',
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+
     // Enforce proposal lifecycle: draft proposals cannot be purchased directly
     const proposalStatus = proposalLifecycle(proposal).proposal_status;
     if (proposalStatus === 'draft' && !(isThreeZeroStoryboardCompat(ctx) && req.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID)) {
@@ -7389,6 +7733,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         ...(bidPrice !== undefined && { bid_price: bidPrice }),
       };
     });
+    if (compactProposal) executedCompactProposal = proposal;
   }
 
   if (!req.packages?.length) {
@@ -7723,6 +8068,26 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     }],
   };
 
+  if (executedCompactProposal) {
+    const internal = executedCompactProposal as unknown as Record<string, unknown>;
+    internal.__executed = true;
+    const suppliedOpportunity = isRecord((req as unknown as Record<string, unknown>).opportunity)
+      ? (req as unknown as Record<string, unknown>).opportunity as Record<string, unknown>
+      : undefined;
+    const opportunityId = typeof suppliedOpportunity?.opportunity_id === 'string'
+      ? suppliedOpportunity.opportunity_id
+      : typeof internal.__opportunity_id === 'string'
+        ? internal.__opportunity_id
+        : undefined;
+    if (opportunityId) {
+      internal.__opportunity_update = {
+        ...structuredClone(suppliedOpportunity ?? {}),
+        opportunity_id: opportunityId,
+        status: 'closed',
+        close_reason: 'accepted_with_seller',
+      };
+    }
+  }
   session.mediaBuys.set(mediaBuyId, mediaBuy);
 
   const status = deriveStatus(mediaBuy, session);
@@ -7735,6 +8100,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // against the per-task response schema.
   return {
     media_buy_id: mediaBuyId,
+    ...(req.proposal_id && { proposal_id: req.proposal_id }),
     ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
     media_buy_status: status,
     revision: mediaBuy.revision,
@@ -11266,6 +11632,7 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   request_proposals: handleGetProducts,
   refine_proposals: handleGetProducts,
   finalize_proposals: handleGetProducts,
+  decline_proposals: handleGetProducts,
   list_creative_formats: handleListCreativeFormats,
   validate_input: handleValidateInput,
   create_media_buy: handleCreateMediaBuy,
@@ -11326,17 +11693,55 @@ function validateIdempotencyProtectedInput(
   if (args.brief !== undefined && typeof args.brief !== 'string') {
     return { message: 'brief must be a string when provided', field: 'brief' };
   }
-  const parsed = GetProductsRequestSchema.safeParse(args);
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    const field = issue?.path.map(segment => String(segment)).join('.');
-    return {
-      message: `Invalid get_products request${field ? ` at ${field}` : ''}: ${issue?.message ?? 'schema validation failed'}`,
-      ...(field && { field }),
-    };
+  const hasDecline = Array.isArray(args.refine) && args.refine.some(entry => (
+    isRecord(entry) && entry.scope === 'proposal' && entry.action === 'decline'
+  ));
+  const compactDecline = args.__decline_proposals === true;
+  if (hasDecline) {
+    if (!compactDecline) {
+      return {
+        message: 'Proposal decline is available through the dedicated decline_proposals task.',
+        field: 'refine',
+      };
+    }
+    const reasons = new Set([
+      'price', 'inventory_fit', 'audience_fit', 'creative_unsupported', 'measurement_unsupported',
+      'policy', 'timing', 'budget_changed', 'selected_alternative', 'other',
+    ]);
+    const invalidIndex = (args.refine as unknown[]).findIndex(entry => (
+      isRecord(entry)
+      && entry.scope === 'proposal'
+      && entry.action === 'decline'
+      && (
+        typeof entry.proposal_id !== 'string'
+        || typeof entry.reason !== 'string'
+        || !reasons.has(entry.reason)
+        || (entry.reason === 'other' && !(typeof entry.detail === 'string' && entry.detail.length > 0))
+      )
+    ));
+    if (invalidIndex >= 0) {
+      return {
+        message: `Invalid get_products request at refine[${invalidIndex}]: decline requires proposal_id, a supported reason, and detail when reason is other.`,
+        field: `refine[${invalidIndex}]`,
+      };
+    }
   }
-  if (parsed.data.pagination && decodeOffsetCursor('products', parsed.data.pagination.cursor) === null) {
-    return { message: 'pagination.cursor is malformed', field: 'pagination.cursor' };
+  // A dedicated decline request was validated against its public source schema
+  // before normalization. All public get_products shapes continue through the
+  // SDK parser, whose schema intentionally does not expose the internal action.
+  if (!compactDecline) {
+    const parsed = GetProductsRequestSchema.safeParse(args);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const field = issue?.path.map(segment => String(segment)).join('.');
+      return {
+        message: `Invalid get_products request${field ? ` at ${field}` : ''}: ${issue?.message ?? 'schema validation failed'}`,
+        ...(field && { field }),
+      };
+    }
+    if (parsed.data.pagination && decodeOffsetCursor('products', parsed.data.pagination.cursor) === null) {
+      return { message: 'pagination.cursor is malformed', field: 'pagination.cursor' };
+    }
   }
 
   // Finalization is a commit boundary, not another refinement. Reject mixed
@@ -11446,8 +11851,12 @@ async function executeTrainingAgentToolInContext(
     return { success: false, error: `idempotency_key is required for ${toolName}` };
   }
   const sourceSchemaName = productDiscoverySourceSchemaName(toolName);
-  const sourceValidationError = sourceSchemaName
-    ? validateProductDiscoverySourceInput(sourceSchemaName, rawArgs)
+  const strictSourceSchemaName = sourceSchemaName
+    ?? (toolName === 'create_media_buy' && rawArgs.opportunity !== undefined
+      ? 'create-media-buy-request'
+      : undefined);
+  const sourceValidationError = strictSourceSchemaName
+    ? validateProductDiscoverySourceInput(strictSourceSchemaName, rawArgs)
     : undefined;
   if (sourceValidationError) {
     return { success: false, error: sourceValidationError.message };
@@ -11673,8 +12082,12 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     }
 
     const sourceSchemaName = productDiscoverySourceSchemaName(name);
-    const sourceValidationError = sourceSchemaName
-      ? validateProductDiscoverySourceInput(sourceSchemaName, rawArgs)
+    const strictSourceSchemaName = sourceSchemaName
+      ?? (name === 'create_media_buy' && rawArgs.opportunity !== undefined
+        ? 'create-media-buy-request'
+        : undefined);
+    const sourceValidationError = strictSourceSchemaName
+      ? validateProductDiscoverySourceInput(strictSourceSchemaName, rawArgs)
       : undefined;
     if (sourceValidationError) {
       return {

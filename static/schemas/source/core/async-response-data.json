@@ -45,6 +45,11 @@
       "$ref": "/schemas/media-buy/finalize-proposals-response.json"
     },
     {
+      "title": "DeclineProposalsResponse",
+      "description": "Terminal response for decline_proposals",
+      "$ref": "/schemas/media-buy/decline-proposals-response.json"
+    },
+    {
       "title": "GetSignalsResponse",
       "description": "Response for completed or failed get_signals",
       "$ref": "/schemas/signals/get-signals-response.json"

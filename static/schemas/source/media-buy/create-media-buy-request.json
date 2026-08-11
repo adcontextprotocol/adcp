@@ -9,6 +9,10 @@
       "$ref": "/schemas/core/version-envelope.json"
     },
     {
+      "if": { "required": ["opportunity"] },
+      "then": { "required": ["proposal_id"] }
+    },
+    {
       "if": { "required": ["bidding"] },
       "then": {
         "properties": {
@@ -72,7 +76,24 @@
     },
     "proposal_id": {
       "type": "string",
-      "description": "ID of a committed proposal from finalize_proposals to execute. With total_budget, the publisher creates packages using the proposal's fixed percentages or seller-optimized constraints. Alternative to providing packages. If the referenced proposal has proposal_status: 'draft', the seller MUST reject with PROPOSAL_NOT_COMMITTED; the buyer calls finalize_proposals first. The legacy get_products finalize form remains supported throughout AdCP 3.x."
+      "x-entity": "proposal",
+      "description": "ID of the exact committed proposal snapshot to execute. With total_budget, the publisher creates packages using the proposal's fixed percentages or seller-optimized constraints. Alternative to providing packages. For IDs issued by the AdCP 3.2 split proposal tasks, sellers MUST reject draft proposals with PROPOSAL_NOT_COMMITTED and declined or previously executed proposals with INVALID_STATE; exact retries with the original idempotency key still replay historical success. Changed commercial terms in that split lifecycle are issued under a new proposal_id, so no separate proposal version is required. Legacy get_products proposal behavior remains supported throughout AdCP 3.x."
+    },
+    "opportunity": {
+      "allOf": [
+        { "$ref": "/schemas/core/opportunity-context.json" },
+        {
+          "properties": { "status": { "const": "closed" } },
+          "if": {
+            "properties": { "status": { "const": "closed" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": { "close_reason": { "const": "accepted_with_seller" } }
+          }
+        }
+      ],
+      "description": "Optional planning-cycle closure. Sellers infer successful proposal execution as closed with close_reason accepted_with_seller when status is omitted; when status is present it MUST be closed with that reason. If the proposal was issued under an opportunity_id, a supplied ID MUST match it."
     },
     "total_budget": {
       "type": "object",
