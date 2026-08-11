@@ -41,9 +41,9 @@ function ajvErrors(validate) {
     .join('; ');
 }
 
-describe('relationship-scoped insights', () => {
-  let validateInsight;
-  let validateInsightBearing;
+describe('relationship-scoped advisories', () => {
+  let validateAdvisory;
+  let validateAdvisoryBearing;
   let validateListCreatives;
   let validateGetMediaBuys;
   let validateCapabilities;
@@ -52,14 +52,14 @@ describe('relationship-scoped insights', () => {
   let validateCreateResponse;
   let validateUpdateResponse;
   let validateSyncResponse;
-  let validateInsightsWebhook;
+  let validateAdvisoriesWebhook;
   let validateAssignmentWebhook;
   let validateNotificationConfig;
 
   before(async () => {
     [
-      validateInsight,
-      validateInsightBearing,
+      validateAdvisory,
+      validateAdvisoryBearing,
       validateListCreatives,
       validateGetMediaBuys,
       validateCapabilities,
@@ -68,12 +68,12 @@ describe('relationship-scoped insights', () => {
       validateCreateResponse,
       validateUpdateResponse,
       validateSyncResponse,
-      validateInsightsWebhook,
+      validateAdvisoriesWebhook,
       validateAssignmentWebhook,
       validateNotificationConfig
     ] = await Promise.all([
-      compile('core/insight.json'),
-      compile('core/insight-bearing.json'),
+      compile('core/advisory.json'),
+      compile('core/advisory-bearing.json'),
       compile('creative/list-creatives-response.json'),
       compile('media-buy/get-media-buys-response.json'),
       compile('protocol/get-adcp-capabilities-response.json'),
@@ -82,14 +82,14 @@ describe('relationship-scoped insights', () => {
       compile('media-buy/create-media-buy-response.json'),
       compile('media-buy/update-media-buy-response.json'),
       compile('creative/sync-creatives-response.json'),
-      compile('core/insights-changed-webhook.json'),
+      compile('core/advisories-changed-webhook.json'),
       compile('creative/creative-assignment-changed-webhook.json'),
       compile('core/notification-config.json')
     ]);
   });
 
-  it('keeps the core insight compact and tied to the AdCP release', () => {
-    assertValid(validateInsight, {
+  it('keeps the core advisory compact and tied to the AdCP release', () => {
+    assertValid(validateAdvisory, {
       type: 'creative_fatigue',
       detected_at: '2026-08-03T09:00:00Z',
       scope: [{
@@ -104,7 +104,7 @@ describe('relationship-scoped insights', () => {
       }
     });
 
-    assert.equal(validateInsight({ type: 'seller_specific_fatigue_v2' }), false);
+    assert.equal(validateAdvisory({ type: 'seller_specific_fatigue_v2' }), false);
   });
 
   it('places fatigue on a list_creatives package assignment', () => {
@@ -129,9 +129,9 @@ describe('relationship-scoped insights', () => {
               media_buy_id: 'mb_1',
               assigned_date: '2026-08-01T00:00:00Z',
               approval_status: 'approved',
-              insight_types_evaluated: ['creative_fatigue'],
-              insights_as_of: '2026-08-04T12:00:00Z',
-              insights: [{
+              advisory_types_evaluated: ['creative_fatigue'],
+              advisories_as_of: '2026-08-04T12:00:00Z',
+              advisories: [{
                 type: 'creative_fatigue',
                 detected_at: '2026-08-03T09:00:00Z'
               }]
@@ -163,9 +163,9 @@ describe('relationship-scoped insights', () => {
           creative_approvals: [{
             creative_id: 'creative_1',
             approval_status: 'approved',
-            insight_types_evaluated: ['creative_fatigue'],
-            insights_as_of: '2026-08-04T12:00:00Z',
-            insights: [{
+            advisory_types_evaluated: ['creative_fatigue'],
+            advisories_as_of: '2026-08-04T12:00:00Z',
+            advisories: [{
               type: 'creative_fatigue',
               detected_at: '2026-08-03T09:00:00Z'
             }]
@@ -188,7 +188,7 @@ describe('relationship-scoped insights', () => {
         supported_billing: ['operator']
       },
       media_buy: {
-        supported_insight_types: [
+        supported_advisory_types: [
           'creative_fatigue',
           'creative_quality_opportunity',
           'creative_diversity_low',
@@ -200,7 +200,7 @@ describe('relationship-scoped insights', () => {
         relationship_notifications: {
           supported: true,
           registration_task: 'sync_accounts',
-          event_types: ['insights.changed', 'creative.assignment_changed'],
+          event_types: ['advisories.changed', 'creative.assignment_changed'],
           repair_tasks: ['get_media_buys'],
           projection_tasks: ['list_creatives'],
           supports_webhook_activity: true
@@ -224,11 +224,11 @@ describe('relationship-scoped insights', () => {
       },
       account: { supported_billing: ['operator'] },
       media_buy: {
-        supported_insight_types: ['creative_fatigue'],
+        supported_advisory_types: ['creative_fatigue'],
         relationship_notifications: {
           supported: true,
           registration_task: 'sync_accounts',
-          event_types: ['insights.changed', 'creative.assignment_changed'],
+          event_types: ['advisories.changed', 'creative.assignment_changed'],
           repair_tasks: ['get_media_buys'],
           projection_tasks: ['list_creatives']
         }
@@ -255,11 +255,11 @@ describe('relationship-scoped insights', () => {
       adcp: { major_versions: [3], idempotency: { supported: false } },
       account: { supported_billing: ['operator'] },
       media_buy: {
-        supported_insight_types: ['budget_constrained'],
+        supported_advisory_types: ['budget_constrained'],
         relationship_notifications: {
           supported: true,
           registration_task: 'sync_accounts',
-          event_types: ['insights.changed'],
+          event_types: ['advisories.changed'],
           repair_tasks: ['get_media_buys']
         }
       },
@@ -287,7 +287,7 @@ describe('relationship-scoped insights', () => {
         ...inlineOnlyCapabilities.media_buy,
         relationship_notifications: {
           ...inlineOnlyCapabilities.media_buy.relationship_notifications,
-          event_types: ['insights.changed', 'creative.assignment_changed']
+          event_types: ['advisories.changed', 'creative.assignment_changed']
         }
       }
     });
@@ -331,22 +331,22 @@ describe('relationship-scoped insights', () => {
       media_buy: {
         relationship_notifications: {
           ...assignmentOnlyCapabilities.media_buy.relationship_notifications,
-          event_types: ['insights.changed']
+          event_types: ['advisories.changed']
         }
       }
     }), false);
   });
 
-  it('supports insight filters on both existing resource reads', () => {
+  it('supports advisory filters on both existing resource reads', () => {
     assertValid(validateListRequest, {
-      filters: { insight_types: ['creative_fatigue'] },
+      filters: { advisory_types: ['creative_fatigue'] },
       fields: ['creative_id', 'assignments'],
       assignment_projection: 'matching',
       assignment_limit: 50,
       pagination: { max_results: 100 }
     });
     assertValid(validateGetRequest, {
-      insight_types: ['creative_fatigue'],
+      advisory_types: ['creative_fatigue'],
       pagination: { max_results: 100 }
     });
   });
@@ -373,9 +373,9 @@ describe('relationship-scoped insights', () => {
             media_buy_id: 'mb_1',
             assigned_date: '2026-08-01T00:00:00Z',
             approval_status: 'approved',
-            insight_types_evaluated: ['creative_fatigue'],
-            insights_as_of: '2026-08-04T12:00:00Z',
-            insights: [{ type: 'creative_fatigue' }]
+            advisory_types_evaluated: ['creative_fatigue'],
+            advisories_as_of: '2026-08-04T12:00:00Z',
+            advisories: [{ type: 'creative_fatigue' }]
           }]
         }
       }]
@@ -423,7 +423,7 @@ describe('relationship-scoped insights', () => {
       'compliance',
       'source',
       'test-vectors',
-      'relationship-scoped-insights.json'
+      'relationship-scoped-advisories.json'
     ), 'utf8'));
 
     function normalizedScope(scope = []) {
@@ -434,14 +434,14 @@ describe('relationship-scoped insights', () => {
     }
 
     function semanticsValid(snapshot) {
-      const evaluatedScopes = snapshot.insights_evaluated_scope || [];
+      const evaluatedScopes = snapshot.advisories_evaluated_scope || [];
       const keys = new Set();
-      for (const insight of snapshot.insights || []) {
-        const key = insight.type + '::' + normalizedScope(insight.scope);
+      for (const advisory of snapshot.advisories || []) {
+        const key = advisory.type + '::' + normalizedScope(advisory.scope);
         if (keys.has(key)) return false;
         keys.add(key);
         if (evaluatedScopes.length) {
-          for (const asserted of insight.scope || []) {
+          for (const asserted of advisory.scope || []) {
             const contained = evaluatedScopes.some((covered) =>
               covered.publisher_domain === asserted.publisher_domain &&
               (!covered.placement_id || covered.placement_id === asserted.placement_id));
@@ -452,25 +452,25 @@ describe('relationship-scoped insights', () => {
       return true;
     }
 
-    for (const vector of vectors.insight_snapshot_cases) {
-      const actual = validateInsightBearing(vector.snapshot) && semanticsValid(vector.snapshot);
-      assert.equal(actual, vector.valid, vector.name + ': ' + ajvErrors(validateInsightBearing));
+    for (const vector of vectors.advisory_snapshot_cases) {
+      const actual = validateAdvisoryBearing(vector.snapshot) && semanticsValid(vector.snapshot);
+      assert.equal(actual, vector.valid, vector.name + ': ' + ajvErrors(validateAdvisoryBearing));
     }
 
     function firesForVector(vector) {
       const firesByEvent = {
         subscriber_activated: [],
-        assertion_set_changed: ['insights.changed'],
-        insights_as_of_only_changed: [],
-        creative_content_materially_changed: ['insights.changed']
+        assertion_set_changed: ['advisories.changed'],
+        advisories_as_of_only_changed: [],
+        creative_content_materially_changed: ['advisories.changed']
       };
       if (vector.event !== 'assignment_removed') {
         return [...firesByEvent[vector.event]];
       }
       const fires = [];
-      if (vector.retires_stored_insight_keys &&
-          vector.advertised_event_types.includes('insights.changed')) {
-        fires.push('insights.changed');
+      if (vector.retires_stored_advisory_keys &&
+          vector.advertised_event_types.includes('advisories.changed')) {
+        fires.push('advisories.changed');
       }
       if (vector.advertised_event_types.includes('creative.assignment_changed')) {
         fires.push('creative.assignment_changed');
@@ -494,13 +494,13 @@ describe('relationship-scoped insights', () => {
       }
     }
 
-    const requiredInsightByWarning = {
+    const requiredAdvisoryByWarning = {
       inventory_shortfall_forecast: 'inventory_shortfall_forecast',
       flight_change_creates_pacing_risk: 'pacing_risk'
     };
     for (const vector of vectors.warning_capability_cases) {
-      const requiredType = requiredInsightByWarning[vector.warning_code];
-      const actual = !requiredType || vector.supported_insight_types.includes(requiredType);
+      const requiredType = requiredAdvisoryByWarning[vector.warning_code];
+      const actual = !requiredType || vector.supported_advisory_types.includes(requiredType);
       assert.equal(actual, vector.valid, vector.name);
     }
 
@@ -563,7 +563,7 @@ describe('relationship-scoped insights', () => {
     }
   });
 
-  it('uses omission for unknown and an empty array for evaluated-no-insight', () => {
+  it('uses omission for unknown and an empty array for evaluated-no-advisory', () => {
     assertValid(validateListCreatives, {
       status: 'completed',
       query_summary: { total_matching: 1, returned: 1 },
@@ -591,9 +591,9 @@ describe('relationship-scoped insights', () => {
               media_buy_id: 'mb_1',
               assigned_date: '2026-08-01T00:00:00Z',
               approval_status: 'approved',
-              insights: [],
-              insight_types_evaluated: ['creative_fatigue'],
-              insights_as_of: '2026-08-04T12:00:00Z'
+              advisories: [],
+              advisory_types_evaluated: ['creative_fatigue'],
+              advisories_as_of: '2026-08-04T12:00:00Z'
             }
           ]
         }
@@ -622,10 +622,10 @@ describe('relationship-scoped insights', () => {
             media_buy_id: 'mb_1',
             assigned_date: '2026-08-01T00:00:00Z',
             approval_status: 'approved',
-            insight_types_evaluated: ['creative_fatigue'],
-            insights_as_of: '2026-08-04T12:00:00Z',
-            insights_evaluated_scope: [{ publisher_domain: 'publisher-a.example' }],
-            insights: [{
+            advisory_types_evaluated: ['creative_fatigue'],
+            advisories_as_of: '2026-08-04T12:00:00Z',
+            advisories_evaluated_scope: [{ publisher_domain: 'publisher-a.example' }],
+            advisories: [{
               type: 'creative_fatigue',
               scope: [{
                 publisher_domain: 'publisher-a.example',
@@ -659,10 +659,10 @@ describe('relationship-scoped insights', () => {
             media_buy_id: 'mb_1',
             assigned_date: '2026-08-01T00:00:00Z',
             approval_status: 'approved',
-            insight_types_evaluated: ['creative_fatigue'],
-            insights_as_of: '2026-08-04T12:00:00Z',
-            insights_evaluated_scope: [{ publisher_domain: 'publisher-a.example' }],
-            insights: [{ type: 'creative_fatigue' }]
+            advisory_types_evaluated: ['creative_fatigue'],
+            advisories_as_of: '2026-08-04T12:00:00Z',
+            advisories_evaluated_scope: [{ publisher_domain: 'publisher-a.example' }],
+            advisories: [{ type: 'creative_fatigue' }]
           }]
         }
       }]
@@ -670,7 +670,7 @@ describe('relationship-scoped insights', () => {
     assert.equal(validateListCreatives(payload), false);
   });
 
-  it('places portfolio and package insights on get_media_buys', () => {
+  it('places portfolio and package advisories on get_media_buys', () => {
     assertValid(validateGetMediaBuys, {
       status: 'completed',
       media_buys: [{
@@ -680,18 +680,18 @@ describe('relationship-scoped insights', () => {
         total_budget: 1000,
         confirmed_at: '2026-08-01T00:00:00Z',
         revision: 1,
-        insight_types_evaluated: ['budget_constrained'],
-        insights_as_of: '2026-08-04T12:00:00Z',
-        insights: [{ type: 'budget_constrained' }],
+        advisory_types_evaluated: ['budget_constrained'],
+        advisories_as_of: '2026-08-04T12:00:00Z',
+        advisories: [{ type: 'budget_constrained' }],
         packages: [{
           package_id: 'pkg_1',
-          insight_types_evaluated: [
+          advisory_types_evaluated: [
             'creative_diversity_low',
             'inventory_shortfall_forecast',
             'pacing_risk'
           ],
-          insights_as_of: '2026-08-04T12:00:00Z',
-          insights: [
+          advisories_as_of: '2026-08-04T12:00:00Z',
+          advisories: [
             { type: 'creative_diversity_low' },
             { type: 'inventory_shortfall_forecast' },
             { type: 'pacing_risk' }
@@ -702,7 +702,7 @@ describe('relationship-scoped insights', () => {
     });
   });
 
-  it('rejects insight types placed at the wrong resource level', () => {
+  it('rejects advisory types placed at the wrong resource level', () => {
     const payload = {
       status: 'completed',
       media_buys: [{
@@ -712,9 +712,9 @@ describe('relationship-scoped insights', () => {
         total_budget: 1000,
         confirmed_at: '2026-08-01T00:00:00Z',
         revision: 1,
-        insight_types_evaluated: ['creative_fatigue'],
-        insights_as_of: '2026-08-04T12:00:00Z',
-        insights: [{ type: 'creative_fatigue' }],
+        advisory_types_evaluated: ['creative_fatigue'],
+        advisories_as_of: '2026-08-04T12:00:00Z',
+        advisories: [{ type: 'creative_fatigue' }],
         packages: []
       }]
     };
@@ -783,17 +783,17 @@ describe('relationship-scoped insights', () => {
     assert.equal(validateSyncResponse({ ...submitted, warnings: [warning] }), false);
   });
 
-  it('defines account-level invalidation webhooks for insights and assignments', () => {
+  it('defines account-level invalidation webhooks for advisories and assignments', () => {
     assertValid(validateNotificationConfig, {
       subscriber_id: 'optimization-worker',
       url: 'https://buyer.example/webhooks/adcp',
-      event_types: ['insights.changed', 'creative.assignment_changed'],
+      event_types: ['advisories.changed', 'creative.assignment_changed'],
       active: true
     });
-    assertValid(validateInsightsWebhook, {
-      idempotency_key: 'whk_01K2INSIGHTS4EXAMPLE8Q7M5',
-      notification_id: 'inschg_1',
-      notification_type: 'insights.changed',
+    assertValid(validateAdvisoriesWebhook, {
+      idempotency_key: 'whk_01K2ADVISORY4EXAMPLE8Q7M5',
+      notification_id: 'advchg_1',
+      notification_type: 'advisories.changed',
       fired_at: '2026-08-04T12:01:00Z',
       subscriber_id: 'buyer-primary',
       account_id: 'acc_1',
@@ -802,7 +802,7 @@ describe('relationship-scoped insights', () => {
       package_id: 'pkg_1',
       creative_id: 'creative_1',
       change_kind: 'asserted',
-      changed_insight_types: ['creative_fatigue'],
+      changed_advisory_types: ['creative_fatigue'],
       observed_at: '2026-08-04T12:00:00Z'
     });
     assertValid(validateAssignmentWebhook, {
@@ -820,7 +820,7 @@ describe('relationship-scoped insights', () => {
     });
   });
 
-  it('requires relationship identity and evaluation freshness with insights', () => {
+  it('requires relationship identity and evaluation freshness with advisories', () => {
     const payload = {
       status: 'completed',
       query_summary: { total_matching: 1, returned: 1 },
@@ -839,7 +839,7 @@ describe('relationship-scoped insights', () => {
           assigned_packages: [{
             package_id: 'pkg_1',
             assigned_date: '2026-08-01T00:00:00Z',
-            insights: [{ type: 'creative_fatigue' }]
+            advisories: [{ type: 'creative_fatigue' }]
           }]
         }
       }]

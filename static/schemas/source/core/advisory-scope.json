@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/core/insight-scope.json",
-  "title": "Insight Scope",
+  "$id": "/schemas/core/advisory-scope.json",
+  "title": "Advisory Scope",
   "description": "A publisher or placement scope within an enclosing media buy, package, or package–creative assignment. publisher_domain alone means all delivery for that publisher within the enclosing object; placement_id narrows to one placement in that publisher's namespace.",
   "type": "object",
   "properties": {

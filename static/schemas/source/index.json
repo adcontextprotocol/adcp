@@ -578,25 +578,25 @@
           "$ref": "/schemas/core/account-status-changed-webhook.json",
           "description": "Account-level webhook payload that invalidates a list_accounts account status snapshot"
         },
-        "insight": {
-          "$ref": "/schemas/core/insight.json",
+        "advisory": {
+          "$ref": "/schemas/core/advisory.json",
           "description": "Compact durable seller interpretation attached to an authoritative resource snapshot"
         },
         "creative-approval-scope": {
           "$ref": "/schemas/core/creative-approval-scope.json",
           "description": "Publisher- or placement-scoped creative approval outcome within an assignment"
         },
-        "insight-bearing": {
-          "$ref": "/schemas/core/insight-bearing.json",
-          "description": "Reusable insight snapshot fields, exact evaluated-type coverage, freshness, and optional scope coverage"
+        "advisory-bearing": {
+          "$ref": "/schemas/core/advisory-bearing.json",
+          "description": "Reusable advisory snapshot fields, exact evaluated-type coverage, freshness, and optional scope coverage"
         },
-        "insight-scope": {
-          "$ref": "/schemas/core/insight-scope.json",
-          "description": "Publisher and placement scope for an insight assertion or evaluation"
+        "advisory-scope": {
+          "$ref": "/schemas/core/advisory-scope.json",
+          "description": "Publisher and placement scope for an advisory assertion or evaluation"
         },
-        "insights-changed-webhook": {
-          "$ref": "/schemas/core/insights-changed-webhook.json",
-          "description": "Account-level invalidation payload for a semantic insight snapshot change"
+        "advisories-changed-webhook": {
+          "$ref": "/schemas/core/advisories-changed-webhook.json",
+          "description": "Account-level invalidation payload for a semantic advisory snapshot change"
         },
         "warning": {
           "$ref": "/schemas/core/warning.json",
@@ -1133,9 +1133,9 @@
           "$ref": "/schemas/enums/notification-type.json",
           "description": "Shared notification registry for delivery, impairment, lifecycle, wholesale-feed, and capability-change events"
         },
-        "insight-type": {
-          "$ref": "/schemas/enums/insight-type.json",
-          "description": "Closed AdCP 3.2 vocabulary for durable media-buy and creative-assignment insights"
+        "advisory-type": {
+          "$ref": "/schemas/enums/advisory-type.json",
+          "description": "Closed AdCP 3.2 vocabulary for durable media-buy and creative-assignment advisories"
         },
         "warning-code": {
           "$ref": "/schemas/enums/warning-code.json",

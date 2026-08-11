@@ -1,20 +1,20 @@
 {
-  "description": "Conformance vectors for insight snapshot semantics and invalidation lifecycle behavior.",
-  "insight_snapshot_cases": [
+  "description": "Conformance vectors for advisory snapshot semantics and invalidation lifecycle behavior.",
+  "advisory_snapshot_cases": [
     {
       "name": "valid-contained-scope",
       "valid": true,
       "snapshot": {
-        "insight_types_evaluated": [
+        "advisory_types_evaluated": [
           "creative_fatigue"
         ],
-        "insights_as_of": "2026-08-04T12:00:00Z",
-        "insights_evaluated_scope": [
+        "advisories_as_of": "2026-08-04T12:00:00Z",
+        "advisories_evaluated_scope": [
           {
             "publisher_domain": "publisher-a.example"
           }
         ],
-        "insights": [
+        "advisories": [
           {
             "type": "creative_fatigue",
             "scope": [
@@ -31,11 +31,11 @@
       "name": "type-not-evaluated",
       "valid": false,
       "snapshot": {
-        "insight_types_evaluated": [
+        "advisory_types_evaluated": [
           "creative_quality_opportunity"
         ],
-        "insights_as_of": "2026-08-04T12:00:00Z",
-        "insights": [
+        "advisories_as_of": "2026-08-04T12:00:00Z",
+        "advisories": [
           {
             "type": "creative_fatigue"
           }
@@ -46,16 +46,16 @@
       "name": "assertion-outside-evaluated-publisher",
       "valid": false,
       "snapshot": {
-        "insight_types_evaluated": [
+        "advisory_types_evaluated": [
           "creative_fatigue"
         ],
-        "insights_as_of": "2026-08-04T12:00:00Z",
-        "insights_evaluated_scope": [
+        "advisories_as_of": "2026-08-04T12:00:00Z",
+        "advisories_evaluated_scope": [
           {
             "publisher_domain": "publisher-a.example"
           }
         ],
-        "insights": [
+        "advisories": [
           {
             "type": "creative_fatigue",
             "scope": [
@@ -71,11 +71,11 @@
       "name": "duplicate-logical-key-after-scope-normalization",
       "valid": false,
       "snapshot": {
-        "insight_types_evaluated": [
+        "advisory_types_evaluated": [
           "creative_fatigue"
         ],
-        "insights_as_of": "2026-08-04T12:00:00Z",
-        "insights": [
+        "advisories_as_of": "2026-08-04T12:00:00Z",
+        "advisories": [
           {
             "type": "creative_fatigue",
             "scope": [
@@ -132,13 +132,13 @@
       "name": "semantic-assertion-change",
       "event": "assertion_set_changed",
       "expected_fires": [
-        "insights.changed"
+        "advisories.changed"
       ],
       "buyer_action": "unfiltered_repair_read"
     },
     {
       "name": "timestamp-only-reevaluation",
-      "event": "insights_as_of_only_changed",
+      "event": "advisories_as_of_only_changed",
       "expected_fires": [],
       "buyer_action": "none"
     },
@@ -146,21 +146,21 @@
       "name": "material-creative-update",
       "event": "creative_content_materially_changed",
       "expected_fires": [
-        "insights.changed"
+        "advisories.changed"
       ],
       "change_kind": "invalidated",
       "buyer_action": "unfiltered_repair_read"
     },
     {
-      "name": "assignment-removal-with-insights-and-both-events-advertised",
+      "name": "assignment-removal-with-advisories-and-both-events-advertised",
       "event": "assignment_removed",
       "advertised_event_types": [
-        "insights.changed",
+        "advisories.changed",
         "creative.assignment_changed"
       ],
-      "retires_stored_insight_keys": true,
+      "retires_stored_advisory_keys": true,
       "expected_fires": [
-        "insights.changed",
+        "advisories.changed",
         "creative.assignment_changed"
       ],
       "order": "any",
@@ -170,11 +170,11 @@
       "name": "assignment-removal-with-optional-event-not-advertised",
       "event": "assignment_removed",
       "advertised_event_types": [
-        "insights.changed"
+        "advisories.changed"
       ],
-      "retires_stored_insight_keys": true,
+      "retires_stored_advisory_keys": true,
       "expected_fires": [
-        "insights.changed"
+        "advisories.changed"
       ],
       "buyer_action": "unfiltered_repair_read"
     },
@@ -184,7 +184,7 @@
       "advertised_event_types": [
         "creative.assignment_changed"
       ],
-      "retires_stored_insight_keys": false,
+      "retires_stored_advisory_keys": false,
       "expected_fires": [
         "creative.assignment_changed"
       ],
@@ -195,7 +195,7 @@
     {
       "name": "inventory-warning-with-readback-capability",
       "warning_code": "inventory_shortfall_forecast",
-      "supported_insight_types": [
+      "supported_advisory_types": [
         "inventory_shortfall_forecast"
       ],
       "valid": true
@@ -203,15 +203,15 @@
     {
       "name": "inventory-warning-without-readback-capability",
       "warning_code": "inventory_shortfall_forecast",
-      "supported_insight_types": [
+      "supported_advisory_types": [
         "budget_constrained"
       ],
       "valid": false
     },
     {
-      "name": "operation-local-warning-needs-no-insight",
+      "name": "operation-local-warning-needs-no-advisory",
       "warning_code": "fields_ignored_due_to_precedence",
-      "supported_insight_types": [],
+      "supported_advisory_types": [],
       "valid": true
     }
   ],

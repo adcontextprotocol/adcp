@@ -406,14 +406,14 @@ Declares the seller's tenant-wide creative approval posture after creatives are 
 
 Sellers with mixed approval policies SHOULD declare `require_human` unless every product/account that can be reached by the advertised agent supports automatic eligibility after automated validation. When the field is absent, approval behavior is legacy-unspecified; runners SHOULD NOT treat omission as an affirmative `auto_approve` claim. `ai_assisted` is intentionally not a value until the protocol defines what assistance changes in observable behavior.
 
-#### supported_insight_types and relationship_notifications
+#### supported_advisory_types and relationship_notifications
 
 Lists the seller interpretations available on media-buy resource relationships.
 
 ```json
 {
   "media_buy": {
-    "supported_insight_types": [
+    "supported_advisory_types": [
       "creative_fatigue",
       "creative_quality_opportunity",
       "creative_diversity_low",
@@ -425,7 +425,7 @@ Lists the seller interpretations available on media-buy resource relationships.
     "relationship_notifications": {
       "supported": true,
       "registration_task": "sync_accounts",
-      "event_types": ["insights.changed", "creative.assignment_changed"],
+      "event_types": ["advisories.changed", "creative.assignment_changed"],
       "repair_tasks": ["get_media_buys"],
       "projection_tasks": ["list_creatives"],
       "supports_webhook_activity": true
@@ -440,13 +440,13 @@ Lists the seller interpretations available on media-buy resource relationships.
 }
 ```
 
-Insight meaning follows the negotiated AdCP release rather than an independent version. This capability does not promise complete upstream coverage. Each present array names exact type coverage in `insight_types_evaluated`.
+Advisory meaning follows the negotiated AdCP release rather than an independent version. This capability does not promise complete upstream coverage. Each present array names exact type coverage in `advisory_types_evaluated`.
 
-An insight-capable seller declares `supported_insight_types` together with `relationship_notifications` containing `insights.changed`. The reverse is intentionally not required: a seller without an insight catalog may declare `creative.assignment_changed` alone for assignment and approval changes, including when it is inline-only. Every declaration names `get_media_buys` as the complete authoritative repair read. A creative-library seller may independently include [`list_creatives`](/docs/creative/task-reference/list_creatives) as a bounded reverse projection; it mirrors relationship identity, scoped approval, and evaluated insight state on every returned assignment row but cannot prove completeness when truncated. Because the capability advertises outbound invalidations, `webhook_signing` MUST include `supported: true`, `profile`, `algorithms`, and `legacy_hmac_fallback`.
+An advisory-capable seller declares `supported_advisory_types` together with `relationship_notifications` containing `advisories.changed`. The reverse is intentionally not required: a seller without an advisory catalog may declare `creative.assignment_changed` alone for assignment and approval changes, including when it is inline-only. Every declaration names `get_media_buys` as the complete authoritative repair read. A creative-library seller may independently include [`list_creatives`](/docs/creative/task-reference/list_creatives) as a bounded reverse projection; it mirrors relationship identity, scoped approval, and evaluated advisory state on every returned assignment row but cannot prove completeness when truncated. Because the capability advertises outbound invalidations, `webhook_signing` MUST include `supported: true`, `profile`, `algorithms`, and `legacy_hmac_fallback`.
 
-Subscriptions are prospective: activation does not replay current conditions. Buyers establish a complete `get_media_buys` baseline by enumerating known IDs or requesting all seven statuses and following pagination to exhaustion, without `insight_types`. Sellers then fire the applicable invalidation after observing a semantic change. See [Insights, Warnings, and Recommendations](/docs/media-buy/media-buys/insights).
+Subscriptions are prospective: activation does not replay current conditions. Buyers establish a complete `get_media_buys` baseline by enumerating known IDs or requesting all seven statuses and following pagination to exhaustion, without `advisory_types`. Sellers then fire the applicable invalidation after observing a semantic change. See [Advisories, Warnings, and Recommendations](/docs/media-buy/media-buys/advisories).
 
-An inline-only declaration is therefore valid with `event_types: ["insights.changed", "creative.assignment_changed"]` and `repair_tasks: ["get_media_buys"]`. Conversely, a creative-library seller may advertise `projection_tasks: ["list_creatives"]` without the assignment event when it cannot detect those changes; that declaration also requires `supported_protocols` to contain `creative`. Both additions are independent of each other, and `repair_tasks` remains the complete repair contract.
+An inline-only declaration is therefore valid with `event_types: ["advisories.changed", "creative.assignment_changed"]` and `repair_tasks: ["get_media_buys"]`. Conversely, a creative-library seller may advertise `projection_tasks: ["list_creatives"]` without the assignment event when it cannot detect those changes; that declaration also requires `supported_protocols` to contain `creative`. Both additions are independent of each other, and `repair_tasks` remains the complete repair contract.
 
 #### features
 

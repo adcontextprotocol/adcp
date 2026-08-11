@@ -303,7 +303,7 @@ Webhook envelope shape is determined by **which registration mechanism the buyer
 |---|---|
 | AdCP `push_notification_config` (task argument, MCP/A2A/REST) | [`mcp-webhook-payload.json`](#mcp) |
 | A2A `TaskPushNotificationConfig` ([`CreateTaskPushNotificationConfig`](https://a2a-protocol.org/latest/specification/) RPC, or inline `task_push_notification_config` on `SendMessage`) | A2A native `Task` / `TaskStatusUpdateEvent` per A2A 1.0 §4.3.3 |
-| Account-level `sync_accounts.accounts[].notification_configs[]` | Event-specific payloads such as `creative-status-changed-webhook.json`, `creative-assignment-changed-webhook.json`, `insights-changed-webhook.json`, `account-status-changed-webhook.json`, or `wholesale-feed-webhook.json` |
+| Account-level `sync_accounts.accounts[].notification_configs[]` | Event-specific payloads such as `creative-status-changed-webhook.json`, `creative-assignment-changed-webhook.json`, `advisories-changed-webhook.json`, `account-status-changed-webhook.json`, or `wholesale-feed-webhook.json` |
 | Agent-level `sync_agent_notification_configs.notification_configs[]` | Event-specific AdCP payload schemas such as `capabilities-changed-webhook.json` |
 
 The two channels are independent. A buyer MAY register both for the same task and receive both webhooks per status change.

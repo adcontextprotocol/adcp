@@ -1,0 +1,117 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/advisory-bearing.json",
+  "title": "Advisory-bearing resource state",
+  "description": "Reusable contract for current advisory snapshots on media buys, packages, and package–creative assignments. This schema contributes sibling properties through allOf; it does not create an advisory_state wrapper on the wire.",
+  "type": "object",
+  "properties": {
+    "advisories": {
+      "type": "array",
+      "description": "Current seller assertions for the advisory types and publisher/placement coverage named by the sibling evaluation fields. Omitted means unknown or not evaluated. A present empty array means evaluated with no current assertion for advisory_types_evaluated in the evaluated scope.",
+      "items": {
+        "$ref": "/schemas/core/advisory.json"
+      },
+      "uniqueItems": true
+    },
+    "advisory_types_evaluated": {
+      "type": "array",
+      "description": "Advisory types covered by this snapshot. Required whenever advisories is present. Types omitted from this list remain unknown even when advisories is empty. Every returned advisory.type MUST appear in this list.",
+      "items": {
+        "$ref": "/schemas/enums/advisory-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "advisories_as_of": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller completed this evaluation. Required whenever advisories is present, including an empty array. State changes require a strictly newer timestamp; equal-timestamp conflicts are invalid and buyers retain stored state."
+    },
+    "advisories_evaluated_scope": {
+      "type": "array",
+      "description": "Optional publisher or placement coverage for this evaluation. Omit when the named advisory types were evaluated across the whole enclosing resource or relationship. Unlisted scopes remain unknown. When present, every returned advisory MUST include scope and every scope entry MUST be contained by this coverage.",
+      "items": {
+        "$ref": "/schemas/core/advisory-scope.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "dependencies": {
+    "advisories": [
+      "advisory_types_evaluated",
+      "advisories_as_of"
+    ],
+    "advisory_types_evaluated": [
+      "advisories",
+      "advisories_as_of"
+    ],
+    "advisories_as_of": [
+      "advisories",
+      "advisory_types_evaluated"
+    ],
+    "advisories_evaluated_scope": [
+      "advisories",
+      "advisory_types_evaluated",
+      "advisories_as_of"
+    ]
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "advisories_evaluated_scope"
+        ]
+      },
+      "then": {
+        "properties": {
+          "advisories": {
+            "items": {
+              "required": [
+                "scope"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "advisories": { "contains": { "properties": { "type": { "const": "creative_fatigue" } }, "required": ["type"] } } }, "required": ["advisories"] },
+      "then": { "properties": { "advisory_types_evaluated": { "contains": { "const": "creative_fatigue" } } } }
+    },
+    {
+      "if": { "properties": { "advisories": { "contains": { "properties": { "type": { "const": "creative_quality_opportunity" } }, "required": ["type"] } } }, "required": ["advisories"] },
+      "then": { "properties": { "advisory_types_evaluated": { "contains": { "const": "creative_quality_opportunity" } } } }
+    },
+    {
+      "if": { "properties": { "advisories": { "contains": { "properties": { "type": { "const": "creative_diversity_low" } }, "required": ["type"] } } }, "required": ["advisories"] },
+      "then": { "properties": { "advisory_types_evaluated": { "contains": { "const": "creative_diversity_low" } } } }
+    },
+    {
+      "if": { "properties": { "advisories": { "contains": { "properties": { "type": { "const": "audience_saturation" } }, "required": ["type"] } } }, "required": ["advisories"] },
+      "then": { "properties": { "advisory_types_evaluated": { "contains": { "const": "audience_saturation" } } } }
+    },
+    {
+      "if": { "properties": { "advisories": { "contains": { "properties": { "type": { "const": "inventory_shortfall_forecast" } }, "required": ["type"] } } }, "required": ["advisories"] },
+      "then": { "properties": { "advisory_types_evaluated": { "contains": { "const": "inventory_shortfall_forecast" } } } }
+    },
+    {
+      "if": { "properties": { "advisories": { "contains": { "properties": { "type": { "const": "pacing_risk" } }, "required": ["type"] } } }, "required": ["advisories"] },
+      "then": { "properties": { "advisory_types_evaluated": { "contains": { "const": "pacing_risk" } } } }
+    },
+    {
+      "if": { "properties": { "advisories": { "contains": { "properties": { "type": { "const": "budget_constrained" } }, "required": ["type"] } } }, "required": ["advisories"] },
+      "then": { "properties": { "advisory_types_evaluated": { "contains": { "const": "budget_constrained" } } } }
+    }
+  ],
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "advisory_snapshot_semantics": {
+        "assertion_scope_must_be_contained_by_evaluated_scope": true,
+        "logical_key_unique_by_type_and_normalized_scope_set": true
+      }
+    },
+    "spec": "specs/relationship-scoped-advisories.md#evaluation-contract"
+  },
+  "additionalProperties": true
+}
