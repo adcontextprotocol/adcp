@@ -12,10 +12,10 @@ RUN npm ci --ignore-scripts
 # Copy source code
 COPY . .
 
-# rc.11's storyboard runner forces get_products onto the legacy-only wire,
+# rc.15's storyboard runner forces get_products onto the legacy-only wire,
 # hiding the transitional 3.1 dual response. Apply the exact-version patch
 # explicitly because installs disable scripts.
-RUN npm run patch:sdk-rc11
+RUN npm run patch:sdk-rc15
 
 # Build the TypeScript server (increase heap for large tsc compilation)
 RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
@@ -161,8 +161,8 @@ RUN npm ci --omit=dev --ignore-scripts \
  && npm rebuild sharp \
  && npm cache clean --force
 
-COPY --from=builder /app/scripts/patch-sdk-rc11.mjs ./scripts/patch-sdk-rc11.mjs
-RUN node scripts/patch-sdk-rc11.mjs
+COPY --from=builder /app/scripts/patch-sdk-rc15.mjs ./scripts/patch-sdk-rc15.mjs
+RUN node scripts/patch-sdk-rc15.mjs
 
 # Copy built files from builder. Runtime assets under server/src/** (JSON
 # format catalogs, SQL migrations, Addie rule markdown, etc.) are mirrored
