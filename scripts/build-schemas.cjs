@@ -1076,10 +1076,13 @@ function buildTaskResultResolution(sourceDir, toolsObj) {
       throw new Error(`Manifest generation: task result override for ${taskType} has invalid schema path`);
     }
     const schemaFile = path.join(sourceDir, ...schemaPath.split('/'));
-    if (!fs.existsSync(schemaFile) || !fs.statSync(schemaFile).isFile()) {
-      throw new Error(`Manifest generation: task result override for ${taskType} does not exist`);
+    let schemaContents;
+    try {
+      schemaContents = fs.readFileSync(schemaFile, 'utf8');
+    } catch (error) {
+      throw new Error(`Manifest generation: task result override for ${taskType} cannot be read`, { cause: error });
     }
-    const schema = JSON.parse(fs.readFileSync(schemaFile, 'utf8'));
+    const schema = JSON.parse(schemaContents);
     if (schema.$id !== `/schemas/${schemaPath}`) {
       throw new Error(`Manifest generation: task result override for ${taskType} has mismatched schema identity`);
     }
