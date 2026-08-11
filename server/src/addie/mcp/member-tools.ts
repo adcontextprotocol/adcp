@@ -28,6 +28,7 @@ import { ToolError } from '../tool-error.js';
 import { checkToolRateLimit } from './tool-rate-limiter.js';
 import { isUuid } from '../../utils/uuid.js';
 import { neutralizeAndTruncate, wrapUntrustedInput } from './untrusted-input.js';
+import { formatComplianceDiagnostics } from './compliance-diagnostics.js';
 import { coerceStringArray } from './input-coercion.js';
 import {
   isCompleteStoredBasicCredential,
@@ -4759,44 +4760,7 @@ export function createMemberToolHandlers(
       output += `**Tools:** ${safeTools.length} (${safeTools.join(', ')})\n`;
       output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
 
-      output += `### Capability Tracks\n\n`;
-      output += `**Summary:** ${result.summary.headline}\n\n`;
-
-      const statusLabel: Record<string, string> = { pass: 'PASS', fail: 'FAIL', partial: 'PARTIAL', skip: 'SKIP' };
-      for (const track of result.tracks) {
-        const status = statusLabel[track.status] ?? track.status.toUpperCase();
-        const scenarioCount = track.scenarios.length;
-        const passedCount = track.scenarios.filter(s => s.overall_passed).length;
-
-        if (track.status === 'skip') {
-          output += `- **${track.label}** [${status}] — not applicable\n`;
-        } else {
-          output += `- **${track.label}** [${status}] — ${passedCount}/${scenarioCount} scenarios pass (${(track.duration_ms / 1000).toFixed(1)}s)\n`;
-          for (const scenario of track.scenarios) {
-            if (!scenario.overall_passed) {
-              output += `  - FAILED: ${scenario.scenario}\n`;
-              const failedSteps = (scenario.steps ?? []).filter(s => !s.passed);
-              for (const step of failedSteps.slice(0, 3)) {
-                output += `    - ${step.step}${step.error ? `: ${sanitizeAgentField(step.error, RUNNER_ERROR_MAX_LEN)}` : ''}\n`;
-              }
-              if (failedSteps.length > 3) {
-                output += `    - ... and ${failedSteps.length - 3} more\n`;
-              }
-            }
-          }
-        }
-      }
-
-      if (result.observations.length > 0) {
-        output += `\n### Advisory Observations\n\n`;
-        for (const obs of result.observations) {
-          const severity = obs.severity === 'error' ? 'ERROR' : obs.severity === 'warning' ? 'WARNING' : obs.severity === 'suggestion' ? 'SUGGESTION' : 'INFO';
-          output += `- [${severity}] (${obs.category}) ${obs.message}\n`;
-          if (obs.evidence) {
-            output += `  Evidence: ${JSON.stringify(obs.evidence).slice(0, 500)}\n`;
-          }
-        }
-      }
+      output += formatComplianceDiagnostics(result);
 
       output += `\nInterpret these results conversationally. Highlight what's working well, identify the most impactful gaps, and suggest concrete next steps.`;
 

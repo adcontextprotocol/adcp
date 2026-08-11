@@ -82,18 +82,23 @@ export interface AgentRegistryMetadata {
 }
 
 /**
- * A single advisory notice emitted by the compliance runner at run-summary
- * level. Defined in static/compliance/source/universal/runner-output-contract.yaml.
+ * A single advisory notice emitted by the compliance runner. Defined in
+ * static/compliance/source/universal/runner-output-contract.yaml.
  *
  * Forward-compat: receivers MUST treat unknown `code` and `severity` values as
  * well-formed and surface them verbatim — do not validate or filter these fields.
  */
 export interface NoticeEntry {
+  [key: string]: unknown;
   severity: string;
   code: string;
   message: string;
   effective_version?: string | null;
   capability_path?: string | null;
+  capability_pointer?: string | null;
+  docs_url?: string | null;
+  storyboard_ids?: string[] | null;
+  /** Legacy runner field retained for previously persisted notices. */
   reference_url?: string | null;
 }
 
