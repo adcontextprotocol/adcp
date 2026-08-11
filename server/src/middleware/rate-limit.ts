@@ -278,6 +278,8 @@ export const notificationRateLimiter = rateLimit({
  * Limits: 10 evaluations per hour per user (each eval makes real HTTP calls to external agents).
  * AAO platform admins bypass this limit so they can debug and curate without hitting it.
  */
+export const STORYBOARD_EVAL_RATE_LIMIT_PREFIX = 'storyboard:';
+
 export const storyboardEvalRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10,
@@ -285,7 +287,7 @@ export const storyboardEvalRateLimiter = rateLimit({
   skip: skipForAdmins,
   standardHeaders: true,
   legacyHeaders: false,
-  store: new CachedPostgresStore('storyboard:'),
+  store: new CachedPostgresStore(STORYBOARD_EVAL_RATE_LIMIT_PREFIX),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
   handler: (req: Request, res: Response) => {
@@ -303,6 +305,49 @@ export const storyboardEvalRateLimiter = rateLimit({
     });
   },
 });
+
+/**
+ * Rate limiter for the dashboard's lightweight capability discovery probe.
+ * This endpoint makes one external agent call, so it remains bounded without
+ * consuming the much smaller full storyboard-evaluation budget. The key is
+ * the authenticated user: the requested organization is not trusted until the
+ * route's ownership check runs after this middleware.
+ */
+export const CAPABILITY_PROBE_LIMIT_PER_HOUR = 60;
+export const CAPABILITY_PROBE_RATE_LIMIT_PREFIX = 'capability-probe:';
+
+export function createCapabilityProbeRateLimiter(options: {
+  max?: number;
+  store?: Store;
+} = {}) {
+  const max = options.max ?? CAPABILITY_PROBE_LIMIT_PER_HOUR;
+  return rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max,
+    skip: skipForAdmins,
+    standardHeaders: true,
+    legacyHeaders: false,
+    store: options.store ?? new CachedPostgresStore(CAPABILITY_PROBE_RATE_LIMIT_PREFIX),
+    keyGenerator: generateKey,
+    validate: { keyGeneratorIpFallback: false },
+    handler: (req: Request, res: Response) => {
+      logger.warn({
+        userId: (req as any).user?.id,
+        ip: req.ip,
+        path: req.path,
+      }, 'Rate limit exceeded for capability probe');
+
+      const retryAfter = parseRetryAfterSeconds(res.getHeader('Retry-After'));
+      res.status(429).json({
+        error: 'Too many requests',
+        message: `Capability probe limit exceeded (${max} per hour). Please try again later.`,
+        ...(retryAfter !== undefined ? { retryAfter } : {}),
+      });
+    },
+  });
+}
+
+export const capabilityProbeRateLimiter = createCapabilityProbeRateLimiter();
 
 /**
  * Rate limiter for step-by-step storyboard execution.

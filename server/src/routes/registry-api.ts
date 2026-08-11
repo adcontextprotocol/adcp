@@ -25,7 +25,7 @@ import { resolvePrimaryOrganization } from "../db/users-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
 import { AsyncSemaphore, SemaphoreOverloadedError } from "../utils/async-semaphore.js";
-import { bulkResolveRateLimiter, brandBulkDomainRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
+import { bulkResolveRateLimiter, brandBulkDomainRateLimiter, brandCreationRateLimiter, capabilityProbeRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
 import { compareAdcpVersions, listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
 import {
   hostedComplianceTarget,
@@ -4201,6 +4201,7 @@ registry.registerPath({
     400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Capability probe rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
     422: {
       description: "Agent requires authentication, or declared capabilities cannot be resolved for the selected compliance target",
       content: {
@@ -8058,7 +8059,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  router.get("/registry/agents/:encodedUrl/applicable-storyboards", storyboardEvalRateLimiter, ...complianceWriteMiddleware, async (req, res) => {
+  router.get("/registry/agents/:encodedUrl/applicable-storyboards", ...complianceWriteMiddleware, capabilityProbeRateLimiter, async (req, res) => {
     const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
     if (!validateAgentUrlParam(rawAgentUrl)) {
       return res.status(400).json({ error: "Invalid agent URL" });

@@ -12078,6 +12078,12 @@ paths:
                     description: Specialism ids present in this server's local compliance cache
                 required:
                   - error
+        "429":
+          description: Capability probe rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitError"
         "500":
           description: Server error
           content:

@@ -3600,6 +3600,30 @@
         );
       }
 
+      function parseCapabilityProbeRetrySeconds(bodyRetryAfter, retryAfterHeader) {
+        if (typeof retryAfterHeader === 'string' && /^\d+$/.test(retryAfterHeader.trim())) {
+          const headerSeconds = Number.parseInt(retryAfterHeader, 10);
+          if (headerSeconds > 0) return headerSeconds;
+        }
+        if (typeof bodyRetryAfter === 'number' && Number.isFinite(bodyRetryAfter) && bodyRetryAfter > 0) {
+          return Math.ceil(bodyRetryAfter);
+        }
+        return null;
+      }
+
+      function buildCapabilityProbeRateLimitPanel(errBody, retryAfterHeader, savedStatusSummary) {
+        const retrySeconds = parseCapabilityProbeRetrySeconds(errBody?.retryAfter, retryAfterHeader);
+        const retryMinutes = retrySeconds ? Math.ceil(retrySeconds / 60) : null;
+        const retryText = retryMinutes
+          ? ' Try again in ' + retryMinutes + ' minute' + (retryMinutes === 1 ? '.' : 's.')
+          : ' Try again later.';
+        let html = '<div class="capability-probe-rate-limit" style="padding:var(--space-3);background:var(--color-warning-50);border:1px solid var(--color-warning-200);border-radius:var(--radius-md);color:var(--color-warning-800);font-size:var(--text-sm);margin-bottom:var(--space-2);">';
+        html += '<strong>Capability check paused.</strong> AgenticAdvertising.org has temporarily limited capability checks. Your agent was not contacted.' + retryText;
+        html += '</div>';
+        html += savedStatusSummary || '';
+        return html;
+      }
+
       // Shared: render the storyboard map into a panel
       async function renderStoryboardPicker(panel, agentUrl, cardId, agentTracks) {
         panel.style.display = 'block';
@@ -3728,6 +3752,16 @@
 
           // Non-2xx — surface specific reason before falling back
           const errBody = await res.json().catch(() => ({}));
+
+          if (res.status === 429) {
+            const storyboardStatusMap = await storyboardStatusMapPromise;
+            panel.innerHTML = buildCapabilityProbeRateLimitPanel(
+              errBody,
+              res.headers?.get?.('Retry-After') || null,
+              buildStoryboardStatusSummary(storyboardStatusMap),
+            );
+            return;
+          }
 
           if (errBody.needs_oauth) {
             panel.innerHTML = renderOAuthChallenge(agentUrl, errBody.agent_context_id, errBody.error);
