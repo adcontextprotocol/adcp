@@ -225,6 +225,31 @@ representative schemas from every protocol; and compare the source and
 projected dialects across representative instances. Repeated shared schemas are
 stored once under `$defs` rather than recursively inlined.
 
+#### Production surface profile
+
+The MCP projection also publishes a filtered production profile:
+
+```
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/profiles/production/manifest.json
+```
+
+For AdCP 3.2, this is the clean active structural catalog: it excludes the
+compliance-only controller and tools deprecated by 3.2, including the
+`get_products` and `list_creative_formats` compatibility facades. Its schemas
+remove only presentation annotations (`description`, `title`, `examples`, and
+`$comment`), so validation semantics are identical to the full MCP projection.
+Each manifest tool retains its `protocol` classification for deterministic
+selection.
+
+The profile is not a recommendation to load all active AdCP tools into one
+agent context. It currently spans 65 tools across the protocol families. A
+production host MUST expose only the protocols and tools it implements and
+SHOULD further select the smallest capability-appropriate subset for each
+agent session. Use the full projection for documentation, compatibility, and
+conformance; use this profile as the filtered catalog and structural validation
+source from which a host builds that subset. Removing descriptions makes the
+artifacts smaller, but does not by itself solve `tools/list` context cost.
+
 AdCP 4.0 will make JSON Schema 2020-12 the canonical source dialect. That
 major-version migration is where the protocol may selectively use
 `unevaluatedProperties`, `dependentRequired`, `dependentSchemas`, and other
@@ -264,6 +289,7 @@ dist/schemas/{VERSION}/
 │   ├── protocol/                 # Protocol tasks
 │   └── core/                     # Core shared schemas and legacy task lifecycle schemas
 ├── mcp/2026-07-28/               # Self-contained JSON Schema 2020-12 tool projections
+│   └── profiles/production/      # Active, non-compliance structural surface
 ├── core/                         # Modular schemas with $ref
 ├── trusted-match/                # Serve-time Context Match and Identity Match schemas
 ├── media-buy/

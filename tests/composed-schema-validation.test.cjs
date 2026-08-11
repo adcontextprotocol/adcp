@@ -3083,22 +3083,6 @@ async function runTests() {
     'refine_proposals rejects finalization'
   );
   await testSchemaValidation(
-    '/schemas/media-buy/finalize-proposals-request.json',
-    {
-      idempotency_key: 'finalize-proposals-0001',
-      proposal_ids: ['proposal-1', 'proposal-2']
-    },
-    'finalize_proposals accepts a unique atomic proposal set'
-  );
-  await testSchemaRejection(
-    '/schemas/media-buy/finalize-proposals-request.json',
-    {
-      idempotency_key: 'finalize-proposals-0002',
-      proposal_ids: ['proposal-1', 'proposal-1']
-    },
-    'finalize_proposals rejects duplicate proposal IDs'
-  );
-  await testSchemaValidation(
     '/schemas/media-buy/request-proposals-request.json',
     {
       idempotency_key: 'request-proposals-opp-0001',
@@ -3241,30 +3225,10 @@ async function runTests() {
     {
       ...splitCapabilityBase,
       media_buy: {
-        product_discovery_tools: ['request_proposals', 'finalize_proposals'],
-        max_atomic_finalize_batch_size: 25
+        product_discovery_tools: ['request_proposals', 'refine_proposals']
       }
     },
-    'finalize_proposals capability declares its atomic batch bound'
-  );
-  await testSchemaRejection(
-    '/schemas/protocol/get-adcp-capabilities-response.json',
-    {
-      ...splitCapabilityBase,
-      media_buy: { product_discovery_tools: ['finalize_proposals'] }
-    },
-    'finalize_proposals capability rejects a missing atomic batch bound'
-  );
-  await testSchemaRejection(
-    '/schemas/protocol/get-adcp-capabilities-response.json',
-    {
-      ...splitCapabilityBase,
-      media_buy: {
-        product_discovery_tools: ['finalize_proposals'],
-        max_atomic_finalize_batch_size: 26
-      }
-    },
-    'finalize_proposals capability rejects a bound above the protocol ceiling'
+    'compact proposal capability advertises supported split tools'
   );
   await testSchemaValidation(
     '/schemas/media-buy/list-products-response.json',
@@ -3284,7 +3248,7 @@ async function runTests() {
         proposal_id: 'proposal-1',
         name: 'Draft premium video plan',
         allocations: [{ product_id: 'premium-video', allocation_percentage: 100 }],
-        proposal_status: 'draft',
+        proposal_status: 'committed',
         expires_at: '2027-06-30T23:59:59Z'
       }],
       products: [{ ...productBase, product_id: 'premium-video' }]
@@ -3331,7 +3295,7 @@ async function runTests() {
           proposal_id: 'proposal-2',
           name: 'Partially revised premium video plan',
           allocations: [{ product_id: 'premium-video', allocation_percentage: 100 }],
-          proposal_status: 'draft',
+          proposal_status: 'committed',
           expires_at: '2027-06-30T23:59:59Z'
         }
       }],
@@ -3339,32 +3303,6 @@ async function runTests() {
     },
     'refine_proposals partial results require explanatory notes'
   );
-  await testSchemaValidation(
-    '/schemas/media-buy/finalize-proposals-response.json',
-    {
-      proposals: [{
-        proposal_id: 'proposal-1',
-        name: 'Committed premium video plan',
-        allocations: [{ product_id: 'premium-video', allocation_percentage: 100 }],
-        proposal_status: 'committed',
-        expires_at: '2027-06-30T23:59:59Z'
-      }]
-    },
-    'finalize_proposals returns committed proposals with hold expiry'
-  );
-  await testSchemaRejection(
-    '/schemas/media-buy/finalize-proposals-response.json',
-    {
-      proposals: [{
-        proposal_id: 'proposal-1',
-        name: 'Uncommitted premium video plan',
-        allocations: [{ product_id: 'premium-video', allocation_percentage: 100 }],
-        proposal_status: 'draft'
-      }]
-    },
-    'finalize_proposals rejects draft proposal results'
-  );
-
   log('');
 
   log('SignalId compatibility during SignalRef migration:', 'info');

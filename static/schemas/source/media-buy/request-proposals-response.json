@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/request-proposals-response.json",
   "title": "Request Proposals Response",
-  "description": "One or more draft media-plan proposals and the exact products referenced by their allocations. Returning only products does not satisfy request_proposals.",
+  "description": "One or more executable media-plan proposals and the exact products referenced by their allocations. Returning only products does not satisfy request_proposals.",
   "type": "object",
   "discriminator": {
     "propertyName": "outcome"
@@ -23,7 +23,7 @@
           { "$ref": "/schemas/core/proposal.json" },
           {
             "properties": {
-              "proposal_status": { "type": "string", "const": "draft" },
+              "proposal_status": { "type": "string", "const": "committed" },
               "expires_at": { "type": "string", "format": "date-time" }
             },
             "required": ["proposal_status", "expires_at"]

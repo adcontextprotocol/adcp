@@ -15,13 +15,13 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ### Compact product and proposal lifecycle (#6115)
 
-AdCP 3.2 adds `list_products`, `request_proposals`, `refine_proposals`, `finalize_proposals`, and `decline_proposals` as compact, task-specific contracts and retains `get_products` throughout 3.x.
+AdCP 3.2 adds `list_products`, `request_proposals`, `refine_proposals`, and `decline_proposals` as compact, task-specific contracts and retains `get_products` throughout 3.x.
 
 - `list_products` is a synchronous, naturally idempotent product-offer read.
-- `request_proposals` creates actionable draft proposals from a brief and optional listed product IDs.
-- `refine_proposals` creates immutable proposal revisions; `finalize_proposals` commits one or more revisions atomically; `decline_proposals` records terminal buyer feedback and prevents later execution.
+- `request_proposals` creates executable proposals with firm terms from a brief and optional listed product IDs.
+- `request_proposals` and `refine_proposals` return immutable, executable proposal snapshots; `decline_proposals` records terminal buyer feedback and prevents later execution.
 - `proposal_id` is the complete immutable snapshot identity, so changed terms mint a new ID rather than adding `proposal_version` to every downstream call.
-- Optional shared `opportunity` context connects proposal request, decline, and purchase without expanding the identity carried by refinement and finalization.
+- Optional shared `opportunity` context connects proposal request, refinement, decline, and purchase without expanding proposal snapshot identity.
 - Each stateful task requires an idempotency key and retains its own replay identity. Retries use the same tool name.
 - Brand input is an identity-only key, catalogs are compact selections, and offer filters are separated from exact targeting and future targeting support.
 - `media_buy.product_discovery_tools` advertises the split surface. Its absence means callers use `get_products` and `buying_modes`.

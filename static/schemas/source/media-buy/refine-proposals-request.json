@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/refine-proposals-request.json",
   "title": "Refine Proposals Request",
-  "description": "Create revised drafts from one or more existing proposals. Each source proposal remains addressable so buyers can explore alternatives safely.",
+  "description": "Create executable revisions from one or more existing proposal snapshots. Each source remains addressable so buyers can explore alternatives safely.",
   "type": "object",
   "x-mutates-state": true,
   "x-operation-family": "refine_proposals",

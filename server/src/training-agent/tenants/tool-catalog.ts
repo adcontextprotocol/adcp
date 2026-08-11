@@ -37,7 +37,6 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   list_products: ['sales'],
   request_proposals: ['sales'],
   refine_proposals: ['sales'],
-  finalize_proposals: ['sales'],
   decline_proposals: ['sales'],
   create_media_buy: ['sales'],
   update_media_buy: ['sales'],
@@ -140,7 +139,6 @@ export function toolsForTenant(
         tool === 'list_products'
         || tool === 'request_proposals'
         || tool === 'refine_proposals'
-        || tool === 'finalize_proposals'
         || tool === 'decline_proposals'
       ) return false;
       if (tool === 'validate_input' || tool === 'list_transformers') return false;

@@ -90,7 +90,7 @@ Core AdCP protocol information:
 
 #### idempotency
 
-Declares whether this seller honors `idempotency_key` replay protection. AdCP requires keys on mutating requests. In the compact AdCP 3.2 product lifecycle, [`request_proposals`](/docs/media-buy/task-reference/request_proposals), [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), [`finalize_proposals`](/docs/media-buy/task-reference/finalize_proposals), and [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) require keys; [`list_products`](/docs/media-buy/task-reference/list_products) and the legacy 3.x [`get_products`](/docs/media-buy/task-reference/get_products) facade leave the key optional. See [security.mdx § Idempotency](/docs/building/by-layer/L1/security#idempotency). Clients MUST NOT assume a default; a seller without this block is non-compliant and should be treated as unsafe for retry-sensitive operations.
+Declares whether this seller honors `idempotency_key` replay protection. AdCP requires keys on mutating requests. In the compact AdCP 3.2 product lifecycle, [`request_proposals`](/docs/media-buy/task-reference/request_proposals), [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), and [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) require keys; [`list_products`](/docs/media-buy/task-reference/list_products) and the legacy 3.x [`get_products`](/docs/media-buy/task-reference/get_products) facade leave the key optional. See [security.mdx § Idempotency](/docs/building/by-layer/L1/security#idempotency). Clients MUST NOT assume a default; a seller without this block is non-compliant and should be treated as unsafe for retry-sensitive operations.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -364,9 +364,7 @@ Media-buy protocol capabilities. Only present if `media_buy` is in `supported_pr
 
 #### product_discovery_tools
 
-AdCP 3.2 sellers use `product_discovery_tools` to advertise any supported subset of `get_products`, `list_products`, `request_proposals`, `refine_proposals`, `finalize_proposals`, and `decline_proposals`. When absent, buyers use the legacy `get_products` facade and inspect `buying_modes`. The compact tools share authorization policy with legacy discovery, but each stateful tool has its own idempotency identity: retry with the same tool name and payload.
-
-Sellers advertising `finalize_proposals` also declare `max_atomic_finalize_batch_size`. A request within that bound either commits every named proposal or commits none.
+AdCP 3.2 sellers use `product_discovery_tools` to advertise any supported subset of `get_products`, `list_products`, `request_proposals`, `refine_proposals`, and `decline_proposals`. When absent, buyers use the legacy `get_products` facade and inspect `buying_modes`. The compact tools share authorization policy with legacy discovery, but each stateful tool has its own idempotency identity: retry with the same tool name and payload.
 
 :::note 3.0 breaking changes
 The following fields have been removed from the capabilities response:

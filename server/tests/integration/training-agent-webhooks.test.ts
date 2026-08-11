@@ -195,7 +195,7 @@ describe('Training Agent webhook emission', () => {
         deliveries.push(delivery);
         res.writeHead(200);
         res.end();
-        if (deliveries.length === 3) resolveDeliveries?.();
+        if (deliveries.length === 2) resolveDeliveries?.();
       });
       const addr = srv.address() as AddressInfo;
       const webhookUrl = `http://127.0.0.1:${addr.port}/hook/split-proposals`;
@@ -237,30 +237,20 @@ describe('Training Agent webhook emission', () => {
       });
       const refined = structuredToolResult(refinedResponse);
       expect(refined).not.toHaveProperty('adcp_error');
-      const revision = ((refined.results as Array<Record<string, unknown>>)[0].proposal) as Record<string, unknown>;
-
-      const finalizedResponse = await call('finalize_proposals', {
-        idempotency_key: `split-finalize-${randomUUID()}`,
-        proposal_ids: [revision.proposal_id],
-        push_notification_config: callback('op_finalize_proposals'),
-      });
-      expect(structuredToolResult(finalizedResponse)).not.toHaveProperty('adcp_error');
       await Promise.race([
         delivered,
         new Promise((_, reject) => setTimeout(() => reject(new Error('split lifecycle webhooks never arrived')), 10_000)),
       ]);
 
-      expect(deliveries).toHaveLength(3);
+      expect(deliveries).toHaveLength(2);
       const bodies = deliveries.map(delivery => JSON.parse(delivery.body) as Record<string, unknown>);
       expect(bodies.map(body => body.task_type)).toEqual([
         'request_proposals',
         'refine_proposals',
-        'finalize_proposals',
       ]);
       expect(bodies.map(body => body.operation_id)).toEqual([
         'op_request_proposals',
         'op_refine_proposals',
-        'op_finalize_proposals',
       ]);
       expect(bodies.every(body => body.token === 'split-callback-token-1234')).toBe(true);
       const results = bodies.map(body => body.result as Record<string, unknown>);
@@ -269,9 +259,6 @@ describe('Training Agent webhook emission', () => {
       expect(results[1]).toMatchObject({ results: expect.any(Array), products: expect.any(Array) });
       expect(results[1]).not.toHaveProperty('proposals');
       expect(results[1]).not.toHaveProperty('refinement_applied');
-      expect(results[2]).toMatchObject({ proposals: expect.any(Array) });
-      expect(results[2]).not.toHaveProperty('products');
-      expect(results[2]).not.toHaveProperty('refinement_applied');
     } finally {
       if (srv) {
         srv.closeAllConnections?.();
@@ -309,7 +296,7 @@ describe('Training Agent webhook emission', () => {
         principal: 'webhook-test-principal',
       });
       maybeEmitCompletionWebhook({
-        toolName: 'finalize_proposals',
+        toolName: 'refine_proposals',
         args: {
           push_notification_config: {
             url: `http://127.0.0.1:${addr.port}/hook/hmac`,
@@ -320,7 +307,7 @@ describe('Training Agent webhook emission', () => {
             },
           },
         },
-        response: { proposals: [] },
+        response: { results: [], products: [] },
         principal: 'webhook-test-principal',
       });
       await Promise.race([

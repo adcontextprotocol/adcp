@@ -273,7 +273,7 @@ Client implementations should validate refinement requests against the [request 
 |------------|------|------------|
 | `PRODUCT_NOT_FOUND` | One or more referenced product IDs are unknown or expired | Remove invalid IDs and retry, or re-discover with a `brief` request |
 | `PROPOSAL_EXPIRED` | A referenced proposal ID has passed its `expires_at` | Re-discover with a new `brief` or `wholesale` request |
-| `PROPOSAL_NOT_FOUND` | The referenced `proposal_id` is unknown to the seller (never finalized, wrong tenant, or evicted from cache) | Re-issue `get_products` in `refine` mode with `action: 'finalize'` to obtain a current proposal_id |
+| `PROPOSAL_NOT_FOUND` | The referenced `proposal_id` is unknown to the seller (never issued, wrong tenant, or evicted from cache) | Re-issue `get_products` in `brief` or `wholesale` mode to obtain a fresh draft; finalize that recognized proposal before creating the media buy |
 | `MULTI_FINALIZE_UNSUPPORTED` | `refine[]` carried multiple `action: 'finalize'` entries but the seller cannot guarantee atomic multi-proposal commit | Sequence single-proposal finalize calls (one finalize per `get_products` call) |
 | `INVALID_REQUEST` | `refine` provided in `brief` or `wholesale` mode, empty `refine` array, or missing required fields | Check `buying_mode` and required fields |
 

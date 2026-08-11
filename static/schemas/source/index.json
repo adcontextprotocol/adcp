@@ -1341,7 +1341,7 @@
           "request": {
             "$ref": "/schemas/media-buy/get-products-request.json",
             "deprecated": true,
-            "description": "AdCP 3.x compatibility request. New 3.2 callers use list_products, request_proposals, refine_proposals, finalize_proposals, or decline_proposals."
+            "description": "AdCP 3.x compatibility request. New 3.2 callers use list_products, request_proposals, refine_proposals, or decline_proposals."
           },
           "response": {
             "$ref": "/schemas/media-buy/get-products-response.json",
@@ -1377,16 +1377,6 @@
           "response": {
             "$ref": "/schemas/media-buy/refine-proposals-response.json",
             "description": "Response payload for refine_proposals"
-          }
-        },
-        "finalize-proposals": {
-          "request": {
-            "$ref": "/schemas/media-buy/finalize-proposals-request.json",
-            "description": "Request parameters for atomically committing proposal pricing and inventory holds"
-          },
-          "response": {
-            "$ref": "/schemas/media-buy/finalize-proposals-response.json",
-            "description": "Response payload for finalize_proposals"
           }
         },
         "decline-proposals": {

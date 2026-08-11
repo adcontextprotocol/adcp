@@ -44,7 +44,7 @@
     },
     "read_only": {
       "type": "boolean",
-      "description": "Convenience flag. When true, the caller is permitted only non-mutating tasks. Sellers MUST reject any mutation from a read-only caller with READ_ONLY_SCOPE. For the AdCP 3.2 product split, read-only permits list_products but rejects request_proposals, refine_proposals, finalize_proposals, and decline_proposals; a legacy get_products call is permitted only when the seller can guarantee the selected arm is a synchronous side-effect-free read. Sellers MAY omit this field; omission is equivalent to `false`. Callers MUST NOT infer read-only from `allowed_tasks` alone — the seller MUST set this explicitly when it applies.",
+      "description": "Convenience flag. When true, the caller is permitted only non-mutating tasks. Sellers MUST reject any mutation from a read-only caller with READ_ONLY_SCOPE. For the AdCP 3.2 product split, read-only permits list_products but rejects request_proposals, refine_proposals, and decline_proposals; a legacy get_products call is permitted only when the seller can guarantee the selected arm is a synchronous side-effect-free read. Sellers MAY omit this field; omission is equivalent to `false`. Callers MUST NOT infer read-only from `allowed_tasks` alone — the seller MUST set this explicitly when it applies.",
       "default": false
     }
   },

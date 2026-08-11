@@ -1382,7 +1382,6 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('list_products');
     expect(toolNames).toContain('request_proposals');
     expect(toolNames).toContain('refine_proposals');
-    expect(toolNames).toContain('finalize_proposals');
     expect(toolNames).toContain('decline_proposals');
     expect(toolNames).toContain('list_creative_formats');
     expect(toolNames).toContain('create_media_buy');
@@ -1434,7 +1433,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('update_collection_list');
     expect(toolNames).toContain('list_collection_lists');
     expect(toolNames).toContain('delete_collection_list');
-    expect(toolNames).toHaveLength(56);
+    expect(toolNames).toHaveLength(55);
 
     const validateInput = tools.find(t => t.name === 'validate_input');
     expect(validateInput?.inputSchema?.properties?.targets?.maxItems).toBe(50);
@@ -12796,7 +12795,7 @@ describe('proposal lifecycle', () => {
     });
   });
 
-  it('connects the compact request, refine, finalize, and purchase lifecycle', async () => {
+  it('connects the compact request, refine, and purchase lifecycle', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const lifecycleOpportunity = {
       opportunity_id: 'opp-compact-purchase-2027',
@@ -12812,12 +12811,7 @@ describe('proposal lifecycle', () => {
     expect(requested).not.toHaveProperty('pagination');
     expect(requested).not.toHaveProperty('refinement_applied');
     const source = (requested.proposals as Array<Record<string, unknown>>)[0];
-    expect(source).toMatchObject({ proposal_status: 'draft' });
-
-    const { isError: atomicFailure } = await simulateCallTool(server, 'finalize_proposals', {
-      proposal_ids: [source.proposal_id, 'proposal-not-visible-to-caller'],
-    });
-    expect(atomicFailure).toBe(true);
+    expect(source).toMatchObject({ proposal_status: 'committed' });
 
     const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', {
       refinements: [{
@@ -12833,7 +12827,7 @@ describe('proposal lifecycle', () => {
     expect(refinement).toMatchObject({
       source_proposal_id: source.proposal_id,
       outcome: 'partial',
-      proposal: { proposal_status: 'draft' },
+      proposal: { proposal_status: 'committed' },
     });
     const revision = refinement.proposal as Record<string, unknown>;
     expect(revision.proposal_id).not.toBe(source.proposal_id);
@@ -12842,11 +12836,7 @@ describe('proposal lifecycle', () => {
       outcome: 'unable',
     });
 
-    const { result: finalized, isError: finalizeError } = await simulateCallTool(server, 'finalize_proposals', {
-      proposal_ids: [revision.proposal_id],
-    });
-    expect(finalizeError).toBeFalsy();
-    const committed = (finalized.proposals as Array<Record<string, unknown>>)[0];
+    const committed = revision;
     expect(committed).toMatchObject({
       proposal_id: revision.proposal_id,
       proposal_status: 'committed',
@@ -12917,13 +12907,16 @@ describe('proposal lifecycle', () => {
       replayed: true,
     });
 
-    const finalizedAgain = await simulateCallTool(server, 'finalize_proposals', {
-      proposal_ids: [committed.proposal_id],
+    const refineAfterExecution = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: committed.proposal_id,
+        instructions: 'Mint another buyable revision after executing this snapshot.',
+      }],
     });
-    expect(finalizedAgain.isError).toBeFalsy();
-    const finalizedAgainProposal = (finalizedAgain.result.proposals as Array<Record<string, unknown>>)[0];
-    expect(finalizedAgainProposal).not.toHaveProperty('__executed');
-    expect(finalizedAgainProposal).not.toHaveProperty('__opportunity_update');
+    expect(refineAfterExecution.isError).toBeFalsy();
+    expect(refineAfterExecution.result).toMatchObject({
+      results: [{ source_proposal_id: committed.proposal_id, outcome: 'unable' }],
+    });
 
     const secondExecution = await simulateCallTool(server, 'create_media_buy', {
       ...createArgs,
@@ -12947,11 +12940,7 @@ describe('proposal lifecycle', () => {
       brand: account.brand,
       brief: 'social engagement display',
     });
-    const draft = (requested.proposals as Array<Record<string, unknown>>)[0];
-    const { result: finalized } = await simulateCallTool(server, 'finalize_proposals', {
-      proposal_ids: [draft.proposal_id],
-    });
-    const committed = (finalized.proposals as Array<Record<string, unknown>>)[0];
+    const committed = (requested.proposals as Array<Record<string, unknown>>)[0];
     const base = {
       account,
       brand: account.brand,
@@ -12988,11 +12977,7 @@ describe('proposal lifecycle', () => {
       brand: account.brand,
       brief: 'social engagement display',
     });
-    const draft = (requested.proposals as Array<Record<string, unknown>>)[0];
-    const { result: finalized } = await simulateCallTool(server, 'finalize_proposals', {
-      proposal_ids: [draft.proposal_id],
-    });
-    const committed = (finalized.proposals as Array<Record<string, unknown>>)[0];
+    const committed = (requested.proposals as Array<Record<string, unknown>>)[0];
     const [create, decline] = await Promise.all([
       simulateCallTool(server, 'create_media_buy', {
         idempotency_key: `test-${randomUUID()}`,
@@ -13036,11 +13021,11 @@ describe('proposal lifecycle', () => {
       opportunity,
     });
     expect(requestError).toBeFalsy();
-    const draft = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const source = (requested.proposals as Array<Record<string, unknown>>)[0];
 
     const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', {
       refinements: [{
-        proposal_id: draft.proposal_id,
+        proposal_id: source.proposal_id,
         instructions: 'Prefer social inventory without changing the planning cycle.',
       }],
     });
@@ -13055,11 +13040,7 @@ describe('proposal lifecycle', () => {
       expect(storedRevision?.__opportunity_id).toBe(opportunity.opportunity_id);
     });
 
-    const { result: finalized, isError: finalizeError } = await simulateCallTool(server, 'finalize_proposals', {
-      proposal_ids: [revision.proposal_id],
-    });
-    expect(finalizeError).toBeFalsy();
-    const committed = (finalized.proposals as Array<Record<string, unknown>>)[0];
+    const committed = revision;
 
     const mismatchedOpportunity = await simulateCallTool(server, 'decline_proposals', {
       declines: [{ proposal_id: committed.proposal_id, reason: 'inventory_fit' }],
@@ -13139,12 +13120,6 @@ describe('proposal lifecycle', () => {
         status: 'open',
       });
     });
-
-    const finalizeAfterDecline = await simulateCallTool(server, 'finalize_proposals', {
-      proposal_ids: [committed.proposal_id],
-    });
-    expect(finalizeAfterDecline.isError).toBe(true);
-    expect(finalizeAfterDecline.result).toMatchObject({ code: 'INVALID_STATE' });
 
     const refineAfterDecline = await simulateCallTool(server, 'refine_proposals', {
       refinements: [{
@@ -13255,40 +13230,9 @@ describe('proposal lifecycle', () => {
     expect(revision).toMatchObject({
       source_proposal_id: source.proposal_id,
       outcome: 'revised',
-      proposal: { proposal_status: 'draft' },
+      proposal: { proposal_status: 'committed' },
     });
     expect(revision).not.toHaveProperty('notes');
-  });
-
-  it('commits a statusless backward-compatible proposal before returning it from finalize_proposals', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result: requested, isError: requestError } = await simulateCallTool(server, 'request_proposals', {
-      brand: account.brand,
-      brief: 'social engagement display',
-    });
-    expect(requestError).toBeFalsy();
-    const source = (requested.proposals as Array<Record<string, unknown>>)[0];
-    const compactSessionKey = sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous');
-    await runWithSessionContext(async () => {
-      const session = await getSession(compactSessionKey);
-      const stored = session.lastGetProductsContext?.proposals?.find(
-        proposal => proposal.proposal_id === source.proposal_id,
-      ) as (Record<string, unknown> | undefined);
-      expect(stored).toBeDefined();
-      delete stored!.proposal_status;
-      delete stored!.expires_at;
-      await flushDirtySessions();
-    });
-
-    const { result: finalized, isError: finalizeError } = await simulateCallTool(server, 'finalize_proposals', {
-      proposal_ids: [source.proposal_id],
-    });
-    expect(finalizeError).toBeFalsy();
-    expect((finalized.proposals as Array<Record<string, unknown>>)[0]).toMatchObject({
-      proposal_id: source.proposal_id,
-      proposal_status: 'committed',
-      expires_at: expect.any(String),
-    });
   });
 
   it('binds compact proposals to both the seller account and full BrandKey', async () => {
@@ -13301,12 +13245,7 @@ describe('proposal lifecycle', () => {
       brief: 'social engagement display',
     });
     expect(requestError).toBeFalsy();
-    const draft = (requested.proposals as Array<Record<string, unknown>>)[0];
-    const { result: finalized, isError: finalizeError } = await simulateCallTool(server, 'finalize_proposals', {
-      proposal_ids: [draft.proposal_id],
-    });
-    expect(finalizeError).toBeFalsy();
-    const committed = (finalized.proposals as Array<Record<string, unknown>>)[0];
+    const committed = (requested.proposals as Array<Record<string, unknown>>)[0];
 
     const purchase = (billingAccount: string, brand: typeof originalBrand) => simulateCallTool(
       server,
@@ -13337,41 +13276,6 @@ describe('proposal lifecycle', () => {
     const accepted = await purchase('proposal-account-alpha', originalBrand);
     expect(accepted.isError).toBeFalsy();
     expect(accepted.result.media_buy_id).toEqual(expect.any(String));
-  });
-
-  it('rejects an expired draft before atomically finalizing any proposal in the batch', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    const requestDraft = async (brief: string) => {
-      const { result, isError } = await simulateCallTool(server, 'request_proposals', {
-        brand: account.brand,
-        brief,
-      });
-      expect(isError).toBeFalsy();
-      return (result.proposals as Array<Record<string, unknown>>)[0];
-    };
-    const first = await requestDraft('social engagement display');
-    const second = await requestDraft('cross-channel news display');
-    const compactSessionKey = sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous');
-    await runWithSessionContext(async () => {
-      const session = await getSession(compactSessionKey);
-      const expired = session.lastGetProductsContext?.proposals?.find(
-        proposal => proposal.proposal_id === first.proposal_id,
-      );
-      expect(expired).toBeDefined();
-      (expired as unknown as Record<string, unknown>).expires_at = '2020-01-01T00:00:00Z';
-      await flushDirtySessions();
-    });
-
-    const rejected = await simulateCallTool(server, 'finalize_proposals', {
-      proposal_ids: [second.proposal_id, first.proposal_id],
-    });
-    expect(rejected).toMatchObject({ isError: true, result: { code: 'PROPOSAL_EXPIRED' } });
-
-    const session = await getSession(compactSessionKey);
-    const stillDraft = session.lastGetProductsContext?.proposals?.find(
-      proposal => proposal.proposal_id === second.proposal_id,
-    );
-    expect(stillDraft?.proposal_status).toBe('draft');
   });
 
   async function getProductsWithProposals() {

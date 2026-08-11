@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/get-products-request.json",
   "title": "Get Products Request",
-  "description": "AdCP 3.x compatibility request for discovering and changing advertising products and proposals. AdCP 3.2 introduces the narrower list_products, request_proposals, refine_proposals, finalize_proposals, and decline_proposals tasks; new callers SHOULD use those tasks. Existing get_products payloads remain valid throughout 3.x.",
+  "description": "AdCP 3.x compatibility request for discovering and changing advertising products and proposals. AdCP 3.2 introduces the narrower list_products, request_proposals, refine_proposals, and decline_proposals tasks; new callers SHOULD use those tasks. Existing get_products payloads remain valid throughout 3.x.",
   "type": "object",
   "allOf": [
     {
@@ -144,7 +144,7 @@
                   "finalize"
                 ],
                 "default": "include",
-                "description": "'include' (default): return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response. 'finalize': request firm pricing and inventory hold. New callers use the dedicated refine_proposals and finalize_proposals tasks; terminal feedback is available only through decline_proposals.\n\nFinalize is exclusive within the parent `refine[]` array: see the array-level description for the finalize-exclusivity rule (mixing finalize with non-finalize entries is rejected) and multi-finalize atomicity contract."
+                "description": "'include' (default): return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response. 'finalize': request firm pricing and inventory hold. New callers use refine_proposals, which returns an executable immutable revision directly; terminal feedback is available through decline_proposals.\n\nLegacy finalize is exclusive within the parent `refine[]` array: see the array-level description for the finalize-exclusivity rule (mixing finalize with non-finalize entries is rejected) and multi-finalize atomicity contract."
               },
               "ask": {
                 "type": "string",

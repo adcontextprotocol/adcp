@@ -2029,16 +2029,51 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
 
 function generateMcpProjectionForVersion(versionDir, urlVersion) {
   const targetDir = path.join(versionDir, 'mcp', MCP_PROTOCOL_VERSION);
+  const manifestPath = path.join(versionDir, 'manifest.json');
   const stats = generateMcpSchemaProjection({
     sourceDir: SOURCE_DIR,
     targetDir,
-    manifestPath: path.join(versionDir, 'manifest.json'),
+    manifestPath,
     urlVersion,
   });
   console.log(
     `   ✓ MCP ${MCP_PROTOCOL_VERSION} projection: ${stats.toolCount} tools, ${stats.schemaCount} schemas, `
       + `${(stats.totalBytes / (1024 * 1024)).toFixed(2)} MiB total, `
       + `${Math.ceil(stats.largestSchemaBytes / 1024)} KiB largest`
+  );
+
+  const canonicalManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const surfaceVersion = [
+    canonicalManifest.adcp_version,
+    ...Object.values(canonicalManifest.tools || {}).map(tool => tool.added_in).filter(Boolean),
+  ].filter(version => semver.valid(version)).sort(semver.rcompare)[0];
+  const productionTargetDir = path.join(targetDir, 'profiles', 'production');
+  const productionStats = generateMcpSchemaProjection({
+    sourceDir: SOURCE_DIR,
+    targetDir: productionTargetDir,
+    manifestPath,
+    urlVersion,
+    schemaUrlPrefix: `${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}/profiles/production`,
+    annotationMode: 'structural',
+    toolFilter: (_toolName, tool) => (
+      tool.protocol !== 'compliance'
+      && (!tool.added_in || semver.lte(tool.added_in, surfaceVersion))
+      && (!tool.deprecated_in || semver.gt(tool.deprecated_in, surfaceVersion))
+    ),
+    manifestMetadata: {
+      profile: 'production',
+      surface_version: surfaceVersion,
+      filters: {
+        exclude_protocols: ['compliance'],
+        exclude_deprecated: true,
+      },
+      canonical_projection: '../../manifest.json',
+    },
+  });
+  console.log(
+    `   ✓ Production ${surfaceVersion} profile: ${productionStats.toolCount} tools, `
+      + `${productionStats.schemaCount} schemas, `
+      + `${(productionStats.totalBytes / (1024 * 1024)).toFixed(2)} MiB structural projection`
   );
   return stats;
 }

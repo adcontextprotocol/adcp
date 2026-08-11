@@ -5,7 +5,7 @@ description: "Request one or more actionable seller-authored media plans."
 testable: true
 ---
 
-`request_proposals` creates one or more draft media-plan proposals from a brief. It can begin a consultative workflow directly or use `product_ids` returned by [`list_products`](/docs/media-buy/task-reference/list_products). Success always contains at least one proposal; returning products without a proposal does not satisfy this task.
+`request_proposals` creates one or more executable media-plan proposal snapshots from a brief. It can begin a consultative workflow directly or use `product_ids` returned by [`list_products`](/docs/media-buy/task-reference/list_products). Success always contains at least one proposal; returning products without a proposal does not satisfy this task.
 
 `brand` is required and contains only the stable BrandKey (`domain` plus optional `brand_id`); the seller resolves the canonical brand manifest rather than receiving a full brand file in every call. `account_id` is optional and adds seller-specific commercial terms when the buyer already knows its account.
 
@@ -28,8 +28,8 @@ testable: true
 }
 ```
 
-Every returned allocation references the exact `product_id` whose pricing and forecast the seller used. The returned `proposal_id` is the only proposal linkage needed by [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), [`finalize_proposals`](/docs/media-buy/task-reference/finalize_proposals), [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals), and [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). Each ID identifies one immutable commercial snapshot; refinement mints a new ID instead of adding a second version field.
+Every returned allocation references the exact `product_id` whose pricing and forecast the seller used. The returned `proposal_id` is the only proposal linkage needed by [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals), and [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). Each ID identifies one executable immutable commercial snapshot; refinement mints a new ID instead of adding a second version field.
 
 `opportunity` is optional shared planning-cycle context and must be open when supplied here. Its buyer-assigned `opportunity_id` can span request, decline, and purchase calls without becoming part of proposal identity. Sellers associate it with every proposal created by the request, and revised proposals inherit the same association.
 
-The response uses `outcome: "proposed"` for a successful draft set and `outcome: "rejected"` with a reason when the seller cannot construct an actionable plan.
+The response uses `outcome: "proposed"` for a successful executable set and `outcome: "rejected"` with a reason when the seller cannot construct an actionable plan.

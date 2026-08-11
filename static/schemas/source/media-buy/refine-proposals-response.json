@@ -28,7 +28,7 @@
               { "$ref": "/schemas/core/proposal.json" },
               {
                 "properties": {
-                  "proposal_status": { "type": "string", "const": "draft" },
+                  "proposal_status": { "type": "string", "const": "committed" },
                   "expires_at": { "type": "string", "format": "date-time" }
                 },
                 "required": ["proposal_status", "expires_at"]

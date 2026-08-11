@@ -1544,7 +1544,6 @@ describe('tenant routing smoke', () => {
         'list_products',
         'request_proposals',
         'refine_proposals',
-        'finalize_proposals',
         'decline_proposals',
       ]));
       const listAlias = listBody.result?.tools?.find(tool => tool.name === 'list_products');

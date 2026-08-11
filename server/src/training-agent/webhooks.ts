@@ -37,7 +37,7 @@ const logger = createLogger('training-agent-webhooks');
  *  Keep in sync with `static/schemas/source/core/mcp-webhook-payload.json`. */
 export type WebhookTaskType =
   | 'create_media_buy' | 'update_media_buy' | 'sync_creatives' | 'build_creative'
-  | 'get_products' | 'request_proposals' | 'refine_proposals' | 'finalize_proposals' | 'decline_proposals'
+  | 'get_products' | 'request_proposals' | 'refine_proposals' | 'decline_proposals'
   | 'activate_signal'
   | 'get_signals' | 'create_property_list' | 'update_property_list' | 'get_property_list'
   | 'list_property_lists' | 'delete_property_list' | 'sync_accounts'
@@ -49,7 +49,6 @@ export const TOOL_TO_TASK_TYPE = {
   get_products: 'get_products',
   request_proposals: 'request_proposals',
   refine_proposals: 'refine_proposals',
-  finalize_proposals: 'finalize_proposals',
   decline_proposals: 'decline_proposals',
   create_media_buy: 'create_media_buy',
   update_media_buy: 'update_media_buy',
@@ -90,7 +89,6 @@ export const TOOL_TO_PROTOCOL: Readonly<Record<WebhookEmittingTool, WebhookProto
   get_products: 'media-buy',
   request_proposals: 'media-buy',
   refine_proposals: 'media-buy',
-  finalize_proposals: 'media-buy',
   decline_proposals: 'media-buy',
   create_media_buy: 'media-buy',
   update_media_buy: 'media-buy',

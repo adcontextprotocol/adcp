@@ -13,28 +13,6 @@
     },
     {
       "if": {
-        "properties": {
-          "media_buy": {
-            "properties": {
-              "product_discovery_tools": {
-                "contains": { "const": "finalize_proposals" }
-              }
-            },
-            "required": ["product_discovery_tools"]
-          }
-        },
-        "required": ["media_buy"]
-      },
-      "then": {
-        "properties": {
-          "media_buy": {
-            "required": ["max_atomic_finalize_batch_size"]
-          }
-        }
-      }
-    },
-    {
-      "if": {
         "allOf": [
           {
             "properties": {
@@ -661,16 +639,10 @@
           "description": "Product-discovery operation names this seller supports. Added in AdCP 3.2 as compact, task-specific contracts that form the 4.0 lifecycle foundation. Sellers may advertise any supported subset while retaining get_products throughout 3.x. Absence means the caller uses the legacy facade. Each stateful split task has its own idempotency identity; callers MUST retry with the same tool name.",
           "items": {
             "type": "string",
-            "enum": ["get_products", "list_products", "request_proposals", "refine_proposals", "finalize_proposals", "decline_proposals"]
+            "enum": ["get_products", "list_products", "request_proposals", "refine_proposals", "decline_proposals"]
           },
           "minItems": 1,
           "uniqueItems": true
-        },
-        "max_atomic_finalize_batch_size": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 25,
-          "description": "Maximum proposal_ids length the seller can commit atomically in finalize_proposals. Sellers supporting only single-proposal finalization declare 1. Required when finalize_proposals is advertised."
         },
         "reporting_delivery_methods": {
           "type": "array",
@@ -693,7 +665,7 @@
         },
         "supports_proposals": {
           "type": "boolean",
-          "description": "Conformance declaration that this seller supports actionable proposals through either the compact request/refine/finalize lifecycle or the legacy get_products facade. proposal_status is the per-proposal source of truth, and create_media_buy consumes the committed proposal_id before expires_at.",
+          "description": "Conformance declaration that this seller supports actionable proposals through either the compact request/refine lifecycle or the legacy get_products facade. create_media_buy consumes an executable proposal_id before expires_at.",
           "default": false
         },
         "governance_aware": {

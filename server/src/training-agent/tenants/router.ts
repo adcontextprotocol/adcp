@@ -135,7 +135,6 @@ const PRODUCT_DISCOVERY_TOOL_NAMES = [
   'list_products',
   'request_proposals',
   'refine_proposals',
-  'finalize_proposals',
   'decline_proposals',
 ] as const;
 

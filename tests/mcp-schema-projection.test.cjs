@@ -24,6 +24,7 @@ const {
   compactDraft07Schema,
   measureSchema,
   projectDraft07Node,
+  stripPresentationAnnotations,
 } = require('../scripts/mcp-schema-projection.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -31,6 +32,7 @@ const SOURCE_DIR = path.join(REPO_ROOT, 'static', 'schemas', 'source');
 const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
+const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
 const PARITY_COMPILE_LIMIT = 1_000_000;
 
 function readJson(filename) {
@@ -96,6 +98,32 @@ test('schema bounds include the complete JSON document', () => {
     bytes: Buffer.byteLength(JSON.stringify(schema)),
     depth: 6,
     objectCount: 3,
+  });
+});
+
+test('structural presentation mode removes only schema annotations', () => {
+  const source = {
+    title: 'Request title',
+    description: 'Request description',
+    type: 'object',
+    properties: {
+      payload: {
+        description: 'Field description',
+        const: { description: 'validated payload data' },
+        default: { description: 'default payload data' },
+      },
+    },
+    examples: [{ description: 'example payload data' }],
+  };
+
+  assert.deepEqual(stripPresentationAnnotations(source), {
+    type: 'object',
+    properties: {
+      payload: {
+        const: { description: 'validated payload data' },
+        default: { description: 'default payload data' },
+      },
+    },
   });
 });
 
@@ -315,6 +343,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   const storyboardFixtures = collectStoryboardRequestFixtures();
   assert.equal(projectionManifest.mcp_protocol_version, MCP_PROTOCOL_VERSION);
   assert.equal(projectionManifest.schema_dialect, JSON_SCHEMA_2020_12);
+  assert.equal(projectionManifest.annotation_mode, 'full');
   assert.match(projectionManifest.delivery, /downloadable schema artifacts/);
   assert.deepEqual(
     Object.keys(projectionManifest.tools).sort(),
@@ -434,4 +463,46 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     invalidParityCaseCount >= paritySchemas.size,
     `expected an invalid mutation for every parity schema, saw ${invalidParityCaseCount}`
   );
+});
+
+test('generated production profile exposes the active 3.2 surface without compliance annotations', () => {
+  assert.ok(fs.existsSync(PRODUCTION_PROFILE_DIR), 'production profile is missing');
+  const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
+  const profile = readJson(path.join(PRODUCTION_PROFILE_DIR, 'manifest.json'));
+
+  assert.equal(profile.profile, 'production');
+  assert.equal(profile.surface_version, '3.2.0');
+  assert.equal(profile.annotation_mode, 'structural');
+  assert.deepEqual(profile.filters, {
+    exclude_protocols: ['compliance'],
+    exclude_deprecated: true,
+  });
+
+  const expectedTools = Object.entries(canonicalManifest.tools)
+    .filter(([, tool]) => tool.protocol !== 'compliance')
+    .filter(([, tool]) => !tool.added_in || tool.added_in <= profile.surface_version)
+    .filter(([, tool]) => !tool.deprecated_in || tool.deprecated_in > profile.surface_version)
+    .map(([toolName]) => toolName)
+    .sort();
+  assert.deepEqual(Object.keys(profile.tools).sort(), expectedTools);
+  assert.ok(!profile.tools.comply_test_controller);
+  assert.ok(!profile.tools.get_products);
+  assert.ok(!profile.tools.list_creative_formats);
+  for (const [toolName, tool] of Object.entries(profile.tools)) {
+    assert.equal(tool.protocol, canonicalManifest.tools[toolName].protocol);
+    assert.notEqual(tool.protocol, 'compliance');
+  }
+
+  let profileBytes = 0;
+  let canonicalBytes = 0;
+  const seen = new Set();
+  for (const tool of Object.values(profile.tools)) {
+    for (const field of ['inputSchema', 'outputSchema']) {
+      if (seen.has(tool[field])) continue;
+      seen.add(tool[field]);
+      profileBytes += fs.statSync(path.join(PRODUCTION_PROFILE_DIR, tool[field])).size;
+      canonicalBytes += fs.statSync(path.join(PROJECTION_DIR, tool[field])).size;
+    }
+  }
+  assert.ok(profileBytes < canonicalBytes * 0.65, `${profileBytes} should be materially smaller than ${canonicalBytes}`);
 });

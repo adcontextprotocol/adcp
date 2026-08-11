@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/request-proposals-request.json",
   "title": "Request Proposals Request",
-  "description": "Ask a seller to create one or more actionable media-plan proposals from a brief. Each returned proposal_id identifies one immutable commercial snapshot and connects refinement, finalization, decline, and purchase; changed commercial terms require a new proposal_id.",
+  "description": "Ask a seller to create one or more executable media-plan proposals from a brief. Each returned proposal_id identifies one immutable committed snapshot and connects optional refinement, decline, and purchase; changed commercial terms require a new proposal_id.",
   "type": "object",
   "x-mutates-state": true,
   "x-operation-family": "request_proposals",

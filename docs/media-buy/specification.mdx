@@ -548,7 +548,7 @@ Sales agents SHOULD target the following response times:
 
 ### Idempotency
 
-Every state-mutating AdCP task request MUST carry an `idempotency_key`. In AdCP 3.2, product discovery uses explicit contracts: `request_proposals`, `refine_proposals`, `finalize_proposals`, and `decline_proposals` require a key; `list_products` and the legacy 3.x `get_products` facade leave it optional. Sales agents MUST apply the replay contract whenever a key is supplied:
+Every state-mutating AdCP task request MUST carry an `idempotency_key`. In AdCP 3.2, product discovery uses explicit contracts: `request_proposals`, `refine_proposals`, and `decline_proposals` require a key; `list_products` and the legacy 3.x `get_products` facade leave it optional. Sales agents MUST apply the replay contract whenever a key is supplied:
 
 - The same key and equivalent canonical payload within the replay window MUST return the original response without re-executing the request.
 - The same key with a different canonical payload MUST return `IDEMPOTENCY_CONFLICT`.

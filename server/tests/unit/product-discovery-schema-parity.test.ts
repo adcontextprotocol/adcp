@@ -29,7 +29,6 @@ describe('product discovery MCP schema parity', () => {
       ['list_products', 'list-products-request'],
       ['request_proposals', 'request-proposals-request'],
       ['refine_proposals', 'refine-proposals-request'],
-      ['finalize_proposals', 'finalize-proposals-request'],
       ['decline_proposals', 'decline-proposals-request'],
     ] as const) {
       const runtime = tools.get(toolName)!;

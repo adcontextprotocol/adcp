@@ -40,11 +40,6 @@
       "$ref": "/schemas/media-buy/refine-proposals-response.json"
     },
     {
-      "title": "FinalizeProposalsResponse",
-      "description": "Terminal response for finalize_proposals",
-      "$ref": "/schemas/media-buy/finalize-proposals-response.json"
-    },
-    {
       "title": "DeclineProposalsResponse",
       "description": "Terminal response for decline_proposals",
       "$ref": "/schemas/media-buy/decline-proposals-response.json"

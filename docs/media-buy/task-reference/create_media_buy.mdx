@@ -141,7 +141,7 @@ npx @adcp/sdk@latest \
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `account` | [account-ref](/docs/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required for billing and policy evaluation. |
-| `proposal_id` | string | No* | ID of the exact committed proposal snapshot from [`finalize_proposals`](/docs/media-buy/task-reference/finalize_proposals). For IDs from the 3.2 split lifecycle, draft proposals fail with [`PROPOSAL_NOT_COMMITTED`](/docs/building/verification/compliance-catalog#error-code-proposal-not-committed), while declined or already executed proposals fail with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state). Exact retries reuse the original idempotency key and replay success. Legacy [`get_products`](/docs/media-buy/task-reference/get_products) proposals retain 3.x behavior. |
+| `proposal_id` | string | No* | ID of the exact executable proposal snapshot from [`request_proposals`](/docs/media-buy/task-reference/request_proposals) or [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals). Declined or already executed proposals fail with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state). Exact retries reuse the original idempotency key and replay success. Legacy [`get_products`](/docs/media-buy/task-reference/get_products) drafts fail with [`PROPOSAL_NOT_COMMITTED`](/docs/building/verification/compliance-catalog#error-code-proposal-not-committed) until finalized through that compatibility task. |
 | `opportunity` | OpportunityContext | No | Proposal-mode planning-cycle closure shared with [`request_proposals`](/docs/media-buy/task-reference/request_proposals) and [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals); requires `proposal_id`. Omitting status is the create-specific signal to infer closed with `accepted_with_seller`; if status is sent, it must explicitly carry that closure. |
 | `total_budget` | TotalBudget | No* | Hard aggregate lifetime budget. Its currency is the single media-buy denomination for package constraints and canonical bidding. Required for proposals and seller-optimized explicit packages. Optional in fixed explicit-package mode; when supplied there, it must equal the sum of package budgets. |
 | `budget_allocation` | BudgetAllocation | No | Cross-package allocation mode. Omit for fixed allocation. Use `seller_optimized` with media-buy optimization goals to delegate allocation to the seller. Must be omitted when executing a proposal because the committed proposal supplies it. |
@@ -160,7 +160,7 @@ npx @adcp/sdk@latest \
 
 \* Either `packages` OR (`proposal_id` + `total_budget`) must be provided.
 
-When executing a proposal, `proposal_status` on the returned proposal determines whether `create_media_buy` is valid. `committed` proposals can be executed before `expires_at`; `draft` proposals require a prior [`finalize_proposals`](/docs/media-buy/task-reference/finalize_proposals) call. Finalization is seller commitment to firm terms, not buyer acceptance. This `create_media_buy` call is the acceptance/execution step. The legacy [`get_products`](/docs/media-buy/task-reference/get_products) finalize form remains supported throughout 3.x.
+When executing a proposal, `proposal_status` on the returned proposal determines whether `create_media_buy` is valid. The split 3.2 request and refine tasks return `committed` snapshots that can be executed before `expires_at`; `create_media_buy` is the buyer acceptance/execution step. Legacy [`get_products`](/docs/media-buy/task-reference/get_products) drafts require its finalize form, which remains supported throughout 3.x.
 
 ### TotalBudget Object
 
@@ -889,7 +889,7 @@ asyncio.run(create_with_reporting())
 
 ### Executing a Proposal
 
-Execute a committed proposal from [`finalize_proposals`](/docs/media-buy/task-reference/finalize_proposals) without manually constructing packages:
+Execute a committed proposal from [`request_proposals`](/docs/media-buy/task-reference/request_proposals) or [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) without manually constructing packages:
 
 <CodeGroup>
 
@@ -902,7 +902,7 @@ const endDate = new Date();
 endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
-  proposal_id: 'swiss_balanced_v1',  // From finalize_proposals response
+  proposal_id: 'swiss_balanced_v1',  // From request_proposals or refine_proposals
   total_budget: {
     amount: 50000,
     currency: 'USD'
@@ -941,7 +941,7 @@ async def execute_proposal():
     end_date = datetime.now(timezone.utc) + timedelta(days=90)
 
     result = await test_agent.simple.create_media_buy(
-        proposal_id='swiss_balanced_v1',  # From finalize_proposals response
+        proposal_id='swiss_balanced_v1',  # From request_proposals or refine_proposals
         total_budget={
             'amount': 50000,
             'currency': 'USD'

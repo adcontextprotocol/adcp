@@ -8,7 +8,7 @@ testable: true
 Discover available advertising products based on campaign requirements using natural language briefs or structured filters.
 
 <Warning>
-`get_products` is deprecated for new integrations in AdCP 3.2, but remains fully supported throughout 3.x. Use [`list_products`](/docs/media-buy/task-reference/list_products), [`request_proposals`](/docs/media-buy/task-reference/request_proposals), [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), [`finalize_proposals`](/docs/media-buy/task-reference/finalize_proposals), or [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals). Its `idempotency_key` remains optional. Split-task retries keep the same tool name; they are not cross-name replays of this compatibility facade.
+`get_products` is deprecated for new integrations in AdCP 3.2, but remains fully supported throughout 3.x. Use [`list_products`](/docs/media-buy/task-reference/list_products), [`request_proposals`](/docs/media-buy/task-reference/request_proposals), [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), or [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals). Its `idempotency_key` remains optional. Split-task retries keep the same tool name; they are not cross-name replays of this compatibility facade.
 </Warning>
 
 <Info>
@@ -1353,7 +1353,7 @@ The rejection arm carries no `products`, `proposals`, `incomplete`, `filter_diag
 | [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | Brief too long or malformed filters | Check request parameters |
 | [`PRODUCT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-product-not-found) | One or more referenced product IDs are unknown or expired | Remove invalid IDs and retry, or re-discover with a `brief` request |
 | [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired) | A referenced proposal ID has passed its `expires_at` timestamp | Re-discover with a new `brief` or `wholesale` request |
-| [`PROPOSAL_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-proposal-not-found) | The referenced `proposal_id` is unknown to the seller (never finalized, wrong tenant, or evicted from cache) | Re-issue `get_products` in `refine` mode with `action: 'finalize'` to obtain a current proposal_id |
+| [`PROPOSAL_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-proposal-not-found) | The referenced `proposal_id` is unknown to the seller (never issued, wrong tenant, or evicted from cache) | Re-issue `get_products` in `brief` or `wholesale` mode to obtain a fresh draft; finalize that recognized proposal before creating the media buy |
 | [`MULTI_FINALIZE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-multi-finalize-unsupported) | `refine[]` carried multiple `action: 'finalize'` entries but the seller cannot guarantee atomic multi-proposal commit | Sequence single-proposal finalize calls — one finalize entry per `get_products` call |
 | [`POLICY_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-policy-violation) | The request itself violates an applicable policy and must be corrected | Review the structured policy details and revise the request. A seller making a deliberate business decision to decline an otherwise well-formed brief uses `status: "rejected"` instead. |
 
