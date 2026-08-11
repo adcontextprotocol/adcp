@@ -76,7 +76,7 @@ npx @adcp/sdk@latest signing verify-vector \
 
 Reads the local vector and key-set JSON files and runs the SDK reference verifier. For a self-contained negative vector, compare the reported rejection code with the fixture's `expected_outcome.error_code`; the CLI does not grade that comparison for you and exits with status 1 for an expected rejection. Shell scripts and CI jobs must therefore compare the output rather than treating every nonzero exit as an unexpected tool failure.
 
-Some negative fixtures declare `test_harness_state` and require verifier setup outside the vector itself. For example, `016-replayed-nonce.json` requires a preloaded replay-cache entry and cannot be meaningfully checked by a one-shot CLI invocation. Use the fixture's declared harness state or the full grader for those cases. See the request-signing guide's [downloadable vector example](/docs/building/by-layer/L1/request-signing#conformance-vectors) for a copyable CDN flow.
+Some negative fixtures declare `test_harness_state` and are not self-contained. For example, `016-replayed-nonce.json` requires the verifier harness to preload a replay-cache entry. A local white-box harness can apply the fixture's declared state; live black-box certification uses the full grader's coordinated repeat-request contract. See the request-signing guide's [downloadable vector example](/docs/building/by-layer/L1/request-signing#conformance-vectors) for a copyable CDN flow.
 
 **When to use it:** while implementing or debugging a verifier to isolate canonicalization and validation rules before testing end-to-end.
 
