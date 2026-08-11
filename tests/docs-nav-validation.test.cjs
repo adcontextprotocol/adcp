@@ -62,6 +62,20 @@ function collectGroups(node) {
   return groups;
 }
 
+function isDirectSlackInvite(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'join.slack.com';
+  } catch {
+    return false;
+  }
+}
+
+function containsDirectSlackInvite(content) {
+  const urls = content.match(/https?:\/\/[^\s)\]>'\"]+/g) || [];
+  return urls.some(isDirectSlackInvite);
+}
+
 // --- Run tests ---
 
 log('\n🧪 Docs Navigation Validation Tests');
@@ -227,7 +241,7 @@ test('live docs route Slack invitations through the joining guide', () => {
       ? path.join(rootDir, `${page}.mdx`)
       : path.join(rootDir, `${page}.md`);
     const content = fs.readFileSync(filePath, 'utf8');
-    if (content.includes('https://join.slack.com/')) directInvitePages.push(page);
+    if (containsDirectSlackInvite(content)) directInvitePages.push(page);
   }
 
   if (directInvitePages.length > 0) {
@@ -244,7 +258,7 @@ test('live docs route Slack invitations through the joining guide', () => {
     'server/public/dashboard-membership.html',
   ];
   const directInviteEntryPoints = currentEntryPoints.filter(relativePath => (
-    fs.readFileSync(path.join(rootDir, relativePath), 'utf8').includes('https://join.slack.com/')
+    containsDirectSlackInvite(fs.readFileSync(path.join(rootDir, relativePath), 'utf8'))
   ));
   if (directInviteEntryPoints.length > 0) {
     throw new Error(
@@ -259,19 +273,15 @@ test('live docs route Slack invitations through the joining guide', () => {
     path.join(rootDir, 'docs/slack-invite-recovery.js'),
     'utf8'
   );
-  if (!recoveryScript.includes('a[href^="https://join.slack.com/"]')
-      || !recoveryScript.includes('https://docs.adcontextprotocol.org/docs/community/joining-slack')
-      || !recoveryScript.includes('MutationObserver')) {
-    throw new Error('The global Slack recovery script must rewrite direct invite anchors, including dynamically rendered ones');
-  }
-
   const loadRecoveryHarness = routePath => {
     const directInvite = 'https://join.slack.com/t/agenticads/shared_invite/example';
     const makeElement = (href = directInvite, text = '') => ({
       nodeType: 1,
       href,
       textNodes: text ? [{ nodeValue: text }] : [],
-      matches: selector => selector.includes('join.slack.com') && href.startsWith('https://join.slack.com/'),
+      matches: selector => (
+        selector === 'a[href^="https://join.slack.com/"]' && isDirectSlackInvite(href)
+      ),
       querySelectorAll: () => [],
     });
     const initialAnchor = makeElement();
@@ -311,6 +321,13 @@ test('live docs route Slack invitations through the joining guide', () => {
   const harness = loadRecoveryHarness('/dist/docs/3.1.2/intro');
   if (harness.initialAnchor.href !== guideUrl) {
     throw new Error('Snapshot pages must rewrite their direct Slack invite to the recovery guide');
+  }
+
+  const lookalikeUrl = 'https://attacker.example/?next=https://join.slack.com/t/example';
+  const lookalikeAnchor = harness.makeElement(lookalikeUrl);
+  harness.add(lookalikeAnchor);
+  if (lookalikeAnchor.href !== lookalikeUrl) {
+    throw new Error('Slack invite recovery must not rewrite URLs on unrelated hosts');
   }
 
   harness.navigate('/dist/docs/3.1.2/community/joining-slack');
