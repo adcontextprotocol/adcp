@@ -1157,6 +1157,8 @@ export interface AgentCompliance {
   }>;
   verified?: boolean;
   verified_roles?: string[];
+  /** Active AgenticAdvertising.org Verified AdCP versions for each role, newest first. */
+  verified_role_versions?: Record<string, string[]>;
 }
 
 // Federated Discovery Types

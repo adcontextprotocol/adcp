@@ -224,7 +224,30 @@ https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge
 
 Buyers who want auto-upgrade behavior (the embedded image flips from `Media Buy Agent 3.0 (Spec)` to `Media Buy Agent 3.1 (Spec + Sandbox)` automatically when the agent earns 3.1) embed the legacy URL. Buyers who want to call out "verified for AdCP 3.0" specifically embed the version-pinned URL.
 
-Both return a shields.io-style SVG with `Content-Security-Policy: script-src 'none'` and 5-minute caching. Renders teal when verified, grey when not. Unknown agents, unknown roles, and revoked badges all return a grey "Not Verified" variant — the URL never 404s, which makes it safe to embed. Version-pinned URLs at versions the agent never earned also return "Not Verified" (vs. the legacy URL, which shows the current best mark).
+Both return a shields.io-style SVG with `Content-Security-Policy: script-src 'none'` and 5-minute caching. Renders teal when verified, grey when not. Unknown agents and revoked or never-earned badges return a successful `200` grey "Not Verified" SVG, including version-pinned URLs at versions the agent never earned. An unknown role instead returns `400` with the valid role slugs; a temporary status-store failure returns an uncached `503`.
+
+Valid badge role slugs are `media-buy`, `creative`, `signals`, `governance`, `brand`, and `sponsored-intelligence`. These URL slugs are kebab-case. Do not substitute compliance track identifiers such as `media_buy`, which are snake_case and describe test organization rather than badge identity.
+
+Because an unverified badge is still a successful `200` SVG response, an image `onerror` handler cannot hide it. If your site should show no mark until the exact role and version is verified, decide whether to include the snippet during a server-side render or static-site build:
+
+```javascript test=true integration=true
+// Run on your server or during a static-site build, not in browser code.
+const agentUrl = "https://seller.example.com/mcp";
+const role = "media-buy";
+const version = "3.0";
+const encodedUrl = encodeURIComponent(agentUrl);
+const endpoint = `https://agenticadvertising.org/api/registry/agents/${encodedUrl}/badge/${role}/${version}/embed`;
+
+const response = await fetch(endpoint);
+if (!response.ok) throw new Error("Could not check AgenticAdvertising.org verification");
+
+const embed = await response.json();
+const badgeHtml = embed.verified ? embed.html : "";
+
+export { badgeHtml };
+```
+
+The versioned embed's `verified` value applies to that exact role and version. For bulk decisions, query `/api/registry/agents/{url-encoded-agent-url}/verification` and match both `role` and `adcp_version` in `badges[]`; do not gate on the top-level `verified` boolean alone.
 
 ### Embed snippet
 
