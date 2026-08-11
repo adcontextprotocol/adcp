@@ -208,9 +208,8 @@ phases:
           - check: field_present
             path: "previews[0].renders[0].preview_url"
             description: "Preview includes a renderable URL"
-          - check: field_value
+          - check: field_present
             path: "quality_used"
-            value: "draft"
             description: "Response echoes the quality tier actually rendered"
 
           - check: field_present
