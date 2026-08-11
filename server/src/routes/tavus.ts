@@ -89,6 +89,15 @@ import {
   type MemberContext,
 } from "../addie/member-context.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
+import {
+  boundedTrimmedTavusSetting,
+  buildTavusConversationalContext,
+  buildTavusThreadContext,
+  extractTavusText,
+  sanitizeTavusDisplayName,
+  TAVUS_SETTING_LIMITS,
+  type TavusRawMessage,
+} from "../services/tavus-conversational-context.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -153,52 +162,6 @@ function validateLlmSecret(req: Request): boolean {
   const expected = crypto.createHmac("sha256", key).update(secret).digest();
   const actual = crypto.createHmac("sha256", key).update(token).digest();
   return crypto.timingSafeEqual(expected, actual);
-}
-
-type RawMessage = { role: string; content: unknown };
-
-/**
- * Extract text from an OpenAI content field (string or content-part array).
- */
-function extractText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .filter((b): b is { type: string; text: string } =>
-        typeof (b as Record<string, unknown>)?.text === "string"
-      )
-      .map((b) => b.text)
-      .join(" ");
-  }
-  return String(content);
-}
-
-/**
- * Build conversation context from OpenAI-format message history.
- * Skips system messages — Addie uses her own DB-sourced system prompt.
- */
-function buildThreadContext(
-  messages: RawMessage[]
-): { currentMessage: string; threadContext: Array<{ user: string; text: string }> } | null {
-  const chatMessages = messages
-    .filter((m) => m.role === "user" || m.role === "assistant")
-    .map((m) => ({ role: m.role, content: extractText(m.content) }));
-
-  let lastUserIdx = -1;
-  for (let i = chatMessages.length - 1; i >= 0; i--) {
-    if (chatMessages[i].role === "user") { lastUserIdx = i; break; }
-  }
-  if (lastUserIdx === -1) return null;
-
-  const currentMessage = chatMessages[lastUserIdx].content;
-  const history = chatMessages.slice(0, lastUserIdx);
-
-  const threadContext = history.slice(-10).map((m) => ({
-    user: m.role === "user" ? "User" : "Addie",
-    text: m.content,
-  }));
-
-  return { currentMessage, threadContext };
 }
 
 /**
@@ -473,7 +436,7 @@ export function createTavusRouter() {
     try {
       const conversationName = `addie-${uuidv4()}`;
       const rawDisplayName = [req.user.firstName, req.user.lastName].filter(Boolean).join(" ") || req.user.email;
-      const displayName = rawDisplayName.replace(/[\[\]<>{}]/g, "").slice(0, 100);
+      const displayName = sanitizeTavusDisplayName(rawDisplayName);
 
       // Optional per-session overrides from the client. The lab page exposes
       // these via an Advanced Settings panel; the standard /video page sends
@@ -486,12 +449,12 @@ export function createTavusRouter() {
         language?: string;
         disableFillers?: boolean;
       };
-      const greeting = typeof settings.greeting === "string" && settings.greeting.trim()
-        ? settings.greeting.trim().slice(0, 500)
-        : `Hi ${displayName.split(" ")[0]}, I'm Addie! How can I help you today?`;
-      const extraContext = typeof settings.extraContext === "string"
-        ? settings.extraContext.trim().slice(0, 2000)
-        : "";
+      const greetingOverride = boundedTrimmedTavusSetting(
+        settings.greeting,
+        TAVUS_SETTING_LIMITS.greeting,
+      );
+      const greeting = greetingOverride
+        || `Hi ${displayName.split(" ")[0]}, I'm Addie! How can I help you today?`;
       // Clamp duration: Tavus's effective max is 1 hour for most plans.
       const maxDurationSec = typeof settings.maxDurationSec === "number" && Number.isFinite(settings.maxDurationSec)
         ? Math.max(60, Math.min(7200, Math.round(settings.maxDurationSec)))
@@ -516,11 +479,15 @@ export function createTavusRouter() {
         context: threadContext,
       });
 
-      // Tavus appends conversational_context to the system message sent to
-      // our LLM endpoint. Always include the thread_id marker so we can
-      // correlate LLM calls; append the operator's free-form text after.
-      const baseContext = `[conductor:thread_id=${thread.thread_id}] The user's name is ${displayName}.`;
-      const conversationalContext = extraContext ? `${baseContext}\n\n${extraContext}` : baseContext;
+      // Tavus appends conversational_context to its system message. Our LLM
+      // handler currently excludes incoming system-role text, but keep the
+      // server-framed session metadata outside the encoded user-supplied
+      // context as a lexical/observability boundary at this transport layer.
+      const conversationalContext = buildTavusConversationalContext({
+        threadId: thread.thread_id,
+        displayName,
+        extraContext: settings.extraContext,
+      });
 
       const tavusBody: Record<string, unknown> = {
         persona_id: personaId,
@@ -589,7 +556,7 @@ export function createTavusRouter() {
       return res.status(503).json({ error: { message: "LLM not available" } });
     }
 
-    const { messages } = req.body as { messages?: RawMessage[] };
+    const { messages } = req.body as { messages?: TavusRawMessage[] };
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: { message: "No messages provided" } });
@@ -602,7 +569,7 @@ export function createTavusRouter() {
     // Extract thread_id from the system message injected via conversational_context
     const threadIdMatch = messages
       .filter((m) => m.role === "system")
-      .map((m) => extractText(m.content))
+      .map((m) => extractTavusText(m.content))
       .join(" ")
       .match(/\[conductor:thread_id=([0-9a-f-]{36})\]/);
     const threadId = threadIdMatch?.[1] ?? null;
@@ -610,7 +577,7 @@ export function createTavusRouter() {
       logger.warn("Tavus LLM: No thread_id in system message — transcript will not be logged");
     }
 
-    const parsed = buildThreadContext(messages);
+    const parsed = buildTavusThreadContext(messages);
     if (!parsed) {
       return res.status(400).json({ error: { message: "No user message found" } });
     }
