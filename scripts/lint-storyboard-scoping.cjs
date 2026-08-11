@@ -50,6 +50,7 @@ const TENANT_SCOPED_TASKS = new Set([
   'request_proposals',
   'refine_proposals',
   'finalize_proposals',
+  'decline_proposals',
   'get_signals',
   'activate_signal',
   'sync_audiences',
