@@ -93,8 +93,12 @@ import {
   boundedTrimmedTavusSetting,
   buildTavusConversationalContext,
   buildTavusThreadContext,
+  buildTavusVoiceUserMessage,
+  createTavusSessionGuidance,
   extractTavusText,
+  readTavusSessionGuidance,
   sanitizeTavusDisplayName,
+  TAVUS_SESSION_GUIDANCE_POLICY,
   TAVUS_SETTING_LIMITS,
   type TavusRawMessage,
 } from "../services/tavus-conversational-context.js";
@@ -465,11 +469,17 @@ export function createTavusRouter() {
         ? settings.language
         : undefined;
       const disableFillers = settings.disableFillers === true;
+      const sessionGuidance = createTavusSessionGuidance(
+        settings.extraContext
+      );
 
       // Create a thread to track this video conversation
       const threadService = getThreadService();
       const threadContext: Record<string, unknown> = { persona_id: personaId };
       if (disableFillers) threadContext.disable_fillers = true;
+      if (sessionGuidance) {
+        threadContext.video_session_guidance = sessionGuidance;
+      }
       const thread = await threadService.getOrCreateThread({
         channel: "video",
         external_id: conversationName,
@@ -479,14 +489,12 @@ export function createTavusRouter() {
         context: threadContext,
       });
 
-      // Tavus appends conversational_context to its system message. Our LLM
-      // handler currently excludes incoming system-role text, but keep the
-      // server-framed session metadata outside the encoded user-supplied
-      // context as a lexical/observability boundary at this transport layer.
+      // Tavus appends conversational_context to its system message. Keep it
+      // strictly server-generated: caller guidance is stored on our thread and
+      // later added to the caller's current user turn at user priority.
       const conversationalContext = buildTavusConversationalContext({
         threadId: thread.thread_id,
         displayName,
-        extraContext: settings.extraContext,
       });
 
       const tavusBody: Record<string, unknown> = {
@@ -526,7 +534,7 @@ export function createTavusRouter() {
       // directly without scanning the active list.
       if (data.conversation_id) {
         await threadService
-          .updateThreadContext(thread.thread_id, { tavus_conversation_id: data.conversation_id })
+          .patchThreadContext(thread.thread_id, { tavus_conversation_id: data.conversation_id })
           .catch((err) => logger.warn({ err, threadId: thread.thread_id }, "Tavus: failed to persist tavus_conversation_id"));
       }
       return res.json({
@@ -598,6 +606,7 @@ export function createTavusRouter() {
     let userDisplayName: string | null = null;
     let voiceUserId: string | null = null;
     let voiceFillersDisabled = false;
+    let sessionGuidance = "";
     if (threadId) {
       const threadService = getThreadService();
       try {
@@ -606,6 +615,9 @@ export function createTavusRouter() {
           userDisplayName = thread.user_display_name;
           voiceUserId = thread.user_id;
           voiceFillersDisabled = thread.context?.disable_fillers === true;
+          sessionGuidance = readTavusSessionGuidance(
+            thread.context?.video_session_guidance
+          );
           const result = await buildVoiceRequestTools(thread.user_id, threadId);
           voiceRequestTools = result.requestTools;
           memberRequestContext = result.requestContext;
@@ -619,36 +631,39 @@ export function createTavusRouter() {
       }
     }
 
-    // Log the user message (before voice prefix is applied)
+    // Keep the spoken transcript separate from prompt decoration. Logging and
+    // filler classification must reflect what the caller actually said.
+    const spokenMessage = currentMessage;
+
+    // Log the user message (before voice prefix or guidance is applied)
     const voiceSpeakerName = sanitizeSpeakerName(userDisplayName);
     if (threadId) {
       const threadService = getThreadService();
       threadService.addMessage({
         thread_id: threadId,
         role: "user",
-        content: currentMessage,
+        content: spokenMessage,
         user_id: voiceUserId ?? undefined,
         user_display_name: voiceSpeakerName,
         message_source: 'voice',
       }).catch((err) => logger.error({ err }, "Tavus: Failed to log user message"));
     }
 
-    // Wrap the user message with voice-mode instructions so they're adjacent
-    // to the actual question (closer = stronger influence on the response).
-    const voicePrefix =
-      "[VOICE CALL — This will be spoken aloud. Keep it SHORT. No lists, no bullets, no markdown, no asterisks. " +
-      "Greetings and small talk: one sentence. " +
-      "Factual or yes/no questions: one to two sentences. " +
-      "Conceptual questions: two to three sentences max — give the essence, not the full explanation. " +
-      "Use natural spoken punctuation — pauses, em-dashes, commas — so it sounds " +
-      "like a person talking, not reading from a document.]\n\n";
-    currentMessage = voicePrefix + currentMessage;
+    // Voice instructions and optional caller guidance stay adjacent to the
+    // current user turn. Caller text never enters application-owned context.
+    currentMessage = buildTavusVoiceUserMessage(
+      spokenMessage,
+      sessionGuidance ? { version: 1, text: sessionGuidance } : undefined
+    );
 
     const voiceContextLines = [
       "VOICE MODE: This is a live video call. Your response will be spoken aloud.",
     ];
     if (userDisplayName) {
       voiceContextLines.push(`You are speaking with ${userDisplayName}. You already know their name — never ask for it.`);
+    }
+    if (sessionGuidance) {
+      voiceContextLines.push(TAVUS_SESSION_GUIDANCE_POLICY);
     }
     voiceContextLines.push(
       "Match response length to the question — brief for simple questions, fuller for substantive ones.",
@@ -695,8 +710,7 @@ export function createTavusRouter() {
     // thread.context.disable_fillers to skip this entirely for users who'd rather
     // hear a half-second of silence than any preamble.
     const questionPattern = /\b(what|how|why|explain|tell me|describe|walk me through|can you|could you)\b/i;
-    const rawMessage = currentMessage.slice(voicePrefix.length);
-    const isSubstantive = rawMessage.length > 30 && questionPattern.test(rawMessage);
+    const isSubstantive = spokenMessage.length > 30 && questionPattern.test(spokenMessage);
     let fullResponse = "";
     if (isSubstantive && !voiceFillersDisabled) {
       const fillers = [
