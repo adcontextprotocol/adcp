@@ -123,6 +123,16 @@ describe('Addie tool reference', () => {
     expect(rules).toContain("aren't loaded in this conversation");
   });
 
+  it('uses a valid human-action escalation category for failed Slack invites', () => {
+    const rules = loadRules();
+    const slackRules = rules.slice(
+      rules.indexOf('## Slack Invite Domain Restrictions'),
+      rules.indexOf('## Email Verification and Notification Failures')
+    );
+    expect(slackRules).toContain('category `needs_human_action`');
+    expect(slackRules).not.toContain("'invite' category");
+  });
+
   it('every tool in the public docs page is also referenced in the prompt catalog', async () => {
     // The two outputs of build-addie-tool-reference share a registration
     // source but use different render paths (`render` for the docs page,

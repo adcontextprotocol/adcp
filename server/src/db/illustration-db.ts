@@ -175,6 +175,7 @@ export async function getPerspectiveWithIllustration(slug: string): Promise<{
      FROM perspectives p
      LEFT JOIN working_groups wg ON wg.id = p.working_group_id
      WHERE p.slug = $1 AND p.status = 'published'
+       AND p.is_members_only = false
        AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
     [slug]
   );

@@ -105,7 +105,7 @@ describe('public external URL navigation guard', () => {
     const source = readFileSync(join(publicRoot, 'working-groups/detail.html'), 'utf8');
     const httpSource = readFileSync(join(process.cwd(), 'server/src/http.ts'), 'utf8');
 
-    expect(httpSource).toContain('slackInviteUrl: SLACK_INVITE_URL');
+    expect(httpSource).toContain('slackInviteUrl: SLACK_JOIN_GUIDE_URL');
     expect(httpSource).toContain('isLinkedToSlack,');
     expect(source).toContain('isLinkedToSlack = config.user?.isLinkedToSlack === true');
     expect(source).toContain('const slackCta = resolveSlackCta({');

