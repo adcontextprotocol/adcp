@@ -1491,7 +1491,7 @@ describe('tenant routing smoke', () => {
       await close();
     }
   }, 20000);
-  it('keeps get_products compatible and replays across the AdCP 3.2 split aliases', async () => {
+  it('keeps get_products compatible while exposing independent AdCP 3.2 split tasks', async () => {
     const { baseUrl, close } = await bootServer();
     try {
       const url = `${baseUrl}/sales/mcp`;
@@ -1561,7 +1561,7 @@ describe('tenant routing smoke', () => {
         items: { $ref: '#/$defs/media-buy~1proposal-refinement.json' },
       });
       expect(refineAlias?.inputSchema?.$defs?.['media-buy/proposal-refinement.json'])
-        .toMatchObject({ type: 'object', required: ['proposal_id'] });
+        .toMatchObject({ type: 'object', required: ['proposal_id', 'instructions'] });
 
       const keylessLegacy = await callTenantTool(url, 3, 'get_products', {
         buying_mode: 'wholesale',
@@ -1584,7 +1584,7 @@ describe('tenant routing smoke', () => {
       }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string } } } };
       expect(invalidKeylessList.result?.structuredContent?.adcp_error).toMatchObject({
         code: 'INVALID_REQUEST',
-        field: 'pagination.max_results',
+        field: 'max_results',
       });
 
       const malformedAccount = await callTenantTool(url, 33, 'list_products', {
