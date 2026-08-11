@@ -4,6 +4,15 @@ title: "Seller returns submitted task envelope when create_media_buy goes async"
 category: media_buy_seller
 summary: "Verifies the AdCP-payload wire shape of the submitted-arm response from create_media_buy: status='submitted', task_id present, no media_buy_id and no packages on the envelope."
 track: media_buy
+
+# The submitted response arm is a production protocol path, but forcing a
+# seller into it is a sandbox-only compliance capability. Gate the entire
+# storyboard on the controller scenario advertisement so sellers that cannot
+# deterministically exercise this path skip before phase execution.
+requires_capability:
+  path: compliance_testing.scenarios
+  contains: force_create_media_buy_arm
+
 required_tools:
   - create_media_buy
   - comply_test_controller
@@ -33,9 +42,9 @@ narrative: |
   buys synchronously. To make this storyboard runnable across implementations, the test
   harness uses comply_test_controller force_create_media_buy_arm to drive the next
   create_media_buy call into the submitted arm. The directive is keyed to the caller's
-  authenticated sandbox account (account + principal pair); sellers that do not implement
-  the controller scenario return UNKNOWN_SCENARIO and the runner grades this storyboard
-  not_applicable rather than failed.
+  authenticated sandbox account (account + principal pair). The storyboard applies only
+  when get_adcp_capabilities advertises force_create_media_buy_arm under
+  compliance_testing.scenarios; other sellers skip before phase execution.
 
   Round-trip integrity. The deterministic task_id is captured from the controller
   response and reused as the expected task_id on the create_media_buy assertion, so the
@@ -68,11 +77,12 @@ caller:
 
 prerequisites:
   description: |
-    Seller exposes comply_test_controller in sandbox mode and supports
-    force_create_media_buy_arm. The directive is keyed to the caller's
-    authenticated sandbox account; without controller support, the storyboard
-    grades not_applicable — sellers cannot be deterministically driven into
-    the submitted arm by buyer-initiated requests alone.
+    Seller exposes comply_test_controller in sandbox mode and advertises
+    force_create_media_buy_arm under compliance_testing.scenarios. The
+    directive is keyed to the caller's authenticated sandbox account. Sellers
+    that omit the scenario grade not_applicable before phase execution because
+    buyer-initiated requests alone cannot deterministically drive the submitted
+    arm.
   test_kit: "test-kits/acme-outdoor.yaml"
   controller_seeding: true
 
