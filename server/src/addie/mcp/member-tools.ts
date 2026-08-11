@@ -1907,6 +1907,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1" or "3.0" for badge-eligible stable lines, or "3.1-rc"/"3.1-beta" for explicit prerelease diagnostics. Defaults to the canonical badge-eligible target when advertised.' },
       },
       required: ['agent_url'],
+      additionalProperties: false,
     },
   },
   {
