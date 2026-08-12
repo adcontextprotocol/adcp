@@ -913,6 +913,25 @@ export class ComplianceDatabase {
   }
 
   /**
+   * Release an in-progress heartbeat lock without publishing a verdict.
+   *
+   * Setting the timestamp to NOW() puts the agent back on its normal monitoring
+   * cadence instead of leaving it oldest-due and starving the queue. The
+   * future-timestamp predicate is a compare-and-set guard: an owner refresh or
+   * another successful run that already replaced the lock must win.
+   */
+  async deferComplianceCheckAfterInconclusiveTarget(agentUrl: string): Promise<boolean> {
+    const result = await query(
+      `UPDATE agent_compliance_status
+       SET last_checked_at = NOW(), updated_at = NOW()
+       WHERE agent_url = $1
+         AND last_checked_at > NOW()`,
+      [agentUrl],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  /**
    * Return the notices_json array from the most recent non-dry-run compliance
    * run for the agent. Returns an empty array when no run exists or when the
    * latest run stored no notices.

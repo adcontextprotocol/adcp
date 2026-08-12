@@ -47,8 +47,11 @@ import {
   complianceResultToDbInput,
   loadComplianceIndex,
   badgeEligibleVersionsForTargetSelection,
+  hasTrustworthyComplianceTarget,
   selectComplianceTargetForAgent,
   selectComplianceTargetForAgentSelection,
+  storedComplianceTargetMatchesObservedProfile,
+  UNRESOLVED_COMPLIANCE_TARGET_MESSAGE,
   type ComplyOptions,
   type CapabilityResolutionErrorInfo,
   type ComplianceTargetSelection,
@@ -4516,6 +4519,7 @@ export function createMemberToolHandlers(
     let runTargetSelection: ComplianceTargetSelection = {
       target: runTarget,
       confirmed: false,
+      source: 'explicit',
     };
     let skippedCanonicalWriteReason: 'target' | 'tracks' | null = null;
 
@@ -4547,6 +4551,12 @@ export function createMemberToolHandlers(
         'canonical',
         seededSupportedVersions,
       );
+      if (!hasTrustworthyComplianceTarget(runTargetSelection)) {
+        return (
+          `**Compliance target unavailable**\n\n${UNRESOLVED_COMPLIANCE_TARGET_MESSAGE} ` +
+          `Retry after \`get_adcp_capabilities\` is responding reliably, or choose an explicit supported target for a diagnostic run.`
+        );
+      }
       runTarget = runTargetSelection.target;
     } else {
       const targetError = await explicitTargetSupportErrorFromAgent(
@@ -4568,6 +4578,12 @@ export function createMemberToolHandlers(
 
     try {
       const result = await comply(resolved.resolvedUrl, complyOptions, runTarget);
+      if (!storedComplianceTargetMatchesObservedProfile(runTargetSelection, result.agent_profile)) {
+        return (
+          `**Compliance target unavailable**\n\n${UNRESOLVED_COMPLIANCE_TARGET_MESSAGE} ` +
+          `The agent's live profile changed after the diagnostic target was selected; retry the evaluation.`
+        );
+      }
       const badgeEligibleAdcpVersions = [
         ...badgeEligibleVersionsForTargetSelection(runTargetSelection, result.agent_profile),
       ];
