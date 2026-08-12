@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/warning.json",
   "title": "Warning",
-  "description": "A non-blocking observation returned with a successful operation. The operation succeeded exactly as its success arm states. Warnings are immediate receipts, not durable lifecycle state; a continuing condition MUST also appear on its authoritative read surface as an advisory, defect, delivery issue, approval state, or other applicable resource state.",
+  "description": "A non-blocking observation returned with a successful operation. The operation succeeded exactly as its success arm states. Warnings are immediate receipts, not durable lifecycle state; a continuing condition MUST also appear on its authoritative read surface as an indicator, defect, delivery issue, approval state, or other applicable resource state.",
   "type": "object",
   "properties": {
     "code": {
@@ -78,12 +78,12 @@
   "x-adcp-validation": {
     "verifier_constraints": {
       "warning_capability_requirements": {
-        "inventory_shortfall_forecast": "media_buy.supported_advisory_types contains inventory_shortfall_forecast",
-        "flight_change_creates_pacing_risk": "media_buy.supported_advisory_types contains pacing_risk",
+        "inventory_shortfall_forecast": "media_buy.supported_indicator_types contains inventory_shortfall_forecast",
+        "flight_change_creates_pacing_risk": "media_buy.supported_indicator_types contains pacing_risk",
         "fields_ignored_due_to_precedence": "none"
       }
     },
-    "spec": "specs/relationship-scoped-advisories.md#warning-contract"
+    "spec": "specs/relationship-scoped-indicators.md#warning-contract"
   },
   "additionalProperties": true
 }

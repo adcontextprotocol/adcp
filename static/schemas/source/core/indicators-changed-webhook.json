@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/core/advisories-changed-webhook.json",
-  "title": "Advisories Changed Webhook",
-  "description": "Account-anchored invalidation fired when the semantic advisory snapshot or its evaluation coverage changes on a media buy, package, or package–creative assignment. Registered prospectively through sync_accounts notification_configs with event_types: [\"advisories.changed\"]; activation does not replay current advisories, so buyers establish a complete get_media_buys baseline by enumerating known IDs or requesting every media-buy status and exhausting pagination, without an advisory filter. The payload is not authoritative advisory state: receivers verify signing, dedupe by idempotency_key, then use get_media_buys without an advisory filter. Re-evaluation that changes only advisories_as_of MUST NOT fire; a material in-place creative update invalidates prior assignment evaluations and MUST fire.",
+  "$id": "/schemas/core/indicators-changed-webhook.json",
+  "title": "Indicators Changed Webhook",
+  "description": "Account-anchored invalidation fired when the semantic indicator snapshot or its evaluation coverage changes on a media buy, package, or package–creative assignment. Registered prospectively through sync_accounts notification_configs with event_types: [\"indicators.changed\"]; activation does not replay current indicators, so buyers establish a complete get_media_buys baseline by enumerating known IDs or requesting every media-buy status and exhausting pagination, without an indicator filter. The payload is not authoritative indicator state: receivers verify signing, dedupe by idempotency_key, then use get_media_buys without an indicator filter. Re-evaluation that changes only indicators_as_of MUST NOT fire; a material in-place creative update invalidates prior assignment evaluations and MUST fire.",
   "type": "object",
   "properties": {
     "idempotency_key": {
@@ -21,7 +21,7 @@
     },
     "notification_type": {
       "type": "string",
-      "const": "advisories.changed"
+      "const": "indicators.changed"
     },
     "fired_at": {
       "type": "string",
@@ -44,7 +44,7 @@
         "package",
         "creative_assignment"
       ],
-      "description": "Identifies which advisory-bearing snapshot changed."
+      "description": "Identifies which indicator-bearing snapshot changed."
     },
     "media_buy_id": {
       "type": "string",
@@ -68,12 +68,12 @@
         "coverage_changed",
         "assignment_removed"
       ],
-      "description": "Coarse invalidation reason. Buyers MUST reread rather than applying this value as state. invalidated is emitted when a material creative-content update retires the prior evaluation and the relationship becomes unknown until reevaluated. assignment_removed is emitted to advisory subscribers when deletion retires keys for a package–creative relationship."
+      "description": "Coarse invalidation reason. Buyers MUST reread rather than applying this value as state. invalidated is emitted when a material creative-content update retires the prior evaluation and the relationship becomes unknown until reevaluated. assignment_removed is emitted to indicator subscribers when deletion retires keys for a package–creative relationship."
     },
-    "changed_advisory_types": {
+    "changed_indicator_types": {
       "type": "array",
       "items": {
-        "$ref": "/schemas/enums/advisory-type.json"
+        "$ref": "/schemas/enums/indicator-type.json"
       },
       "minItems": 1,
       "uniqueItems": true,
@@ -98,7 +98,7 @@
     "relationship_kind",
     "media_buy_id",
     "change_kind",
-    "changed_advisory_types",
+    "changed_indicator_types",
     "observed_at"
   ],
   "allOf": [
@@ -143,9 +143,9 @@
     {
       "description": "Creative fatigue changed for one assignment",
       "data": {
-        "idempotency_key": "whk_01K2ADVISORY4EXAMPLE8Q7M5",
-        "notification_id": "advchg_mb_a_pkg_social_cr_video_17",
-        "notification_type": "advisories.changed",
+        "idempotency_key": "whk_01K2INDICATOR4EXAMPLE8Q7M5",
+        "notification_id": "indchg_mb_a_pkg_social_cr_video_17",
+        "notification_type": "indicators.changed",
         "fired_at": "2026-08-04T12:01:00Z",
         "subscriber_id": "buyer-primary",
         "account_id": "acc_example",
@@ -154,7 +154,7 @@
         "package_id": "pkg_social",
         "creative_id": "cr_summer_video",
         "change_kind": "asserted",
-        "changed_advisory_types": [
+        "changed_indicator_types": [
           "creative_fatigue"
         ],
         "observed_at": "2026-08-04T12:00:00Z"

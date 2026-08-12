@@ -6,7 +6,7 @@
   "type": "object",
   "properties": {
     "scope": {
-      "$ref": "/schemas/core/advisory-scope.json",
+      "$ref": "/schemas/core/indicator-scope.json",
       "description": "Publisher or placement to which this approval outcome applies."
     },
     "approval_status": {

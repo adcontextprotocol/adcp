@@ -1,15 +1,15 @@
-# Resource-scoped advisories, warnings, and assignment notifications for AdCP 3.2
+# Resource-scoped indicators, warnings, and assignment notifications for AdCP 3.2
 
 ## Decision requested
 
 Adopt a joined implementation of [#4248](https://github.com/adcontextprotocol/adcp/issues/4248) and the current-state portion of [#6121](https://github.com/adcontextprotocol/adcp/issues/6121):
 
 - structured `warnings[]` on successful create/update operations;
-- compact current `advisories[]` on `get_media_buys`, with an optional bounded `list_creatives` reverse projection rather than a new task;
+- compact current `indicators[]` on `get_media_buys`, with an optional bounded `list_creatives` reverse projection rather than a new task;
 - scoped assignment approval mirrored when both read directions are declared; and
-- mandatory `advisories.changed` invalidations, with independently optional assignment invalidations and creative-library reverse projections.
+- mandatory `indicators.changed` invalidations, with independently optional assignment invalidations and creative-library reverse projections.
 
-This proposal does not introduce advisory IDs, history, lifecycle resources, methodology sub-versions, or a generic apply-recommendation dispatcher.
+This proposal does not introduce indicator IDs, history, lifecycle resources, methodology sub-versions, or a generic apply-recommendation dispatcher.
 
 ## Semantic boundary
 
@@ -18,16 +18,16 @@ This proposal does not introduce advisory IDs, history, lifecycle resources, met
 | Failed operation | `errors[]` |
 | Buyer decision required before success | `input-required` |
 | Successful operation with noteworthy context | success `warnings[]` |
-| Current material risk or optimization opportunity warranting buyer attention | resource-scoped `advisories[]` |
+| Current material risk or optimization opportunity warranting buyer attention | resource-scoped `indicators[]` |
 | Assignment eligibility decision | approval state |
 | Resource-local serving gap | defect work in #4586 |
 | Blocking/degrading operational condition | impairment or delivery-issue work in #5968 |
 
 A warning is not durable state. If its condition remains current, the seller also projects it onto the applicable authoritative read. This prevents warning-only integrations from degrading into log sinks while preserving the timing value of an immediate success receipt.
 
-An advisory says that the buyer should evaluate and probably address a condition. It is not itself an authorization, executable action, or claim that one universal remedy exists. Buyer products may translate advisories into recommendations, but mutations continue to use their normal AdCP task and governance path.
+An indicator says that the buyer should evaluate and probably address a condition. It is not itself an authorization, executable action, or claim that one universal remedy exists. Buyer products may translate indicators into recommendations, but mutations continue to use their normal AdCP task and governance path.
 
-## Advisory object and catalog
+## Indicator object and catalog
 
 The compact object remains:
 
@@ -70,12 +70,12 @@ The enum descriptions define normative broad meanings. Different sellers are not
 
 ```text
 get_media_buys
-media_buys[].advisories[]
-└── packages[].advisories[]
-    └── creative_approvals[].advisories[]
+media_buys[].indicators[]
+└── packages[].indicators[]
+    └── creative_approvals[].indicators[]
 
 list_creatives
-creatives[].assignments.assigned_packages[].advisories[]
+creatives[].assignments.assigned_packages[].indicators[]
 ```
 
 The last path is an optional reverse projection of the same package–creative relationship. Every seller exposes the authoritative relationship through `get_media_buys`. A creative-library seller advertises `list_creatives` in `relationship_notifications.projection_tasks`; only then must it include `media_buy_id` and `approval_status` on every reverse assignment row and keep both projections coherent. This bounded projection is useful for discovery but is not a repair task.
@@ -84,34 +84,34 @@ Uniform eligibility uses the existing scalar approval. Mixed publisher/placement
 
 ## Evaluation contract
 
-Every present advisory array has:
+Every present indicator array has:
 
-- `advisory_types_evaluated[]` — exact type coverage;
-- `advisories_as_of` — snapshot freshness; and
-- optional `advisories_evaluated_scope[]` — publisher/placement coverage.
+- `indicator_types_evaluated[]` — exact type coverage;
+- `indicators_as_of` — snapshot freshness; and
+- optional `indicators_evaluated_scope[]` — publisher/placement coverage.
 
-Omitted `advisories` is unknown. An empty array is clear only for the named types and coverage. Every returned type appears in `advisory_types_evaluated`. Partial scope requires every assertion to carry a contained `scope`; each asserted scope is contained by the evaluated publisher/placement coverage. An unscoped assertion is valid only for whole-resource evaluation. A snapshot contains at most one logical item per `(type, normalized scope set)`.
+Omitted `indicators` is unknown. An empty array is clear only for the named types and coverage. Every returned type appears in `indicator_types_evaluated`. Partial scope requires every assertion to carry a contained `scope`; each asserted scope is contained by the evaluated publisher/placement coverage. An unscoped assertion is valid only for whole-resource evaluation. A snapshot contains at most one logical item per `(type, normalized scope set)`.
 
 Snapshots change stored state only when strictly newer. Equal-timestamp conflicts are invalid/no-op. Filter and pagination disappearance never clears state. A direct unfiltered read confirming relationship deletion retires that relationship's keys.
 
 ## Query contract
 
-- `list_creatives.filters.advisory_types` selects creatives with a matching assignment advisory.
-- `get_media_buys.advisory_types` selects buys with a matching buy, package, or assignment advisory.
+- `list_creatives.filters.indicator_types` selects creatives with a matching assignment indicator.
+- `get_media_buys.indicator_types` selects buys with a matching buy, package, or assignment indicator.
 - Values use OR logic and combine with other filters using AND.
-- `list_creatives.assignment_projection: matching` returns only nested assignments matching `filters.advisory_types`; `assignment_limit` bounds rows per creative at 200.
+- `list_creatives.assignment_projection: matching` returns only nested assignments matching `filters.indicator_types`; `assignment_limit` bounds rows per creative at 200.
 - `returned_assignment_count`, `matching_assignment_count`, and `assignments_truncated` make nested completeness explicit. Truncated results are discovery-only; `get_media_buys` is the complete repair path.
 - Creative field projections preserve the released required envelope: `creative_id`, `name`, `status`, `created_date`, `updated_date`, and exactly one format identity. `fields` limits only optional payload.
 
 ## Webhook contract
 
-All advisory-capable sellers accept account-level `notification_configs[]` subscriptions for:
+All indicator-capable sellers accept account-level `notification_configs[]` subscriptions for:
 
-- `advisories.changed`.
+- `indicators.changed`.
 
-Every advisory-capable seller declares `advisories.changed` in `relationship_notifications`; a seller without an advisory catalog may declare `creative.assignment_changed` alone when it can detect assignment or approval changes, including when it is inline-only. A creative-library seller may independently declare the bounded `list_creatives` reverse projection. `get_media_buys` is always the complete repair task. These are signed invalidations. Declaring the capability requires a usable `webhook_signing` block with `supported: true`, `profile`, `algorithms`, and `legacy_hmac_fallback`. Payloads identify the relationship but never carry authoritative advisory or approval state.
+Every indicator-capable seller declares `indicators.changed` in `relationship_notifications`; a seller without an indicator catalog may declare `creative.assignment_changed` alone when it can detect assignment or approval changes, including when it is inline-only. A creative-library seller may independently declare the bounded `list_creatives` reverse projection. `get_media_buys` is always the complete repair task. These are signed invalidations. Declaring the capability requires a usable `webhook_signing` block with `supported: true`, `profile`, `algorithms`, and `legacy_hmac_fallback`. Payloads identify the relationship but never carry authoritative indicator or approval state.
 
-Subscriptions are prospective and do not replay current conditions. After activation/reactivation the buyer establishes a complete baseline through `get_media_buys`, either by enumerating known IDs or by requesting all seven media-buy statuses and following pagination to exhaustion; it does not use `advisory_types`. `advisories.changed` fires for assertion-set changes, evaluation-coverage changes, and deletion of an assignment that retires stored keys. Advancing only `advisories_as_of` does not fire. A material in-place creative update invalidates prior assignment evaluations, emits `change_kind: invalidated`, and omits stale snapshots until reevaluation (or atomically publishes a strictly newer evaluation and fires `updated`). `creative.assignment_changed` fires for assignment addition/removal and assignment approval/reason/scoped-outcome changes. Retried delivery reuses `idempotency_key`; re-emission of the same logical change retains `notification_id`.
+Subscriptions are prospective and do not replay current conditions. After activation/reactivation the buyer establishes a complete baseline through `get_media_buys`, either by enumerating known IDs or by requesting all seven media-buy statuses and following pagination to exhaustion; it does not use `indicator_types`. `indicators.changed` fires for assertion-set changes, evaluation-coverage changes, and deletion of an assignment that retires stored keys. Advancing only `indicators_as_of` does not fire. A material in-place creative update invalidates prior assignment evaluations, emits `change_kind: invalidated`, and omits stale snapshots until reevaluation (or atomically publishes a strictly newer evaluation and fires `updated`). `creative.assignment_changed` fires for assignment addition/removal and assignment approval/reason/scoped-outcome changes. Retried delivery reuses `idempotency_key`; re-emission of the same logical change retains `notification_id`.
 
 ## Warning contract
 
@@ -130,31 +130,31 @@ Terminal error and submitted arms reject `warnings`. `sync_creatives` does not r
 
 Every warning carries typed `affected_resource` identity. The initial codes target media buys or packages; package warnings include both `media_buy_id` and `package_id`. Buyers never parse `message` or seller-defined diagnostic values to find the durable readback target.
 
-Durable linkage is capability-gated: `inventory_shortfall_forecast` requires that supported advisory type; `flight_change_creates_pacing_risk` requires `pacing_risk`. `fields_ignored_due_to_precedence` is transaction-relative and requires no durable advisory capability.
+Durable linkage is capability-gated: `inventory_shortfall_forecast` requires that supported indicator type; `flight_change_creates_pacing_risk` requires `pacing_risk`. `fields_ignored_due_to_precedence` is transaction-relative and requires no durable indicator capability.
 
-## Advisories versus actions
+## Indicators versus actions
 
-The protocol object remains an `Advisory`; buyer products may present it as a recommendation. Core does not include a generic action union. A provider-native suggested action or deep link may appear in `ext`, but executing any change still uses its normal AdCP task and authorization/governance path.
+The protocol object remains an `Indicator`; buyer products may present it as a recommendation. Core does not include a generic action union. A provider-native suggested action or deep link may appear in `ext`, but executing any change still uses its normal AdCP task and authorization/governance path.
 
 ## Conformance requirements
 
 1. Accept every standard type only at its allowed resource level.
-2. Reject an advisory snapshot without `advisory_types_evaluated` or `advisories_as_of`.
+2. Reject an indicator snapshot without `indicator_types_evaluated` or `indicators_as_of`.
 3. Reject assertions outside evaluated scope and duplicate logical `(type, normalized scope)` keys.
 4. Keep optional reverse assignment projections coherent, including scoped approval state.
 5. Accept success-with-warning and reject warnings on terminal or submitted arms.
-6. Fire `advisories.changed` on semantic change but not timestamp-only reevaluation.
+6. Fire `indicators.changed` on semantic change but not timestamp-only reevaluation.
 7. Fire `creative.assignment_changed` for approval changes and assignment deletion when that optional event is declared.
 8. Treat subscriptions as prospective, establish a complete all-status or known-ID baseline, dedupe retries, and repair through an unfiltered authoritative `get_media_buys` read.
 9. Invalidate assignment evaluations after material in-place creative updates.
 
-The machine-readable vectors in `static/compliance/source/test-vectors/relationship-scoped-advisories.json` cover type/evaluation membership, scope containment, logical-key uniqueness, prospective bootstrap, semantic-change firing, timestamp-only suppression, creative-update invalidation, assignment removal, and delivery identity.
+The machine-readable vectors in `static/compliance/source/test-vectors/relationship-scoped-indicators.json` cover type/evaluation membership, scope containment, logical-key uniqueness, prospective bootstrap, semantic-change firing, timestamp-only suppression, creative-update invalidation, assignment removal, and delivery identity.
 
 ## Explicit non-goals
 
 - Universal scoring or provider score comparison
-- Advisory IDs, histories, or independent versions
-- `get_advisories`
+- Indicator IDs, histories, or independent versions
+- `get_indicators`
 - Full provider recommendation-type passthrough
 - Automatic recommendation execution
 - Replacing defects, impairments, or operational delivery issues

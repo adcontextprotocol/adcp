@@ -303,7 +303,7 @@ Webhook envelope shape is determined by **which registration mechanism the buyer
 |---|---|
 | AdCP `push_notification_config` (task argument, MCP/A2A/REST) | [`mcp-webhook-payload.json`](#mcp) |
 | A2A `TaskPushNotificationConfig` ([`CreateTaskPushNotificationConfig`](https://a2a-protocol.org/latest/specification/) RPC, or inline `task_push_notification_config` on `SendMessage`) | A2A native `Task` / `TaskStatusUpdateEvent` per A2A 1.0 §4.3.3 |
-| Account-level `sync_accounts.accounts[].notification_configs[]` | Event-specific payloads such as `creative-status-changed-webhook.json`, `creative-assignment-changed-webhook.json`, `advisories-changed-webhook.json`, `account-status-changed-webhook.json`, or `wholesale-feed-webhook.json` |
+| Account-level `sync_accounts.accounts[].notification_configs[]` | Event-specific payloads such as `creative-status-changed-webhook.json`, `creative-assignment-changed-webhook.json`, `indicators-changed-webhook.json`, `account-status-changed-webhook.json`, or `wholesale-feed-webhook.json` |
 | Agent-level `sync_agent_notification_configs.notification_configs[]` | Event-specific AdCP payload schemas such as `capabilities-changed-webhook.json` |
 
 The two channels are independent. A buyer MAY register both for the same task and receive both webhooks per status change.
@@ -616,14 +616,14 @@ This section is the transport half of the [Snapshot and log contract](/docs/prot
 
 ### Coalescence
 
-For state-shaped event types, sellers SHOULD coalesce multiple near-simultaneous changes on the same resource into a single push. **Coalescence windows are per event type and not a flat ceiling** — a latency-sensitive event (fraud, brand safety) cannot wait the same window an advisory can.
+For state-shaped event types, sellers SHOULD coalesce multiple near-simultaneous changes on the same resource into a single push. **Coalescence windows are per event type and not a flat ceiling** — a latency-sensitive event (fraud, brand safety) cannot wait the same window an indicator can.
 
 | Event type | Default coalescence window | Notes |
 |---|---|---|
 | `impairment` (general) | 5 minutes (SHOULD NOT exceed) | Default for resource-state impairments — audience suspended, creative revoked, etc. |
 | `impairment` (latency-sensitive) | Sub-minute / no coalescence | Fraud-driven, brand-safety-driven, or other classes where the buyer's response window is short. Sellers MUST NOT apply the general default to these. |
-| Future advisory events | Hours to daily | Higher noise tolerance; bigger window appropriate. |
-| Future defect events | Minutes to hours | Between impairment and advisory in urgency. |
+| Future indicator events | Hours to daily | Higher noise tolerance; bigger window appropriate. |
+| Future defect events | Minutes to hours | Between impairment and indicator in urgency. |
 
 Sellers MAY declare a shorter coalescence window via `get_agent_capabilities` for receivers that need sub-default latency. Sellers MUST NOT exceed the per-type default without explicit buyer opt-in declared on the receiver side. Delivery report fires (`scheduled`, `final`) follow their own cadence and are not subject to this coalescence rule.
 

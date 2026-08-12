@@ -44,7 +44,7 @@ See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for
 - Tie broadcast buys to agency billing by attaching `agency_estimate_number` at the buy or package level (package-level overrides buy-level when flights or stations differ)
 - Interpret broadcast delivery reports: `get_media_buy_delivery` returns measurement window data (`live`, `c3`, `c7`) that progresses over days after broadcast — the C7 window's DVR accumulation doesn't close until seven days post-air, and vendor processing adds further delay before final data is available; incomplete data during this period is by design, not underdelivery
 - Use `get_media_buys` to check status, `valid_actions`, and creative approvals before acting
-- Interpret seller advisories as current relationship-scoped state: explain why creative fatigue belongs to one package–creative assignment, why the same creative may be fatigued on one seller but not another, and why provider methodology belongs in `ext`
+- Interpret seller indicators as current relationship-scoped state: explain why creative fatigue belongs to one package–creative assignment, why the same creative may be fatigued on one seller but not another, and why provider methodology belongs in `ext`
 - Handle pricing negotiation, budget allocation, and multi-agent orchestration
 - Use refinement and package requests for complex buying scenarios
 - Monitor and optimize campaign delivery using protocol tools
@@ -87,7 +87,7 @@ See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for
   <Card title="Media buys overview" icon="layer-group" href="/docs/media-buy/media-buys/index">
     Campaign structure, the `pending_creatives` → `pending_start` → `active` state machine, and the approval lifecycle.
   </Card>
-  <Card title="Advisories" icon="lightbulb" href="/docs/media-buy/media-buys/advisories">
+  <Card title="Indicators" icon="lightbulb" href="/docs/media-buy/media-buys/indicators">
     Seller interpretations such as package-scoped creative fatigue, returned through existing resource reads.
   </Card>
   <Card title="Trusted Match Protocol" icon="microchip" href="/docs/trusted-match">
@@ -137,9 +137,9 @@ During the module, Addie will guide you through hands-on exercises:
 7. **Lifecycle management** — Check `valid_actions`, cancel a package, handle `NOT_CANCELLABLE`, use `revision` for concurrency
 8. **Broadcast billing and delivery** — Create a broadcast buy with a buy-level `agency_estimate_number` and one package that overrides it with a station-specific estimate number. Verify both appear on delivery reconciliation. Call `get_media_buy_delivery` and interpret the measurement window fields: explain why `c3` data may be incomplete immediately after broadcast and when the `c7` window closes.
 9. **Multi-agent orchestration and execution** — Manage campaigns across multiple sellers. Trace a cross-publisher suppression scenario: a viewer sees an ad on publisher A, then visits publisher B within the 2-hour recency window — what does Identity Match return and why? Configure frequency parameters (5/week, 2-hour minimum recency) and predict delivery impact. Explain why Context Match and Identity Match are structurally separated.
-10. **Warnings, advisories, and invalidations** — Analyze a success warning and the later resource snapshot; distinguish buy/package/assignment advisory placement, exact type coverage, assignment approval, and webhook invalidation handling.
+10. **Warnings, indicators, and invalidations** — Analyze a success warning and the later resource snapshot; distinguish buy/package/assignment indicator placement, exact type coverage, assignment approval, and webhook invalidation handling.
 
-For the advisory exercise, Addie supplies this compact creative-library fixture:
+For the indicator exercise, Addie supplies this compact creative-library fixture:
 
 ```json
 {
@@ -154,15 +154,15 @@ For the advisory exercise, Addie supplies this compact creative-library fixture:
         "package_id": "pkg_social",
         "assigned_date": "2026-08-01T00:00:00Z",
         "approval_status": "approved",
-        "advisory_types_evaluated": [
+        "indicator_types_evaluated": [
           "creative_fatigue",
           "creative_quality_opportunity"
         ],
-        "advisories_as_of": "2026-08-04T12:00:00Z",
-        "advisories_evaluated_scope": [
+        "indicators_as_of": "2026-08-04T12:00:00Z",
+        "indicators_evaluated_scope": [
           { "publisher_domain": "publisher-a.example" }
         ],
-        "advisories": [
+        "indicators": [
           {
             "type": "creative_fatigue",
             "scope": [
@@ -179,9 +179,9 @@ For the advisory exercise, Addie supplies this compact creative-library fixture:
         "package_id": "pkg_social",
         "assigned_date": "2026-08-01T00:00:00Z",
         "approval_status": "approved",
-        "advisory_types_evaluated": ["creative_fatigue"],
-        "advisories_as_of": "2026-08-04T12:00:00Z",
-        "advisories": []
+        "indicator_types_evaluated": ["creative_fatigue"],
+        "indicators_as_of": "2026-08-04T12:00:00Z",
+        "indicators": []
       },
       {
         "media_buy_id": "mb_c",
@@ -194,7 +194,7 @@ For the advisory exercise, Addie supplies this compact creative-library fixture:
 }
 ```
 
-The learner must identify the first relationship as evaluated for two creative types only on publisher A, with fatigue asserted only on its feed placement. The second is clear only for fatigue, not for every advisory type. The third is unknown but still has stable relationship identity and approval state. Clearing requires a direct, covered, strictly newer snapshot.
+The learner must identify the first relationship as evaluated for two creative types only on publisher A, with fatigue asserted only on its feed placement. The second is clear only for fatigue, not for every indicator type. The third is unknown but still has stable relationship identity and approval state. Clearing requires a direct, covered, strictly newer snapshot.
 
 Addie then supplies this successful `update_media_buy` receipt:
 
@@ -233,9 +233,9 @@ The learner must explain that the update succeeded and the warning is only its i
       "packages": [
         {
           "package_id": "pkg_social",
-          "advisory_types_evaluated": ["pacing_risk"],
-          "advisories_as_of": "2026-08-04T12:00:00Z",
-          "advisories": [{ "type": "pacing_risk" }]
+          "indicator_types_evaluated": ["pacing_risk"],
+          "indicators_as_of": "2026-08-04T12:00:00Z",
+          "indicators": [{ "type": "pacing_risk" }]
         }
       ]
     }
@@ -246,13 +246,13 @@ The learner must explain that the update succeeded and the warning is only its i
 
 The learner must reject treating the warning as either an error or durable state.
 
-Finally, after activating the subscriber and establishing a complete `get_media_buys` baseline (known IDs or every status, fully paginated, without `advisory_types`), the learner receives these invalidations in either order:
+Finally, after activating the subscriber and establishing a complete `get_media_buys` baseline (known IDs or every status, fully paginated, without `indicator_types`), the learner receives these invalidations in either order:
 
 ```json
 {
-  "idempotency_key": "whk_01K2ADVISORY4EXAMPLE8Q7M5",
-  "notification_id": "advchg_1",
-  "notification_type": "advisories.changed",
+  "idempotency_key": "whk_01K2INDICATOR4EXAMPLE8Q7M5",
+  "notification_id": "indchg_1",
+  "notification_type": "indicators.changed",
   "fired_at": "2026-08-04T12:01:00Z",
   "subscriber_id": "optimization-worker",
   "account_id": "acc_1",
@@ -261,7 +261,7 @@ Finally, after activating the subscriber and establishing a complete `get_media_
   "package_id": "pkg_social",
   "creative_id": "acme_summer_video",
   "change_kind": "cleared",
-  "changed_advisory_types": ["creative_fatigue"],
+  "changed_indicator_types": ["creative_fatigue"],
   "observed_at": "2026-08-04T12:00:00Z"
 }
 ```
@@ -284,7 +284,7 @@ Finally, after activating the subscriber and establishing a complete `get_media_
 
 The learner describes the required signature-verification step, dedupes each fire, coalesces them into one unfiltered reread, and reconciles only from the returned snapshot. Cryptographic execution is out of scope for this module; implementers follow the [webhook callback verifier checklist](/docs/building/by-layer/L1/security#webhook-callbacks). A timestamp-only reevaluation must not fire. Assignment removal retires prior keys even when the two invalidations arrive in either order.
 
-For a generative assignment, the learner must explain that this advisory describes the stable brief-or-creative × package aggregate. Fatigue for individual live renders belongs in `get_creative_delivery`. A material in-place brief revision invalidates the prior evaluation and fires `advisories.changed`; the snapshot is unknown until reevaluated. After replacing the creative, a successful direct unfiltered read confirming the old assignment is absent retires its old advisory keys; filtered disappearance does not.
+For a generative assignment, the learner must explain that this indicator describes the stable brief-or-creative × package aggregate. Fatigue for individual live renders belongs in `get_creative_delivery`. A material in-place brief revision invalidates the prior evaluation and fires `indicators.changed`; the snapshot is unknown until reevaluated. After replacing the creative, a successful direct unfiltered read confirming the old assignment is absent retires its old indicator keys; filtered disappearance does not.
 
 ## Assessment
 
