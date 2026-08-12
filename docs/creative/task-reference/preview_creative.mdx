@@ -239,6 +239,7 @@ Generate multiple preview variants by providing different contexts:
 ```typescript
 {
   response_type: "single";
+  quality_used?: "draft" | "production"; // Required when the request supplied quality
   previews: Preview[];       // One per input (or one default)
   interactive_url?: string;  // Optional sandbox for interactive formats
   expires_at?: string;       // Optional ISO 8601 expiration; omitted means no expiration
@@ -253,7 +254,11 @@ Generate multiple preview variants by providing different contexts:
   results: Array<{
     success: boolean;
     creative_id: string;
-    response?: { previews: Preview[]; expires_at?: string; };
+    quality_used?: "draft" | "production"; // Required when effective request supplied quality
+    response?: {
+      previews: Preview[];
+      expires_at?: string;
+    };
     errors?: Array<{ code: string; message: string; }>;
   }>;
 }
@@ -353,7 +358,9 @@ These formats have the widest gap between pre-flight and post-flight: a pre-flig
 
 ### Quality mismatch
 
-If the requested quality level is not supported, the agent renders at the best quality it can provide. The protocol does not require agents to support both levels, standardize per-capability quality discovery, or echo the actual quality used. Quality is therefore best-effort and not machine-verifiable in 3.x; if exact fidelity matters, verify the render by inspection before approval.
+If the requested quality level is not supported, the agent renders at the best quality it can provide and reports that tier in `quality_used`. When a single request supplies `quality`, the response MUST include `quality_used`. For batch mode, each successful result whose effective request supplied `quality`—either on the item or through the batch-level default—MUST include `quality_used`. Agents SHOULD report `quality_used` even when the request omitted `quality`, so buyers can record the renderer's default tier.
+
+Buyers MUST compare `quality_used` with the requested value before treating a preview as approval-ready. A mismatch is an explicit downgrade, not confirmation that the requested fidelity was honored. `quality_used` does not appear on variant-mode replay because that mode reproduces a historical execution rather than selecting a new render-quality tier. Agents are not required to support both quality levels or advertise per-capability quality discovery.
 
 ### Preview expiration and variant retention
 

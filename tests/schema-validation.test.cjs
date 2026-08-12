@@ -823,6 +823,7 @@ async function runTests() {
       {
         status: 'completed',
         response_type: 'single',
+        quality_used: 'production',
         previews: [preview]
       },
       {
@@ -832,6 +833,7 @@ async function runTests() {
           {
             success: true,
             creative_id: 'creative_static',
+            quality_used: 'draft',
             response: { previews: [preview] }
           }
         ]
@@ -842,6 +844,9 @@ async function runTests() {
       if (!validate(example)) {
         return validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ');
       }
+    }
+    if (validate({ ...cases[0], quality_used: 'ultra' })) {
+      return 'preview_creative quality_used must use the creative-quality enum';
     }
     return true;
   });
