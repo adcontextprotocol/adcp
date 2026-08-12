@@ -166,6 +166,40 @@ describe('hosted compliance target discovery deadline', () => {
     });
   });
 
+  it('uses recent stored supported versions when live discovery fails', async () => {
+    mocks.discovery.mockRejectedValue(new Error('temporary probe failure'));
+
+    await expect(selectComplianceTargetForAgentSelection(
+      'https://agent.example/mcp',
+      {},
+      mocks.fallbackTarget,
+      'canonical',
+      ['3.1', '3.1', ''],
+    )).resolves.toEqual({
+      target: mocks.selectedTarget,
+      confirmed: false,
+    });
+  });
+
+  it('prefers successful live discovery over recent stored versions', async () => {
+    mocks.discovery.mockResolvedValue({
+      profile: { adcp_supported_versions: ['3.0'] },
+      steps: [],
+    });
+
+    await expect(selectComplianceTargetForAgentSelection(
+      'https://agent.example/mcp',
+      {},
+      mocks.fallbackTarget,
+      'canonical',
+      ['3.1'],
+    )).resolves.toEqual({
+      target: mocks.fallbackTarget,
+      confirmed: true,
+      supportedVersions: ['3.0'],
+    });
+  });
+
   it('rejects caller cancellation after propagating it through discovery fetches', async () => {
     const caller = new AbortController();
     let transportSignal: AbortSignal | undefined;

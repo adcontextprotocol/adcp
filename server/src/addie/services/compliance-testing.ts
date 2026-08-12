@@ -245,6 +245,7 @@ export async function selectComplianceTargetForAgentSelection(
   options: ComplyOptions,
   fallback: HostedComplianceTarget = defaultComplianceTarget(),
   mode: 'preferred' | 'canonical' = 'preferred',
+  seededSupportedVersions?: readonly string[],
 ): Promise<ComplianceTargetSelection> {
   try {
     const discovery = await discoverCapabilitiesWithDeadline(agentUrl, options);
@@ -256,7 +257,26 @@ export async function selectComplianceTargetForAgentSelection(
     if (options.signal?.aborted) {
       throw abortReason(options.signal, 'Hosted compliance target pre-discovery aborted');
     }
-    logger.warn({ err, agentUrl }, 'Could not pre-discover hosted compliance target; using fallback');
+
+    const supportedVersions = [...new Set(
+      (seededSupportedVersions ?? []).filter(version => version.trim().length > 0),
+    )];
+    if (supportedVersions.length > 0) {
+      const profile = { adcp_supported_versions: supportedVersions };
+      const target = mode === 'canonical'
+        ? selectCanonicalHostedComplianceTargetForProfile(profile, fallback)
+        : selectHostedComplianceTargetForProfile(profile, fallback);
+      logger.warn(
+        { err, agentUrl, supportedVersions, selectedTarget: target.requested },
+        'Could not pre-discover hosted compliance target; using recent stored profile',
+      );
+      // The stored profile is safe for choosing which grader to attempt, but
+      // must not flow into badge eligibility. Only a profile observed during
+      // the current run may support issuing or retaining public badges.
+      return { target, confirmed: false };
+    }
+
+    logger.warn({ err, agentUrl }, 'Could not pre-discover hosted compliance target; using default fallback');
     return { target: fallback, confirmed: false };
   }
 }
@@ -266,8 +286,15 @@ export async function selectComplianceTargetForAgent(
   options: ComplyOptions,
   fallback: HostedComplianceTarget = defaultComplianceTarget(),
   mode: 'preferred' | 'canonical' = 'preferred',
+  seededSupportedVersions?: readonly string[],
 ): Promise<HostedComplianceTarget> {
-  const selection = await selectComplianceTargetForAgentSelection(agentUrl, options, fallback, mode);
+  const selection = await selectComplianceTargetForAgentSelection(
+    agentUrl,
+    options,
+    fallback,
+    mode,
+    seededSupportedVersions,
+  );
   return selection.target;
 }
 

@@ -886,6 +886,33 @@ export class ComplianceDatabase {
   }
 
   /**
+   * Return the most recently observed supported AdCP versions within a bounded
+   * window. This is a warm fallback for transient capability-discovery
+   * failures; live discovery remains authoritative whenever it succeeds.
+   */
+  async getRecentSupportedVersions(agentUrl: string, maxAgeHours = 7 * 24): Promise<string[]> {
+    if (!Number.isInteger(maxAgeHours) || maxAgeHours <= 0) {
+      throw new Error('maxAgeHours must be a positive integer');
+    }
+
+    const result = await query(
+      `SELECT agent_profile_json->'adcp_supported_versions' AS supported_versions
+       FROM agent_compliance_runs
+       WHERE agent_url = $1
+         AND tested_at >= NOW() - make_interval(hours => $2)
+         AND jsonb_typeof(agent_profile_json->'adcp_supported_versions') = 'array'
+       ORDER BY tested_at DESC
+       LIMIT 1`,
+      [agentUrl, maxAgeHours],
+    );
+    const versions = result.rows[0]?.supported_versions;
+    if (!Array.isArray(versions)) return [];
+    return versions.filter(
+      (version: unknown): version is string => typeof version === 'string' && version.trim().length > 0,
+    );
+  }
+
+  /**
    * Return the notices_json array from the most recent non-dry-run compliance
    * run for the agent. Returns an empty array when no run exists or when the
    * latest run stored no notices.

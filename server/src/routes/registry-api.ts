@@ -7520,11 +7520,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             userAgent: AAO_UA_COMPLIANCE,
             ...(resolvedAuth && { auth: resolvedAuth }),
           };
+          const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agentUrl);
           const runTargetSelection = await selectComplianceTargetForAgentSelection(
             agentUrl,
             complyOptions,
             complianceTarget,
             'canonical',
+            seededSupportedVersions,
           );
           const runTarget = runTargetSelection.target;
           const complyResult = await comply(agentUrl, complyOptions, runTarget);
@@ -8386,11 +8388,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           storyboards: [req.params.storyboardId],
           ...(sdkAuth && { auth: sdkAuth }),
         };
+        const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agentUrl);
         const runTargetSelection = await selectComplianceTargetForAgentSelection(
           agentUrl,
           complyOptions,
           complianceTarget,
           'canonical',
+          seededSupportedVersions,
         );
         const runTarget = runTargetSelection.target;
         const storyboard = getComplianceStoryboardById(req.params.storyboardId, hostedComplianceOptions(runTarget));

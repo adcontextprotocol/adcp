@@ -93,12 +93,14 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         auth: sdkAuth,
         userAgent: AAO_UA_COMPLIANCE,
       };
+      const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agent.agent_url);
 
       runTargetSelection = await selectComplianceTargetForAgentSelection(
         agent.agent_url,
         complyOptions,
         fallbackComplianceTarget,
         'canonical',
+        seededSupportedVersions,
       );
       runTarget = runTargetSelection.target;
       const complianceResult = await comply(agent.agent_url, complyOptions, runTarget);
