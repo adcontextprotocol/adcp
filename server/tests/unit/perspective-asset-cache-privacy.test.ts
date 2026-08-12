@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getAssetData: vi.fn(),
   getPerspectiveWithIllustration: vi.fn(),
   generatePerspectiveCard: vi.fn(),
+  isWebUserAAOAdmin: vi.fn(),
 }));
 
 vi.hoisted(() => {
@@ -50,6 +51,14 @@ vi.mock('../../src/services/perspective-cards.js', () => ({
   compositePerspectiveCard: vi.fn(),
 }));
 
+vi.mock('../../src/addie/mcp/admin-tools.js', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    isWebUserAAOAdmin: (...args: unknown[]) => mocks.isWebUserAAOAdmin(...args),
+  };
+});
+
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<typeof import('../../src/middleware/auth.js')>(
     '../../src/middleware/auth.js',
@@ -76,6 +85,7 @@ describe('perspective asset cache privacy', () => {
     mocks.getAssetData.mockReset();
     mocks.getPerspectiveWithIllustration.mockReset();
     mocks.generatePerspectiveCard.mockReset();
+    mocks.isWebUserAAOAdmin.mockReset().mockResolvedValue(false);
   });
 
   afterEach(async () => {
@@ -107,7 +117,7 @@ describe('perspective asset cache privacy', () => {
     expect(res.headers['cache-control']).toBe(expected);
     expect(mocks.query).toHaveBeenCalledWith(
       expect.stringContaining('AS is_public'),
-      ['example', userId ?? null],
+      ['example', userId ?? null, false],
     );
     expect(mocks.getAssetData).toHaveBeenCalledWith('perspective-1', 'cover.png');
   });
