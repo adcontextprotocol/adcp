@@ -24,7 +24,10 @@ const ID_FIELDS = {
   plans: 'plan_id',
   media_buys: 'media_buy_id',
 };
-const DISCOVERABLE = new Set(['products', 'pricing_options', 'creative_formats']);
+// Keep this aligned with the entity-specific discovery contract in
+// storyboard-schema.yaml. A normal read surface and deterministic tie-break
+// are currently defined only for products and their pricing options.
+const DISCOVERABLE = new Set(['products', 'pricing_options']);
 // Reserved until a follow-up decision pins each entity's creation request,
 // required outputs, and lifecycle transitions. The storyboard contract forbids
 // runners from inventing a generic construct path in the meantime.

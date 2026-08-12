@@ -108,6 +108,20 @@ fixture_resolution:
 `), ['discover_unsupported_type', 'construct_unsupported_type']);
 });
 
+test('creative formats cannot opt into discovery without a deterministic contract', () => {
+  assert.deepEqual(rules(`
+fixtures:
+  creative_formats:
+    - { format_id: display }
+fixture_resolution:
+  creative_formats:
+    - handle: display
+      strategies: [discover]
+      match:
+        - { path: /format_id, operator: equals, value: display }
+`), ['discover_unsupported_type']);
+});
+
 test('pricing handles are scoped by their parent product', () => {
   assert.deepEqual(rules(`
 fixtures:
