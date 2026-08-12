@@ -83,7 +83,7 @@
     "test:pagination-invariant": "node --test --test-force-exit --test-timeout=30000 tests/lint-pagination-invariant.test.cjs",
     "test:version-envelope": "node --test --test-force-exit --test-timeout=30000 tests/lint-version-envelope.test.cjs",
     "test:test-dynamic-imports": "node --test --test-force-exit --test-timeout=30000 tests/lint-test-dynamic-imports.test.cjs",
-    "test:sdk-shims": "node --test --test-force-exit --test-timeout=30000 tests/lint-sdk-shims.test.cjs tests/patch-sdk-rc11.test.cjs",
+    "test:sdk-shims": "node --test --test-force-exit --test-timeout=30000 tests/lint-sdk-shims.test.cjs tests/patch-sdk-rc15.test.cjs",
     "test:tenant-routing": "vitest run --config server/vitest.config.ts server/src/training-agent/tenants/tenant-smoke.test.ts",
     "test:format-identity-boundaries": "node --test --test-force-exit --test-timeout=30000 tests/lint-format-identity-boundaries.test.cjs",
     "test:sdk-runner-capability-gates": "node --test --test-force-exit --test-timeout=30000 tests/sdk-runner-capability-gates.test.cjs",
@@ -129,8 +129,8 @@
     "test:storyboards": "bash scripts/run-storyboards-matrix.sh",
     "test:storyboards:3.0-compat": "bash scripts/run-storyboards-3-0-compat.sh",
     "prepare": "husky",
-    "postinstall": "node scripts/patch-sdk-rc11.mjs",
-    "patch:sdk-rc11": "node scripts/patch-sdk-rc11.mjs",
+    "postinstall": "node scripts/patch-sdk-rc15.mjs",
+    "patch:sdk-rc15": "node scripts/patch-sdk-rc15.mjs",
     "changeset": "changeset",
     "version": "changeset version && npm install --package-lock-only --ignore-scripts && npm run build:schemas -- --release && npm run build:compliance -- --release && npm run build:protocol-tarball -- --release && npm run sign:protocol-tarball",
     "sign:protocol-tarball": "bash scripts/sign-protocol-tarball.sh",
@@ -151,7 +151,7 @@
     "docs:json-field-audit": "node scripts/docs-json-field-audit.cjs"
   },
   "dependencies": {
-    "@adcp/sdk": "13.0.0-rc.13",
+    "@adcp/sdk": "13.0.0-rc.15",
     "@anthropic-ai/sdk": "^0.115.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.8.3",
