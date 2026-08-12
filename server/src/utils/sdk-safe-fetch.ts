@@ -1,6 +1,7 @@
 import { safeFetch } from './url-security.js';
 
 const SDK_MAX_REQUEST_BYTES = 10 * 1024 * 1024;
+export const MCP_ACCEPT_HEADER = 'application/json, text/event-stream';
 const SENSITIVE_REDIRECT_HEADERS = [
   'authorization',
   'proxy-authorization',
@@ -41,6 +42,9 @@ export function createSdkSafeFetch(safeFetchImpl: SafeFetchImpl = safeFetch): ty
 
     let body: Uint8Array | undefined;
     if (method === 'POST') {
+      if (!request.headers.has('accept')) {
+        request.headers.set('accept', MCP_ACCEPT_HEADER);
+      }
       if (!request.body) {
         throw new Error('SDK safe fetch POST requests require a body');
       }
