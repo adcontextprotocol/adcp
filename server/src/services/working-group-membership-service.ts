@@ -35,10 +35,14 @@ import { inviteToChannel } from '../slack/client.js';
 import { sendWgWelcomeMessage } from '../addie/services/wg-welcome.js';
 import { getUserSeatType } from '../db/organization-db.js';
 import { getWorkos } from '../auth/workos-client.js';
+import { hasActiveMembershipForUser } from './active-membership-service.js';
 
 const logger = createLogger('working-group-membership-service');
 
 const workingGroupDb = new WorkingGroupDatabase();
+
+export const MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE =
+  'Our Mastermind Councils are for paying member tiers only. AgenticAdvertising.org membership starts at $50 annually.';
 
 /**
  * Caller identity. Both route (`req.user`) and Addie tool
@@ -60,6 +64,7 @@ export interface WorkingGroupServiceUser {
 export type WorkingGroupMembershipErrorCode =
   | 'group_not_found'
   | 'group_private'
+  | 'council_membership_required'
   | 'community_only_seat_blocked'
   | 'already_member'
   | 'no_interest_recorded';
@@ -67,6 +72,7 @@ export type WorkingGroupMembershipErrorCode =
 export interface WorkingGroupMembershipErrorMetaByCode {
   group_not_found: { slug: string };
   group_private: { slug: string; groupName: string };
+  council_membership_required: { slug: string; groupName: string };
   community_only_seat_blocked: {
     slug: string;
     groupName: string;
@@ -163,28 +169,41 @@ export async function joinWorkingGroup({ user, slug }: JoinWorkingGroupInput): P
     });
   }
 
-  // Community-only seats cannot join working groups or councils — they
-  // need a contributor seat upgrade. Surface enough metadata for the
-  // route to render a seat-request payload and the Addie tool to render
-  // a "ask your org admin" CTA.
-  const seatType = await getUserSeatType(user.id);
-  if (seatType === 'community_only') {
-    const orgRow = await query<{ workos_organization_id: string }>(
-      'SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1',
-      [user.id],
-    );
-    const userOrgId = orgRow.rows[0]?.workos_organization_id ?? null;
-    throw new WorkingGroupMembershipError(
-      'community_only_seat_blocked',
-      'Working group membership requires a contributor seat',
-      {
-        slug: group.slug,
-        groupName: group.name,
-        workingGroupId: group.id,
-        resourceType: group.committee_type === 'council' ? 'council' : 'working_group',
-        userOrgId,
-      },
-    );
+  if (group.committee_type === 'council') {
+    // Mastermind Councils are open to every active paid tier, including the
+    // $50 Explorer tier. This is deliberately separate from contributor-seat
+    // and API-access eligibility, both of which exclude Explorer.
+    const hasActiveMembership = await hasActiveMembershipForUser(user.id);
+    if (!hasActiveMembership) {
+      throw new WorkingGroupMembershipError(
+        'council_membership_required',
+        MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE,
+        { slug: group.slug, groupName: group.name },
+      );
+    }
+  } else {
+    // Community-only seats cannot join working groups — they need a
+    // contributor seat upgrade. Surface enough metadata for the route to
+    // render a seat-request payload and Addie to render an upgrade CTA.
+    const seatType = await getUserSeatType(user.id);
+    if (seatType === 'community_only') {
+      const orgRow = await query<{ workos_organization_id: string }>(
+        'SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1',
+        [user.id],
+      );
+      const userOrgId = orgRow.rows[0]?.workos_organization_id ?? null;
+      throw new WorkingGroupMembershipError(
+        'community_only_seat_blocked',
+        'Working group membership requires a contributor seat',
+        {
+          slug: group.slug,
+          groupName: group.name,
+          workingGroupId: group.id,
+          resourceType: 'working_group',
+          userOrgId,
+        },
+      );
+    }
   }
 
   const existingMembership = await workingGroupDb.getMembership(group.id, user.id);

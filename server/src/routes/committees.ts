@@ -40,6 +40,7 @@ import {
   withdrawCommitteeInterest as withdrawCommitteeInterestService,
   listMyWorkingGroups as listMyWorkingGroupsService,
   listMyCommitteeInterests as listMyCommitteeInterestsService,
+  MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE,
   WorkingGroupMembershipError,
 } from "../services/working-group-membership-service.js";
 import {
@@ -1199,6 +1200,12 @@ export function createCommitteeRouters(): {
           return res.status(403).json({
             error: 'Private group',
             message: 'This working group is private and requires an invitation to join',
+          });
+        }
+        if (error.is('council_membership_required')) {
+          return res.status(403).json({
+            error: 'Paid membership required',
+            message: MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE,
           });
         }
         if (error.is('community_only_seat_blocked')) {
