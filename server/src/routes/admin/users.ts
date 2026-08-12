@@ -20,6 +20,10 @@ import { backfillOrganizationMemberships, backfillUsers, backfillOrganizationDom
 import { sendSlackInviteEmail, hasSlackInviteBeenSent } from '../../notifications/email.js';
 import { getWorkos } from '../../auth/workos-client.js';
 import { mergeUsers } from '../../db/user-merge-db.js';
+import {
+  buildCountryMembersCsv,
+  type CountryMemberExportRow,
+} from './country-members-export.js';
 
 const logger = createLogger('admin-users-routes');
 
@@ -408,6 +412,73 @@ export function createAdminUsersRouter(): Router {
       res.status(500).json({
         error: 'Failed to get users',
       });
+    }
+  });
+
+  // GET /api/admin/users/by-country - Export accounts with an explicit country.
+  // "Registered At" is the account creation timestamp, not an organization
+  // membership date. This distinction matters for chapter and community lists.
+  router.get('/by-country', ...requireGlobalAdmin, async (req, res) => {
+    try {
+      const rawCountry = typeof req.query.country === 'string' ? req.query.country.trim() : '';
+      if (!rawCountry || rawCountry.length > 100 || /[\x00-\x1f\x7f]/.test(rawCountry)) {
+        return res.status(400).json({ error: 'A valid country query parameter is required' });
+      }
+
+      const normalizedCountries = rawCountry.toLowerCase() === 'canada'
+        ? ['canada', 'ca']
+        : [rawCountry.toLowerCase()];
+      const pool = getPool();
+      const result = await pool.query<CountryMemberExportRow>(`
+        SELECT
+          u.workos_user_id,
+          u.email,
+          u.first_name,
+          u.last_name,
+          u.city,
+          u.country,
+          u.location_source,
+          u.created_at AS registered_at,
+          COALESCE(
+            array_agg(DISTINCT o.name ORDER BY o.name)
+              FILTER (WHERE o.name IS NOT NULL),
+            ARRAY[]::text[]
+          ) AS organization_names
+        FROM users u
+        LEFT JOIN organization_memberships om ON om.workos_user_id = u.workos_user_id
+        LEFT JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+        WHERE lower(trim(u.country)) = ANY($1::text[])
+        GROUP BY
+          u.workos_user_id, u.email, u.first_name, u.last_name,
+          u.city, u.country, u.location_source, u.created_at
+        ORDER BY u.created_at ASC, u.email ASC
+      `, [normalizedCountries]);
+
+      res.setHeader('Cache-Control', 'private, no-store');
+
+      if (req.query.format === 'csv') {
+        const filenameCountry = rawCountry.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${filenameCountry}-registered-members.csv"`,
+        );
+        return res.send(buildCountryMembersCsv(result.rows));
+      }
+
+      return res.json({
+        country: rawCountry,
+        definition: 'Accounts whose explicit country field matches the requested country',
+        date_field: 'account_registered_at',
+        count: result.rows.length,
+        members: result.rows.map((row) => ({
+          ...row,
+          registered_at: new Date(row.registered_at).toISOString(),
+        })),
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Get country member export error');
+      return res.status(500).json({ error: 'Failed to export members by country' });
     }
   });
 
