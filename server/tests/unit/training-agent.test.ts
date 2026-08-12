@@ -12818,6 +12818,7 @@ describe('proposal lifecycle', () => {
     const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', {
       refinements: [{
         proposal_id: source.proposal_id,
+        change_kind: 'amendment',
         instructions: 'Prefer the social inventory while preserving the total budget.',
       }, {
         proposal_id: 'proposal-not-visible-to-caller',

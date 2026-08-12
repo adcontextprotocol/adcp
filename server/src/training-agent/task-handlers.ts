@@ -4538,6 +4538,9 @@ export function validateProductDiscoveryAliasInput(
   toolName: string,
   args: Record<string, unknown>,
 ): { message: string; field?: string } | undefined {
+  if (args.account !== undefined && !isRecord(args.account)) {
+    return { message: 'account must be an object', field: 'account' };
+  }
   const account = isRecord(args.account) ? args.account : undefined;
   const hasNaturalAccountBrand = isRecord(account?.brand)
     && typeof account.operator === 'string'
@@ -4624,7 +4627,19 @@ export function validateProductDiscoveryAliasInput(
       if (!(typeof entry.instructions === 'string' && entry.instructions.length > 0)) {
         return { message: 'each refinement requires instructions', field: `refinements[${index}].instructions` };
       }
-      const unknown = Object.keys(entry).find(field => !['proposal_id', 'instructions'].includes(field));
+      if (
+        entry.change_kind !== undefined
+        && entry.change_kind !== 'amendment'
+        && entry.change_kind !== 'cancellation'
+      ) {
+        return {
+          message: 'change_kind must be amendment or cancellation',
+          field: `refinements[${index}].change_kind`,
+        };
+      }
+      const unknown = Object.keys(entry).find(
+        field => !['proposal_id', 'change_kind', 'instructions'].includes(field),
+      );
       if (unknown) {
         return { message: `${unknown} is not supported on proposal refinements`, field: `refinements[${index}].${unknown}` };
       }

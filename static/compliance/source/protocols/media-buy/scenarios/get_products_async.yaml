@@ -370,6 +370,7 @@ phases:
           params:
             task_id: "$context.products_task_id"
             result:
+              status: "completed"
               products:
                 - product_id: "async_curated_trail_display"
                   name: "Async curated trail display"
