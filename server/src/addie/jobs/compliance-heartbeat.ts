@@ -330,16 +330,20 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
 
         if (badgeEligibleAdcpVersions.length > 0) {
           const eligibleBadgeVersions = new Set(badgeEligibleAdcpVersions);
+          const badgeMetadata = await complianceDb.getRegistryMetadata(agent.agent_url);
+          const expectedBadgeGeneration = badgeMetadata?.badge_requalification_generation ?? '0';
           const existingBadges = await complianceDb.getBadgesForAgent(agent.agent_url);
           const revoked = [];
           for (const badge of existingBadges) {
             if (!eligibleBadgeVersions.has(badge.adcp_version)) continue;
-            await complianceDb.revokeBadge(
+            const didRevoke = await complianceDb.revokeBadge(
               agent.agent_url,
               badge.role,
               badge.adcp_version,
               'Authoritative compliance run failed before storyboard verification',
+              expectedBadgeGeneration,
             );
+            if (!didRevoke) continue;
             revoked.push({
               role: badge.role,
               reason: 'Authoritative compliance run failed',

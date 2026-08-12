@@ -16,7 +16,25 @@ const complianceMocks = vi.hoisted(() => ({
   getHighestVersionActiveBadge: vi.fn(),
   getActiveBadge: vi.fn(),
   getBadgesForAgent: vi.fn(),
+  getRegistryMetadata: vi.fn(),
+  upsertRegistryMetadata: vi.fn(),
+  setComplianceOptOut: vi.fn(),
+  revokeAllBadges: vi.fn(),
 }));
+
+const notificationMocks = vi.hoisted(() => ({
+  notifyVerificationChange: vi.fn(),
+}));
+
+const ownershipMocks = vi.hoisted(() => ({
+  findOwnedAgentVisibility: vi.fn(),
+  findOwnerOrgForUser: vi.fn(),
+  isOrgOwnerOfAgent: vi.fn(),
+  resolveOwnerOrgForUser: vi.fn(),
+}));
+
+vi.mock('../../src/services/agent-ownership.js', () => ownershipMocks);
+vi.mock('../../src/notifications/compliance.js', () => notificationMocks);
 
 vi.mock('../../src/middleware/rate-limit.js', () => {
   const pass: import('express').RequestHandler = (_req, _res, next) => next();
@@ -41,6 +59,10 @@ vi.mock('../../src/db/compliance-db.js', () => ({
     getHighestVersionActiveBadge = complianceMocks.getHighestVersionActiveBadge;
     getActiveBadge = complianceMocks.getActiveBadge;
     getBadgesForAgent = complianceMocks.getBadgesForAgent;
+    getRegistryMetadata = complianceMocks.getRegistryMetadata;
+    upsertRegistryMetadata = complianceMocks.upsertRegistryMetadata;
+    setComplianceOptOut = complianceMocks.setComplianceOptOut;
+    revokeAllBadges = complianceMocks.revokeAllBadges;
   },
 }));
 
@@ -55,9 +77,16 @@ const VALID_ROLES = [
   'sponsored-intelligence',
 ];
 
-function buildApp(): express.Express {
+function buildApp(
+  visibility: 'public' | 'members_only' | 'private' = 'public',
+  authenticated = false,
+): express.Express {
   const app = express();
-  const passAuth: import('express').RequestHandler = (_req, _res, next) => next();
+  app.use(express.json());
+  const passAuth: import('express').RequestHandler = (req, _res, next) => {
+    if (authenticated) req.user = { id: 'user_badge_owner' } as typeof req.user;
+    next();
+  };
   const config: RegistryApiConfig = {
     brandManager: {} as RegistryApiConfig['brandManager'],
     brandDb: {} as RegistryApiConfig['brandDb'],
@@ -71,6 +100,7 @@ function buildApp(): express.Express {
           url: AGENT_URL,
           type: 'sales',
           protocol: 'mcp',
+          visibility,
         }]),
       }),
     } as unknown as RegistryApiConfig['crawler'],
@@ -92,6 +122,17 @@ describe('registry badge routes', () => {
     complianceMocks.getHighestVersionActiveBadge.mockResolvedValue(null);
     complianceMocks.getActiveBadge.mockResolvedValue(null);
     complianceMocks.getBadgesForAgent.mockResolvedValue([]);
+    complianceMocks.getRegistryMetadata.mockResolvedValue(null);
+    complianceMocks.upsertRegistryMetadata.mockResolvedValue({ compliance_opt_out: false });
+    complianceMocks.setComplianceOptOut.mockResolvedValue({
+      metadata: { compliance_opt_out: false },
+      revoked: [],
+    });
+    complianceMocks.revokeAllBadges.mockResolvedValue([]);
+    notificationMocks.notifyVerificationChange.mockReset();
+    notificationMocks.notifyVerificationChange.mockResolvedValue(undefined);
+    ownershipMocks.findOwnerOrgForUser.mockResolvedValue('org_badge_owner');
+    ownershipMocks.findOwnedAgentVisibility.mockResolvedValue('public');
   });
 
   it('reports every active version per verified role in newest-first order', async () => {
@@ -159,7 +200,7 @@ describe('registry badge routes', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toMatch(/^image\/svg\+xml/);
-    expect(response.headers['cache-control']).toBe('public, max-age=300, s-maxage=300, must-revalidate');
+    expect(response.headers['cache-control']).toBe('public, max-age=0, s-maxage=0, must-revalidate');
     expect(response.body.toString()).toContain('Not Verified');
   });
 
@@ -177,6 +218,7 @@ describe('registry badge routes', () => {
       verified: false,
       adcp_version: '3.1',
     });
+    expect(response.headers['cache-control']).toBe('no-store');
   });
 
   it('reports an exact active role-version badge as verified', async () => {
@@ -196,6 +238,7 @@ describe('registry badge routes', () => {
       verified: true,
       adcp_version: '3.1',
     });
+    expect(response.headers['cache-control']).toBe('no-store');
   });
 
   it('reports the highest active version from the unversioned embed', async () => {
@@ -215,6 +258,130 @@ describe('registry badge routes', () => {
       verified: true,
       adcp_version: '3.10',
     });
+    expect(response.headers['cache-control']).toBe('no-store');
+  });
+
+  it('keeps badge verification independent from private registry discoverability', async () => {
+    complianceMocks.getHighestVersionActiveBadge.mockResolvedValue({
+      role: 'media-buy',
+      adcp_version: '3.1',
+      verification_modes: ['spec'],
+    });
+    const encodedUrl = encodeURIComponent(AGENT_URL);
+
+    const response = await request(buildApp('private'))
+      .get(`/api/registry/agents/${encodedUrl}/badge/media-buy/embed`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      agent_url: AGENT_URL,
+      role: 'media-buy',
+      verified: true,
+      adcp_version: '3.1',
+    });
+  });
+
+  it.each([
+    ['verification', 'json'],
+    ['badge/media-buy.svg', 'svg'],
+    ['badge/media-buy/embed', 'embed'],
+    ['badge/media-buy/3.1.svg', 'svg'],
+    ['badge/media-buy/3.1/embed', 'embed'],
+  ] as const)('renders database-suppressed badge state on %s', async (suffix, responseKind) => {
+    const encodedUrl = encodeURIComponent(AGENT_URL);
+
+    const response = await request(buildApp())
+      .get(`/api/registry/agents/${encodedUrl}/${suffix}`);
+
+    expect(response.status).toBe(200);
+    if (responseKind === 'svg') {
+      expect(response.body.toString()).toContain('Not Verified');
+      expect(response.headers['cache-control']).toBe('public, max-age=0, s-maxage=0, must-revalidate');
+    } else if (responseKind === 'embed') {
+      expect(response.body.verified).toBe(false);
+      expect(response.headers['cache-control']).toBe('no-store');
+    } else {
+      expect(response.body).toMatchObject({ verified: false, badges: [] });
+      expect(response.headers['cache-control']).toBe('no-store');
+    }
+    expect(complianceMocks.getRegistryMetadata).not.toHaveBeenCalled();
+  });
+
+  it('revokes every badge immediately when an owner opts out', async () => {
+    complianceMocks.setComplianceOptOut.mockResolvedValue({
+      metadata: { agent_url: AGENT_URL, compliance_opt_out: true },
+      revoked: [
+        { role: 'media-buy', adcp_version: '3.0' },
+        { role: 'creative', adcp_version: '3.1' },
+      ],
+    });
+    const encodedUrl = encodeURIComponent(AGENT_URL);
+
+    const response = await request(buildApp('private', true))
+      .put(`/api/registry/agents/${encodedUrl}/compliance/opt-out`)
+      .send({ opt_out: true });
+
+    expect(response.status).toBe(200);
+    expect(complianceMocks.setComplianceOptOut).toHaveBeenCalledWith(
+      AGENT_URL,
+      true,
+      'user:user_badge_owner',
+      true,
+    );
+    expect(notificationMocks.notifyVerificationChange).toHaveBeenCalledWith({
+      agentUrl: AGENT_URL,
+      issued: [],
+      revoked: [
+        { role: 'media-buy', adcp_version: '3.0', reason: 'Compliance monitoring opted out' },
+        { role: 'creative', adcp_version: '3.1', reason: 'Compliance monitoring opted out' },
+      ],
+      actor: 'user:user_badge_owner',
+      emitFeedEvents: false,
+    });
+  });
+
+  it('canonicalizes the agent URL before ownership and opt-out writes', async () => {
+    const rawAgentUrl = 'HTTPS://BADGE.EXAMPLE.COM/MCP/';
+    const canonicalAgentUrl = 'https://badge.example.com/mcp';
+
+    const response = await request(buildApp('private', true))
+      .put(`/api/registry/agents/${encodeURIComponent(rawAgentUrl)}/compliance/opt-out`)
+      .send({ opt_out: true });
+
+    expect(response.status).toBe(200);
+    expect(ownershipMocks.findOwnerOrgForUser).toHaveBeenCalledWith(
+      'user_badge_owner',
+      canonicalAgentUrl,
+    );
+    expect(complianceMocks.setComplianceOptOut).toHaveBeenCalledWith(
+      canonicalAgentUrl,
+      true,
+      'user:user_badge_owner',
+      true,
+    );
+  });
+
+  it('keeps private-agent revocation notifications out of shared channels and feeds', async () => {
+    ownershipMocks.findOwnedAgentVisibility.mockResolvedValue('private');
+    complianceMocks.setComplianceOptOut.mockResolvedValue({
+      metadata: { agent_url: AGENT_URL, compliance_opt_out: true },
+      revoked: [{ role: 'media-buy', adcp_version: '3.1' }],
+    });
+
+    const response = await request(buildApp('private', true))
+      .put(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance/opt-out`)
+      .send({ opt_out: true });
+
+    expect(response.status).toBe(200);
+    expect(complianceMocks.setComplianceOptOut).toHaveBeenCalledWith(
+      AGENT_URL,
+      true,
+      'user:user_badge_owner',
+      false,
+    );
+    expect(notificationMocks.notifyVerificationChange).toHaveBeenCalledWith(
+      expect.objectContaining({ emitFeedEvents: false, notifyChannel: false }),
+    );
   });
 
   it.each([

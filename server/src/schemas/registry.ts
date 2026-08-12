@@ -772,6 +772,9 @@ export const AgentComplianceDetailSchema = z
     status: z.enum(["passing", "degraded", "failing", "unknown", "opted_out"]),
     lifecycle_stage: z.enum(["development", "testing", "production", "deprecated"]),
     compliance_opt_out: z.boolean().optional(),
+    badge_requalification_required: z.boolean().optional().openapi({
+      description: "True when monitoring is enabled but badges remain suppressed until a fresh passing full-suite run completes.",
+    }),
     tracks: z.record(z.string(), z.string()).optional(),
     track_details: z.array(z.object({
       track: z.string(),
@@ -1235,6 +1238,9 @@ export const RegistryMetadataSchema = z
     agent_url: z.string(),
     lifecycle_stage: z.enum(["development", "testing", "production", "deprecated"]),
     compliance_opt_out: z.boolean(),
+    badge_requalification_required: z.boolean().openapi({
+      description: "True after opt-out until a fresh full-suite compliance run completes badge requalification.",
+    }),
     monitoring_paused: z.boolean(),
     check_interval_hours: z.number().int(),
     monitoring_paused_at: z.string().nullable(),

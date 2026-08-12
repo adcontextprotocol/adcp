@@ -6,7 +6,7 @@ description: "The public trust mark for AdCP agents. Two qualifiers — Verified
 ---
 
 **Status**: Request for Comments
-**Last Updated**: May 11, 2026
+**Last Updated**: August 12, 2026
 
 **AAO Verified** is the public trust mark for AdCP agents. It carries one of two qualifiers in parens — **(Spec)** or **(Sandbox)** — and may carry both. The qualifier names *which axis* of verification an agent has earned.
 
@@ -186,6 +186,32 @@ Verification is continuously re-evaluated, not a one-time certificate.
 
 Membership lapse revokes the entire badge regardless of test results — public trust marks require active membership.
 
+### Registry visibility and compliance opt-out
+
+Registry visibility and badge verification are separate controls. `public`,
+`members_only`, and `private` determine who can discover an agent in registry
+listings. They do not change whether an already-known agent URL can be checked
+for an earned badge. This keeps a trust mark verifiable by a buyer who already
+has the URL without making a private agent discoverable.
+
+Compliance opt-out is different: it deliberately stops new evidence from
+qualifying the public trust mark. Owners may still run and retain private
+diagnostic tests while opted out, but those results cannot issue a badge.
+Opting out immediately revokes every active and degraded badge across all
+roles and AdCP versions. Public verification,
+versioned and unversioned SVGs, embeds, registry summaries, and brand
+enrichment then return the same unverified result as an unknown or
+never-verified agent. There is no 48-hour grace period for an intentional
+opt-out. Re-enabling monitoring does not restore an old badge; a new passing
+full-suite run must earn it again. Partial storyboard reruns remain
+non-qualifying until that fresh full-suite run completes.
+
+Badge SVGs use ETags but require revalidation before reuse, so embeds observe
+the revocation on their next request. Signed JWTs are offline, expiring proofs
+and cannot learn about a later revocation by themselves. A verifier that needs
+current status must check the registry API; its JSON badge-state responses are
+not cacheable and are the authoritative real-time source.
+
 ## Mark semantics
 
 A seller MAY hold:
@@ -224,7 +250,7 @@ https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge
 
 Buyers who want auto-upgrade behavior (the embedded image flips from `Media Buy Agent 3.0 (Spec)` to `Media Buy Agent 3.1 (Spec + Sandbox)` automatically when the agent earns 3.1) embed the legacy URL. Buyers who want to call out "verified for AdCP 3.0" specifically embed the version-pinned URL.
 
-Both return a shields.io-style SVG with `Content-Security-Policy: script-src 'none'` and 5-minute caching. Renders teal when verified, grey when not. Unknown agents and revoked or never-earned badges return a successful `200` grey "Not Verified" SVG, including version-pinned URLs at versions the agent never earned. An unknown role instead returns `400` with the valid role slugs; a temporary status-store failure returns an uncached `503`.
+Both return a shields.io-style SVG with `Content-Security-Policy: script-src 'none'` and ETag revalidation on every use. Renders teal when verified, grey when not. Unknown agents, opted-out agents, and revoked or never-earned badges return a successful `200` grey "Not Verified" SVG, including version-pinned URLs at versions the agent never earned. An unknown role instead returns `400` with the valid role slugs; a temporary status-store failure returns an uncached `503`.
 
 Valid badge role slugs are `media-buy`, `creative`, `signals`, `governance`, `brand`, and `sponsored-intelligence`. These URL slugs are kebab-case. Do not substitute compliance track identifiers such as `media_buy`, which are snake_case and describe test organization rather than badge identity.
 

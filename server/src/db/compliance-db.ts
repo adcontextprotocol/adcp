@@ -1,8 +1,10 @@
 import { query, getClient } from './client.js';
 import { decrypt as decryptToken } from './encryption.js';
 import { logger as baseLogger } from '../logger.js';
+import { CatalogEventsDatabase } from './catalog-events-db.js';
 
 const logger = baseLogger.child({ module: 'compliance-db' });
+const catalogEventsDb = new CatalogEventsDatabase();
 
 // =====================================================
 // TYPES
@@ -74,6 +76,8 @@ export interface AgentRegistryMetadata {
   agent_url: string;
   lifecycle_stage: LifecycleStage;
   compliance_opt_out: boolean;
+  badge_requalification_required: boolean;
+  badge_requalification_generation: string;
   monitoring_paused: boolean;
   check_interval_hours: number;
   monitoring_paused_at: Date | null;
@@ -313,20 +317,18 @@ export class ComplianceDatabase {
 
   async upsertRegistryMetadata(
     agentUrl: string,
-    updates: { lifecycle_stage?: LifecycleStage; compliance_opt_out?: boolean },
+    updates: { lifecycle_stage?: LifecycleStage },
   ): Promise<AgentRegistryMetadata> {
     const result = await query(
-      `INSERT INTO agent_registry_metadata (agent_url, lifecycle_stage, compliance_opt_out)
-       VALUES ($1, COALESCE($2, 'production'), COALESCE($3, FALSE))
+      `INSERT INTO agent_registry_metadata (agent_url, lifecycle_stage)
+       VALUES ($1, COALESCE($2, 'production'))
        ON CONFLICT (agent_url) DO UPDATE SET
          lifecycle_stage = COALESCE($2, agent_registry_metadata.lifecycle_stage),
-         compliance_opt_out = COALESCE($3, agent_registry_metadata.compliance_opt_out),
          updated_at = NOW()
        RETURNING *`,
       [
         agentUrl,
         updates.lifecycle_stage ?? null,
-        updates.compliance_opt_out ?? null,
       ],
     );
     return result.rows[0];
@@ -338,6 +340,211 @@ export class ComplianceDatabase {
       [agentUrl],
     );
     return result.rows[0] || null;
+  }
+
+  /**
+   * Change compliance monitoring state and revoke any public badge state in
+   * the same serialized transaction. Re-enabling keeps the requalification
+   * gate closed; only a later full-suite badge fan-out may open it.
+   */
+  async setComplianceOptOut(
+    agentUrl: string,
+    optOut: boolean,
+    actor = 'api:compliance-opt-out',
+    emitPublicEvent = false,
+  ): Promise<{
+    metadata: AgentRegistryMetadata;
+    revoked: Array<Pick<AgentVerificationBadge, 'role' | 'adcp_version'>>;
+  }> {
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [`verification-badge:${agentUrl}`],
+      );
+
+      const existingResult = await client.query(
+        `SELECT compliance_opt_out, badge_requalification_required, badge_requalification_generation
+         FROM agent_registry_metadata
+         WHERE agent_url = $1
+         FOR UPDATE`,
+        [agentUrl],
+      );
+      const existing = existingResult.rows[0] as
+        | {
+            compliance_opt_out: boolean;
+            badge_requalification_required: boolean;
+            badge_requalification_generation: string;
+          }
+        | undefined;
+      const requiresRequalification = optOut
+        || existing?.compliance_opt_out === true
+        || existing?.badge_requalification_required === true;
+
+      const metadataResult = await client.query(
+        `INSERT INTO agent_registry_metadata (
+           agent_url, compliance_opt_out, badge_requalification_required,
+           badge_requalification_generation
+         ) VALUES ($1, $2, $3, 1)
+         ON CONFLICT (agent_url) DO UPDATE SET
+           compliance_opt_out = EXCLUDED.compliance_opt_out,
+           badge_requalification_required = EXCLUDED.badge_requalification_required,
+           badge_requalification_generation = agent_registry_metadata.badge_requalification_generation + 1,
+           updated_at = NOW()
+         RETURNING *`,
+        [agentUrl, optOut, requiresRequalification],
+      );
+
+      let revoked: Array<Pick<AgentVerificationBadge, 'role' | 'adcp_version'>> = [];
+      const revocationReason = optOut
+        ? 'Compliance monitoring opted out'
+        : 'Compliance monitoring re-enabled; fresh qualifying run required';
+      if (optOut || existing?.compliance_opt_out || existing?.badge_requalification_required) {
+        const revokedResult = await client.query(
+          `UPDATE agent_verification_badges
+           SET status = 'revoked', revoked_at = NOW(), revocation_reason = $2, updated_at = NOW()
+           WHERE agent_url = $1 AND status IN ('active', 'degraded')
+           RETURNING role, adcp_version`,
+          [agentUrl, revocationReason],
+        );
+        revoked = revokedResult.rows as Array<Pick<AgentVerificationBadge, 'role' | 'adcp_version'>>;
+      }
+
+      let isCurrentlyPublic = false;
+      if (emitPublicEvent && revoked.length > 0) {
+        const visibilityResult = await client.query(
+          `SELECT 1 FROM member_profiles mp
+           CROSS JOIN LATERAL jsonb_array_elements(mp.agents) agent
+           WHERE agent->>'url' = $1 AND agent->>'visibility' = 'public'
+           LIMIT 1`,
+          [agentUrl],
+        );
+        isCurrentlyPublic = visibilityResult.rowCount === 1;
+      }
+      if (isCurrentlyPublic) {
+        const generation = String(metadataResult.rows[0].badge_requalification_generation);
+        await catalogEventsDb.writeEvents(
+          revoked.map((badge) => ({
+            event_type: 'agent.verification_lost',
+            entity_type: 'agent',
+            entity_id: agentUrl,
+            payload: {
+              agent_url: agentUrl,
+              role: badge.role,
+              adcp_version: badge.adcp_version,
+              reason: revocationReason,
+              badge_requalification_generation: generation,
+            },
+            actor,
+          })),
+          client,
+        );
+      }
+
+      await client.query('COMMIT');
+      return {
+        metadata: metadataResult.rows[0] as AgentRegistryMetadata,
+        revoked,
+      };
+    } catch (error) {
+      await client.query('ROLLBACK').catch((rollbackError) => {
+        logger.warn({ err: rollbackError, agentUrl }, 'Badge opt-out rollback failed');
+      });
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Start an epoch-bound full-suite requalification attempt. Clearing prior
+   * provisional writes prevents a failed earlier attempt from leaking when a
+   * later attempt opens the gate.
+   */
+  async prepareBadgeRequalification(agentUrl: string, expectedGeneration: string): Promise<string | null> {
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [`verification-badge:${agentUrl}`],
+      );
+      const metadataResult = await client.query(
+        `SELECT 1 FROM agent_registry_metadata
+         WHERE agent_url = $1
+           AND compliance_opt_out = FALSE
+           AND badge_requalification_required = TRUE
+           AND badge_requalification_generation = $2::bigint`,
+        [agentUrl, expectedGeneration],
+      );
+      if (metadataResult.rowCount !== 1) {
+        await client.query('COMMIT');
+        return null;
+      }
+      const attemptResult = await client.query(
+        `UPDATE agent_registry_metadata
+         SET badge_requalification_generation = badge_requalification_generation + 1,
+             updated_at = NOW()
+         WHERE agent_url = $1
+           AND badge_requalification_generation = $2::bigint
+         RETURNING badge_requalification_generation::text AS generation`,
+        [agentUrl, expectedGeneration],
+      );
+      const attemptGeneration = attemptResult.rows[0]?.generation as string | undefined;
+      if (!attemptGeneration) {
+        await client.query('COMMIT');
+        return null;
+      }
+      await client.query(
+        `UPDATE agent_verification_badges
+         SET status = 'revoked', revoked_at = NOW(),
+             revocation_reason = 'Superseded by fresh full-suite requalification',
+             updated_at = NOW()
+         WHERE agent_url = $1 AND status IN ('active', 'degraded')`,
+        [agentUrl],
+      );
+      await client.query('COMMIT');
+      return attemptGeneration;
+    } catch (error) {
+      await client.query('ROLLBACK').catch((rollbackError) => {
+        logger.warn({ err: rollbackError, agentUrl }, 'Badge requalification preparation rollback failed');
+      });
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /** Open only the exact post-opt-out generation qualified by this run. */
+  async completeBadgeRequalification(agentUrl: string, expectedGeneration: string): Promise<boolean> {
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [`verification-badge:${agentUrl}`],
+      );
+      const result = await client.query(
+        `UPDATE agent_registry_metadata
+         SET badge_requalification_required = FALSE, updated_at = NOW()
+         WHERE agent_url = $1
+           AND compliance_opt_out = FALSE
+           AND badge_requalification_required = TRUE
+           AND badge_requalification_generation = $2::bigint
+         RETURNING agent_url`,
+        [agentUrl, expectedGeneration],
+      );
+      await client.query('COMMIT');
+      return result.rowCount === 1;
+    } catch (error) {
+      await client.query('ROLLBACK').catch((rollbackError) => {
+        logger.warn({ err: rollbackError, agentUrl }, 'Badge requalification rollback failed');
+      });
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   /**
@@ -1458,14 +1665,51 @@ export class ComplianceDatabase {
     verification_token?: string;
     token_expires_at?: Date;
     membership_org_id?: string;
-  }): Promise<AgentVerificationBadge> {
+    /** Badge-policy generation observed when this fan-out began. */
+    expected_badge_generation?: string;
+    /** True only for a full-suite attempt rebuilding a closed gate. */
+    requalification_attempt?: boolean;
+  }): Promise<AgentVerificationBadge | null> {
     const modes = badge.verification_modes ?? ['spec'];
-    const result = await query(
-      `INSERT INTO agent_verification_badges (
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [`verification-badge:${badge.agent_url}`],
+      );
+      const result = await client.query(
+        `INSERT INTO agent_verification_badges (
         agent_url, role, adcp_version, verified_specialisms, verification_modes, verified_protocol_version,
         verification_token, token_expires_at, membership_org_id,
         status, verified_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', NOW(), NOW())
+      )
+      SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', NOW(), NOW()
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM agent_registry_metadata
+        WHERE agent_url = $1 AND compliance_opt_out = TRUE
+      )
+        AND (
+          $10::bigint IS NULL
+          OR (
+            COALESCE((
+              SELECT badge_requalification_generation
+              FROM agent_registry_metadata
+              WHERE agent_url = $1
+            ), 0) = $10::bigint
+            AND (
+              $11::boolean = FALSE
+              OR EXISTS (
+                SELECT 1 FROM agent_registry_metadata
+                WHERE agent_url = $1
+                  AND compliance_opt_out = FALSE
+                  AND badge_requalification_required = TRUE
+                  AND badge_requalification_generation = $10::bigint
+              )
+            )
+          )
+        )
       ON CONFLICT (agent_url, role, adcp_version) DO UPDATE SET
         verified_specialisms = $4,
         verification_modes = $5,
@@ -1478,20 +1722,34 @@ export class ComplianceDatabase {
         revoked_at = NULL,
         revocation_reason = NULL,
         updated_at = NOW()
-      RETURNING *`,
-      [
-        badge.agent_url,
-        badge.role,
-        badge.adcp_version,
-        badge.verified_specialisms,
-        modes,
-        badge.verified_protocol_version ?? null,
-        badge.verification_token ?? null,
-        badge.token_expires_at ?? null,
-        badge.membership_org_id ?? null,
-      ],
-    );
-    return result.rows[0] as AgentVerificationBadge;
+        RETURNING *`,
+        [
+          badge.agent_url,
+          badge.role,
+          badge.adcp_version,
+          badge.verified_specialisms,
+          modes,
+          badge.verified_protocol_version ?? null,
+          badge.verification_token ?? null,
+          badge.token_expires_at ?? null,
+          badge.membership_org_id ?? null,
+          badge.expected_badge_generation ?? null,
+          badge.requalification_attempt ?? false,
+        ],
+      );
+      // The per-agent lock is shared with setComplianceOptOut. The metadata
+      // predicate therefore observes the latest transition after the lock is
+      // acquired and cannot commit a badge behind a concurrent revocation.
+      await client.query('COMMIT');
+      return (result.rows[0] as AgentVerificationBadge | undefined) ?? null;
+    } catch (error) {
+      await client.query('ROLLBACK').catch((rollbackError) => {
+        logger.warn({ err: rollbackError, agentUrl: badge.agent_url }, 'Badge upsert rollback failed');
+      });
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async getBadgesForAgent(agentUrl: string): Promise<AgentVerificationBadge[]> {
@@ -1501,8 +1759,12 @@ export class ComplianceDatabase {
     // major or minor numbers. CHECK constraint guarantees both
     // segments are valid integers.
     const result = await query(
-      `SELECT * FROM agent_verification_badges
-       WHERE agent_url = $1 AND status IN ('active', 'degraded')
+      `SELECT b.* FROM agent_verification_badges b
+       LEFT JOIN agent_registry_metadata m ON m.agent_url = b.agent_url
+       WHERE b.agent_url = $1
+         AND b.status IN ('active', 'degraded')
+         AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
+         AND COALESCE(m.badge_requalification_required, FALSE) = FALSE
        ORDER BY split_part(adcp_version, '.', 1)::int DESC,
                 split_part(adcp_version, '.', 2)::int DESC,
                 role`,
@@ -1522,9 +1784,12 @@ export class ComplianceDatabase {
     adcpVersion: string,
   ): Promise<AgentVerificationBadge | null> {
     const result = await query(
-      `SELECT * FROM agent_verification_badges
-       WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
-         AND status IN ('active', 'degraded')`,
+      `SELECT b.* FROM agent_verification_badges b
+       LEFT JOIN agent_registry_metadata m ON m.agent_url = b.agent_url
+       WHERE b.agent_url = $1 AND b.role = $2 AND b.adcp_version = $3
+         AND b.status IN ('active', 'degraded')
+         AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
+         AND COALESCE(m.badge_requalification_required, FALSE) = FALSE`,
       [agentUrl, role, adcpVersion],
     );
     return (result.rows[0] as AgentVerificationBadge) ?? null;
@@ -1544,8 +1809,12 @@ export class ComplianceDatabase {
   ): Promise<AgentVerificationBadge | null> {
     // Numeric sort — see getBadgesForAgent comment.
     const result = await query(
-      `SELECT * FROM agent_verification_badges
-       WHERE agent_url = $1 AND role = $2 AND status IN ('active', 'degraded')
+      `SELECT b.* FROM agent_verification_badges b
+       LEFT JOIN agent_registry_metadata m ON m.agent_url = b.agent_url
+       WHERE b.agent_url = $1 AND b.role = $2
+         AND b.status IN ('active', 'degraded')
+         AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
+         AND COALESCE(m.badge_requalification_required, FALSE) = FALSE
        ORDER BY split_part(adcp_version, '.', 1)::int DESC,
                 split_part(adcp_version, '.', 2)::int DESC
        LIMIT 1`,
@@ -1559,35 +1828,264 @@ export class ComplianceDatabase {
     role: BadgeRole,
     adcpVersion: string,
     reason: string,
-  ): Promise<void> {
-    await query(
+    expectedGeneration?: string,
+  ): Promise<boolean> {
+    if (expectedGeneration !== undefined) {
+      const client = await getClient();
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+          [`verification-badge:${agentUrl}`],
+        );
+        const result = await client.query(
+          `UPDATE agent_verification_badges
+           SET status = 'revoked', revoked_at = NOW(), revocation_reason = $4, updated_at = NOW()
+           WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
+             AND status IN ('active', 'degraded')
+             AND COALESCE((
+               SELECT badge_requalification_generation
+               FROM agent_registry_metadata WHERE agent_url = $1
+             ), 0) = $5::bigint`,
+          [agentUrl, role, adcpVersion, reason, expectedGeneration],
+        );
+        await client.query('COMMIT');
+        return (result.rowCount ?? 0) > 0;
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
+    const result = await query(
       `UPDATE agent_verification_badges
        SET status = 'revoked', revoked_at = NOW(), revocation_reason = $4, updated_at = NOW()
        WHERE agent_url = $1 AND role = $2 AND adcp_version = $3 AND status IN ('active', 'degraded')`,
       [agentUrl, role, adcpVersion, reason],
     );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async revokeAllBadges(
+    agentUrl: string,
+    reason: string,
+  ): Promise<Array<Pick<AgentVerificationBadge, 'role' | 'adcp_version'>>> {
+    const result = await query(
+      `UPDATE agent_verification_badges
+       SET status = 'revoked', revoked_at = NOW(), revocation_reason = $2, updated_at = NOW()
+       WHERE agent_url = $1 AND status IN ('active', 'degraded')
+       RETURNING role, adcp_version`,
+      [agentUrl, reason],
+    );
+    return result.rows as Array<Pick<AgentVerificationBadge, 'role' | 'adcp_version'>>;
+  }
+
+  /**
+   * Best-effort fan-out cleanup that cannot revoke badges after monitoring was
+   * re-enabled. The opt-out state is re-read under the shared badge lock.
+   */
+  async revokeAllBadgesIfOptedOut(
+    agentUrl: string,
+    reason: string,
+  ): Promise<Array<Pick<AgentVerificationBadge, 'role' | 'adcp_version'>>> {
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [`verification-badge:${agentUrl}`],
+      );
+      const metadataResult = await client.query(
+        `SELECT 1 FROM agent_registry_metadata
+         WHERE agent_url = $1 AND compliance_opt_out = TRUE`,
+        [agentUrl],
+      );
+      if (metadataResult.rowCount !== 1) {
+        await client.query('COMMIT');
+        return [];
+      }
+      const result = await client.query(
+        `UPDATE agent_verification_badges
+         SET status = 'revoked', revoked_at = NOW(), revocation_reason = $2, updated_at = NOW()
+         WHERE agent_url = $1 AND status IN ('active', 'degraded')
+         RETURNING role, adcp_version`,
+        [agentUrl, reason],
+      );
+      await client.query('COMMIT');
+      return result.rows as Array<Pick<AgentVerificationBadge, 'role' | 'adcp_version'>>;
+    } catch (error) {
+      await client.query('ROLLBACK').catch((rollbackError) => {
+        logger.warn({ err: rollbackError, agentUrl }, 'Opted-out badge cleanup rollback failed');
+      });
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Publish badge feed events only if each result still matches current badge
+   * state. The shared per-agent lock orders these events against opt-out and
+   * requalification transitions, preventing delayed notifications from
+   * appending stale trust state after a newer transition.
+   */
+  async publishVerificationChangeEventsIfCurrent(
+    agentUrl: string,
+    issued: Array<{ role: string; adcp_version?: string }>,
+    revoked: Array<{ role: string; reason: string; adcp_version?: string }>,
+    actor: string,
+  ): Promise<void> {
+    if (issued.length === 0 && revoked.length === 0) return;
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [`verification-badge:${agentUrl}`],
+      );
+      const visibilityResult = await client.query(
+        `SELECT 1
+         FROM member_profiles mp
+         CROSS JOIN LATERAL jsonb_array_elements(mp.agents) agent
+         WHERE agent->>'url' = $1 AND agent->>'visibility' = 'public'
+         LIMIT 1`,
+        [agentUrl],
+      );
+      if (visibilityResult.rowCount !== 1) {
+        await client.query('COMMIT');
+        return;
+      }
+
+      for (const badge of issued) {
+        const current = await client.query(
+          `SELECT b.role, b.adcp_version, b.verified_specialisms,
+                  COALESCE(m.badge_requalification_generation, 0)::text AS generation
+           FROM agent_verification_badges b
+           LEFT JOIN agent_registry_metadata m ON m.agent_url = b.agent_url
+           WHERE b.agent_url = $1 AND b.role = $2
+             AND ($3::text IS NULL OR b.adcp_version = $3)
+             AND b.status IN ('active', 'degraded')
+             AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
+             AND COALESCE(m.badge_requalification_required, FALSE) = FALSE
+           ORDER BY split_part(b.adcp_version, '.', 1)::int DESC,
+                    split_part(b.adcp_version, '.', 2)::int DESC
+           LIMIT 1`,
+          [agentUrl, badge.role, badge.adcp_version ?? null],
+        );
+        const row = current.rows[0];
+        if (!row) continue;
+        await catalogEventsDb.writeEvent({
+          event_type: 'agent.verification_earned',
+          entity_type: 'agent',
+          entity_id: agentUrl,
+          payload: {
+            agent_url: agentUrl,
+            role: row.role,
+            adcp_version: row.adcp_version,
+            verified_specialisms: row.verified_specialisms,
+            badge_requalification_generation: row.generation,
+          },
+          actor,
+        }, client);
+      }
+
+      for (const badge of revoked) {
+        const current = await client.query(
+          `SELECT b.role, b.adcp_version,
+                  COALESCE(m.badge_requalification_generation, 0)::text AS generation
+           FROM agent_verification_badges b
+           LEFT JOIN agent_registry_metadata m ON m.agent_url = b.agent_url
+           WHERE b.agent_url = $1 AND b.role = $2
+             AND ($3::text IS NULL OR b.adcp_version = $3)
+             AND b.status = 'revoked'
+           ORDER BY split_part(b.adcp_version, '.', 1)::int DESC,
+                    split_part(b.adcp_version, '.', 2)::int DESC
+           LIMIT 1`,
+          [agentUrl, badge.role, badge.adcp_version ?? null],
+        );
+        const row = current.rows[0];
+        if (!row) continue;
+        await catalogEventsDb.writeEvent({
+          event_type: 'agent.verification_lost',
+          entity_type: 'agent',
+          entity_id: agentUrl,
+          payload: {
+            agent_url: agentUrl,
+            role: row.role,
+            adcp_version: row.adcp_version,
+            reason: badge.reason,
+            badge_requalification_generation: row.generation,
+          },
+          actor,
+        }, client);
+      }
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch((rollbackError) => {
+        logger.warn({ err: rollbackError, agentUrl }, 'Verification event rollback failed');
+      });
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async degradeBadge(
     agentUrl: string,
     role: BadgeRole,
     adcpVersion: string,
-  ): Promise<void> {
-    await query(
+    expectedGeneration?: string,
+  ): Promise<boolean> {
+    if (expectedGeneration !== undefined) {
+      const client = await getClient();
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+          [`verification-badge:${agentUrl}`],
+        );
+        const result = await client.query(
+          `UPDATE agent_verification_badges
+           SET status = 'degraded', updated_at = NOW()
+           WHERE agent_url = $1 AND role = $2 AND adcp_version = $3
+             AND status = 'active'
+             AND COALESCE((
+               SELECT badge_requalification_generation
+               FROM agent_registry_metadata WHERE agent_url = $1
+             ), 0) = $4::bigint`,
+          [agentUrl, role, adcpVersion, expectedGeneration],
+        );
+        await client.query('COMMIT');
+        return (result.rowCount ?? 0) > 0;
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
+    const result = await query(
       `UPDATE agent_verification_badges
        SET status = 'degraded', updated_at = NOW()
        WHERE agent_url = $1 AND role = $2 AND adcp_version = $3 AND status = 'active'`,
       [agentUrl, role, adcpVersion],
     );
+    return (result.rowCount ?? 0) > 0;
   }
 
   async bulkGetActiveBadges(agentUrls: string[]): Promise<Map<string, AgentVerificationBadge[]>> {
     if (agentUrls.length === 0) return new Map();
     // Numeric sort — see getBadgesForAgent comment.
     const result = await query(
-      `SELECT * FROM agent_verification_badges
-       WHERE agent_url = ANY($1) AND status IN ('active', 'degraded')
-       ORDER BY agent_url,
+      `SELECT b.* FROM agent_verification_badges b
+       LEFT JOIN agent_registry_metadata m ON m.agent_url = b.agent_url
+       WHERE b.agent_url = ANY($1)
+         AND b.status IN ('active', 'degraded')
+         AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
+         AND COALESCE(m.badge_requalification_required, FALSE) = FALSE
+       ORDER BY b.agent_url,
                 split_part(adcp_version, '.', 1)::int DESC,
                 split_part(adcp_version, '.', 2)::int DESC,
                 role`,
@@ -1605,8 +2103,12 @@ export class ComplianceDatabase {
   async getVerifiedAgentsByRole(role: BadgeRole): Promise<AgentVerificationBadge[]> {
     // Numeric sort — see getBadgesForAgent comment.
     const result = await query(
-      `SELECT * FROM agent_verification_badges
-       WHERE role = $1 AND status IN ('active', 'degraded')
+      `SELECT b.* FROM agent_verification_badges b
+       LEFT JOIN agent_registry_metadata m ON m.agent_url = b.agent_url
+       WHERE b.role = $1
+         AND b.status IN ('active', 'degraded')
+         AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
+         AND COALESCE(m.badge_requalification_required, FALSE) = FALSE
        ORDER BY split_part(adcp_version, '.', 1)::int DESC,
                 split_part(adcp_version, '.', 2)::int DESC,
                 verified_at DESC`,

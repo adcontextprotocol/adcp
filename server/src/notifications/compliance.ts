@@ -11,7 +11,7 @@ import { notifyUser } from './notification-service.js';
 import { NotificationDatabase } from '../db/notification-db.js';
 import { CatalogEventsDatabase } from '../db/catalog-events-db.js';
 import { query } from '../db/client.js';
-import type { ComplianceStatus, TrackSummaryEntry, StoryboardStatusEntry } from '../db/compliance-db.js';
+import { ComplianceDatabase, type ComplianceStatus, type TrackSummaryEntry, type StoryboardStatusEntry } from '../db/compliance-db.js';
 import type { SlackBlockMessage } from '../slack/types.js';
 
 const logger = baseLogger.child({ module: 'compliance-notifications' });
@@ -19,6 +19,7 @@ const logger = baseLogger.child({ module: 'compliance-notifications' });
 const CHANNEL_ID = process.env.REGISTRY_EDITS_CHANNEL_ID;
 const notificationDb = new NotificationDatabase();
 const eventsDb = new CatalogEventsDatabase();
+const complianceDb = new ComplianceDatabase();
 
 interface ComplianceChangeInput {
   agentUrl: string;
@@ -49,6 +50,21 @@ async function resolveAgentOwnerUserIds(agentUrl: string): Promise<string[]> {
   } catch (error) {
     logger.debug({ error, agentUrl }, 'Could not resolve agent owner');
     return [];
+  }
+}
+
+async function isAgentPublic(agentUrl: string): Promise<boolean> {
+  try {
+    const result = await query(
+      `SELECT 1 FROM member_profiles mp
+       CROSS JOIN LATERAL jsonb_array_elements(mp.agents) agent
+       WHERE agent->>'url' = $1 AND agent->>'visibility' = 'public'
+       LIMIT 1`,
+      [agentUrl],
+    );
+    return result.rowCount === 1;
+  } catch {
+    return false;
   }
 }
 
@@ -206,6 +222,11 @@ interface VerificationChangeInput {
   // messages.
   issued: Array<{ role: string; specialisms: string[]; adcp_version?: string }>;
   revoked: Array<{ role: string; reason: string; adcp_version?: string }>;
+  actor?: string;
+  /** False when the caller persisted feed events transactionally. */
+  emitFeedEvents?: boolean;
+  /** False for non-public agents so shared channels cannot enumerate them. */
+  notifyChannel?: boolean;
 }
 
 function badgeQualifier(adcpVersion: string | undefined): string {
@@ -219,9 +240,10 @@ function badgeQualifier(adcpVersion: string | undefined): string {
 export async function notifyVerificationChange(input: VerificationChangeInput): Promise<void> {
   const { agentUrl, issued, revoked } = input;
   const name = agentDisplayName(agentUrl);
+  const notifySharedChannel = input.notifyChannel ?? await isAgentPublic(agentUrl);
 
   // Post to Slack channel
-  if (CHANNEL_ID && isSlackConfigured()) {
+  if (notifySharedChannel && CHANNEL_ID && isSlackConfigured()) {
     try {
       for (const badge of issued) {
         const versionTag = badgeQualifier(badge.adcp_version);
@@ -294,35 +316,13 @@ export async function notifyVerificationChange(input: VerificationChangeInput): 
   }
 
   // Emit change feed events
-  try {
-    for (const badge of issued) {
-      await eventsDb.writeEvent({
-        event_type: 'agent.verification_earned',
-        entity_type: 'agent',
-        entity_id: agentUrl,
-        payload: {
-          agent_url: agentUrl,
-          role: badge.role,
-          verified_specialisms: badge.specialisms,
-          ...(badge.adcp_version && { adcp_version: badge.adcp_version }),
-        },
-        actor: 'pipeline:compliance-heartbeat',
-      });
-    }
-    for (const badge of revoked) {
-      await eventsDb.writeEvent({
-        event_type: 'agent.verification_lost',
-        entity_type: 'agent',
-        entity_id: agentUrl,
-        payload: {
-          agent_url: agentUrl,
-          role: badge.role,
-          reason: badge.reason,
-          ...(badge.adcp_version && { adcp_version: badge.adcp_version }),
-        },
-        actor: 'pipeline:compliance-heartbeat',
-      });
-    }
+  if (input.emitFeedEvents !== false) try {
+    await complianceDb.publishVerificationChangeEventsIfCurrent(
+      agentUrl,
+      issued,
+      revoked,
+      input.actor ?? 'pipeline:compliance-heartbeat',
+    );
   } catch (error) {
     logger.error({ error, agentUrl }, 'Failed to emit verification change feed event');
   }
