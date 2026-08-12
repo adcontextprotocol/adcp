@@ -4539,11 +4539,13 @@ export function createMemberToolHandlers(
     const authOption = buildAuthOption(resolved);
 
     if (!hasExplicitComplianceTarget(input)) {
+      const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(resolved.resolvedUrl);
       runTargetSelection = await selectComplianceTargetForAgentSelection(
         resolved.resolvedUrl,
         { auth: authOption },
         complianceTarget,
         'canonical',
+        seededSupportedVersions,
       );
       runTarget = runTargetSelection.target;
     } else {
