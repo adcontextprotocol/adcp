@@ -26,6 +26,8 @@ When `require_operator_auth` is `true` (**account-id namespaces**), operators au
 
 When `require_operator_auth` is `false` (**buyer-declared accounts**), the agent is trusted and the buyer declares brand/operator pairs via [`sync_accounts`](/docs/accounts/tasks/sync_accounts) to provision accounts.
 
+Follow [Provision a seller-mediated account](/docs/accounts/provisioning-walkthrough) for a complete buyer-declared workflow from discovery through human setup, activation, and first spend.
+
 An **ad network** may use both models simultaneously — buyer-declared accounts on the buyer-facing side (the network is agent-trusted) and an account-id namespace with each underlying platform (the network authenticates as an operator). See the [Sponsored Intelligence guide — account model for networks](/docs/sponsored-intelligence/networks#account-model-for-networks) for the full account chain: `buyer agent → network (buyer-declared) → AI platform (account-id namespace)`.
 
 After delivery, the orchestrator calls [`report_usage`](/docs/accounts/tasks/report_usage) to inform vendor agents (signals, governance, creative) how their services were consumed. This is not settlement — it's consumption reporting so the vendor can track earned revenue and verify billing.

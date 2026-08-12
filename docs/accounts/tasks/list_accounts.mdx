@@ -185,6 +185,8 @@ async def wait_for_account(target_account_id: str, max_attempts: int = 20):
 
 After receiving `account.status_changed`, re-read the account snapshot. The webhook tells you which account changed; `list_accounts` is the source of truth for the current status, setup hints, billing terms, and authorization.
 
+The [seller-mediated account provisioning walkthrough](/docs/accounts/provisioning-walkthrough#observe-and-reconcile-resolution) shows this invalidation-and-repair pattern in context.
+
 ```javascript
 async function handleAccountStatusWebhook(req, res) {
   if (!verifyWebhookSignature(req)) return res.status(401).end();
