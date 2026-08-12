@@ -665,6 +665,16 @@ Seeds a measurement vendor's `get_adcp_capabilities.measurement.metrics[]` snaps
 
 ### Seeding semantics and ordering
 
+<Note>
+In AdCP 3.2, IDs in a storyboard `fixtures:` block are run-scoped handles.
+Literal injection remains the compatibility default, and all rules in this
+section apply whenever the runner selects the `seed` strategy. A storyboard may
+separately opt a handle into `discover` or `construct` through explicit
+`fixture_resolution` rules. The seller never has to persist the authored
+literal when one of those strategies binds a seller-issued ID. See
+[Fixture handles and catalog resolution](/docs/building/verification/conformance#fixture-handles-and-catalog-resolution).
+</Note>
+
 - **Fixture shape.** `fixture` is kept permissive (`additionalProperties: true`) so storyboard authors can declare the minimum shape each test needs. Fixtures SHOULD conform to the corresponding domain schema (`core/product.json` for `seed_product`, `core/pricing-option.json` for `seed_pricing_option`, `media-buy/sync-creatives-request.json` creative-item shape for `seed_creative`, `core/media-buy.json` for `seed_media_buy`, the plan schema for `seed_plan`). `seed_measurement_catalog.metrics[]` mirrors `get_adcp_capabilities.measurement.metrics[]`. Sellers MAY reject clearly malformed fixtures with `INVALID_PARAMS`.
 - **Idempotency on re-seed.** A second call with the same primary ID and a `fixture` equivalent to the first SHOULD succeed and return `success: true` with `previous_state: "existing"`. A second call with a **diverging** fixture MUST return `INVALID_PARAMS` with `error_detail` explaining which fields diverged — sellers MUST NOT merge or update silently. Storyboards that need to change fixture state mid-run MUST use `force_*` scenarios, not a re-seed. This keeps the same storyboard deterministic across sellers.
 - **Foreign-key ordering.** The runner seeds fixtures in dependency order so sellers receive referenced parents before their children. The dependency DAG:
@@ -916,7 +926,20 @@ The runner distinguishes three outcome categories in deterministic mode:
 | **Functional compliance** | Pass all storyboards in observational mode | Tools exist, respond correctly, and complete buyer-initiated flows |
 | **Stateful compliance** | Pass all storyboards in deterministic mode | State machines enforce correct transitions, error codes match spec, operation gates block correctly |
 
-**Specialism-scoped seed requirements.** Stateful compliance also requires that sellers implement the `seed_*` scenarios covering the specialisms they certify against. The [`UNKNOWN_SCENARIO`](/docs/building/by-layer/L3/comply-test-controller#error-codes) → `not_applicable` grading is for honest coverage reporting on missing surface area, not a blanket opt-out from conformance — a seller certifying `sales-non-guaranteed` MUST implement at least `seed_product` and `seed_pricing_option`; a seller certifying `creative-ad-server` MUST implement `seed_creative`; a seller certifying `governance-delivery-monitor` MUST implement `seed_plan` (and `seed_media_buy` where the storyboard requires it). The storyboard authors in `static/compliance/source/specialisms/` declare the fixtures their storyboards need; sellers match that list to the specialisms on their cert.
+**Specialism-scoped fixture requirements.** Stateful compliance requires every
+fixture used by the specialism's selected storyboards to resolve. A seller may
+satisfy a fixture through any strategy that the storyboard explicitly enables:
+`seed`, `discover`, or `construct`. Storyboards without `fixture_resolution`
+remain seed-only, so their corresponding `seed_*` scenarios are still required
+for full coverage. Missing every available strategy produces a visible
+`fixture_unsatisfied` coverage gap; it is not a passing result and cannot be
+used as a blanket opt-out from conformance.
+
+This relaxation applies only to fixture setup. Sellers must still implement the
+`force_*` and `simulate_*` scenarios required by the lifecycle assertions in
+their claimed specialisms. If a seller advertises a setup scenario or begins a
+normal buyer-flow construction call and that operation fails, the runner grades
+the failure rather than falling back to another strategy.
 
 ## Implementation guidance
 

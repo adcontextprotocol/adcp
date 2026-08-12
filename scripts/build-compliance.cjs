@@ -626,6 +626,18 @@ function main() {
     process.exit(1);
   }
 
+  // Fixture-resolution lint: 3.2 discovery/construct declarations must point
+  // at real fixture handles and use only the normative strategy/matcher DSL.
+  // Legacy fixture blocks without resolution metadata remain seed-only.
+  try {
+    execSync('node scripts/lint-storyboard-fixture-resolution.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   // Contradiction lint: no two storyboards may encode contradictory outcomes
   // for the same (task, request, prior-state, env) — a conformant agent
   // cannot satisfy both.
