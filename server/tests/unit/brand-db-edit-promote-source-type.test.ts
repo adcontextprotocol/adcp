@@ -39,6 +39,8 @@ function makeClient(current: Record<string, unknown>) {
   queryFn
     // BEGIN
     .mockResolvedValueOnce(undefined)
+    // shared per-domain advisory lock
+    .mockResolvedValueOnce(undefined)
     // SELECT ... FOR UPDATE (current row)
     .mockResolvedValueOnce({ rows: [current] })
     // SELECT next_rev
