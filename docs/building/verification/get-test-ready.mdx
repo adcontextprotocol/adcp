@@ -15,7 +15,7 @@ The runner drives your agent through the same public tools a buyer would call, p
 |---------|--------------------------|----------------|
 | [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) | Which protocols and specialisms you claim, and that you support sandbox | Your agent's capability response |
 | [`sync_accounts`](/docs/accounts/tasks/sync_accounts) (or [`list_accounts`](/docs/accounts/tasks/list_accounts)) | How to obtain a sandbox account to run tests against | Your agent's account tool |
-| [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) | How to seed fixtures and force seller-side transitions deterministically | Your agent, sandbox-only |
+| [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) | How to force seller-side transitions deterministically and, when supported, inject fixtures | Your agent, sandbox-only |
 
 You ship these three surfaces. The runner owns storyboard selection, fixture ordering, and response comparison.
 
@@ -79,11 +79,20 @@ The first run answers "does the production buyer-visible path tolerate sandbox t
 
 | Scenario family | What it does | When you need it |
 |-----------------|--------------|------------------|
-| `seed_*` | Create fixtures (products, pricing options, creatives, plans, media buys) with caller-supplied IDs | Almost every storyboard — this replaces hardcoded-ID discovery |
+| `seed_*` | Create fixtures (products, pricing options, creatives, plans, media buys) with caller-supplied IDs | Seed-only storyboards and fixture-store sellers; 3.2 storyboards may instead resolve explicitly declared requirements through normal discovery or construction |
 | `force_*` | Drive entities through state transitions that are normally seller-initiated | Any storyboard that tests a state machine (creative approval, account suspension, etc.) |
 | `simulate_*` | Inject delivery data or budget spend | Reporting and budgeting storyboards |
 
 See the [Compliance test controller reference](/docs/building/by-layer/L3/comply-test-controller) for scenario-by-scenario parameters and response shapes, and the [Compliance Catalog](/docs/building/verification/compliance-catalog) for which scenarios each specialism requires.
+
+If your products come from a publisher-owned catalog and use seller-issued or
+derived IDs, do not add a test-only alias layer merely to accept storyboard
+literals. For storyboards that publish `fixture_resolution` rules, provision
+representative inventory through your normal platform path and let the runner
+discover and bind it. The run will report any requirement your sandbox catalog
+cannot satisfy as `fixture_unsatisfied`. Storyboards that have not yet migrated
+remain seed-only, so inspect the coverage report rather than assuming discovery
+applies suite-wide.
 
 ### Wiring the SDK scaffold
 

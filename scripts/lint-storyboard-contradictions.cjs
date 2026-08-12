@@ -278,6 +278,23 @@ function normalizeFixturesForHashing(fixtures) {
   return out;
 }
 
+function normalizeFixtureResolutionForHashing(resolution) {
+  if (!resolution || typeof resolution !== 'object') return resolution;
+  const out = {};
+  for (const [category, entries] of Object.entries(resolution)) {
+    if (!Array.isArray(entries)) {
+      out[category] = entries;
+      continue;
+    }
+    out[category] = [...entries].sort((a, b) => {
+      const aKey = `${a?.product_handle ?? ''}\0${a?.handle ?? ''}`;
+      const bKey = `${b?.product_handle ?? ''}\0${b?.handle ?? ''}`;
+      return aKey < bKey ? -1 : aKey > bKey ? 1 : 0;
+    });
+  }
+  return out;
+}
+
 /**
  * Reduce a step's `auth` field to a stable fingerprint token. Always returns
  * a string so the `auth=` component is ALWAYS present in the env fingerprint
@@ -379,6 +396,9 @@ function describeStepAuth(auth) {
  *                different prerequisite state via `comply_test_controller`
  *                legitimately produce different outcomes for the same
  *                request.
+ *   resolution — hash of `doc.fixture_resolution`. Different match contracts
+ *                may bind different seller state even when seed exemplars are
+ *                identical.
  *   scenario   — step's `comply_scenario`.
  *   auth       — step's effective credential shape, produced by
  *                `describeStepAuth`. Always emitted (even for steps that
@@ -417,6 +437,15 @@ function fingerprintEnv(step, phase, doc) {
       .digest('hex')
       .slice(0, 8);
     parts.push(`fixtures=${fixturesHash}`);
+  }
+  if (doc?.fixture_resolution && typeof doc.fixture_resolution === 'object' &&
+      Object.keys(doc.fixture_resolution).length > 0) {
+    const resolutionHash = crypto
+      .createHash('sha1')
+      .update(stableStringify(normalizeFixtureResolutionForHashing(doc.fixture_resolution)))
+      .digest('hex')
+      .slice(0, 8);
+    parts.push(`resolution=${resolutionHash}`);
   }
   if (typeof step.comply_scenario === 'string') parts.push(`scenario=${step.comply_scenario}`);
   parts.push(`auth=${describeStepAuth(step.auth)}`);
@@ -662,6 +691,7 @@ module.exports = {
   fingerprintEnv,
   describeStepAuth,
   normalizeFixturesForHashing,
+  normalizeFixtureResolutionForHashing,
   classifyOutcome,
   outcomesAgree,
   describeOutcome,

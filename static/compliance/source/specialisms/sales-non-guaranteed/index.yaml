@@ -108,6 +108,78 @@ fixtures:
         p50: 16.0
         p75: 18.0
 
+# 3.2 catalog-adaptive pilot. The fixture literals above remain seed IDs for
+# existing runners. New runners may instead bind each handle to a qualifying
+# seller-owned product and scoped pricing option. Match rules include only
+# behavior material to this storyboard; sample price amounts are deliberately
+# not equality constraints.
+fixture_resolution:
+  products:
+    - handle: "sports_display_auction"
+      strategies: [seed, discover]
+      match:
+        - path: /delivery_type
+          operator: equals
+          value: non_guaranteed
+        - path: /channels
+          operator: contains_all
+          value: [display]
+        - path: /format_options
+          operator: any_match
+          where:
+            - path: /format_kind
+              operator: equals
+              value: image
+            - path: /params/width
+              operator: equals
+              value: 300
+            - path: /params/height
+              operator: equals
+              value: 250
+    - handle: "outdoor_video_auction"
+      strategies: [seed, discover]
+      match:
+        - path: /delivery_type
+          operator: equals
+          value: non_guaranteed
+        - path: /channels
+          operator: contains_all
+          value: [video]
+        - path: /format_options
+          operator: any_match
+          where:
+            - path: /format_kind
+              operator: equals
+              value: video_hosted
+            - path: /params/duration_ms_exact
+              operator: equals
+              value: 30000
+  pricing_options:
+    - product_handle: "sports_display_auction"
+      handle: "cpm_auction"
+      strategies: [seed, discover]
+      match:
+        - path: /pricing_model
+          operator: equals
+          value: cpm
+        - path: /currency
+          operator: equals
+          value: USD
+        - path: /floor_price
+          operator: present
+    - product_handle: "outdoor_video_auction"
+      handle: "cpm_auction"
+      strategies: [seed, discover]
+      match:
+        - path: /pricing_model
+          operator: equals
+          value: cpm
+        - path: /currency
+          operator: equals
+          value: USD
+        - path: /floor_price
+          operator: present
+
 phases:
   - id: capability_discovery
     title: "Capability discovery"
@@ -193,6 +265,13 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+
+          # AdCP 3.1 is the dual-wire transition release. This pilot requires
+          # canonical format_options, so select that response dialect explicitly
+          # until AdCP 3.2 makes the canonical creative wire mandatory.
+          ext:
+            adcp:
+              creative_wire: canonical
 
           context:
             correlation_id: "sales_non_guaranteed--get_products_brief"
