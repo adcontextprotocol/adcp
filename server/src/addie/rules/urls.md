@@ -5,20 +5,21 @@ If a URL is not listed here, do not emit it — use `search_docs` to find the co
 path or ask the user. Do not extrapolate paths from patterns you observe (e.g.
 `/terms` redirecting to `/legal/terms` does not imply `/legal/about` exists).
 
-The CI link checker (`scripts/check-owned-links.js`) validates every live
-owned-domain URL in this file on every PR (live section only; deprecated entries
-are excluded from CI checks).
+The CI link checker (`scripts/check-owned-links.js`) validates every structured
+list entry in the three live sections below. Direct destinations must not
+redirect. Action entry points may redirect as part of their workflow. Stable
+documentation aliases may redirect only to the same logical page in a
+versioned documentation snapshot.
 
-## agenticadvertising.org
+## Direct destinations — no redirects
 
-- https://agenticadvertising.org/working-groups — Working group index; route community and participation questions here rather than guessing channel names
+- https://agenticadvertising.org/committees?type=working_group — Working group index; route community and participation questions here rather than guessing channel names
 - https://agenticadvertising.org/dashboard — Member dashboard (billing, settings, team)
 - https://agenticadvertising.org/dashboard#team — Team management and pending join requests
 - https://agenticadvertising.org/dashboard/membership — Membership and renewal management
 - https://agenticadvertising.org/account — Personal account settings (form fields you type into: name, bio, expertise, social links, including the GitHub-username text field that surfaces on the user's community profile). NOT where the GitHub OAuth connection lives.
 - https://agenticadvertising.org/member-hub — "Your hub" — the personal dashboard (engagement, working group recs, profile completeness). Hosts the **Connections card** where users connect or disconnect GitHub OAuth (the one-click toggle backed by WorkOS Pipes). Use this URL when the user asks how to disconnect or manage their GitHub OAuth connection.
 - https://agenticadvertising.org/brand-builder — brand.json builder tool; accepts `?domain=example.com` to pre-load a specific brand domain into the editor
-- https://agenticadvertising.org/connect/github — Session-aware bouncer that starts the WorkOS Pipes GitHub OAuth flow on click. Use when the user wants to **start** an OAuth connection from a Slack-shared link; the Connections card on /member-hub is where they go to manage or disconnect afterward.
 - https://agenticadvertising.org/member-profile — Member profile, company description, and logo upload
 - https://agenticadvertising.org/community — Community hub
 - https://agenticadvertising.org/legal/terms — Terms of Service (canonical path; /terms redirects here)
@@ -27,7 +28,16 @@ are excluded from CI checks).
 - https://agenticadvertising.org/.well-known/oauth-protected-resource/api — Protected resource metadata for /api (RFC 9728)
 - https://agenticadvertising.org/.well-known/oauth-protected-resource/mcp — Protected resource metadata for /mcp (RFC 9728)
 
-## docs.adcontextprotocol.org
+## Action entry points — redirects expected
+
+- https://agenticadvertising.org/connect/github — Session-aware bouncer that starts the WorkOS Pipes GitHub OAuth flow on click. It may redirect through sign-in or directly into WorkOS Pipes. Use when the user wants to **start** an OAuth connection from a Slack-shared link; the Connections card on /member-hub is where they go to manage or disconnect afterward.
+
+## Stable documentation aliases — keep unversioned
+
+These `/docs/...` URLs are the stable public aliases Addie should cite. Never
+replace them with `/dist/docs/<version>/...` snapshot paths or pin them to a
+specific AdCP release. Redirects are valid only when the snapshot destination
+represents the same logical documentation page.
 
 - https://docs.adcontextprotocol.org/docs/quickstart — 5-minute hands-on quickstart; no signup required
 - https://docs.adcontextprotocol.org/docs/building/by-layer/L4/build-an-agent — Skill-based agent generation guide
@@ -55,7 +65,7 @@ substitute listed or call `search_docs`. Do not emit the hallucinated path.
 | `agenticadvertising.org/settings` | Doesn't exist — same redirect as `/dashboard/settings` |
 | `agenticadvertising.org/about` | Doesn't exist — use `search_docs` or describe the org from context |
 | `agenticadvertising.org/faq` | Doesn't exist — use `search_docs` |
-| `agenticadvertising.org/contact` | Doesn't exist — direct users to the community hub (`/community`) or working groups (`/working-groups`) |
+| `agenticadvertising.org/contact` | Doesn't exist — direct users to the community hub (`/community`) or working groups (`/committees?type=working_group`) |
 | `agenticadvertising.org/help` | Doesn't exist — use `search_docs` or `/docs/quickstart` |
 | `agenticadvertising.org/legal/about` | Doesn't exist — `/legal/` only has `terms` and `privacy` |
 | `agenticadvertising.org/terms` | Redirect only — always cite the canonical `/legal/terms` |
