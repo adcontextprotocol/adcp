@@ -46,6 +46,7 @@ const ALL_OWNED_URLS = [
   ownedAgentUrl('applicable-oauth'),
   ownedAgentUrl('selected-org-refresh'),
   ownedAgentUrl('selected-org-challenge'),
+  ownedAgentUrl('public-notices'),
 ];
 
 // Toggle which user the auth middleware stamps onto the request. Tests
@@ -150,14 +151,18 @@ function makeComplianceResult(options: { specialisms?: string[]; storyboardId?: 
       tracks_failed: 0,
       tracks_skipped: 0,
       tracks_partial: 0,
-      notices: [
-        {
-          severity: 'info',
-          code: 'fixture_notice',
-          message: 'Fixture notice',
-        },
-      ],
     },
+    notices: [
+      {
+        severity: 'info',
+        code: 'fixture_notice',
+        message: 'Fixture notice',
+        capability_pointer: '/account/supported_billing/0',
+        docs_url: 'https://example.com/adcp/fixture-notice',
+        storyboard_ids: [storyboardId],
+        future_runner_field: { remediation: 'Update the declared billing mode.' },
+      },
+    ],
     tracks: [{
       track: 'media-buy',
       status: 'pass',
@@ -330,7 +335,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     );
 
     const latestRun = await pool.query(
-      `SELECT triggered_by, triggered_org_id
+      `SELECT triggered_by, triggered_org_id, notices_json
        FROM agent_compliance_runs
        WHERE agent_url = $1
        ORDER BY tested_at DESC
@@ -341,6 +346,100 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
       triggered_by: 'owner_test',
       triggered_org_id: TEST_ORG_ID,
     });
+    expect(latestRun.rows[0].notices_json).toEqual([{
+      severity: 'info',
+      code: 'fixture_notice',
+      message: 'Fixture notice',
+      capability_pointer: '/account/supported_billing/0',
+      docs_url: 'https://example.com/adcp/fixture-notice',
+      storyboard_ids: ['media_buy_seller'],
+      future_runner_field: { remediation: 'Update the declared billing mode.' },
+    }]);
+
+    const publicCompliance = await request(app)
+      .get(`/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance`)
+      .send();
+    expect(publicCompliance.status).toBe(200);
+    expect(publicCompliance.body.notices).toEqual([{
+      severity: 'info',
+      code: 'fixture_notice',
+      message: 'Fixture notice',
+      capability_pointer: '/account/supported_billing/0',
+    }]);
+    expect(publicCompliance.body.notices[0]).not.toHaveProperty('docs_url');
+    expect(publicCompliance.body.notices[0]).not.toHaveProperty('storyboard_ids');
+    expect(publicCompliance.body.notices[0]).not.toHaveProperty('future_runner_field');
+  });
+
+  it('public compliance bounds notice output while retaining the raw private record', async () => {
+    const agentUrl = ownedAgentUrl('public-notices');
+    const refresh = await request(app).post(url(agentUrl)).send();
+    expect(refresh.status).toBe(200);
+
+    const rawNotices = [
+      {
+        severity: 'future_custom_severity',
+        code: 'future_custom_code',
+        message: '😀'.repeat(700),
+        effective_version: 'v'.repeat(100),
+        requirement: 'r'.repeat(700),
+        capability_path: 'p'.repeat(700),
+        capability_pointer: `/${'x'.repeat(1_100)}`,
+        reference_url: 'javascript:alert(1)',
+        experimental_context: { secret: 'private runner state' },
+      },
+      ...Array.from({ length: 54 }, (_, index) => ({
+        severity: 'info',
+        code: `bounded_notice_${index}`,
+        message: `Notice ${index}`,
+        ...(index === 0
+          ? { reference_url: 'https://example.com/docs?version=4#notice' }
+          : {}),
+      })),
+    ];
+    await pool.query(
+      `UPDATE agent_compliance_runs
+       SET notices_json = $2::jsonb
+       WHERE id = (
+         SELECT id FROM agent_compliance_runs
+         WHERE agent_url = $1
+         ORDER BY tested_at DESC
+         LIMIT 1
+       )`,
+      [agentUrl, JSON.stringify(rawNotices)],
+    );
+
+    currentUserId = null;
+    const publicCompliance = await request(app)
+      .get(`/api/registry/agents/${encodeURIComponent(agentUrl)}/compliance`)
+      .send();
+    expect(publicCompliance.status).toBe(200);
+    expect(publicCompliance.body.notices).toHaveLength(50);
+    expect(publicCompliance.body.notices[0]).toMatchObject({
+      severity: 'future_custom_severity',
+      code: 'future_custom_code',
+    });
+    expect(publicCompliance.body.notices[0].message.length).toBeLessThanOrEqual(1_000);
+    expect(publicCompliance.body.notices[0].effective_version.length).toBeLessThanOrEqual(64);
+    expect(publicCompliance.body.notices[0].requirement.length).toBeLessThanOrEqual(500);
+    expect(publicCompliance.body.notices[0].capability_path.length).toBeLessThanOrEqual(512);
+    expect(publicCompliance.body.notices[0].capability_pointer.length).toBeLessThanOrEqual(1_024);
+    expect(publicCompliance.body.notices[0]).not.toHaveProperty('reference_url');
+    expect(publicCompliance.body.notices[0]).not.toHaveProperty('experimental_context');
+    expect(publicCompliance.body.notices[1].reference_url).toBe(
+      'https://example.com/docs?version=4#notice',
+    );
+
+    const stored = await pool.query<{ notices_json: unknown[] }>(
+      `SELECT notices_json
+       FROM agent_compliance_runs
+       WHERE agent_url = $1
+       ORDER BY tested_at DESC
+       LIMIT 1`,
+      [agentUrl],
+    );
+    expect(stored.rows[0].notices_json).toHaveLength(55);
+    expect(stored.rows[0].notices_json[0]).toHaveProperty('experimental_context');
   });
 
   it('admin can refresh an agent they do not own', async () => {

@@ -125,4 +125,4 @@ This Charter is a discoverability document and is updated when the underlying go
 
 - General: [hello@agenticadvertising.org](mailto:hello@agenticadvertising.org)
 - Governance inquiries: via the [governance page](https://agenticadvertising.org/governance)
-- Protocol questions: [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions) or [Slack](https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA)
+- Protocol questions: [GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions) or the [Slack joining guide](https://docs.adcontextprotocol.org/docs/community/joining-slack)

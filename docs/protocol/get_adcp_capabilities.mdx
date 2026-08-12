@@ -348,6 +348,8 @@ Declares whether the seller supports durable account lifecycle invalidation webh
 
 When `supported: false` or absent, buyers MUST NOT assume durable account status webhooks are available. They can still use the one-shot `sync_accounts.push_notification_config` callback for the initial provisioning result when offered, and poll `list_accounts` for later account status changes.
 
+See [Provision a seller-mediated account](/docs/accounts/provisioning-walkthrough) for the complete discovery, registration, human setup, webhook, and repair sequence.
+
 #### Auth models
 
 **Buyer-declared accounts** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, then calls `sync_accounts` to declare which brands and operators it represents. The seller provisions accounts based on the agent's claims, optionally verifying operators against `brand.json`. All subsequent calls use the agent's single credential and pass natural keys (`brand` + `operator`).

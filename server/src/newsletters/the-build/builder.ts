@@ -348,6 +348,7 @@ async function buildContributorSpotlight(): Promise<BuildContributor[]> {
        JOIN content_authors ca ON ca.perspective_id = p.id
        JOIN users u ON u.workos_user_id = ca.user_id
        WHERE p.status = 'published'
+         AND p.is_members_only = false
          AND p.published_at > NOW() - INTERVAL '14 days'
          AND p.content_origin = 'member'
        ORDER BY p.published_at DESC

@@ -1,0 +1,126 @@
+---
+title: "Migrating secured asset access (3.2)"
+description: "Stop embedding cloud credentials in artifact payloads and choose signed URLs, workload identity, or bounded bearer tokens in AdCP 3.2."
+"og:title": "AdCP — Migrating secured asset access"
+testable: true
+---
+
+# Migrating secured asset access (3.2)
+
+AdCP 3.2 deprecates `assets[].access.credentials` on the `service_account` access method. Without that legacy field, the method means that the asset origin has authorized a workload identity already controlled by the component that performs the asset fetch. No provider credential crosses the AdCP payload.
+
+For most integrations, use a short-lived signed URL. It gives consumers one interoperable operation—an ordinary HTTPS `GET`—without cloud-provider setup.
+
+## Choose the simplest path
+
+| Situation | Access method |
+|-----------|---------------|
+| One-off delivery or no prior identity relationship | `signed_url` (recommended) |
+| Established cloud-IAM relationship and repeated access | `service_account` without `credentials` |
+| Origin requires an Authorization header | Short-lived, asset-scoped `bearer_token` |
+
+Do not place long-lived API keys, private keys, cloud access keys, or other standing credentials in any artifact field.
+
+## Before: inline provider credentials
+
+This legacy shape remains schema-valid during the 3.x compatibility window, but new producers must not emit it:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.1.13/content-standards/artifact.json",
+  "property_rid": "property_streamhaus_001",
+  "artifact_id": "episode_42_segment_3",
+  "assets": [
+    {
+      "type": "audio",
+      "url": "https://storage.streamhaus.example/episodes/42/segment-3.mp3",
+      "access": {
+        "method": "service_account",
+        "provider": "gcp",
+        "credentials": {
+          "type": "service_account",
+          "private_key": "legacy-secret-redacted"
+        }
+      }
+    }
+  ]
+}
+```
+
+Presence of this field denotes only the deprecated legacy form; it is not workload-identity authorization. Consumers must continue parsing and validating it for 3.x wire compatibility, but must not activate received credentials automatically. Process it only for a peer explicitly allowlisted for legacy compatibility; otherwise reject or quarantine it. Redact the complete value from logs, traces, errors, metrics, analytics, model context, and durable storage.
+
+## After: signed URL (recommended)
+
+Issue a URL scoped to one asset and the shortest practical access window:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.1.13/content-standards/artifact.json",
+  "property_rid": "property_streamhaus_001",
+  "artifact_id": "episode_42_segment_3",
+  "assets": [
+    {
+      "type": "audio",
+      "url": "https://assets.streamhaus.example/episodes/42/segment-3.mp3?expires=1786003200&signature=redacted",
+      "access": {
+        "method": "signed_url"
+      }
+    }
+  ]
+}
+```
+
+The complete URL is a bearer capability. Consumers must redact it from logs, traces, errors, metrics, analytics, model context, and durable storage because providers may place credential material in either its path or query string. No additional Authorization header is sent, and the URL must not be forwarded outside the intended recipient trust boundary.
+
+## Alternative: pre-authorized workload identity
+
+For an established relationship, authorize the consumer's identity out of band and omit `credentials`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.1.13/content-standards/artifact.json",
+  "property_rid": "property_streamhaus_001",
+  "artifact_id": "episode_42_segment_3",
+  "assets": [
+    {
+      "type": "audio",
+      "url": "https://storage.streamhaus.example/episodes/42/segment-3.mp3",
+      "access": {
+        "method": "service_account",
+        "provider": "gcp"
+      }
+    }
+  ]
+}
+```
+
+The component that fetches the asset uses its normal provider credential chain at fetch time. The payload does not assert which principal is authorized, and the asset origin remains responsible for authorization. An intermediary must either fetch the asset itself or arrange out-of-band authorization for the downstream component that will fetch it.
+
+## Fetch safely
+
+Treat every asset URL and access object as untrusted. Require HTTPS and validate the resolved destination before the first request and after every redirect. Reject loopback, link-local, metadata-service, private, and locally disallowed destinations unless a specific destination was explicitly approved during authenticated onboarding.
+
+Never select or attach ambient credentials based only on `access.method`, `provider`, or the supplied URL. Bind workload credentials out of band to an allowed origin and resource prefix. Send bearer tokens only to the authorized origin, never forward an Authorization header across redirects, and fail closed rather than falling back to another access method.
+
+## Producer checklist
+
+- Prefer `signed_url` unless the parties already maintain an identity-based access relationship.
+- Scope signed URLs and bearer tokens to one asset and the shortest practical access window under a documented maximum TTL.
+- Omit `service_account.credentials` in all new payloads.
+- Never copy consumer-owned provider credentials into an artifact.
+
+## Consumer checklist
+
+- Continue parsing and validating legacy `service_account.credentials` throughout 3.x. Process it only for an explicitly allowlisted legacy peer; otherwise reject or quarantine it.
+- Never infer authorization from an identity string in the payload; authorization is enforced by the asset origin.
+- Keep any temporary encrypted cache no longer than both the credential expiry and a configured maximum lifetime.
+- Do not fall back between supplied credentials, workload identity, bearer tokens, and signed URLs after an authorization failure.
+- Expect `service_account.credentials` to become removable in AdCP 4.0 or later, once the deprecation-policy notice and release-cycle gates are satisfied.
+
+## Related
+
+- [Content artifacts](/dist/docs/3.1.13/governance/content-standards/artifacts#secured-asset-access)
+- [AdCP versioning and deprecation policy](/dist/docs/3.1.13/reference/versioning#deprecation-policy)
+- [Issue #5698](https://github.com/adcontextprotocol/adcp/issues/5698) — 3.2 deprecation
+- [Issue #5699](https://github.com/adcontextprotocol/adcp/issues/5699) — 4.0 removal
+- [Issue #6224](https://github.com/adcontextprotocol/adcp/issues/6224) — 4.0 extensible access-method design

@@ -416,4 +416,4 @@ When adding new documentation:
 
 - Check existing testable examples in `docs/quickstart.mdx`
 - Review the test suite: `tests/snippet-validation.test.js`
-- Ask in [Slack Community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)
+- Ask in the [Slack community](/docs/community/joining-slack)

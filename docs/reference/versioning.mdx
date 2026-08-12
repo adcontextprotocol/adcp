@@ -145,6 +145,10 @@ Every release with schema changes is called out in the changelog, release notes,
 
 [Experimental surfaces](/docs/reference/experimental-status) operate under a separate, faster notice window of 6 weeks. The deprecation policy above applies only to stable surfaces.
 
+Stable and experimental surfaces have different notice periods, but this naming rule applies to both: once AdCP has defined or published a property name at a wire location — including a deprecated alias or legacy protocol property — it is permanently reserved for its existing semantics at that same object location, including locations that serialize to the same flattened root. It MUST NOT later be assigned different semantics after deprecation, rename, or removal; a replacement MUST use a distinct name. Vendor-defined properties do not trigger this reservation.
+
+For example, 3.1 introduced [`media_buy_status`](/docs/reference/migration/media-buy-status) as the canonical replacement for the body-level media-buy lifecycle while the deprecated `status` alias remained temporarily permitted. Under MCP's flattened response serialization, body and envelope properties occupy the same root: envelope `status` carries `TaskStatus`, so a body-level `status` carrying `MediaBuyStatus` collided with it and could be overwritten.
+
 ### Spec, registry, conformance, and experimental changes
 
 The release-vs-patch rules above apply to **spec-level artifacts** — JSON Schemas under `static/schemas/source/`, normative prose in `docs/`, and protocol task definitions. These are what an agent implements on the wire and what buyers depend on for interop.

@@ -4,6 +4,13 @@
 
 - Cross-role governance enforcement: the experimental `governance.campaign` surface will add typed `target_agent`, task-scoped `adcp.governance_enforcement`, critical task/payload/commitment JWS bindings, intent-only conditions negotiation, and governance-authoritative settlement. The implementation may merge during 3.2 development; the beta-to-GA period provides the experimental-surface notice window. See the 3.2 release notes and migration guide.
 
+## 3.1.13
+
+### Patch Changes
+
+- b09c757: Gate the `create_media_buy` submitted-arm compliance storyboard on the seller advertising `force_create_media_buy_arm` under `compliance_testing.scenarios`. Sellers without that sandbox-only forcing capability now skip the whole storyboard before its independent downstream phase can incorrectly fail their otherwise conformant synchronous or provisional media-buy flow.
+- 2bc2054: Skip the per-agent billing permission phases when a seller does not advertise agent billing, preventing capability-level `BILLING_NOT_SUPPORTED` responses from being graded as failures against the narrower `BILLING_NOT_PERMITTED_FOR_AGENT` contract.
+
 ## 3.1.12
 
 ### Patch Changes

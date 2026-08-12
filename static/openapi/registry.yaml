@@ -789,16 +789,15 @@ components:
         verified_roles:
           type: array
           items:
-            type: string
-            enum:
-              - media-buy
-              - signals
-              - governance
-              - creative
-              - brand
-              - sponsored-intelligence
-              - measurement
-          description: AdCP protocols the agent is AAO Verified for (e.g. media-buy, creative). Matches enums/adcp-protocol.json.
+            $ref: "#/components/schemas/BadgeRole"
+          description: Canonical badge roles the agent is AgenticAdvertising.org Verified for (e.g. media-buy, creative).
+        verified_role_versions:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          description: "Active AgenticAdvertising.org Verified AdCP releases for each verified role, keyed by canonical badge role and sorted newest-first (e.g. { media-buy: ['3.1', '3.0'] }). Use this when choosing a version-pinned badge URL."
       required:
         - status
         - lifecycle_stage
@@ -806,6 +805,15 @@ components:
         - streak_days
         - last_checked_at
         - headline
+    BadgeRole:
+      type: string
+      enum:
+        - media-buy
+        - creative
+        - signals
+        - governance
+        - brand
+        - sponsored-intelligence
     PropertySummary:
       type: object
       properties:
@@ -3846,8 +3854,10 @@ components:
           description: Public per-storyboard verdicts and aggregate step counts. First-failure diagnostic fields are populated only for owners; scalar diagnostics are null and validation evidence is empty for other callers.
         notices:
           type: array
-          items: {}
-          description: Run-summary notices from the latest non-dry-run compliance run. Unknown codes/severities are preserved verbatim.
+          items:
+            $ref: "#/components/schemas/PublicComplianceNotice"
+          maxItems: 50
+          description: Public-safe run-summary notices from the latest non-dry-run compliance run. Unknown code/severity values are preserved verbatim; private fields are omitted.
         observations:
           type: array
           items:
@@ -3903,20 +3913,53 @@ components:
         - agent_url
         - status
         - lifecycle_stage
+    PublicComplianceNotice:
+      type: object
+      properties:
+        severity:
+          type: string
+          minLength: 1
+          maxLength: 64
+        code:
+          type: string
+          minLength: 1
+          maxLength: 200
+        message:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        effective_version:
+          type: string
+          minLength: 1
+          maxLength: 64
+        requirement:
+          type: string
+          minLength: 1
+          maxLength: 500
+        capability_path:
+          type: string
+          minLength: 1
+          maxLength: 512
+        capability_pointer:
+          type: string
+          minLength: 1
+          maxLength: 1024
+        reference_url:
+          type: string
+          maxLength: 2048
+          format: uri
+      required:
+        - severity
+        - code
+        - message
+      additionalProperties: false
     VerificationBadge:
       type: object
       properties:
         role:
-          type: string
-          enum:
-            - media-buy
-            - signals
-            - governance
-            - creative
-            - brand
-            - sponsored-intelligence
-            - measurement
-          description: AdCP protocol this badge covers (enums/adcp-protocol.json).
+          allOf:
+            - $ref: "#/components/schemas/BadgeRole"
+            - description: Canonical role this verification badge covers.
         adcp_version:
           type: string
           description: AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.0', '3.1'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK.
@@ -10275,11 +10318,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: Verification status temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/agents/{encodedUrl}/badge/{role}.svg:
     get:
       operationId: getAgentBadgeSvg
       summary: Get agent verification badge SVG
-      description: Returns an SVG badge image for the specified agent and role. Shows 'AAO Verified | Sales Agent' (teal) when verified, or 'AAO Verified | Not Verified' (grey) when not. Cacheable, suitable for embedding in websites.
+      description: Returns an SVG badge image for the specified agent and role. Shows the role-specific AgenticAdvertising.org Verified mark (teal) when verified, or 'Not Verified' (grey) when not. Cacheable and suitable for embedding in websites.
       tags:
         - Agent Compliance
       parameters:
@@ -10291,10 +10340,11 @@ paths:
           name: encodedUrl
           in: path
         - schema:
-            type: string
-            description: Badge role (sales, buying, creative, governance, signals, measurement)
+            allOf:
+              - $ref: "#/components/schemas/BadgeRole"
+              - description: Canonical badge role
           required: true
-          description: Badge role (sales, buying, creative, governance, signals, measurement)
+          description: Canonical badge role
           name: role
           in: path
       responses:
@@ -10305,9 +10355,39 @@ paths:
               schema:
                 type: string
         "400":
-          description: Invalid agent URL
+          description: Invalid agent URL or role
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                      code:
+                        type: string
+                        enum:
+                          - invalid_role
+                      message:
+                        type: string
+                      valid_roles:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/BadgeRole"
+                    required:
+                      - error
+                      - code
+                      - message
+                      - valid_roles
+                  - $ref: "#/components/schemas/Error"
         "500":
           description: Server error
+        "503":
+          description: Badge status temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/agents/{encodedUrl}/badge/{role}/embed:
     get:
       operationId: getAgentBadgeEmbed
@@ -10324,10 +10404,11 @@ paths:
           name: encodedUrl
           in: path
         - schema:
-            type: string
-            description: Badge role
+            allOf:
+              - $ref: "#/components/schemas/BadgeRole"
+              - description: Canonical badge role
           required: true
-          description: Badge role
+          description: Canonical badge role
           name: role
           in: path
       responses:
@@ -10341,119 +10422,7 @@ paths:
                   agent_url:
                     type: string
                   role:
-                    type: string
-                  badge_svg_url:
-                    type: string
-                  registry_url:
-                    type: string
-                  html:
-                    type: string
-                  markdown:
-                    type: string
-                required:
-                  - agent_url
-                  - role
-                  - badge_svg_url
-                  - registry_url
-                  - html
-                  - markdown
-        "400":
-          description: Invalid agent URL
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "500":
-          description: Server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  /api/registry/agents/{encodedUrl}/badge/{role}/{version}.svg:
-    get:
-      operationId: getAgentBadgeVersionedSvg
-      summary: Get version-pinned agent verification badge SVG
-      description: Returns an SVG badge image scoped to a specific AdCP release (MAJOR.MINOR, e.g. '3.0'). Buyers who want to call out 'verified for 3.0' embed this instead of the legacy `/badge/{role}.svg` (which auto-upgrades to the highest active version). Renders 'Not Verified' when the agent never earned a badge at this version.
-      tags:
-        - Agent Compliance
-      parameters:
-        - schema:
-            type: string
-            description: URL-encoded agent URL
-          required: true
-          description: URL-encoded agent URL
-          name: encodedUrl
-          in: path
-        - schema:
-            type: string
-            description: Badge role (media-buy, creative, signals, governance, brand, sponsored-intelligence)
-          required: true
-          description: Badge role (media-buy, creative, signals, governance, brand, sponsored-intelligence)
-          name: role
-          in: path
-        - schema:
-            type: string
-            description: AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')
-          required: true
-          description: AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')
-          name: version
-          in: path
-      responses:
-        "200":
-          description: SVG badge image
-          content:
-            image/svg+xml:
-              schema:
-                type: string
-        "400":
-          description: Invalid agent URL, role, or version
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "500":
-          description: Server error
-  /api/registry/agents/{encodedUrl}/badge/{role}/{version}/embed:
-    get:
-      operationId: getAgentBadgeVersionedEmbed
-      summary: Get version-pinned embeddable badge code
-      description: Returns HTML and Markdown embed snippets that point at the version-pinned SVG. Alt text includes the version (e.g. 'AAO Verified Media Buy Agent 3.0'). Buyers who want to freeze on a specific AdCP release embed these instead of the legacy `/badge/{role}/embed`.
-      tags:
-        - Agent Compliance
-      parameters:
-        - schema:
-            type: string
-            description: URL-encoded agent URL
-          required: true
-          description: URL-encoded agent URL
-          name: encodedUrl
-          in: path
-        - schema:
-            type: string
-            description: Badge role
-          required: true
-          description: Badge role
-          name: role
-          in: path
-        - schema:
-            type: string
-            description: AdCP release as MAJOR.MINOR
-          required: true
-          description: AdCP release as MAJOR.MINOR
-          name: version
-          in: path
-      responses:
-        "200":
-          description: Embed code
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  agent_url:
-                    type: string
-                  role:
-                    type: string
+                    $ref: "#/components/schemas/BadgeRole"
                   verified:
                     type: boolean
                   adcp_version:
@@ -10475,13 +10444,211 @@ paths:
                   - html
                   - markdown
         "400":
-          description: Invalid agent URL, role, or version
+          description: Invalid agent URL or role
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                      code:
+                        type: string
+                        enum:
+                          - invalid_role
+                      message:
+                        type: string
+                      valid_roles:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/BadgeRole"
+                    required:
+                      - error
+                      - code
+                      - message
+                      - valid_roles
+                  - $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: Badge status temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/badge/{role}/{version}.svg:
+    get:
+      operationId: getAgentBadgeVersionedSvg
+      summary: Get version-pinned agent verification badge SVG
+      description: Returns an SVG badge image scoped to a specific AdCP release (MAJOR.MINOR, e.g. '3.0'). Buyers who want to call out 'verified for 3.0' embed this instead of the legacy `/badge/{role}.svg` (which auto-upgrades to the highest active version). Renders 'Not Verified' when the agent never earned a badge at this version.
+      tags:
+        - Agent Compliance
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            allOf:
+              - $ref: "#/components/schemas/BadgeRole"
+              - description: Canonical badge role
+          required: true
+          description: Canonical badge role
+          name: role
+          in: path
+        - schema:
+            type: string
+            description: AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')
+          required: true
+          description: AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')
+          name: version
+          in: path
+      responses:
+        "200":
+          description: SVG badge image
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        "400":
+          description: Invalid agent URL, role, or version
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                      code:
+                        type: string
+                        enum:
+                          - invalid_role
+                      message:
+                        type: string
+                      valid_roles:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/BadgeRole"
+                    required:
+                      - error
+                      - code
+                      - message
+                      - valid_roles
+                  - $ref: "#/components/schemas/Error"
         "500":
           description: Server error
+        "503":
+          description: Badge status temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/badge/{role}/{version}/embed:
+    get:
+      operationId: getAgentBadgeVersionedEmbed
+      summary: Get version-pinned embeddable badge code
+      description: Returns HTML and Markdown embed snippets that point at the version-pinned SVG. Alt text includes the version (e.g. 'AAO Verified Media Buy Agent 3.0'). Buyers who want to freeze on a specific AdCP release embed these instead of the legacy `/badge/{role}/embed`.
+      tags:
+        - Agent Compliance
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            allOf:
+              - $ref: "#/components/schemas/BadgeRole"
+              - description: Canonical badge role
+          required: true
+          description: Canonical badge role
+          name: role
+          in: path
+        - schema:
+            type: string
+            description: AdCP release as MAJOR.MINOR
+          required: true
+          description: AdCP release as MAJOR.MINOR
+          name: version
+          in: path
+      responses:
+        "200":
+          description: Embed code
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_url:
+                    type: string
+                  role:
+                    $ref: "#/components/schemas/BadgeRole"
+                  verified:
+                    type: boolean
+                  adcp_version:
+                    type: string
+                  badge_svg_url:
+                    type: string
+                  registry_url:
+                    type: string
+                  html:
+                    type: string
+                  markdown:
+                    type: string
+                required:
+                  - agent_url
+                  - role
+                  - verified
+                  - adcp_version
+                  - badge_svg_url
+                  - registry_url
+                  - html
+                  - markdown
+        "400":
+          description: Invalid agent URL, role, or version
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                      code:
+                        type: string
+                        enum:
+                          - invalid_role
+                      message:
+                        type: string
+                      valid_roles:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/BadgeRole"
+                    required:
+                      - error
+                      - code
+                      - message
+                      - valid_roles
+                  - $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Badge status temporarily unavailable
           content:
             application/json:
               schema:
@@ -11911,6 +12078,12 @@ paths:
                     description: Specialism ids present in this server's local compliance cache
                 required:
                   - error
+        "429":
+          description: Capability probe rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitError"
         "500":
           description: Server error
           content:

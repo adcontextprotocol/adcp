@@ -43,10 +43,11 @@ import type {
   StepDiagnosticEntry,
   LifecycleStage,
   TriggeredBy,
+  NoticeEntry,
 } from '../../db/compliance-db.js';
 
 const logger = createLogger('addie-compliance-testing');
-const DEFAULT_TARGET_DISCOVERY_TIMEOUT_MS = 10_000;
+export const HOSTED_TARGET_DISCOVERY_TIMEOUT_MS = 30_000;
 
 export interface ComplianceTargetSelection {
   target: HostedComplianceTarget;
@@ -54,28 +55,122 @@ export interface ComplianceTargetSelection {
   supportedVersions?: readonly string[];
 }
 
-function complianceTargetDiscoveryTimeoutMs(options: ComplyOptions): number {
-  const requested = options.timeout_ms;
-  if (typeof requested !== 'number' || !Number.isFinite(requested)) {
-    return DEFAULT_TARGET_DISCOVERY_TIMEOUT_MS;
-  }
-  return Math.max(1_000, Math.min(requested, DEFAULT_TARGET_DISCOVERY_TIMEOUT_MS));
+function abortReason(signal: AbortSignal, fallback: string): Error {
+  return signal.reason instanceof Error ? signal.reason : new Error(fallback);
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+function combineAbortSignals(signals: readonly AbortSignal[]): {
+  signal: AbortSignal;
+  cleanup: () => void;
+} {
+  const controller = new AbortController();
+  const handlers = new Map<AbortSignal, () => void>();
+
+  for (const signal of signals) {
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+      break;
+    }
+    const handler = () => controller.abort(signal.reason);
+    handlers.set(signal, handler);
+    signal.addEventListener('abort', handler, { once: true });
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      for (const [signal, handler] of handlers) {
+        signal.removeEventListener('abort', handler);
+      }
+    },
+  };
+}
+
+function discoveryOptions(
+  options: ComplyOptions,
+  deadlineSignal: AbortSignal,
+): ComplyOptions {
+  const withoutFullRunTimeout = { ...options };
+  delete withoutFullRunTimeout.timeout_ms;
+
+  const safeOptions = withSdkSafeTransport({
+    ...withoutFullRunTimeout,
+    signal: deadlineSignal,
+  });
+  const safeFetch = safeOptions.transport.fetchFn;
+
+  return {
+    ...safeOptions,
+    transport: {
+      ...safeOptions.transport,
+      // The SDK currently omits TestOptions.signal from its second capability
+      // tool call. Compose the deadline at the hosted fetch boundary as well so
+      // every discovery request is cancelled when the outer deadline fires.
+      fetchFn: async (input, init) => {
+        const request = new Request(input, init);
+        const combined = combineAbortSignals([request.signal, deadlineSignal]);
+        try {
+          return await safeFetch(request, { signal: combined.signal });
+        } finally {
+          combined.cleanup();
+        }
+      },
+    },
+  };
+}
+
+async function withDiscoveryDeadline<T>(
+  run: (signal: AbortSignal) => Promise<T>,
+  callerSignal: AbortSignal | undefined,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  let removeCallerAbort: (() => void) | undefined;
+  let removeDeadlineAbort: (() => void) | undefined;
+
   try {
+    if (callerSignal?.aborted) {
+      controller.abort(callerSignal.reason);
+    } else if (callerSignal) {
+      const onCallerAbort = () => controller.abort(callerSignal.reason);
+      callerSignal.addEventListener('abort', onCallerAbort, { once: true });
+      removeCallerAbort = () => callerSignal.removeEventListener('abort', onCallerAbort);
+    }
+
+    timeout = setTimeout(() => {
+      controller.abort(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    const aborted = new Promise<never>((_, reject) => {
+      if (controller.signal.aborted) {
+        reject(abortReason(controller.signal, `${label} aborted`));
+        return;
+      }
+      const onDeadlineAbort = () => reject(abortReason(controller.signal, `${label} aborted`));
+      controller.signal.addEventListener('abort', onDeadlineAbort, { once: true });
+      removeDeadlineAbort = () => controller.signal.removeEventListener('abort', onDeadlineAbort);
+    });
+
     return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => {
-          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
-      }),
+      run(controller.signal),
+      aborted,
     ]);
   } finally {
     if (timeout) clearTimeout(timeout);
+    removeCallerAbort?.();
+    removeDeadlineAbort?.();
   }
+}
+
+function discoverCapabilitiesWithDeadline(agentUrl: string, options: ComplyOptions) {
+  return withDiscoveryDeadline(
+    signal => testCapabilityDiscovery(agentUrl, discoveryOptions(options, signal)),
+    options.signal,
+    HOSTED_TARGET_DISCOVERY_TIMEOUT_MS,
+    'Hosted capability pre-discovery',
+  );
 }
 
 // ── Re-exports ────────────────────────────────────────────────────
@@ -103,7 +198,7 @@ async function hostedAuthDefaultsForRun(
   }
 
   try {
-    const discovery = await testCapabilityDiscovery(agentUrl, options);
+    const discovery = await discoverCapabilitiesWithDeadline(agentUrl, options);
     const apiKey = shouldInferStaticFixture
       ? hostedStaticApiKeyForProfile(discovery.profile)
       : undefined;
@@ -152,17 +247,15 @@ export async function selectComplianceTargetForAgentSelection(
   mode: 'preferred' | 'canonical' = 'preferred',
 ): Promise<ComplianceTargetSelection> {
   try {
-    const safeOptions = withSdkSafeTransport(options);
-    const discovery = await withTimeout(
-      testCapabilityDiscovery(agentUrl, safeOptions),
-      complianceTargetDiscoveryTimeoutMs(safeOptions),
-      'Hosted compliance target pre-discovery',
-    );
+    const discovery = await discoverCapabilitiesWithDeadline(agentUrl, options);
     const target = mode === 'canonical'
       ? selectCanonicalHostedComplianceTargetForProfile(discovery.profile, fallback)
       : selectHostedComplianceTargetForProfile(discovery.profile, fallback);
     return { target, confirmed: true, supportedVersions: discovery.profile?.adcp_supported_versions };
   } catch (err) {
+    if (options.signal?.aborted) {
+      throw abortReason(options.signal, 'Hosted compliance target pre-discovery aborted');
+    }
     logger.warn({ err, agentUrl }, 'Could not pre-discover hosted compliance target; using fallback');
     return { target: fallback, confirmed: false };
   }
@@ -1216,6 +1309,17 @@ export function complianceResultToDbInput(
   }));
 
   const { overall_status, tracks_passed, tracks_failed, tracks_partial } = effectiveRunStatus(result);
+  const resultWithCompatibleNotices = result as unknown as {
+    notices?: NoticeEntry[] | null;
+    summary?: { notices?: NoticeEntry[] | null };
+  };
+  // Current SDK results expose notices at the top level. Preserve an explicit
+  // empty top-level array so a clean run clears any older advisory state; only
+  // payloads that omit the field entirely fall back to the legacy summary
+  // location.
+  const notices = resultWithCompatibleNotices.notices !== undefined
+    ? resultWithCompatibleNotices.notices
+    : resultWithCompatibleNotices.summary?.notices ?? null;
 
   return {
     agent_url: agentUrl,
@@ -1237,10 +1341,9 @@ export function complianceResultToDbInput(
     storyboard_statuses: deriveStoryboardStatuses(result, storyboardIds),
     replace_storyboard_statuses: !storyboardIds?.length,
     step_diagnostics: extractFailingStepDiagnostics(result),
-    // Forward-compat: notices are an optional field in the runner output
-    // contract (run_summary.notices). Unknown codes/severities are stored
-    // verbatim — do not filter or validate the values here.
-    notices_json: (result.summary as any).notices ?? null,
+    // Unknown fields, codes, and severities are stored verbatim for forward
+    // compatibility with newer runner contracts.
+    notices_json: notices,
   };
 }
 

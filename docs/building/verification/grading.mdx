@@ -69,12 +69,16 @@ Outputs:
 Verify a single signing vector without running the full grader. Useful for debugging a specific canonicalization case during implementation.
 
 ```bash
-npx @adcp/sdk@latest signing verify-vector
+npx @adcp/sdk@latest signing verify-vector \
+  --vector /path/to/vector.json \
+  --keys /path/to/keys.json
 ```
 
-Reads a vector from stdin (JSON matching the test-vector schema at [`/compliance/latest/test-vectors/request-signing/`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/)) and reports whether your client's signature base matches the expected output.
+Reads the local vector and key-set JSON files and runs the SDK reference verifier. For a self-contained negative vector, compare the reported rejection code with the fixture's `expected_outcome.error_code`; the CLI does not grade that comparison for you and exits with status 1 for an expected rejection. Shell scripts and CI jobs must therefore compare the output rather than treating every nonzero exit as an unexpected tool failure.
 
-**When to use it:** while implementing a signing client to confirm each component rule in isolation before testing end-to-end.
+Some negative fixtures declare `test_harness_state` and are not self-contained. For example, `016-replayed-nonce.json` requires the verifier harness to preload a replay-cache entry. A local white-box harness can apply the fixture's declared state; live black-box certification uses the full grader's coordinated repeat-request contract. See the request-signing guide's [downloadable vector example](/docs/building/by-layer/L1/request-signing#conformance-vectors) for a copyable CDN flow.
+
+**When to use it:** while implementing or debugging a verifier to isolate canonicalization and validation rules before testing end-to-end.
 
 ## Related
 

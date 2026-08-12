@@ -2687,16 +2687,24 @@ export class CrawlerService {
       return 'completed' as const;
       }, { readOnly: false });
     } catch (err) {
-      log.error(
-        {
-          ...lifecycleContext,
-          crawl_status: 'failed',
-          crawl_stage: stage,
-          duration_ms: Date.now() - startedAt,
-          err,
-        },
-        'Single domain crawl failed',
-      );
+      const errorCode = err && typeof err === 'object' && 'code' in err
+        ? err.code
+        : undefined;
+      const logContext = {
+        ...lifecycleContext,
+        crawl_status: 'failed',
+        crawl_stage: stage,
+        duration_ms: Date.now() - startedAt,
+        err,
+      };
+      if (errorCode === 'crawl_origin_temporarily_unavailable') {
+        // Publisher outages are expected external failures and do not require
+        // operator action per attempt. Durable requests escalate only after
+        // exhausting retries; best-effort callers retain the warning here.
+        log.warn(logContext, 'Single domain crawl hit a retryable publisher-origin failure');
+      } else {
+        log.error(logContext, 'Single domain crawl failed');
+      }
       throw err;
     } finally {
       await executionLock?.release();

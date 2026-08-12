@@ -11,6 +11,7 @@ import {
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
   badgeEligibleVersionsForTargetSelection,
+  HOSTED_TARGET_DISCOVERY_TIMEOUT_MS,
   selectComplianceTargetForAgentSelection,
   type ComplyOptions,
   type ComplianceTargetSelection,
@@ -66,7 +67,11 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   // so a mid-loop process crash re-queues the agent after this TTL rather than
   // waiting the full check_interval (default 12 h).
   const urls = agentsDue.map(a => a.agent_url);
-  const lockSeconds = urls.length * (HOSTED_FULL_COMPLIANCE_TIMEOUT_MS / 1000) + 300;
+  // Each agent has two bounded capability pre-discoveries: target selection,
+  // then hosted auth defaults inside comply(). Account for both explicitly so
+  // the lock remains valid for the documented worst case.
+  const perAgentBudgetMs = HOSTED_FULL_COMPLIANCE_TIMEOUT_MS + (2 * HOSTED_TARGET_DISCOVERY_TIMEOUT_MS);
+  const lockSeconds = urls.length * (perAgentBudgetMs / 1000) + 300;
   await query(
     `INSERT INTO agent_compliance_status (agent_url, status, last_checked_at)
      SELECT unnest($1::text[]), 'unknown', NOW() + make_interval(secs => $2)

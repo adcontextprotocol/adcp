@@ -33,6 +33,7 @@ vi.mock('../../src/db/client.js', () => ({
 }));
 
 vi.mock('../../src/addie/services/compliance-testing.js', () => ({
+  HOSTED_TARGET_DISCOVERY_TIMEOUT_MS: 30_000,
   comply: mocks.comply,
   complianceResultToDbInput: mocks.complianceResultToDbInput,
   classifyCapabilityResolutionError: mocks.classifyCapabilityResolutionError,
@@ -122,6 +123,10 @@ describe('runComplianceHeartbeatJob', () => {
       expect.objectContaining({ timeout_ms: 600_000 }),
       target,
       'canonical',
+    );
+    expect(mocks.query).toHaveBeenCalledWith(
+      expect.stringContaining('make_interval'),
+      [['https://agent.example.com/mcp'], 960],
     );
     expect(mocks.comply).toHaveBeenCalledWith(
       'https://agent.example.com/mcp',

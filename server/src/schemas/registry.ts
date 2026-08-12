@@ -7,7 +7,12 @@
  */
 
 import { z } from "zod";
-import { ADCP_PROTOCOLS, ADCP_SPECIALISMS, VERIFICATION_MODES } from "../services/adcp-taxonomy.js";
+import { ADCP_SPECIALISMS, VERIFICATION_MODES } from "../services/adcp-taxonomy.js";
+import { VALID_BADGE_ROLES } from "../services/badge-svg.js";
+import {
+  PUBLIC_COMPLIANCE_NOTICE_LIMITS,
+  PublicComplianceNoticeSchema,
+} from "./public-compliance-notice.js";
 import {
   extendZodWithOpenApi,
   OpenAPIRegistry,
@@ -22,6 +27,10 @@ export const registry = new OpenAPIRegistry();
 export const ErrorSchema = z
   .object({ error: z.string() })
   .openapi("Error");
+
+export const BadgeRoleSchema = z
+  .enum(VALID_BADGE_ROLES)
+  .openapi("BadgeRole");
 
 export const RateLimitErrorSchema = z
   .object({
@@ -731,15 +740,17 @@ export const AgentComplianceSchema = z
     monitoring_paused: z.boolean().optional(),
     check_interval_hours: z.number().int().optional(),
     verified: z.boolean().optional(),
-    verified_roles: z.array(z.enum(ADCP_PROTOCOLS as [string, ...string[]])).optional()
-      .openapi({ description: "AdCP protocols the agent is AAO Verified for (e.g. media-buy, creative). Matches enums/adcp-protocol.json." }),
+    verified_roles: z.array(BadgeRoleSchema).optional()
+      .openapi({ description: "Canonical badge roles the agent is AgenticAdvertising.org Verified for (e.g. media-buy, creative)." }),
+    verified_role_versions: z.record(z.string(), z.array(z.string())).optional()
+      .openapi({ description: "Active AgenticAdvertising.org Verified AdCP releases for each verified role, keyed by canonical badge role and sorted newest-first (e.g. { media-buy: ['3.1', '3.0'] }). Use this when choosing a version-pinned badge URL." }),
   })
   .openapi("AgentCompliance");
 
 export const VerificationBadgeSchema = z
   .object({
-    role: z.enum(ADCP_PROTOCOLS as [string, ...string[]])
-      .openapi({ description: "AdCP protocol this badge covers (enums/adcp-protocol.json)." }),
+    role: BadgeRoleSchema
+      .openapi({ description: "Canonical role this verification badge covers." }),
     adcp_version: z.string()
       .openapi({ description: "AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.0', '3.1'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK." }),
     verified_at: z.string(),
@@ -801,7 +812,7 @@ export const AgentComplianceDetailSchema = z
       last_tested_at: z.string().nullable(),
       last_passed_at: z.string().nullable(),
     })).optional().openapi({ description: "Public per-storyboard verdicts and aggregate step counts. First-failure diagnostic fields are populated only for owners; scalar diagnostics are null and validation evidence is empty for other callers." }),
-    notices: z.array(z.any()).optional().openapi({ description: "Run-summary notices from the latest non-dry-run compliance run. Unknown codes/severities are preserved verbatim." }),
+    notices: z.array(PublicComplianceNoticeSchema.openapi("PublicComplianceNotice")).max(PUBLIC_COMPLIANCE_NOTICE_LIMITS.maxNotices).optional().openapi({ description: "Public-safe run-summary notices from the latest non-dry-run compliance run. Unknown code/severity values are preserved verbatim; private fields are omitted." }),
     observations: z.array(z.object({
       category: z.string(),
       severity: z.string(),

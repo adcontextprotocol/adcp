@@ -54,9 +54,9 @@ Do NOT share the invite link silently and walk away. The silent-failure pattern 
 If someone reports that the invite failed for them:
 1. Acknowledge it specifically — it's a domain allowlist issue, not a broken link
 2. Ask for their email address
-3. Escalate using the 'invite' category so the admin team can issue a direct invite
+3. Call `escalate_to_admin` with category `needs_human_action`, including their email address, so the admin team can issue a direct invite
 
-The help page at /docs/community/joining-slack has the full explanation of what happens and what to do.
+The help page at https://docs.adcontextprotocol.org/docs/community/joining-slack has the full explanation of what happens and what to do.
 
 ## Email Verification and Notification Failures
 

@@ -25,8 +25,8 @@ import { resolvePrimaryOrganization } from "../db/users-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
 import { AsyncSemaphore, SemaphoreOverloadedError } from "../utils/async-semaphore.js";
-import { bulkResolveRateLimiter, brandBulkDomainRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
-import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
+import { bulkResolveRateLimiter, brandBulkDomainRateLimiter, brandCreationRateLimiter, capabilityProbeRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
+import { compareAdcpVersions, listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
 import {
   hostedComplianceTarget,
   hostedComplianceOptions,
@@ -58,6 +58,10 @@ import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
 import { validateCrawlDomain, validateExternalUrl } from "../utils/url-security.js";
+import {
+  projectPublicComplianceNotices,
+  type PublicComplianceNotice,
+} from "./public-compliance-notices.js";
 import {
   registry,
   ResolvedBrandSchema,
@@ -107,6 +111,7 @@ import {
   CommunityMirrorPublishErrorSchema,
   AdagentsAuthorizedAgentSchema,
   RateLimitErrorSchema,
+  BadgeRoleSchema,
 } from "../schemas/registry.js";
 
 import type { BrandManager } from "../brand-manager.js";
@@ -828,6 +833,14 @@ registry.registerPath({
     429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
+
+const InvalidBadgeRoleErrorSchema = z.object({
+  error: z.string(),
+  code: z.literal("invalid_role"),
+  message: z.string(),
+  valid_roles: z.array(BadgeRoleSchema),
+});
+const BadgeRequestErrorSchema = z.union([InvalidBadgeRoleErrorSchema, ErrorSchema]);
 
 registry.registerPath({
   method: "post",
@@ -3393,6 +3406,7 @@ registry.registerPath({
   responses: {
     200: { description: "Verification status", content: { "application/json": { schema: AgentVerificationSchema } } },
     400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    503: { description: "Verification status temporarily unavailable", content: { "application/json": { schema: ErrorSchema } } },
     500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -3402,17 +3416,18 @@ registry.registerPath({
   path: "/api/registry/agents/{encodedUrl}/badge/{role}.svg",
   operationId: "getAgentBadgeSvg",
   summary: "Get agent verification badge SVG",
-  description: "Returns an SVG badge image for the specified agent and role. Shows 'AAO Verified | Sales Agent' (teal) when verified, or 'AAO Verified | Not Verified' (grey) when not. Cacheable, suitable for embedding in websites.",
+  description: "Returns an SVG badge image for the specified agent and role. Shows the role-specific AgenticAdvertising.org Verified mark (teal) when verified, or 'Not Verified' (grey) when not. Cacheable and suitable for embedding in websites.",
   tags: ["Agent Compliance"],
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
-      role: z.string().openapi({ description: "Badge role (sales, buying, creative, governance, signals, measurement)" }),
+      role: BadgeRoleSchema.openapi({ description: "Canonical badge role" }),
     }),
   },
   responses: {
     200: { description: "SVG badge image", content: { "image/svg+xml": { schema: z.string() } } },
-    400: { description: "Invalid agent URL" },
+    400: { description: "Invalid agent URL or role", content: { "application/json": { schema: BadgeRequestErrorSchema } } },
+    503: { description: "Badge status temporarily unavailable", content: { "application/json": { schema: ErrorSchema } } },
     500: { description: "Server error" },
   },
 });
@@ -3427,7 +3442,7 @@ registry.registerPath({
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
-      role: z.string().openapi({ description: "Badge role" }),
+      role: BadgeRoleSchema.openapi({ description: "Canonical badge role" }),
     }),
   },
   responses: {
@@ -3437,7 +3452,9 @@ registry.registerPath({
         "application/json": {
           schema: z.object({
             agent_url: z.string(),
-            role: z.string(),
+            role: BadgeRoleSchema,
+            verified: z.boolean(),
+            adcp_version: z.string().optional(),
             badge_svg_url: z.string(),
             registry_url: z.string(),
             html: z.string(),
@@ -3446,7 +3463,8 @@ registry.registerPath({
         },
       },
     },
-    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    400: { description: "Invalid agent URL or role", content: { "application/json": { schema: BadgeRequestErrorSchema } } },
+    503: { description: "Badge status temporarily unavailable", content: { "application/json": { schema: ErrorSchema } } },
     500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -3461,13 +3479,14 @@ registry.registerPath({
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
-      role: z.string().openapi({ description: "Badge role (media-buy, creative, signals, governance, brand, sponsored-intelligence)" }),
+      role: BadgeRoleSchema.openapi({ description: "Canonical badge role" }),
       version: z.string().openapi({ description: "AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')" }),
     }),
   },
   responses: {
     200: { description: "SVG badge image", content: { "image/svg+xml": { schema: z.string() } } },
-    400: { description: "Invalid agent URL, role, or version", content: { "application/json": { schema: ErrorSchema } } },
+    400: { description: "Invalid agent URL, role, or version", content: { "application/json": { schema: BadgeRequestErrorSchema } } },
+    503: { description: "Badge status temporarily unavailable", content: { "application/json": { schema: ErrorSchema } } },
     500: { description: "Server error" },
   },
 });
@@ -3482,7 +3501,7 @@ registry.registerPath({
   request: {
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
-      role: z.string().openapi({ description: "Badge role" }),
+      role: BadgeRoleSchema.openapi({ description: "Canonical badge role" }),
       version: z.string().openapi({ description: "AdCP release as MAJOR.MINOR" }),
     }),
   },
@@ -3493,9 +3512,9 @@ registry.registerPath({
         "application/json": {
           schema: z.object({
             agent_url: z.string(),
-            role: z.string(),
+            role: BadgeRoleSchema,
             verified: z.boolean(),
-            adcp_version: z.string().optional(),
+            adcp_version: z.string(),
             badge_svg_url: z.string(),
             registry_url: z.string(),
             html: z.string(),
@@ -3504,7 +3523,8 @@ registry.registerPath({
         },
       },
     },
-    400: { description: "Invalid agent URL, role, or version", content: { "application/json": { schema: ErrorSchema } } },
+    400: { description: "Invalid agent URL, role, or version", content: { "application/json": { schema: BadgeRequestErrorSchema } } },
+    503: { description: "Badge status temporarily unavailable", content: { "application/json": { schema: ErrorSchema } } },
     500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -4181,6 +4201,7 @@ registry.registerPath({
     400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Capability probe rate limit exceeded", content: { "application/json": { schema: RateLimitErrorSchema } } },
     422: {
       description: "Agent requires authentication, or declared capabilities cannot be resolved for the selected compliance target",
       content: {
@@ -4730,6 +4751,33 @@ function parseRequestedOrganizationQuery(query: Record<string, unknown>):
     return { ok: false };
   }
   return parseRequestedOrganizationId(query.org);
+}
+
+function buildVerifiedRoleVersions(
+  badges: ReadonlyArray<{ role: string; adcp_version: string }>,
+): Record<string, string[]> {
+  const versions: Record<string, string[]> = {};
+  for (const badge of badges) {
+    const roleVersions = versions[badge.role] ?? [];
+    if (!roleVersions.includes(badge.adcp_version)) {
+      roleVersions.push(badge.adcp_version);
+      versions[badge.role] = roleVersions;
+    }
+  }
+  for (const roleVersions of Object.values(versions)) {
+    roleVersions.sort((left, right) => compareAdcpVersions(right, left));
+  }
+  return versions;
+}
+
+function invalidBadgeRoleBody(role: string) {
+  const detail = `Invalid role "${role}". Valid roles: ${VALID_BADGE_ROLES.join(', ')}`;
+  return {
+    error: detail,
+    code: "invalid_role" as const,
+    message: detail,
+    valid_roles: [...VALID_BADGE_ROLES],
+  };
 }
 
 export function createRegistryApiRouters(config: RegistryApiConfig): { router: Router; v1AgentsRouter: Router } {
@@ -6374,6 +6422,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
                 check_interval_hours: meta?.check_interval_hours ?? 12,
                 verified: agentBadges.length > 0,
                 verified_roles: uniqueRoles,
+                verified_role_versions: buildVerifiedRoleVersions(agentBadges),
               };
             }
           }
@@ -6462,9 +6511,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // advisories emitted by the runner (e.g., deprecated specialism names,
       // future-required capabilities). Forward-compat: unknown codes/severities
       // are passed through verbatim; callers MUST NOT filter on these values.
-      let notices: Awaited<ReturnType<typeof complianceDb.getLatestNotices>> = [];
+      let notices: PublicComplianceNotice[] = [];
       try {
-        notices = await complianceDb.getLatestNotices(agentUrl);
+        notices = projectPublicComplianceNotices(await complianceDb.getLatestNotices(agentUrl));
       } catch (err) {
         logger.warn({ err, agentUrl }, "Notices query failed (column may not exist yet)");
       }
@@ -6571,8 +6620,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         // owner-scoped; non-owner entries carry null scalar diagnostics and
         // empty validation evidence.
         storyboard_statuses: serializedStoryboardStatuses,
-        // Advisory notices from the latest run. Forward-compat: unknown codes
-        // and severities are passed through verbatim (runner-output-contract.yaml).
+        // Advisory notices from the latest run. Unknown code/severity values
+        // remain verbatim, while private and oversized fields are excluded.
         notices,
         observations,
         // Owner-scoped: content is null/false for anonymous and cross-org
@@ -6674,6 +6723,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   // ── Agent Verification (public) ──────────────────────────────────
 
+  function badgeStatusUnavailable(
+    res: import("express").Response,
+    error: unknown,
+    context: Record<string, string>,
+  ) {
+    logger.error({ err: error, ...context }, "Badge status lookup failed");
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(503).json({ error: "Badge status temporarily unavailable" });
+  }
+
   router.get("/registry/agents/:encodedUrl/verification", bulkResolveRateLimiter, async (req, res) => {
     try {
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
@@ -6685,7 +6744,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       try {
         badges = await complianceDb.getBadgesForAgent(agentUrl);
       } catch (err) {
-        logger.warn({ err, agentUrl }, "Badge query failed (table may not exist yet)");
+        return badgeStatusUnavailable(res, err, { agentUrl });
       }
 
       const encodedUrl = encodeURIComponent(agentUrl);
@@ -6723,7 +6782,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     res.setHeader("Content-Type", "image/svg+xml");
     res.setHeader("Content-Security-Policy", "script-src 'none'");
     res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=60");
+    res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300, must-revalidate");
     // ETag covers role, version, and the mode set so a transition (e.g.
     // add 'live', upgrade to 3.1) invalidates caches for the badge URL.
     res.setHeader("ETag", etag);
@@ -6737,7 +6796,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(400).json({ error: "Invalid agent URL" });
       }
       if (!VALID_BADGE_ROLES.includes(role as any)) {
-        return res.status(400).json({ error: `Invalid role "${role}". Valid roles: ${VALID_BADGE_ROLES.join(', ')}` });
+        return res.status(400).json(invalidBadgeRoleBody(role));
       }
 
       // Legacy URL: serves the highest-version active+degraded badge.
@@ -6753,8 +6812,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           modes = badge.verification_modes;
           adcpVersion = badge.adcp_version;
         }
-      } catch {
-        // Table may not exist yet
+      } catch (error) {
+        return badgeStatusUnavailable(res, error, { agentUrl, role });
       }
 
       const svg = renderBadgeSvg(role, modes, { adcpVersion });
@@ -6786,7 +6845,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(400).json({ error: "Invalid agent URL" });
       }
       if (!VALID_BADGE_ROLES.includes(role as any)) {
-        return res.status(400).json({ error: `Invalid role "${role}". Valid roles: ${VALID_BADGE_ROLES.join(', ')}` });
+        return res.status(400).json(invalidBadgeRoleBody(role));
       }
       if (!VALID_ADCP_VERSION_RE.test(version)) {
         return res.status(400).json({ error: `Invalid version "${version}". Expected MAJOR.MINOR (e.g. "3.0").` });
@@ -6796,8 +6855,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       try {
         const badge = await complianceDb.getActiveBadge(agentUrl, role as any, version);
         if (badge) modes = badge.verification_modes;
-      } catch {
-        // Table may not exist yet
+      } catch (error) {
+        return badgeStatusUnavailable(res, error, { agentUrl, role, version });
       }
 
       const svg = renderBadgeSvg(role, modes, { adcpVersion: version });
@@ -6856,7 +6915,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(400).json({ error: "Invalid agent URL" });
       }
       if (!VALID_BADGE_ROLES.includes(role as any)) {
-        return res.status(400).json({ error: `Invalid role "${role}". Valid roles: ${VALID_BADGE_ROLES.join(', ')}` });
+        return res.status(400).json(invalidBadgeRoleBody(role));
       }
 
       let verified = false;
@@ -6865,8 +6924,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         const badge = await complianceDb.getHighestVersionActiveBadge(agentUrl, role as any);
         verified = !!badge;
         adcpVersion = badge?.adcp_version;
-      } catch {
-        // Table may not exist yet
+      } catch (error) {
+        return badgeStatusUnavailable(res, error, { agentUrl, role });
       }
 
       const baseUrl = process.env.PUBLIC_BASE_URL || 'https://agenticadvertising.org';
@@ -6898,7 +6957,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(400).json({ error: "Invalid agent URL" });
       }
       if (!VALID_BADGE_ROLES.includes(role as any)) {
-        return res.status(400).json({ error: `Invalid role "${role}". Valid roles: ${VALID_BADGE_ROLES.join(', ')}` });
+        return res.status(400).json(invalidBadgeRoleBody(role));
       }
       if (!VALID_ADCP_VERSION_RE.test(version)) {
         return res.status(400).json({ error: `Invalid version "${version}". Expected MAJOR.MINOR (e.g. "3.0").` });
@@ -6908,8 +6967,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       try {
         const badge = await complianceDb.getActiveBadge(agentUrl, role as any, version);
         verified = !!badge;
-      } catch {
-        // Table may not exist yet
+      } catch (error) {
+        return badgeStatusUnavailable(res, error, { agentUrl, role, version });
       }
 
       const baseUrl = process.env.PUBLIC_BASE_URL || 'https://agenticadvertising.org';
@@ -8000,7 +8059,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  router.get("/registry/agents/:encodedUrl/applicable-storyboards", storyboardEvalRateLimiter, ...complianceWriteMiddleware, async (req, res) => {
+  router.get("/registry/agents/:encodedUrl/applicable-storyboards", ...complianceWriteMiddleware, capabilityProbeRateLimiter, async (req, res) => {
     const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
     if (!validateAgentUrlParam(rawAgentUrl)) {
       return res.status(400).json({ error: "Invalid agent URL" });

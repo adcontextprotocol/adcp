@@ -9,6 +9,8 @@ Sync advertiser accounts with a seller for one or more brand/operator pairs, or 
 
 `sync_accounts` is used across all seller protocols: media buy agents, signals agents, governance agents, and creative agents. In provisioning mode it declares the buyer's intent — the seller provisions or links accounts internally. Use provisioning mode for buyer-declared accounts (`require_operator_auth: false`) and use natural keys (`brand` + `operator`) on subsequent requests. Sellers MAY echo an `account_id` as an internal handle, but they MUST continue accepting the natural-key `AccountRef` for accounts provisioned this way. For account-id namespaces, discover seller-assigned account IDs via [`list_accounts`](/docs/accounts/tasks/list_accounts) or out-of-band onboarding; `sync_accounts` provisioning for account-id namespaces is out of scope unless a future explicit capability declares that mode. If such a seller exposes `sync_accounts` today, use only settings-update mode keyed by `account_id`.
 
+For a complete `pending_approval` flow — capability discovery, human setup, durable status notification, authoritative repair, and first spend — see [Provision a seller-mediated account](/docs/accounts/provisioning-walkthrough).
+
 **Response Time**: ~1s. Account provisioning is synchronous; credit and legal review may require human action (indicated by `status: "pending_approval"` with a `setup.url`).
 
 **Request Schema**: [`/schemas/v3/account/sync-accounts-request.json`](https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json)
