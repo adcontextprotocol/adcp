@@ -538,6 +538,10 @@
           "$ref": "/schemas/core/product-offer-filters.json",
           "description": "Offer-only product filters used by the compact product-discovery tools"
         },
+        "product-audience-evidence-requirements": {
+          "$ref": "/schemas/core/product-audience-evidence-requirements.json",
+          "description": "Reference-only audience evidence policy used by compact product discovery"
+        },
         "creative-filters": {
           "$ref": "/schemas/core/creative-filters.json",
           "description": "Filter criteria for querying creative assets from the centralized library"

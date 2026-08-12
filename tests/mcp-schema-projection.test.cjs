@@ -427,6 +427,21 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     'generic get_task_status output should not embed the global task-result union'
   );
 
+  for (const toolName of [
+    'list_products',
+    'request_proposals',
+    'refine_proposals',
+    'decline_proposals',
+  ]) {
+    const tool = projectionManifest.tools[toolName];
+    const input = JSON.stringify(readJson(path.join(PROJECTION_DIR, tool.inputSchema)));
+    const output = JSON.stringify(readJson(path.join(PROJECTION_DIR, tool.outputSchema)));
+    assert.doesNotMatch(input, /(?:Provenance|provenance\.json|AssetVariant|asset-variant\.json)/,
+      `${toolName} input must not depend on the creative provenance graph`);
+    assert.doesNotMatch(output, /(?:AssetVariant|asset-variant\.json)/,
+      `${toolName} output must not depend on creative asset variants`);
+  }
+
   const seen = new Set();
   const paritySchemas = new Map();
   let totalBytes = 0;
