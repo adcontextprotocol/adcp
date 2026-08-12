@@ -11,6 +11,7 @@ import type { Request, RequestHandler } from "express";
 import { z } from "zod";
 import escapeHtml from "escape-html";
 import {
+  findOwnedAgentVisibility,
   findOwnerOrgForUser,
   isOrgOwnerOfAgent,
   resolveOwnerOrgForUser,
@@ -53,6 +54,7 @@ import {
 import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
 import { revokeUnsupportedPublicBadges, runBadgeFanOut } from "../services/badge-issuance.js";
+import { notifyVerificationChange } from "../notifications/compliance.js";
 import { resolveOwnerMembership, tierLabel } from "../services/membership-tiers.js";
 import { inferDiagnosticAgentType } from "../lib/diagnostic-agent-type-inference.js";
 import { isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
@@ -3397,9 +3399,9 @@ registry.registerPath({
   method: "get",
   path: "/api/registry/agents/{encodedUrl}/verification",
   operationId: "getAgentVerification",
-  summary: "Get agent AAO Verified status",
+  summary: "Get agent AgenticAdvertising.org Verified status",
   description:
-    "Returns AAO Verified badge status for a single agent. Public and cacheable. Includes role badges, verified storyboards, and a link to the agent's registry listing.",
+    "Returns AgenticAdvertising.org Verified badge status for a single agent. Registry visibility controls discovery, not verification, so earned badges remain publicly verifiable for private agents. Compliance opt-out immediately suppresses all badges and returns the same unverified shape as an unknown or never-verified agent.",
   tags: ["Agent Compliance"],
   request: {
     params: z.object({
@@ -3419,7 +3421,7 @@ registry.registerPath({
   path: "/api/registry/agents/{encodedUrl}/badge/{role}.svg",
   operationId: "getAgentBadgeSvg",
   summary: "Get agent verification badge SVG",
-  description: "Returns an SVG badge image for the specified agent and role. Shows the role-specific AgenticAdvertising.org Verified mark (teal) when verified, or 'Not Verified' (grey) when not. Cacheable and suitable for embedding in websites.",
+  description: "Returns an SVG badge image for the specified agent and role. Shows the role-specific AgenticAdvertising.org Verified mark (teal) when verified, or 'Not Verified' (grey) when not. Responses use ETags but must be revalidated before reuse so opt-out revocation is reflected immediately. Registry visibility does not affect verification.",
   tags: ["Agent Compliance"],
   request: {
     params: z.object({
@@ -3440,7 +3442,7 @@ registry.registerPath({
   path: "/api/registry/agents/{encodedUrl}/badge/{role}/embed",
   operationId: "getAgentBadgeEmbed",
   summary: "Get embeddable badge code",
-  description: "Returns HTML and Markdown embed snippets for displaying an AAO Verified badge on websites, social profiles, and documentation. The badge links to the agent's AAO registry listing.",
+  description: "Returns HTML and Markdown embed snippets for displaying an AgenticAdvertising.org Verified badge on websites, social profiles, and documentation. Private registry visibility does not suppress verification. Compliance opt-out returns `verified: false` without revealing why the badge is ineligible.",
   tags: ["Agent Compliance"],
   request: {
     params: z.object({
@@ -3477,7 +3479,7 @@ registry.registerPath({
   path: "/api/registry/agents/{encodedUrl}/badge/{role}/{version}.svg",
   operationId: "getAgentBadgeVersionedSvg",
   summary: "Get version-pinned agent verification badge SVG",
-  description: "Returns an SVG badge image scoped to a specific AdCP release (MAJOR.MINOR, e.g. '3.0'). Buyers who want to call out 'verified for 3.0' embed this instead of the legacy `/badge/{role}.svg` (which auto-upgrades to the highest active version). Renders 'Not Verified' when the agent never earned a badge at this version.",
+  description: "Returns an SVG badge image scoped to a specific AdCP release (MAJOR.MINOR, e.g. '3.0'). Buyers who want to call out 'verified for 3.0' embed this instead of the legacy `/badge/{role}.svg` (which auto-upgrades to the highest active version). Renders 'Not Verified' when the agent never earned a badge at this version or opted out of compliance monitoring. Registry visibility does not affect verification.",
   tags: ["Agent Compliance"],
   request: {
     params: z.object({
@@ -3499,7 +3501,7 @@ registry.registerPath({
   path: "/api/registry/agents/{encodedUrl}/badge/{role}/{version}/embed",
   operationId: "getAgentBadgeVersionedEmbed",
   summary: "Get version-pinned embeddable badge code",
-  description: "Returns HTML and Markdown embed snippets that point at the version-pinned SVG. Alt text includes the version (e.g. 'AAO Verified Media Buy Agent 3.0'). Buyers who want to freeze on a specific AdCP release embed these instead of the legacy `/badge/{role}/embed`.",
+  description: "Returns HTML and Markdown embed snippets that point at the version-pinned SVG. Alt text includes the version (e.g. 'AgenticAdvertising.org Verified Media Buy Agent 3.0'). Buyers who want to freeze on a specific AdCP release embed these instead of the legacy `/badge/{role}/embed`. Compliance opt-out returns `verified: false`; registry visibility does not affect verification.",
   tags: ["Agent Compliance"],
   request: {
     params: z.object({
@@ -3681,7 +3683,7 @@ registry.registerPath({
   operationId: "updateAgentComplianceOptOut",
   summary: "Update compliance opt-out",
   description:
-    "Opt an agent in or out of public compliance reporting. Requires authentication and ownership of the agent.",
+    "Opt an agent in or out of public compliance reporting. Opting out immediately revokes every active badge version. Re-enabling monitoring keeps badges suppressed until a fresh passing full-suite run earns them again; partial storyboard reruns cannot restore verification first. Requires authentication and ownership of the agent.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -5029,6 +5031,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.get("/brands/brand-json", registryReadRateLimiter, async (req, res) => {
     try {
+      // Responses may carry live badge state; never let an enriched manifest
+      // retain verified=true after an opt-out transition.
+      res.setHeader("Cache-Control", "no-store");
       const domain = ((req.query.domain as string) || "").toLowerCase();
       const fresh = req.query.fresh === "true";
       if (!isValidDomain(domain)) {
@@ -6202,6 +6207,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         ? (Array.isArray(rawVerificationMode) ? (rawVerificationMode as string[]) : [rawVerificationMode as string])
         : undefined;
       const withVerified = req.query.verified === "true";
+      if (withCompliance || withVerified || verificationModes?.length) {
+        res.setHeader("Cache-Control", "no-store");
+      }
 
       if (verificationModes?.length) {
         const invalid = verificationModes.filter((m) => !isVerificationMode(m));
@@ -6445,6 +6453,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.get("/registry/agents/:encodedUrl/compliance", agentReadRateLimiter, optAuth, async (req, res) => {
     try {
+      res.setHeader("Cache-Control", "no-store");
       const agentUrl = decodeURIComponent(req.params.encodedUrl);
       if (!validateAgentUrlParam(agentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
@@ -6471,6 +6480,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           status: "opted_out",
           lifecycle_stage: metadata.lifecycle_stage || "production",
           compliance_opt_out: true,
+          badge_requalification_required: true,
         });
       }
 
@@ -6480,6 +6490,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           status: "unknown",
           lifecycle_stage: metadata?.lifecycle_stage || "production",
           compliance_opt_out: false,
+          badge_requalification_required: metadata?.badge_requalification_required ?? false,
           tracks: {},
           streak_days: 0,
           last_checked_at: null,
@@ -6605,6 +6616,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         status: status.status,
         lifecycle_stage: metadata?.lifecycle_stage || "production",
         compliance_opt_out: metadata?.compliance_opt_out ?? false,
+        badge_requalification_required: metadata?.badge_requalification_required ?? false,
         tracks: status.tracks_summary_json || {},
         track_details: status.track_details_json || [],
         streak_days: status.streak_days,
@@ -6752,6 +6764,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
       const encodedUrl = encodeURIComponent(agentUrl);
 
+      res.setHeader("Cache-Control", "no-store");
       res.json({
         agent_url: agentUrl,
         verified: badges.length > 0,
@@ -6785,7 +6798,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     res.setHeader("Content-Type", "image/svg+xml");
     res.setHeader("Content-Security-Policy", "script-src 'none'");
     res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300, must-revalidate");
+    // Trust state can be revoked deliberately through compliance opt-out.
+    // Allow caches to retain the response body and ETag, but require them to
+    // revalidate before every use so a stale teal badge cannot survive the
+    // revocation cycle.
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=0, must-revalidate");
     // ETag covers role, version, and the mode set so a transition (e.g.
     // add 'live', upgrade to 3.1) invalidates caches for the badge URL.
     res.setHeader("ETag", etag);
@@ -6938,8 +6955,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // legacy URL auto-upgrades, so a buyer who copies this snippet
       // gets the newest version's image without changing the alt text
       // they pasted into their site.
-      const altText = `AAO Verified ${roleLabelForEmbed(role)} Agent`;
+      const altText = `AgenticAdvertising.org Verified ${roleLabelForEmbed(role)} Agent`;
 
+      res.setHeader("Cache-Control", "no-store");
       res.json(buildEmbedResponse({ agentUrl, role, badgeSvgUrl, altText, verified, adcpVersion }));
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to generate embed code");
@@ -6977,8 +6995,9 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       const baseUrl = process.env.PUBLIC_BASE_URL || 'https://agenticadvertising.org';
       const encodedUrl = encodeURIComponent(agentUrl);
       const badgeSvgUrl = `${baseUrl}/api/registry/agents/${encodedUrl}/badge/${role}/${version}.svg`;
-      const altText = `AAO Verified ${roleLabelForEmbed(role)} Agent ${version}`;
+      const altText = `AgenticAdvertising.org Verified ${roleLabelForEmbed(role)} Agent ${version}`;
 
+      res.setHeader("Cache-Control", "no-store");
       res.json(buildEmbedResponse({ agentUrl, role, badgeSvgUrl, altText, verified, adcpVersion: version }));
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to generate version-pinned embed code");
@@ -7218,10 +7237,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
 
   router.put("/registry/agents/:encodedUrl/compliance/opt-out", ...complianceWriteMiddleware, async (req, res) => {
     try {
-      const agentUrl = decodeURIComponent(req.params.encodedUrl);
-      if (!validateAgentUrlParam(agentUrl)) {
+      const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(rawAgentUrl)) {
         return res.status(400).json({ error: "Invalid agent URL" });
       }
+      const agentUrl = canonicalizeAgentUrl(rawAgentUrl);
+      if (!agentUrl) return res.status(400).json({ error: "Invalid agent URL" });
 
       if (!req.user) {
         return res.status(401).json({ error: "Authentication required" });
@@ -7238,11 +7259,40 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(400).json({ error: "opt_out must be a boolean" });
       }
 
-      const metadata = await complianceDb.upsertRegistryMetadata(agentUrl, {
-        compliance_opt_out: opt_out,
-      });
+      const eventActor = `user:${req.user.id}`;
+      const agentVisibility = await findOwnedAgentVisibility(req.user.id, agentUrl);
+      if (!agentVisibility) {
+        return res.status(403).json({ error: "You do not have permission to modify this agent" });
+      }
+      const isPublicAgent = agentVisibility === 'public';
+      const transition = await complianceDb.setComplianceOptOut(
+        agentUrl,
+        opt_out,
+        eventActor,
+        isPublicAgent,
+      );
+      if (transition.revoked.length > 0) {
+        const reason = opt_out
+          ? 'Compliance monitoring opted out'
+          : 'Compliance monitoring re-enabled; fresh qualifying run required';
+        try {
+          await notifyVerificationChange({
+            agentUrl,
+            issued: [],
+            revoked: transition.revoked.map((badge) => ({ ...badge, reason })),
+            actor: eventActor,
+            emitFeedEvents: false,
+            ...(!isPublicAgent && { notifyChannel: false }),
+          });
+        } catch (notificationError) {
+          logger.error(
+            { err: notificationError, agentUrl },
+            'Failed to publish badge revocation notifications after compliance opt-out transition',
+          );
+        }
+      }
 
-      res.json(metadata);
+      res.json(transition.metadata);
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to update compliance opt-out");
       res.status(500).json({ error: "Failed to update compliance opt-out" });
