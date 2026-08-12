@@ -112,17 +112,17 @@ Add `--json` for structured output.
 
 ### Select a compliance cache and test kit
 
-`--compliance-version` selects a cache bundled with the SDK. For an extracted cache, pass its versioned directory to `--compliance-dir`; `--test-kit` takes a YAML file from the `test-kits/` directory below that same cache root. After extracting the `@adcp/sdk` 13.0.0-rc.15 npm tarball in the current directory, use its versioned cache root like this:
+`--compliance-version` selects a cache bundled with the SDK. For an extracted cache, pass its versioned directory to `--compliance-dir`; `--test-kit` takes a YAML file from the `test-kits/` directory below that same cache root. After extracting the `@adcp/sdk` 13.0.0-rc.17 npm tarball in the current directory, use its versioned cache root like this:
 
 ```bash
-npx @adcp/sdk@13.0.0-rc.15 storyboard run my-agent \
+npx @adcp/sdk@13.0.0-rc.17 storyboard run my-agent \
   --compliance-dir ./package/compliance/cache/3.1.13 \
   --test-kit ./package/compliance/cache/3.1.13/test-kits/acme-outdoor.yaml
 ```
 
-<Warning>
-`@adcp/sdk` 13.0.0-rc.15 does not verify that `--test-kit` and the selected storyboard cache use the same AdCP version. Locate the versioned cache root containing the YAML file passed to `--test-kit` (the directory above `test-kits/`) and open that root's `index.json`. Before using the result, confirm that its `published_version` matches the `AdCP` version in the report's `SDK` line. If they differ, discard the result and rerun with both paths from the same versioned cache. Automatic enforcement is tracked in [adcp-client#2514](https://github.com/adcontextprotocol/adcp-client/issues/2514).
-</Warning>
+<Note>
+`@adcp/sdk` 13.0.0-rc.17 infers the compliance line from test-kit metadata and rejects mixed or ambiguous `--test-kit`, `--compliance-version`, and `--compliance-dir` selections before contacting the agent. Keep the test kit and storyboard files under the same versioned cache root.
+</Note>
 
 The storyboard runner operates in two modes depending on whether your agent implements the optional [compliance test controller](/docs/building/by-layer/L3/comply-test-controller):
 

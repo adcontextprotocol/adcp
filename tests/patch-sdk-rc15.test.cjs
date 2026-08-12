@@ -23,7 +23,7 @@ async function executeStoryboardTask(client, taskName, params) {
 module.exports = { executeStoryboardTask };
 `;
 
-function writeFixture(version = '13.0.0-rc.15') {
+function writeFixture(version = '13.0.0-rc.17') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk-rc15-patch-'));
   const sdkRoot = path.join(root, 'node_modules', '@adcp', 'sdk');
   fs.mkdirSync(sdkRoot, { recursive: true });
@@ -42,7 +42,7 @@ function runPatcher(root) {
   return spawnSync(process.execPath, [PATCHER], { cwd: root, encoding: 'utf8' });
 }
 
-test('rc.15 patch fixes get_products routing in CJS and ESM idempotently', async (t) => {
+test('hosted SDK patch fixes get_products routing in CJS and ESM idempotently', async (t) => {
   const root = writeFixture();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
@@ -78,15 +78,15 @@ test('rc.15 patch fixes get_products routing in CJS and ESM idempotently', async
   assert.deepEqual(files.map(file => fs.readFileSync(file, 'utf8')), once);
 });
 
-test('rc.15 patch refuses an unreviewed SDK version before modifying artifacts', (t) => {
-  const root = writeFixture('13.0.0-rc.16');
+test('hosted SDK patch refuses an unreviewed SDK version before modifying artifacts', (t) => {
+  const root = writeFixture('13.0.0-rc.18');
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const result = runPatcher(root);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Refusing to patch @adcp\/sdk 13\.0\.0-rc\.16/);
+  assert.match(result.stderr, /Refusing to patch @adcp\/sdk 13\.0\.0-rc\.18/);
 });
 
-test('rc.15 patch rejects an unexpected task-map source shape', (t) => {
+test('hosted SDK patch rejects an unexpected task-map source shape', (t) => {
   const root = writeFixture();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   for (const relative of TASK_MAP_FILES) {
@@ -100,10 +100,10 @@ test('rc.15 patch rejects an unexpected task-map source shape', (t) => {
 
   const result = runPatcher(root);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.15 storyboard task-map shape/);
+  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.17 storyboard task-map shape/);
 });
 
-test('rc.15 patch rejects mixed original and patched call sites before writing either format', (t) => {
+test('hosted SDK patch rejects mixed original and patched call sites before writing either format', (t) => {
   const root = writeFixture();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const cjsFile = path.join(root, TASK_MAP_FILES[0]);
@@ -115,11 +115,11 @@ test('rc.15 patch rejects mixed original and patched call sites before writing e
 
   const result = runPatcher(root);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.15 storyboard task-map shape/);
+  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.17 storyboard task-map shape/);
   assert.equal(fs.readFileSync(cjsFile, 'utf8'), cjsBefore);
 });
 
-test('rc.15 patch rejects duplicate original call sites before writing either format', (t) => {
+test('hosted SDK patch rejects duplicate original call sites before writing either format', (t) => {
   const root = writeFixture();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const cjsFile = path.join(root, TASK_MAP_FILES[0]);
@@ -130,11 +130,11 @@ test('rc.15 patch rejects duplicate original call sites before writing either fo
 
   const result = runPatcher(root);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.15 storyboard task-map shape/);
+  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.17 storyboard task-map shape/);
   assert.equal(fs.readFileSync(cjsFile, 'utf8'), cjsBefore);
 });
 
-test('rc.15 patch preflights both module formats before writing either one', (t) => {
+test('hosted SDK patch preflights both module formats before writing either one', (t) => {
   const root = writeFixture();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const cjsFile = path.join(root, TASK_MAP_FILES[0]);
@@ -150,6 +150,6 @@ test('rc.15 patch preflights both module formats before writing either one', (t)
 
   const result = runPatcher(root);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.15 storyboard task-map shape/);
+  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.17 storyboard task-map shape/);
   assert.equal(fs.readFileSync(cjsFile, 'utf8'), cjsBefore);
 });
