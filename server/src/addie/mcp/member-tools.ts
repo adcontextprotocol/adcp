@@ -4381,6 +4381,7 @@ export function createMemberToolHandlers(
     }
 
     const optedOut = registryMetadata?.compliance_opt_out === true;
+    const requalificationRequired = registryMetadata?.badge_requalification_required === true;
 
     let response = `## Agent Status: ${registryUrl}\n\n`;
     if (registryMetadata?.lifecycle_stage) {
@@ -4426,6 +4427,8 @@ export function createMemberToolHandlers(
     response += `\n### Compliance (latest comply run)\n`;
     if (optedOut) {
       response += `_This agent has opted out of compliance monitoring._\n`;
+    } else if (requalificationRequired) {
+      response += `_Monitoring is enabled, but badges remain suppressed until a fresh passing full-suite compliance run completes. Partial storyboard reruns cannot restore verification first._\n`;
     } else if (complianceStatus) {
       response += `**Status:** ${complianceStatus.status}\n`;
       if (complianceStatus.headline) {

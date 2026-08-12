@@ -45,16 +45,35 @@ function status(id: string, s: StoryboardStatus) {
 function makeDb(opts: {
   existingBadges?: AgentVerificationBadge[];
   latestStatuses?: ReturnType<typeof status>[];
+  optedOut?: boolean;
+  requalificationRequired?: boolean;
 }): ComplianceDatabase {
   const upserts: any[] = [];
   const degrades: any[] = [];
   const revokes: any[] = [];
   return {
+    getRegistryMetadata: vi.fn().mockResolvedValue(
+      opts.optedOut || opts.requalificationRequired
+        ? {
+            compliance_opt_out: opts.optedOut ?? false,
+            badge_requalification_required: opts.requalificationRequired ?? false,
+            badge_requalification_generation: '7',
+          }
+        : null,
+    ),
     getBadgesForAgent: vi.fn().mockResolvedValue(opts.existingBadges ?? []),
     getStoryboardStatuses: vi.fn().mockResolvedValue(opts.latestStatuses ?? []),
     upsertBadge: vi.fn().mockImplementation((b: any) => { upserts.push(b); return Promise.resolve({ ...badge(b.role), ...b }); }),
-    degradeBadge: vi.fn().mockImplementation((...args: any[]) => { degrades.push(args); return Promise.resolve(undefined); }),
-    revokeBadge: vi.fn().mockImplementation((...args: any[]) => { revokes.push(args); return Promise.resolve(undefined); }),
+    degradeBadge: vi.fn().mockImplementation((...args: any[]) => { degrades.push(args); return Promise.resolve(true); }),
+    revokeBadge: vi.fn().mockImplementation((...args: any[]) => { revokes.push(args); return Promise.resolve(true); }),
+    revokeAllBadges: vi.fn().mockResolvedValue(
+      (opts.existingBadges ?? []).map(({ role, adcp_version }) => ({ role, adcp_version })),
+    ),
+    revokeAllBadgesIfOptedOut: vi.fn().mockResolvedValue(
+      (opts.existingBadges ?? []).map(({ role, adcp_version }) => ({ role, adcp_version })),
+    ),
+    prepareBadgeRequalification: vi.fn().mockResolvedValue('8'),
+    completeBadgeRequalification: vi.fn().mockResolvedValue(true),
     _upserts: upserts,
     _degrades: degrades,
     _revokes: revokes,
@@ -74,6 +93,128 @@ describe('runBadgeFanOut', () => {
     expect(result.issued).toHaveLength(0);
     expect(result.revoked).toHaveLength(0);
     expect(db.getStoryboardStatuses).not.toHaveBeenCalled();
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it('revokes every active badge and blocks issuance while compliance is opted out', async () => {
+    const db = makeDb({
+      optedOut: true,
+      existingBadges: [
+        badge('media-buy', 'active', '3.0'),
+        badge('creative', 'degraded', '3.1'),
+      ],
+      latestStatuses: [status('sales_broadcast_tv', 'passing')],
+    });
+
+    const result = await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      adcpVersions: ['3.0', '3.1'],
+    });
+
+    expect(db.revokeAllBadgesIfOptedOut).toHaveBeenCalledWith(
+      'https://example.com/mcp',
+      'Compliance monitoring opted out',
+    );
+    expect(result.revoked).toEqual([
+      { role: 'media-buy', adcp_version: '3.0', reason: 'Compliance monitoring opted out' },
+      { role: 'creative', adcp_version: '3.1', reason: 'Compliance monitoring opted out' },
+    ]);
+    expect(db.upsertBadge).not.toHaveBeenCalled();
+    expect(db.getStoryboardStatuses).not.toHaveBeenCalled();
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks partial storyboard fan-out after re-enable until a full-suite run completes', async () => {
+    const db = makeDb({
+      requalificationRequired: true,
+      latestStatuses: [status('sales_broadcast_tv', 'passing')],
+    });
+
+    const result = await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+    });
+
+    expect(result).toEqual({ issued: [], revoked: [], degraded: [], unchanged: [] });
+    expect(db.getStoryboardStatuses).not.toHaveBeenCalled();
+    expect(db.upsertBadge).not.toHaveBeenCalled();
+    expect(db.completeBadgeRequalification).not.toHaveBeenCalled();
+  });
+
+  it('opens the requalification gate only after fresh full-suite badge processing succeeds', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_member' }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
+    const db = makeDb({
+      requalificationRequired: true,
+      latestStatuses: [status('sales_broadcast_tv', 'passing')],
+    });
+
+    await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      runId: 'fresh-full-suite',
+    });
+
+    expect(db.getStoryboardStatuses).toHaveBeenCalledWith(
+      'https://example.com/mcp',
+      { runId: 'fresh-full-suite' },
+    );
+    expect(db.upsertBadge).toHaveBeenCalled();
+    expect(db.prepareBadgeRequalification).toHaveBeenCalledWith('https://example.com/mcp', '7');
+    expect(db.completeBadgeRequalification).toHaveBeenCalledWith('https://example.com/mcp', '8');
+  });
+
+  it('keeps the gate closed when a fresh full-suite run earns no badge', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_member' }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
+    const db = makeDb({
+      requalificationRequired: true,
+      latestStatuses: [status('sales_broadcast_tv', 'failing')],
+    });
+
+    await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      runId: 'fresh-failing-full-suite',
+    });
+
+    expect(db.upsertBadge).not.toHaveBeenCalled();
+    expect(db.completeBadgeRequalification).not.toHaveBeenCalled();
+  });
+
+  it('keeps the gate closed when the full-suite run has no eligible membership', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [], rowCount: 0, command: 'SELECT', oid: 0, fields: [] } as never);
+    const db = makeDb({
+      requalificationRequired: true,
+      latestStatuses: [status('sales_broadcast_tv', 'passing')],
+    });
+
+    await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      runId: 'fresh-full-suite-without-membership',
+    });
+
+    expect(db.completeBadgeRequalification).not.toHaveBeenCalled();
+  });
+
+  it('abandons a stale full-suite run when a newer transition supersedes its generation', async () => {
+    const db = makeDb({ requalificationRequired: true });
+    vi.mocked(db.prepareBadgeRequalification).mockResolvedValue(null);
+
+    await runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      runId: 'stale-full-suite',
+    });
+
+    expect(db.upsertBadge).not.toHaveBeenCalled();
+    expect(db.completeBadgeRequalification).not.toHaveBeenCalled();
     expect(queryMock).not.toHaveBeenCalled();
   });
 
@@ -199,6 +340,7 @@ describe('runBadgeFanOut', () => {
       'media-buy',
       '4.0',
       'AdCP 4.0 public badge issuance is not currently enabled',
+      '0',
     );
   });
 
@@ -230,6 +372,7 @@ describe('runBadgeFanOut', () => {
       'media-buy',
       '3.1',
       'Agent no longer advertises AdCP 3.1 support',
+      '0',
     );
   });
 

@@ -1007,8 +1007,8 @@ async function runTests() {
         }
       ]
     },
-    '/schemas/trusted-match/context-match-response.json',
-    'TMP Context Match response — web (overview walkthrough)'
+    '/schemas/trusted-match/provider-context-match-response.json',
+    'TMP provider→router Context Match response — web (overview walkthrough)'
   );
 
   // Identity Match request — web (from index.mdx)
@@ -1088,8 +1088,72 @@ async function runTests() {
         }
       ]
     },
+    '/schemas/trusted-match/provider-context-match-response.json',
+    'TMP provider→router Context Match response — AI assistant with creative manifest (ai-mediation walkthrough)'
+  );
+
+  // Context Match response hop split: providers emit flattened local keys;
+  // routers emit only registration-derived, attributed buckets.
+  await validateExample(
+    {
+      "status": "completed",
+      "type": "context_match_response",
+      "request_id": "ctx-provider-hop-1",
+      "offers": [],
+      "signals": {
+        "targeting_kvs": [{ "key": "category", "value": "outdoor" }]
+      }
+    },
+    '/schemas/trusted-match/provider-context-match-response.json',
+    'TMP provider→router Context Match response accepts provider-local targeting pairs'
+  );
+
+  await expectInvalid(
+    {
+      "status": "completed",
+      "type": "context_match_response",
+      "request_id": "ctx-provider-hop-2",
+      "offers": [],
+      "signals_by_provider": {
+        "provider_a": {
+          "targeting_kvs": [{ "key": "category", "value": "spoofed" }]
+        }
+      }
+    },
+    '/schemas/trusted-match/provider-context-match-response.json',
+    'TMP provider→router Context Match response rejects router-authored attribution buckets',
+    [/not|must NOT|anyOf/i]
+  );
+
+  await validateExample(
+    {
+      "status": "completed",
+      "type": "context_match_response",
+      "request_id": "ctx-router-hop-1",
+      "offers": [],
+      "signals_by_provider": {
+        "provider_a": {
+          "targeting_kvs": [{ "key": "category", "value": "outdoor" }]
+        }
+      }
+    },
     '/schemas/trusted-match/context-match-response.json',
-    'TMP Context Match response — AI assistant with creative manifest (ai-mediation walkthrough)'
+    'TMP router→publisher Context Match response accepts attributed targeting buckets'
+  );
+
+  await expectInvalid(
+    {
+      "status": "completed",
+      "type": "context_match_response",
+      "request_id": "ctx-router-hop-2",
+      "offers": [],
+      "signals": {
+        "targeting_kvs": [{ "key": "category", "value": "outdoor" }]
+      }
+    },
+    '/schemas/trusted-match/context-match-response.json',
+    'TMP router→publisher Context Match response rejects flattened targeting without attributed buckets',
+    [/not|must NOT|anyOf/i]
   );
 
   // Identity Match request with consent (from context-and-identity.mdx)

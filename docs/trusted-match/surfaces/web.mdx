@@ -46,6 +46,7 @@ The router fans out to each buyer agent and merges the responses. Each buyer ret
 
 ```json
 {
+  "status": "completed",
   "type": "context_match_response",
   "request_id": "ctx-7f2a-oakwood-91b3",
   "offers": [
@@ -53,13 +54,17 @@ The router fans out to each buyer agent and merges the responses. Each buyer ret
     { "package_id": "pkg-native-0078" }
   ],
   "signals": {
-    "segments": ["sustainability", "home_cooking"],
-    "targeting_kvs": [
-      { "key": "adcp_seg", "value": "sustainability" },
-      { "key": "adcp_seg", "value": "home_cooking" },
-      { "key": "adcp_pkg", "value": "pkg-display-0041" },
-      { "key": "adcp_pkg", "value": "pkg-native-0078" }
-    ]
+    "segments": ["sustainability", "home_cooking"]
+  },
+  "signals_by_provider": {
+    "outdoor_media": {
+      "targeting_kvs": [
+        { "key": "segment", "value": "sustainability" },
+        { "key": "segment", "value": "home_cooking" },
+        { "key": "package", "value": "pkg-display-0041" },
+        { "key": "package", "value": "pkg-native-0078" }
+      ]
+    }
   }
 }
 ```
@@ -68,7 +73,7 @@ Key points:
 
 - `offers` contains one entry per activated package. The provider's synced set for this placement included three packages — these two matched the kitchen/sustainability context, the third (`pkg-display-0103`) did not and is absent.
 - For web/GAM activation, offers are simple — just `package_id`. Richer fields (`brand`, `price`, `summary`, `creative_manifest`, `macros`) are available for integrations that need them but are not required.
-- `signals.targeting_kvs` are the key-value pairs that the Prebid module sets on the GAM ad request. GAM line items are configured to match on these keys.
+- `signals_by_provider` preserves which provider emitted each targeting pair. The Prebid module resolves each `(provider_id, key)` through the publisher's [`targeting_kv_mapping`](/docs/trusted-match/specification#publisher-targeting-kv-mapping) before setting the resulting GAM key. Unmapped tuples are dropped.
 
 ## Identity Match
 
@@ -148,7 +153,16 @@ Only two packages survive: `pkg-display-0041` and `pkg-native-0078`.
 
 ### Step 2: Set GAM Targeting
 
-The Prebid module takes the context match `signals.targeting_kvs` and sets them on the GAM ad request as key-value pairs:
+The Prebid module resolves the context match `signals_by_provider` tuples through the publisher's [`targeting_kv_mapping`](/docs/trusted-match/specification#publisher-targeting-kv-mapping):
+
+```yaml
+targeting_kv_mapping:
+  outdoor_media:
+    segment: adcp_seg
+    package: adcp_pkg
+```
+
+That configuration produces:
 
 ```
 adcp_seg = sustainability, home_cooking
