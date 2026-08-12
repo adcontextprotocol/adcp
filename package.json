@@ -67,7 +67,7 @@
     "test:storyboard-contradictions": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-contradictions.test.cjs",
     "test:storyboard-context-entity": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-context-entity.test.cjs",
     "test:storyboard-auth-shape": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-auth-shape.test.cjs",
-    "test:storyboard-test-kits": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-test-kits.test.cjs",
+    "test:storyboard-test-kits": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-test-kits.test.cjs tests/trusted-match-publisher-auth-storyboard.test.cjs",
     "test:compliance-packaged-refs": "node --test --test-force-exit --test-timeout=30000 tests/lint-compliance-packaged-refs.test.cjs",
     "test:compliance-source-authority": "node --test --test-force-exit --test-timeout=30000 tests/lint-compliance-source-authority.test.cjs",
     "test:storyboard-sample-request-schema": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-sample-request-schema.test.cjs",

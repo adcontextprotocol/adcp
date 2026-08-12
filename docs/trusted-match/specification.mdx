@@ -656,7 +656,7 @@ Identity Match signatures include `request_id` and `identities_hash`, so they ar
 
 ### Signature verification
 
-The router MUST authenticate incoming requests from the publisher before signing and fanning out. The mechanism for publisher-to-router authentication is deployment-specific (mTLS, API key, etc.) and outside the scope of TMP signing, but MUST be enforced. This prevents a compromised publisher-side component from laundering unauthenticated requests through the router's signature.
+Each TMP router deployment **MUST** authenticate publisher requests before the router signs or fans them out. TMP does not define the publisher credential profile, publisher-facing endpoint URLs, or enforcement point; authentication may be enforced by the router, an API gateway, a service mesh, or another trusted ingress. When authentication is absent or fails at the actual publisher-facing HTTP endpoint for either Context Match or Identity Match, that endpoint **MUST** return `401` with a `WWW-Authenticate` challenge. TMP does not constrain the challenge scheme. A separate probe-only rejection path does not satisfy this requirement. A deployment whose admission control can only terminate the connection before an HTTP response (for example, strict mTLS with no HTTP authentication gate) also does not satisfy it. Because the rejection may occur before TMP request parsing, a TMP error body is not required. This prevents unauthenticated callers from using the router as a signing oracle.
 
 The router signs requests before fanning out. Providers verify signatures using the publisher's public key, obtained from the property registry. This proves the request originated from an authorized router — not a third party probing the provider's targeting logic. Providers SHOULD sample-verify rather than verify every request — Ed25519 verification adds ~30μs per request, which is small compared to the full pipeline but adds up at volume. A 5% sample rate detects fraudulent publishers within seconds while adding negligible overhead.
 
@@ -819,6 +819,7 @@ TMP uses HTTP status codes for transport-level errors only. Application-level re
 |---|---|
 | `200` | Request processed. Body contains the TMP response (success, empty result, or TMP error). |
 | `400` | Malformed request (invalid JSON, missing `type` field). Not a TMP response — no body to parse. |
+| `401` | Publisher authentication was absent or failed. The response MUST include `WWW-Authenticate`; TMP does not constrain the challenge scheme. No TMP error body is required because the deployment authentication gate may reject the request before TMP request parsing. |
 | `503` | Provider temporarily unavailable. The router should retry or skip. |
 
 This means a `200` with an empty `offers` array is a valid "no matches" response, and a `200` with a TMP error body (`"type": "error"`) is a valid application error. The router handles one response format regardless of outcome.
@@ -862,6 +863,9 @@ All of Basic, plus:
 - Fans out Context Match and Identity Match to authorized providers
 - Merges responses
 - Meets end-to-end latency budget (p95 < 50ms)
+- Its actual publisher-facing Context Match and Identity Match endpoints return `401` with `WWW-Authenticate` when publisher authentication is absent or fails
+- For each Context Match request in a multi-publisher deployment, binds the authenticated publisher principal to its allowed `property_rid` values and rejects unauthorized values before signing or fan-out; single-publisher deployments satisfy this requirement trivially
+- Operator documentation identifies the authentication mechanism and where it is enforced (router, gateway, service mesh, or other trusted ingress)
 
 ### TMP Router (Trusted)
 
