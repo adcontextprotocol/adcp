@@ -30,7 +30,7 @@
     },
     "refinements": {
       "type": "array",
-      "description": "Proposal revisions to create. proposal_id values MUST be unique within the request; results preserve request order.",
+      "description": "Proposal revisions to create. Sources may be draft, committed, or accepted. An accepted source is forked into a MediaBuy amendment or cancellation proposal and remains immutable. proposal_id values MUST be unique within the request; results preserve request order.",
       "items": { "$ref": "/schemas/media-buy/proposal-refinement.json" },
       "minItems": 1,
       "uniqueItems": true

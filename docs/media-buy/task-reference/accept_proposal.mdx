@@ -1,0 +1,34 @@
+---
+title: accept_proposal
+description: "Accept a committed proposal to create, amend, or cancel a MediaBuy."
+"og:title": "AdCP accept_proposal Task"
+testable: true
+---
+
+`accept_proposal` is the single terminal action for the compact proposal lifecycle. It accepts exactly one committed immutable proposal snapshot.
+
+Depending on `proposal_kind`, acceptance:
+
+- creates a new MediaBuy;
+- applies an amendment to an existing MediaBuy; or
+- applies a negotiated cancellation.
+
+The proposal already carries the commercial terms, so the request does not repeat packages, dates, targeting, or creatives.
+
+{/* Using latest because accept_proposal is not yet released. Update after the 3.2 release. */}
+**Request schema:** [`/schemas/latest/media-buy/accept-proposal-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/accept-proposal-request.json)
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441011",
+  "account": { "account_id": "account_123" },
+  "proposal_id": "proposal_committed_456",
+  "proposal_terms_digest": "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+}
+```
+
+For scalable proposals, include `total_budget`. If the proposal carries a signature-required insertion order, include `io_acceptance`.
+
+If the proposal belongs to an `opportunity`, acceptance closes that planning cycle with `accepted_with_seller`; callers may repeat the matching opportunity ID explicitly, while the accepted proposal retains the association.
+
+Success returns the resulting MediaBuy identity, the proposal with `proposal_status: "accepted"`, and `purchase_bindings[]` mapping proposal purchase positions to package IDs for later creative assignment. Acceptance is idempotent. The seller atomically verifies `proposal_id`, `proposal_terms_digest`, expiry, and any `base_media_buy_revision`; stale or mismatched acceptance never applies different terms.

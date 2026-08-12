@@ -7,7 +7,7 @@
   "properties": {
     "allowed_tasks": {
       "type": "array",
-      "description": "Canonical snake_case task names the caller may invoke against this account (e.g., get_media_buys, update_media_buy, create_media_buy, sync_creatives). Absence of a task from this list MUST be interpreted as 'not permitted' — invoking an absent task MUST return SCOPE_INSUFFICIENT. This list reflects the caller's grant, not the seller's universal capability surface. AdCP 3.2 compact product tools are authorized by their own names; a get_products grant does not silently authorize a stateful proposal task.",
+      "description": "Canonical snake_case task names the caller may invoke against this account (for example get_media_buys, buy_products, accept_proposal, control_media_buy, or sync_creatives). Absence of a task from this list means not permitted and returns SCOPE_INSUFFICIENT. Compact 3.2 tools are authorized by their own names; grants for deprecated get_products/create_media_buy/update_media_buy do not silently transfer across aliases.",
       "items": {
         "type": "string",
         "pattern": "^[a-z][a-z0-9_]*$"

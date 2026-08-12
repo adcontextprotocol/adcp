@@ -2,14 +2,16 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/proposal-status.json",
   "title": "Proposal Status",
-  "description": "Lifecycle status of a proposal. This is the per-proposal signal for whether finalization is required before create_media_buy. Absent means the proposal is ready to buy (backward compatible with pre-v3.1 proposals). 'draft' indicates indicative pricing that must be finalized before purchase. 'committed' indicates firm terms that can be executed until expires_at; the status alone does not assert an inventory hold. Legacy get_products finalization requests a hold, while split 3.2 proposal tasks may return executable alternatives without reserving every alternative.",
+  "description": "Lifecycle status of an immutable commercial snapshot. 'draft' is indicative, 'committed' is a firm offer awaiting buyer acceptance, and 'accepted' is the historical terms snapshot attached to a MediaBuy. Refining an accepted snapshot creates a new proposal ID; it never mutates or reopens the accepted snapshot.",
   "type": "string",
   "enum": [
     "draft",
-    "committed"
+    "committed",
+    "accepted"
   ],
   "enumDescriptions": {
-    "draft": "Indicative pricing and availability. The buyer can compare and plan but must finalize before purchasing. Use the 'finalize' refine action to request firm pricing and any inventory hold.",
-    "committed": "Firm, executable terms. The buyer can execute this proposal via create_media_buy before expires_at. The status does not by itself promise that inventory is reserved; a seller that provides a hold must state it in the proposal terms. Execution is buyer acceptance. After expires_at, the buyer must request or discover a fresh proposal."
+    "draft": "Indicative pricing and availability. The buyer can compare and plan but must request a committed revision before purchasing. The legacy get_products facade may use its 'finalize' refine action; refine_proposals returns committed revisions directly.",
+    "committed": "Firm, executable terms. The buyer can accept this proposal before expires_at. The status does not by itself promise that inventory is reserved; a seller that provides a hold must state it in the proposal terms.",
+    "accepted": "Immutable historical commercial terms attached to a MediaBuy. The buyer may pass this proposal_id to refine_proposals to fork an amendment or cancellation proposal."
   }
 }

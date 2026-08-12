@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/compact-task-input-required.json",
+  "title": "Compact Task Input Required",
+  "description": "Bounded payload for a compact lifecycle task paused for buyer input or approval.",
+  "type": "object",
+  "properties": {
+    "reason": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "message": { "type": "string", "maxLength": 2000 },
+    "errors": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/error.json" }
+    },
+    "context": { "$ref": "/schemas/core/context.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "additionalProperties": true
+}

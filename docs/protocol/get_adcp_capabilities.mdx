@@ -181,7 +181,7 @@ Declares cross-role enforcement of buyer governance for consequential tasks. Thi
 }
 ```
 
-The declaration is part of the experimental `governance.campaign` surface, so an implementing service also lists `governance.campaign` in top-level `experimental_features`. `signed_context` is defined for every governed role. `online_execution_check` is currently available only for [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) and [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy), where `planned_delivery` provides a standardized prepared-result shape; it always implies `signed_context`. The state transition follows prepare → check → commit and commits atomically only when the response is `approved`. Execution checks are binary (`approved` or `denied`).
+The declaration is part of the experimental `governance.campaign` surface, so an implementing service also lists `governance.campaign` in top-level `experimental_features`. `signed_context` is defined for every governed role. `online_execution_check` is available for the legacy [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) / [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) facades and the compact [`buy_products`](/docs/media-buy/task-reference/buy_products), [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal), and [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) lifecycle, where `planned_delivery` provides a standardized prepared-result shape. Proposal acceptance binds both `proposal_id` and `proposal_terms_digest`. Online checking always implies `signed_context`; the state transition follows prepare → check → commit and commits atomically only when the response is `approved`.
 
 Advertising a task also commits the service to deterministic applicability. It resolves the commercial account from the request or existing resource before the side effect; when it cannot do so, it returns [`ACCOUNT_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-account-required). It never treats a missing token as evidence that the buyer is ungoverned. Conditional task annotations use `trigger_overrides_exemption`: any commitment-increasing part of a mixed atomic update requires governance.
 
@@ -364,9 +364,9 @@ See [Accounts and Agents](/docs/building/by-layer/L2/accounts-and-agents#what-se
 
 Media-buy protocol capabilities. Only present if `media_buy` is in `supported_protocols`. Sellers declaring `media_buy` should also include `account` (with `supported_billing`) and `media_buy.portfolio` — buyers need both to establish billing and understand inventory coverage. Compliance testing validates their presence.
 
-#### product_discovery_tools
+#### lifecycle_tools
 
-AdCP 3.2 sellers use `product_discovery_tools` to advertise any supported subset of `get_products`, `list_products`, `request_proposals`, `refine_proposals`, and `decline_proposals`. When absent, buyers use the legacy `get_products` facade and inspect `buying_modes`. The compact tools share the authorization framework with legacy discovery, but grants remain task-specific and each stateful tool has its own idempotency identity: retry with the same tool name and payload. SDKs use the release manifest's `legacy_fallback` metadata to distinguish a direct one-call translation from a stateful orchestration or an unsupported fallback; see [Same-major tool replacements](/docs/building/cross-cutting/version-adaptation#same-major-tool-replacements).
+AdCP 3.2 sellers use `lifecycle_tools` to advertise any supported subset of `get_products`, `list_products`, `request_proposals`, `refine_proposals`, `decline_proposals`, `buy_products`, `accept_proposal`, and `control_media_buy`. When absent, buyers use the legacy `get_products`, `create_media_buy`, and `update_media_buy` facades. The compact tools share the authorization framework with their legacy peers, but grants remain task-specific and each stateful tool has its own idempotency identity: retry with the same tool name and payload. SDKs use the release manifest's `legacy_fallback` metadata to distinguish a direct one-call translation from a stateful orchestration or an unsupported fallback; see [Same-major tool replacements](/docs/building/cross-cutting/version-adaptation#same-major-tool-replacements).
 
 :::note 3.0 breaking changes
 The following fields have been removed from the capabilities response:
@@ -412,7 +412,7 @@ Optional media-buy features. Boolean declarations are commitments when true. Str
 
 | Feature | Description |
 |---------|-------------|
-| `inline_creative_management` | Accepts creatives inline in `create_media_buy` and `update_media_buy` package payloads |
+| `inline_creative_management` | Deprecated 3.x compatibility capability for inline creatives in `create_media_buy` and `update_media_buy`; compact lifecycle tools never accept them |
 | `property_list_filtering` | Honors `property_list` parameter in `get_products` |
 | `catalog_management` | Supports [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) for catalog feed management |
 | `seller_optimized_budget` | Supports shared media-buy budgets and cross-package allocation goals |

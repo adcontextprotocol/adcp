@@ -57,15 +57,18 @@ const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_.:-]{16,255}$/;
  * between this list and the schemas will fail CI.
  */
 export const MUTATING_TOOLS: ReadonlySet<string> = new Set([
+  'accept_proposal',
   'acquire_rights',
   'activate_signal',
   'build_creative',
+  'buy_products',
   'calibrate_content',
   'create_collection_list',
   'create_content_standards',
   'create_media_buy',
   'create_property_list',
   'creative_approval',
+  'control_media_buy',
   'delete_collection_list',
   'delete_property_list',
   'decline_proposals',

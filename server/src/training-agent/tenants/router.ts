@@ -828,7 +828,7 @@ function projectSalesCapabilities(
         ...mediaBuy,
         ...salesProjection,
         ...(supportsGetProductsRejected(servedVersion) && {
-          product_discovery_tools: [...PRODUCT_DISCOVERY_TOOL_NAMES],
+          lifecycle_tools: [...PRODUCT_DISCOVERY_TOOL_NAMES],
         }),
         features: {
           ...(

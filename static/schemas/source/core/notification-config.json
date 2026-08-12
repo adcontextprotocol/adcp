@@ -40,6 +40,12 @@
       "minItems": 1,
       "uniqueItems": true
     },
+    "product_payload_view": {
+      "type": "string",
+      "enum": ["canonical", "legacy"],
+      "default": "legacy",
+      "description": "Product webhook representation selected by this subscriber. Use canonical with lifecycle_tools.list_products; legacy is the default for 3.x get_products consumers. Sellers emit exactly canonical_product/canonical_pricing_options or product/pricing_options accordingly. Valid only when event_types includes a product.* event."
+    },
     "authentication": {
       "type": "object",
       "deprecated": true,
@@ -77,6 +83,18 @@
     "subscriber_id",
     "url",
     "event_types"
+  ],
+  "allOf": [
+    {
+      "if": { "required": ["product_payload_view"] },
+      "then": {
+        "properties": {
+          "event_types": {
+            "contains": { "enum": ["product.created", "product.updated", "product.priced", "product.removed"] }
+          }
+        }
+      }
+    }
   ],
   "additionalProperties": false,
   "examples": [
@@ -131,6 +149,7 @@
           "signal.removed",
           "wholesale_feed.bulk_change"
         ],
+        "product_payload_view": "canonical",
         "active": true
       }
     },

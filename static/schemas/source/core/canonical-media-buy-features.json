@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-media-buy-features.json",
+  "title": "Canonical Media Buy Features",
+  "description": "Compact seller features relevant to canonical product purchase. Legacy inline-creative capabilities are absent.",
+  "type": "object",
+  "properties": {
+    "property_filtering": { "type": "boolean" },
+    "catalog_management": { "type": "boolean" },
+    "reporting_commitment_snapshots": {
+      "type": "boolean",
+      "description": "Seller preserves the accepted per-purchase reporting contract and exposes it on proposal and MediaBuy readback."
+    },
+    "seller_optimized_budget": { "type": "boolean" },
+    "bidding_policy": { "$ref": "/schemas/core/bidding-policy-capability.json" }
+  },
+  "additionalProperties": { "type": "boolean" }
+}

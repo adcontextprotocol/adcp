@@ -45,6 +45,31 @@
       "$ref": "/schemas/media-buy/decline-proposals-response.json"
     },
     {
+      "title": "MediaBuyCommitmentResponse",
+      "description": "Shared terminal response for buy_products and accept_proposal; originating task identity is carried by the task envelope and manifest resolver.",
+      "$ref": "/schemas/media-buy/media-buy-commitment-response.json"
+    },
+    {
+      "title": "ControlMediaBuyResponse",
+      "description": "Terminal response for control_media_buy",
+      "$ref": "/schemas/media-buy/control-media-buy-response.json"
+    },
+    {
+      "title": "CompactTaskSubmitted",
+      "description": "Submitted envelope for any compact lifecycle task; the originating tool is resolved from the task envelope.",
+      "$ref": "/schemas/core/compact-task-submitted.json"
+    },
+    {
+      "title": "CompactTaskWorking",
+      "description": "Working progress for any compact lifecycle task.",
+      "$ref": "/schemas/core/compact-task-working.json"
+    },
+    {
+      "title": "CompactTaskInputRequired",
+      "description": "Input-required payload for any compact lifecycle task.",
+      "$ref": "/schemas/core/compact-task-input-required.json"
+    },
+    {
       "title": "GetSignalsResponse",
       "description": "Response for completed or failed get_signals",
       "$ref": "/schemas/signals/get-signals-response.json"

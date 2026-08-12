@@ -24,6 +24,31 @@
             "description": "Seller's unique identifier for the media buy",
             "x-entity": "media_buy"
           },
+          "accepted_proposal_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "x-entity": "proposal",
+            "description": "Current accepted commercial snapshot for compact-lifecycle refinement. Updated atomically when an amendment or negotiated cancellation is accepted."
+          },
+          "accepted_proposal_terms_digest": {
+            "type": "string",
+            "pattern": "^sha256:[A-Za-z0-9_-]{43}$",
+            "description": "Digest of the current accepted proposal commercial_terms."
+          },
+          "accepted_proposal": {
+            "allOf": [
+              { "$ref": "/schemas/core/canonical-proposal.json" },
+              {
+                "properties": {
+                  "proposal_status": { "type": "string", "const": "accepted" },
+                  "media_buy_id": { "type": "string", "minLength": 1, "x-entity": "media_buy" }
+                },
+                "required": ["proposal_status", "media_buy_id", "accepted_at", "commercial_terms", "terms_digest"]
+              }
+            ],
+            "description": "Current accepted compact proposal, including the complete digested commercial envelope. Required whenever accepted_proposal_id is present so restarted SDKs can recover control-versus-refinement routing without reconstructing historical offers."
+          },
           "account": {
             "$ref": "/schemas/core/account.json",
             "description": "Account billed for this media buy"
@@ -164,7 +189,10 @@
             "type": "array",
             "description": "Structured per-buy resolution of the actions buyer can perform right now. Authoritative — divergence from product `allowed_actions[]` is expected (negotiated terms, account tier, buy-level overrides live on the deal, not the product). Each entry carries the resolved `mode` (singular, since the buy has a concrete state), optional `sla` commitment, and optional `terms_ref`. Predicate queries via #4425's `requires` grammar address fields by dotted path, e.g. `available_actions.extend_flight.sla.response_max`. Absent SLA means no commitment, not zero commitment — callers composing duration predicates MUST also compose with `present: true` to avoid silently matching sellers who never declared one.",
             "items": {
-              "$ref": "/schemas/core/media-buy-available-action.json"
+              "anyOf": [
+                { "$ref": "/schemas/core/canonical-media-buy-action.json" },
+                { "$ref": "/schemas/core/media-buy-available-action.json" }
+              ]
             },
             "uniqueItems": true
           },
@@ -533,7 +561,34 @@
             "$ref": "/schemas/core/ext.json"
           }
         },
+        "dependencies": {
+          "accepted_proposal_id": ["accepted_proposal_terms_digest", "accepted_proposal"],
+          "accepted_proposal_terms_digest": ["accepted_proposal_id", "accepted_proposal"],
+          "accepted_proposal": ["accepted_proposal_id", "accepted_proposal_terms_digest"]
+        },
+        "x-adcp-validation": {
+          "verifier_constraints": {
+            "accepted_proposal_binding": {
+              "proposal_id": "equals_accepted_proposal_id",
+              "terms_digest": "equals_accepted_proposal_terms_digest",
+              "media_buy_id": "equals_containing_media_buy_id",
+              "proposal_status": "accepted",
+              "on_violation": "reject_response"
+            }
+          }
+        },
         "allOf": [
+          {
+            "if": { "required": ["accepted_proposal"] },
+            "then": {
+              "properties": {
+                "available_actions": {
+                  "items": { "$ref": "/schemas/core/canonical-media-buy-action.json" }
+                }
+              },
+              "required": ["available_actions"]
+            }
+          },
           {
             "$comment": "When get_media_buys gains canonical media_buy_status during the 3.1 -> 3.2 status migration, extend this provisional-buy guard to reject media_buy_status: active alongside legacy status: active.",
             "if": {

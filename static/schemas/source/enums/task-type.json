@@ -7,6 +7,9 @@
   "enum": [
     "create_media_buy",
     "update_media_buy",
+    "buy_products",
+    "accept_proposal",
+    "control_media_buy",
     "media_buy_delivery",
     "sync_creatives",
     "build_creative",
@@ -39,6 +42,9 @@
   "enumDescriptions": {
     "create_media_buy": "Media-buy domain: Create a new advertising campaign with one or more packages",
     "update_media_buy": "Media-buy domain: Update campaign settings, package configuration, or delivery parameters",
+    "buy_products": "Media-buy domain: Create a MediaBuy directly from published product offers without inline creatives",
+    "accept_proposal": "Media-buy domain: Accept a committed proposal to create, amend, or cancel a MediaBuy",
+    "control_media_buy": "Media-buy domain: Apply operational delivery controls inside accepted commercial terms",
     "media_buy_delivery": "Media-buy domain: Persistent delivery-report webhook event emitted for a configured reporting_webhook. The inner result uses media-buy-delivery-webhook-result.json.",
     "sync_creatives": "Media-buy domain: Sync creative assets to publisher's library with upsert semantics",
     "build_creative": "Creative domain: Generate, transform, refine, or retrieve a creative manifest",

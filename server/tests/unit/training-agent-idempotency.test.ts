@@ -164,7 +164,7 @@ describe('training agent idempotency middleware', () => {
       });
 
       const list = await call(server, 'list_products', {
-        account_id: 'idem-account',
+        account: { account_id: 'idem-account' },
         max_results: 0,
       });
       expect(list.isError).toBe(true);
@@ -176,7 +176,7 @@ describe('training agent idempotency middleware', () => {
 
     it('accepts and ignores callback envelope configuration on synchronous list_products', async () => {
       const result = await call(server, 'list_products', {
-        account_id: 'idem-account',
+        account: { account_id: 'idem-account' },
         push_notification_config: {
           url: 'https://callbacks.example/list-products',
           operation_id: 'list-products-wrapper-envelope',

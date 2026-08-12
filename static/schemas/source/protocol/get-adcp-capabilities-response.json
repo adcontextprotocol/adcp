@@ -368,6 +368,9 @@
               "type": "array",
               "description": "Task-scoped enforcement claims. The task field is a semantic uniqueness key: an agent MUST emit at most one entry per task and combine all supported modes in that entry. JSON Schema uniqueItems only rejects structurally identical objects, so producers and capability validators MUST enforce task-key uniqueness separately. Values correspond to request schemas annotated with x-governed-commitment. Online execution checks are currently defined only for media-buy tasks, whose prepared result has the PlannedDelivery contract; other roles can enforce signed intent authorization without inventing media-buy fields.",
               "items": {
+                "discriminator": {
+                  "propertyName": "task"
+                },
                 "oneOf": [
                   {
                     "properties": {
@@ -386,6 +389,48 @@
                   {
                     "properties": {
                       "task": { "type": "string", "const": "update_media_buy" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "contains": { "const": "signed_context" },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "buy_products" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "contains": { "const": "signed_context" },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "accept_proposal" },
+                      "modes": {
+                        "type": "array",
+                        "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
+                        "contains": { "const": "signed_context" },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      }
+                    },
+                    "required": ["task", "modes"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "properties": {
+                      "task": { "type": "string", "const": "control_media_buy" },
                       "modes": {
                         "type": "array",
                         "items": { "type": "string", "enum": ["signed_context", "online_execution_check"] },
@@ -634,12 +679,12 @@
           "uniqueItems": true,
           "default": ["brief"]
         },
-        "product_discovery_tools": {
+        "lifecycle_tools": {
           "type": "array",
-          "description": "Product-discovery operation names this seller supports. Added in AdCP 3.2 as compact, task-specific contracts that form the 4.0 lifecycle foundation. Sellers may advertise any supported subset while retaining get_products throughout 3.x. Absence means the caller uses the legacy facade. Each stateful split task has its own idempotency identity; callers MUST retry with the same tool name.",
+          "description": "Compact product and MediaBuy lifecycle operation names this seller supports. Added in AdCP 3.2 as task-specific contracts that form the 4.0 lifecycle foundation. Sellers may advertise any supported subset while retaining the deprecated get_products/create_media_buy/update_media_buy facades throughout 3.x. Each stateful split task has its own idempotency identity; callers MUST retry with the same tool name.",
           "items": {
             "type": "string",
-            "enum": ["get_products", "list_products", "request_proposals", "refine_proposals", "decline_proposals"]
+            "enum": ["list_products", "request_proposals", "refine_proposals", "decline_proposals", "buy_products", "accept_proposal", "control_media_buy"]
           },
           "minItems": 1,
           "uniqueItems": true
@@ -2127,7 +2172,7 @@
     },
     "wholesale_feed_webhooks": {
       "type": "object",
-      "description": "Per-agent wholesale product-feed and wholesale signals-feed webhook capabilities. Declared by sales agents (products) and signals agents (signals). When supported is true, consumers can register sync_accounts.accounts[].notification_configs[] entries for product.* / signal.* / wholesale_feed.bulk_change and receive the actual change payload in each webhook. This is distinct from buyer-provided feeds managed by sync_catalogs. Consumers use get_products / get_signals with if_wholesale_feed_version as the repair and reconciliation path after missed or distrusted webhooks. See specs/wholesale-feed-webhooks.md. Webhook emission MUST apply the same caller/account authorization and scope predicate as the corresponding wholesale read; agents unable to guarantee per-principal filtering MUST NOT declare supported: true. Capability consistency: agents listing product.* event types MUST declare and support get_products with media_buy.buying_modes including wholesale; agents listing signal.* event types MUST declare and support get_signals with signals.discovery_modes including wholesale; agents listing wholesale_feed.bulk_change MUST have at least one of those wholesale repair paths and MUST only emit bulk-change payloads for affected_entity_type values backed by a declared repair path.",
+      "description": "Per-agent wholesale product-feed and wholesale signals-feed webhook capabilities. Consumers register durable sync_accounts notification subscribers and receive actual product.*, signal.*, or wholesale_feed.bulk_change payloads without polling. Product mirrors bootstrap and repair through list_products(if_feed_version); signal mirrors use get_signals(if_wholesale_feed_version). Deprecated wholesale get_products remains the 3.x product compatibility path. Webhook emission MUST apply the same caller/account authorization and cache-scope predicate as the corresponding read.",
       "properties": {
         "supported": {
           "type": "boolean",
@@ -2135,7 +2180,7 @@
         },
         "event_types": {
           "type": "array",
-          "description": "Wholesale feed webhook event types this agent can emit. Sales agents emit product.* events. Signals agents emit signal.* events. Agents that are both can emit both event families. Agents listing product.* event types MUST declare and support get_products with media_buy.buying_modes including wholesale. Agents listing signal.* event types MUST declare and support get_signals with signals.discovery_modes including wholesale. wholesale_feed.bulk_change tells consumers to repair by re-reading the affected wholesale feed via get_products and/or get_signals; agents listing it MUST have at least one of those wholesale repair paths and MUST only emit bulk-change payloads for affected_entity_type values backed by a declared repair path.",
+          "description": "Wholesale feed webhook event types this agent can emit. Sales agents emit product.* events and MUST expose list_products or the deprecated 3.x wholesale get_products compatibility path. Signals agents emit signal.* events and MUST support wholesale get_signals. wholesale_feed.bulk_change requires at least one corresponding repair path.",
           "items": {
             "type": "string",
             "enum": [

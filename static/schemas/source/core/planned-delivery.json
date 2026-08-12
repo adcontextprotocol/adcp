@@ -11,6 +11,18 @@
       "description": "Seller-assigned media buy identifier. Optional on a purchase-phase prepare/check because the service may not assign the identifier until commit; required on modification and delivery lifecycle checks.",
       "x-entity": "media_buy"
     },
+    "proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "proposal",
+      "description": "Proposal snapshot being executed or currently governing the MediaBuy."
+    },
+    "proposal_terms_digest": {
+      "type": "string",
+      "pattern": "^sha256:[A-Za-z0-9_-]{43}$",
+      "description": "Digest of the proposal commercial_terms. The governance agent compares it to the digest bound during the intent check."
+    },
     "geo": {
       "type": "object",
       "description": "Geographic targeting the seller will apply.",
@@ -96,5 +108,15 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
+  "allOf": [
+    {
+      "if": { "required": ["proposal_id"] },
+      "then": { "required": ["proposal_terms_digest"] }
+    },
+    {
+      "if": { "required": ["proposal_terms_digest"] },
+      "then": { "required": ["proposal_id"] }
+    }
+  ],
   "additionalProperties": true
 }

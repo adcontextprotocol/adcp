@@ -904,7 +904,8 @@ Poll `tasks/get` or wait for the webhook. The completion artifact carries the `c
 ### Upsert (default)
 
 - Creates new creatives or updates existing by `creative_id`
-- Merges package assignments (additive)
+- `assignments[]` remains the deprecated additive assignment shorthand
+- `assignment_operations[]` can traffic existing IDs without resending creative bodies: `assign` upserts weight/placement scope, `unassign` removes one assignment, and `replace` atomically swaps an existing creative for a replacement
 - Updates provided fields, leaves others unchanged
 - Use `creative_ids` filter to limit scope to specific creatives
 
@@ -932,13 +933,13 @@ Poll `tasks/get` or wait for the webhook. The completion artifact carries the `c
 
 2. **Rehearse seller acceptance first** - Use `dry_run: true` when you need to catch upload, upsert, assignment, account, policy, or format errors before mutating the seller's creative library. Use [`validate_input`](https://adcontextprotocol.org/schemas/v3/creative/validate-input-request.json) earlier in the workflow only for manifest-structure preflight or multi-target product comparison.
 
-3. **Batch assignments** - Include all package assignments in single sync call to avoid race conditions between updates.
+3. **Batch assignment operations** - Use one idempotent `assignment_operations[]` call for assignment updates, removals, and replacements. This keeps creative trafficking separate from MediaBuy commercial controls and avoids races between calls.
 
 4. **CDN-hosted assets** - Use publicly accessible CDN URLs for faster processing. Platforms can fetch assets directly without proxy delays.
 
 5. **Brand identity** - For generative creatives, validate brand identity schema before syncing to avoid processing failures.
 
-6. **Active delivery protection** - Creatives assigned to active, non-paused packages cannot be updated or deleted via `delete_missing`. Pause the package first, unassign the creative via [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy), or create a new creative with a different `creative_id`.
+6. **Active delivery protection** - Creatives assigned to active, non-paused packages cannot be updated or deleted via `delete_missing`. Pause the package first, use `assignment_operations` to unassign or replace the creative, or create a new creative with a different `creative_id`.
 
 ## Related tasks
 

@@ -2,36 +2,80 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/canonical-product.json",
   "title": "Canonical Product",
-  "description": "Canonical-only Product view returned by the AdCP 3.2 split product and proposal tools. It requires format_options and forbids legacy named-format identifiers at the product, placement, and format-option levels. The get_products compatibility facade remains the only product-discovery surface that may emit those legacy creative declarations.",
-  "allOf": [
-    { "$ref": "/schemas/core/product.json" },
-    {
+  "description": "Standalone compact Product view for the AdCP 3.2 lifecycle. product_id and name are the only always-returned fields; requested detail fields are optional. Legacy named formats, coarse MediaBuy actions, and the legacy Product inheritance graph are absent.",
+  "type": "object",
+  "properties": {
+    "product_id": { "type": "string", "minLength": 1, "x-entity": "product" },
+    "name": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "publisher_properties": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/core/publisher-property-selector.json" },
+          { "not": { "required": ["publisher_domains"] } }
+        ]
+      },
+      "minItems": 1
+    },
+    "channels": { "type": "array", "items": { "$ref": "/schemas/enums/channels.json" }, "uniqueItems": true },
+    "video_placement_types": { "type": "array", "items": { "$ref": "/schemas/enums/video-placement-type.json" }, "minItems": 1, "uniqueItems": true },
+    "audio_distribution_types": { "type": "array", "items": { "$ref": "/schemas/enums/audio-distribution-type.json" }, "minItems": 1, "uniqueItems": true },
+    "sponsored_placement_types": { "type": "array", "items": { "$ref": "/schemas/enums/sponsored-placement-type.json" }, "minItems": 1, "uniqueItems": true },
+    "social_placement_surfaces": { "type": "array", "items": { "$ref": "/schemas/enums/social-placement-surface.json" }, "minItems": 1, "uniqueItems": true },
+    "format_options": { "type": "array", "items": { "$ref": "/schemas/core/canonical-format-option.json" }, "minItems": 1 },
+    "placements": { "type": "array", "items": { "$ref": "/schemas/core/canonical-placement.json" } },
+    "delivery_type": { "$ref": "/schemas/enums/delivery-type.json" },
+    "exclusivity": { "$ref": "/schemas/enums/exclusivity.json" },
+    "pricing_options": { "type": "array", "items": { "$ref": "/schemas/core/canonical-pricing-option.json" }, "minItems": 1 },
+    "forecast": { "$ref": "/schemas/core/canonical-delivery-forecast.json" },
+    "reporting_capabilities": { "$ref": "/schemas/core/canonical-reporting-capabilities.json" },
+    "measurement_terms": {
+      "$ref": "/schemas/core/canonical-measurement-terms.json",
+      "description": "Default billing measurement and makegood terms inherited by a direct purchase unless a negotiated proposal replaces them."
+    },
+    "performance_standards": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/canonical-performance-standard.json" },
+      "minItems": 1,
+      "description": "Default performance thresholds and measurement vendors inherited by a direct purchase."
+    },
+    "catalog_types": { "type": "array", "items": { "$ref": "/schemas/enums/catalog-type.json" }, "minItems": 1, "uniqueItems": true },
+    "signal_targeting_allowed": { "type": "boolean" },
+    "signal_targeting_rules": { "$ref": "/schemas/core/signal-targeting-rules.json" },
+    "demographic_targeting": { "$ref": "/schemas/core/demographic-targeting-capability.json" },
+    "audience_evidence": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/canonical-audience-evidence.json" },
+      "minItems": 1
+    },
+    "audience_evidence_selections": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/canonical-audience-evidence-selection.json" },
+      "minItems": 1,
+      "description": "Exact evidence snapshots that affected eligibility or ranking. Returned whenever evidence requirements affected the result, even if not requested explicitly."
+    },
+    "max_optimization_goals": { "type": "integer", "minimum": 0 },
+    "catalog_match": {
       "type": "object",
       "properties": {
-        "format_options": {
-          "type": "array",
-          "items": {
-            "not": { "required": ["v1_format_ref"] }
-          }
-        },
-        "placements": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "format_options": {
-                "type": "array",
-                "items": {
-                  "not": { "required": ["v1_format_ref"] }
-                }
-              }
-            },
-            "not": { "required": ["format_ids"] }
-          }
-        }
+        "matched_gtins": { "type": "array", "items": { "type": "string", "pattern": "^[0-9]{8,14}$" } },
+        "matched_ids": { "type": "array", "items": { "type": "string" } },
+        "matched_count": { "type": "integer", "minimum": 0 },
+        "submitted_count": { "type": "integer", "minimum": 0 }
       },
-      "required": ["format_options"],
-      "not": { "required": ["format_ids"] }
-    }
-  ]
+      "required": ["submitted_count"],
+      "additionalProperties": false
+    },
+    "brief_relevance": { "type": "string" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "allowed_actions": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/canonical-product-action.json" },
+      "uniqueItems": true
+    },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["product_id", "name"],
+  "additionalProperties": false
 }

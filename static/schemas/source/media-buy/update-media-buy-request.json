@@ -2,8 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/update-media-buy-request.json",
   "title": "Update Media Buy Request",
-  "description": "Request parameters for updating campaign and package settings",
+  "description": "Deprecated AdCP 3.x compatibility request for campaign, package, and creative mutation. New 3.2 callers use control_media_buy for operational controls, refine_proposals for commercial amendments or negotiated cancellation, and the dedicated creative lifecycle for creative changes.",
   "type": "object",
+  "deprecated": true,
+  "x-deprecated-in": "3.2.0",
+  "x-superseded-by": ["control_media_buy", "refine_proposals"],
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"

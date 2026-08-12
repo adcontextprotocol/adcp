@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/decline-proposals-async-response-submitted.json",
+  "title": "Decline Proposals - Submitted",
+  "description": "Bounded submitted task envelope for decline_proposals.",
+  "allOf": [
+    { "$ref": "/schemas/core/compact-task-submitted.json" }
+  ]
+}

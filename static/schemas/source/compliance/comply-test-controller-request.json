@@ -1002,8 +1002,8 @@
           "description": "Human-readable identifier for the upstream dependency to force unavailable (e.g., 'inventory-service', 'creative-agent'). Used by force_upstream_unavailable. When omitted, the seller marks its default upstream for the specified tool as unavailable. Sellers MUST include the same name in STALE_RESPONSE error.details.upstream.name on the affected response."
         },
         "result": {
-          "$ref": "/schemas/core/async-response-data.json",
-          "description": "Completion payload to record against the task. Used by force_task_completion. Validates against the async-response-data union — for create_media_buy this is a CreateMediaBuyResponse with media_buy_id and packages. The seller MUST deliver this verbatim to the buyer's push_notification_config.url (the canonical 3.0 path for completion payload delivery), with all caller-supplied fields preserved (sellers MAY augment with seller-controlled fields like created_at or dsp_* IDs but MUST NOT overwrite caller-supplied values). A typed projection on the polling response is tracked for 3.1 (#3123). Sellers MUST emit INVALID_PARAMS if the payload does not validate against the response branch for the task's original method, and MAY reject payloads exceeding 256 KB with INVALID_PARAMS."
+          "$ref": "/schemas/compliance/task-completion-data.json",
+          "description": "Completion payload to record against the task. force_task_completion supports the bounded get_products, get_signals, and create_media_buy completion union; polling and production SDKs resolve all task results through the originating task's manifest response mapping instead of embedding a global result union. The seller MUST deliver this verbatim to the buyer's push_notification_config.url, preserving caller-supplied fields. Sellers MUST emit INVALID_PARAMS when the payload does not match the original task response branch and MAY reject payloads exceeding 256 KB."
         }
       },
       "additionalProperties": true
@@ -1094,7 +1094,9 @@
           "task_id": "task_async_signed_io_q2",
           "result": {
             "media_buy_id": "mb_async_signed_io_q2",
-            "status": "active",
+            "media_buy_status": "active",
+            "confirmed_at": "2026-08-12T12:00:00Z",
+            "revision": 1,
             "packages": [
               {
                 "package_id": "pkg-0",

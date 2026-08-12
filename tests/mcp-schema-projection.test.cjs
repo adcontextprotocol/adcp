@@ -367,6 +367,65 @@ test('compact bundling reuses external schemas and keeps local refs resolvable',
   assert.ok(assertLocalRefsResolve(projectDraft07Node(compact)) > 0);
 });
 
+test('compact lifecycle routes every operational control and declares cross-item invariants', () => {
+  const routedActions = readJson(path.join(SOURCE_DIR, 'core', 'canonical-media-buy-action.json'));
+  const controlActions = new Set(routedActions.oneOf
+    .find(branch => branch.properties.task.const === 'control_media_buy')
+    .properties.action.enum);
+  const controlRequest = readJson(path.join(SOURCE_DIR, 'media-buy', 'control-media-buy-request.json'));
+  const packageControl = readJson(path.join(SOURCE_DIR, 'media-buy', 'package-control.json'));
+  const fieldRoutes = {
+    paused: ['pause', 'resume'],
+    canceled: ['cancel'],
+    total_budget: ['increase_budget', 'decrease_budget'],
+    budget_allocation: ['update_budget_allocation'],
+    pacing: ['update_pacing'],
+    bidding: ['update_bidding'],
+    reporting_webhook: ['update_reporting_webhook'],
+    budget: ['increase_budget', 'decrease_budget'],
+    min_spend_target: ['update_spend_target'],
+    impressions: ['update_impression_goal'],
+    targeting_overlay: ['update_targeting'],
+    catalog_ids: ['update_catalog_assignments'],
+    keyword_targets_add: ['update_keywords'],
+    keyword_targets_remove: ['update_keywords'],
+    negative_keywords_add: ['update_keywords'],
+    negative_keywords_remove: ['update_keywords'],
+    optimization_goals: ['update_optimization_goals'],
+  };
+  for (const [field, actions] of Object.entries(fieldRoutes)) {
+    assert.ok(controlRequest.properties[field] || packageControl.properties[field], `${field} is not a control field`);
+    for (const action of actions) assert.ok(controlActions.has(action), `${field} lacks routed action ${action}`);
+  }
+  assert.equal(
+    controlRequest.properties.packages['x-adcp-validation'].verifier_constraints.unique_package_ids.key,
+    'package_id'
+  );
+  assert.equal(
+    packageControl['x-adcp-validation'].verifier_constraints.keyword_identity_sets.positive_add_remove,
+    'disjoint_by_normalized_keyword_and_match_type'
+  );
+  const commitment = readJson(path.join(SOURCE_DIR, 'media-buy', 'media-buy-commitment-response.json'));
+  const bindingRule = commitment.oneOf[0].properties.purchase_bindings['x-adcp-validation']
+    .verifier_constraints.complete_purchase_bijection;
+  assert.equal(bindingRule.purchase_indexes, 'unique_contiguous_zero_based_range');
+  assert.equal(bindingRule.product_id, 'equals_indexed_purchase.product_id');
+  const productPurchase = readJson(path.join(SOURCE_DIR, 'media-buy', 'product-purchase.json'));
+  assert.equal(
+    productPurchase['x-adcp-validation'].verifier_constraints.pricing_identity.pricing_option_id,
+    'equals_pricing.pricing_option_id_when_pricing_present'
+  );
+  const commercialTerms = readJson(path.join(SOURCE_DIR, 'media-buy', 'commercial-terms.json'));
+  const pricingIntegrity = commercialTerms['x-adcp-validation'].verifier_constraints.pricing_integrity;
+  assert.equal(pricingIntegrity.purchase_currencies, 'all_purchase.pricing.currency_equal');
+  assert.equal(pricingIntegrity.total_budget_currency, 'when_total_budget_present_equals_purchase_pricing_currency');
+  const asyncUnion = readJson(path.join(SOURCE_DIR, 'core', 'async-response-data.json'));
+  const asyncRefs = new Set(asyncUnion.anyOf.map(branch => branch.$ref));
+  for (const variant of ['submitted', 'working', 'input-required']) {
+    assert.ok(asyncRefs.has(`/schemas/core/compact-task-${variant}.json`));
+  }
+});
+
 test('generated MCP projection covers every tool within AdCP safety bounds', () => {
   assert.ok(
     fs.existsSync(PROJECTION_DIR),
@@ -415,6 +474,34 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   assert.equal(canonicalManifest.tools.request_proposals.legacy_fallback.mode, 'orchestrated');
   assert.equal(canonicalManifest.tools.refine_proposals.legacy_fallback.mode, 'orchestrated');
   assert.deepEqual(canonicalManifest.tools.decline_proposals.legacy_fallback, { mode: 'none' });
+  assert.deepEqual(canonicalManifest.tools.buy_products.legacy_fallback, {
+    tool: 'create_media_buy',
+    mode: 'orchestrated',
+  });
+  assert.equal(canonicalManifest.tools.accept_proposal.legacy_fallback.tool, 'create_media_buy');
+  assert.equal(canonicalManifest.tools.control_media_buy.legacy_fallback.tool, 'update_media_buy');
+  assert.deepEqual(canonicalManifest.tools.create_media_buy.superseded_by, [
+    'buy_products',
+    'accept_proposal',
+  ]);
+  assert.deepEqual(canonicalManifest.tools.update_media_buy.superseded_by, [
+    'control_media_buy',
+    'refine_proposals',
+  ]);
+  for (const toolName of [
+    'request_proposals',
+    'refine_proposals',
+    'decline_proposals',
+    'buy_products',
+    'accept_proposal',
+    'control_media_buy',
+  ]) {
+    assert.deepEqual(canonicalManifest.tools[toolName].async_response_schemas, [
+      `media-buy/${toolName.replaceAll('_', '-')}-async-response-input-required.json`,
+      `media-buy/${toolName.replaceAll('_', '-')}-async-response-submitted.json`,
+      `media-buy/${toolName.replaceAll('_', '-')}-async-response-working.json`,
+    ]);
+  }
   assert.deepEqual(
     Object.keys(projectionManifest.tools).sort(),
     Object.keys(canonicalManifest.tools).sort()
@@ -432,6 +519,9 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     'request_proposals',
     'refine_proposals',
     'decline_proposals',
+    'buy_products',
+    'accept_proposal',
+    'control_media_buy',
   ]) {
     const tool = projectionManifest.tools[toolName];
     const input = JSON.stringify(readJson(path.join(PROJECTION_DIR, tool.inputSchema)));
@@ -442,10 +532,21 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
       `${toolName} input must not expose legacy named-format creatives`);
     assert.doesNotMatch(output, /(?:AssetVariant|asset-variant\.json)/,
       `${toolName} output must not depend on creative asset variants`);
-    if (toolName !== 'decline_proposals') {
+    if (['list_products', 'request_proposals', 'refine_proposals'].includes(toolName)) {
       assert.match(output, /Canonical Product/,
         `${toolName} output must use the canonical-only Product view`);
+      assert.doesNotMatch(output, /format_ids|format-id\.json|v1_format_ref|update_packages|update_media_buy/,
+        `${toolName} output must not expose the legacy Product graph`);
     }
+  }
+
+  const productionManifest = readJson(path.join(PRODUCTION_PROFILE_DIR, 'manifest.json'));
+  for (const compatibilityTool of ['get_products', 'create_media_buy', 'update_media_buy']) {
+    assert.equal(
+      productionManifest.tools[compatibilityTool],
+      undefined,
+      `${compatibilityTool} must be absent from the clean 3.2 production profile`
+    );
   }
 
   const projectedListProductsOutput = readJson(path.join(
@@ -462,9 +563,8 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     pricing_options: [{
       pricing_option_id: 'cpm',
       pricing_model: 'cpm',
-      rate: 10,
+      fixed_price: 10,
       currency: 'USD',
-      is_fixed: true,
     }],
     reporting_capabilities: {
       available_reporting_frequencies: ['daily'],
@@ -477,6 +577,8 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   };
   assert.equal(validateProjectedListProducts({
     outcome: 'listed',
+    feed_version: 'feed-1',
+    cache_scope: 'public',
     products: [{
       ...projectedProductBase,
       format_options: [{ format_kind: 'image', params: { width: 300, height: 250 } }],
@@ -484,6 +586,8 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   }), true, JSON.stringify(validateProjectedListProducts.errors));
   assert.equal(validateProjectedListProducts({
     outcome: 'listed',
+    feed_version: 'feed-1',
+    cache_scope: 'public',
     products: [{
       ...projectedProductBase,
       format_ids: [{ agent_url: 'https://legacy-creative.example', id: 'display_300x250' }],

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/proposal-refinement.json",
   "title": "Proposal Refinement",
-  "description": "Requested revision of one executable proposal snapshot. A successful refinement produces a new immutable committed snapshot and leaves the source proposal unchanged.",
+  "description": "Fork a draft, committed, or accepted immutable proposal. Refining an accepted proposal creates an amendment or cancellation proposal against its MediaBuy; the source remains accepted and unchanged.",
   "type": "object",
   "properties": {
     "proposal_id": {
@@ -10,10 +10,16 @@
       "minLength": 1,
       "x-entity": "proposal"
     },
+    "change_kind": {
+      "type": "string",
+      "enum": ["amendment", "cancellation"],
+      "default": "amendment",
+      "description": "Desired successor proposal. cancellation is valid only when the source proposal is accepted and attached to a non-terminal MediaBuy."
+    },
     "instructions": {
       "type": "string",
       "minLength": 1,
-      "description": "Natural-language changes that are not represented by structured criteria."
+      "description": "Requested commercial changes or cancellation reason. The seller returns a new committed proposal snapshot; this text never directly mutates the source proposal or MediaBuy."
     }
   },
   "required": ["proposal_id", "instructions"],

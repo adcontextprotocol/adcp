@@ -113,9 +113,9 @@
       "additionalProperties": false
     },
     "required_features": {
-      "allOf": [{ "$ref": "/schemas/core/media-buy-features.json" }],
-      "description": "Protocol features the seller must support.",
-      "x-adcp-schema-uri": "/schemas/core/media-buy-features.json"
+      "allOf": [{ "$ref": "/schemas/core/canonical-media-buy-features.json" }],
+      "description": "Canonical protocol features the seller must support.",
+      "x-adcp-schema-uri": "/schemas/core/canonical-media-buy-features.json"
     },
     "required_performance_standards": {
       "type": "array",

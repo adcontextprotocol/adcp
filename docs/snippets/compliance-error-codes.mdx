@@ -67,7 +67,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `INVALID_REQUEST` | correctable | check request parameters and fix |
 | `INVALID_STATE` | correctable | check current status via get_media_buys and adjust request |
 | `INVALID_USAGE_DATA` | correctable | check required fields for the vendor type (vendor_cost, currency, account at minimum), fix invalid values, and resubmit |
-| `IO_REQUIRED` | correctable | review the proposal's insertion_order, accept terms, and include io_acceptance on create_media_buy |
+| `IO_REQUIRED` | correctable | review the proposal's insertion_order, accept terms, and include io_acceptance on accept_proposal; use create_media_buy only for 3.x compatibility |
 | `ITEM_VALIDATION_FAILED` | correctable | check item_issues for per-item rejection reasons and fix the offending items |
 | `MEDIA_BUY_NOT_FOUND` | correctable | verify media_buy_id; for legacy correlation use get_media_buys plus context, such as context.internal_campaign_id |
 | `MULTI_FINALIZE_UNSUPPORTED` | correctable | sequence single-proposal finalize calls — one finalize entry per get_products call |
@@ -95,7 +95,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `RATE_LIMITED` | transient | wait top-level error.retry_after seconds when present, then retry |
 | `READ_ONLY_SCOPE` | correctable | use a non-mutating alternative, or surface to the operator to request a scope that permits mutation |
 | `REFERENCE_NOT_FOUND` | correctable | verify the referenced identifier exists and is accessible to the caller |
-| `REQUOTE_REQUIRED` | correctable | adjust the update to stay within the current quote envelope, rediscover products/terms, add packages when available, or create a separate media buy; 3.1 does not define an amendment-quote artifact for update_media_buy |
+| `REQUOTE_REQUIRED` | correctable | refine accepted_proposal_id into an amendment and apply it through accept_proposal, or keep control_media_buy inside the accepted envelope; 3.1 compatibility callers must adjust or rediscover |
 | `SCOPE_INSUFFICIENT` | correctable | the agent cannot broaden its own scope - surface to the operator rather than auto-retry |
 | `SERVICE_UNAVAILABLE` | transient | retry with exponential backoff |
 | `SESSION_NOT_FOUND` | correctable | initiate a new session via si_initiate_session |
@@ -655,9 +655,9 @@ A usage record in <code>{"report_usage"}</code> has missing or invalid fields �
 
 <Accordion title="IO_REQUIRED — correctable">
 
-**Suggested action:** review the proposal's insertion_order, accept terms, and include io_acceptance on create_media_buy
+**Suggested action:** review the proposal's insertion_order, accept terms, and include io_acceptance on accept_proposal; use create_media_buy only for 3.x compatibility
 
-The committed proposal requires a signed insertion order but no io_acceptance was provided. Recovery: correctable (review the proposal's insertion_order, accept terms, and include io_acceptance on create_media_buy).
+The committed proposal requires a signed insertion order but no io_acceptance was provided. Recovery: correctable (review the proposal's insertion_order, accept terms, and include io_acceptance on accept_proposal; 3.x compatibility callers use create_media_buy).
 
 </Accordion>
 <a id="error-code-item-validation-failed"></a>
@@ -928,9 +928,9 @@ Generic fallback for a referenced identifier, grant, session, or other resource 
 
 <Accordion title="REQUOTE_REQUIRED — correctable">
 
-**Suggested action:** adjust the update to stay within the current quote envelope, rediscover products/terms, add packages when available, or create a separate media buy; 3.1 does not define an amendment-quote artifact for update_media_buy
+**Suggested action:** refine accepted_proposal_id into an amendment and apply it through accept_proposal, or keep control_media_buy inside the accepted envelope; 3.1 compatibility callers must adjust or rediscover
 
-An update_media_buy request changes the parameter envelope (budget, flight dates, volume, targeting) the original quote was priced against. The pricing_option remains locked; the seller is declining the requested shape at that price. Distinct from TERMS_REJECTED (measurement) and POLICY_VIOLATION (content). Sellers SHOULD populate error.details.envelope_field with the field path(s) that breached the envelope (e.g., 'packages[0].budget', 'end_time') so the buyer's agent can decide whether to adjust the update, rediscover products, add packages where supported, or create a separate media buy. AdCP 3.1 does not define an amendment-quote artifact that can be attached to update_media_buy.
+A control_media_buy request, or the 3.x update_media_buy facade, would exceed the accepted commercial envelope. The seller is declining the requested shape at the current terms. Distinct from TERMS_REJECTED (measurement) and POLICY_VIOLATION (content). Sellers SHOULD populate error.details.envelope_field with the field path(s) that breached the envelope. AdCP 3.2 callers refine the MediaBuy's accepted_proposal_id to obtain a typed amendment; legacy 3.1 callers adjust the update, rediscover terms, or create a separate buy.
 
 </Accordion>
 <a id="error-code-scope-insufficient"></a>

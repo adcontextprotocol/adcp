@@ -5,9 +5,10 @@ description: "Read seller product offers with structured discovery criteria."
 testable: true
 ---
 
-`list_products` is the side-effect-free entry point to the compact product lifecycle. It returns products only—never proposals—and always completes synchronously. Buyers can purchase a listed product directly or pass returned `product_id` values to [`request_proposals`](/docs/media-buy/task-reference/request_proposals) for seller planning.
+`list_products` is the side-effect-free entry point to the compact product lifecycle. Each invocation completes synchronously, while account-level wholesale feed webhooks keep long-lived buyer mirrors current without polling. It returns products only—never proposals. Buyers can purchase listed products through [`buy_products`](/docs/media-buy/task-reference/buy_products) or pass returned `product_id` values to [`request_proposals`](/docs/media-buy/task-reference/request_proposals) for seller planning.
 
-**Request schema:** [`/schemas/v3/media-buy/list-products-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-products-request.json)
+{/* Using latest because list_products is not yet released. Update after the 3.2 release. */}
+**Request schema:** [`/schemas/latest/media-buy/list-products-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/list-products-request.json)
 
 ```json
 {
@@ -79,3 +80,16 @@ If the selected feed and pricing layer still match, the seller can omit `product
   "cache_scope": "account"
 }
 ```
+
+## Wholesale feed webhooks
+
+Buyers maintaining a wholesale product mirror register `product.*` and `wholesale_feed.bulk_change` subscribers through `sync_accounts.accounts[].notification_configs[]`. Registration is account-level and durable; `push_notification_config` on an individual `list_products` request does not create that subscription.
+
+The normal mirror flow is:
+
+1. Call `list_products` to bootstrap the mirror and store `feed_version` plus `cache_scope`.
+2. Register the durable account subscriber through [`sync_accounts`](/docs/accounts/tasks/sync_accounts).
+3. Apply the webhook's `canonical_product` or `canonical_pricing_options` replacement payload directly.
+4. On a gap, call `list_products` with the mirror's last successfully applied `feed_version`. On an uncertain or bulk-change repair, omit the conditional token and replace the mirror from a complete read.
+
+The webhook version describes post-change state; it is not the conditional token for a stale mirror. Conditional reads are a repair path, not a requirement to poll while webhooks are healthy.

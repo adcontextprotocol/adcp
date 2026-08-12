@@ -57,6 +57,9 @@ Returns an array of media buys with current status, creative approval state, and
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Seller's media buy identifier |
+| `accepted_proposal_id` | Current immutable commercial snapshot used to begin [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals); present for compact-lifecycle buys. |
+| `accepted_proposal_terms_digest` | Digest binding the current accepted proposal terms for recovery and governance verification. |
+| `accepted_proposal` | Complete accepted canonical proposal for compact-lifecycle buys. Together with the ID and digest, this lets a restarted client refine the current commercial envelope without reconstructing historical offers. |
 | `invoice_recipient` | Per-buy invoice recipient when provided at creation. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
 | `status` | Current status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`). Maps to `media_buy_status` on `create_media_buy` / `update_media_buy` success responses (3.1 vocabulary note above). |
 | `status_as_of` | ISO 8601 timestamp when the seller last refreshed the returned media-buy-level `status` from its source of truth. For rolled-up statuses, this MUST NOT be later than the oldest upstream status observation that could affect the returned roll-up. Optional; omitted or `null` makes no freshness assertion, and buyers MUST NOT infer live status from absence. Use this to interpret cached or rolled-up statuses separately from `updated_at`, which means the media buy's last modification time. |
@@ -68,8 +71,9 @@ Returns an array of media buys with current status, creative approval state, and
 | `creative_deadline` | Creative upload deadline (ISO 8601) |
 | `confirmed_at` | ISO 8601 timestamp when the seller committed to this media buy. May be `null` until seller commitment occurs in deferred/manual approval flows; stable after it is set. |
 | `cancellation` | Cancellation metadata (present only when `status` is `canceled`). Object with `canceled_at` (ISO 8601), `canceled_by` (`"buyer"` or `"seller"`), and optional `reason`. |
-| `revision` | Current revision number. Pass in `update_media_buy` for optimistic concurrency. |
+| `revision` | Current revision number. Pass in [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) or the 3.x `update_media_buy` facade for optimistic concurrency. |
 | `valid_actions` | Actions the buyer can perform in the current state (e.g., `["pause", "cancel", "update_budget"]`). See [valid actions mapping](#valid-actions-mapping). |
+| `available_actions` | Canonical routed actions for compact-lifecycle buys, including whether each action uses [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy), proposal refinement, or another task. Required whenever `accepted_proposal` is present. |
 | `history` | Revision history entries, most recent first. Only present when `include_history > 0`. Append-only — entries are never modified or deleted. |
 | `webhook_activity` | Recent reporting and health webhook fires for the calling principal, most-recent first. Only present when `include_webhook_activity` is true AND the seller surfaces fire history for this buy. See [Webhook activity](#webhook-activity) for three-state presence semantics. |
 | `context` | Opaque media-buy-level correlation data echoed unchanged from `create_media_buy`. Sellers MUST include persisted context when the media buy was created through AdCP with context, and MAY omit it for media buys created outside AdCP or without context. Use it to reconcile `media_buy_id` with buyer tracking state. |

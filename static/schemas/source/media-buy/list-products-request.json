@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/list-products-request.json",
   "title": "List Products Request",
-  "description": "Read seller offers with structured discovery criteria. This task is synchronous and side-effect free; proposal creation is handled by request_proposals.",
+  "description": "Read seller offers with structured discovery criteria. Each invocation completes synchronously, while durable wholesale product-feed webhooks registered through sync_accounts keep buyer mirrors current without polling. list_products is the authoritative bootstrap and repair read for those subscriptions; proposal creation is handled by request_proposals.",
   "type": "object",
   "x-operation-family": "list_products",
   "x-added-in": "3.2.0",
@@ -25,13 +25,12 @@
     "governance_context": { "type": "string", "minLength": 1, "maxLength": 4096 },
     "push_notification_config": {
       "allOf": [{ "$ref": "/schemas/core/push-notification-config.json" }],
-      "x-adcp-schema-uri": "/schemas/core/push-notification-config.json"
+      "x-adcp-schema-uri": "/schemas/core/push-notification-config.json",
+      "description": "Uniform per-call envelope field accepted for SDK compatibility. This does not register a wholesale feed subscription; durable product.* and wholesale_feed.bulk_change subscribers are registered through sync_accounts notification_configs."
     },
-    "account_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "account",
-      "description": "Seller-known account whose pricing or availability overlay should be applied."
+    "account": {
+      "allOf": [{ "$ref": "/schemas/core/canonical-account-ref.json" }],
+      "description": "Account scope for pricing and availability. A natural-key account is the single brand source and MUST NOT be combined with top-level brand."
     },
     "brand": { "$ref": "/schemas/core/brand-key.json" },
     "criteria": { "$ref": "/schemas/media-buy/product-discovery-criteria.json" },
@@ -40,7 +39,7 @@
     "max_results": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 },
     "if_feed_version": {
       "type": "string",
-      "description": "Opaque feed version returned by a prior list_products response."
+      "description": "Opaque feed version returned by a prior list_products response or wholesale product-feed webhook for the same cache scope and canonicalized selection. Used for repair and conditional reconciliation, not routine polling when webhooks are active."
     },
     "if_pricing_version": {
       "type": "string",
@@ -56,7 +55,25 @@
         "properties": { "criteria": { "required": ["catalog"] } },
         "required": ["criteria"]
       },
-      "then": { "required": ["brand"] }
+      "then": {
+        "anyOf": [
+          { "required": ["brand"] },
+          {
+            "properties": {
+              "account": { "required": ["brand", "operator"] }
+            },
+            "required": ["account"]
+          }
+        ]
+      }
+    },
+    {
+      "not": {
+        "properties": {
+          "account": { "required": ["brand", "operator"] }
+        },
+        "required": ["account", "brand"]
+      }
     }
   ],
   "additionalProperties": false

@@ -8,6 +8,10 @@ testable: true
 
 Create a media buy from selected packages or execute a proposal. Handles validation, approval if needed, and campaign creation.
 
+<Warning>
+`create_media_buy` is the AdCP 3.x compatibility facade as of 3.2. New integrations use [`buy_products`](/docs/media-buy/task-reference/buy_products) for direct purchases or [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) for proposal execution. Existing payloads remain supported throughout 3.x.
+</Warning>
+
 Supports three execution shapes:
 - **Fixed packages**: Provide `packages` with independent package budgets (legacy default)
 - **Seller-optimized packages**: Provide `packages`, `total_budget`, and `budget_allocation.mode: "seller_optimized"` so the seller allocates a shared budget across packages

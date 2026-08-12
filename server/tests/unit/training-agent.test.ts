@@ -13242,7 +13242,8 @@ describe('proposal lifecycle', () => {
     const originalBrand = { domain: 'proposal-house.example', brand_id: 'alpha' };
     const siblingBrand = { domain: 'proposal-house.example', brand_id: 'beta' };
     const { result: requested, isError: requestError } = await simulateCallTool(server, 'request_proposals', {
-      account_id: 'proposal-account-alpha',
+      idempotency_key: 'compact-brand-binding-request-1',
+      account: { account_id: 'proposal-account-alpha' },
       brand: originalBrand,
       brief: 'social engagement display',
     });
@@ -13278,6 +13279,21 @@ describe('proposal lifecycle', () => {
     const accepted = await purchase('proposal-account-alpha', originalBrand);
     expect(accepted.isError).toBeFalsy();
     expect(accepted.result.media_buy_id).toEqual(expect.any(String));
+  });
+
+  it('accepts a natural-key account as the sole request_proposals brand source', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const naturalAccount = {
+      brand: { domain: 'natural-proposal-brand.example', brand_id: 'primary' },
+      operator: 'proposal-operator.example',
+    };
+    const { result, isError } = await simulateCallTool(server, 'request_proposals', {
+      account: naturalAccount,
+      brief: 'social engagement display',
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result).toMatchObject({ outcome: 'proposed', proposals: expect.any(Array) });
   });
 
   async function getProductsWithProposals() {

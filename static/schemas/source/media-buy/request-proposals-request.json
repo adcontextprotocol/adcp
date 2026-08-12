@@ -28,11 +28,9 @@
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
-    "account_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "account",
-      "description": "Seller-known account for account-specific terms."
+    "account": {
+      "allOf": [{ "$ref": "/schemas/core/canonical-account-ref.json" }],
+      "description": "Account scope for proposal terms. A natural-key account is the single brand source and MUST NOT be combined with top-level brand."
     },
     "brand": { "$ref": "/schemas/core/brand-key.json" },
     "brief": {
@@ -53,6 +51,25 @@
       "description": "Optional planning-cycle context that the seller associates with every proposal created by this request."
     }
   },
-  "required": ["idempotency_key", "brand", "brief"],
+  "required": ["idempotency_key", "brief"],
+  "anyOf": [
+    { "required": ["brand"] },
+    {
+      "properties": {
+        "account": { "required": ["brand", "operator"] }
+      },
+      "required": ["account"]
+    }
+  ],
+  "allOf": [
+    {
+      "not": {
+        "properties": {
+          "account": { "required": ["brand", "operator"] }
+        },
+        "required": ["account", "brand"]
+      }
+    }
+  ],
   "additionalProperties": false
 }

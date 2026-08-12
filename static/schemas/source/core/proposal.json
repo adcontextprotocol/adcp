@@ -2,13 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/proposal.json",
   "title": "Proposal",
-  "description": "A proposed media-plan snapshot with fixed or seller-optimized budget allocation across products. In the AdCP 3.2 split proposal lifecycle, request_proposals and refine_proposals return executable committed snapshots; changed commercial terms produce a new proposal_id while buyer-disposition state may progress on the same snapshot. Legacy get_products draft/finalize behavior remains compatible throughout 3.x. Committed proposals execute through create_media_buy(proposal_id), and proposals declined through the split lifecycle cannot execute.",
+  "description": "A proposed media plan with fixed or seller-optimized budget allocation across products. Represents the publisher's strategic recommendation for how to structure a campaign based on the brief. Proposals are actionable: committed proposals can be executed directly via create_media_buy by providing the proposal_id; draft proposals must first be finalized via get_products refine action 'finalize'.",
   "type": "object",
   "properties": {
     "proposal_id": {
       "type": "string",
-      "description": "Unique identifier for this commercial snapshot. Used to refine or decline a proposal and to execute it via create_media_buy. For proposals issued by the AdCP 3.2 split tasks, a seller MUST issue a new ID whenever refinement changes terms.",
-      "x-entity": "proposal",
+      "description": "Unique identifier for this proposal. Used to finalize a draft proposal and to execute a committed proposal via create_media_buy.",
       "maxLength": 255
     },
     "name": {
@@ -43,12 +42,12 @@
     },
     "proposal_status": {
       "$ref": "/schemas/enums/proposal-status.json",
-      "description": "Lifecycle status of this proposal. AdCP 3.2 split proposal tasks return 'committed' snapshots that are immediately executable via create_media_buy. Legacy get_products may still return 'draft' proposals requiring its 3.x finalize refinement. When absent, the proposal is ready to buy for backward compatibility."
+      "description": "Lifecycle status of this proposal and the per-proposal source of truth for whether finalization is required before create_media_buy. When absent, the proposal is ready to buy (backward compatible). 'draft' means indicative pricing — finalize via refine before purchasing. 'committed' means firm pricing with inventory reserved until expires_at and executable via create_media_buy."
     },
     "expires_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When this proposal expires and can no longer be executed. For draft proposals, indicates when indicative pricing becomes stale. For committed proposals, this is the deadline for create_media_buy. Commitment makes the terms executable but does not by itself assert an inventory hold; when the proposal terms include a hold, it lasts no later than this timestamp."
+      "description": "When this proposal expires and can no longer be executed. For draft proposals, indicates when indicative pricing becomes stale. For committed proposals, indicates when the inventory hold lapses — the buyer must call create_media_buy before this time."
     },
     "insertion_order": {
       "$ref": "/schemas/core/insertion-order.json",

@@ -4,6 +4,20 @@
   "title": "Decline Proposals Response",
   "description": "One ordered terminal result for each requested proposal decline.",
   "type": "object",
+  "anyOf": [
+    {
+      "required": ["results"],
+      "not": {
+        "anyOf": [
+          { "required": ["status"] },
+          { "required": ["task_id"] }
+        ]
+      }
+    },
+    {
+      "$ref": "/schemas/core/compact-task-submitted.json"
+    }
+  ],
   "properties": {
     "results": {
       "type": "array",
@@ -41,8 +55,14 @@
         ],
         "additionalProperties": false
       }
-    }
+    },
+    "status": { "type": "string", "const": "submitted" },
+    "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
+    "message": { "type": "string", "maxLength": 2000 },
+    "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
+    "context": { "$ref": "/schemas/core/context.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" },
+    "replayed": { "type": "boolean", "const": true }
   },
-  "required": ["results"],
-  "additionalProperties": true
+  "additionalProperties": false
 }

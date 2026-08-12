@@ -4538,14 +4538,18 @@ export function validateProductDiscoveryAliasInput(
   toolName: string,
   args: Record<string, unknown>,
 ): { message: string; field?: string } | undefined {
+  const account = isRecord(args.account) ? args.account : undefined;
+  const hasNaturalAccountBrand = isRecord(account?.brand)
+    && typeof account.operator === 'string'
+    && account.operator.length > 0;
   const allowedFields: Record<string, ReadonlySet<string>> = {
     list_products: new Set([
       'adcp_version', 'adcp_major_version', 'idempotency_key', 'context_id',
-      'context', 'governance_context', 'push_notification_config', 'account_id', 'brand', 'criteria',
+      'context', 'governance_context', 'push_notification_config', 'account', 'brand', 'criteria',
       'fields', 'cursor', 'max_results', 'if_feed_version', 'if_pricing_version',
     ]),
     request_proposals: new Set([
-      'adcp_version', 'adcp_major_version', 'idempotency_key', 'account_id',
+      'adcp_version', 'adcp_major_version', 'idempotency_key', 'account',
       'context_id', 'context', 'governance_context', 'push_notification_config',
       'brand', 'brief', 'criteria', 'opportunity',
     ]),
@@ -4578,7 +4582,7 @@ export function validateProductDiscoveryAliasInput(
       return { message: 'if_pricing_version requires if_feed_version', field: 'if_feed_version' };
     }
     const criteria = isRecord(args.criteria) ? args.criteria : undefined;
-    if (isRecord(criteria?.catalog) && args.brand === undefined) {
+    if (isRecord(criteria?.catalog) && args.brand === undefined && !hasNaturalAccountBrand) {
       return { message: 'brand is required when catalog criteria are present', field: 'brand' };
     }
     if (isRecord(criteria?.catalog) && typeof criteria.catalog.catalog_id !== 'string') {
@@ -4589,11 +4593,11 @@ export function validateProductDiscoveryAliasInput(
     if (typeof args.brief !== 'string' || args.brief.length === 0) {
       return { message: 'brief is required for request_proposals', field: 'brief' };
     }
-    if (args.brand === undefined) {
+    if (args.brand === undefined && !hasNaturalAccountBrand) {
       return { message: 'brand is required for request_proposals', field: 'brand' };
     }
     const criteria = isRecord(args.criteria) ? args.criteria : undefined;
-    if (isRecord(criteria?.catalog) && args.brand === undefined) {
+    if (isRecord(criteria?.catalog) && args.brand === undefined && !hasNaturalAccountBrand) {
       return { message: 'brand is required when catalog criteria are present', field: 'brand' };
     }
     if (isRecord(criteria?.catalog) && typeof criteria.catalog.catalog_id !== 'string') {
@@ -9702,7 +9706,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     media_buy: {
       buying_modes: wholesaleProfile.productWholesale ? ['brief', 'wholesale', 'refine'] : ['brief', 'refine'],
       ...(supportsGetProductsRejected(servedAdcpVersion) && {
-        product_discovery_tools: [...PRODUCT_DISCOVERY_TOOLS],
+        lifecycle_tools: [...PRODUCT_DISCOVERY_TOOLS],
       }),
       supports_proposals: true,
       features: {

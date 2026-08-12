@@ -2,8 +2,22 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/refine-proposals-response.json",
   "title": "Refine Proposals Response",
-  "description": "One ordered immutable revision result per requested source proposal, plus the canonical products needed to evaluate the revised allocations. Products require format_options and never carry legacy named-format identifiers.",
+  "description": "One ordered immutable revision result per requested source proposal, plus compact canonical products needed to evaluate the revised purchases. Products always carry product_id and name and never carry legacy named-format identifiers.",
   "type": "object",
+  "anyOf": [
+    {
+      "required": ["results", "products"],
+      "not": {
+        "anyOf": [
+          { "required": ["status"] },
+          { "required": ["task_id"] }
+        ]
+      }
+    },
+    {
+      "$ref": "/schemas/core/compact-task-submitted.json"
+    }
+  ],
   "properties": {
     "results": {
       "type": "array",
@@ -25,13 +39,13 @@
           },
           "proposal": {
             "allOf": [
-              { "$ref": "/schemas/core/proposal.json" },
+              { "$ref": "/schemas/core/canonical-proposal.json" },
               {
                 "properties": {
                   "proposal_status": { "type": "string", "const": "committed" },
                   "expires_at": { "type": "string", "format": "date-time" }
                 },
-                "required": ["proposal_status", "expires_at"]
+                "required": ["proposal_status", "expires_at", "proposal_kind", "commercial_terms", "terms_digest"]
               }
             ]
           },
@@ -72,9 +86,15 @@
     "products": {
       "type": "array",
       "items": { "$ref": "/schemas/core/canonical-product.json" }
-    }
+    },
+    "status": { "type": "string", "const": "submitted" },
+    "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
+    "message": { "type": "string", "maxLength": 2000 },
+    "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
+    "context": { "$ref": "/schemas/core/context.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" },
+    "replayed": { "type": "boolean", "const": true }
   },
-  "required": ["results", "products"],
   "not": {
     "anyOf": [
       { "required": ["proposals"] },
@@ -82,5 +102,5 @@
       { "required": ["pagination"] }
     ]
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

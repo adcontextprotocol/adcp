@@ -13,22 +13,24 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 **Status:** In development — minor release targeting the 3.2.0 milestone. Stable wire shapes remain backward compatible; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
 
-### Compact product and proposal lifecycle (#6115)
+### Compact product and MediaBuy lifecycle (#6115)
 
-AdCP 3.2 adds `list_products`, `request_proposals`, `refine_proposals`, and `decline_proposals` as compact, task-specific contracts and retains `get_products` throughout 3.x.
+AdCP 3.2 adds `list_products`, `request_proposals`, `refine_proposals`, `decline_proposals`, `buy_products`, `accept_proposal`, and `control_media_buy` as compact, task-specific contracts. The broad `get_products`, `create_media_buy`, and `update_media_buy` facades remain functional throughout 3.x but are deprecated for new integrations.
 
 - `list_products` is a synchronous, naturally idempotent product-offer read.
 - `request_proposals` creates executable proposals with firm terms from a brief and optional listed product IDs.
 - `request_proposals` and `refine_proposals` return immutable, executable proposal snapshots; `decline_proposals` records terminal buyer feedback and prevents later execution.
-- `proposal_id` is the complete immutable snapshot identity, so changed terms mint a new ID rather than adding `proposal_version` to every downstream call.
-- Optional shared `opportunity` context connects proposal request, refinement, decline, and purchase without expanding proposal snapshot identity.
+- `buy_products` accepts published product offers directly; `accept_proposal` applies new-buy, amendment, or negotiated-cancellation proposals; `control_media_buy` handles revision-checked operational controls inside accepted terms.
+- Canonical proposals carry typed `commercial_terms` plus an RFC 8785 SHA-256 `terms_digest`. Changed terms mint a new `proposal_id`; accepted MediaBuys expose the current proposal pointer for restart-safe refinement.
+- New purchase and control tools never accept inline creatives. Creative bodies and assignments use the dedicated creative lifecycle.
+- Optional shared `opportunity` context connects proposal request, refinement, decline, and purchase; proposal snapshots retain the association without making it proposal identity.
 - Each stateful task requires an idempotency key and retains its own replay identity. Retries use the same tool name.
 - Brand input is an identity-only key, catalogs are compact selections, and offer filters are separated from exact targeting and future targeting support.
-- `media_buy.product_discovery_tools` advertises the split surface. Its absence means callers use `get_products` and `buying_modes`.
+- `media_buy.lifecycle_tools` advertises the compact product and MediaBuy lifecycle. Its absence means callers use the 3.x compatibility facades.
 - The release manifest labels each legacy fallback as `direct`, `orchestrated`, or `none`, so SDKs can expose the split API without claiming lossy calls are aliases.
 - `task_result_resolution` maps each tracked `task_type` to its tool `response_schema` or a retained 3.x event override, letting SDKs generate `TaskStatus<Result>` without embedding the global async-result union in `getTaskStatus`.
 
-New integrations SHOULD use the split tools. Existing integrations do not need an immediate migration: `get_products` keeps its optional-key 3.x contract, and sellers MUST honor replay protection whenever a key is supplied.
+New integrations SHOULD use the compact tools. Existing integrations do not need an immediate migration: the three compatibility facades retain their 3.x contracts, and sellers MUST honor replay protection whenever a key is supplied.
 
 ### Inline asset-access credentials deprecated (#5698)
 

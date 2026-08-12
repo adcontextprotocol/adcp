@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-performance-standard.json",
+  "title": "Canonical Performance Standard",
+  "description": "Compact committed metric threshold with resolvable vendor identity and no creative or brand-asset graph.",
+  "type": "object",
+  "properties": {
+    "metric": { "$ref": "/schemas/enums/performance-standard-metric.json" },
+    "threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+    "standard": { "$ref": "/schemas/enums/viewability-standard.json" },
+    "vendor": { "$ref": "/schemas/core/brand-key.json" }
+  },
+  "required": ["metric", "threshold", "vendor"],
+  "additionalProperties": false
+}

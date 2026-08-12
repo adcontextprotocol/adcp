@@ -8,6 +8,10 @@ testable: true
 
 Modify an existing media buy using PATCH semantics. Supports campaign-level and package-level updates.
 
+<Warning>
+`update_media_buy` is the AdCP 3.x compatibility facade as of 3.2. New integrations use [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) for operational controls and [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) for commercial amendments or negotiated cancellation. Existing payloads remain supported throughout 3.x.
+</Warning>
+
 **Response Time**: Instant to days (status: `completed`, `working` < 120s, or `submitted` for manual review)
 
 ## Scope
