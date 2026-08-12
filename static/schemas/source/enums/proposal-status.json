@@ -11,7 +11,7 @@
   ],
   "enumDescriptions": {
     "draft": "Indicative pricing and availability. The buyer can compare and plan but must request a committed revision before purchasing. The legacy get_products facade may use its 'finalize' refine action; refine_proposals returns committed revisions directly.",
-    "committed": "Firm, executable terms. The buyer can accept this proposal before expires_at. The status does not by itself promise that inventory is reserved; a seller that provides a hold must state it in the proposal terms.",
+    "committed": "Firm, executable terms. The buyer can accept this proposal via accept_proposal before expires_at. The status does not by itself promise that inventory is reserved; a seller that provides a hold must state it in the proposal terms. A seller that has not reserved inventory MAY reject an unexpired committed proposal at acceptance via PROPOSAL_UNAVAILABLE; in that case, availability risk before acceptance is on the buyer.",
     "accepted": "Immutable historical commercial terms attached to a MediaBuy. The buyer may pass this proposal_id to refine_proposals to fork an amendment or cancellation proposal."
   }
 }

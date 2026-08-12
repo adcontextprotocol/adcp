@@ -54,6 +54,19 @@
       "anyOf": [{ "required": ["min"] }, { "required": ["max"] }],
       "additionalProperties": true
     },
+    "countries": {
+      "type": "array",
+      "description": "Filter by country coverage using ISO 3166-1 alpha-2 codes (e.g., ['US', 'CA', 'GB']). Returns products whose geographic coverage includes at least one of the specified countries. This is a product attribute filter, not a delivery-targeting instruction.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "property_list": {
+      "$ref": "/schemas/core/property-list-ref.json",
+      "description": "Reference to an externally managed property list. When provided, the seller filters products to only those available on properties in the list. This narrows which publisher inventory is returned; it is a product attribute filter, not a delivery-targeting instruction."
+    },
     "channels": {
       "type": "array",
       "items": { "$ref": "/schemas/enums/channels.json" },

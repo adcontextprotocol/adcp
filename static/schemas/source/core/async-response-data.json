@@ -35,9 +35,19 @@
       "$ref": "/schemas/media-buy/request-proposals-response.json"
     },
     {
+      "title": "RequestProposalsAsyncSubmitted",
+      "description": "Acknowledgment for submitted request_proposals (consultative planning requiring upstream queries or human review)",
+      "$ref": "/schemas/media-buy/request-proposals-async-response-submitted.json"
+    },
+    {
       "title": "RefineProposalsResponse",
       "description": "Terminal response for refine_proposals",
       "$ref": "/schemas/media-buy/refine-proposals-response.json"
+    },
+    {
+      "title": "RefineProposalsAsyncSubmitted",
+      "description": "Acknowledgment for submitted refine_proposals (complex revision requiring re-underwriting or upstream pricing queries)",
+      "$ref": "/schemas/media-buy/refine-proposals-async-response-submitted.json"
     },
     {
       "title": "DeclineProposalsResponse",
