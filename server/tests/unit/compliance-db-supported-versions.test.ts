@@ -48,4 +48,23 @@ describe('ComplianceDatabase.getRecentSupportedVersions', () => {
       .rejects.toThrow('maxAgeHours must be a positive integer');
     expect(mockedQuery).not.toHaveBeenCalled();
   });
+
+  it('defers an inconclusive check only while its future heartbeat lock is still held', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 } as never);
+
+    await expect(db.deferComplianceCheckAfterInconclusiveTarget('https://agent.example/mcp'))
+      .resolves.toBe(true);
+
+    expect(mockedQuery).toHaveBeenCalledWith(
+      expect.stringMatching(/SET last_checked_at = NOW\(\)[\s\S]*last_checked_at > NOW\(\)/),
+      ['https://agent.example/mcp'],
+    );
+  });
+
+  it('preserves a concurrent completed run when the heartbeat lock is no longer current', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never);
+
+    await expect(db.deferComplianceCheckAfterInconclusiveTarget('https://agent.example/mcp'))
+      .resolves.toBe(false);
+  });
 });
