@@ -12916,10 +12916,12 @@ describe('proposal lifecycle', () => {
     const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', {
       refinements: [{
         proposal_id: source.proposal_id,
+        action: 'revise',
         change_kind: 'amendment',
         instructions: 'Prefer the social inventory while preserving the total budget.',
       }, {
         proposal_id: 'proposal-not-visible-to-caller',
+        action: 'revise',
         instructions: 'Use a proposal that is not available in this principal scope.',
       }],
     });
@@ -13014,6 +13016,7 @@ describe('proposal lifecycle', () => {
     const refineAfterExecution = await simulateCallTool(server, 'refine_proposals', {
       refinements: [{
         proposal_id: committed.proposal_id,
+        action: 'revise',
         change_kind: 'amendment',
         instructions: 'Reduce the budget while preserving the accepted flight.',
       }],
@@ -13036,6 +13039,7 @@ describe('proposal lifecycle', () => {
     const cancellationAfterExecution = await simulateCallTool(server, 'refine_proposals', {
       refinements: [{
         proposal_id: committed.proposal_id,
+        action: 'revise',
         change_kind: 'cancellation',
         instructions: 'Cancel by mutual agreement before the next billing period.',
       }],
@@ -13171,6 +13175,7 @@ describe('proposal lifecycle', () => {
     const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', {
       refinements: [{
         proposal_id: source.proposal_id,
+        action: 'revise',
         instructions: 'Prefer social inventory without changing the planning cycle.',
       }],
     });
@@ -13269,6 +13274,7 @@ describe('proposal lifecycle', () => {
     const refineAfterDecline = await simulateCallTool(server, 'refine_proposals', {
       refinements: [{
         proposal_id: committed.proposal_id,
+        action: 'revise',
         instructions: 'Try a different allocation after terminal decline.',
       }],
     });
@@ -13367,6 +13373,7 @@ describe('proposal lifecycle', () => {
     const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', {
       refinements: [{
         proposal_id: source.proposal_id,
+        action: 'revise',
         instructions: 'Provide concrete fixed CPM pricing in USD.',
       }],
     });

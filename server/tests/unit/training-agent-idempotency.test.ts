@@ -613,13 +613,13 @@ describe('training agent idempotency middleware', () => {
       const key = `proposal-refine-${randomUUID()}`;
       const first = await call(server, 'refine_proposals', {
         idempotency_key: key,
-        refinements: [{ proposal_id: proposalId, instructions: 'Prefer video.' }],
+        refinements: [{ proposal_id: proposalId, action: 'revise', instructions: 'Prefer video.' }],
       });
       expect(first.isError).toBeFalsy();
 
       const conflict = await call(server, 'refine_proposals', {
         idempotency_key: key,
-        refinements: [{ proposal_id: proposalId, instructions: 'Prefer audio.' }],
+        refinements: [{ proposal_id: proposalId, action: 'revise', instructions: 'Prefer audio.' }],
       });
       expect(conflict.isError).toBe(true);
       expect((conflict.parsed as any).adcp_error?.code).toBe('IDEMPOTENCY_CONFLICT');

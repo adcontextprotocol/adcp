@@ -4773,9 +4773,9 @@ export function validateProductDiscoveryAliasInput(
           return { message: 'each revision requires instructions', field: `refinements[${index}].instructions` };
         }
       }
-      if (entry.action !== undefined && entry.action !== 'revise' && entry.action !== 'finalize') {
+      if (entry.action !== 'revise' && entry.action !== 'finalize') {
         return {
-          message: 'action must be revise or finalize',
+          message: 'action is required and must be revise or finalize',
           field: `refinements[${index}].action`,
         };
       }

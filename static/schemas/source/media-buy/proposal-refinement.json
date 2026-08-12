@@ -13,7 +13,6 @@
     "action": {
       "type": "string",
       "enum": ["revise", "finalize"],
-      "default": "revise",
       "description": "revise creates a new draft snapshot with changed commercial terms. finalize MUST target a draft; it creates a new committed snapshot without changing terms and reserves inventory until its expires_at."
     },
     "change_kind": {
@@ -42,7 +41,7 @@
     },
     {
       "properties": { "action": { "type": "string", "const": "revise" } },
-      "required": ["instructions"]
+      "required": ["action", "instructions"]
     }
   ],
   "additionalProperties": false

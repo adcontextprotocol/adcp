@@ -3107,11 +3107,21 @@ async function runTests() {
     {
       idempotency_key: 'refine-proposals-0001',
       refinements: [
-        { proposal_id: 'proposal-1', instructions: 'Prefer video and move budget toward it' },
-        { proposal_id: 'proposal-2', instructions: 'Use only the premium video product' }
+        { proposal_id: 'proposal-1', action: 'revise', instructions: 'Prefer video and move budget toward it' },
+        { proposal_id: 'proposal-2', action: 'revise', instructions: 'Use only the premium video product' }
       ]
     },
     'refine_proposals accepts plural proposal-scoped immutable refinements'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-missing-action-0001',
+      refinements: [
+        { proposal_id: 'proposal-1', instructions: 'Prefer video and move budget toward it' }
+      ]
+    },
+    'refine_proposals requires an explicit action discriminator'
   );
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-request.json',
@@ -3119,6 +3129,7 @@ async function runTests() {
       idempotency_key: 'refine-accepted-cancel-0001',
       refinements: [{
         proposal_id: 'accepted-proposal-1',
+        action: 'revise',
         change_kind: 'cancellation',
         instructions: 'Cancel at the earliest date permitted by the accepted terms.'
       }]
@@ -3139,7 +3150,7 @@ async function runTests() {
       idempotency_key: 'refine-proposals-mixed-finalize-0001',
       refinements: [
         { proposal_id: 'proposal-1', action: 'finalize' },
-        { proposal_id: 'proposal-2', instructions: 'Change the budget.' }
+        { proposal_id: 'proposal-2', action: 'revise', instructions: 'Change the budget.' }
       ]
     },
     'refine_proposals keeps finalize batches exclusive and atomic'

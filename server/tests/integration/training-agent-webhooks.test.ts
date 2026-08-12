@@ -231,6 +231,7 @@ describe('Training Agent webhook emission', () => {
         idempotency_key: `split-refine-${randomUUID()}`,
         refinements: [{
           proposal_id: source.proposal_id,
+          action: 'revise',
           instructions: 'Prefer social inventory while preserving the total budget.',
         }],
         push_notification_config: callback('op_refine_proposals'),
