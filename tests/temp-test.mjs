@@ -2,6 +2,7 @@ import { testAgent } from '@adcp/sdk/testing';
 
 // Get all products to see their configuration
 const result = await testAgent.getProducts({
+  buying_mode: 'brief',
   brief: 'show me all available products'
 });
 
@@ -19,6 +20,9 @@ for (const product of result.data.products) {
   for (const opt of product.pricing_options || []) {
     console.log(`    - ${opt.pricing_option_id}: ${opt.price} ${opt.pricing_model}`);
   }
-  console.log(`  Format IDs: ${JSON.stringify(product.format_ids?.map(f => f.id))}`);
+  console.log(`  Format options: ${JSON.stringify(product.format_options?.map(option => ({
+    id: option.format_option_id,
+    kind: option.format_kind,
+  })))}`);
   console.log('');
 }

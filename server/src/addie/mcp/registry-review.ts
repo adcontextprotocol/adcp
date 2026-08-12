@@ -200,7 +200,10 @@ Does this look like a legitimate ${record.entity_type} record? Check for spam, n
       });
       // Delete the malicious record
       if (record.entity_type === 'brand') {
-        await brandDb.deleteDiscoveredBrand(record.domain);
+        await brandDb.deleteDiscoveredBrand(record.domain, {
+          actor_user_id: 'system:addie',
+          source: 'addie_malicious_record_cleanup',
+        });
       } else {
         await propertyDb.deleteHostedPropertyByDomain(record.domain);
       }

@@ -710,16 +710,32 @@ For emergency rotation (key compromise), add the old `kid` to `revoked_kids` in 
 
 ### Conformance vectors
 
-The spec ships **40 legacy-profile wire vectors**, two dedicated 3.2 wire vectors, and the 3.2 post-parse body-integrity reference-evaluator matrix at `/compliance/latest/test-vectors/request-signing/` (source at `static/compliance/source/test-vectors/request-signing/`). Select fixtures by `signing_profile_version`; the root positive and negative directories are 3.1 compatibility fixtures, not 3.2 conformance cases.
+The spec ships legacy-profile wire vectors, dedicated 3.2 wire vectors, and the 3.2 post-parse body-integrity reference-evaluator matrix at `/compliance/latest/test-vectors/request-signing/` (source at `static/compliance/source/test-vectors/request-signing/`). Select fixtures by `signing_profile_version`; the root positive and negative directories are 3.1 compatibility fixtures, not 3.2 conformance cases.
 
-- **12 legacy 3.1 positive vectors**: valid signed requests using the legacy binary encoding
-- **28 legacy 3.1 negative vectors**: invalid requests a 3.1 verifier must reject with the stated error code
-- **2 profile-3.2 wire vectors**: one body-bound positive and one rejection of legacy Base64URL as malformed RFC 8941 `sf-binary`
+- **Legacy 3.1 positive vectors**: valid signed requests using the legacy binary encoding
+- **Legacy 3.1 negative vectors**: invalid requests a 3.1 verifier must reject with the stated error code
+- **Profile-3.2 wire vectors**: body-bound positives and rejections of malformed RFC 8941 `sf-binary`
 
 ```bash
-# Debug a single vector
-adcp signing verify-vector \
-  --vector compliance/cache/3.0.0/test-vectors/request-signing/positive/001-basic-post.json
+# Debug a single vector with the matching public key fixture.
+# Use "latest" for convenience. Pin and record exact released values for both
+# versions when you need to reproduce a verifier debugging run.
+VECTOR_VERSION=latest
+SDK_VERSION=latest
+VECTOR_DIR="$(mktemp -d)"
+trap 'rm -rf "$VECTOR_DIR"' EXIT
+VECTOR_BASE="https://adcontextprotocol.org/compliance/${VECTOR_VERSION}/test-vectors/request-signing"
+
+curl --fail --silent --show-error \
+  --output "${VECTOR_DIR}/vector.json" \
+  "${VECTOR_BASE}/positive/001-basic-post.json"
+curl --fail --silent --show-error \
+  --output "${VECTOR_DIR}/keys.json" \
+  "${VECTOR_BASE}/keys.json"
+
+npx "@adcp/sdk@${SDK_VERSION}" signing verify-vector \
+  --vector "${VECTOR_DIR}/vector.json" \
+  --keys "${VECTOR_DIR}/keys.json"
 ```
 
 ### Grade your verifier

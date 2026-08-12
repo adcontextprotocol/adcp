@@ -113,17 +113,41 @@ const MIN_PLACEMENT_TURNS = 3;
 const MIN_MODULE_TIME_MS = 5 * 60 * 1000; // 5 minutes
 const MIN_CAPSTONE_TIME_MS = 10 * 60 * 1000; // 10 minutes
 
-const UNAVAILABLE_SPECIALIST_MODULES = new Set(['S5']);
+const UNAVAILABLE_SPECIALIST_MODULES = new Set<string>();
 
 function unavailableSpecialistMessage(moduleId: string): string | null {
   if (!UNAVAILABLE_SPECIALIST_MODULES.has(moduleId)) return null;
-  return `Module ${moduleId} (Sponsored Intelligence) is not currently available for assessment because the sandbox does not yet expose the required si_* lab tools. No module progress or capstone attempt was changed.`;
+  return `Module ${moduleId} is not currently available for assessment. No module progress or capstone attempt was changed.`;
 }
 
 export const PRIOR_TURN_RESTATEMENT_NO_RAW_JSON_RULE = 'for prior-turn re-statements, no raw JSON';
 export const LIVE_DEMO_RESULT_FORMATTING_RULE = 'When pasting the tool result, preserve the exact formatting returned by the tool -- including any code fence wrappers. Do NOT flatten to prose or strip the fence.';
 export const LIVE_DEMO_CODE_FENCE_ARTIFACT_RULE = 'The code fence is the artifact learners are here to see.';
 export const LIVE_DEMO_NO_RAW_JSON_EXCEPTION = 'Exception: on the live demo turn (step 2 of the TWO-STEP SEQUENCE), preserve the code-fenced result verbatim -- the no-raw-JSON rule does not apply to live demo output.';
+const CERTIFICATION_ATTEMPT_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+
+export const SAGE_OPENING_HANDOFF = `On the first learner-facing turn after this successful certification start, make the handoff explicit. Use this default unless the conversation already supplies a more natural transition: "Addie's handed you over to me for protocol training. I'm Sage — the teal, protocol-focused side of the same family. I'll start with what you already know and be exact about what the spec requires and why." Treat the learner as a practitioner bringing real experience, not as a beginner by default. Do not repeat this introduction later in the same conversation.`;
+
+export const SAGE_RESUME_HANDOFF = `Continue this certification interaction as Sage, Addie's teal protocol-training counterpart. This is a resume, so do not replay the introduction. Start from the saved work and use a short retrieval question to calibrate where to continue.`;
+
+export const SAGE_VOICE_EXEMPLARS = `Use this register, adapting the details to the learner and verified protocol material:
+- Required field: "The spec requires this field because both agents need the same unambiguous contract."
+- Prior knowledge (only when supported by context): "You've already shipped workflows like this. This builds on that experience, with the AdCP contract made explicit."
+- Retry: "Not yet. Your approach is close, but this value does not match the schema. Fix that one point and try again."`;
+
+const SAGE_VOICE_GUIDANCE = `### Sage voice exemplars
+
+${SAGE_VOICE_EXEMPLARS}`;
+
+/** Trusted start-tool directive that makes the Addie-to-Sage handoff explicit. */
+export function buildSageOpeningSection(): string {
+  return `## Required Sage opening\n\n${SAGE_OPENING_HANDOFF}`;
+}
+
+/** Trusted resume-tool directive that preserves Sage without replaying her introduction. */
+export function buildSageResumeSection(): string {
+  return `## Sage certification resume\n\n${SAGE_RESUME_HANDOFF}`;
+}
 
 /**
  * Teaching methodology for build project modules (B4, C4, D4).
@@ -133,6 +157,8 @@ export const LIVE_DEMO_NO_RAW_JSON_EXCEPTION = 'Exception: on the live demo turn
 const BUILD_PROJECT_METHODOLOGY = `## Build project approach — Specify, Build, Validate, Explain, Extend
 
 **You are Sage**, the AdCP protocol certification instructor — technically precise and protocol-grounded.
+
+${SAGE_VOICE_GUIDANCE}
 
 ## CRITICAL RULE — call get_build_phase_instructions at every phase transition
 When transitioning to the Build, Validate, or Extend phase, you MUST call the get_build_phase_instructions tool BEFORE giving the learner any instructions. The tool returns the exact commands and URLs the learner needs. Present the tool's response to the learner exactly as returned — do not rewrite, summarize, or add your own build prompts. This ensures every learner gets the same validated workflow using skill files and storyboards.
@@ -186,6 +212,8 @@ The learner should use these tools. They are how agents are built and validated 
 const TEACHING_METHODOLOGY = `## Teaching approach — you are Sage, protocol certification instructor
 
 **You are Sage**, the AdCP protocol certification instructor — technically precise and protocol-grounded. Think of yourself as a private tutor, not a proctor. Your job is to help every learner succeed — and to make this the most engaging learning experience they've had. Match the learner's communication style — if they're casual, be casual; if they're precise and technical, be precise and technical.
+
+${SAGE_VOICE_GUIDANCE}
 
 ### HARD RULES (follow these on every single response)
 
@@ -264,6 +292,9 @@ If a demo produces unexpected results or you realize you explained something inc
  */
 const CAPSTONE_METHODOLOGY = `## Instructions (for Sage — do not share scoring details with the learner)
 **You are Sage**, the AdCP protocol certification instructor — technically precise and protocol-grounded.
+
+${SAGE_VOICE_GUIDANCE}
+
 Conduct this capstone now. It combines a hands-on lab and adaptive exam:
 1. **Lab phase**: Guide the learner through the lab exercises using real AdCP tools against sandbox agents. Monitor their competence as they work.
 1a. **Pace to the learner — compress teaching for an expert, but never skip a required hands-on demonstration.** If the learner demonstrates mastery early (correct, detailed answers on 3+ concepts in a row without correction), cut the exposition: stop lecturing and scaffolding, move briskly, and let them drive — for a reasoning criterion, a sharp teach-back or scenario answer IS the demonstration, so do not re-explain what they have already shown they know. The hands-on demos that produce required wire evidence (e.g. an idempotency conflict, an SSRF refusal, a decoded governance token) still need to run, but let the expert predict the outcome first and run it once to confirm rather than walking them through every parameter. Compress teaching, not required demonstrations. Over-explaining to someone who clearly knows the material is the most common learner complaint.
@@ -277,6 +308,11 @@ Conduct this capstone now. It combines a hands-on lab and adaptive exam:
 9. **Verify all required demonstrations before completing.** Each module has success criteria that every learner must demonstrably meet. Report verified criterion IDs in your checkpoint using demonstrations_verified. Completion is rejected if any are missing.
 10. **Tool result visibility**: Before referencing a specific item from a prior turn's tool result (e.g., a lab output or format list), check whether that item is visible in the current message. If not, re-state what matters about it in plain language -- ${PRIOR_TURN_RESTATEMENT_NO_RAW_JSON_RULE} inline. This restriction does not apply when a live demo instruction tells you to paste the current tool result verbatim or preserve a code-fenced result. If the re-statement plus your response would exceed your message budget, re-state only this turn and continue next turn.
 11. **Collect feedback after completion.** After you call complete_certification_exam and share the results, ask the learner for feedback: "How was that experience? Anything that felt confusing, too hard, or could be better?" If they share feedback, call save_learner_feedback to record it.`;
+
+/** Specialist starts use a separate capstone methodology from standard modules. */
+export function getSpecialistCapstoneMethodology(): string {
+  return CAPSTONE_METHODOLOGY;
+}
 
 /**
  * Capstone supplement for L3 (Decision-Makers track).
@@ -684,19 +720,37 @@ async function checkAndFormatCredentials(
 // =====================================================
 
 /**
- * Build certification context text for in-progress modules.
- * Used by both web chat and Slack to inject active module state into Sage's context.
+ * Build certification context text for in-progress modules and active delta attempts.
+ * Used by both web chat and Slack to inject active certification state into Sage's context.
  */
 export async function buildCertificationContext(
   inProgressModules: Array<{ module_id: string; started_at: string | null }>,
   userId?: string,
 ): Promise<string | null> {
-  if (inProgressModules.length === 0) return null;
+  const activeEntries = [...inProgressModules];
+  if (userId) {
+    // Delta assessments intentionally leave learner_progress completed. Recover
+    // their active attempt here so Sage identity and methodology survive history
+    // trimming just as they do for ordinary in-progress modules.
+    for (const delta of DELTA_DEFINITIONS) {
+      if (activeEntries.some(entry => entry.module_id.toUpperCase() === delta.module_id)) continue;
+      const attempt = await certDb.getActiveAttemptForModule(userId, delta.module_id);
+      const startedAt = attempt ? Date.parse(attempt.started_at) : Number.NaN;
+      const isCurrent = Number.isFinite(startedAt)
+        && Date.now() - startedAt < CERTIFICATION_ATTEMPT_STALE_MS;
+      if (attempt && isCurrent) {
+        activeEntries.push({ module_id: delta.module_id, started_at: attempt.started_at });
+      }
+    }
+  }
+  if (activeEntries.length === 0) return null;
 
   const lines = ['## Active certification modules'];
   lines.push('**You are Sage**, the AdCP protocol certification instructor — technically precise and protocol-grounded. You are a tutor, not a proctor — your job is to help every learner succeed. Reference specs and schemas directly. When a learner gets something wrong, correct clearly: "the spec requires this because..." not "you might want to consider..."');
+  lines.push(SAGE_VOICE_GUIDANCE);
   lines.push('You ARE currently teaching these modules. If conversation history was trimmed, call get_certification_module to reload the lesson plan.');
-  lines.push('Do NOT call start_certification_module again (it is already started).');
+  lines.push('Do NOT call start_certification_module again (the active module is already started).');
+  lines.push('For an active specialist capstone or delta only: if its attempt ID is no longer visible after history trimming, call start_certification_exam once to recover the existing attempt. Its resume result is not a new start; do not replay Sage\'s introduction.');
   lines.push('');
   lines.push('**TEACHING RULES (enforce every response):**');
   lines.push('- MAX 150 words per response. Brevity forces the learner to participate. One idea per turn — if you have more to say, save it for the next turn.');
@@ -731,7 +785,7 @@ export async function buildCertificationContext(
   // Module ids are canonically uppercase in the table; normalize once here
   // and cache the lookups so the per-module loop below doesn't re-fetch.
   const baseUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
-  const normalizedInProgress = inProgressModules.map((im) => ({
+  const normalizedInProgress = activeEntries.map((im) => ({
     ...im,
     module_id: im.module_id.toUpperCase(),
   }));
@@ -990,7 +1044,7 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
   },
   {
     name: 'start_certification_exam',
-    description: 'Begin an available specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S6: Security). S5 Sponsored Intelligence is listed in the curriculum but is not assessable until its sandbox labs exist. The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.',
+    description: 'Begin an available specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence, S6: Security). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.',
     usage_hints: 'use for "take the exam", "start capstone", "specialist exam", "ready for certification", "start S1", "media buy specialist", "security specialist"',
     input_schema: {
       type: 'object',
@@ -998,7 +1052,7 @@ export const CERTIFICATION_TOOLS: AddieTool[] = [
         module_id: {
           type: 'string',
           enum: ['S1', 'S2', 'S3', 'S4', 'S5', 'S6'],
-          description: 'Specialist module ID: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence — currently unavailable), S6 (Security)',
+          description: 'Specialist module ID: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence), S6 (Security)',
         },
       },
       required: ['module_id'],
@@ -1708,7 +1762,7 @@ export function createCertificationToolHandlers(
       lines.push('---');
       lines.push('Modules A1, A2, A2B, and A3 are free for everyone. Other modules require AgenticAdvertising.org membership.');
       lines.push('To start a module, say "start module [ID]" (e.g., "start module A1").');
-      lines.push('To start a specialist deep dive, say "start capstone S1" (S1–S4, S6 Security, or S7 Brand are available; S5 is pending sandbox labs).');
+      lines.push('To start a specialist deep dive, say "start capstone S1" (S1–S6 and S7 Brand are available).');
       lines.push('Already familiar with AdCP? Say "assess my level" to take a placement assessment and skip modules you already know.');
 
       return lines.join('\n');
@@ -1885,6 +1939,8 @@ export function createCertificationToolHandlers(
       // Return the lesson plan so Sage can teach it
       const lines: string[] = [
         `Module ${mod.id} started: **${mod.title}**`,
+        '',
+        buildSageOpeningSection(),
         '',
       ];
 
@@ -2344,7 +2400,7 @@ export function createCertificationToolHandlers(
       // Validate it's a capstone module
       const mod = await certDb.getModule(moduleId);
       if (!mod || mod.format !== 'capstone') {
-        return `"${moduleId}" is not a capstone module. Valid specialist modules: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Generative Advertising).`;
+        return `"${moduleId}" is not a capstone module. Valid specialist modules: S1 (Media Buy), S2 (Creative), S3 (Signals), S4 (Governance), S5 (Sponsored Intelligence), S6 (Security).`;
       }
 
       if (!(await ensureMembership())) {
@@ -2403,7 +2459,7 @@ export function createCertificationToolHandlers(
             }
             const active = await certDb.getActiveAttemptForModule(userId, moduleId);
             if (active) {
-              return `You already have an active ${delta.delta_action_label} delta attempt (started ${new Date(active.started_at).toLocaleDateString()}). Continue the delta assessment.\n\nAttempt ID: ${active.id}`;
+              return `You already have an active ${delta.delta_action_label} delta attempt (started ${new Date(active.started_at).toLocaleDateString()}). Continue the delta assessment.\n\nAttempt ID: ${active.id}\n\n${buildSageResumeSection()}`;
             }
           }
           if (deltaStatus.active && deltaStatus.status === 'full_recertification_required') {
@@ -2424,6 +2480,8 @@ export function createCertificationToolHandlers(
             const required = new Set(deltaStatus.missing_criterion_ids);
             const lines = [
               `# ${delta.label} delta`,
+              '',
+              buildSageOpeningSection(),
               '',
               `Attempt ID: ${attempt.id}`,
               `Deadline: ${formatUtcDate(deltaStatus.delta_window_closes_at)}`,
@@ -2474,7 +2532,7 @@ export function createCertificationToolHandlers(
         if (options?.trainingModuleContext) {
           options.trainingModuleContext.moduleId = moduleId;
         }
-        return `You already have an active capstone attempt (started ${new Date(active.started_at).toLocaleDateString()}). Continue the capstone.\n\nAttempt ID: ${active.id}`;
+        return `You already have an active capstone attempt (started ${new Date(active.started_at).toLocaleDateString()}). Continue the capstone.\n\nAttempt ID: ${active.id}\n\n${buildSageResumeSection()}`;
       }
 
       // Start the module and create an attempt
@@ -2504,6 +2562,8 @@ export function createCertificationToolHandlers(
 
       const lines = [
         `# Specialist capstone: ${mod.title}`,
+        '',
+        buildSageOpeningSection(),
         '',
         `Attempt ID: ${attempt.id}`,
         `Credential: **${credentialMap[moduleId] || mod.title}**`,
@@ -2568,7 +2628,7 @@ export function createCertificationToolHandlers(
       }
 
       // Teaching instructions
-      lines.push(CAPSTONE_METHODOLOGY);
+      lines.push(getSpecialistCapstoneMethodology());
       // Inject full rubric for Sage's internal use
       if (criteria?.dimensions?.length) {
         lines.push('');

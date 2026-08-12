@@ -13,6 +13,241 @@ const logger = createLogger('addie-security');
 import type { SanitizationResult, AddieInteractionLog } from './types.js';
 import { PERSONA_COLLAPSE_PATTERNS } from './response-postprocess.js';
 
+export const MAX_OUTPUT_LENGTH = 10_000;
+export const OUTPUT_TRUNCATION_SUFFIX = '… Reply “continue” for the rest.';
+const OUTPUT_TRUNCATION_SEPARATOR = '\n\n';
+
+const SENTENCE_ENDINGS = new Set(['.', '!', '?', '。', '！', '？']);
+const SENTENCE_CLOSERS = new Set(['"', "'", '”', '’', ')', ']', '}', '*', '_', '~', '`']);
+
+function hasValidFenceCloserTail(text: string, start: number): boolean {
+  for (let index = start; index < text.length; index++) {
+    const character = text[index];
+    if (character === '\r' || character === '\n') return true;
+    if (character !== ' ' && character !== '\t') return false;
+  }
+  return true;
+}
+
+/**
+ * Find the best neutral Markdown boundary in one grapheme-aware pass.
+ * Marker runs are skipped by the Segmenter loop after being counted, so every
+ * input offset is examined a constant number of times.
+ */
+function findSafeOutputBoundary(text: string, maxLength: number): number {
+  const limit = Math.max(0, Math.min(maxLength, text.length));
+  const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+  let lastSentenceBoundary = -1;
+  let lastWhitespaceBoundary = -1;
+  let pendingSentenceBoundary: number | null = null;
+  let skipUntil = 0;
+
+  let fenceMarker: '`' | '~' | null = null;
+  let fenceLength = 0;
+  let inlineBacktickLength = 0;
+  let linkLabelDepth = 0;
+  let awaitingLinkDestination = false;
+  let linkDestinationDepth = 0;
+  let escaped = false;
+
+  let lineCanOpenFence = true;
+  let lineIndent = 0;
+
+  const isMarkdownNeutral = () => fenceMarker === null
+    && inlineBacktickLength === 0
+    && linkLabelDepth === 0
+    && !awaitingLinkDestination
+    && linkDestinationDepth === 0;
+  const isNeutral = () => isMarkdownNeutral() && !escaped;
+
+  const updateLineState = (grapheme: string) => {
+    if (/[\r\n]/u.test(grapheme)) {
+      lineCanOpenFence = true;
+      lineIndent = 0;
+    } else if (lineCanOpenFence && grapheme === ' ' && lineIndent < 4) {
+      lineIndent++;
+      if (lineIndent > 3) lineCanOpenFence = false;
+    } else {
+      lineCanOpenFence = false;
+    }
+  };
+
+  for (const part of segmenter.segment(text)) {
+    const index = part.index;
+    const grapheme = part.segment;
+    const end = index + grapheme.length;
+
+    if (index < skipUntil) continue;
+
+    // One look-ahead grapheme may confirm punctuation exactly at the budget.
+    if (index >= limit || end > limit) {
+      if (pendingSentenceBoundary !== null && isNeutral() && /\s/u.test(grapheme)) {
+        lastSentenceBoundary = pendingSentenceBoundary;
+      }
+      break;
+    }
+
+    const marker = grapheme === '`' || grapheme === '~' ? grapheme : null;
+    let markerRunLength = 0;
+    if (marker !== null) {
+      if (escaped && isMarkdownNeutral()) {
+        // A backslash escapes only the immediately following marker.
+        markerRunLength = 1;
+      } else {
+        while (
+          index + markerRunLength < limit
+          && text[index + markerRunLength] === marker
+        ) {
+          markerRunLength++;
+        }
+      }
+      skipUntil = index + markerRunLength;
+    }
+
+    if (fenceMarker !== null) {
+      if (
+        marker === fenceMarker
+        && lineCanOpenFence
+        && markerRunLength >= fenceLength
+        && hasValidFenceCloserTail(text, index + markerRunLength)
+      ) {
+        fenceMarker = null;
+        fenceLength = 0;
+      }
+      pendingSentenceBoundary = null;
+      updateLineState(grapheme);
+      continue;
+    }
+
+    if (inlineBacktickLength > 0) {
+      if (marker === '`' && markerRunLength === inlineBacktickLength) {
+        inlineBacktickLength = 0;
+      }
+      pendingSentenceBoundary = null;
+      updateLineState(grapheme);
+      continue;
+    }
+
+    if (linkLabelDepth > 0) {
+      if (escaped) {
+        escaped = false;
+      } else if (grapheme === '\\') {
+        escaped = true;
+      } else if (grapheme === '[') {
+        linkLabelDepth++;
+      } else if (grapheme === ']') {
+        linkLabelDepth--;
+        if (linkLabelDepth === 0) awaitingLinkDestination = true;
+      }
+      pendingSentenceBoundary = null;
+      updateLineState(grapheme);
+      continue;
+    }
+
+    if (awaitingLinkDestination) {
+      awaitingLinkDestination = false;
+      if (grapheme === '(') {
+        linkDestinationDepth = 1;
+        pendingSentenceBoundary = null;
+        updateLineState(grapheme);
+        continue;
+      }
+    }
+
+    if (linkDestinationDepth > 0) {
+      if (escaped) {
+        escaped = false;
+      } else if (grapheme === '\\') {
+        escaped = true;
+      } else if (grapheme === '(') {
+        linkDestinationDepth++;
+      } else if (grapheme === ')') {
+        linkDestinationDepth--;
+      }
+      pendingSentenceBoundary = null;
+      updateLineState(grapheme);
+      continue;
+    }
+
+    const wasEscaped = escaped;
+    if (escaped) {
+      escaped = false;
+    } else if (grapheme === '\\') {
+      escaped = true;
+      pendingSentenceBoundary = null;
+      updateLineState(grapheme);
+      continue;
+    } else if (marker !== null && markerRunLength >= 3 && lineCanOpenFence) {
+      fenceMarker = marker;
+      fenceLength = markerRunLength;
+      pendingSentenceBoundary = null;
+      updateLineState(grapheme);
+      continue;
+    } else if (marker === '`') {
+      inlineBacktickLength = markerRunLength;
+      pendingSentenceBoundary = null;
+      updateLineState(grapheme);
+      continue;
+    } else if (grapheme === '[') {
+      linkLabelDepth = 1;
+      pendingSentenceBoundary = null;
+      updateLineState(grapheme);
+      continue;
+    }
+
+    if (/\s/u.test(grapheme) && !wasEscaped) {
+      if (pendingSentenceBoundary !== null) {
+        lastSentenceBoundary = pendingSentenceBoundary;
+        pendingSentenceBoundary = null;
+      }
+      if (index > 0) lastWhitespaceBoundary = index;
+    } else if (
+      pendingSentenceBoundary !== null
+      && SENTENCE_CLOSERS.has(grapheme)
+    ) {
+      pendingSentenceBoundary = end;
+    } else {
+      pendingSentenceBoundary = SENTENCE_ENDINGS.has(grapheme) ? end : null;
+    }
+
+    updateLineState(grapheme);
+  }
+
+  if (
+    limit === text.length
+    && pendingSentenceBoundary !== null
+    && isNeutral()
+  ) {
+    lastSentenceBoundary = pendingSentenceBoundary;
+  }
+
+  return lastSentenceBoundary >= 0
+    ? lastSentenceBoundary
+    : lastWhitespaceBoundary;
+}
+
+/**
+ * Format a partial response at a sentence boundary and add the canonical
+ * continuation cue. The content budget reserves room for the separator and
+ * cue, so the complete delivered value never exceeds the 10k cap.
+ */
+export function formatTruncatedOutput(
+  text: string,
+  maxLength: number = MAX_OUTPUT_LENGTH,
+): string {
+  const contentBudget = Math.max(
+    0,
+    maxLength - OUTPUT_TRUNCATION_SEPARATOR.length - OUTPUT_TRUNCATION_SUFFIX.length,
+  );
+  const limit = Math.max(0, Math.min(contentBudget, text.length));
+  const contentEnd = findSafeOutputBoundary(text, limit);
+  const content = contentEnd > 0 ? text.slice(0, contentEnd).trimEnd() : '';
+  return content
+    ? `${content}${OUTPUT_TRUNCATION_SEPARATOR}${OUTPUT_TRUNCATION_SUFFIX}`
+    : OUTPUT_TRUNCATION_SUFFIX;
+}
+
 /**
  * Patterns that might indicate prompt injection attempts
  */
@@ -148,11 +383,15 @@ export function validateOutput(text: string): SanitizationResult {
     }
   }
 
-  // Truncate very long outputs (increased to 10000 to support web search responses)
-  const MAX_OUTPUT_LENGTH = 10000;
+  // Truncate very long outputs at a sentence boundary. This validator is used
+  // by Slack, web chat, email, and handler surfaces, so the cap stays uniform.
   let sanitized = text;
   if (text.length > MAX_OUTPUT_LENGTH) {
-    sanitized = text.substring(0, MAX_OUTPUT_LENGTH) + '\n\n_[Response truncated]_';
+    sanitized = formatTruncatedOutput(text);
+    logger.error(
+      { originalLength: text.length, deliveredLength: sanitized.length, maxLength: MAX_OUTPUT_LENGTH },
+      'Addie: Output truncated at sentence boundary',
+    );
     if (!flagged) {
       flagged = true;
       reason = 'Output truncated due to length';

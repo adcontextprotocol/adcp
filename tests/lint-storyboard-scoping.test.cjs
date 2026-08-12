@@ -15,7 +15,11 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 
-const { TENANT_SCOPED_TASKS, EXEMPT_FROM_LINT } = require('../scripts/lint-storyboard-scoping.cjs');
+const {
+  TENANT_SCOPED_TASKS,
+  EXEMPT_FROM_LINT,
+  NON_TASK_HANDLER_ALLOWLIST,
+} = require('../scripts/lint-storyboard-scoping.cjs');
 
 const TASK_HANDLERS = path.resolve(
   __dirname,
@@ -68,7 +72,8 @@ test('every HANDLER_MAP task is classified in exactly one set', () => {
   for (const task of tasks) {
     const inScoped = TENANT_SCOPED_TASKS.has(task);
     const inExempt = EXEMPT_FROM_LINT.has(task);
-    if (!inScoped && !inExempt) unclassified.push(task);
+    const isNonTask = NON_TASK_HANDLER_ALLOWLIST.has(task);
+    if (!inScoped && !inExempt && !isNonTask) unclassified.push(task);
   }
 
   assert.deepEqual(
@@ -90,6 +95,9 @@ test('no stale entries — every classified task is actually registered', () => 
   }
   for (const task of EXEMPT_FROM_LINT) {
     if (!registered.has(task)) stale.push(`EXEMPT_FROM_LINT: ${task}`);
+  }
+  for (const task of NON_TASK_HANDLER_ALLOWLIST) {
+    if (!registered.has(task)) stale.push(`NON_TASK_HANDLER_ALLOWLIST: ${task}`);
   }
 
   assert.deepEqual(

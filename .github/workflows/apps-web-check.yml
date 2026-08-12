@@ -2,15 +2,12 @@ name: apps/web check
 
 on:
   pull_request:
-    branches: [main, develop, "3.0.x", "2.6.x"]
-    paths:
-      - "apps/web/**"
-      - ".github/workflows/apps-web-check.yml"
+    branches: [main, develop, "3.1.x", "3.0.x"]
   push:
-    branches: [main, develop, "3.0.x", "2.6.x"]
-    paths:
-      - "apps/web/**"
-      - ".github/workflows/apps-web-check.yml"
+    branches: [main, develop, "3.1.x", "3.0.x"]
+
+permissions:
+  contents: read
 
 concurrency:
   group: apps-web-check-${{ github.ref }}
@@ -18,6 +15,8 @@ concurrency:
 
 jobs:
   check:
+    # This job always reports its stable context, even when web files did not
+    # change. That makes it safe to configure as a required ruleset check.
     name: Typecheck + Lint + Test + Build
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -25,29 +24,67 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Detect web changes
+        id: changes
+        working-directory: ${{ github.workspace }}
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF_NAME: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            compare_ref="origin/${BASE_REF_NAME}"
+          elif [ -n "${BEFORE_SHA}" ] && [ "${BEFORE_SHA}" != "0000000000000000000000000000000000000000" ]; then
+            compare_ref="${BEFORE_SHA}"
+          else
+            echo "web=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if git diff --quiet "${compare_ref}" HEAD -- apps/web .github/workflows/apps-web-check.yml; then
+            echo "web=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "web=true" >> "${GITHUB_OUTPUT}"
+          fi
 
       - name: Setup Node.js
+        if: steps.changes.outputs.web == 'true'
         uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "npm"
           cache-dependency-path: apps/web/package-lock.json
 
       - name: Install
+        if: steps.changes.outputs.web == 'true'
         run: npm ci
 
       - name: Generate route tree
+        if: steps.changes.outputs.web == 'true'
         run: npm run router:generate
 
       - name: Typecheck
+        if: steps.changes.outputs.web == 'true'
         run: npm run typecheck
 
       - name: Lint
+        if: steps.changes.outputs.web == 'true'
         run: npm run lint
 
       - name: Test
+        if: steps.changes.outputs.web == 'true'
         run: npm run test
 
       - name: Build
+        if: steps.changes.outputs.web == 'true'
         run: npm run build
+
+      - name: No web changes
+        if: steps.changes.outputs.web != 'true'
+        working-directory: ${{ github.workspace }}
+        run: echo "No apps/web changes; web checks are not needed."

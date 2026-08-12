@@ -485,6 +485,12 @@
         });
       }
 
+      function registerTopicsFromElements(selector) {
+        document.querySelectorAll(selector).forEach(function(element) {
+          registerTopics(element.getAttribute('data-topics'));
+        });
+      }
+
       function matchesTopic(topicStr, topic) {
         if (topic === 'all') return true;
         if (!topicStr) return false;
@@ -492,9 +498,7 @@
       }
 
       // Register topics from static story cards and build pills immediately
-      document.querySelectorAll('#stories-grid .card').forEach(function(card) {
-        registerTopics(card.getAttribute('data-topics'));
-      });
+      registerTopicsFromElements('#stories-grid .card');
       buildPills();
       buildOriginFilter();
 
@@ -730,6 +734,14 @@
 
       // Load perspectives and split into official (research) and member sections
       (async function() {
+        var researchGrid = document.getElementById('research-grid');
+        var perspectivesGrid = document.getElementById('perspectives-grid');
+        if (researchGrid.hasChildNodes() || perspectivesGrid.hasChildNodes()) {
+          registerTopicsFromElements('#research-grid .card, #perspectives-grid .card');
+          buildPills();
+          applyFilter(activeTopic, activeOrigin);
+          return;
+        }
         try {
           var res = await fetch('/api/perspectives?authored=true');
           if (!res.ok) return;
@@ -740,7 +752,6 @@
           var member = items.filter(function(i) { return i.content_origin !== 'official'; });
 
           // Render official content in research grid
-          var researchGrid = document.getElementById('research-grid');
           if (official.length > 0) {
             official.forEach(function(item) {
               researchGrid.appendChild(buildPerspectiveCard(item, 'card'));
@@ -750,7 +761,6 @@
           }
 
           // Render member content in perspectives grid
-          var perspectivesGrid = document.getElementById('perspectives-grid');
           if (member.length > 0) {
             member.forEach(function(item) {
               perspectivesGrid.appendChild(buildPerspectiveCard(item, 'card'));
@@ -769,6 +779,13 @@
 
       // Load industry news
       (async function() {
+        var list = document.getElementById('news-list');
+        if (list.hasChildNodes()) {
+          registerTopicsFromElements('#news-list .news-item');
+          buildPills();
+          applyFilter(activeTopic, activeOrigin);
+          return;
+        }
         try {
           var res = await fetch('/api/latest/featured');
           if (!res.ok) return;
@@ -778,8 +795,6 @@
             document.getElementById('news-section').hidden = true;
             return;
           }
-
-          var list = document.getElementById('news-list');
 
           // Map relevance_tags from RSS feeds to our topic taxonomy
           var NEWS_TAG_MAP = {

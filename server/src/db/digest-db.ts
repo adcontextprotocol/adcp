@@ -467,6 +467,7 @@ export async function getRecentMemberPerspectivesForDigest(
      FROM perspectives p
      LEFT JOIN working_groups wg ON wg.id = p.working_group_id
      WHERE p.status = 'published'
+       AND p.is_members_only = false
        AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
        AND (p.content_origin IS NULL OR p.content_origin != 'official')
        AND p.published_at IS NOT NULL
@@ -506,6 +507,7 @@ export async function getRecentOfficialPerspectives(
         p.body
      FROM perspectives p
      WHERE p.status = 'published'
+       AND p.is_members_only = false
        AND p.content_origin = 'official'
        AND p.published_at IS NOT NULL
        AND p.published_at > NOW() - make_interval(days => $1)

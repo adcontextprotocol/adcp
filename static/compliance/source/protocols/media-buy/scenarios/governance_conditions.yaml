@@ -15,6 +15,7 @@ required_tools:
   - check_governance
   - create_media_buy
   - get_media_buys
+  - get_plan_audit_logs
   - report_plan_outcome
 
 requires_capability:
@@ -36,8 +37,9 @@ narrative: |
   planned delivery to the registered governance agent. Execution checks are
   binary: only `approved` permits commit; `denied` blocks commit, and a
   `conditions` response is invalid at execution time. The scenario proves the
-  commit through `get_media_buys` and closes the buyer-side accountability loop
-  with `report_plan_outcome`; it does not require the seller to echo governance
+  commit through `get_media_buys`, observes the seller's execution check in the
+  governance audit log, and closes the buyer-side accountability loop with
+  `report_plan_outcome`; it does not require the seller to echo governance
   conditions or authorization context in its response.
 
 context:
@@ -461,6 +463,41 @@ phases:
             path: "media_buys[0].currency"
             value: "USD"
             description: "Readback preserves the authorized commitment currency"
+
+      - id: get_plan_audit_logs_execution
+        title: "Observe the seller's execution approval"
+        agent: governance
+        task: get_plan_audit_logs
+        schema_ref: "governance/get-plan-audit-logs-request.json"
+        response_schema_ref: "governance/get-plan-audit-logs-response.json"
+        doc_ref: "/governance/campaign/tasks/get_plan_audit_logs"
+        stateful: false
+        expected: |
+          The audit trail records the conditions counterproposal, the adjusted
+          intent approval, and the seller's approved execution check.
+        sample_request:
+          plan_ids:
+            - "$context.plan_id"
+          include_entries: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-plan-audit-logs-response.json schema"
+          - check: field_value
+            path: "plans[0].entries[2].type"
+            value: "check"
+            description: "The seller interaction is recorded as a governance check"
+          - check: field_value
+            path: "plans[0].entries[2].tool"
+            value: "create_media_buy"
+            description: "The observed execution check governs create_media_buy"
+          - check: field_value
+            path: "plans[0].entries[2].check_type"
+            value: "execution"
+            description: "The seller performed a binary execution check"
+          - check: field_value
+            path: "plans[0].entries[2].verdict"
+            value: "approved"
+            description: "Only an approved execution verdict preceded commit"
 
       - id: report_plan_outcome
         title: "Report the completed governed action"

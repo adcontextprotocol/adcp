@@ -2140,6 +2140,7 @@ async function runTests() {
           webhook_activity: [
             {
               idempotency_key: 'whk_01K18GM0Z7J3Q6WBH7DYK2R4VM',
+              notification_id: 'acctchg_acc_glow_20260719T100712Z',
               subscriber_id: 'account-lifecycle',
               fired_at: '2026-07-19T10:07:15Z',
               completed_at: '2026-07-19T10:07:15Z',
@@ -2158,6 +2159,95 @@ async function runTests() {
     },
     'list_accounts response accepts account-scoped webhook_activity for account.status_changed'
   );
+
+  await testSchemaValidation(
+    '/schemas/core/webhook-activity-record.json',
+    {
+      idempotency_key: 'whk_01K18GM0Z7J3Q6WBH7DYK2R4VM',
+      fired_at: '2026-07-19T10:07:15Z',
+      notification_type: 'account.status_changed',
+      attempt: 1,
+      status: 'success',
+      url: 'https://buyer.example/webhooks/adcp/accounts'
+    },
+    'retained pre-3.2 state activity remains valid without notification_id'
+  );
+
+  await testSchemaValidation(
+    '/schemas/core/webhook-activity-record.json',
+    {
+      idempotency_key: 'whk_01K18GM0Z7J3Q6WBH7DYK2R4VN',
+      fired_at: '2026-07-19T11:00:00Z',
+      notification_type: 'window_update',
+      sequence_number: 42,
+      attempt: 1,
+      status: 'success',
+      url: 'https://buyer.example/webhooks/adcp/delivery'
+    },
+    'window_update delivery activity is represented without notification_id'
+  );
+
+  totalTests++;
+  try {
+    const notificationTypeSchema = JSON.parse(
+      fs.readFileSync(path.join(SCHEMA_BASE_DIR, 'enums/notification-type.json'), 'utf8')
+    );
+    const values = [...notificationTypeSchema.enum].sort();
+    const describedValues = Object.keys(notificationTypeSchema.enumDescriptions || {}).sort();
+    const complete =
+      JSON.stringify(values) === JSON.stringify(describedValues) &&
+      values.includes('window_update');
+    if (complete) {
+      log('  ✓ Every notification type has exactly one registry description, including window_update', 'success');
+      passedTests++;
+    } else {
+      log(`  ✗ Notification registry drift: enum=${JSON.stringify(values)} descriptions=${JSON.stringify(describedValues)}`, 'error');
+      failedTests++;
+    }
+  } catch (error) {
+    log(`  ✗ Notification registry exhaustiveness check failed: ${error.message}`, 'error');
+    failedTests++;
+  }
+
+  totalTests++;
+  try {
+    const listSchema = JSON.parse(
+      fs.readFileSync(path.join(SCHEMA_BASE_DIR, 'creative/list-creatives-response.json'), 'utf8')
+    );
+    const listExample = listSchema.examples.find((example) =>
+      example.description.includes('webhook_activity')
+    ).data;
+    const activitiesByType = new Map(
+      listExample.creatives.flatMap((creative) => creative.webhook_activity || [])
+        .map((activity) => [activity.notification_type, activity])
+    );
+    const webhookSchemas = [
+      'creative/creative-status-changed-webhook.json',
+      'creative/creative-purged-webhook.json'
+    ];
+    const mismatches = webhookSchemas.flatMap((relativePath) => {
+      const webhookSchema = JSON.parse(
+        fs.readFileSync(path.join(SCHEMA_BASE_DIR, relativePath), 'utf8')
+      );
+      const payload = webhookSchema.examples[0].data;
+      const activity = activitiesByType.get(payload.notification_type);
+      return activity &&
+        activity.idempotency_key === payload.idempotency_key &&
+        activity.notification_id === payload.notification_id
+        ? []
+        : [payload.notification_type];
+    });
+    if (mismatches.length === 0) {
+      log('  ✓ Creative webhook and activity examples reuse idempotency_key and notification_id', 'success');
+      passedTests++;
+    } else {
+      log(`  ✗ Activity identity differs from webhook examples for: ${mismatches.join(', ')}`, 'error');
+      failedTests++;
+    }
+  } catch (error) {
+    log(`  ✗ Webhook/activity identity correlation check failed: ${error.message}`, 'error');
+    failedTests++;
+  }
 
   log('');
 

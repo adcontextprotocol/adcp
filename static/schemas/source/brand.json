@@ -101,6 +101,51 @@
         "minLength": 1
       }
     },
+    "localized_scalar": {
+      "description": "A legacy plain string or an ordered set of one-locale string maps. Producers MUST NOT repeat a locale after replacing '_' with '-' and applying the AdCP locale-tag canonicalization profile. Readers resolve the requested locale using the document default_language fallback contract and MUST NOT choose an arbitrary available translation.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": { "$ref": "#/definitions/localized_name" },
+          "minItems": 1
+        }
+      ]
+    },
+    "localized_string_list_entry": {
+      "type": "object",
+      "description": "One locale mapped to a complete ordered string list. The list is selected as a unit so readers never assemble mixed-language output from independently localized elements.",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string" },
+        "minItems": 1
+      }
+    },
+    "localized_string_list": {
+      "description": "A legacy plain string list or an ordered set of one-locale maps whose values are complete string lists. Producers MUST NOT repeat a locale after replacing '_' with '-' and applying the AdCP locale-tag canonicalization profile.",
+      "oneOf": [
+        {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        {
+          "type": "array",
+          "items": { "$ref": "#/definitions/localized_string_list_entry" },
+          "minItems": 1
+        }
+      ]
+    },
+    "default_language": {
+      "allOf": [
+        { "$ref": "/schemas/core/locale-tag.json" }
+      ],
+      "default": "en",
+      "description": "BCP 47 language tag for legacy plain-string and plain-array content in this document. Readers assume en when omitted."
+    },
     "keller_type": {
       "type": "string",
       "enum": ["master", "sub_brand", "endorsed", "independent"],
@@ -309,8 +354,14 @@
           "items": { "type": "string" },
           "description": "Tags for discovery (e.g., 'hero', 'lifestyle', 'product', 'holiday')"
         },
-        "name": { "type": "string", "description": "Human-readable name" },
-        "description": { "type": "string", "description": "Asset description or usage notes" },
+        "name": {
+          "$ref": "#/definitions/localized_scalar",
+          "description": "Human-readable name, either a legacy plain string or localized values."
+        },
+        "description": {
+          "$ref": "#/definitions/localized_scalar",
+          "description": "Asset description or usage notes, either a legacy plain string or localized values."
+        },
         "width": { "type": "integer", "description": "Image/video width in pixels" },
         "height": { "type": "integer", "description": "Image/video height in pixels" },
         "duration_seconds": { "type": "number", "description": "Video/audio duration in seconds" },
@@ -330,8 +381,7 @@
       "description": "A digital property associated with a brand. Defaults to owned; use 'relationship' to declare direct, delegated, or ad_network properties. For delegated and network paths, these values match the delegation_type field in adagents.json, creating a bilateral verification chain: the operator declares the relationship here, the publisher confirms by setting the same delegation_type on the agent's authorization in their adagents.json. 'owned' is an inline ownership declaration with no adagents.json counterpart.",
       "properties": {
         "type": {
-          "type": "string",
-          "enum": ["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "streaming_audio"],
+          "$ref": "/schemas/enums/property-type.json",
           "description": "Property type"
         },
         "identifier": {
@@ -496,21 +546,21 @@
               "type": "object",
               "description": "Structured brand voice guidelines",
               "properties": {
-                "voice": { "type": "string", "description": "High-level voice descriptor (e.g., 'warm and inviting', 'professional and trustworthy')" },
+                "voice": {
+                  "$ref": "#/definitions/localized_scalar",
+                  "description": "High-level voice descriptor, either a legacy plain string or localized values."
+                },
                 "attributes": {
-                  "type": "array",
-                  "description": "Personality traits that characterize the brand voice",
-                  "items": { "type": "string" }
+                  "$ref": "#/definitions/localized_string_list",
+                  "description": "Personality traits that characterize the brand voice. Localized lists are selected as a whole."
                 },
                 "dos": {
-                  "type": "array",
-                  "description": "Guidance for copy generation - what TO do",
-                  "items": { "type": "string" }
+                  "$ref": "#/definitions/localized_string_list",
+                  "description": "Guidance for copy generation - what TO do. Localized lists are selected as a whole."
                 },
                 "donts": {
-                  "type": "array",
-                  "description": "Guardrails to avoid brand violations - what NOT to do",
-                  "items": { "type": "string" }
+                  "$ref": "#/definitions/localized_string_list",
+                  "description": "Guardrails to avoid brand violations - what NOT to do. Localized lists are selected as a whole."
                 }
               }
             }
@@ -1777,6 +1827,7 @@
       "properties": {
         "$schema": { "type": "string" },
         "version": { "type": "string" },
+        "default_language": { "$ref": "#/definitions/default_language" },
         "house": { "$ref": "#/definitions/house" },
         "brands": {
           "type": "array",
@@ -1820,6 +1871,7 @@
           "properties": {
             "$schema": { "type": "string" },
             "version": { "type": "string" },
+            "default_language": { "$ref": "#/definitions/default_language" },
             "house_domain": {
               "$ref": "#/definitions/domain",
               "description": "Optional pointer to the corporate house this brand belongs to. The named house's brand_refs[] MUST reciprocate for mutual-assertion trust. Single-hop only — a brand cannot itself declare brand_refs[]. Omit for standalone brands (no house)."

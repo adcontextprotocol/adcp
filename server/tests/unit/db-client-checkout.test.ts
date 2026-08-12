@@ -109,4 +109,101 @@ describe('db client checkout and health checks', () => {
     expect(pg.clientEnd).toHaveBeenCalledTimes(1);
     await db.closeDatabase();
   });
+
+  it('applies transaction-local deadlines and releases the client', async () => {
+    const pg = mockPg();
+    const release = vi.fn();
+    const query = vi.fn().mockResolvedValue({ rows: [{ value: 1 }] });
+    pg.poolConnect.mockResolvedValue({ query, release });
+
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    await expect(db.queryWithTimeout('SELECT $1 AS value', [1], 5_000))
+      .resolves.toEqual({ rows: [{ value: 1 }] });
+    expect(query.mock.calls[0]).toEqual(['BEGIN READ ONLY']);
+    const statementTimeout = Number.parseInt(query.mock.calls[1][1][0], 10);
+    expect(statementTimeout).toBeGreaterThan(0);
+    expect(statementTimeout).toBeLessThanOrEqual(5_000);
+    expect(query.mock.calls[2]).toEqual([
+      "SELECT set_config('lock_timeout', $1, true)",
+      ['2000ms'],
+    ]);
+    expect(query.mock.calls[3]).toEqual(['SELECT $1 AS value', [1]]);
+    expect(query.mock.calls[4]).toEqual(['COMMIT']);
+    expect(release).toHaveBeenCalledTimes(1);
+
+    await db.closeDatabase();
+  });
+
+  it('rolls back and releases the client after a timed query fails', async () => {
+    const pg = mockPg();
+    const release = vi.fn();
+    const timeoutError = Object.assign(new Error('statement timeout'), { code: '57014' });
+    const query = vi.fn().mockImplementation(async (text: string) => {
+      if (text === 'SELECT pg_sleep(10)') throw timeoutError;
+      return { rows: [] };
+    });
+    pg.poolConnect.mockResolvedValue({ query, release });
+
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    await expect(db.queryWithTimeout('SELECT pg_sleep(10)', undefined, 5_000))
+      .rejects.toBe(timeoutError);
+    expect(query).toHaveBeenLastCalledWith('ROLLBACK');
+    expect(query).not.toHaveBeenCalledWith('COMMIT');
+    expect(release).toHaveBeenCalledTimes(1);
+
+    await db.closeDatabase();
+  });
+
+  it('propagates a request deadline into ordinary query calls', async () => {
+    const pg = mockPg();
+    const release = vi.fn();
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    pg.poolConnect.mockResolvedValue({ query, release });
+
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    await db.withDatabaseDeadline(Date.now() + 1_000, () => db.query('SELECT 1'));
+
+    expect(pg.poolQuery).not.toHaveBeenCalled();
+    const statementTimeout = query.mock.calls.find(
+      ([text]) => text === "SELECT set_config('statement_timeout', $1, true)",
+    )?.[1]?.[0];
+    expect(Number.parseInt(statementTimeout, 10)).toBeGreaterThan(0);
+    expect(Number.parseInt(statementTimeout, 10)).toBeLessThanOrEqual(1_000);
+    expect(query).toHaveBeenCalledWith('SELECT 1', undefined);
+    expect(release).toHaveBeenCalledTimes(1);
+
+    await db.closeDatabase();
+  });
+
+  it('uses a writable transaction for deadline-bounded worker writes', async () => {
+    const pg = mockPg();
+    const release = vi.fn();
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    pg.poolConnect.mockResolvedValue({ query, release });
+
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    await db.withDatabaseDeadline(
+      Date.now() + 1_000,
+      () => db.query('UPDATE jobs SET status = $1', ['complete']),
+      { readOnly: false },
+    );
+
+    expect(query.mock.calls[0]).toEqual(['BEGIN']);
+    expect(query).toHaveBeenCalledWith(
+      'UPDATE jobs SET status = $1',
+      ['complete'],
+    );
+    expect(query).toHaveBeenCalledWith('COMMIT');
+    expect(release).toHaveBeenCalledTimes(1);
+
+    await db.closeDatabase();
+  });
 });

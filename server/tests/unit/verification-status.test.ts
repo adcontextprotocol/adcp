@@ -50,6 +50,23 @@ describe('deriveVerificationStatus', () => {
     expect(result.roles[0].failing).toEqual(['sales-non-guaranteed']);
   });
 
+  it('keeps a legacy zero-step row untested while denying badge eligibility', () => {
+    const declared = ['sales-non-guaranteed'];
+    const statuses: StoryboardStatusEntry[] = [{
+      storyboard_id: 'sales_non_guaranteed',
+      status: 'failing',
+      steps_passed: 0,
+      steps_total: 0,
+    }];
+    const result = deriveVerificationStatus(declared, statuses);
+
+    expect(result.verified).toBe(false);
+    expect(result.roles[0].verified).toBe(false);
+    expect(result.roles[0].passing).toEqual([]);
+    expect(result.roles[0].failing).toEqual([]);
+    expect(result.roles[0].untested).toEqual(['sales-non-guaranteed']);
+  });
+
   it('handles multiple protocols when specialisms from different protocols all pass', () => {
     const declared = ['sales-non-guaranteed', 'creative-template'];
     const statuses = [

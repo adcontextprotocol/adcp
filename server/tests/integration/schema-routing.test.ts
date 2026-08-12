@@ -145,6 +145,12 @@ describe("/schemas HTTP routing", () => {
       if (!latestStableMajor2) return;
       const res = await request(app).get("/schemas/v2.5/adagents.json");
       expect(res.status).toBe(200);
+
+      const discovery = await request(app).get("/schemas/");
+      expect(discovery.body.versions).toContainEqual(expect.objectContaining({
+        version: latestStableMajor2,
+        deprecated: true,
+      }));
     });
 
     it("serves /schemas/v3/adagents.json via alias rewrite", async () => {

@@ -53,49 +53,17 @@ describe('specialist certification catalog', () => {
     mocks.hasEffectiveMembershipForUser.mockResolvedValue(true);
   });
 
-  it('advertises S6 as a specialist module and labels S5 unavailable', () => {
+  it('advertises all specialist modules including S5 (Sponsored Intelligence) and S6 (Security)', () => {
     const tool = CERTIFICATION_TOOLS.find(candidate => candidate.name === 'start_certification_exam');
     const moduleSchema = tool?.input_schema.properties?.module_id as {
       enum?: string[];
       description?: string;
     } | undefined;
 
+    expect(moduleSchema?.enum).toContain('S5');
     expect(moduleSchema?.enum).toContain('S6');
-    expect(moduleSchema?.description).toContain('S5 (Sponsored Intelligence — currently unavailable)');
+    expect(moduleSchema?.description).toContain('S5 (Sponsored Intelligence)');
     expect(moduleSchema?.description).toContain('S6 (Security)');
-  });
-
-  it('blocks S5 starts before changing progress or attempts', async () => {
-    const handlers = createCertificationToolHandlers(memberContext());
-
-    await expect(handlers.get('start_certification_module')?.({ module_id: 'S5' }))
-      .resolves.toContain('not currently available for assessment');
-    await expect(handlers.get('start_certification_exam')?.({ module_id: 'S5' }))
-      .resolves.toContain('not currently available for assessment');
-
-    expect(mocks.startModule).not.toHaveBeenCalled();
-    expect(mocks.createAttempt).not.toHaveBeenCalled();
-  });
-
-  it('blocks completion of an existing S5 attempt', async () => {
-    mocks.getAttemptForUser.mockResolvedValue({
-      id: ATTEMPT_ID,
-      workos_user_id: USER_ID,
-      track_id: 'S',
-      module_id: 'S5',
-      status: 'in_progress',
-      started_at: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
-    });
-    mocks.getModule.mockResolvedValue({ id: 'S5', track_id: 'S', format: 'capstone' });
-
-    const result = await createCertificationToolHandlers(memberContext())
-      .get('complete_certification_exam')?.({
-        attempt_id: ATTEMPT_ID,
-        scores: { protocol_mastery: 90 },
-      });
-
-    expect(result).toContain('NOT COMPLETED — module S5 is not recorded as complete.');
-    expect(result).toContain('not currently available for assessment');
   });
 
   it('starts S6 with the security credential and updates sandbox module context', async () => {

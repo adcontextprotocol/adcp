@@ -130,7 +130,7 @@ asyncio.run(main())
 
 ## Read-after-write visibility
 
-Creatives accepted via a synchronous `sync_creatives` success response MUST be committed to the creative library before the response is returned. They MUST be immediately visible to subsequent `list_creatives` calls from the same account and authorized caller, including creatives whose review lifecycle status is `processing` or `pending_review`.
+Creatives accepted via a synchronous `sync_creatives` success response MUST be committed to the creative library before the response is returned. They MUST be immediately visible to subsequent [`list_creatives`](/docs/creative/task-reference/list_creatives) calls from the same account and authorized caller, including creatives whose review lifecycle status is `processing` or `pending_review`.
 
 Implementations that acknowledge a creative on the synchronous success branch but buffer the library write until a later background commit are not conformant. If the whole sync operation cannot commit before returning, use the submitted task envelope instead; the visibility requirement then applies when the task completes with accepted creatives.
 
@@ -143,7 +143,7 @@ Implementations that acknowledge a creative on the synchronous success branch bu
 | `creatives`       | Creative[] | Yes      | Creative assets to upload/update (max 100)                                                                                                                               |
 | `creative_ids`    | string[]   | No       | Optional filter to limit sync scope to specific creative IDs. Only these creatives are affected, others remain untouched. Useful for partial updates and error recovery. |
 | `assignments`     | array      | No       | Array of `{creative_id, package_id}` objects for bulk assignment. Optional `weight` and `placement_ids` per assignment.                                                  |
-| `dry_run`         | boolean    | No       | When true, rehearse this exact sync operation without applying it (default: false). Use this for seller trafficking acceptance checks; use `validate_input` for manifest-only preflight against canonical/product format targets. |
+| `dry_run`         | boolean    | No       | When true, rehearse this exact sync operation without applying it (default: false). Use this for seller trafficking acceptance checks; use [`validate_input`](https://adcontextprotocol.org/schemas/v3/creative/validate-input-request.json) for manifest-only preflight against canonical/product format targets. |
 | `validation_mode` | string     | No       | Validation strictness: `"strict"` (default) or `"lenient"`                                                                                                               |
 | `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false). Cannot be combined with `creative_ids`. Cannot delete creatives assigned to active, non-paused packages. |
 
@@ -177,7 +177,7 @@ compares whole objects and is not sufficient for those property-level rules;
 conformance verifiers consume the schema's `x-adcp-validation` constraints.
 
 This is the only localization mutation surface. Inline package creatives in
-`create_media_buy` and `update_media_buy` reject `localization`; sync the
+[`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) and [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) reject `localization`; sync the
 localized library creative here, then assign it by `creative_id`.
 
 ```json
@@ -249,7 +249,7 @@ source-only creative, such as a single `fr-CA` creative for French-only Québec
 inventory. Do not invent a second locale variant merely to declare source
 language.
 `default_locale_variant_id` may select source or target. This task never asks
-the seller to translate: use buyer tooling, `build_creative`, or a separate
+the seller to translate: use buyer tooling, [`build_creative`](/docs/creative/task-reference/build_creative), or a separate
 translation/transformation agent first, then sync the resulting assets.
 
 At delivery, the seller applies RFC 4647 Lookup to ordered locale preferences.
@@ -271,7 +271,7 @@ format option has `locale_policy`, the
 seller uses RFC 4647 Basic Filtering to derive the eligible source/target
 variant set before running the buyer algorithm above. For example, seller range
 `fr` accepts `fr-CA` and `fr-FR`. The assignment fails with
-`CREATIVE_LOCALE_NOT_ACCEPTED` if no materialized variant matches. If
+[`CREATIVE_LOCALE_NOT_ACCEPTED`](/docs/building/verification/compliance-catalog#error-code-creative-locale-not-accepted) if no materialized variant matches. If
 `unmatched_locale_action` is `serve_default`, the default variant must also be
 seller-eligible. Buyer fallback and default rules never override the product or
 placement constraint; nonmatching variants remain stored for other products.
@@ -291,7 +291,7 @@ than silently falling back to the source language.
 Every accepted localized result (`created`, `updated`, or `unchanged`) MUST
 carry top-level aggregate `status` and complete `localization`; `failed` and
 `deleted` results MUST omit localization. A later
-`list_creatives` read preserves the exact source/target identities.
+[`list_creatives`](/docs/creative/task-reference/list_creatives) read preserves the exact source/target identities.
 
 `delete_missing` remains creative-scoped. If it archives a creative, every
 locale variant follows the whole creative lifecycle, and omitted target locales
@@ -357,7 +357,7 @@ Assets are keyed by role name. Each role contains the asset details:
 }
 ```
 
-For published-post reference products, the asset role is usually `published_post` and the payload contains a post URL or platform post ID instead of uploaded media bytes. Buyers can submit these assets through the canonical creative path, for example `format_kind: "video_hosted"` plus the product's `format_option_ref`, instead of creating a platform-specific `format_id`. If the seller can resolve the post but lacks a required downstream platform connection, such as the publisher identity that owns the post, the correctable error is `AUTHORIZATION_REQUIRED`. New implementations should include `error.details.missing_connections[]` so the caller can send a human through the correct connections flow and retry after authorization is restored.
+For published-post reference products, the asset role is usually `published_post` and the payload contains a post URL or platform post ID instead of uploaded media bytes. Buyers can submit these assets through the canonical creative path, for example `format_kind: "video_hosted"` plus the product's `format_option_ref`, instead of creating a platform-specific `format_id`. If the seller can resolve the post but lacks a required downstream platform connection, such as the publisher identity that owns the post, the correctable error is [`AUTHORIZATION_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-authorization-required). New implementations should include `error.details.missing_connections[]` so the caller can send a human through the correct connections flow and retry after authorization is restored.
 
 ### Assignments structure
 
@@ -401,7 +401,7 @@ The final per-creative `creatives` array lands on the task completion artifact, 
 - All request fields
 - `platform_id` - Platform's internal ID (when `action` is not `failed`)
 - `action` - Lifecycle operation performed by this sync: `created`, `updated`, `unchanged`, `failed`, `deleted`
-- `status` - **Advisory** review-lifecycle state ([`CreativeStatus`](https://adcontextprotocol.org/schemas/v3/enums/creative-status.json)): `processing`, `pending_review`, `approved`, `suspended`, `rejected`, `archived`. A UI hint and polling-scheduling signal — **not** a spend-authorization gate. Orthogonal to `action` — `action` describes what the sync did, `status` describes where the creative is in the review lifecycle. Values come from `CreativeStatus` only, never from `CreativeAction` (never put `created`/`updated`/`failed` in `status`). Sellers with async review return `processing` or `pending_review`; sellers with synchronous review MAY return a terminal value (`approved`/`rejected`) or `suspended` when a recoverable dependency/authorization gate prevents serving. **Buyers MUST NOT gate downstream spend or package activation on `status: approved` from this response** — reconcile via `list_creatives` or a signed review webhook before committing spend. Authoritative state is always via `list_creatives`. **MUST be omitted** when `action` is `failed` or `deleted` — failed items have no meaningful review state (see `errors`); deleted items are gone from the library. The schema enforces the omission rule via a conditional constraint.
+- `status` - **Advisory** review-lifecycle state ([`CreativeStatus`](https://adcontextprotocol.org/schemas/v3/enums/creative-status.json)): `processing`, `pending_review`, `approved`, `suspended`, `rejected`, `archived`. A UI hint and polling-scheduling signal — **not** a spend-authorization gate. Orthogonal to `action` — `action` describes what the sync did, `status` describes where the creative is in the review lifecycle. Values come from `CreativeStatus` only, never from `CreativeAction` (never put `created`/`updated`/`failed` in `status`). Sellers with async review return `processing` or `pending_review`; sellers with synchronous review MAY return a terminal value (`approved`/`rejected`) or `suspended` when a recoverable dependency/authorization gate prevents serving. **Buyers MUST NOT gate downstream spend or package activation on `status: approved` from this response** — reconcile via [`list_creatives`](/docs/creative/task-reference/list_creatives) or a signed review webhook before committing spend. Authoritative state is always via `list_creatives`. **MUST be omitted** when `action` is `failed` or `deleted` — failed items have no meaningful review state (see `errors`); deleted items are gone from the library. The schema enforces the omission rule via a conditional constraint.
 - `localization` - Exact materialized source/target locale state. Required with top-level `status` on every accepted localized item, omitted on failed/deleted/unlocalized items. The top-level status is the single creative-wide review state.
 - `errors` - Array of error messages (only when `action: "failed"`)
 - `warnings` - Array of non-fatal warnings (optional)
@@ -887,7 +887,7 @@ asyncio.run(main())
 
 Two distinct async patterns — match the right one to the agent's behavior:
 
-**Per-creative async review** (common): the sync operation itself resolves synchronously, but one or more creatives require downstream review (brand safety, policy compliance). Items in review come back on the synchronous success response with `status: "pending_review"` (or `processing` during ingestion). The buyer reconciles terminal state via `list_creatives` or a webhook.
+**Per-creative async review** (common): the sync operation itself resolves synchronously, but one or more creatives require downstream review (brand safety, policy compliance). Items in review come back on the synchronous success response with `status: "pending_review"` (or `processing` during ingestion). The buyer reconciles terminal state via [`list_creatives`](/docs/creative/task-reference/list_creatives) or a webhook.
 
 **Operation-level async** (less common): the whole sync is queued — the seller cannot return any per-item results before responding, because ingestion is batched or governance review gates the entire sync. The response is a submitted envelope:
 
@@ -913,24 +913,24 @@ Poll `tasks/get` or wait for the webhook. The completion artifact carries the `c
 - Rehearses the same `sync_creatives` acceptance path without committing library, assignment, review, or serving changes
 - Returns operation-level errors, per-creative failures, assignment errors, and warnings the seller can determine before mutation
 - Does not create or update creatives, package assignments, review state, or serving state
-- Use for seller trafficking acceptance checks; use `validate_input` for manifest-only canonical/product preflight
+- Use for seller trafficking acceptance checks; use [`validate_input`](https://adcontextprotocol.org/schemas/v3/creative/validate-input-request.json) for manifest-only canonical/product preflight
 
 ## Error handling
 
 | Error Code                | Description                                       | Resolution                                                           |
 | ------------------------- | ------------------------------------------------- | -------------------------------------------------------------------- |
-| `UNSUPPORTED_FEATURE`     | Format not supported by this seller or product    | Check the product's canonical `format_options[]`                      |
-| `VALIDATION_ERROR`        | Manifest failed format validation: an asset file is corrupt or invalid, or assets don't match the format's requirements (codec, dimensions, duration). `error.field` identifies the offending asset path | Verify asset types and specifications match the format definition |
-| `PACKAGE_NOT_FOUND`       | Package ID doesn't exist in media buy             | Verify `package_id`; for legacy package correlation use `get_media_buys` + package `context.buyer_ref` |
-| `CREATIVE_REJECTED`       | Creative failed content policy or brand safety review | Review content against the seller's advertising policies         |
-| `CREATIVE_LOCALE_NOT_ACCEPTED` | Assigned creative has no materialized variant accepted by the package's effective format `locale_policy`, lacks locale topology, or uses an ineligible `serve_default` | Supply a matching source/target variant, choose a compatible format option, or change the default policy |
-| `INVALID_STATE`           | Creative is assigned to an active, non-paused package (blocks updates and `delete_missing` deletions) | Pause the package first, or create a new creative version        |
+| [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature)     | Format not supported by this seller or product    | Check the product's canonical `format_options[]`                      |
+| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error)        | Manifest failed format validation: an asset file is corrupt or invalid, or assets don't match the format's requirements (codec, dimensions, duration). `error.field` identifies the offending asset path | Verify asset types and specifications match the format definition |
+| [`PACKAGE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-package-not-found)       | Package ID doesn't exist in media buy             | Verify `package_id`; for legacy package correlation use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) + package `context.buyer_ref` |
+| [`CREATIVE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-rejected)       | Creative failed content policy or brand safety review | Review content against the seller's advertising policies         |
+| [`CREATIVE_LOCALE_NOT_ACCEPTED`](/docs/building/verification/compliance-catalog#error-code-creative-locale-not-accepted) | Assigned creative has no materialized variant accepted by the package's effective format `locale_policy`, lacks locale topology, or uses an ineligible `serve_default` | Supply a matching source/target variant, choose a compatible format option, or change the default policy |
+| [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state)           | Creative is assigned to an active, non-paused package (blocks updates and `delete_missing` deletions) | Pause the package first, or create a new creative version        |
 
 ## Best practices
 
 1. **Use upsert semantics** - Same `creative_id` updates existing creative rather than creating duplicates. This allows iterative creative development. Note: updates are blocked for creatives in active delivery (see #6).
 
-2. **Rehearse seller acceptance first** - Use `dry_run: true` when you need to catch upload, upsert, assignment, account, policy, or format errors before mutating the seller's creative library. Use `validate_input` earlier in the workflow only for manifest-structure preflight or multi-target product comparison.
+2. **Rehearse seller acceptance first** - Use `dry_run: true` when you need to catch upload, upsert, assignment, account, policy, or format errors before mutating the seller's creative library. Use [`validate_input`](https://adcontextprotocol.org/schemas/v3/creative/validate-input-request.json) earlier in the workflow only for manifest-structure preflight or multi-target product comparison.
 
 3. **Batch assignments** - Include all package assignments in single sync call to avoid race conditions between updates.
 
@@ -938,7 +938,7 @@ Poll `tasks/get` or wait for the webhook. The completion artifact carries the `c
 
 5. **Brand identity** - For generative creatives, validate brand identity schema before syncing to avoid processing failures.
 
-6. **Active delivery protection** - Creatives assigned to active, non-paused packages cannot be updated or deleted via `delete_missing`. Pause the package first, unassign the creative via `update_media_buy`, or create a new creative with a different `creative_id`.
+6. **Active delivery protection** - Creatives assigned to active, non-paused packages cannot be updated or deleted via `delete_missing`. Pause the package first, unassign the creative via [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy), or create a new creative with a different `creative_id`.
 
 ## Related tasks
 

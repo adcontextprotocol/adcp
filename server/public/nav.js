@@ -936,8 +936,9 @@
           </div>
           <div class="aao-footer__bottom">
             <div class="aao-footer__legal">
-              <a href="/api/agreement?type=privacy_policy">Privacy</a>
-              <a href="/api/agreement?type=terms_of_service">Terms</a>
+              <a href="/legal/privacy">Privacy</a>
+              <a href="/legal/terms">Terms</a>
+              <a href="/legal/membership-agreement">Membership agreement</a>
               <a href="/api/agreement?type=bylaws">Bylaws</a>
               <a href="/ai-disclosure">AI Disclosure</a>
             </div>

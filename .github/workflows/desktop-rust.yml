@@ -1,0 +1,54 @@
+name: Desktop Rust
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/desktop/src-tauri/**"
+      - ".github/workflows/desktop-rust.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/desktop/src-tauri/**"
+      - ".github/workflows/desktop-rust.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Format, lint, and test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop/src-tauri
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            libdbus-1-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            wget
+
+      - name: Install Rust lint and format components
+        run: rustup component add clippy rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run tests
+        run: cargo test --locked --lib
+
+      - name: Run Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings

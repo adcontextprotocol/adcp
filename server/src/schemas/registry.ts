@@ -7,7 +7,12 @@
  */
 
 import { z } from "zod";
-import { ADCP_PROTOCOLS, ADCP_SPECIALISMS, VERIFICATION_MODES } from "../services/adcp-taxonomy.js";
+import { ADCP_SPECIALISMS, VERIFICATION_MODES } from "../services/adcp-taxonomy.js";
+import { VALID_BADGE_ROLES } from "../services/badge-svg.js";
+import {
+  PUBLIC_COMPLIANCE_NOTICE_LIMITS,
+  PublicComplianceNoticeSchema,
+} from "./public-compliance-notice.js";
 import {
   extendZodWithOpenApi,
   OpenAPIRegistry,
@@ -22,6 +27,10 @@ export const registry = new OpenAPIRegistry();
 export const ErrorSchema = z
   .object({ error: z.string() })
   .openapi("Error");
+
+export const BadgeRoleSchema = z
+  .enum(VALID_BADGE_ROLES)
+  .openapi("BadgeRole");
 
 export const RateLimitErrorSchema = z
   .object({
@@ -617,8 +626,8 @@ export const ResolvedBrandSchema = z
     }),
     brand_agent_url: z.string().optional(),
     brand_manifest: z.record(z.string(), z.unknown()).optional(),
-    source: z.enum(["hosted", "brand_json", "community", "enriched"]).openapi({
-      description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment.",
+    source: z.enum(["hosted", "brand_json", "community", "enriched", "stub"]).openapi({
+      description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched` > `stub`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment. `stub`: a minimal organization-derived placeholder awaiting stronger evidence.",
     }),
     live_brand_json: LiveBrandJsonValidationSchema.optional().openapi({
       description: "This request's origin-validation diagnostics when `fresh=true` falls back to a stored registry record. Presence means the response is stored evidence, not a successful live-origin read.",
@@ -684,7 +693,7 @@ export const BrandRegistryItemSchema = z
   .object({
     domain: z.string().openapi({ example: "acmecorp.com" }),
     brand_name: z.string().optional().openapi({ example: "Acme Corp" }),
-    source: z.enum(["hosted", "brand_json", "community", "enriched"]),
+    source: z.enum(["hosted", "brand_json", "community", "enriched", "stub"]),
     has_manifest: z.boolean(),
     verified: z.boolean(),
     house_domain: z.string().optional(),
@@ -731,15 +740,17 @@ export const AgentComplianceSchema = z
     monitoring_paused: z.boolean().optional(),
     check_interval_hours: z.number().int().optional(),
     verified: z.boolean().optional(),
-    verified_roles: z.array(z.enum(ADCP_PROTOCOLS as [string, ...string[]])).optional()
-      .openapi({ description: "AdCP protocols the agent is AAO Verified for (e.g. media-buy, creative). Matches enums/adcp-protocol.json." }),
+    verified_roles: z.array(BadgeRoleSchema).optional()
+      .openapi({ description: "Canonical badge roles the agent is AgenticAdvertising.org Verified for (e.g. media-buy, creative)." }),
+    verified_role_versions: z.record(z.string(), z.array(z.string())).optional()
+      .openapi({ description: "Active AgenticAdvertising.org Verified AdCP releases for each verified role, keyed by canonical badge role and sorted newest-first (e.g. { media-buy: ['3.1', '3.0'] }). Use this when choosing a version-pinned badge URL." }),
   })
   .openapi("AgentCompliance");
 
 export const VerificationBadgeSchema = z
   .object({
-    role: z.enum(ADCP_PROTOCOLS as [string, ...string[]])
-      .openapi({ description: "AdCP protocol this badge covers (enums/adcp-protocol.json)." }),
+    role: BadgeRoleSchema
+      .openapi({ description: "Canonical role this verification badge covers." }),
     adcp_version: z.string()
       .openapi({ description: "AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.0', '3.1'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK." }),
     verified_at: z.string(),
@@ -797,10 +808,11 @@ export const AgentComplianceDetailSchema = z
       first_failed_step_title: z.string().nullable(),
       first_failed_step_task: z.string().nullable(),
       first_failure_message: z.string().nullable(),
+      first_failure_validations: z.array(z.any()).openapi({ description: "Validation evidence for the first failure. Populated only for owners and empty for other callers." }),
       last_tested_at: z.string().nullable(),
       last_passed_at: z.string().nullable(),
-    })).optional().openapi({ description: "Owner-scoped per-storyboard diagnostics used by the dashboard. Empty for non-owners." }),
-    notices: z.array(z.any()).optional().openapi({ description: "Run-summary notices from the latest non-dry-run compliance run. Unknown codes/severities are preserved verbatim." }),
+    })).optional().openapi({ description: "Public per-storyboard verdicts and aggregate step counts. First-failure diagnostic fields are populated only for owners; scalar diagnostics are null and validation evidence is empty for other callers." }),
+    notices: z.array(PublicComplianceNoticeSchema.openapi("PublicComplianceNotice")).max(PUBLIC_COMPLIANCE_NOTICE_LIMITS.maxNotices).optional().openapi({ description: "Public-safe run-summary notices from the latest non-dry-run compliance run. Unknown code/severity values are preserved verbatim; private fields are omitted." }),
     observations: z.array(z.object({
       category: z.string(),
       severity: z.string(),

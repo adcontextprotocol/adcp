@@ -52,6 +52,11 @@
       "description": "Total monetary value of attributed conversions (in the reporting currency)",
       "minimum": 0
     },
+    "commissionable_value": {
+      "type": "number",
+      "description": "Settled portion of attributed conversion value eligible for revenue-share commission, in the reporting currency. For revenue_share pricing, spend = round_currency(commissionable_value × commission_rate). This is distinct from conversion_value because taxes, shipping, discounts, returns, cancellations, or ineligible items may be excluded under the agreed commission basis.",
+      "minimum": 0
+    },
     "roas": {
       "type": "number",
       "description": "Return on ad spend (conversion_value / spend)",

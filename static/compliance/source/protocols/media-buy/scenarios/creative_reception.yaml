@@ -171,6 +171,7 @@ phases:
           Return a preview showing the creative in your platform's environment.
           The preview should include your platform's native chrome — not just the
           raw assets, but how they'll actually appear to users.
+          Since the request asks for draft quality, quality_used is draft.
 
         sample_request:
           account:
@@ -207,6 +208,9 @@ phases:
           - check: field_present
             path: "previews[0].renders[0].preview_url"
             description: "Preview includes a renderable URL"
+          - check: field_present
+            path: "quality_used"
+            description: "Response echoes the quality tier actually rendered"
 
           - check: field_present
             path: "context"

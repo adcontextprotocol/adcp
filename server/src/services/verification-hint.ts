@@ -26,13 +26,39 @@ export type VerificationHintKey =
   | 'passing_no_specialisms'
   | 'passing_pending_heartbeat'
   | 'storyboards_failing'
+  | 'storyboards_partial'
+  | 'storyboards_untested'
   | 'unknown_default';
+
+export type StoryboardBlockingReason = 'failing' | 'partial' | 'untested';
+
+export interface StoryboardStatusLike {
+  status?: string | null;
+}
 
 export interface PickHintInput {
   status: ComplianceCardStatus;
   declaredSpecialismCount: number;
   hasAuth: boolean;
   badgeCount: number;
+  storyboardBlockingReason?: StoryboardBlockingReason;
+}
+
+/**
+ * Pick the most actionable blocker from saved storyboard results.
+ * Missing or empty results deliberately return undefined so callers retain
+ * the conservative, backward-compatible fallback for older records.
+ */
+export function pickStoryboardBlockingReason(
+  statuses: readonly (StoryboardStatusLike | null | undefined)[] | null | undefined,
+): StoryboardBlockingReason | undefined {
+  if (!statuses || statuses.length === 0) return undefined;
+
+  for (const reason of ['failing', 'partial', 'untested'] as const) {
+    if (statuses.some((row) => row?.status === reason)) return reason;
+  }
+
+  return undefined;
 }
 
 export function pickVerificationHint(input: PickHintInput): VerificationHintKey | null {
@@ -49,6 +75,8 @@ export function pickVerificationHint(input: PickHintInput): VerificationHintKey 
         : 'passing_pending_heartbeat';
     case 'failing':
     case 'degraded':
+      if (input.storyboardBlockingReason === 'partial') return 'storyboards_partial';
+      if (input.storyboardBlockingReason === 'untested') return 'storyboards_untested';
       return 'storyboards_failing';
     default:
       return 'unknown_default';

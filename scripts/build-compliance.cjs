@@ -32,7 +32,7 @@
 const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
-const { execSync } = require('child_process');
+const { execFileSync, execSync } = require('child_process');
 
 const SOURCE_DIR = path.join(__dirname, '../static/compliance/source');
 const DIST_DIR = path.join(__dirname, '../dist/compliance');
@@ -43,6 +43,7 @@ const SCHEMAS_DIR = path.join(__dirname, '../static/schemas/source');
 
 const args = process.argv.slice(2);
 const isRelease = args.includes('--release');
+const isCheck = args.includes('--check');
 
 function getVersion() {
   const pkg = JSON.parse(fs.readFileSync(PACKAGE_JSON, 'utf8'));
@@ -496,10 +497,6 @@ function generateIndex(version, sourceDir) {
   const specialisms = discoverSpecialisms(sourceDir);
   const protocols = discoverProtocols(sourceDir, specialisms);
   verifyEnumParity(specialisms, protocols);
-  const docParityErrors = lintUniversalDocParity({ sourceDir });
-  if (docParityErrors.length) {
-    throw new Error('Universal-storyboard doc parity drift:\n  - ' + docParityErrors.join('\n  - '));
-  }
   lintStoryboardIdempotency(sourceDir, SCHEMAS_DIR);
   const universalDir = path.join(sourceDir, 'universal');
   const universal = fs.existsSync(universalDir)
@@ -573,6 +570,15 @@ function buildTo(targetDir, version, sourceDir) {
 
 function main() {
   const version = getVersion();
+  const unknownArgs = args.filter(arg => arg !== '--release' && arg !== '--check');
+  if (unknownArgs.length) {
+    console.error(`Unknown argument(s): ${unknownArgs.join(', ')}`);
+    process.exit(1);
+  }
+  if (isRelease && isCheck) {
+    console.error('--release and --check cannot be used together');
+    process.exit(1);
+  }
 
   if (!fs.existsSync(SOURCE_DIR)) {
     console.error(`❌ Source directory not found: ${SOURCE_DIR}`);
@@ -613,6 +619,18 @@ function main() {
   // peer-graph must be acyclic. See adcontextprotocol/adcp#3734.
   try {
     execSync('node scripts/lint-storyboard-provides-state-for.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Fixture-resolution lint: 3.2 discovery/construct declarations must point
+  // at real fixture handles and use only the normative strategy/matcher DSL.
+  // Legacy fixture blocks without resolution metadata remain seed-only.
+  try {
+    execSync('node scripts/lint-storyboard-fixture-resolution.cjs', {
       cwd: path.join(__dirname, '..'),
       stdio: 'inherit',
     });
@@ -818,6 +836,35 @@ function main() {
 
     console.log('');
     console.log('✅ Development build complete!');
+  }
+
+  // --check deliberately rebuilds ignored dist/compliance/latest first so the
+  // comparison is against current source rather than a stale local inventory.
+  const snippetArgs = ['scripts/generate-compliance-snippets.mjs'];
+  if (isCheck) snippetArgs.push('--check');
+  try {
+    execFileSync(process.execPath, snippetArgs, {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  const symbolArgs = ['scripts/link-compliance-symbols.mjs', isCheck ? '--check' : '--fix'];
+  try {
+    execFileSync(process.execPath, symbolArgs, {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  const docParityErrors = lintUniversalDocParity({ sourceDir: SOURCE_DIR });
+  if (docParityErrors.length) {
+    console.error('Universal-storyboard doc parity drift:\n  - ' + docParityErrors.join('\n  - '));
+    process.exit(1);
   }
 }
 

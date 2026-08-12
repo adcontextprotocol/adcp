@@ -2,7 +2,7 @@ name: Check for Broken Links
 
 on:
   push:
-    branches: [ main, develop, '2.6.x' ]
+    branches: [ main, develop ]
     paths:
       - 'docs/**'
       - 'dist/docs/**'
@@ -15,7 +15,7 @@ on:
       - '.markdown-link-check.json'
       - '.github/workflows/broken-links.yml'
   pull_request:
-    branches: [ main, develop, '2.6.x' ]
+    branches: [ main, develop ]
     paths:
       - 'docs/**'
       - 'dist/docs/**'
@@ -40,7 +40,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v7.0.0
+      uses: actions/checkout@v7.0.1
       with:
         # Ensure we get latest changes including synced docs
         ref: ${{ github.event.workflow_run.head_branch || github.ref }}
@@ -48,7 +48,7 @@ jobs:
     - name: Use Node.js
       uses: actions/setup-node@v7
       with:
-        node-version: '22'
+        node-version: '24'
         cache: 'npm'
 
     - name: Install dependencies

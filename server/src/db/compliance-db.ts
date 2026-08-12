@@ -82,18 +82,23 @@ export interface AgentRegistryMetadata {
 }
 
 /**
- * A single advisory notice emitted by the compliance runner at run-summary
- * level. Defined in static/compliance/source/universal/runner-output-contract.yaml.
+ * A single advisory notice emitted by the compliance runner. Defined in
+ * static/compliance/source/universal/runner-output-contract.yaml.
  *
  * Forward-compat: receivers MUST treat unknown `code` and `severity` values as
  * well-formed and surface them verbatim — do not validate or filter these fields.
  */
 export interface NoticeEntry {
+  [key: string]: unknown;
   severity: string;
   code: string;
   message: string;
   effective_version?: string | null;
   capability_path?: string | null;
+  capability_pointer?: string | null;
+  docs_url?: string | null;
+  storyboard_ids?: string[] | null;
+  /** Legacy runner field retained for previously persisted notices. */
   reference_url?: string | null;
 }
 
@@ -878,6 +883,33 @@ export class ComplianceDatabase {
     }
     if (!Array.isArray(list)) return [];
     return list.filter((s: unknown): s is string => typeof s === 'string');
+  }
+
+  /**
+   * Return the most recently observed supported AdCP versions within a bounded
+   * window. This is a warm fallback for transient capability-discovery
+   * failures; live discovery remains authoritative whenever it succeeds.
+   */
+  async getRecentSupportedVersions(agentUrl: string, maxAgeHours = 7 * 24): Promise<string[]> {
+    if (!Number.isInteger(maxAgeHours) || maxAgeHours <= 0) {
+      throw new Error('maxAgeHours must be a positive integer');
+    }
+
+    const result = await query(
+      `SELECT agent_profile_json->'adcp_supported_versions' AS supported_versions
+       FROM agent_compliance_runs
+       WHERE agent_url = $1
+         AND tested_at >= NOW() - make_interval(hours => $2)
+         AND jsonb_typeof(agent_profile_json->'adcp_supported_versions') = 'array'
+       ORDER BY tested_at DESC
+       LIMIT 1`,
+      [agentUrl, maxAgeHours],
+    );
+    const versions = result.rows[0]?.supported_versions;
+    if (!Array.isArray(versions)) return [];
+    return versions.filter(
+      (version: unknown): version is string => typeof version === 'string' && version.trim().length > 0,
+    );
   }
 
   /**

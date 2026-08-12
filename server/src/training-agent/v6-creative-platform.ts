@@ -12,7 +12,7 @@ import {
   AdcpError,
   type DecisioningPlatform,
   type CreativeAdServerPlatform,
-  type SyncCreativesRow,
+  type LegacyCreativeHandlers,
   type AccountStore,
 } from '@adcp/sdk/server';
 import {
@@ -22,9 +22,9 @@ import {
   handleListCreativeFormats,
   handleGetCreativeDelivery,
   handleSyncCreatives,
+  projectListCreativesCompatibilityWire,
 } from './task-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
-import { pickFromInput } from './v6-input-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
@@ -39,16 +39,17 @@ interface TrainingCreativeConfig {
 
 function buildTrainingCtx(
   ctx: {
-    account?: { authInfo?: { principal?: string } };
+    account?: unknown;
     authInfo?: { clientId?: string };
     agent?: { agent_url: string };
   } | undefined,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): TrainingContext {
+  const account = ctx?.account as { authInfo?: { principal?: string } } | undefined;
   return {
     mode: 'open',
     tenantId: 'creative',
-    principal: ctx?.authInfo?.clientId ?? ctx?.account?.authInfo?.principal ?? 'anonymous',
+    principal: ctx?.authInfo?.clientId ?? account?.authInfo?.principal ?? 'anonymous',
     ...(ctx?.agent?.agent_url && { authenticatedAgentUrl: ctx.agent.agent_url }),
     creativeBillsThroughAdcp: false,
     ...(storyboardCompat && { storyboardCompat }),
@@ -116,6 +117,30 @@ const trainingCreativeAccounts: AccountStore<TrainingCreativeMeta> = {
   upsert: syncAccountsUpsert,
 };
 
+export function legacyCreativeListHandler(
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): NonNullable<LegacyCreativeHandlers['listCreatives']> {
+  return async (req, ctx) => {
+    const response = await handleListCreatives(
+      req as ToolArgs,
+      buildTrainingCtx(ctx, storyboardCompat),
+    );
+    return projectListCreativesCompatibilityWire(
+      response as { creatives?: Array<Record<string, unknown>>; errors?: unknown[] },
+      req as unknown as Record<string, unknown>,
+    ) as Awaited<ReturnType<NonNullable<LegacyCreativeHandlers['listCreatives']>>>;
+  };
+}
+
+export function legacyCreativeSyncHandler(
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): NonNullable<LegacyCreativeHandlers['syncCreatives']> {
+  return async (req, ctx) => await handleSyncCreatives(
+    req as unknown as ToolArgs,
+    buildTrainingCtx(ctx, storyboardCompat),
+  ) as unknown as Awaited<ReturnType<NonNullable<LegacyCreativeHandlers['syncCreatives']>>>;
+}
+
 export class TrainingCreativePlatform
   implements DecisioningPlatform<TrainingCreativeConfig, TrainingCreativeMeta>
 {
@@ -139,7 +164,7 @@ export class TrainingCreativePlatform
   agentRegistry = trainingBuyerAgentRegistry;
 
   creative: CreativeAdServerPlatform<TrainingCreativeMeta> = {
-    buildCreative: async (req, ctx) => {
+    buildCreativeLegacy: async (req, ctx) => {
       const result = await handleBuildCreative(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       // F16 (`bca20dfb`) — framework's discriminator passes through
       // pre-shaped BuildCreativeSuccess / BuildCreativeMultiSuccess
@@ -147,15 +172,11 @@ export class TrainingCreativePlatform
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return translateV5Result(result) as any;
     },
-    previewCreative: async (req, ctx) => {
+    previewCreativeLegacy: async (req, ctx) => {
       const result = await handlePreviewCreative(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
-    listCreatives: async (req, ctx) => {
-      const result = await handleListCreatives(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
-      return translateV5Result(result);
-    },
-    listCreativeFormats: async (req, ctx) => {
+    listCreativeFormatsLegacy: async (req, ctx) => {
       const result = await handleListCreativeFormats(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
@@ -163,28 +184,5 @@ export class TrainingCreativePlatform
       const result = await handleGetCreativeDelivery(filter as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
-    syncCreatives: async (creatives, ctx) => {
-      // Thread brand domain through so sessionKeyFromArgs in the v5
-      // handler resolves to the same session the test-controller seeded
-      // creative_policy against. Without this, the sync lands in
-      // open:default while seeded products live on open:<brand>, and
-      // aggregateCreativePolicy returns null — provenance enforcement
-      // silently no-ops.
-      const brandDomain = (ctx.account as { ctx_metadata?: { brand_domain?: string } } | undefined)?.ctx_metadata?.brand_domain;
-      // Lift `dry_run` and `assignments[]` off ctx.input (adcp-client#1842).
-      const fromInput = pickFromInput(ctx.input, ['assignments', 'dry_run'] as const);
-      const args = {
-        creatives,
-        ...fromInput,
-        ...(brandDomain && { brand: { domain: brandDomain } }),
-      };
-      const result = await handleSyncCreatives(
-        args as unknown as ToolArgs,
-        buildTrainingCtx(ctx, this.storyboardCompat),
-      );
-      // v5 returns wire-wrapped `{ creatives: [...] }`; v6 wants rows.
-      const wrapped = translateV5Result<{ creatives?: unknown[] }>(result);
-      return (wrapped.creatives ?? []) as SyncCreativesRow[];
-    },
-  };
+  } as CreativeAdServerPlatform<TrainingCreativeMeta>;
 }

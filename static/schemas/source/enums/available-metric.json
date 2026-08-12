@@ -14,6 +14,7 @@
     "completion_rate",
     "conversions",
     "conversion_value",
+    "commissionable_value",
     "roas",
     "cost_per_acquisition",
     "new_to_brand_rate",

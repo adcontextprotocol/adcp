@@ -580,7 +580,7 @@ export interface DiscoveredBrand {
   brand_agent_capabilities?: string[];
   has_brand_manifest: boolean;
   brand_manifest?: Record<string, unknown>;
-  source_type: 'brand_json' | 'community' | 'enriched';
+  source_type: 'brand_json' | 'community' | 'enriched' | 'stub';
   review_status?: 'pending' | 'approved';
   discovered_at: Date;
   last_validated?: Date;
@@ -621,7 +621,7 @@ export interface ResolvedBrand {
   migration_warnings?: Array<{ field: string; message: string; suggestion?: string }>;
   brand_agent_url?: string;
   brand_manifest?: Record<string, unknown>;
-  source: 'hosted' | 'brand_json' | 'community' | 'enriched';
+  source: 'hosted' | 'brand_json' | 'community' | 'enriched' | 'stub';
 }
 
 /**
@@ -1157,6 +1157,8 @@ export interface AgentCompliance {
   }>;
   verified?: boolean;
   verified_roles?: string[];
+  /** Active AgenticAdvertising.org Verified AdCP versions for each role, newest first. */
+  verified_role_versions?: Record<string, string[]>;
 }
 
 // Federated Discovery Types

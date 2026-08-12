@@ -144,7 +144,8 @@ components:
             - brand_json
             - community
             - enriched
-          description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment."
+            - stub
+          description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched` > `stub`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment. `stub`: a minimal organization-derived placeholder awaiting stronger evidence."
         live_brand_json:
           type: object
           properties:
@@ -223,6 +224,7 @@ components:
             - brand_json
             - community
             - enriched
+            - stub
         has_manifest:
           type: boolean
         verified:
@@ -787,16 +789,15 @@ components:
         verified_roles:
           type: array
           items:
-            type: string
-            enum:
-              - media-buy
-              - signals
-              - governance
-              - creative
-              - brand
-              - sponsored-intelligence
-              - measurement
-          description: AdCP protocols the agent is AAO Verified for (e.g. media-buy, creative). Matches enums/adcp-protocol.json.
+            $ref: "#/components/schemas/BadgeRole"
+          description: Canonical badge roles the agent is AgenticAdvertising.org Verified for (e.g. media-buy, creative).
+        verified_role_versions:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          description: "Active AgenticAdvertising.org Verified AdCP releases for each verified role, keyed by canonical badge role and sorted newest-first (e.g. { media-buy: ['3.1', '3.0'] }). Use this when choosing a version-pinned badge URL."
       required:
         - status
         - lifecycle_stage
@@ -804,6 +805,15 @@ components:
         - streak_days
         - last_checked_at
         - headline
+    BadgeRole:
+      type: string
+      enum:
+        - media-buy
+        - creative
+        - signals
+        - governance
+        - brand
+        - sponsored-intelligence
     PropertySummary:
       type: object
       properties:
@@ -3527,10 +3537,11 @@ components:
         effective_until:
           type: string
         signing_keys:
-          type: array
+          type:
+            - array
+            - "null"
           items:
-            type: object
-            additionalProperties: {}
+            $ref: "#/components/schemas/SigningKey"
         evidence:
           type: string
         disputed:
@@ -3560,6 +3571,44 @@ components:
       required:
         - agent_url
         - publisher_domain
+      additionalProperties: {}
+    SigningKey:
+      type: object
+      properties:
+        kid:
+          type: string
+          description: Key identifier for selecting the correct signing key.
+        kty:
+          type: string
+          description: JWK key type, such as 'OKP', 'EC', or 'RSA'.
+        alg:
+          type: string
+          description: Expected signing algorithm for this key, such as 'EdDSA' or 'RS256'.
+        use:
+          type: string
+          description: Optional JWK use value. Typically 'sig' for signing keys.
+        crv:
+          type: string
+          description: Curve name for OKP or EC keys, such as 'Ed25519' or 'P-256'.
+        x:
+          type: string
+          description: Base64url-encoded public key x coordinate or public key value for OKP keys.
+        y:
+          type: string
+          description: Base64url-encoded public key y coordinate for EC keys.
+        n:
+          type: string
+          description: Base64url-encoded RSA modulus.
+        e:
+          type: string
+          description: Base64url-encoded RSA public exponent.
+        revoked_at:
+          type: string
+          format: date-time
+          description: Optional revocation timestamp. When present, verifiers MUST reject any signature produced with this key whose signing epoch is at or after this timestamp. The key may continue to appear in the trust anchor during a grace period so caches that have not yet refreshed still find the key and can evaluate the revocation marker.
+      required:
+        - kid
+        - kty
       additionalProperties: {}
     PublisherEventPayload:
       type: object
@@ -3773,6 +3822,10 @@ components:
                 type:
                   - string
                   - "null"
+              first_failure_validations:
+                type: array
+                items: {}
+                description: Validation evidence for the first failure. Populated only for owners and empty for other callers.
               last_tested_at:
                 type:
                   - string
@@ -3795,13 +3848,16 @@ components:
               - first_failed_step_title
               - first_failed_step_task
               - first_failure_message
+              - first_failure_validations
               - last_tested_at
               - last_passed_at
-          description: Owner-scoped per-storyboard diagnostics used by the dashboard. Empty for non-owners.
+          description: Public per-storyboard verdicts and aggregate step counts. First-failure diagnostic fields are populated only for owners; scalar diagnostics are null and validation evidence is empty for other callers.
         notices:
           type: array
-          items: {}
-          description: Run-summary notices from the latest non-dry-run compliance run. Unknown codes/severities are preserved verbatim.
+          items:
+            $ref: "#/components/schemas/PublicComplianceNotice"
+          maxItems: 50
+          description: Public-safe run-summary notices from the latest non-dry-run compliance run. Unknown code/severity values are preserved verbatim; private fields are omitted.
         observations:
           type: array
           items:
@@ -3857,20 +3913,53 @@ components:
         - agent_url
         - status
         - lifecycle_stage
+    PublicComplianceNotice:
+      type: object
+      properties:
+        severity:
+          type: string
+          minLength: 1
+          maxLength: 64
+        code:
+          type: string
+          minLength: 1
+          maxLength: 200
+        message:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        effective_version:
+          type: string
+          minLength: 1
+          maxLength: 64
+        requirement:
+          type: string
+          minLength: 1
+          maxLength: 500
+        capability_path:
+          type: string
+          minLength: 1
+          maxLength: 512
+        capability_pointer:
+          type: string
+          minLength: 1
+          maxLength: 1024
+        reference_url:
+          type: string
+          maxLength: 2048
+          format: uri
+      required:
+        - severity
+        - code
+        - message
+      additionalProperties: false
     VerificationBadge:
       type: object
       properties:
         role:
-          type: string
-          enum:
-            - media-buy
-            - signals
-            - governance
-            - creative
-            - brand
-            - sponsored-intelligence
-            - measurement
-          description: AdCP protocol this badge covers (enums/adcp-protocol.json).
+          allOf:
+            - $ref: "#/components/schemas/BadgeRole"
+            - description: Canonical role this verification badge covers.
         adcp_version:
           type: string
           description: AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.0', '3.1'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK.
@@ -5425,9 +5514,10 @@ paths:
               - brand_json
               - enriched
               - community
-            description: "Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed."
+              - stub
+            description: "Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed; stub = organization-derived placeholder awaiting stronger evidence."
           required: false
-          description: "Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed."
+          description: "Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed; stub = organization-derived placeholder awaiting stronger evidence."
           name: source
           in: query
       responses:
@@ -5455,6 +5545,8 @@ paths:
                         type: integer
                       enriched:
                         type: integer
+                      stub:
+                        type: integer
                       houses:
                         type: integer
                       sub_brands:
@@ -5467,6 +5559,7 @@ paths:
                       - brand_json
                       - community
                       - enriched
+                      - stub
                       - houses
                       - sub_brands
                       - with_manifest
@@ -7044,6 +7137,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: Publisher lookup exceeded its bounded read deadline
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - publisher_lookup_timeout
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - code
+                  - retry_after
   /api/registry/publisher/{domain}/adagents/revalidate:
     post:
       operationId: revalidatePublisherAdagents
@@ -7189,6 +7301,175 @@ paths:
                 required:
                   - error
                   - retry_after
+        "503":
+          description: Publisher crawl is temporarily busy
+          headers:
+            Retry-After:
+              schema:
+                type: string
+                description: Seconds to wait before retrying
+              required: true
+              description: Seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - publisher_crawl_busy
+                  retry_after:
+                    type: integer
+                    description: Seconds to wait before retrying
+                required:
+                  - error
+                  - code
+                  - retry_after
+  /api/registry/brand/{domain}/force-crawl:
+    post:
+      operationId: forceBrandCrawl
+      summary: Force a synchronous brand.json crawl
+      description: |-
+        Admin-only support endpoint that fetches a domain's live `/.well-known/brand.json`, persists valid origin evidence, and returns the before/after state. A verified owner remains labeled `source: hosted` because that field describes identity provenance; `new_source_type: brand_json` and `promoted: true` confirm that live origin evidence was adopted.
+
+        **Rate limits:** 5 minutes per domain, 30 requests per user per hour.
+      tags:
+        - Brand Discovery
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            example: brand.example
+          required: true
+          name: domain
+          in: path
+      responses:
+        "200":
+          description: Synchronous crawl result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  domain:
+                    type: string
+                  previous_source:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - hosted
+                      - brand_json
+                      - community
+                      - enriched
+                      - stub
+                      - null
+                  new_source:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - hosted
+                      - brand_json
+                      - community
+                      - enriched
+                      - stub
+                      - null
+                  previous_source_type:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - brand_json
+                      - community
+                      - enriched
+                      - stub
+                      - null
+                  new_source_type:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - brand_json
+                      - community
+                      - enriched
+                      - stub
+                      - null
+                  promoted:
+                    type: boolean
+                    description: True when the crawl replaced lower-trust stored evidence with live brand.json evidence.
+                  brand_json_found:
+                    type: boolean
+                  live_variant:
+                    type:
+                      - string
+                      - "null"
+                    enum:
+                      - authoritative_location
+                      - house_redirect
+                      - brand_agent
+                      - house_portfolio
+                      - brand_canonical
+                      - null
+                  has_manifest:
+                    type: boolean
+                  checked_at:
+                    type: string
+                    format: date-time
+                required:
+                  - domain
+                  - previous_source
+                  - new_source
+                  - previous_source_type
+                  - new_source_type
+                  - promoted
+                  - brand_json_found
+                  - live_variant
+                  - has_manifest
+                  - checked_at
+        "400":
+          description: Invalid domain format, private IP, or unresolvable domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - retry_after
+        "500":
+          description: Crawl failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/publisher/authorization:
     get:
       operationId: lookupPublisherAgentAuthorization
@@ -7271,6 +7552,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: Publisher authorization lookup exceeded its bounded read deadline
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - publisher_lookup_timeout
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - code
+                  - retry_after
   /api/registry/validate/product-authorization:
     post:
       operationId: validateProductAuthorization
@@ -8229,7 +8529,7 @@ paths:
     get:
       operationId: getAgentFormats
       summary: Get creative-agent format capabilities
-      description: Fetch get_adcp_capabilities creative.supported_formats[] from a creative agent.
+      description: Fetch get_adcp_capabilities creative.supported_formats[] from a creative agent, falling back to the deprecated list_creative_formats catalog for 3.1-compatible agents.
       tags:
         - Agent Probing
       parameters:
@@ -8254,6 +8554,119 @@ paths:
                 required:
                   - success
                   - formats
+        "400":
+          description: Missing agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  retryAfter:
+                    type: integer
+                required:
+                  - error
+                  - message
+        "502":
+          description: Agent discovery failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Connection timeout
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
+  /api/public/agent-publishers:
+    get:
+      operationId: getAgentPublishers
+      summary: Get agent publisher properties
+      description: Fetch public list_authorized_properties data from a sales agent.
+      tags:
+        - Agent Probing
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: url
+          in: query
+      responses:
+        "200":
+          description: Publisher properties
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  properties:
+                    type: array
+                    items: {}
+                required:
+                  - success
+                  - properties
+        "400":
+          description: Missing agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  retryAfter:
+                    type: integer
+                required:
+                  - error
+                  - message
+        "502":
+          description: Agent discovery failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Connection timeout
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
   /api/public/agent-products:
     get:
       operationId: getAgentProducts
@@ -8283,6 +8696,48 @@ paths:
                 required:
                   - success
                   - products
+        "400":
+          description: Missing agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  retryAfter:
+                    type: integer
+                required:
+                  - error
+                  - message
+        "502":
+          description: Agent discovery failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "504":
+          description: Connection timeout
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                required:
+                  - error
+                  - message
   /api/public/validate-publisher:
     get:
       operationId: validatePublisher
@@ -9084,6 +9539,13 @@ paths:
                         updated_at:
                           type: string
                           format: date-time
+                        signing_keys:
+                          type:
+                            - array
+                            - "null"
+                          items:
+                            $ref: "#/components/schemas/SigningKey"
+                          description: Publisher-pinned JWK set (authorized_agents[*].signing_keys) from the source adagents.json. Consumers verifying inbound TMP signatures key on kid → JWK. Null when the publisher declared no keys; consumers fall back to the agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx).
                         override_applied:
                           type: boolean
                         override_reason:
@@ -9104,6 +9566,7 @@ paths:
                         - expires_at
                         - created_at
                         - updated_at
+                        - signing_keys
                         - override_applied
                         - override_reason
                   count:
@@ -9395,7 +9858,7 @@ paths:
       operationId: requestCrawl
       summary: Request domain re-crawl
       description: |-
-        Trigger an immediate re-crawl of a publisher domain after updating adagents.json. The crawl runs asynchronously — returns 202 immediately.
+        Persist a durable re-crawl request for a publisher domain after updating adagents.json. Returns 202 only after the request is committed to the queue. Use the returned `crawl_request_id` with the status endpoint to observe completion.
 
         **Rate limits:** 5 minutes per domain, 30 requests per user per hour.
       tags:
@@ -9429,9 +9892,14 @@ paths:
                       - Crawl request accepted
                   domain:
                     type: string
+                  crawl_request_id:
+                    type: string
+                    format: uuid
+                    description: Durable request ID for lifecycle logs and status lookup; acceptance is not completion.
                 required:
                   - message
                   - domain
+                  - crawl_request_id
         "400":
           description: Invalid domain format, private IP, or unresolvable domain
           content:
@@ -9458,6 +9926,160 @@ paths:
                     description: Seconds to wait before retrying
                 required:
                   - error
+                  - retry_after
+        "503":
+          description: The durable crawl queue is temporarily unavailable; the request was not accepted
+          headers:
+            Retry-After:
+              schema:
+                type: string
+                description: Seconds to wait before retrying
+              required: true
+              description: Seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - crawl_queue_unavailable
+                      - crawl_queue_at_capacity
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - code
+                  - retry_after
+  /api/registry/crawl-request/{crawlRequestId}:
+    get:
+      operationId: getCrawlRequest
+      summary: Get publisher crawl request status
+      description: Return the durable lifecycle for a publisher recrawl. Requesters may read their own requests; registry administrators may read any request.
+      tags:
+        - Agent Discovery
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: crawlRequestId
+          in: path
+      responses:
+        "200":
+          description: Durable crawl request lifecycle
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  crawl_request_id:
+                    type: string
+                    format: uuid
+                  domain:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - queued
+                      - running
+                      - deferred
+                      - retrying
+                      - completed
+                      - invalid
+                      - failed
+                  attempts:
+                    type: integer
+                  max_attempts:
+                    type: integer
+                  requested_at:
+                    type: string
+                    format: date-time
+                  started_at:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                  last_attempted_at:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                  completed_at:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                  next_attempt_at:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                  last_error_code:
+                    type:
+                      - string
+                      - "null"
+                required:
+                  - crawl_request_id
+                  - domain
+                  - status
+                  - attempts
+                  - max_attempts
+                  - requested_at
+                  - started_at
+                  - last_attempted_at
+                  - completed_at
+                  - next_attempt_at
+                  - last_error_code
+        "400":
+          description: Invalid crawl request ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Crawl request not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Crawl status is temporarily unavailable
+          headers:
+            Retry-After:
+              schema:
+                type: string
+                description: Seconds to wait before retrying
+              required: true
+              description: Seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  code:
+                    type: string
+                    enum:
+                      - crawl_status_unavailable
+                  retry_after:
+                    type: integer
+                required:
+                  - error
+                  - code
                   - retry_after
   /api/registry/manager-revalidation-request:
     post:
@@ -9696,11 +10318,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: Verification status temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/agents/{encodedUrl}/badge/{role}.svg:
     get:
       operationId: getAgentBadgeSvg
       summary: Get agent verification badge SVG
-      description: Returns an SVG badge image for the specified agent and role. Shows 'AAO Verified | Sales Agent' (teal) when verified, or 'AAO Verified | Not Verified' (grey) when not. Cacheable, suitable for embedding in websites.
+      description: Returns an SVG badge image for the specified agent and role. Shows the role-specific AgenticAdvertising.org Verified mark (teal) when verified, or 'Not Verified' (grey) when not. Cacheable and suitable for embedding in websites.
       tags:
         - Agent Compliance
       parameters:
@@ -9712,10 +10340,11 @@ paths:
           name: encodedUrl
           in: path
         - schema:
-            type: string
-            description: Badge role (sales, buying, creative, governance, signals, measurement)
+            allOf:
+              - $ref: "#/components/schemas/BadgeRole"
+              - description: Canonical badge role
           required: true
-          description: Badge role (sales, buying, creative, governance, signals, measurement)
+          description: Canonical badge role
           name: role
           in: path
       responses:
@@ -9726,9 +10355,39 @@ paths:
               schema:
                 type: string
         "400":
-          description: Invalid agent URL
+          description: Invalid agent URL or role
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                      code:
+                        type: string
+                        enum:
+                          - invalid_role
+                      message:
+                        type: string
+                      valid_roles:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/BadgeRole"
+                    required:
+                      - error
+                      - code
+                      - message
+                      - valid_roles
+                  - $ref: "#/components/schemas/Error"
         "500":
           description: Server error
+        "503":
+          description: Badge status temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/agents/{encodedUrl}/badge/{role}/embed:
     get:
       operationId: getAgentBadgeEmbed
@@ -9745,10 +10404,11 @@ paths:
           name: encodedUrl
           in: path
         - schema:
-            type: string
-            description: Badge role
+            allOf:
+              - $ref: "#/components/schemas/BadgeRole"
+              - description: Canonical badge role
           required: true
-          description: Badge role
+          description: Canonical badge role
           name: role
           in: path
       responses:
@@ -9762,119 +10422,7 @@ paths:
                   agent_url:
                     type: string
                   role:
-                    type: string
-                  badge_svg_url:
-                    type: string
-                  registry_url:
-                    type: string
-                  html:
-                    type: string
-                  markdown:
-                    type: string
-                required:
-                  - agent_url
-                  - role
-                  - badge_svg_url
-                  - registry_url
-                  - html
-                  - markdown
-        "400":
-          description: Invalid agent URL
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "500":
-          description: Server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  /api/registry/agents/{encodedUrl}/badge/{role}/{version}.svg:
-    get:
-      operationId: getAgentBadgeVersionedSvg
-      summary: Get version-pinned agent verification badge SVG
-      description: Returns an SVG badge image scoped to a specific AdCP release (MAJOR.MINOR, e.g. '3.0'). Buyers who want to call out 'verified for 3.0' embed this instead of the legacy `/badge/{role}.svg` (which auto-upgrades to the highest active version). Renders 'Not Verified' when the agent never earned a badge at this version.
-      tags:
-        - Agent Compliance
-      parameters:
-        - schema:
-            type: string
-            description: URL-encoded agent URL
-          required: true
-          description: URL-encoded agent URL
-          name: encodedUrl
-          in: path
-        - schema:
-            type: string
-            description: Badge role (media-buy, creative, signals, governance, brand, sponsored-intelligence)
-          required: true
-          description: Badge role (media-buy, creative, signals, governance, brand, sponsored-intelligence)
-          name: role
-          in: path
-        - schema:
-            type: string
-            description: AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')
-          required: true
-          description: AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')
-          name: version
-          in: path
-      responses:
-        "200":
-          description: SVG badge image
-          content:
-            image/svg+xml:
-              schema:
-                type: string
-        "400":
-          description: Invalid agent URL, role, or version
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "500":
-          description: Server error
-  /api/registry/agents/{encodedUrl}/badge/{role}/{version}/embed:
-    get:
-      operationId: getAgentBadgeVersionedEmbed
-      summary: Get version-pinned embeddable badge code
-      description: Returns HTML and Markdown embed snippets that point at the version-pinned SVG. Alt text includes the version (e.g. 'AAO Verified Media Buy Agent 3.0'). Buyers who want to freeze on a specific AdCP release embed these instead of the legacy `/badge/{role}/embed`.
-      tags:
-        - Agent Compliance
-      parameters:
-        - schema:
-            type: string
-            description: URL-encoded agent URL
-          required: true
-          description: URL-encoded agent URL
-          name: encodedUrl
-          in: path
-        - schema:
-            type: string
-            description: Badge role
-          required: true
-          description: Badge role
-          name: role
-          in: path
-        - schema:
-            type: string
-            description: AdCP release as MAJOR.MINOR
-          required: true
-          description: AdCP release as MAJOR.MINOR
-          name: version
-          in: path
-      responses:
-        "200":
-          description: Embed code
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  agent_url:
-                    type: string
-                  role:
-                    type: string
+                    $ref: "#/components/schemas/BadgeRole"
                   verified:
                     type: boolean
                   adcp_version:
@@ -9896,13 +10444,211 @@ paths:
                   - html
                   - markdown
         "400":
-          description: Invalid agent URL, role, or version
+          description: Invalid agent URL or role
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                      code:
+                        type: string
+                        enum:
+                          - invalid_role
+                      message:
+                        type: string
+                      valid_roles:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/BadgeRole"
+                    required:
+                      - error
+                      - code
+                      - message
+                      - valid_roles
+                  - $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: Badge status temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/badge/{role}/{version}.svg:
+    get:
+      operationId: getAgentBadgeVersionedSvg
+      summary: Get version-pinned agent verification badge SVG
+      description: Returns an SVG badge image scoped to a specific AdCP release (MAJOR.MINOR, e.g. '3.0'). Buyers who want to call out 'verified for 3.0' embed this instead of the legacy `/badge/{role}.svg` (which auto-upgrades to the highest active version). Renders 'Not Verified' when the agent never earned a badge at this version.
+      tags:
+        - Agent Compliance
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            allOf:
+              - $ref: "#/components/schemas/BadgeRole"
+              - description: Canonical badge role
+          required: true
+          description: Canonical badge role
+          name: role
+          in: path
+        - schema:
+            type: string
+            description: AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')
+          required: true
+          description: AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')
+          name: version
+          in: path
+      responses:
+        "200":
+          description: SVG badge image
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        "400":
+          description: Invalid agent URL, role, or version
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                      code:
+                        type: string
+                        enum:
+                          - invalid_role
+                      message:
+                        type: string
+                      valid_roles:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/BadgeRole"
+                    required:
+                      - error
+                      - code
+                      - message
+                      - valid_roles
+                  - $ref: "#/components/schemas/Error"
         "500":
           description: Server error
+        "503":
+          description: Badge status temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/badge/{role}/{version}/embed:
+    get:
+      operationId: getAgentBadgeVersionedEmbed
+      summary: Get version-pinned embeddable badge code
+      description: Returns HTML and Markdown embed snippets that point at the version-pinned SVG. Alt text includes the version (e.g. 'AAO Verified Media Buy Agent 3.0'). Buyers who want to freeze on a specific AdCP release embed these instead of the legacy `/badge/{role}/embed`.
+      tags:
+        - Agent Compliance
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            allOf:
+              - $ref: "#/components/schemas/BadgeRole"
+              - description: Canonical badge role
+          required: true
+          description: Canonical badge role
+          name: role
+          in: path
+        - schema:
+            type: string
+            description: AdCP release as MAJOR.MINOR
+          required: true
+          description: AdCP release as MAJOR.MINOR
+          name: version
+          in: path
+      responses:
+        "200":
+          description: Embed code
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_url:
+                    type: string
+                  role:
+                    $ref: "#/components/schemas/BadgeRole"
+                  verified:
+                    type: boolean
+                  adcp_version:
+                    type: string
+                  badge_svg_url:
+                    type: string
+                  registry_url:
+                    type: string
+                  html:
+                    type: string
+                  markdown:
+                    type: string
+                required:
+                  - agent_url
+                  - role
+                  - verified
+                  - adcp_version
+                  - badge_svg_url
+                  - registry_url
+                  - html
+                  - markdown
+        "400":
+          description: Invalid agent URL, role, or version
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                      code:
+                        type: string
+                        enum:
+                          - invalid_role
+                      message:
+                        type: string
+                      valid_roles:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/BadgeRole"
+                    required:
+                      - error
+                      - code
+                      - message
+                      - valid_roles
+                  - $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Badge status temporarily unavailable
           content:
             application/json:
               schema:
@@ -10669,6 +11415,15 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization before its credentials are used.
       responses:
         "200":
           description: Snapshot refreshed
@@ -10818,6 +11573,13 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+        - schema:
+            type: string
+            description: Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations.
+          required: false
+          description: Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations.
+          name: org
+          in: query
       responses:
         "200":
           description: Auth status
@@ -10877,6 +11639,9 @@ paths:
                     - bearer
                     - basic
                   description: "Auth type (default: bearer)"
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
       responses:
         "200":
           description: Connection result
@@ -10982,6 +11747,9 @@ paths:
                     - basic
                     - body
                   description: "Client-credentials placement: basic (HTTP Basic header, RFC 6749 §2.3.1 preferred) or body (form fields). SDK default is basic."
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
               required:
                 - token_endpoint
                 - client_id
@@ -11055,6 +11823,15 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
       responses:
         "200":
           description: "Result of the token exchange. `ok: true` on 2xx from the AS; `ok: false` with a typed error otherwise (HTTP response itself is still 200 — the error payload carries the rejection kind so UI can branch on it)."
@@ -11157,6 +11934,13 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+        - schema:
+            type: string
+            description: Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations.
+          required: false
+          description: Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations.
+          name: org
+          in: query
       responses:
         "200":
           description: Bundles the agent will be tested against, driven by its declared capabilities
@@ -11294,6 +12078,12 @@ paths:
                     description: Specialism ids present in this server's local compliance cache
                 required:
                   - error
+        "429":
+          description: Capability probe rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitError"
         "500":
           description: Server error
           content:
@@ -11802,6 +12592,9 @@ paths:
                 dry_run:
                   type: boolean
                   description: "Dry run mode (default: true)"
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
       responses:
         "200":
           description: Step execution result
@@ -11930,6 +12723,15 @@ paths:
           required: true
           name: storyboardId
           in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
       responses:
         "200":
           description: Storyboard run result with annotated phases
@@ -12131,6 +12933,15 @@ paths:
           required: true
           name: storyboardId
           in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization_id:
+                  type: string
+                  description: Selected organization ID. The caller must own the agent in this organization.
       responses:
         "200":
           description: Side-by-side comparison results

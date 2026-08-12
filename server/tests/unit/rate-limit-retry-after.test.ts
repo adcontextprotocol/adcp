@@ -1,9 +1,21 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import type { IncrementResponse, Options } from 'express-rate-limit';
-import { parseRetryAfterSeconds, createAgentReadRateLimiter, createBrandBulkDomainRateLimiter } from '../../src/middleware/rate-limit.js';
+import { MemoryStore, type IncrementResponse, type Options } from 'express-rate-limit';
+import {
+  CAPABILITY_PROBE_LIMIT_PER_HOUR,
+  CAPABILITY_PROBE_RATE_LIMIT_PREFIX,
+  STORYBOARD_EVAL_RATE_LIMIT_PREFIX,
+  parseRetryAfterSeconds,
+  createAgentReadRateLimiter,
+  createBrandBulkDomainRateLimiter,
+  createCapabilityProbeRateLimiter,
+} from '../../src/middleware/rate-limit.js';
 import type { WeightedIncrementStore } from '../../src/middleware/pg-rate-limit-store.js';
+
+vi.mock('../../src/addie/mcp/admin-tools.js', () => ({
+  isWebUserAAOAdmin: vi.fn().mockResolvedValue(false),
+}));
 
 /**
  * Tests for the retryAfter fallback field we surface on the 429 body
@@ -83,6 +95,71 @@ describe('agentReadRateLimiter 429 body', () => {
     expect(headerSeconds).toBeGreaterThan(0);
     expect(last!.body.retryAfter).toBe(headerSeconds);
   }, 30_000);
+});
+
+describe('capability probe rate limiter', () => {
+  function buildApp(options: {
+    max?: number;
+    responseStatus?: number;
+    isAdmin?: boolean;
+  } = {}) {
+    const app = express();
+    app.use((req, _res, next) => {
+      (req as any).user = {
+        id: 'capability-probe-rate-limit-user',
+        isAdmin: options.isAdmin === true,
+      };
+      next();
+    });
+    app.get(
+      '/probe',
+      createCapabilityProbeRateLimiter({
+        max: options.max ?? 2,
+        store: new MemoryStore(),
+      }),
+      (_req, res) => res.status(options.responseStatus ?? 200).json({ ok: true }),
+    );
+    return app;
+  }
+
+  it('uses a separate 60/hour production budget', () => {
+    expect(CAPABILITY_PROBE_LIMIT_PER_HOUR).toBe(60);
+    expect(CAPABILITY_PROBE_RATE_LIMIT_PREFIX).toBe('capability-probe:');
+    expect(CAPABILITY_PROBE_RATE_LIMIT_PREFIX).not.toBe(
+      STORYBOARD_EVAL_RATE_LIMIT_PREFIX,
+    );
+  });
+
+  it('returns a capability-specific 429 with matching retry hints', async () => {
+    const app = buildApp({ max: 2 });
+    await request(app).get('/probe');
+    await request(app).get('/probe');
+    const limited = await request(app).get('/probe');
+
+    expect(limited.status).toBe(429);
+    expect(limited.body).toMatchObject({
+      error: 'Too many requests',
+      message: 'Capability probe limit exceeded (2 per hour). Please try again later.',
+    });
+    expect(limited.body.retryAfter).toBeGreaterThan(0);
+    expect(limited.body.retryAfter).toBe(
+      Number.parseInt(limited.headers['retry-after'], 10),
+    );
+  });
+
+  it('counts failed probes against the budget', async () => {
+    const app = buildApp({ max: 1, responseStatus: 500 });
+
+    expect((await request(app).get('/probe')).status).toBe(500);
+    expect((await request(app).get('/probe')).status).toBe(429);
+  });
+
+  it('bypasses the capability budget for platform admins', async () => {
+    const app = buildApp({ max: 1, isAdmin: true });
+
+    expect((await request(app).get('/probe')).status).toBe(200);
+    expect((await request(app).get('/probe')).status).toBe(200);
+  });
 });
 
 describe('brand bulk domain rate limiter', () => {

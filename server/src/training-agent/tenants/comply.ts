@@ -125,21 +125,19 @@ function simulateAdapter(scenario: string): AdapterShim {
  * .budget_spend, seed.product / .pricing_option / .media_buy / .creative.
  */
 /**
- * Extend the spec-canonical `TOOL_INPUT_SHAPE` with a top-level `account`
- * field. v5 storyboards send `account: { brand: { domain }, sandbox }` at
- * the top level — the v5 handler reads `account.brand.domain` for session
- * keying. The v6 first-class registration uses the spec-canonical shape
- * (no top-level `account` — spec routes account context through `context`)
- * which would strip the field. F10's `inputSchema` extension point lets us
- * accept the v5-vintage shape until storyboard fixtures migrate to spec.
+ * Extend the SDK's currently narrower `TOOL_INPUT_SHAPE` with the published
+ * request schema's required top-level sandbox account assertion. Storyboards
+ * send `account: { brand: { domain }, sandbox: true }`; the v5 handler also
+ * reads `account.brand.domain` for session keying. F10's `inputSchema`
+ * extension point preserves those canonical fields through v6 dispatch.
  */
 const SALES_COMPLY_INPUT_SCHEMA = {
   ...TOOL_INPUT_SHAPE,
   account: z.object({
     account_id: z.string().optional(),
     brand: z.object({ domain: z.string().optional() }).passthrough().optional(),
-    sandbox: z.boolean().optional(),
-  }).passthrough().optional(),
+    sandbox: z.literal(true),
+  }).passthrough(),
   brand: z.object({ domain: z.string().optional() }).passthrough().optional(),
   [TRAINING_PRINCIPAL_FIELD]: z.string().optional(),
 };

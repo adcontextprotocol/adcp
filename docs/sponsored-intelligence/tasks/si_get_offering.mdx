@@ -5,7 +5,7 @@ description: "si_get_offering is the AdCP task for anonymous pre-session offerin
 ---
 
 <Note>
-**Experimental.** Sponsored Intelligence (`si_get_offering`, `si_initiate_session`, `si_send_message`, `si_terminate_session`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any of these tasks MUST declare `sponsored_intelligence.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+**Experimental.** Sponsored Intelligence (`si_get_offering`, [`si_initiate_session`](/docs/sponsored-intelligence/tasks/si_initiate_session), [`si_send_message`](/docs/sponsored-intelligence/tasks/si_send_message), [`si_terminate_session`](/docs/sponsored-intelligence/tasks/si_terminate_session)) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing any of these tasks MUST declare `sponsored_intelligence.core` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
 </Note>
 
 Get offering details, availability, and optionally matching products before initiating a session. This allows hosts to show rich previews to users before asking for consent to engage with the brand.
@@ -63,7 +63,7 @@ This request must not include any personally identifiable information. The `inte
 | Field | Type | Description |
 |-------|------|-------------|
 | `available` | boolean | Whether the offering is currently available |
-| `offering_token` | string | Token to pass to `si_initiate_session` |
+| `offering_token` | string | Token to pass to [`si_initiate_session`](/docs/sponsored-intelligence/tasks/si_initiate_session) |
 | `ttl_seconds` | integer | How long this information is valid |
 | `checked_at` | string | ISO 8601 timestamp of the lookup |
 | `offering` | object | Offering details |
@@ -309,7 +309,7 @@ return {
 };
 ```
 
-When receiving the token in `si_initiate_session`:
+When receiving the token in [`si_initiate_session`](/docs/sponsored-intelligence/tasks/si_initiate_session):
 
 ```typescript
 // Retrieve the pre-session context

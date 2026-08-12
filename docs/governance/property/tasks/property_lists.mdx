@@ -56,11 +56,11 @@ This enables:
 
 | Task | Purpose | Response Time |
 |------|---------|---------------|
-| `create_property_list` | Create a new property list | ~500ms |
-| `update_property_list` | Modify an existing list | ~500ms |
-| `get_property_list` | Retrieve list with resolved properties | ~2-5s (depending on size) |
-| `list_property_lists` | List all property lists | ~500ms |
-| `delete_property_list` | Delete a property list | ~200ms |
+| [`create_property_list`](/docs/governance/property/tasks/property_lists#create_property_list) | Create a new property list | ~500ms |
+| [`update_property_list`](/docs/governance/property/tasks/property_lists#update_property_list) | Modify an existing list | ~500ms |
+| [`get_property_list`](/docs/governance/property/tasks/property_lists#get_property_list) | Retrieve list with resolved properties | ~2-5s (depending on size) |
+| [`list_property_lists`](/docs/governance/property/tasks/property_lists#list_property_lists) | List all property lists | ~500ms |
+| [`delete_property_list`](/docs/governance/property/tasks/property_lists#delete_property_list) | Delete a property list | ~200ms |
 
 ## Property List Structure
 
@@ -116,9 +116,9 @@ The brand reference uses the standard [core/brand-ref](https://adcontextprotocol
 
 ## Webhooks
 
-Configure webhooks via `update_property_list` to receive notifications when the resolved list changes.
+Configure webhooks via [`update_property_list`](/docs/governance/property/tasks/property_lists#update_property_list) to receive notifications when the resolved list changes.
 
-**Important**: Webhooks provide **notification only**. They tell you that the list has changed, but do not stream the updated properties. After receiving a webhook, you must call `get_property_list` to retrieve the updated property set.
+**Important**: Webhooks provide **notification only**. They tell you that the list has changed, but do not stream the updated properties. After receiving a webhook, you must call [`get_property_list`](/docs/governance/property/tasks/property_lists#get_property_list) to retrieve the updated property set.
 
 ### Webhook Flow
 
@@ -161,7 +161,7 @@ Recipients MUST verify the delivery's RFC 9421 `Signature`, `Signature-Input`, a
 
 ## Filters
 
-Filters are applied when the list is resolved (via `get_property_list`):
+Filters are applied when the list is resolved (via [`get_property_list`](/docs/governance/property/tasks/property_lists#get_property_list)):
 
 | Filter | Type | Description |
 |--------|------|-------------|
@@ -173,7 +173,7 @@ Filters are applied when the list is resolved (via `get_property_list`):
 
 ### Feature Requirements
 
-Feature requirements reference features discovered via `get_adcp_capabilities`. Each agent exposes different features (mfa_score, carbon_score, coppa_certified, etc.).
+Feature requirements reference features discovered via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). Each agent exposes different features (mfa_score, carbon_score, coppa_certified, etc.).
 
 For **quantitative** features (scores, ranges):
 ```json
@@ -485,7 +485,7 @@ The response returns a compact list of **identifiers only** (not full property o
 ```
 
 <Note>
-The `auth_token` is only returned when the list is created via `create_property_list`. Store it securely - you'll need it to share access with sellers.
+The `auth_token` is only returned when the list is created via [`create_property_list`](/docs/governance/property/tasks/property_lists#create_property_list). Store it securely - you'll need it to share access with sellers.
 </Note>
 
 ### Request - Get Metadata Only
@@ -657,13 +657,12 @@ Pass property lists to media buy creation:
 
 | Code | Description |
 |------|-------------|
-| `REFERENCE_NOT_FOUND` | Property list ID doesn't exist, or the caller lacks access. Returned uniformly for both cases — see [Uniform response for inaccessible references](/docs/building/by-layer/L3/error-handling#standard-error-codes). Sellers MUST NOT distinguish "exists but unauthorized" from "does not exist." |
-| `INVALID_FILTER` | Filter configuration is invalid |
-| `LIST_NAME_EXISTS` | A list with this name already exists |
+| [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found) | Property list ID doesn't exist, or the caller lacks access. Returned uniformly for both cases — see [Uniform response for inaccessible references](/docs/building/by-layer/L3/error-handling#standard-error-codes). Sellers MUST NOT distinguish "exists but unauthorized" from "does not exist." |
+| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | Filter configuration is invalid, or a list with the requested name already exists. Correct the filter values or choose a unique name. |
 
 ## Caching and Refresh
 
-The `get_property_list` response includes caching guidance:
+The [`get_property_list`](/docs/governance/property/tasks/property_lists#get_property_list) response includes caching guidance:
 
 | Field | Description |
 |-------|-------------|

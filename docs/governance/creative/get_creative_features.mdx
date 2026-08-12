@@ -48,7 +48,7 @@ The request payload is not an authentication channel. Evaluators MUST NOT treat 
 
 After authenticating the transport, the evaluator maps the caller to its allowed creative agent/account configuration. A request signed by, or carrying credentials for, an unrecognized creative agent should fail authentication or authorization; it should not be accepted because the payload names an expected account.
 
-When this call was initiated by `build_creative` and the evaluator is unreachable or rejects the producing agent's transport authentication, the buyer-visible build should fall back to seller-default ranking with an advisory `errors[]` note rather than failing solely because evaluation was unavailable.
+When this call was initiated by [`build_creative`](/docs/creative/task-reference/build_creative) and the evaluator is unreachable or rejects the producing agent's transport authentication, the buyer-visible build should fall back to seller-default ranking with an advisory `errors[]` note rather than failing solely because evaluation was unavailable.
 
 ## Response
 

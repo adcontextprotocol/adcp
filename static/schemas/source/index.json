@@ -797,6 +797,10 @@
           "$ref": "/schemas/enums/pricing-model.json",
           "description": "Supported pricing models for advertising products"
         },
+        "pricing-structure": {
+          "$ref": "/schemas/enums/pricing-structure.json",
+          "description": "How a payable media price is determined: fixed, auction, or contingent"
+        },
         "delivery-type": {
           "$ref": "/schemas/enums/delivery-type.json",
           "description": "Type of inventory delivery"
@@ -887,7 +891,7 @@
         },
         "vast-version": {
           "$ref": "/schemas/enums/vast-version.json",
-          "description": "Supported VAST specification versions (2.0, 3.0, 4.0, 4.1, 4.2)"
+          "description": "Supported VAST specification versions (2.0, 3.0, 4.0, 4.1, 4.2, 4.3)"
         },
         "vast-tracking-event": {
           "$ref": "/schemas/enums/vast-tracking-event.json",
@@ -1007,7 +1011,7 @@
         },
         "notification-type": {
           "$ref": "/schemas/enums/notification-type.json",
-          "description": "Types of delivery notifications (scheduled, final, delayed, adjusted)"
+          "description": "Shared notification registry for delivery, impairment, lifecycle, wholesale-feed, and capability-change events"
         },
         "reporting-frequency": {
           "$ref": "/schemas/enums/reporting-frequency.json",
@@ -1185,7 +1189,7 @@
       }
     },
     "pricing-options": {
-      "description": "Individual pricing model schemas. Discriminated by pricing_model field. If fixed_price is present, it's fixed pricing. If absent, it's auction-based (floor_price and price_guidance optional). Bid-based auction models may also include max_bid as a boolean signal to interpret bid_price as a buyer ceiling instead of an exact honored price.",
+      "description": "Individual pricing model schemas discriminated by pricing_model. Unit-based models may be fixed or auction-based. Contingent models such as revenue_share calculate payable spend from a measured business outcome after delivery.",
       "schemas": {
         "cpm-option": {
           "$ref": "/schemas/pricing-options/cpm-option.json",
@@ -1214,6 +1218,10 @@
         "cpa-option": {
           "$ref": "/schemas/pricing-options/cpa-option.json",
           "description": "Cost Per Acquisition (CPA) pricing for performance campaigns - fixed price per conversion event"
+        },
+        "revenue-share-option": {
+          "$ref": "/schemas/pricing-options/revenue-share-option.json",
+          "description": "Revenue-share pricing - decimal commission rate applied to settled commissionable conversion value"
         },
         "flat-rate-option": {
           "$ref": "/schemas/pricing-options/flat-rate-option.json",

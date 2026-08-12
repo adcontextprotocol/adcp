@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type {
   ComplyOptions,
@@ -49,6 +49,10 @@ type HostedAuthProbeProfile = {
 type HostedComplianceProfile = {
   adcp_supported_versions?: readonly string[];
 };
+type PublishedComplianceManifest = {
+  schema_version: 1;
+  published_versions: string[];
+};
 
 const DEFAULT_HOSTED_AUTH_PROBE_TASK = 'list_creatives';
 const HOSTED_AUTH_PROBE_TASKS_BY_PROTOCOL: Readonly<Record<string, readonly string[]>> = {
@@ -89,6 +93,23 @@ function repoPath(...parts: string[]): string {
   return resolve(process.cwd(), ...parts);
 }
 
+function loadPublishedComplianceManifest(): PublishedComplianceManifest {
+  const manifestPath = repoPath('static', 'compliance', 'published-versions.json');
+  const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as Partial<PublishedComplianceManifest>;
+  if (
+    parsed.schema_version !== 1 ||
+    !Array.isArray(parsed.published_versions) ||
+    parsed.published_versions.length === 0 ||
+    parsed.published_versions.some(version => typeof version !== 'string')
+  ) {
+    throw new Error(`Invalid published compliance manifest at ${manifestPath}`);
+  }
+  return parsed as PublishedComplianceManifest;
+}
+
+const PUBLISHED_COMPLIANCE_MANIFEST = loadPublishedComplianceManifest();
+const PUBLISHED_COMPLIANCE_VERSIONS = new Set(PUBLISHED_COMPLIANCE_MANIFEST.published_versions);
+
 function escapeRegex(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -122,6 +143,36 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+function publishedComplianceChannelForVersion(version: string): string | undefined {
+  const prerelease = version.match(/^([1-9][0-9]*\.[0-9]+)\.0-(beta|rc)\.\d+$/);
+  if (prerelease) return `${prerelease[1]}-${prerelease[2]}`;
+  return complianceReleaseLine(version);
+}
+
+function latestPublishedComplianceVersion(channel: string): string {
+  const latest = [...PUBLISHED_COMPLIANCE_VERSIONS]
+    .filter(version => publishedComplianceChannelForVersion(version) === channel)
+    .sort(compareVersions)
+    .at(-1);
+  if (!latest) {
+    throw new Error(
+      `No npm-published compliance version is registered for ${channel}. Update static/compliance/published-versions.json after publishing @adcp/sdk.`,
+    );
+  }
+  return latest;
+}
+
+function isPublishedComplianceVersion(version: string): boolean {
+  return PUBLISHED_COMPLIANCE_VERSIONS.has(version);
+}
+
+function requirePublishedComplianceVersion(version: string): string {
+  if (isPublishedComplianceVersion(version)) return version;
+  throw new Error(
+    `AdCP compliance target "${version}" is bundled internally but is not available from a published @adcp/sdk package.`,
+  );
+}
+
 function prereleaseComplianceLine(version: string): string | undefined {
   const fullSemver = version.match(/^([1-9][0-9]*)\.([0-9]+)\.[0-9]+-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*(?:\+[0-9A-Za-z.-]+)?$/);
   if (fullSemver) return `${fullSemver[1]}.${fullSemver[2]}`;
@@ -153,8 +204,11 @@ function complianceVersions(): string[] {
 function latestStableComplianceVersionForLine(line: string): string {
   const complianceRoot = repoPath('dist', 'compliance');
   const releaseRe = new RegExp(`^${escapeRegex(line)}\\.\\d+$`);
+  const publishedCeiling = latestPublishedComplianceVersion(line);
   const versions = complianceVersions()
     .filter(name => releaseRe.test(name))
+    .filter(isPublishedComplianceVersion)
+    .filter(name => compareVersions(name, publishedCeiling) <= 0)
     .sort(compareVersions);
 
   const latest = versions.at(-1);
@@ -169,8 +223,11 @@ function latestStableComplianceVersionForLine(line: string): string {
 function latestPrereleaseComplianceVersionForLine(line: string, label: 'beta' | 'rc'): string {
   const complianceRoot = repoPath('dist', 'compliance');
   const prereleaseRe = new RegExp(`^${escapeRegex(line)}\\.0-${label}\\.\\d+$`);
+  const publishedCeiling = latestPublishedComplianceVersion(`${line}-${label}`);
   const versions = complianceVersions()
     .filter(name => prereleaseRe.test(name))
+    .filter(isPublishedComplianceVersion)
+    .filter(name => compareVersions(name, publishedCeiling) <= 0)
     .sort(compareVersions);
 
   const latest = versions.at(-1);
@@ -239,10 +296,12 @@ export function resolveHostedComplianceVersion(target: string = DEFAULT_HOSTED_C
   }
   const wirePrereleaseMatch = target.match(/^([1-9][0-9]*\.[0-9]+)-(beta|rc)\.([0-9]+)$/);
   if (wirePrereleaseMatch) {
-    return `${wirePrereleaseMatch[1]}.0-${wirePrereleaseMatch[2]}.${wirePrereleaseMatch[3]}`;
+    return requirePublishedComplianceVersion(
+      `${wirePrereleaseMatch[1]}.0-${wirePrereleaseMatch[2]}.${wirePrereleaseMatch[3]}`,
+    );
   }
   if (/^[1-9][0-9]*\.[0-9]+\.[0-9]+(?:-(?:beta|rc)\.[0-9]+)?$/.test(target)) {
-    return target;
+    return requirePublishedComplianceVersion(target);
   }
   throw new Error(
     `Unsupported AdCP compliance target "${target}". Use a line alias like 3.0, a prerelease alias like 3.1-rc or 3.1-beta, or an exact bundled version like 3.0.12.`,
@@ -318,7 +377,10 @@ function hostedComplianceTargetCandidates(): HostedComplianceTarget[] {
     }
   }
 
-  const bundledVersions = complianceVersions().sort(compareVersions).reverse();
+  const bundledVersions = complianceVersions()
+    .filter(isPublishedComplianceVersion)
+    .sort(compareVersions)
+    .reverse();
   addRequested('3.1');
   addRequested('3.1-rc');
   for (const version of bundledVersions.filter(v => /^3\.1\.0-rc\.\d+$/.test(v))) {

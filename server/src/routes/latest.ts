@@ -33,6 +33,7 @@ async function getResearchArticleCount(): Promise<number> {
      FROM perspectives p
      JOIN working_groups wg ON p.working_group_id = wg.id
      WHERE p.status = 'published'
+       AND p.is_members_only = false
        AND wg.slug = 'editorial'
        AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))`
   );
@@ -257,6 +258,7 @@ export function createLatestRouter(): {
            FROM perspectives p
            JOIN working_groups wg ON p.working_group_id = wg.id
            WHERE p.status = 'published'
+             AND p.is_members_only = false
              AND wg.slug = 'editorial'
              AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
            ORDER BY p.published_at DESC NULLS LAST

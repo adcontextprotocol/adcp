@@ -1342,10 +1342,90 @@ export function requireRole(...allowedRoles: Array<'owner' | 'admin' | 'member'>
 }
 
 /**
+ * Verify that a tenant-issued API key has the admin permission required by the
+ * request method. Organization binding is enforced separately by the one
+ * explicit tenant-admin middleware below.
+ */
+function tenantApiKeyHasAdminPermission(
+  req: Request,
+  res: Response,
+  apiKey: ValidatedApiKey,
+): boolean {
+  const isReadOnlyRequest = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
+
+  if (apiKeyHasPermission(apiKey, 'admin:*')) {
+    return true;
+  }
+
+  if (apiKeyHasPermission(apiKey, 'admin:read') && isReadOnlyRequest) {
+    return true;
+  }
+
+  res.status(403).json({
+    error: 'Insufficient permissions',
+    message: isReadOnlyRequest
+      ? 'This API key does not have admin access. Required permission: admin:* or admin:read'
+      : 'This API key does not have write access. Required permission: admin:*',
+    api_key_permissions: apiKey.permissions,
+  });
+  return false;
+}
+
+/**
+ * Bind a tenant-issued API key to a server-resolved target organization.
+ */
+function tenantApiKeyMatchesOrganization(
+  req: Request,
+  res: Response,
+  apiKey: ValidatedApiKey,
+  targetOrgId: string,
+): boolean {
+  if (apiKey.organizationId !== targetOrgId) {
+    logger.warn(
+      { path: req.path, method: req.method, apiKeyId: apiKey.id, apiKeyOrgId: apiKey.organizationId, targetOrgId },
+      'Refused cross-tenant admin API key',
+    );
+    res.status(403).json({
+      error: 'cross_tenant_api_key',
+      message: `API key issued by ${apiKey.organizationId} cannot operate on ${targetOrgId}`,
+    });
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Authorize a tenant-issued API key against a server-resolved organization.
+ * WorkOS `admin:*` and `admin:read` permissions never grant platform-global
+ * authority; they are valid only when the target organization exactly matches
+ * the organization that issued the key.
+ */
+function authorizeTenantAdminApiKey(
+  req: Request,
+  res: Response,
+  apiKey: ValidatedApiKey,
+  targetOrgId: string,
+): boolean {
+  if (!tenantApiKeyMatchesOrganization(req, res, apiKey, targetOrgId)) {
+    return false;
+  }
+
+  if (!tenantApiKeyHasAdminPermission(req, res, apiKey)) {
+    return false;
+  }
+
+  logger.debug({ path: req.path, method: req.method, apiKeyId: apiKey.id }, 'Tenant admin access via WorkOS API key');
+  return true;
+}
+
+/**
  * Middleware to require admin access
  * Must be used after requireAuth
  * Accepts static admin API key (ADMIN_API_KEY env var) for internal tooling
- * Accepts WorkOS API keys with 'admin:*' permission for programmatic access
+ * Rejects tenant-issued WorkOS API keys: this middleware grants platform-wide
+ * administration. Audited tenant routes must use the explicit tenant-admin
+ * middleware below.
  * Or checks if user's email is in ADMIN_EMAILS list
  */
 export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
@@ -1357,61 +1437,12 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     return next();
   }
 
-  // Check for WorkOS API key with admin permission
+  // WorkOS API keys are tenant-scoped and must never inherit platform-admin
+  // authority merely because a route happens to contain an organization ID.
   const apiKey = (req as Request & { apiKey?: ValidatedApiKey }).apiKey;
   if (apiKey) {
-    // Cross-tenant defense for routes whose path resolves a specific
-    // target org via `:orgId`. The `admin:*` permission is tenant-scoped
-    // by issuance: it grants admin access *within* the org that minted
-    // the key, not across orgs. Without this gate, any org holding an
-    // `admin:*` key could mutate any other org's data exposed by a
-    // cross-org admin route. Surfaced by security review on #4498.
-    //
-    // KNOWN GAP: routes that target an org via a differently-named param
-    // (`:id`, `:userId`, profile UUIDs) silently skip this default gate.
-    // Member-profile admin PUT/DELETE uses `refuseCrossTenantAdminApiKey`
-    // after a profile-id → org lookup; `/api/admin/users/*` uses the
-    // `requireGlobalAdmin` chain (which composes a global-state refusal).
-    // Cousin routes that operate on global state via `:id` (notably
-    // `admin/feeds.ts` and `admin/notification-channels.ts`) are tracked
-    // in #4501 and should adopt `requireGlobalAdmin` once cross-tenant
-    // exposure is escalated. Pushing this default catches every admin
-    // route that uses `:orgId` for free, while leaving the higher-risk
-    // routes explicit.
-    const targetOrgId = req.params.orgId;
-    if (targetOrgId && apiKey.organizationId !== targetOrgId) {
-      logger.warn(
-        { path: req.path, method: req.method, apiKeyId: apiKey.id, apiKeyOrgId: apiKey.organizationId, targetOrgId },
-        'Refused cross-tenant admin API key',
-      );
-      return res.status(403).json({
-        error: 'cross_tenant_api_key',
-        message: `API key issued by ${apiKey.organizationId} cannot operate on ${targetOrgId}`,
-      });
-    }
-
-    const isReadOnlyRequest = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
-
-    // admin:* grants full access (read and write)
-    if (apiKeyHasPermission(apiKey, 'admin:*')) {
-      logger.debug({ path: req.path, method: req.method, apiKeyId: apiKey.id }, 'Full admin access via WorkOS API key');
-      return next();
-    }
-
-    // admin:read only grants access to read operations
-    if (apiKeyHasPermission(apiKey, 'admin:read') && isReadOnlyRequest) {
-      logger.debug({ path: req.path, method: req.method, apiKeyId: apiKey.id }, 'Read-only admin access via WorkOS API key');
-      return next();
-    }
-
-    // API key exists but doesn't have sufficient permission
-    return res.status(403).json({
-      error: 'Insufficient permissions',
-      message: isReadOnlyRequest
-        ? 'This API key does not have admin access. Required permission: admin:* or admin:read'
-        : 'This API key does not have write access. Required permission: admin:*',
-      api_key_permissions: apiKey.permissions,
-    });
+    refuseAnyApiKeyOnGlobalAdmin(req, res);
+    return;
   }
 
   // Dev mode: check if dev user has admin flag
@@ -1538,45 +1569,31 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
 }
 
 /**
- * Reject the request when the caller is using a WorkOS API key whose
- * `organizationId` does not match `targetOrgId`. Returns true if the
- * request was refused (response sent), false if the caller may proceed.
- *
- * Use this on admin routes whose target org is NOT resolvable from
- * `req.params.orgId` — e.g. routes keyed by a profile UUID (`:id`) or
- * a global user id (`:userId`). The default cross-tenant gate in
- * `requireAdmin` keys off `req.params.orgId` and silently skips on those
- * routes; the security review on #4498 flagged this as a real bypass
- * for `/api/admin/member-profiles/:id`. Resolve the target org from the
- * resource (the profile's `workos_organization_id`, the user's primary
- * org, etc.) and pass it here.
- *
- * Static `ADMIN_API_KEY` and SSO admin users do not set `req.apiKey`
- * and pass through unchanged.
+ * Admin middleware for an audited tenant route whose target is the literal
+ * `:orgId` path parameter. Tenant WorkOS keys are bound to their issuing
+ * organization; SSO and static platform admins delegate to `requireAdmin`.
+ * Must be used after `requireAuth`.
  */
-export function refuseCrossTenantAdminApiKey(
+export async function requireTenantAdminForOrganization(
   req: Request,
   res: Response,
-  targetOrgId: string,
-): boolean {
+  next: NextFunction,
+): Promise<void> {
   const apiKey = (req as Request & { apiKey?: ValidatedApiKey }).apiKey;
-  if (!apiKey) return false;
-  if (apiKey.organizationId === targetOrgId) return false;
-  logger.warn(
-    {
-      path: req.path,
-      method: req.method,
-      apiKeyId: apiKey.id,
-      apiKeyOrgId: apiKey.organizationId,
-      targetOrgId,
-    },
-    'Refused cross-tenant admin API key (per-route gate)',
-  );
-  res.status(403).json({
-    error: 'cross_tenant_api_key',
-    message: `API key issued by ${apiKey.organizationId} cannot operate on ${targetOrgId}`,
-  });
-  return true;
+  if (!apiKey) {
+    await requireAdmin(req, res, next);
+    return;
+  }
+
+  const targetOrgId = req.params.orgId;
+  if (!targetOrgId) {
+    refuseAnyApiKeyOnGlobalAdmin(req, res);
+    return;
+  }
+
+  if (authorizeTenantAdminApiKey(req, res, apiKey, targetOrgId)) {
+    next();
+  }
 }
 
 /**
@@ -1607,25 +1624,11 @@ export function refuseAnyApiKeyOnGlobalAdmin(
 }
 
 /**
- * Composite middleware chain for admin routes that operate on cross-
- * org / global state. Wraps `requireAuth` + a global-admin gate +
- * `requireAdmin` so every route mounted under it inherits the cross-
- * tenant-API-key refusal by default — preventing the regression class
- * where a new admin route is added but the per-handler call is
- * forgotten. Use as `router.<verb>('/path', ...requireGlobalAdmin, handler)`.
- *
- * Surfaced by both code-review and security-review on PR #4646: 7 of
- * the 13 routes on `/api/admin/users` originally relied on
- * `requireAdmin` alone and were exposed to cross-tenant `admin:*` keys
- * despite operating on global state.
+ * Composite chain for platform-admin routes. `requireAdmin` centrally rejects
+ * tenant WorkOS API keys, so global routes need no separate API-key guard.
  */
-const refuseAnyApiKeyMiddleware: import('express').RequestHandler = (req, res, next) => {
-  if (refuseAnyApiKeyOnGlobalAdmin(req, res)) return;
-  next();
-};
 export const requireGlobalAdmin: import('express').RequestHandler[] = [
   requireAuth,
-  refuseAnyApiKeyMiddleware,
   requireAdmin,
 ];
 

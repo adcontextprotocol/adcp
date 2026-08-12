@@ -163,6 +163,35 @@ describe('processAgentBadges — membership gating', () => {
     expect(result.revoked[0].reason).toMatch(/Failing specialisms/);
   });
 
+  it('reports a zero-step specialism as untested when revoking after the grace period', async () => {
+    const existing = [makeBadge('media-buy', 'degraded', 49 * 60 * 60 * 1000)];
+    const db = makeMockDb(existing);
+    const untestedStatus = {
+      ...makeStatus('sales_broadcast_tv', 'failing'),
+      steps_total: 0,
+    };
+
+    const result = await processAgentBadges(
+      db,
+      'https://example.com/mcp',
+      ['sales-broadcast-tv'],
+      [untestedStatus],
+      false,
+      'org_test',
+    );
+
+    expect(result.revoked).toEqual([expect.objectContaining({
+      role: 'media-buy',
+      reason: 'Untested specialisms: sales-broadcast-tv',
+    })]);
+    expect(db.revokeBadge).toHaveBeenCalledWith(
+      'https://example.com/mcp',
+      'media-buy',
+      '3.0',
+      'Untested specialisms: sales-broadcast-tv for 48+ hours',
+    );
+  });
+
   it('keeps a degraded badge unchanged within the 48-hour grace period', async () => {
     const existing = [makeBadge('media-buy', 'degraded', 10 * 60 * 60 * 1000)];
     const db = makeMockDb(existing);

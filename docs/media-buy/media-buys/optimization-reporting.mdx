@@ -297,6 +297,7 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`completion_rate`**: Completion rate (`completed_views` / `impressions`); `null` when not applicable (e.g. a non-video buy)
 - **`conversions`**: Post-click or post-view conversions
 - **`conversion_value`**: Monetary value of attributed conversions
+- **`commissionable_value`**: Settled portion of attributed conversion value eligible for revenue-share commission. Distinct from `conversion_value` when the agreement excludes taxes, shipping, discounts, returns, cancellations, or ineligible items.
 - **`roas`**: Return on ad spend
 - **`cost_per_acquisition`**: Cost per conversion
 - **`new_to_brand_rate`**: Fraction of conversions from first-time brand buyers
@@ -418,7 +419,7 @@ The inner `result` object can be shown or stored separately, but this shape is n
 **Fields:**
 - **`idempotency_key`**: Unique per webhook event and stable across retries of that same event. Receivers dedupe by this field.
 - **Top-level `status`**: Async webhook status, such as `"completed"` for a delivered report.
-- **`notification_type`**: `"scheduled"` (regular update), `"final"` (campaign complete), or `"delayed"` (data not yet available)
+- **`notification_type`**: `"scheduled"` (regular update), `"final"` (campaign complete), `"delayed"` (data not yet available), `"adjusted"` (corrected data for the same window), or `"window_update"` (a wider measurement window supersedes an earlier one)
 - **`sequence_number`**: Sequential notification number (starts at 1)
 - **`next_expected_at`**: ISO 8601 timestamp for next notification (omitted for final notifications)
 - **`media_buy_deliveries[].status`**: Media buy lifecycle or reporting status, distinct from the top-level async webhook status.

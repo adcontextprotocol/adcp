@@ -8,7 +8,7 @@ description: "check_governance is the universal validation gate in AdCP — orch
 # check_governance
 
 <Note>
-**Experimental.** Campaign governance (`sync_plans`, `check_governance`, `report_plan_outcome`, `get_plan_audit_logs`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+**Experimental.** Campaign governance ([`sync_plans`](/docs/governance/campaign/tasks/sync_plans), `check_governance`, [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome), [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs)) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
 </Note>
 
 Universal governance check for campaign actions. Both the orchestrator (buyer-side) and the seller call this task. The governance agent infers the check type from the fields present:
@@ -32,7 +32,7 @@ An account binds to one governance agent (see [`sync_governance`](/docs/accounts
 
 The orchestrator calls `check_governance` with `tool` and `payload` before sending a tool call to a seller. The governance agent evaluates the intended action against the campaign plan.
 
-1. Orchestrator decides to call a seller tool (e.g., `create_media_buy`)
+1. Orchestrator decides to call a seller tool (e.g., [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy))
 2. Orchestrator calls `check_governance` with the tool name and full payload
 3. If `approved`, orchestrator sends the tool call to the seller
 4. If `denied`, orchestrator does not send the tool call
@@ -41,7 +41,7 @@ The orchestrator calls `check_governance` with `tool` and `payload` before sendi
 
 ### Runtime signal attestations
 
-For an `activate_signal` intent check, the orchestrator MAY attach `runtime_attestations[]`: independently issued evidence that a signal-quality claim still holds at activation time. Each item is the shared [portable `AttestationReference`](/docs/building/by-layer/L1/security#portable-attestations), not a governance decision supplied by the buyer.
+For an [`activate_signal`](/docs/signals/tasks/activate_signal) intent check, the orchestrator MAY attach `runtime_attestations[]`: independently issued evidence that a signal-quality claim still holds at activation time. Each item is the shared [portable `AttestationReference`](/docs/building/by-layer/L1/security#portable-attestations), not a governance decision supplied by the buyer.
 
 AdCP does not define a credential issuance API or an orchestrator-side API for discovering or retrieving these references. Before calling `check_governance`, the orchestrator obtains each reference through an issuer-defined or other out-of-band mechanism. Evaluator-side resolution of a supplied credential locator still follows the portable-attestation procedure and the governance agent's published allowlist.
 
@@ -132,7 +132,7 @@ For each presentation the response returns one `runtime_attestation_evaluations[
 }
 ```
 
-`runtime_attestation_binding_digest` binds the ordered evaluations plus findings that carry `attestation_reference_digest`. The signed `governance_context` carries the same digest, and `get_plan_audit_logs` retains ordered `{ reference, evaluation }` pairs plus the full attestation-bound findings. An auditor first recomputes each evaluation's `reference_digest` from its paired reference, then recomputes the binding digest.
+`runtime_attestation_binding_digest` binds the ordered evaluations plus findings that carry `attestation_reference_digest`. The signed `governance_context` carries the same digest, and [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) retains ordered `{ reference, evaluation }` pairs plus the full attestation-bound findings. An auditor first recomputes each evaluation's `reference_digest` from its paired reference, then recomputes the binding digest.
 
 When the capability says `requirement: required`, missing evidence cannot approve the signal activation. A supplied expired, revoked, invalid, subject-mismatched, or digest-mismatched credential MUST NOT be ignored or treated as verified. Off-policy issuers, resolver IDs, credential origins, and verifier nominations are rejected before network access. Resolution failures surface as normalized outcomes and are evaluated under plan policy; they never silently become `verified`.
 
@@ -164,7 +164,7 @@ Execution checks cover the full media buy lifecycle through three phases:
 | Phase | When | What's checked |
 |-------|------|----------------|
 | `purchase` | Before confirming `create_media_buy` | Budget, geo, channels, flight dates, policies |
-| `modification` | Before confirming `update_media_buy` | Change magnitude, reallocation, new parameters |
+| `modification` | Before confirming [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) | Change magnitude, reallocation, new parameters |
 | `delivery` | Periodically during delivery | Pacing, spend rate, geo drift, channel distribution |
 
 Sellers can adopt committed governance checks incrementally:
@@ -209,7 +209,7 @@ For `committed` checks (seller-side), the seller sets a timeout. If the governan
 
 ### Linking to outcomes
 
-The response includes a `check_id`. Use this in [`report_plan_outcome`](./report_plan_outcome) to link outcomes to the governance check that authorized them.
+The response includes a `check_id`. Use this in [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) to link outcomes to the governance check that authorized them.
 
 ## When the governance agent is unavailable
 
@@ -410,7 +410,7 @@ On the first `check_governance` call, the governance agent extracts what it need
 }
 ```
 
-The orchestrator proceeds to send the `create_media_buy` to the seller before `expires_at`.
+The orchestrator proceeds to send the [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) to the seller before `expires_at`.
 
 ### approved (execution check -- purchase with delivery opt-in)
 
@@ -527,7 +527,7 @@ The seller MUST pause delivery immediately and correct the geo targeting before 
 | `caller` | string (URI) | Yes | Claimed agent URL. The transport credential must resolve to the same URL, which is used for authorization and audit. Intent callers must be the authenticated plan owner or hold an active delegation; execution callers must match the preserved target audience. |
 | `purchase_type` | enum | No | The kind of financial commitment being validated: `media_buy` (default), `rights_license`, `signal_activation`, or `creative_services`. When omitted, the governance agent assumes `media_buy`. |
 | `target_agent` | string (URI) | Intent | Exact downstream service URL. Required on intent checks and signed as the token audience. It is routing metadata and is not included in `payload`. |
-| `proposed_commitment` | object | Conditional | Intent-only task-neutral `{amount, currency}`. Required for `update_media_buy`, `acquire_rights`, commitment-increasing `update_rights`, `activate_signal`, and `build_creative`. For `update_media_buy`, the buyer declares the positive delta from its last confirmed revision; for indirectly priced tasks it declares the resolved price. Use amount `0` for a verified no-cost or non-increasing action. This becomes the signed intent ceiling and governance-owned ledger authority. |
+| `proposed_commitment` | object | Conditional | Intent-only task-neutral `{amount, currency}`. Required for [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy), [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights), commitment-increasing [`update_rights`](/docs/brand-protocol/tasks/update_rights), [`activate_signal`](/docs/signals/tasks/activate_signal), and [`build_creative`](/docs/creative/task-reference/build_creative). For `update_media_buy`, the buyer declares the positive delta from its last confirmed revision; for indirectly priced tasks it declares the resolved price. Use amount `0` for a verified no-cost or non-increasing action. This becomes the signed intent ceiling and governance-owned ledger authority. |
 | `execution_commitment` | object | Update execution | Seller-computed `{amount, currency}` positive delta for `update_media_buy`. The seller derives it from authoritative current state atomically with the revision check and write. It must not exceed or change the currency of `proposed_commitment`; a mismatch requires a fresh intent. |
 | `tool` | string | Intent | The AdCP tool being checked. Present on intent checks (orchestrator). The governance agent uses the presence of `tool` + `payload` to identify an intent check. |
 | `payload` | object | Intent | Full downstream tool arguments exactly as they will be sent to `target_agent`. Present on intent checks. |
@@ -562,7 +562,7 @@ The seller MUST pause delivery immediately and correct the geo targeting before 
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `check_id` | string | Unique identifier for this governance check. Use in `report_plan_outcome` to link outcomes. |
+| `check_id` | string | Unique identifier for this governance check. Use in [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) to link outcomes. |
 | `check_type` | enum | `intent` or `execution`. Conditions are valid only for intent. |
 | `verdict` | enum | `approved`, `denied`, or `conditions`. |
 | `plan_id` | string | Echoed on an initial plan-addressed check; optional on context-addressed continuation checks. |
@@ -583,14 +583,14 @@ The seller MUST pause delivery immediately and correct the geo targeting before 
 
 | Code | Recovery | Description |
 |------|----------|-------------|
-| `PLAN_NOT_FOUND` | correctable | No plan with this ID. The buyer may not have synced the plan yet. |
-| `VALIDATION_ERROR` | correctable | The request mixes intent and execution fields, omits a shape-dependent field such as `target_agent` or `execution_commitment`, changes a consultation binding, or carries an invalid amount/currency. Correct the named field and retry; send exactly one check shape. |
-| `CAMPAIGN_SUSPENDED` | transient | Campaign governance is suspended pending human review. Wait for the escalation to resolve; contact the plan operator if it persists. |
-| `PERMISSION_DENIED` | correctable | Authenticated identity is missing/mismatched, the buyer-side caller is not authorized by `delegations`, or the target/executing service is not authorized by `approved_sellers`. Retry only with the correct authenticated identity or after authority is granted. |
-| `GOVERNANCE_UNAVAILABLE` | transient | The configured governance agent could not be reached. Retry with backoff; do not perform the governed action while the gate is unavailable. |
+| [`PLAN_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-plan-not-found) | correctable | No plan with this ID. The buyer may not have synced the plan yet. |
+| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | correctable | The request mixes intent and execution fields, omits a shape-dependent field such as `target_agent` or `execution_commitment`, changes a consultation binding, or carries an invalid amount/currency. Correct the named field and retry; send exactly one check shape. |
+| [`CAMPAIGN_SUSPENDED`](/docs/building/verification/compliance-catalog#error-code-campaign-suspended) | transient | Campaign governance is suspended pending human review. Wait for the escalation to resolve; contact the plan operator if it persists. |
+| [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied) | correctable | Authenticated identity is missing/mismatched, the buyer-side caller is not authorized by `delegations`, or the target/executing service is not authorized by `approved_sellers`. Retry only with the correct authenticated identity or after authority is granted. |
+| [`GOVERNANCE_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-governance-unavailable) | transient | The configured governance agent could not be reached. Retry with backoff; do not perform the governed action while the gate is unavailable. |
 
 ## Related tasks
 
-- [`sync_plans`](./sync_plans) -- The plan this governance check validates against
-- [`report_plan_outcome`](./report_plan_outcome) -- Report what happened after the action was confirmed
-- [`get_plan_audit_logs`](./get_plan_audit_logs) -- View plan state and audit trail
+- [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) -- The plan this governance check validates against
+- [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) -- Report what happened after the action was confirmed
+- [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) -- View plan state and audit trail

@@ -22,6 +22,12 @@ const mocks = vi.hoisted(() => ({
   initializeKnowledgeSearch: vi.fn().mockResolvedValue(undefined),
   getProgress: vi.fn(),
   getAttemptForUser: vi.fn(),
+  memberContext: {
+    is_mapped: false,
+    is_member: false,
+    slack_linked: false,
+  } as Record<string, unknown>,
+  createSlackKnowledgeRequestTools: vi.fn(() => ({ tools: [], handlers: new Map() })),
 }));
 
 vi.mock('express-rate-limit', () => ({
@@ -72,6 +78,8 @@ vi.mock('../../src/addie/mcp/knowledge-search.js', () => ({
   initializeKnowledgeSearch: mocks.initializeKnowledgeSearch,
   KNOWLEDGE_TOOLS: [],
   createKnowledgeToolHandlers: () => new Map(),
+  createSlackKnowledgeRequestTools: mocks.createSlackKnowledgeRequestTools,
+  isSlackKnowledgeTool: () => false,
 }));
 
 vi.mock('../../src/mcp/chat-tool.js', () => ({
@@ -177,11 +185,7 @@ vi.mock('../../src/utils/anthropic-retry.js', () => ({
 }));
 
 vi.mock('../../src/addie/member-context.js', () => ({
-  getWebMemberContext: vi.fn().mockResolvedValue({
-    is_mapped: false,
-    is_member: false,
-    slack_linked: false,
-  }),
+  getWebMemberContext: vi.fn(() => Promise.resolve(mocks.memberContext)),
   formatMemberContextForPrompt: vi.fn().mockReturnValue(null),
 }));
 
@@ -229,6 +233,7 @@ import {
   getChatClaudeClient,
   resolveCompletionModuleId,
   resolveThreadCertificationProgress,
+  prepareRequestWithMemberTools,
 } from '../../src/routes/addie-chat.js';
 import { issueAnonymousSessionCapability } from '../../src/routes/helpers/anonymous-session-capability.js';
 
@@ -291,6 +296,11 @@ describe('Addie chat conversation object authorization', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.authenticated = true;
+    mocks.memberContext = {
+      is_mapped: false,
+      is_member: false,
+      slack_linked: false,
+    };
     mocks.getThreadByExternalId.mockResolvedValue({
       thread_id: 'thread_victim',
       channel: 'web',
@@ -378,6 +388,28 @@ describe('Addie chat conversation object authorization', () => {
 
     expect(resolved).toBe('S6');
     expect(mocks.getAttemptForUser).toHaveBeenCalledWith(attemptId, 'user_attacker');
+  });
+
+  it('builds authenticated unlinked web Slack tools with an explicit public-only scope', async () => {
+    await prepareRequestWithMemberTools('hello', 'user_attacker', 'thread-web', true);
+
+    expect(mocks.createSlackKnowledgeRequestTools).toHaveBeenCalledWith({ kind: 'public-only' });
+  });
+
+  it('builds linked web Slack tools with the member Slack identity', async () => {
+    mocks.memberContext = {
+      is_mapped: true,
+      is_member: true,
+      slack_linked: true,
+      slack_user: { slack_user_id: 'U_LINKED' },
+    };
+
+    await prepareRequestWithMemberTools('hello', 'user_attacker', 'thread-web', true);
+
+    expect(mocks.createSlackKnowledgeRequestTools).toHaveBeenCalledWith({
+      kind: 'slack-user',
+      slackUserId: 'U_LINKED',
+    });
   });
 
   it('allows an anonymous caller to continue a thread with its signed owner capability', async () => {

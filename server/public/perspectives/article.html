@@ -258,6 +258,13 @@
     .article-content a:hover {
       text-decoration: underline;
     }
+    .article-content img {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      margin: var(--space-5) auto;
+      border-radius: var(--radius-md);
+    }
     .article-content blockquote {
       border-left: 4px solid var(--color-brand);
       margin: 1.5rem 0;
@@ -1093,8 +1100,21 @@
 
         // Render markdown content
         if (article.content) {
-          const renderedHtml = marked.parse(article.content);
-          document.getElementById('articleContent').innerHTML = DOMPurify.sanitize(renderedHtml);
+          if (new TextEncoder().encode(article.content).length <= 256000) {
+            const renderedHtml = marked.parse(article.content);
+            document.getElementById('articleContent').innerHTML = DOMPurify.sanitize(renderedHtml, {
+              ALLOWED_TAGS: [
+                'p', 'br', 'strong', 'em', 'a', 'ul', 'ol', 'li',
+                'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code',
+                'img', 'hr', 'del', 'table', 'thead', 'tbody', 'tr', 'th', 'td'
+              ],
+              ALLOWED_ATTR: ['href', 'src', 'alt', 'title'],
+              ALLOW_DATA_ATTR: false,
+              ALLOWED_URI_REGEXP: /^(?:https:|\/(?!\/)|#)/i
+            });
+          } else if (document.getElementById('mainContent').dataset.serverRendered !== 'true') {
+            document.getElementById('articleContent').textContent = 'Article content is temporarily unavailable.';
+          }
         }
 
         // Show author info if available
@@ -1130,6 +1150,12 @@
 
     function showError() {
       document.getElementById('loadingState').style.display = 'none';
+      const mainContent = document.getElementById('mainContent');
+      if (mainContent.dataset.serverRendered === 'true') {
+        // The initial response already contains the complete published article.
+        // Keep it as the fallback when client enhancement fails transiently.
+        return;
+      }
       document.getElementById('errorState').style.display = 'block';
     }
 

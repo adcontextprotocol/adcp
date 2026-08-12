@@ -3,8 +3,9 @@
  *
  * `house_domain` feeds the brand-hierarchy auto-link path, so changes to it
  * can graft new sets of users onto a paying org's auto-link reach. The PATCH
- * handler must write a registry_audit_log row with prior + new values + admin
- * email so a misbehaving / compromised admin is detectable.
+ * handler must write a registry_audit_log row with prior + new values and a
+ * stable actor ID so a misbehaving / compromised admin is detectable without
+ * duplicating user PII into event details.
  *
  * Per security review on PR #3378.
  */
@@ -14,6 +15,7 @@ import { HTTPServer } from '../../src/http.js';
 import request from 'supertest';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
+import { BrandDatabase } from '../../src/db/brand-db.js';
 import type { Pool } from 'pg';
 
 vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
@@ -59,16 +61,16 @@ describe('admin brand PATCH audit log', () => {
   }, 60000);
 
   afterAll(async () => {
-    await pool.query('DELETE FROM registry_audit_log WHERE workos_user_id = $1', ['user_test_admin_audit']);
+    await pool.query('DELETE FROM registry_audit_log WHERE resource_id = $1', [TEST_BRAND_DOMAIN]);
     await pool.query('DELETE FROM brands WHERE domain = $1', [TEST_BRAND_DOMAIN]);
     await pool.query('DELETE FROM organization_domains WHERE workos_organization_id = $1', [TEST_PARENT_ORG_ID]);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_PARENT_ORG_ID]);
-    await server.stop();
+    if (server) await server.stop();
     await closeDatabase();
   });
 
   beforeEach(async () => {
-    await pool.query('DELETE FROM registry_audit_log WHERE workos_user_id = $1', ['user_test_admin_audit']);
+    await pool.query('DELETE FROM registry_audit_log WHERE resource_id = $1', [TEST_BRAND_DOMAIN]);
     await pool.query('DELETE FROM brands WHERE domain = $1', [TEST_BRAND_DOMAIN]);
     await pool.query('DELETE FROM organization_domains WHERE workos_organization_id = $1', [TEST_PARENT_ORG_ID]);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_PARENT_ORG_ID]);
@@ -113,11 +115,14 @@ describe('admin brand PATCH audit log', () => {
     expect(audit.rows[0].action).toBe('brand_house_domain_changed');
     expect(audit.rows[0].workos_organization_id).toBe(TEST_PARENT_ORG_ID); // resolved, not sentinel
     expect(audit.rows[0].details).toMatchObject({
+      schema_version: 1,
       domain: TEST_BRAND_DOMAIN,
       prior_house_domain: null,
       new_house_domain: TEST_PARENT_DOMAIN,
-      admin_email: 'admin-audit@test.com',
+      new_parent_org_id: TEST_PARENT_ORG_ID,
+      mutation_source: 'admin_brand_enrichment',
     });
+    expect(audit.rows[0].details).not.toHaveProperty('admin_email');
   });
 
   it('writes an audit row when house_domain changes from one value to another', async () => {
@@ -209,4 +214,97 @@ describe('admin brand PATCH audit log', () => {
       new_house_domain: null,
     });
   });
+
+  it('preserves omission, clears explicit null, and audits only the clear in PostgreSQL', async () => {
+    const db = new BrandDatabase();
+    await pool.query(
+      'UPDATE brands SET house_domain = $1 WHERE domain = $2',
+      [TEST_PARENT_DOMAIN, TEST_BRAND_DOMAIN],
+    );
+
+    await db.upsertDiscoveredBrand({
+      domain: TEST_BRAND_DOMAIN,
+      brand_name: 'Cache refresh',
+      source_type: 'enriched',
+    });
+    const preserved = await pool.query<{ house_domain: string | null }>(
+      'SELECT house_domain FROM brands WHERE domain = $1',
+      [TEST_BRAND_DOMAIN],
+    );
+    expect(preserved.rows[0].house_domain).toBe(TEST_PARENT_DOMAIN);
+
+    await db.upsertDiscoveredBrand({
+      domain: TEST_BRAND_DOMAIN,
+      house_domain: null,
+      source_type: 'enriched',
+      house_domain_audit: {
+        actor_user_id: 'system:integration-classifier',
+        source: 'classifier',
+      },
+    });
+    const cleared = await pool.query<{ house_domain: string | null }>(
+      'SELECT house_domain FROM brands WHERE domain = $1',
+      [TEST_BRAND_DOMAIN],
+    );
+    expect(cleared.rows[0].house_domain).toBeNull();
+
+    const audit = await pool.query<{ details: Record<string, unknown> }>(
+      `SELECT details FROM registry_audit_log
+       WHERE resource_id = $1 AND action = 'brand_house_domain_changed'`,
+      [TEST_BRAND_DOMAIN],
+    );
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0].details).toMatchObject({
+      prior_house_domain: TEST_PARENT_DOMAIN,
+      new_house_domain: null,
+      mutation_source: 'classifier',
+    });
+  });
+
+  it('serializes mixed writers into an unbroken prior-to-new audit chain', async () => {
+    const db = new BrandDatabase();
+    const fence = await pool.connect();
+    await fence.query('BEGIN');
+    await fence.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [TEST_BRAND_DOMAIN]);
+
+    const upsert = db.upsertDiscoveredBrand({
+      domain: TEST_BRAND_DOMAIN,
+      house_domain: TEST_PARENT_DOMAIN,
+      source_type: 'enriched',
+      house_domain_audit: {
+        actor_user_id: 'system:concurrency-test',
+        source: 'classifier',
+      },
+    });
+    const adminPatch = request(app)
+      .patch(`/api/admin/brand-enrichment/brand/${TEST_BRAND_DOMAIN}`)
+      .send({ house_domain: TEST_NEW_PARENT_DOMAIN })
+      .then(response => response);
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+    await fence.query('COMMIT');
+    fence.release();
+
+    const [, adminResponse] = await Promise.all([upsert, adminPatch]);
+    expect(adminResponse.status).toBe(200);
+
+    const events = await pool.query<{ details: Record<string, unknown> }>(
+      `SELECT details FROM registry_audit_log
+       WHERE resource_id = $1 AND action = 'brand_house_domain_changed'
+       ORDER BY created_at, id`,
+      [TEST_BRAND_DOMAIN],
+    );
+    expect(events.rows).toHaveLength(2);
+    const details = events.rows.map(row => row.details);
+    const first = details.find(event => event.prior_house_domain === null);
+    expect(first).toBeDefined();
+    const second = details.find(event => event !== first);
+    expect(second?.prior_house_domain).toBe(first?.new_house_domain);
+
+    const current = await pool.query<{ house_domain: string | null }>(
+      'SELECT house_domain FROM brands WHERE domain = $1',
+      [TEST_BRAND_DOMAIN],
+    );
+    expect(current.rows[0].house_domain).toBe(second?.new_house_domain);
+  }, 10000);
 });

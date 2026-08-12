@@ -3495,13 +3495,13 @@
           badges.push(`<span class="domain-badge ${escapeHtml(d.source || 'manual')}">${d.source === 'workos' ? 'WorkOS' : 'Manual'}</span>`);
 
           return `
-            <li class="domain-item" data-domain="${escapedDomain}" style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border);">
+            <li class="domain-item" data-domain="${escapedDomain}" data-primary="${d.is_primary ? 'true' : 'false'}" style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border);">
               <div class="domain-info">
                 <span class="domain-name" style="font-weight: var(--font-medium);">${escapedDomain}</span>
                 <span style="margin-left: var(--space-2);">${badges.join(' ')}</span>
               </div>
               <div class="domain-actions" style="display: flex; gap: var(--space-2);">
-                ${!d.verified ? `<button class="btn btn-sm btn-primary" data-action="verify">Verify</button>` : ''}
+                ${!d.verified ? `<button class="btn btn-sm btn-primary" data-action="verify">Force Re-check</button>` : ''}
                 ${!d.is_primary ? `<button class="btn btn-sm btn-secondary" data-action="set-primary">Set Primary</button>` : ''}
                 <button class="btn btn-sm btn-secondary" data-action="remove" style="color: var(--color-error-600);" title="Remove domain">&times;</button>
               </div>
@@ -3528,10 +3528,11 @@
       if (!domainItem) return;
 
       const domain = domainItem.dataset.domain;
+      const isPrimary = domainItem.dataset.primary === 'true';
       const action = btn.dataset.action;
 
       if (action === 'verify') {
-        verifyDomain(domain, btn);
+        verifyDomain(domain, isPrimary, btn);
       } else if (action === 'set-primary') {
         setDomainPrimary(domain, btn);
       } else if (action === 'remove') {
@@ -3539,7 +3540,7 @@
       }
     }
 
-    async function verifyDomain(domain, btn) {
+    async function verifyDomain(domain, isPrimary, btn) {
       const originalText = btn ? btn.textContent : '';
       if (btn) {
         btn.disabled = true;
@@ -3547,10 +3548,8 @@
       }
 
       try {
-        const response = await fetch(`/api/admin/organizations/${accountId}/domains`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ domain: domain.toLowerCase() })
+        const response = await fetch(`/api/admin/organizations/${accountId}/domains/${encodeURIComponent(domain.toLowerCase())}/verify`, {
+          method: 'POST'
         });
 
         if (!response.ok) {
@@ -3559,13 +3558,42 @@
             return;
           }
           const data = await response.json().catch(() => ({}));
-          throw new Error(data.error || 'Failed to verify domain');
+          if (data.error === 'still_pending') {
+            const workosReference = data.workos_domain_id
+              ? `\nWorkOS domain ID: ${data.workos_domain_id}`
+              : '';
+            const attestation = prompt(
+              `WorkOS still reports ${domain} as pending.${workosReference}\n\nTo mark it verified manually, enter an attestation note confirming how you checked the DNS record. Cancel to stop.`
+            );
+            if (attestation === null) return;
+            if (!attestation.trim()) {
+              throw new Error('An attestation note is required to mark the domain verified manually.');
+            }
+            if (!confirm(`Mark ${domain} verified manually? This bypasses the pending WorkOS DNS result.`)) return;
+
+            const overrideResponse = await fetch(`/api/admin/organizations/${accountId}/domains/${encodeURIComponent(domain.toLowerCase())}/override-verification`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                is_primary: isPrimary,
+                verification_attestation: attestation.trim()
+              })
+            });
+            const overrideData = await overrideResponse.json().catch(() => ({}));
+            if (!overrideResponse.ok) {
+              throw new Error(overrideData.message || overrideData.error || 'Failed to mark domain verified');
+            }
+            location.reload();
+            return;
+          }
+          throw new Error(data.message || data.error || 'Failed to verify domain');
         }
 
         location.reload();
       } catch (error) {
         console.error('Error verifying domain:', error);
         alert('Error: ' + error.message);
+      } finally {
         if (btn) {
           btn.disabled = false;
           btn.textContent = originalText;
