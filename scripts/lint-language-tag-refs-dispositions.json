@@ -1,0 +1,185 @@
+{
+  "$comment": "Reviewed exceptions for scripts/lint-language-tag-refs.cjs. Legacy language boundaries are migration debt; name collisions are structural fields selected by the deliberately broad matcher.",
+  "entries": [
+    {
+      "path": "brand.json#/definitions/data_subject_contestation/properties/languages",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Existing contestation channel language list predates the canonical locale-tag primitive."
+    },
+    {
+      "path": "brand.json#/definitions/localized_name",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Legacy localized maps use underscore-separated keys and an explicit underscore-to-hyphen bridge."
+    },
+    {
+      "path": "brand.json#/definitions/localized_string_list_entry",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Legacy localized list maps use underscore-separated keys and the brand.json bridge contract."
+    },
+    {
+      "path": "content-standards/artifact.json#/properties/assets/items/oneOf/0/properties/language",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Existing content-standards artifact language values predate the canonical primitive."
+    },
+    {
+      "path": "content-standards/content-standards.json#/properties/languages_any",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Existing content-standards scope language values are retained for wire compatibility."
+    },
+    {
+      "path": "content-standards/create-content-standards-request.json#/properties/calibration_exemplars/properties/fail/items/oneOf/0/properties/language",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Existing calibration exemplar language values predate the canonical primitive."
+    },
+    {
+      "path": "content-standards/create-content-standards-request.json#/properties/calibration_exemplars/properties/pass/items/oneOf/0/properties/language",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Existing calibration exemplar language values predate the canonical primitive."
+    },
+    {
+      "path": "content-standards/create-content-standards-request.json#/properties/scope/properties/languages_any",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Existing create-request scope language values are retained for wire compatibility."
+    },
+    {
+      "path": "content-standards/list-content-standards-request.json#/properties/languages",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Existing list filter language values predate the canonical primitive."
+    },
+    {
+      "path": "content-standards/update-content-standards-request.json#/properties/calibration_exemplars/properties/fail/items/oneOf/0/properties/language",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Existing calibration exemplar language values predate the canonical primitive."
+    },
+    {
+      "path": "content-standards/update-content-standards-request.json#/properties/calibration_exemplars/properties/pass/items/oneOf/0/properties/language",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Existing calibration exemplar language values predate the canonical primitive."
+    },
+    {
+      "path": "content-standards/update-content-standards-request.json#/properties/scope/properties/languages_any",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Existing update-request scope language values are retained for wire compatibility."
+    },
+    {
+      "path": "core/assets/markdown-asset.json#/properties/language",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Published markdown asset language values predate the canonical primitive."
+    },
+    {
+      "path": "core/assets/text-asset.json#/properties/language",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Published text asset language values predate the canonical primitive."
+    },
+    {
+      "path": "core/brand-ref.json#/properties/data_subject_contestation/properties/languages",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Existing contestation channel language list predates the canonical locale-tag primitive."
+    },
+    {
+      "path": "core/collection.json#/properties/language",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Published collection language values predate the canonical primitive."
+    },
+    {
+      "path": "core/creative-brief.json#/properties/compliance/properties/required_disclosures/items/properties/language",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Published disclosure language values predate the canonical primitive."
+    },
+    {
+      "path": "core/creative-localization-readback.json#/properties/default_locale_variant_id",
+      "disposition": "not-a-language-tag",
+      "rationale": "Stable identifier for a locale variant, not a BCP 47 value."
+    },
+    {
+      "path": "core/creative-localization-readback.json#/properties/locale_fallbacks/items/properties/locale_variant_id",
+      "disposition": "not-a-language-tag",
+      "rationale": "Stable identifier for a locale variant, not a BCP 47 value."
+    },
+    {
+      "path": "core/creative-localization-readback.json#/properties/locale_matching",
+      "disposition": "not-a-language-tag",
+      "rationale": "Matching algorithm enum, not a concrete language identity or range."
+    },
+    {
+      "path": "core/creative-localization-readback.json#/properties/unmatched_locale_action",
+      "disposition": "not-a-language-tag",
+      "rationale": "Fallback behavior enum, not a concrete language identity or range."
+    },
+    {
+      "path": "core/creative-localization-readback.json#/properties/variants/items/oneOf/0/properties/locale_variant_id",
+      "disposition": "not-a-language-tag",
+      "rationale": "Stable identifier for a locale variant, not a BCP 47 value."
+    },
+    {
+      "path": "core/creative-localization-readback.json#/properties/variants/items/oneOf/1/properties/locale_variant_id",
+      "disposition": "not-a-language-tag",
+      "rationale": "Stable identifier for a locale variant, not a BCP 47 value."
+    },
+    {
+      "path": "core/creative-localization.json#/properties/default_locale_variant_id",
+      "disposition": "not-a-language-tag",
+      "rationale": "Stable identifier for a locale variant, not a BCP 47 value."
+    },
+    {
+      "path": "core/creative-localization.json#/properties/locale_fallbacks/items/properties/locale_variant_id",
+      "disposition": "not-a-language-tag",
+      "rationale": "Stable identifier for a locale variant, not a BCP 47 value."
+    },
+    {
+      "path": "core/creative-localization.json#/properties/source/properties/locale_variant_id",
+      "disposition": "not-a-language-tag",
+      "rationale": "Stable identifier for a locale variant, not a BCP 47 value."
+    },
+    {
+      "path": "core/creative-localization.json#/properties/target_variants/items/properties/locale_variant_id",
+      "disposition": "not-a-language-tag",
+      "rationale": "Stable identifier for a locale variant, not a BCP 47 value."
+    },
+    {
+      "path": "core/creative-localization.json#/properties/unmatched_locale_action",
+      "disposition": "not-a-language-tag",
+      "rationale": "Fallback behavior enum, not a concrete language identity or range."
+    },
+    {
+      "path": "core/creative-variant.json#/allOf/1/properties/locale_variant_id",
+      "disposition": "not-a-language-tag",
+      "rationale": "Stable identifier for a locale variant, not a BCP 47 value."
+    },
+    {
+      "path": "core/education-item.json#/properties/language",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Published education item language values predate the canonical primitive."
+    },
+    {
+      "path": "core/signal-definition-enrichment.json#/properties/data_subject_rights/properties/channels/items/properties/languages",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Existing rights-channel language values predate the canonical primitive."
+    },
+    {
+      "path": "core/signal-definition.json#/properties/data_subject_rights/properties/channels/items/properties/languages",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Existing rights-channel language values predate the canonical primitive."
+    },
+    {
+      "path": "core/targeting.json#/properties/language",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Legacy targeting uses ISO 639-1 values and intentionally retains its published wire shape."
+    },
+    {
+      "path": "protocol/get-adcp-capabilities-response.json#/properties/creative/properties/localization/properties/locale_matching",
+      "disposition": "not-a-language-tag",
+      "rationale": "Capability enum naming a supported matching algorithm, not a language tag."
+    },
+    {
+      "path": "sponsored-intelligence/si-identity.json#/properties/user/properties/locale",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Published sponsored-intelligence identity locale predates the canonical primitive."
+    },
+    {
+      "path": "trusted-match/context-match-request.json#/properties/context_signals/properties/language",
+      "disposition": "legacy-language-boundary",
+      "rationale": "Published trusted-match context language predates the canonical primitive."
+    }
+  ]
+}
