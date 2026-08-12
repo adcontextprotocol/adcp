@@ -403,6 +403,49 @@ The house object represents the corporate entity:
 
 ## Brand definition
 
+### Document language and localized fields
+
+House Portfolio and Brand Canonical documents may set top-level `default_language` to a BCP 47 language tag. It identifies the language of legacy plain-string and plain-array content in that document. When omitted, readers MUST behave as though it were `"en"`.
+
+Fields that support localization retain their legacy plain value and also accept an ordered array of one-locale maps. Scalar fields map a locale to one string; `tone.attributes`, `tone.dos`, and `tone.donts` map a locale to the complete ordered string list:
+
+```json
+{
+  "default_language": "en-GB",
+  "tone": {
+    "voice": [
+      {"en-GB": "Warm and direct"},
+      {"fr": "Chaleureux et direct"}
+    ],
+    "attributes": [
+      {"en-GB": ["plain-spoken", "optimistic"]},
+      {"fr": ["accessible", "optimiste"]}
+    ]
+  },
+  "assets": [{
+    "asset_id": "hero_summer",
+    "asset_type": "image",
+    "url": "https://assets.example/hero.jpg",
+    "name": [{"en": "Summer hero"}, {"fr": "Visuel principal été"}]
+  }]
+}
+```
+
+Readers MUST resolve a localized field in this order:
+
+1. exact requested BCP 47 tag;
+2. requested base language;
+3. exact `default_language` tag;
+4. `default_language` base language;
+5. the legacy plain string or complete plain array, when present;
+6. otherwise the field is unavailable.
+
+Readers MUST NOT select the first or any other arbitrary translation when none of those candidates exists. Before matching legacy underscore keys such as `fr_CA`, readers replace `_` with `-` and apply the AdCP locale-tag canonicalization profile.
+
+For the localized scalar and complete-list fields introduced in 3.2, producers MUST NOT repeat a locale after canonicalization. For example, one localized value cannot contain both `en-US` and `en_US`. This restriction does not apply to the legacy `names` and `tagline` alias arrays, which continue to allow multiple values for one language.
+
+Localized tone arrays are selected as a whole. Readers MUST NOT localize elements independently or combine entries from different languages; list ordering and language consistency are part of the published value. This 3.2 slice covers `tone.voice`, `tone.attributes`, `tone.dos`, `tone.donts`, and asset `name` and `description`. Logo and product-catalog fields remain unchanged.
+
 Each brand in the `brands` array:
 
 | Field | Type | Required | Description |
@@ -417,7 +460,7 @@ Each brand in the `brands` array:
 | `logos` | array | No | Brand logo assets |
 | `colors` | object | No | Brand color palette |
 | `fonts` | object | No | Brand typography |
-| `tone` | object | No | Brand voice and messaging guidelines (`voice`, `attributes`, `dos`, `donts`) |
+| `tone` | object | No | Brand voice and messaging guidelines. `voice` is a localized scalar; `attributes`, `dos`, and `donts` localize as complete arrays. |
 | `tagline` | string | No | Brand tagline or slogan |
 | `visual_guidelines` | object | No | Structured visual rules for generative creative systems |
 | `trademarks` | array | No | Registered trademarks owned or licensed by this brand (`registry`, `number`, `mark`, optional `status`, `license_type`, `countries`). See [Trademarks](#trademarks). |
@@ -1179,6 +1222,7 @@ Properties are digital touchpoints associated with brands:
 ### Property types
 
 Matches AdCP property-type enum:
+
 - `website`
 - `mobile_app`
 - `ctv_app`
@@ -1186,7 +1230,9 @@ Matches AdCP property-type enum:
 - `dooh`
 - `podcast`
 - `radio`
+- `linear_tv`
 - `streaming_audio`
+- `ai_assistant`
 
 ### Property relationships
 

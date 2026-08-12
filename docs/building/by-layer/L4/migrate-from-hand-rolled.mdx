@@ -149,7 +149,7 @@ Two version axes you'll be juggling:
 
 ### Worked example: two buyers, mid-swap
 
-You're on step 3 (idempotency), buyer A is on AdCP 2.5, buyer B is on AdCP 3.0. You've adopted the SDK's controller, error envelopes, and idempotency cache for the accounts you've cut over. Buyer A is mid-flight to the SDK; buyer B is greenfield on the SDK.
+You're on step 3 (idempotency), buyer A is temporarily on end-of-life AdCP 2.5 while migrating, and buyer B is on AdCP 3.0. You've adopted the SDK's controller, error envelopes, and idempotency cache for the accounts you've cut over. Buyer A is mid-flight to the SDK; buyer B is greenfield on the SDK. This is a migration bridge, not a supported production endpoint state.
 
 Your inbound side: identify each peer's spec version up front (from the agent registry, the agent card, or the `adcp_version` field if present), pin `adcpVersion` on the agent / per call, and let the SDK adapt the wire shape. Example with `@adcp/sdk`:
 
@@ -207,7 +207,7 @@ If you fall back (rollback step 3 to your hand-rolled cache), buyer A still goes
 
 If your agent serves a frozen wire surface for a small set of named buyers and your engineers spend ~zero time on protocol maintenance, the migration ROI is low. Reasonable holds:
 
-- You're on AdCP 2.5, none of your buyers want 3.x, and you're willing to deprecate when they do.
+- You serve a frozen, supported 3.x wire surface and have a dated plan to adopt the current release before that surface reaches end of life.
 - Your conformance gap (from step 1) is small enough to fix in place without adopting the SDK.
 - You have a hard regulatory or operational reason for owning every layer end-to-end.
 

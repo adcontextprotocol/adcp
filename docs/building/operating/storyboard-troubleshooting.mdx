@@ -16,9 +16,23 @@ Each section shows the error you'll see, what it means, and what to change in yo
 
 The storyboard's `sample_request` references a hardcoded ID (`test-product`, `test-pricing`, `campaign_hero_video`, `gov_acme_q2_2027`, etc.). The runner expects the agent to have that ID in its catalog before the mutating step runs.
 
-**Fix:** Implement `comply_test_controller` and honor the seed scenarios declared in the storyboard's `fixtures:` block. When `prerequisites.controller_seeding: true` is set, the runner auto-injects a fixtures phase that calls `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, or `seed_media_buy` in foreign-key order before the main phases execute.
+**Fix:** On the dev or staging endpoint registered for Verified (Spec), implement `comply_test_controller` and honor the seed scenarios declared in the storyboard's `fixtures:` block. Do not expose the controller on the production endpoint used for Verified (Sandbox). When `prerequisites.controller_seeding: true` is set, the runner auto-injects a fixtures phase that calls `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, or `seed_media_buy` in foreign-key order before the main phases execute.
+
+Implement only the scenarios your selected specialisms require. For example, `sales-non-guaranteed` needs `seed_product` and `seed_pricing_option`; it does not require the full controller surface unless another selected storyboard declares additional fixtures.
 
 See [Compliance test controller — Scenarios](/docs/building/by-layer/L3/comply-test-controller#scenarios) for the full seed contract. Agents that return `UNKNOWN_SCENARIO` on a seed call grade the storyboard `not_applicable` — they are not penalized for missing sandbox surface, but they cannot pass storyboards that depend on pre-seeded state.
+
+## Ambiguous sandbox account discovery
+
+```
+× Discover sandbox accounts for media buy: list_accounts returned multiple matching accounts (acct-a, acct-b); provide media_buy_account_id/account_id to disambiguate
+```
+
+The runner is resolving an account-id namespace (`account.require_operator_auth: true`) and the credential can see more than one plausible sandbox account. It cannot safely choose an `account_id` for later media-buy calls.
+
+**Fix:** Prefer a dedicated compliance credential bound to one sandbox account. If the credential must expose a roster, return enough brand data for exactly one active sandbox row to match the selected test kit's `brand.house.domain`. Do not set `require_operator_auth: false` as a workaround unless the seller genuinely uses buyer-declared natural keys (`brand` + `operator`); that flag is a buyer-facing account-model promise, not a runner hint.
+
+When a valid `account` capability block is present, merely exposing `list_accounts` does not opt a buyer-declared seller into account-ID discovery. Leave `require_operator_auth` false or absent, and support `sync_accounts` with `sandbox: true`, when the buyer declares accounts. If the whole `account` block is absent or could not be read, the runner may retain its legacy `list_accounts` discovery heuristic. See [Get test-ready — Pick your sandbox bootstrap path](/docs/building/verification/get-test-ready).
 
 ## Signature challenge missing on 401
 

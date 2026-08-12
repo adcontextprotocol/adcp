@@ -23,6 +23,7 @@ primary_region = 'iad'
   BASE_URL = "https://agenticadvertising.org"
   # Disabled - migrations now run via release_command
   RUN_MIGRATIONS = "false"
+  PUBLISHER_CRAWL_QUEUE_ENABLED = "true"
   # Use pre-cloned repos from Docker build, skip runtime git fetch.
   # Production image has no git binary — unsetting this degrades gracefully
   # (repos skip indexing) but does not crash.
@@ -90,4 +91,3 @@ primary_region = 'iad'
   memory = "4gb"
   cpu_kind = "performance"
   cpus = 2
-

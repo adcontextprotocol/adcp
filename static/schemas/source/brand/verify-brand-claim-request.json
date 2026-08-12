@@ -95,8 +95,7 @@
               "description": "Shape matches brand.json properties[] entry.",
               "properties": {
                 "type": {
-                  "type": "string",
-                  "enum": ["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "streaming_audio"]
+                  "$ref": "/schemas/enums/property-type.json"
                 },
                 "identifier": { "type": "string" },
                 "store": {

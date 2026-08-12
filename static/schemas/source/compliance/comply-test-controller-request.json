@@ -669,15 +669,18 @@
       "properties": {
         "creative_id": {
           "type": "string",
-          "description": "Creative to transition (force_creative_status) or seed (seed_creative)."
+          "description": "Creative to transition (force_creative_status) or seed (seed_creative).",
+          "x-entity": "creative"
         },
         "account_id": {
           "type": "string",
-          "description": "Account to transition, simulate, or seed. Used by force_account_status, simulate_budget_spend, and seed_account."
+          "description": "Account to transition, simulate, or seed. Used by force_account_status, simulate_budget_spend, and seed_account.",
+          "x-entity": "account"
         },
         "media_buy_id": {
           "type": "string",
-          "description": "Media buy to transition (force_media_buy_status, simulate_delivery, simulate_budget_spend) or seed (seed_media_buy)."
+          "description": "Media buy to transition (force_media_buy_status, simulate_delivery, simulate_budget_spend) or seed (seed_media_buy).",
+          "x-entity": "media_buy"
         },
         "session_id": {
           "type": "string",
@@ -685,15 +688,18 @@
         },
         "product_id": {
           "type": "string",
-          "description": "Product to seed. Used by seed_product and seed_pricing_option."
+          "description": "Product to seed. Used by seed_product and seed_pricing_option.",
+          "x-entity": "product"
         },
         "pricing_option_id": {
           "type": "string",
-          "description": "Pricing option to seed, scoped to a product. Used by seed_pricing_option."
+          "description": "Pricing option to seed, scoped to a product. Used by seed_pricing_option.",
+          "x-entity": "product_pricing_option"
         },
         "plan_id": {
           "type": "string",
-          "description": "Plan to seed. Used by seed_plan."
+          "description": "Plan to seed. Used by seed_plan.",
+          "x-entity": "governance_plan"
         },
         "fixture": {
           "type": "object",
@@ -742,6 +748,16 @@
           "type": "integer",
           "minimum": 0,
           "description": "Conversions to simulate. Used by simulate_delivery."
+        },
+        "conversion_value": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total attributed conversion value to simulate in the delivery reporting currency. Used by simulate_delivery."
+        },
+        "commissionable_value": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Settled attributed value eligible for revenue-share commission to simulate in the delivery reporting currency. Used by simulate_delivery."
         },
         "reported_spend": {
           "type": "object",
@@ -952,7 +968,8 @@
         "format_id": {
           "type": "string",
           "deprecated": true,
-          "description": "**DEPRECATED 3.x compatibility fixture.** Legacy named-format ID to seed for seed_creative_format scenarios. The seller MUST expose it through the deprecated list_creative_formats projection for the duration of the compliance session. Canonical 3.2 scenarios seed creative.supported_formats capabilities instead."
+          "description": "**DEPRECATED 3.x compatibility fixture.** Legacy named-format ID to seed for seed_creative_format scenarios. The seller MUST expose it through the deprecated list_creative_formats projection for the duration of the compliance session. Canonical 3.2 scenarios seed creative.supported_formats capabilities instead.",
+          "x-entity": "creative_format"
         },
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",

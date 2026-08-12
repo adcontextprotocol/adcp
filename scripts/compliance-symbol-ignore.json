@@ -1,0 +1,42 @@
+{
+  "$comment": "Finite, page-specific exceptions for structurally high-confidence error/task claims. Entries must be sorted by path, family, and symbol; unused or newly resolvable entries fail the build. Exceptions are for deliberate non-symbol prose, never undocumented protocol codes.",
+  "version": 1,
+  "entries": [
+    {
+      "family": "task",
+      "symbol": "list_scenarios",
+      "path": "docs/building/by-layer/L3/comply-test-controller.mdx",
+      "reason": "Compliance controller action, not an AdCP manifest task."
+    },
+    {
+      "family": "task",
+      "symbol": "simulate_budget_spend",
+      "path": "docs/building/by-layer/L3/comply-test-controller.mdx",
+      "reason": "Compliance controller action, not an AdCP manifest task."
+    },
+    {
+      "family": "error_code",
+      "symbol": "INTERNAL_ERROR",
+      "path": "docs/building/by-layer/L3/error-handling.mdx",
+      "reason": "Explicit non-code example explaining that the standard catalog deliberately has no generic INTERNAL_ERROR."
+    },
+    {
+      "family": "task",
+      "symbol": "seed_product",
+      "path": "docs/building/verification/get-test-ready.mdx",
+      "reason": "Compliance controller helper operation, not an AdCP manifest task."
+    },
+    {
+      "family": "task",
+      "symbol": "get_price_quote",
+      "path": "docs/protocol/design-principles.mdx",
+      "reason": "Explicit hypothetical task used to explain why the protocol does not define it."
+    },
+    {
+      "family": "task",
+      "symbol": "list_authorized_properties",
+      "path": "docs/protocol/get_adcp_capabilities.mdx",
+      "reason": "Historical v2 task retained only in migration guidance after removal from v3."
+    }
+  ]
+}

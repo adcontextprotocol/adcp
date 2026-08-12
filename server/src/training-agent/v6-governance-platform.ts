@@ -235,27 +235,27 @@ export class TrainingGovernancePlatform
   };
 
   contentStandards: ContentStandardsPlatform<TrainingGovernanceMeta> = {
-    listContentStandards: async (req, ctx) => {
+    listContentStandardsLegacy: async (req, ctx) => {
       const result = await handleListContentStandards(req as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(result);
     },
-    getContentStandards: async (req, ctx) => {
+    getContentStandardsLegacy: async (req, ctx) => {
       const result = await handleGetContentStandards(req as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(result);
     },
-    createContentStandards: async (req, ctx) => {
+    createContentStandardsLegacy: async (req, ctx) => {
       const result = await handleCreateContentStandards(req as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(result);
     },
-    updateContentStandards: async (req, ctx) => {
+    updateContentStandardsLegacy: async (req, ctx) => {
       const result = await handleUpdateContentStandards(req as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(result);
     },
-    calibrateContent: async (req, ctx) => {
+    calibrateContentLegacy: async (req, ctx) => {
       const result = await handleCalibrateContent(req as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(result);
     },
-    validateContentDelivery: async (req, ctx) => {
+    validateContentDeliveryLegacy: async (req, ctx) => {
       const result = await handleValidateContentDelivery(req as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(result);
     },

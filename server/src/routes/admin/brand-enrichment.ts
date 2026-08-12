@@ -11,6 +11,10 @@ import { requireAuth, requireAdmin } from '../../middleware/auth.js';
 import { isBrandfetchConfigured } from '../../services/brandfetch.js';
 import { query, getClient } from '../../db/client.js';
 import {
+  lockBrandHouseDomainWriter,
+  recordBrandHouseDomainChange,
+} from '../../db/brand-db.js';
+import {
   enrichBrand,
   enrichBrands,
   expandHouse,
@@ -432,6 +436,7 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
         let priorRow: { domain: string; house_domain: string | null; keller_type: string | null };
         try {
           await client.query('BEGIN');
+          await lockBrandHouseDomainWriter(client, domain);
 
           const existing = await client.query<{ domain: string; house_domain: string | null; keller_type: string | null }>(
             `SELECT domain, house_domain, keller_type FROM brands WHERE domain = $1 FOR UPDATE`,
@@ -479,40 +484,16 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
             }
           }
 
-          // Audit log: house_domain feeds the brand-hierarchy auto-link path
-          // (autoLinkByVerifiedDomain via findPayingOrgForDomain), so changes
-          // to it can grant new sets of users access to a paying org. Track
-          // each change so a misbehaving / compromised admin is detectable.
-          if (house_domain !== undefined && (house_domain || null) !== priorRow.house_domain) {
-            // Look up the paying org whose hierarchy is impacted, falling
-            // back to a sentinel. registry_audit_log has no FK on the
-            // workos_organization_id column, so the sentinel is safe.
-            const candidateOrgs = await client.query<{ workos_organization_id: string }>(
-              `SELECT od.workos_organization_id FROM organization_domains od
-               WHERE od.verified = true AND LOWER(od.domain) = ANY($1::text[])
-               LIMIT 1`,
-              [[house_domain, priorRow.house_domain].filter(Boolean).map((d) => (d as string).toLowerCase())]
-            );
-            const auditOrgId = candidateOrgs.rows[0]?.workos_organization_id ?? 'system_brand_registry';
-
-            await client.query(
-              `INSERT INTO registry_audit_log
-               (workos_organization_id, workos_user_id, action, resource_type, resource_id, details)
-               VALUES ($1, $2, $3, $4, $5, $6)`,
-              [
-                auditOrgId,
-                req.user!.id,
-                'brand_house_domain_changed',
-                'brand',
-                domain,
-                JSON.stringify({
-                  domain,
-                  prior_house_domain: priorRow.house_domain,
-                  new_house_domain: house_domain || null,
-                  admin_email: req.user!.email,
-                }),
-              ]
-            );
+          if (house_domain !== undefined) {
+            await recordBrandHouseDomainChange(client, {
+              domain,
+              prior_house_domain: priorRow.house_domain,
+              new_house_domain: brandRow.house_domain ?? null,
+              audit: {
+                actor_user_id: req.user!.id,
+                source: 'admin_brand_enrichment',
+              },
+            });
           }
 
           await client.query('COMMIT');

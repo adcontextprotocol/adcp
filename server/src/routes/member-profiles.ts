@@ -12,7 +12,6 @@ import {
   requireAuth,
   requireAdmin,
   requireGlobalAdmin,
-  refuseCrossTenantAdminApiKey,
   isDevModeEnabled,
   DEV_USERS,
 } from "../middleware/auth.js";
@@ -2631,8 +2630,7 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
     }
   });
 
-  // PUT /api/admin/member-profiles/:id - Global admins may update any profile;
-  // tenant admin keys remain limited to a profile owned by their issuing org.
+  // PUT /api/admin/member-profiles/:id - Global admins may update any profile.
   router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
@@ -2646,21 +2644,12 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
         });
       }
 
-      // Cross-tenant gate. `requireAdmin` keys off `:orgId` in the path,
-      // but this route uses `:id` (a profile UUID) — resolve the profile's
-      // org and apply the gate here. Without this, any WorkOS API key
-      // holding `admin:*` (issued by any org) could mutate any
-      // member_profiles row by guessing the UUID. Surfaced by security
-      // review on #4498.
       const existingProfile = await memberDb.getProfileById(id);
       if (!existingProfile) {
         return res.status(404).json({
           error: 'Profile not found',
           message: `No member profile found with ID: ${id}`,
         });
-      }
-      if (refuseCrossTenantAdminApiKey(req, res, existingProfile.workos_organization_id)) {
-        return;
       }
 
       // Validate offerings if provided
@@ -2721,21 +2710,17 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
     }
   });
 
-  // DELETE /api/admin/member-profiles/:id - Same global/same-tenant split as PUT.
+  // DELETE /api/admin/member-profiles/:id - Global admins may delete any profile.
   router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
 
-      // Cross-tenant gate — see PUT above for context.
       const existingProfile = await memberDb.getProfileById(id);
       if (!existingProfile) {
         return res.status(404).json({
           error: 'Profile not found',
           message: `No member profile found with ID: ${id}`,
         });
-      }
-      if (refuseCrossTenantAdminApiKey(req, res, existingProfile.workos_organization_id)) {
-        return;
       }
 
       const deleted = await memberDb.deleteProfile(id);

@@ -22,6 +22,15 @@ function loadSafePerspectiveExternalUrl(): (value: unknown) => string | null {
 }
 
 describe('runtime XSS regressions', () => {
+  it('uses delegated data attributes for the admin brand re-crawl action', () => {
+    const source = readPublicFile('admin-brands.html');
+
+    expect(source).toContain('data-action="force-brand-crawl"');
+    expect(source).toContain('data-domain="${escapeHtml(brand.domain)}"');
+    expect(source).not.toMatch(/onclick="forceBrandCrawl\(/);
+    expect(source).toContain("button.dataset.domain");
+  });
+
   it('renders community mirror proposal JSON and organization IDs as escaped text', () => {
     const source = readPublicFile('admin-community-mirrors.html');
     const rendererSource = section(source, 'function escapeHtml(value)', 'async function fetchJson(url)');

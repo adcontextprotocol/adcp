@@ -662,6 +662,7 @@
           </td>
           <td>
             <button class="btn-icon" onclick="viewBrand('${encodeURIComponent(brand.domain)}')" title="View Details">View</button>
+            <button class="btn-icon" data-action="force-brand-crawl" data-domain="${escapeHtml(brand.domain)}" title="Fetch live brand.json and refresh registry evidence">Re-crawl</button>
             <button class="btn-icon" onclick="openSetParentModal('${encodeURIComponent(brand.domain)}', '${escapeHtml(brand.house_domain || '')}')" title="Set Parent">Parent</button>
             ${subCount > 0 || !brand.house_domain ? `<button class="btn-icon" onclick="expandHouse('${encodeURIComponent(brand.domain)}')" title="Discover sub-brands via AI">Expand</button>` : ''}
             ${brand.source === 'hosted' ? `<button class="btn-icon" onclick="deleteBrand('${encodeURIComponent(brand.domain)}')" title="Delete">Delete</button>` : ''}
@@ -680,6 +681,44 @@
       };
       return labels[source] || source;
     }
+
+    async function forceBrandCrawl(button, domain) {
+      if (!confirm(`Fetch and validate the live brand.json for ${domain}?`)) return;
+
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Crawling...';
+      try {
+        const response = await fetch(`/api/registry/brand/${encodeURIComponent(domain)}/force-crawl`, {
+          method: 'POST',
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(result.error || 'Brand crawl failed');
+        }
+
+        if (result.brand_json_found) {
+          const outcome = result.promoted ? 'Live brand.json evidence was adopted.' : 'Live brand.json evidence is current.';
+          alert(`${outcome}\nStored source type: ${result.new_source_type}.`);
+        } else {
+          alert('The crawl completed, but no valid live brand.json was found. Existing registry data was preserved.');
+        }
+      } catch (error) {
+        alert('Error: ' + error.message);
+        return;
+      } finally {
+        button.disabled = false;
+        button.textContent = originalText;
+      }
+
+      await loadBrands();
+    }
+
+    document.getElementById('brandsTableBody').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-action="force-brand-crawl"]');
+      if (!button) return;
+      forceBrandCrawl(button, button.dataset.domain);
+    });
 
     // Research Modal
     function openResearchModal() {

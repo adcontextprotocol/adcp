@@ -30,10 +30,10 @@ sequenceDiagram
 
 This task sits between format discovery and creative submission in the [account state setup sequence](/docs/building/by-layer/L2/account-state):
 
-1. `get_products` — check canonical `format_options[].params.slots[]` for catalog requirements
+1. [`get_products`](/docs/media-buy/task-reference/get_products) — check canonical `format_options[].params.slots[]` for catalog requirements
 2. **`sync_catalogs`** — push the required feeds to the account
-3. `sync_creatives` — submit creatives that reference synced catalogs by `catalog_id`
-4. `create_media_buy` — launch the campaign
+3. [`sync_creatives`](/docs/creative/task-reference/sync_creatives) — submit creatives that reference synced catalogs by `catalog_id`
+4. [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) — launch the campaign
 
 ## Quick start
 
@@ -240,11 +240,11 @@ Configure `push_notification_config` on the request to receive webhook notificat
 
 | Error | Description | Resolution |
 |-------|-------------|------------|
-| `REFERENCE_NOT_FOUND` | Referenced `catalog_id` doesn't exist or is not accessible (when using `catalog_ids` filter; `error.field` = `catalog_ids`) | Verify catalog IDs from a previous sync or discovery call |
-| `FEED_FETCH_FAILED` | Platform couldn't fetch the feed URL | Check URL accessibility, authentication, and feed format |
-| `INVALID_FEED_FORMAT` | Feed doesn't match declared `feed_format` | Verify feed content matches the format (XML for google_merchant_center, etc.) |
-| `ITEM_VALIDATION_FAILED` | Items failed schema validation | Check `item_issues` for per-item rejection reasons |
-| `CATALOG_LIMIT_EXCEEDED` | Account has reached maximum catalog count | Remove unused catalogs or contact seller |
+| [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found) | Referenced `catalog_id` doesn't exist or is not accessible (when using `catalog_ids` filter; `error.field` = `catalog_ids`) | Verify catalog IDs from a previous sync or discovery call |
+| [`FEED_FETCH_FAILED`](/docs/building/verification/compliance-catalog#error-code-feed-fetch-failed) | Platform couldn't fetch the feed URL | Check URL accessibility, authentication, and feed format |
+| [`INVALID_FEED_FORMAT`](/docs/building/verification/compliance-catalog#error-code-invalid-feed-format) | Feed doesn't match declared `feed_format` | Verify feed content matches the format (XML for google_merchant_center, etc.) |
+| [`ITEM_VALIDATION_FAILED`](/docs/building/verification/compliance-catalog#error-code-item-validation-failed) | Items failed schema validation | Check `item_issues` for per-item rejection reasons |
+| [`CATALOG_LIMIT_EXCEEDED`](/docs/building/verification/compliance-catalog#error-code-catalog-limit-exceeded) | Account has reached maximum catalog count | Remove unused catalogs or contact seller |
 
 ## Best practices
 

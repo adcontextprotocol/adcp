@@ -46,7 +46,7 @@ import { getPool } from '../db/client.js';
 import { linkDomain } from '../db/organization-domains-db.js';
 import {
   isKnowledgeReady,
-  createKnowledgeToolHandlers,
+  createSlackKnowledgeRequestTools,
   createUserScopedBookmarkHandler,
 } from './mcp/knowledge-search.js';
 import { registerBaselineTools } from './register-baseline-tools.js';
@@ -114,6 +114,8 @@ import {
   truncateNotificationText,
   decideStreamAppend,
   planStreamStopFailureFallback,
+  resolveStreamTurnCompletion,
+  summarizeSlackStreamError,
   STREAM_DELIVERY_UNCERTAIN_NOTICE,
   DEFAULT_STREAM_SOFT_CAP,
 } from './slack-blocks.js';
@@ -979,7 +981,7 @@ async function buildRequestContext(
         // If no module is in progress, inject a strong reminder to call start_certification_module.
         // Without this, Addie can teach certification content in a guardrail-free zone where
         // demonstrations aren't tracked and no progress is recorded.
-        if (inProgress.length === 0) {
+        if (!certContextText) {
           const noModuleWarning = [
             '⚠️ [CERTIFICATION — NO MODULE ACTIVE] ⚠️',
             'No certification module is currently in progress for this learner.',
@@ -1034,6 +1036,16 @@ async function createUserScopedTools(
   };
   let allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
+
+  const slackKnowledge = createSlackKnowledgeRequestTools(
+    slackUserId
+      ? { kind: 'slack-user', slackUserId }
+      : { kind: 'public-only' },
+  );
+  allTools.push(...slackKnowledge.tools);
+  for (const [name, handler] of slackKnowledge.handlers) {
+    allHandlers.set(name, handler);
+  }
 
   // Re-register Google Docs tools with user context for per-user rate
   // limiting (see tool-rate-limiter.ts). The boot-time registration
@@ -1247,19 +1259,6 @@ async function createUserScopedTools(
   // Override bookmark_resource handler with user-scoped version (for attribution)
   if (slackUserId) {
     allHandlers.set('bookmark_resource', createUserScopedBookmarkHandler(slackUserId));
-  }
-
-  // Override Slack search handlers with user-scoped versions (for private channel access control)
-  if (slackUserId) {
-    const userScopedKnowledgeHandlers = createKnowledgeToolHandlers(slackUserId);
-    const searchSlackHandler = userScopedKnowledgeHandlers.get('search_slack');
-    const getChannelActivityHandler = userScopedKnowledgeHandlers.get('get_channel_activity');
-    if (searchSlackHandler) {
-      allHandlers.set('search_slack', searchSlackHandler);
-    }
-    if (getChannelActivityHandler) {
-      allHandlers.set('get_channel_activity', getChannelActivityHandler);
-    }
   }
 
   // Remove enrollment tools in public channels (covers all handler paths,
@@ -1785,7 +1784,7 @@ async function handleUserMessage({
   // banner in Slack and skip persisting the partial turn so prompt assembly for
   // the next turn doesn't feed the model a truncated assistant message.
   let streamWasInterrupted = false;
-  let streamInterruptReason = '';
+  let streamInterruptCategory = '';
   // Length-cap continuation state. When the streamed message approaches
   // Slack's `msg_too_long` cap, we finalize the in-flight stream and route
   // subsequent deltas into a continuation buffer that ships as a follow-up
@@ -1920,13 +1919,14 @@ async function handleUserMessage({
         } else if (event.type === 'stream_error') {
           // Mid-stream upstream failure after partial delivery (#4797). Render
           // the recovery banner in place, finalize the Slack message with
-          // feedback buttons, and mark the turn so the outer catch skips
-          // persistence. The original error throws on the next iteration of
-          // the underlying stream — control will continue to the outer catch.
+          // feedback buttons, and mark the terminal turn for discard. The
+          // Claude client may complete the generator normally after yielding
+          // this event, so persistence cannot depend on an outer exception.
           streamWasInterrupted = true;
-          streamInterruptReason = event.reason;
+          const errorSummary = summarizeSlackStreamError(event.reason);
+          streamInterruptCategory = errorSummary.category;
           logger.warn(
-            { reason: event.reason, deltasBeforeError: event.deltasBeforeError, fullTextLength: fullText.length, streamFinalizedEarly },
+            { category: errorSummary.category, deltasBeforeError: event.deltasBeforeError, fullTextLength: fullText.length, streamFinalizedEarly },
             'Addie Bolt: Stream interrupted mid-reply — discarding partial turn'
           );
           if (!streamWriteable) {
@@ -1934,14 +1934,14 @@ async function handleUserMessage({
             // happened); post the recovery banner as a follow-up in the
             // same thread so the user knows the rest isn't coming.
             try {
-              await say(`_(${event.reason} — the rest of that response didn't make it. Ask again and I'll start over.)_`);
+              await say(errorSummary.followupRecoveryText);
             } catch (sayError) {
               logger.warn({ sayError }, 'Addie Bolt: Recovery banner say() failed after stream close');
             }
           } else {
             try {
               await streamer.append({
-                markdown_text: `\n\n_(${event.reason} — I didn't save this response. Ask again and I'll start over.)_`,
+                markdown_text: errorSummary.inlineRecoveryText,
               });
             } catch (appendError) {
               logger.warn({ appendError }, 'Addie Bolt: Recovery banner append failed');
@@ -1953,6 +1953,7 @@ async function handleUserMessage({
               logger.warn({ stopError }, 'Addie Bolt: Streamer stop after interruption failed');
             }
           }
+          break;
         } else if (event.type === 'done') {
           response = event.response;
         } else if (event.type === 'error') {
@@ -2145,74 +2146,43 @@ async function handleUserMessage({
       }
     }
   } catch (error) {
-    // Stream interrupted mid-reply (#4797): recovery banner already rendered
-    // inline when the stream_error event fired. Skip persistence of the
-    // partial turn — the user's message remains the most recent turn so a
-    // retry or rephrase replays cleanly without a truncated assistant
-    // message biasing the resample.
-    if (streamWasInterrupted) {
-      logger.info(
-        { reason: streamInterruptReason, partialLength: fullText.length },
-        'Addie Bolt: Skipping persistence for interrupted stream turn'
-      );
-      // Preserve security-audit symmetry: the user message already wrote a
-      // row upstream (line 1599). Emit a minimal interrupted-turn row so
-      // forensics for an Anthropic-degraded window doesn't show a wall of
-      // user inputs with no matching assistant rows.
-      logInteraction({
-        id: thread.thread_id,
-        timestamp: new Date(),
-        event_type: 'assistant_thread',
-        channel_id: channelId,
-        thread_ts: threadTs,
-        user_id: userId,
-        input_text: messageText || '',
-        input_sanitized: inputValidation.sanitized,
-        output_text: '',
-        tools_used: toolsUsed,
-        model: AddieModelConfig.chat,
-        latency_ms: Date.now() - startTime,
+    // A terminal stream_error is handled uniformly below whether the async
+    // generator subsequently throws or completes normally.
+    if (!streamWasInterrupted) {
+      // Provide user-friendly error message based on error type
+      let errorMessage: string;
+      if (error instanceof Error && error.message.includes('prompt is too long')) {
+        logger.warn({ error }, 'Addie Bolt: Conversation exceeded context limit');
+        errorMessage = "This conversation is too long for me to process. Please start a new chat and I'll be happy to help!";
+      } else {
+        logger.error({ error }, 'Addie Bolt: Error processing message');
+        errorMessage = isRetriesExhaustedError(error)
+          ? `${error.reason}. Please try again in a moment.`
+          : "I'm sorry, I encountered an error. Please try again.";
+      }
+
+      response = {
+        text: errorMessage,
+        tools_used: [],
+        tool_executions: [],
         flagged: true,
-        flag_reason: `stream_interrupted: ${streamInterruptReason}`,
-      });
-      return;
-    }
+        flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      };
+      fullText = response.text;
 
-    // Provide user-friendly error message based on error type
-    let errorMessage: string;
-    if (error instanceof Error && error.message.includes('prompt is too long')) {
-      logger.warn({ error }, 'Addie Bolt: Conversation exceeded context limit');
-      errorMessage = "This conversation is too long for me to process. Please start a new chat and I'll be happy to help!";
-    } else {
-      logger.error({ error }, 'Addie Bolt: Error processing message');
-      errorMessage = isRetriesExhaustedError(error)
-        ? `${error.reason}. Please try again in a moment.`
-        : "I'm sorry, I encountered an error. Please try again.";
-    }
-
-    response = {
-      text: errorMessage,
-      tools_used: [],
-      tool_executions: [],
-      flagged: true,
-      flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
-    };
-    fullText = response.text;
-
-    // Send error response
-    try {
-      await say(response.text);
-    } catch (sayError) {
-      logger.error({ sayError }, 'Addie Bolt: Failed to send error response');
+      // Send error response
+      try {
+        await say(response.text);
+      } catch (sayError) {
+        logger.error({ sayError }, 'Addie Bolt: Failed to send error response');
+      }
     }
   }
 
-  // Build final response object if we used streaming but didn't receive a 'done' event
-  // This shouldn't happen normally, but provides a fallback with logging
-  if (!response) {
+  const streamCompletion = resolveStreamTurnCompletion(streamWasInterrupted, response, () => {
     logger.warn({ fullTextLength: fullText.length, toolsUsedCount: toolsUsed.length },
       'Addie Bolt: Streaming completed without done event - using fallback response');
-    response = {
+    return {
       text: fullText,
       tools_used: toolsUsed,
       tool_executions: toolExecutions.map((t, i) => ({
@@ -2224,7 +2194,46 @@ async function handleUserMessage({
       flagged: true,
       flag_reason: 'Streaming completed without done event',
     };
+  });
+  if (streamCompletion.kind === 'discard-interrupted') {
+    logger.info(
+      { category: streamInterruptCategory, partialLength: fullText.length },
+      'Addie Bolt: Skipping persistence for interrupted stream turn'
+    );
+    // Preserve security-audit symmetry: emit a minimal interrupted-turn
+    // event so degraded windows do not show unmatched user inputs.
+    logInteraction({
+      id: thread.thread_id,
+      timestamp: new Date(),
+      event_type: 'assistant_thread',
+      channel_id: channelId,
+      thread_ts: threadTs,
+      user_id: userId,
+      input_text: messageText || '',
+      input_sanitized: inputValidation.sanitized,
+      output_text: '',
+      tools_used: toolsUsed,
+      model: AddieModelConfig.chat,
+      latency_ms: Date.now() - startTime,
+      flagged: true,
+      flag_reason: `stream_interrupted:${streamInterruptCategory}`,
+    });
+    // The assistant turn is intentionally discarded, but an input already
+    // flagged by sanitizeInput must still promote its parent thread into the
+    // security-review queue before this early return.
+    if (userMessageFlagged) {
+      try {
+        await threadService.flagThread(thread.thread_id, inputValidation.reason || 'Flagged user input');
+      } catch (error) {
+        logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to flag interrupted thread');
+      }
+    }
+    return;
   }
+
+  // From here on, the discriminated completion gate guarantees a response.
+  // The fallback factory only runs for a non-interrupted stream with no done event.
+  response = streamCompletion.response;
 
   // Validate output
   const outputValidation = validateOutput(response.text);

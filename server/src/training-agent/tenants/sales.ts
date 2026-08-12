@@ -7,7 +7,12 @@
 
 import { z } from 'zod';
 import type { TenantConfig } from '@adcp/sdk/server';
-import { TrainingSalesPlatform } from '../v6-sales-platform.js';
+import {
+  TrainingSalesPlatform,
+  legacyGetProductsHandler,
+  legacyListCreativesHandler,
+  legacySyncCreativesHandler,
+} from '../v6-sales-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildSalesComplyConfig } from './comply.js';
 import { listAccountsTool } from './account-tools.js';
@@ -16,6 +21,7 @@ import { validateInputTool } from './validate-input-tool.js';
 import { buildCreativeTool, previewCreativeTool } from './creative-tools.js';
 import { customToolFor } from './custom-tool-helper.js';
 import { handleSyncGovernance } from '../account-handlers.js';
+import { handleSyncCatalogs } from '../catalog-event-handlers.js';
 import type { TrainingContext } from '../types.js';
 
 const TENANT_ID = 'sales';
@@ -31,6 +37,25 @@ const ACCOUNT_REF = z.object({
   brand: z.object({ domain: z.string().optional() }).passthrough().optional(),
   operator: z.string().optional(),
 }).passthrough();
+
+const SYNC_CATALOGS_SCHEMA = {
+  idempotency_key: z.string().min(16).max(255),
+  account: ACCOUNT_REF,
+  catalogs: z.array(z.object({
+    catalog_id: z.string(),
+    type: z.string().optional(),
+    name: z.string().optional(),
+    url: z.string().optional(),
+    feed_format: z.string().optional(),
+    update_frequency: z.string().optional(),
+    items: z.array(z.object({}).passthrough()).optional(),
+  }).passthrough()).optional(),
+  catalog_ids: z.array(z.string()).optional(),
+  delete_missing: z.boolean().optional(),
+  dry_run: z.boolean().optional(),
+  context: z.any().optional(),
+  ext: z.any().optional(),
+};
 
 const SYNC_GOVERNANCE_SCHEMA = {
   accounts: z.array(z.object({
@@ -61,9 +86,27 @@ export function buildSalesTenantConfig(host: string, options: { storyboardCompat
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       platform: new TrainingSalesPlatform(options.storyboardCompat) as any,
       serverOptions: {
+        // These operations intentionally remain the legacy wire facade for
+        // AdCP 3.0 callers. Current application paths use canonical format
+        // identity; the raw seam preserves exact legacy tuples at the wire and
+        // persistence boundary without leaking legacy identity into current paths.
+        legacyHandlers: {
+          mediaBuy: {
+            getProducts: legacyGetProductsHandler(options.storyboardCompat),
+            listCreatives: legacyListCreativesHandler(options.storyboardCompat),
+            syncCreatives: legacySyncCreativesHandler(options.storyboardCompat),
+          },
+        },
         customTools: {
           list_accounts: listAccountsTool(options.storyboardCompat),
           report_usage: reportUsageTool({ creativeBillsThroughAdcp: false }),
+          sync_catalogs: customToolFor(
+            'sync_catalogs',
+            'Push product catalogs (feeds, items, inventory) for catalog-driven campaigns. Supports URL feeds for scheduled re-fetch and inline items for small catalogs. Returns per-item approval status. Omit catalogs to discover existing synced catalogs.',
+            SYNC_CATALOGS_SCHEMA,
+            handleSyncCatalogs,
+            { annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, enforceIdempotency: true },
+          ),
           // sync_governance is a 3.1+ account task. The released 3.0.x sales
           // scenarios predate it and gracefully skip the step when the tool is
           // absent; advertising it under 3.0-compat makes those steps execute

@@ -1235,7 +1235,7 @@
               Connect with other members, join working group channels, and participate in community discussions.
             </p>
           </div>
-          <a href="https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA"
+          <a href="https://docs.adcontextprotocol.org/docs/community/joining-slack"
              target="_blank" rel="noopener noreferrer"
              style="
                display: inline-flex;
@@ -4621,7 +4621,9 @@
       const baseUrl = window.location.hostname === 'localhost'
         ? window.location.origin
         : 'https://agenticadvertising.org';
-      const url = `${baseUrl}/api/agreement?type=${type}`;
+      const url = type === 'membership'
+        ? `${baseUrl}/legal/membership-agreement`
+        : `${baseUrl}/api/agreement?type=${encodeURIComponent(type)}`;
 
       try {
         await navigator.clipboard.writeText(url);

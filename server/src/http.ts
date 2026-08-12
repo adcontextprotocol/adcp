@@ -1,5 +1,7 @@
 import express from "express";
 import cookieParser from "cookie-parser";
+import DOMPurify from "isomorphic-dompurify";
+import { Marked } from "marked";
 import { csrfProtection } from "./middleware/csrf.js";
 import { slowResponseTracker } from "./middleware/slow-response.js";
 import { requestMetrics } from "./middleware/request-metrics.js";
@@ -23,6 +25,7 @@ import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "./schemas-middleware.js";
+import { renderLegalMarkdown } from "./legal-markdown.js";
 import { closeDatabase, getPool, healthCheck } from "./db/client.js";
 import { AuthenticationRequiredError, CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
 import { sdkSafeFetch, withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
@@ -54,10 +57,12 @@ import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./
 import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
 import { handleSlashCommand } from "./slack/commands.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
+import { hasActiveSlackLink } from "./utils/slack-linkage.js";
 import { isUuid } from "./utils/uuid.js";
 import { resolveUserNameWithFallbacks, sanitizeName } from "./utils/resolve-user-name.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
 import { formatPerspectiveUrlAsMarkdownDestination, normalizePerspectiveExternalUrl } from "./utils/perspective-url.js";
+import { decodeHtmlEntities } from "./utils/html-entities.js";
 import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
@@ -145,7 +150,8 @@ import { sendWelcomeEmail, sendUserSignupEmail, sendDuplicateSubscriptionNotice,
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { pendingConfirmationsDb } from "./db/pending-confirmations-db.js";
 import { queuePerspectiveLink } from "./addie/services/content-curator.js";
-import { serveHtmlWithMetaTags, enrichUserWithMembership, enrichUserWithAdmin } from "./utils/html-config.js";
+import { resolveEscalationsForPerspective } from "./db/escalation-db.js";
+import { serveHtmlWithMetaTags, injectMetaTagsIntoHtml, enrichUserWithMembership, enrichUserWithAdmin } from "./utils/html-config.js";
 import { complete, isLLMConfigured } from "./utils/llm.js";
 import { notifyJoinRequest, notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 import { BansDatabase } from "./db/bans-db.js";
@@ -155,13 +161,26 @@ import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review
 import { AgentContextDatabase } from "./db/agent-context-db.js";
 import { getWebMemberContext } from "./addie/member-context.js";
 import { buildAgentOAuthAuthorizeUrl } from "./routes/helpers/agent-oauth-prompt.js";
+import {
+  buildNativeErrorRedirect,
+  consumeNativePendingAuth,
+  createNativeAuthRouter,
+  issueNativeGrantRedirect,
+  parseNativePendingId,
+} from "./routes/native-auth.js";
+import type { NativePendingAuth } from "./db/native-auth-state-db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const logger = createLogger('http-server');
 const PUBLIC_SITE_URL = 'https://agenticadvertising.org';
+const SLACK_JOIN_GUIDE_URL = 'https://docs.adcontextprotocol.org/docs/community/joining-slack';
 const PERSPECTIVES_CRAWLER_LIMIT = 200;
+const STORIES_NEWS_LIMIT = 8;
+const ARTICLE_MARKDOWN_CACHE_TTL_MS = 60 * 1000;
+const ARTICLE_MARKDOWN_CACHE_MAX_ENTRIES = 200;
+const MAX_ARTICLE_MARKDOWN_BYTES = 256_000;
 
 interface PublicPerspectiveCrawlerItem {
   slug: string;
@@ -172,6 +191,57 @@ interface PublicPerspectiveCrawlerItem {
   author_name: string | null;
   published_at: Date | string | null;
   updated_at: Date | string | null;
+}
+
+interface StoriesPerspectiveItem {
+  slug: string;
+  title: string;
+  subtitle: string | null;
+  category: string | null;
+  excerpt: string | null;
+  external_url: string | null;
+  author_name: string | null;
+  featured_image_url: string | null;
+  published_at: Date | string | null;
+  tags: string[] | null;
+  content_origin: string;
+}
+
+interface StoriesNewsItem {
+  title: string;
+  source_url: string;
+  summary: string | null;
+  addie_notes: string | null;
+  relevance_tags: string[] | null;
+  feed_name: string | null;
+}
+
+interface PublicPerspectiveArticle {
+  slug: string;
+  title: string;
+  subtitle: string | null;
+  category: string | null;
+  excerpt: string | null;
+  content: string | null;
+  author_name: string | null;
+  author_title: string | null;
+  author_slug: string | null;
+  featured_image_url: string | null;
+  published_at: Date | string | null;
+  updated_at: Date | string | null;
+  tags: string[] | null;
+  like_count: number | null;
+}
+
+interface StoriesSsrFragments {
+  officialCards: string[];
+  memberCards: string[];
+  newsItems: string[];
+}
+
+interface TimedValue<T> {
+  value: T;
+  expiresAt: number;
 }
 
 interface WorkingGroupPostMetaData {
@@ -267,6 +337,7 @@ async function getPublicPerspectiveCrawlerItems(limit = PERSPECTIVES_CRAWLER_LIM
      FROM perspectives p
      LEFT JOIN working_groups wg ON wg.id = p.working_group_id
      WHERE p.status = 'published'
+       AND p.is_members_only = false
        AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
        AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
      ORDER BY p.published_at DESC NULLS LAST, p.created_at DESC
@@ -341,6 +412,289 @@ function buildPerspectivesRss(items: PublicPerspectiveCrawlerItem[]): string {
 ${entries}
   </channel>
 </rss>`;
+}
+
+function replaceOpeningTagById(
+  html: string,
+  id: string,
+  update: (openingTag: string) => string
+): string {
+  const idIndex = html.indexOf(`id="${id}"`);
+  if (idIndex === -1) return html;
+  const tagStart = html.lastIndexOf('<', idIndex);
+  const tagEnd = html.indexOf('>', idIndex);
+  if (tagStart === -1 || tagEnd === -1) return html;
+  const openingTag = html.slice(tagStart, tagEnd + 1);
+  return html.slice(0, tagStart) + update(openingTag) + html.slice(tagEnd + 1);
+}
+
+function replaceElementInnerHtml(html: string, id: string, innerHtml: string): string {
+  const idIndex = html.indexOf(`id="${id}"`);
+  if (idIndex === -1) return html;
+  const tagStart = html.lastIndexOf('<', idIndex);
+  const tagEnd = html.indexOf('>', idIndex);
+  if (tagStart === -1 || tagEnd === -1) return html;
+  const tagMatch = html.slice(tagStart, tagEnd + 1).match(/^<([a-zA-Z0-9-]+)/);
+  if (!tagMatch) return html;
+  const closingTag = `</${tagMatch[1]}>`;
+  const closingIndex = html.indexOf(closingTag, tagEnd + 1);
+  if (closingIndex === -1) return html;
+  return html.slice(0, tagEnd + 1) + innerHtml + html.slice(closingIndex);
+}
+
+function showElementById(html: string, id: string): string {
+  return replaceOpeningTagById(html, id, (openingTag) => openingTag
+    .replace(/\shidden(?=[\s>])/i, '')
+    .replace(/display\s*:\s*none\s*;?/gi, ''));
+}
+
+function hideElementById(html: string, id: string): string {
+  return replaceOpeningTagById(html, id, (openingTag) => (
+    /\shidden(?=[\s>])/i.test(openingTag)
+      ? openingTag
+      : openingTag.replace(/>$/, ' hidden>')
+  ));
+}
+
+function storyTopics(tags: string[] | null | undefined): string[] {
+  return Array.isArray(tags)
+    ? tags.filter((tag): tag is string => typeof tag === 'string' && tag.length > 0)
+    : [];
+}
+
+function buildStoriesPerspectiveCard(item: StoriesPerspectiveItem): string {
+  const externalUrl = normalizePerspectiveExternalUrl(item.external_url);
+  const href = externalUrl ?? `/perspectives/${encodeURIComponent(item.slug)}`;
+  const topics = storyTopics(item.tags).join(',');
+  const image = absolutePublicUrl(item.featured_image_url)
+    ?? `/api/perspectives/${encodeURIComponent(item.slug)}/card.png`;
+  const excerpt = item.excerpt || item.subtitle || '';
+  const externalAttributes = externalUrl ? ' target="_blank" rel="noopener noreferrer"' : '';
+
+  return `<a href="${escapeHtml(href)}" class="card" data-topics="${escapeHtml(topics)}"${externalAttributes}>
+    <img src="${escapeHtml(image)}" alt="" class="card-cover" loading="lazy">
+    <div class="card-body">
+      <span class="card-badge">${escapeHtml(item.category || 'Perspective')}</span>
+      <h3 class="card-title">${escapeHtml(item.title || 'Untitled')}</h3>
+      ${excerpt ? `<p class="card-excerpt">${escapeHtml(excerpt)}</p>` : ''}
+      ${item.author_name ? `<span class="card-meta">${escapeHtml(item.author_name)}</span>` : ''}
+    </div>
+  </a>`;
+}
+
+const STORY_NEWS_TAG_MAP: Record<string, string> = {
+  'media-buying': 'buy-side',
+  'programmatic': 'buy-side',
+  'retail-media': 'retail-media',
+  'ai-agents': 'agentic',
+  'adcp': 'protocol',
+  'signals': 'protocol',
+  'creative': 'content',
+};
+
+function buildStoriesNewsItem(item: StoriesNewsItem): string | null {
+  const href = normalizePerspectiveExternalUrl(item.source_url);
+  if (!href) return null;
+  const topics = storyTopics(item.relevance_tags)
+    .map((tag) => STORY_NEWS_TAG_MAP[tag])
+    .filter((tag, index, all): tag is string => !!tag && all.indexOf(tag) === index)
+    .join(',');
+  const title = decodeHtmlEntities(item.title || '');
+  const summary = decodeHtmlEntities(item.summary || item.addie_notes || '');
+  const source = decodeHtmlEntities(item.feed_name || '');
+
+  return `<a href="${escapeHtml(href)}" class="news-item" target="_blank" rel="noopener noreferrer" data-topics="${escapeHtml(topics)}">
+    <div class="news-item-body">
+      ${source ? `<div class="news-item-source">${escapeHtml(source)}</div>` : ''}
+      <h3 class="news-item-title">${escapeHtml(title)}</h3>
+      ${summary ? `<p class="news-item-summary">${escapeHtml(summary)}</p>` : ''}
+    </div>
+  </a>`;
+}
+
+async function loadStoriesSsrFragments(): Promise<StoriesSsrFragments> {
+  const pool = getPool();
+  const [perspectivesResult, newsResult] = await Promise.all([
+    pool.query<StoriesPerspectiveItem>(
+      `SELECT
+         p.slug, p.title, p.subtitle, p.category, p.excerpt, p.external_url,
+         p.author_name, p.featured_image_url, p.published_at, p.tags, p.content_origin
+       FROM perspectives p
+       LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+       WHERE p.status = 'published'
+         AND p.is_members_only = false
+         AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
+         AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
+       ORDER BY p.published_at DESC NULLS LAST, p.created_at DESC
+       LIMIT 100`
+    ),
+    pool.query<StoriesNewsItem>(
+      `SELECT
+         k.title, k.source_url, k.summary, k.addie_notes, k.relevance_tags,
+         f.name AS feed_name
+       FROM addie_knowledge k
+       LEFT JOIN perspectives p ON k.source_url = p.external_url
+       LEFT JOIN industry_feeds f ON p.feed_id = f.id
+       CROSS JOIN LATERAL (
+         SELECT nc.id
+         FROM notification_channels nc
+         WHERE nc.website_enabled = true
+           AND nc.is_active = true
+           AND nc.slack_channel_id = ANY(COALESCE(k.human_routing_override, k.notification_channel_ids))
+         LIMIT 1
+       ) nc
+       WHERE k.fetch_status = 'success'
+         AND k.publication_status != 'rejected'
+         AND COALESCE(k.human_quality_override, k.quality_score) >= 3
+       ORDER BY
+         CASE WHEN k.publication_status = 'featured' THEN 0 ELSE 1 END,
+         COALESCE(k.published_at, k.created_at) DESC
+       LIMIT $1`,
+      [STORIES_NEWS_LIMIT]
+    ),
+  ]);
+  return {
+    officialCards: perspectivesResult.rows
+      .filter((item) => item.content_origin === 'official')
+      .map(buildStoriesPerspectiveCard),
+    memberCards: perspectivesResult.rows
+      .filter((item) => item.content_origin !== 'official')
+      .map(buildStoriesPerspectiveCard),
+    newsItems: newsResult.rows
+      .map(buildStoriesNewsItem)
+      .filter((item): item is string => item !== null),
+  };
+}
+
+async function injectStoriesSsrContent(html: string): Promise<string> {
+  const { officialCards, memberCards, newsItems } = await loadStoriesSsrFragments();
+
+  html = replaceElementInnerHtml(html, 'research-grid', officialCards.join('\n'));
+  html = replaceElementInnerHtml(html, 'perspectives-grid', memberCards.join('\n'));
+  html = replaceElementInnerHtml(html, 'news-list', newsItems.join('\n'));
+  if (officialCards.length === 0) html = hideElementById(html, 'research-section');
+  if (memberCards.length === 0) html = hideElementById(html, 'perspectives-section');
+  if (newsItems.length === 0) html = hideElementById(html, 'news-section');
+  return html;
+}
+
+const articleMarkdown = new Marked();
+const articleMarkdownCache = new Map<string, TimedValue<string>>();
+
+const ARTICLE_MARKDOWN_SANITIZE_CONFIG = {
+  ALLOWED_TAGS: [
+    'p', 'br', 'strong', 'em', 'a', 'ul', 'ol', 'li',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code',
+    'img', 'hr', 'del', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+  ],
+  ALLOWED_ATTR: ['href', 'src', 'alt', 'title'],
+  ALLOW_DATA_ATTR: false,
+  ALLOWED_URI_REGEXP: /^(?:https:|\/(?!\/)|#)/i,
+};
+
+function renderArticleMarkdown(markdown: string | null, cacheKey: string): string {
+  if (!markdown) return '';
+  if (Buffer.byteLength(markdown, 'utf8') > MAX_ARTICLE_MARKDOWN_BYTES) {
+    logger.warn({ cacheKey }, 'Skipping oversized public perspective content');
+    return '<p>Article content is temporarily unavailable.</p>';
+  }
+  const cached = articleMarkdownCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  articleMarkdownCache.delete(cacheKey);
+
+  const rendered = articleMarkdown.parse(markdown, { async: false }) as string;
+  const sanitized = DOMPurify.sanitize(rendered, ARTICLE_MARKDOWN_SANITIZE_CONFIG);
+  if (articleMarkdownCache.size >= ARTICLE_MARKDOWN_CACHE_MAX_ENTRIES) {
+    const oldestKey = articleMarkdownCache.keys().next().value;
+    if (oldestKey) articleMarkdownCache.delete(oldestKey);
+  }
+  articleMarkdownCache.set(cacheKey, {
+    value: sanitized,
+    expiresAt: Date.now() + ARTICLE_MARKDOWN_CACHE_TTL_MS,
+  });
+  return sanitized;
+}
+
+async function getPublicPerspectiveArticle(slug: string): Promise<PublicPerspectiveArticle | null> {
+  const result = await getPool().query<PublicPerspectiveArticle>(
+    `SELECT
+       p.slug, p.title, p.subtitle, p.category, p.excerpt, p.content,
+       p.author_name, p.author_title, p.featured_image_url,
+       p.published_at, p.updated_at, p.tags, p.like_count,
+       u.slug AS author_slug
+     FROM perspectives p
+     LEFT JOIN users u ON u.workos_user_id = p.author_user_id AND u.is_public = true
+     LEFT JOIN working_groups wg ON wg.id = p.working_group_id
+     WHERE p.slug = $1 AND p.status = 'published'
+       AND p.is_members_only = false
+       AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
+    [slug]
+  );
+  return result.rows[0] ?? null;
+}
+
+function formatArticleDisplayDate(value: Date | string | null): string {
+  const date = coerceDate(value);
+  if (!date) return '';
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date);
+}
+
+function articleAuthorInitials(name: string): string {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+}
+
+function injectPerspectiveArticleContent(html: string, article: PublicPerspectiveArticle): string {
+  const date = formatArticleDisplayDate(article.published_at);
+  const authorHref = article.author_slug
+    ? `/community/people/${encodeURIComponent(article.author_slug)}`
+    : '/community/';
+  const headerAuthor = article.author_name
+    ? `<a id="headerAuthorLink" class="article-header-author" href="${escapeHtml(authorHref)}">
+        <span id="headerAuthorAvatar" class="article-header-avatar">${escapeHtml(articleAuthorInitials(article.author_name))}</span>
+        <span id="headerAuthorName">${escapeHtml(article.author_name)}</span>
+      </a>`
+    : '<a id="headerAuthorLink" class="article-header-author" href="#" style="display: none;"></a>';
+  const headerMeta = `${headerAuthor}
+      <span class="article-header-dot" id="headerMetaDot"${article.author_name && date ? '' : ' style="display: none;"'}>&middot;</span>
+      <span id="headerDate">${escapeHtml(date)}</span>`;
+  const tags = storyTopics(article.tags).map((tag) => (
+    `<a class="article-tag" href="/stories?topic=${encodeURIComponent(tag)}">${escapeHtml(tag)}</a>`
+  )).join('');
+
+  html = replaceElementInnerHtml(html, 'heroTitle', escapeHtml(article.title));
+  html = replaceElementInnerHtml(html, 'heroSubtitle', escapeHtml(article.subtitle || ''));
+  html = replaceElementInnerHtml(html, 'heroCategory', escapeHtml(article.category || 'Article'));
+  html = replaceElementInnerHtml(html, 'articleHeaderMeta', headerMeta);
+  html = replaceElementInnerHtml(html, 'articleDate', escapeHtml(date));
+  html = replaceElementInnerHtml(html, 'likeCount', String(article.like_count || 0));
+  html = replaceElementInnerHtml(html, 'articleTags', tags);
+  const articleCacheKey = `${article.slug}:${metaDate(article.updated_at) || ''}`;
+  html = replaceElementInnerHtml(html, 'articleContent', renderArticleMarkdown(article.content, articleCacheKey));
+  if (article.author_name) {
+    const authorTitle = article.author_title ? `, ${article.author_title}` : '';
+    html = replaceElementInnerHtml(
+      html,
+      'authorInfo',
+      `<p><strong id="authorName">${escapeHtml(article.author_name)}</strong><span id="authorTitle">${escapeHtml(authorTitle)}</span></p>`
+    );
+    html = showElementById(html, 'authorInfo');
+  }
+  if (tags) html = showElementById(html, 'articleTags');
+  if (article.author_name || date) html = showElementById(html, 'articleHeaderMeta');
+  html = hideElementById(html, 'loadingState');
+  html = showElementById(html, 'heroSection');
+  html = showElementById(html, 'mainContent');
+  html = replaceOpeningTagById(html, 'mainContent', (openingTag) => (
+    openingTag.includes('data-server-rendered=')
+      ? openingTag
+      : openingTag.replace(/>$/, ' data-server-rendered="true">')
+  ));
+  return html;
 }
 
 function buildRobotsTxt(baseUrl: string, hostLabel: string): string {
@@ -856,6 +1210,44 @@ export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
   private isWorker: boolean = false;
+
+  private startWorkerCrawlers(): void {
+    // Drain durable explicit publisher recrawl requests first. Admission is
+    // persisted by the web process before it returns 202; the worker claims
+    // requests with expiring leases so deploys and crashes cannot lose work.
+    // The initial full crawl gets a fixed 30-second startup delay so already-
+    // due requests can run instead of being starved by consecutive deploys.
+    const publisherCrawlQueueStarted =
+      this.crawler.startPeriodicPublisherCrawlRequests(5); // 5-second tick
+
+    // Start periodic registry crawler for all registered agents. Re-fetches
+    // the agent list on every tick so newly registered agents are picked up
+    // without a restart. Sales agents drive publisher adagents.json
+    // discovery; signals/buying/creative agents still need health +
+    // capability snapshots on the same cycle. `viewerHasApiAccess` defaults
+    // to false — members_only agents are intentionally excluded from the
+    // periodic crawl (the public-facing registry surface is the target);
+    // owner-triggered probes for members_only agents go through
+    // POST /api/registry/agents/:encodedUrl/refresh. Fixes #4213.
+    logger.debug('Starting registry crawler');
+    this.crawler.startPeriodicCrawl(
+      () => this.agentService.listAgents(),
+      360,
+      publisherCrawlQueueStarted ? 30 : 0,
+    ); // Crawl every 6 hours
+
+    // Crawl catalog domains for adagents.json (demand-driven queue)
+    this.crawler.startPeriodicCatalogCrawl(30); // Process queue every 30 minutes
+
+    // Drain manager_revalidation_queue (#4200 item 2) — fan-out
+    // re-validation when a manager rotates its adagents.json.
+    this.crawler.startPeriodicManagerRevalidation(5); // 5-minute tick
+
+    // Re-verify AAO-hosted origins on a TTL so a transferred domain or a
+    // removed origin pointer lapses the owner lock (bind-on-verify, #5752),
+    // releasing the domain for re-claim.
+    this.crawler.startPeriodicHostedOriginReverification(60); // hourly tick
+  }
   private agentService: AgentService;
   private validator: AgentValidator;
   private healthChecker: HealthChecker;
@@ -1096,6 +1488,16 @@ export class HTTPServer {
           html = await fs.readFile(filePath, 'utf-8');
         }
 
+        if (urlPath === '/stories' || urlPath === '/stories/' || urlPath === '/stories/index.html') {
+          try {
+            html = await injectStoriesSsrContent(html);
+          } catch (error) {
+            // Keep the client-rendered fallback available if a content query
+            // fails; a transient feed problem should not take down Stories.
+            logger.warn({ error }, 'Failed to server-render Stories content');
+          }
+        }
+
         // Cross-domain session bridge: if on AdCP without a session cookie,
         // redirect through AAO to pick up the session (if one exists).
         if (this.bridgeIfNeeded(req, res)) return;
@@ -1202,6 +1604,7 @@ export class HTTPServer {
   ]);
 
   private static readonly BRIDGE_CHECK_TTL = 10 * 60 * 1000; // 10 minutes
+  private static readonly BRIDGE_CHECK_PARAM = '_bridge_checked';
 
   // Helper to check if request is from adcontextprotocol.org (requires redirect to AAO for auth)
   // Session cookies are scoped to agenticadvertising.org, so auth pages on AdCP must redirect
@@ -1220,13 +1623,29 @@ export class HTTPServer {
     }
   }
 
+  // Add a server-visible fallback marker to the bridge return URL. Normally
+  // the bridge-checked cookie prevents a second bounce, but browsers with
+  // cookies disabled need a one-request escape hatch too.
+  private static markBridgeReturnTo(returnTo: string): string {
+    if (returnTo === '/') return `/?${HTTPServer.BRIDGE_CHECK_PARAM}=1`;
+    const marked = new URL(returnTo);
+    marked.searchParams.set(HTTPServer.BRIDGE_CHECK_PARAM, '1');
+    return marked.toString();
+  }
+
   // Redirect through AAO session bridge if on AdCP without a session cookie.
   // Returns true if a redirect was issued (caller should return early).
   private bridgeIfNeeded(req: express.Request, res: express.Response): boolean {
-    // Skip the bridge for clients that don't send cookies (agents, curl, bots).
-    // They will never have a session to bridge, so the redirect is pointless
-    // and creates an infinite loop for clients without a cookie jar.
-    if (!req.headers.cookie) return false;
+    if (req.query?.[HTTPServer.BRIDGE_CHECK_PARAM] === '1') return false;
+
+    // Skip the bridge for cookie-less non-navigation clients (agents, curl,
+    // bots). A browser's first top-level visit may also have no AdCP cookie,
+    // but Fetch Metadata identifies a top-level document navigation that can
+    // pick up an existing AgenticAdvertising.org session through the bridge.
+    const isTopLevelDocumentNavigation =
+      req.headers['sec-fetch-mode'] === 'navigate' &&
+      req.headers['sec-fetch-dest'] === 'document';
+    if (!req.headers.cookie && !isTopLevelDocumentNavigation) return false;
 
     if (this.isAdcpDomain(req) && !req.cookies?.['wos-session'] && !req.cookies?.['bridge-checked']) {
       const currentUrl = `https://${req.hostname}${req.originalUrl}`;
@@ -1605,6 +2024,7 @@ export class HTTPServer {
     // Mount member profile routes
     const memberDb = new MemberDatabase();
     const orgDb = new OrganizationDatabase();
+
     const memberProfileConfig = {
       workos,
       memberDb,
@@ -2355,9 +2775,16 @@ export class HTTPServer {
     this.app.get('/dashboard/api-keys', (req, res) => serveDashboardPage(req, res, 'dashboard-api-keys.html'));
     this.app.get('/dashboard/addie', (_req, res) => res.redirect('/chat'));
 
-    // Legal page redirects — canonical paths are /legal/terms and /legal/privacy
+    // Public membership agreement. The page shell fetches the current database-backed
+    // agreement, so this canonical URL always matches the agreement used at checkout.
+    this.app.get('/legal/membership-agreement', async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'agreement.html');
+    });
+
+    // Legal page redirects — canonical paths live under /legal/.
     this.app.get('/terms', (_req, res) => res.redirect(301, '/legal/terms'));
     this.app.get('/privacy', (_req, res) => res.redirect(301, '/legal/privacy'));
+    this.app.get('/membership-agreement', (_req, res) => res.redirect(301, '/legal/membership-agreement'));
 
     // My Content redirect is handled in pre-static middleware block above
 
@@ -2374,6 +2801,13 @@ export class HTTPServer {
       if (req.user) {
         await enrichUserWithMembership(req.user as any);
         await enrichUserWithAdmin(req.user as any);
+        let isLinkedToSlack = false;
+        try {
+          const slackMapping = await new SlackDatabase().getByWorkosUserId(req.user.id);
+          isLinkedToSlack = hasActiveSlackLink(slackMapping);
+        } catch (err) {
+          logger.warn({ err, userId: req.user.id }, 'Unable to resolve Slack linkage for public config');
+        }
         user = {
           id: req.user.id,
           email: req.user.email,
@@ -2381,11 +2815,13 @@ export class HTTPServer {
           lastName: req.user.lastName,
           isAdmin: !!(req.user as any).isAdmin,
           isMember: !!(req.user as any).isMember,
+          isLinkedToSlack,
         };
       }
 
       res.json({
         authEnabled: AUTH_ENABLED,
+        slackInviteUrl: SLACK_JOIN_GUIDE_URL,
         user,
       });
     });
@@ -2884,49 +3320,58 @@ export class HTTPServer {
       }
     });
 
-    // Perspectives detail page - serves article content with SSR meta tags for social sharing
+    // Perspectives detail page - serves article content and metadata in the
+    // initial HTML so search engines and LLM crawlers do not need JavaScript.
     this.app.get("/perspectives/:slug", async (req, res) => {
       const { slug } = req.params;
 
-      // Fetch article data for meta tags (social crawlers don't execute JS)
-      interface ArticleMetaData {
-        title: string;
-        excerpt?: string;
-        subtitle?: string;
-        featured_image_url?: string;
-        author_name?: string;
-        published_at?: string;
-        updated_at?: string;
-      }
-      let article: ArticleMetaData | null = null;
+      let article: PublicPerspectiveArticle | null = null;
       try {
-        const pool = getPool();
-        const result = await pool.query(
-          `SELECT p.title, p.excerpt, p.subtitle, p.featured_image_url, p.author_name, p.published_at, p.updated_at
-           FROM perspectives p
-           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
-           WHERE p.slug = $1 AND p.status = 'published'
-             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')`,
-          [slug]
-        );
-        if (result.rows.length > 0) {
-          article = result.rows[0];
+        article = await getPublicPerspectiveArticle(slug);
+        if (!article) {
+          // The article shell renders its own "Article Not Found" state after
+          // hydration. Preserve that UI while returning the correct HTTP
+          // status to crawlers and other clients.
+          res.status(404);
         }
       } catch (error) {
         logger.warn({ error, slug }, 'Failed to fetch article for meta tags');
       }
 
-      // Serve HTML with meta tags injected
-      await serveHtmlWithMetaTags(req, res, 'perspectives/article.html', article ? {
+      if (!article) {
+        await serveHtmlWithMetaTags(req, res, 'perspectives/article.html');
+        return;
+      }
+
+      const articlePath = process.env.NODE_ENV === 'production'
+        ? path.join(__dirname, '../server/public/perspectives/article.html')
+        : path.join(__dirname, '../public/perspectives/article.html');
+      let html = await fs.readFile(articlePath, 'utf-8');
+      html = injectMetaTagsIntoHtml(html, {
         title: article.title,
         description: article.excerpt || article.subtitle || article.title,
         image: article.featured_image_url || 'https://agenticadvertising.org/AAo-social.png',
-        url: `https://agenticadvertising.org/perspectives/${slug}`,
+        url: `${PUBLIC_SITE_URL}/perspectives/${encodeURIComponent(slug)}`,
         type: 'article',
-        author: article.author_name,
-        publishedAt: article.published_at,
-        modifiedAt: article.updated_at,
-      } : undefined);
+        author: article.author_name || undefined,
+        publishedAt: metaDate(article.published_at),
+        modifiedAt: metaDate(article.updated_at),
+      });
+      html = injectPerspectiveArticleContent(html, article);
+
+      const user = await getUserFromRequest(req, res);
+      await enrichUserWithMembership(user);
+      await enrichUserWithAdmin(user);
+      const configScript = getAppConfigScript(user);
+      html = html.includes('</head>')
+        ? html.replace('</head>', `${configScript}\n</head>`)
+        : html.replace('<body', `${configScript}\n<body`);
+
+      res.setHeader('Content-Type', 'text/html');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.send(html);
     });
 
     // Legacy redirects
@@ -5419,7 +5864,7 @@ export class HTTPServer {
 
 
     // GET /api/admin/audit-logs - Get audit log entries
-    this.app.get('/api/admin/audit-logs', requireAuth, requireAdmin, async (req, res) => {
+    this.app.get('/api/admin/audit-logs', ...requireGlobalAdmin, async (req, res) => {
       try {
         const {
           organization_id,
@@ -6125,6 +6570,7 @@ export class HTTPServer {
            FROM perspectives p
            LEFT JOIN working_groups wg ON wg.id = p.working_group_id
            WHERE p.status = 'published'
+             AND p.is_members_only = false
              AND p.content_type = 'article'
              AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
              AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))
@@ -6204,6 +6650,7 @@ export class HTTPServer {
           LEFT JOIN users u ON u.workos_user_id = p.author_user_id AND u.is_public = true
           LEFT JOIN working_groups wg ON wg.id = p.working_group_id
           WHERE p.status = 'published'
+            AND p.is_members_only = false
             AND (p.working_group_id IS NULL OR wg.slug = 'editorial')
             ${authored ? "AND (p.source_type IS NULL OR p.source_type NOT IN ('rss', 'email'))" : ''}
           ORDER BY p.published_at DESC NULLS LAST
@@ -6249,7 +6696,8 @@ export class HTTPServer {
           ) pa_report ON true
           WHERE p.slug = $1
             AND (
-              (p.status = 'published' AND (p.working_group_id IS NULL OR wg.slug = 'editorial'))
+              (p.status = 'published' AND p.is_members_only = false
+                AND (p.working_group_id IS NULL OR wg.slug = 'editorial'))
               OR ($2::text IS NOT NULL AND p.status IN ('draft', 'pending_review') AND (
                 p.author_user_id = $2
                 OR EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id AND ca.user_id = $2)
@@ -6288,7 +6736,7 @@ export class HTTPServer {
           `SELECT p.id, pa.file_name
            FROM perspectives p
            JOIN perspective_assets pa ON pa.perspective_id = p.id AND pa.asset_type = 'report'
-           WHERE p.slug = $1 AND p.status = 'published'
+           WHERE p.slug = $1 AND p.status = 'published' AND p.is_members_only = false
            LIMIT 1`,
           [slug]
         );
@@ -6321,16 +6769,20 @@ export class HTTPServer {
       try {
         const { slug } = req.params;
         const now = Date.now();
-        const cached = cardImageCache.get(slug);
-        if (cached && cached.expires > now) {
-          res.set('Content-Type', 'image/png');
-          res.set('Cache-Control', 'public, max-age=86400');
-          return res.send(cached.buffer);
-        }
-
+        // Re-check public eligibility before consulting the image cache so a
+        // visibility change cannot leave a cached card anonymously available.
         const perspective = await getPerspectiveWithIllustration(slug);
         if (!perspective) {
           return res.status(404).send('Not found');
+        }
+
+        const cached = cardImageCache.get(slug);
+        if (cached && cached.expires > now) {
+          res.set('Content-Type', 'image/png');
+          // Visibility is checked above on every request. Require shared caches
+          // to revalidate too, so unpublishing a perspective revokes its card.
+          res.set('Cache-Control', 'public, max-age=0, must-revalidate');
+          return res.send(cached.buffer);
         }
 
         const cardOpts = {
@@ -6356,7 +6808,7 @@ export class HTTPServer {
         cardImageCache.set(slug, { buffer: png, expires: now + 86400000 });
 
         res.set('Content-Type', 'image/png');
-        res.set('Cache-Control', 'public, max-age=86400');
+        res.set('Cache-Control', 'public, max-age=0, must-revalidate');
         return res.send(png);
       } catch (error) {
         logger.error({ err: error, slug: req.params.slug }, 'Card image generation error');
@@ -6377,25 +6829,33 @@ export class HTTPServer {
         const { slug, filename } = req.params;
         const pool = getPool();
         const userId = req.user?.id ?? null;
+        const userIsAdmin = userId ? await isWebUserAAOAdmin(userId) : false;
 
         const perspResult = await pool.query(
-          `SELECT p.id FROM perspectives p
+          `SELECT p.id,
+                  (p.status = 'published' AND p.is_members_only = false
+                    AND (p.working_group_id IS NULL OR wg.slug = 'editorial')) AS is_public
+           FROM perspectives p
            LEFT JOIN working_groups wg ON wg.id = p.working_group_id
            WHERE p.slug = $1
              AND (
-               (p.status = 'published' AND (p.working_group_id IS NULL OR wg.slug = 'editorial'))
-               OR ($2::text IS NOT NULL AND p.status IN ('draft', 'pending_review') AND (
+               (p.status = 'published' AND p.is_members_only = false
+                 AND (p.working_group_id IS NULL OR wg.slug = 'editorial'))
+               OR ($2::text IS NOT NULL AND (
                  p.author_user_id = $2
+                 OR p.proposer_user_id = $2
                  OR EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id AND ca.user_id = $2)
+                 OR $3::boolean
                ))
              )`,
-          [slug, userId]
+          [slug, userId, userIsAdmin]
         );
         if (perspResult.rows.length === 0) {
           return res.status(404).send('Not found');
         }
 
-        const asset = await getPerspectiveAssetData(perspResult.rows[0].id, filename);
+        const { id, is_public: isPublic } = perspResult.rows[0];
+        const asset = await getPerspectiveAssetData(id, filename);
         if (!asset) {
           return res.status(404).send('Asset not found');
         }
@@ -6404,7 +6864,10 @@ export class HTTPServer {
         res.setHeader('Content-Type', contentType);
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Content-Security-Policy', "default-src 'none'");
-        res.setHeader('Cache-Control', 'public, max-age=86400');
+        res.setHeader(
+          'Cache-Control',
+          isPublic ? 'public, max-age=0, must-revalidate' : 'private, no-store'
+        );
         res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(asset.file_name)}"`);
         res.setHeader('Content-Length', asset.file_data.length);
         res.send(asset.file_data);
@@ -6603,14 +7066,47 @@ export class HTTPServer {
         const { id } = req.params;
         if (!isUuid(id)) return res.status(400).json({ error: 'Invalid content ID' });
         const pool = getPool();
-        const result = await pool.query(
-          `DELETE FROM perspectives WHERE id = $1 RETURNING id, title`,
-          [id]
-        );
-        if (result.rows.length === 0) {
-          return res.status(404).json({ error: 'Content not found' });
+        const client = await pool.connect();
+        let deletedContent: { id: string; title: string };
+        let resolvedEscalationIds: number[];
+        try {
+          await client.query('BEGIN');
+          const existing = await client.query<{ id: string; title: string }>(
+            `SELECT id, title FROM perspectives WHERE id = $1 FOR UPDATE`,
+            [id]
+          );
+          if (existing.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Content not found' });
+          }
+
+          resolvedEscalationIds = await resolveEscalationsForPerspective(
+            id,
+            req.user!.id,
+            'Auto-resolved: content deleted by admin',
+            client
+          );
+          const result = await client.query<{ id: string; title: string }>(
+            `DELETE FROM perspectives WHERE id = $1 RETURNING id, title`,
+            [id]
+          );
+          if (result.rows.length === 0) {
+            throw new Error('Perspective disappeared while holding its delete lock');
+          }
+          deletedContent = result.rows[0];
+          await client.query('COMMIT');
+        } catch (error) {
+          await client.query('ROLLBACK').catch(rollbackError => {
+            logger.warn({ err: rollbackError, contentId: id }, 'Failed to roll back admin content delete');
+          });
+          throw error;
+        } finally {
+          client.release();
         }
-        logger.info({ contentId: id, title: result.rows[0].title }, 'Admin deleted content');
+        logger.info(
+          { contentId: id, title: deletedContent.title, resolvedEscalationIds },
+          'Admin deleted content'
+        );
         res.json({ success: true });
       } catch (error) {
         logger.error({ err: error }, 'DELETE /api/admin/content/:id error');
@@ -6743,15 +7239,47 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         if (status === 'published') {
           updates.push(`published_at = COALESCE(published_at, NOW())`);
         }
-        const result = await pool.query(
-          `UPDATE perspectives SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${values.length + 1} RETURNING *`,
-          [...values, id]
-        );
-        if (result.rows.length === 0) {
-          return res.status(404).json({ error: 'Content not found' });
+        const client = await pool.connect();
+        let updatedContent: Record<string, unknown>;
+        let resolvedEscalationIds: number[] = [];
+        try {
+          await client.query('BEGIN');
+          const existing = await client.query<{ id: string }>(
+            `SELECT id FROM perspectives WHERE id = $1 FOR UPDATE`,
+            [id]
+          );
+          if (existing.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Content not found' });
+          }
+
+          const result = await client.query<Record<string, unknown>>(
+            `UPDATE perspectives SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${values.length + 1} RETURNING *`,
+            [...values, id]
+          );
+          if (result.rows.length === 0) {
+            throw new Error('Perspective disappeared while holding its status lock');
+          }
+          updatedContent = result.rows[0];
+          if (status === 'archived') {
+            resolvedEscalationIds = await resolveEscalationsForPerspective(
+              id,
+              req.user!.id,
+              'Auto-resolved: content archived by admin',
+              client
+            );
+          }
+          await client.query('COMMIT');
+        } catch (error) {
+          await client.query('ROLLBACK').catch(rollbackError => {
+            logger.warn({ err: rollbackError, contentId: id }, 'Failed to roll back admin content status update');
+          });
+          throw error;
+        } finally {
+          client.release();
         }
-        logger.info({ contentId: id, status }, 'Admin updated content status');
-        res.json(result.rows[0]);
+        logger.info({ contentId: id, status, resolvedEscalationIds }, 'Admin updated content status');
+        res.json(updatedContent);
       } catch (error) {
         logger.error({ err: error }, 'PUT /api/admin/content/:id/status error');
         res.status(500).json({ error: 'Failed to update status' });
@@ -6812,6 +7340,18 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
     const orgDb = new OrganizationDatabase();
 
+    this.app.use('/auth/native', createNativeAuthRouter({
+      issuer: new URL(WORKOS_REDIRECT_URI).origin,
+      buildWorkOSAuthorizationUrl: (state, codeChallenge) => workos.userManagement.getAuthorizationUrl({
+        provider: 'authkit',
+        clientId: WORKOS_CLIENT_ID,
+        redirectUri: WORKOS_REDIRECT_URI,
+        state,
+        codeChallenge,
+        codeChallengeMethod: 'S256',
+      }),
+    }));
+
     // GET /auth/login - Redirect to WorkOS for authentication (or dev login page)
     // On AdCP domain, redirect to AAO first to keep auth on a single domain
     // Supports slack_user_id param for auto-linking after login (for existing users)
@@ -6843,27 +7383,21 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         const returnTo = req.query.return_to as string;
         const slackUserId = req.query.slack_user_id as string;
-        const nativeMode = req.query.native === 'true';
-        const nativeRedirectUri = req.query.redirect_uri as string;
 
-        // Validate native redirect URI to prevent open redirect attacks
-        const ALLOWED_NATIVE_SCHEMES = ['addie://'];
-        const isValidNativeRedirectUri = (uri: string): boolean => {
-          return ALLOWED_NATIVE_SCHEMES.some(scheme => uri.startsWith(scheme));
-        };
-
-        if (nativeMode && nativeRedirectUri && !isValidNativeRedirectUri(nativeRedirectUri)) {
-          return res.status(400).json({ error: 'Invalid redirect_uri - must use addie:// scheme' });
+        // Native OAuth v1 put a bearer session directly in a custom-scheme
+        // URI and had no client-bound state. It is intentionally disabled;
+        // desktop v2 starts at POST /auth/native/start with state + PKCE.
+        if (req.query.native !== undefined || req.query.redirect_uri !== undefined) {
+          return res.status(426).json({
+            error: 'native_client_upgrade_required',
+            native_protocol: 2,
+          });
         }
 
-        // Build state object with return_to, slack_user_id for auto-linking, and native app params
-        const stateObj: { return_to?: string; slack_user_id?: string; native?: boolean; native_redirect_uri?: string } = {};
+        // Build state object with return_to and slack_user_id for auto-linking.
+        const stateObj: { return_to?: string; slack_user_id?: string } = {};
         if (returnTo) stateObj.return_to = returnTo;
         if (slackUserId) stateObj.slack_user_id = slackUserId;
-        if (nativeMode) {
-          stateObj.native = true;
-          stateObj.native_redirect_uri = nativeRedirectUri || 'addie://auth/callback';
-        }
         const state = Object.keys(stateObj).length > 0 ? JSON.stringify(stateObj) : undefined;
 
         const authUrl = workos!.userManagement.getAuthorizationUrl({
@@ -6980,10 +7514,36 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     // GET /auth/callback - Handle OAuth callback from WorkOS
     // codeql[js/user-controlled-bypass] - OAuth callback must read authorization code from query params
     this.app.get('/auth/callback', async (req, res) => {
-      const code = req.query.code as string;
-      const state = req.query.state as string;
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Pragma', 'no-cache');
+      const code = typeof req.query.code === 'string' ? req.query.code : undefined;
+      const state = typeof req.query.state === 'string' ? req.query.state : undefined;
+      let nativePending: NativePendingAuth | undefined;
 
+      const nativePendingId = parseNativePendingId(state);
+      if (nativePendingId) {
+        try {
+          nativePending = await consumeNativePendingAuth(nativePendingId);
+        } catch (error) {
+          logger.error({ error }, 'Native OAuth pending lookup failed');
+          return res.status(503).json({ error: 'temporarily_unavailable' });
+        }
+        if (!nativePending) {
+          return res.status(400).json({ error: 'invalid_request' });
+        }
+      }
+
+      // The OAuth provider controls whether a callback contains `code`. This branch does not
+      // bypass authentication: native state was atomically consumed and validated above, and
+      // the no-code path can only return an error. Successful authentication still requires
+      // WorkOS code redemption below.
+      // codeql[js/user-controlled-bypass] - provider code presence selects only error vs redemption
       if (!code) {
+        if (nativePending) {
+          res.setHeader('Cache-Control', 'no-store');
+          const error = req.query.error === 'access_denied' ? 'access_denied' : 'server_error';
+          return res.redirect(buildNativeErrorRedirect(nativePending, error));
+        }
         return res.status(400).json({
           error: 'Missing authorization code',
           message: 'No authorization code provided',
@@ -7006,6 +7566,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         const { user, sealedSession } = await workos!.userManagement.authenticateWithCode({
           clientId: WORKOS_CLIENT_ID,
           code,
+          ...(nativePending && { codeVerifier: nativePending.workosCodeVerifier }),
           session: {
             sealSession: true,
             cookiePassword: WORKOS_COOKIE_PASSWORD,
@@ -7304,11 +7865,24 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           })();
         }
 
-        // Parse return_to, slack_user_id, and native mode from state
+        if (nativePending) {
+          const redirectUrl = await issueNativeGrantRedirect(
+            nativePending,
+            sealedSession!,
+            {
+              id: user.id,
+              email: user.email,
+              ...(user.firstName && { firstName: user.firstName }),
+              ...(user.lastName && { lastName: user.lastName }),
+            },
+          );
+          res.setHeader('Cache-Control', 'no-store');
+          return res.redirect(redirectUrl);
+        }
+
+        // Parse return_to and slack_user_id from web state
         let returnTo = '/member-hub';
         let slackUserIdToLink: string | undefined;
-        let isNativeMode = false;
-        let nativeRedirectUri = 'addie://auth/callback';
         logger.debug({ state, hasState: !!state }, 'Parsing state for return_to');
         if (state) {
           try {
@@ -7321,34 +7895,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
               logger.warn({ returnTo: candidateReturnTo }, 'Blocked invalid return_to from OAuth state');
             }
             slackUserIdToLink = parsedState.slack_user_id;
-            isNativeMode = parsedState.native === true;
-            const candidateNativeUri = parsedState.native_redirect_uri || nativeRedirectUri;
-            const ALLOWED_NATIVE_SCHEMES = ['addie://'];
-            if (ALLOWED_NATIVE_SCHEMES.some(scheme => candidateNativeUri.startsWith(scheme))) {
-              nativeRedirectUri = candidateNativeUri;
-            } else if (candidateNativeUri !== nativeRedirectUri) {
-              logger.warn({ nativeRedirectUri: candidateNativeUri }, 'Blocked invalid native_redirect_uri from OAuth state');
-            }
-            logger.debug({ parsedState, returnTo, slackUserIdToLink, isNativeMode }, 'Parsed state successfully');
+            logger.debug({ returnTo, slackUserIdToLink }, 'Parsed state successfully');
           } catch (e) {
             // Invalid state, use default
             logger.debug({ state, error: String(e) }, 'Failed to parse state');
           }
-        }
-
-        // For native app authentication, return JSON with sealed session and redirect to deep link
-        if (isNativeMode) {
-          logger.info({ userId: user.id, nativeRedirectUri }, 'Native app authentication - redirecting to deep link');
-
-          // Redirect to native app with sealed session as a query parameter
-          const redirectUrl = new URL(nativeRedirectUri);
-          redirectUrl.searchParams.set('sealed_session', sealedSession!);
-          redirectUrl.searchParams.set('user_id', user.id);
-          redirectUrl.searchParams.set('email', user.email);
-          if (user.firstName) redirectUrl.searchParams.set('first_name', user.firstName);
-          if (user.lastName) redirectUrl.searchParams.set('last_name', user.lastName);
-
-          return res.redirect(redirectUrl.toString());
         }
 
         // Auto-link Slack account if slack_user_id was provided during signup
@@ -7504,6 +8055,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           res.redirect(returnTo); // lgtm[js/server-side-unvalidated-url-redirection]
         }
       } catch (error) {
+        if (nativePending) {
+          logger.warn({ error }, 'Native OAuth callback failed');
+          res.setHeader('Cache-Control', 'no-store');
+          return res.redirect(buildNativeErrorRedirect(nativePending, 'server_error'));
+        }
         // Expired or already-used authorization codes: redirect back to login
         // instead of showing a raw error page.
         if (error instanceof Error && error.name === 'OauthException' && 'error' in error && (error as Record<string, unknown>).error === 'invalid_grant') {
@@ -7674,7 +8230,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       });
 
       // CodeQL: returnTo validated by isAllowedAdcpUrl check above
-      res.redirect(returnTo); // lgtm[js/server-side-unvalidated-url-redirection]
+      res.redirect(HTTPServer.markBridgeReturnTo(returnTo)); // lgtm[js/server-side-unvalidated-url-redirection]
     });
 
     // GET /auth/bridge-callback - Handles no-session case (redirect back from bridge without session)
@@ -7694,7 +8250,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       });
 
       // CodeQL: returnTo validated by isAllowedAdcpUrl check above
-      res.redirect(returnTo); // lgtm[js/server-side-unvalidated-url-redirection]
+      res.redirect(HTTPServer.markBridgeReturnTo(returnTo)); // lgtm[js/server-side-unvalidated-url-redirection]
     });
 
     // GET /api/me - Get current user info
@@ -8661,6 +9217,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
     // GET /api/agreement/current - Get current agreement by type
     this.app.get('/api/agreement/current', async (req, res) => {
+      res.setHeader('Cache-Control', 'no-store');
       try {
         const type = (req.query.type as string) || 'membership';
 
@@ -8696,6 +9253,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
     // GET /api/agreement - Get specific agreement by type and version (or current if no version)
     this.app.get('/api/agreement', async (req, res) => {
+      res.setHeader('Cache-Control', 'no-store');
       try {
         const type = req.query.type as string;
         const version = req.query.version as string;
@@ -8734,8 +9292,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           });
         }
 
-        const { marked } = await import('marked');
-        const htmlContent = await marked(agreement.text);
+        const htmlContent = renderLegalMarkdown(agreement.text);
 
         return res.json({
           version: agreement.version,
@@ -9147,14 +9704,6 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       }
     });
 
-    // GET /api/public/agent-publishers - Deprecated: listAuthorizedProperties was removed from AdCP SDK
-    this.app.get('/api/public/agent-publishers', async (_req, res) => {
-      return res.status(501).json({
-        error: 'Not Implemented',
-        message: 'The list_authorized_properties task is no longer supported in the current SDK version',
-      });
-    });
-
     // Note: Member profile routes are in routes/member-profiles.ts (mounted in setupRoutes)
 
     // Note: Account management routes are in routes/admin/accounts.ts
@@ -9342,12 +9891,25 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         if (agentType === 'creative') {
           try {
-            const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
-            const formats = await creativeClient.listFormats();
-            stats.format_count = formats.length;
+            const capabilities = await client.getAdcpCapabilities({});
+            const canonicalFormats = capabilities.data?.creative?.supported_formats;
+            if (Array.isArray(canonicalFormats) && canonicalFormats.length > 0) {
+              stats.format_count = canonicalFormats.length;
+            } else {
+              const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
+              const formats = await creativeClient.listFormatsLegacy();
+              stats.format_count = formats.length;
+            }
           } catch (statsError) {
-            logger.debug({ err: statsError, url }, 'Failed to fetch creative formats');
-            stats.format_count = 0;
+            logger.debug({ err: statsError, url }, 'Canonical creative capability discovery failed; trying legacy formats');
+            try {
+              const creativeClient = new CreativeAgentClient(withSdkSafeTransport({ agentUrl: url }));
+              const formats = await creativeClient.listFormatsLegacy();
+              stats.format_count = formats.length;
+            } catch (legacyStatsError) {
+              logger.debug({ err: legacyStatsError, url }, 'Failed to fetch legacy creative formats');
+              stats.format_count = 0;
+            }
           }
         } else if (agentType === 'sales') {
           // Always show product and publisher counts for sales agents
@@ -9637,29 +10199,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     logger.info({ isWorker }, 'Process role resolved');
 
     if (isWorker) {
-      // Start periodic registry crawler for all registered agents. Re-fetches
-      // the agent list on every tick so newly registered agents are picked up
-      // without a restart. Sales agents drive publisher adagents.json
-      // discovery; signals/buying/creative agents still need health +
-      // capability snapshots on the same cycle. `viewerHasApiAccess` defaults
-      // to false — members_only agents are intentionally excluded from the
-      // periodic crawl (the public-facing registry surface is the target);
-      // owner-triggered probes for members_only agents go through
-      // POST /api/registry/agents/:encodedUrl/refresh. Fixes #4213.
-      logger.debug('Starting registry crawler');
-      this.crawler.startPeriodicCrawl(() => this.agentService.listAgents(), 360); // Crawl every 6 hours
-
-      // Crawl catalog domains for adagents.json (demand-driven queue)
-      this.crawler.startPeriodicCatalogCrawl(30); // Process queue every 30 minutes
-
-      // Drain manager_revalidation_queue (#4200 item 2) — fan-out
-      // re-validation when a manager rotates its adagents.json.
-      this.crawler.startPeriodicManagerRevalidation(5); // 5-minute tick
-
-      // Re-verify AAO-hosted origins on a TTL so a transferred domain or a
-      // removed origin pointer lapses the owner lock (bind-on-verify, #5752),
-      // releasing the domain for re-claim.
-      this.crawler.startPeriodicHostedOriginReverification(60); // hourly tick
+      this.startWorkerCrawlers();
 
       // Register and start all scheduled jobs
       registerAllJobs();
@@ -9753,6 +10293,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
     // Only stop background services that were started on this machine
     if (this.isWorker) {
+      // Stop every crawler scheduler before awaiting other drains. In-flight
+      // durable work remains protected by its expiring database lease.
+      await this.crawler.stopPeriodicCrawlers();
       jobScheduler.stopAll();
 
       import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {

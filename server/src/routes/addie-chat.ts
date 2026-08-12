@@ -30,6 +30,8 @@ import {
   initializeKnowledgeSearch,
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
+  createSlackKnowledgeRequestTools,
+  isSlackKnowledgeTool,
 } from "../addie/mcp/knowledge-search.js";
 import { ANONYMOUS_SAFE_KNOWLEDGE_TOOLS } from "../mcp/chat-tool.js";
 import {
@@ -332,8 +334,13 @@ async function initializeChatClient(): Promise<void> {
   // user-submitted resources and strips Addie-generated notes) and full
   // (for the authenticated-only set). The split happens at handler-creation
   // time because handler closures don't carry per-call scope.
-  const anonymousKnowledgeHandlers = createKnowledgeToolHandlers(undefined, { anonymous: true });
-  const authedKnowledgeHandlers = createKnowledgeToolHandlers();
+  const anonymousKnowledgeHandlers = createKnowledgeToolHandlers({
+    anonymous: true,
+    slackAccess: { kind: 'public-only' },
+  });
+  const authedKnowledgeHandlers = createKnowledgeToolHandlers({
+    slackAccess: { kind: 'public-only' },
+  });
 
   // Register anonymous-safe knowledge tools globally — search_docs, get_doc,
   // search_repos, search_resources, get_recent_news. All read-only over public
@@ -361,6 +368,7 @@ async function initializeChatClient(): Promise<void> {
   // restricted handler globally, authenticated users get the full handler
   // via this per-request override.
   for (const tool of KNOWLEDGE_TOOLS) {
+    if (isSlackKnowledgeTool(tool)) continue;
     const handler = authedKnowledgeHandlers.get(tool.name);
     if (!handler) continue;
     if (ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.has(tool.name)) {
@@ -767,6 +775,19 @@ export async function prepareRequestWithMemberTools(
     ...createBillingToolHandlers(memberContext),
     ...createImageToolHandlers(linkedSlackUserId, threadExternalId),
   ]);
+
+  // Slack history is always request-scoped. A linked Slack identity may see
+  // its allowed private channels; an authenticated-but-unlinked web user gets
+  // an explicit public-only scope.
+  const slackKnowledge = createSlackKnowledgeRequestTools(
+    linkedSlackUserId
+      ? { kind: 'slack-user', slackUserId: linkedSlackUserId }
+      : { kind: 'public-only' },
+  );
+  allTools.push(...slackKnowledge.tools);
+  for (const [name, handler] of slackKnowledge.handlers) {
+    combinedHandlers.set(name, handler);
+  }
 
   // Certification tools (for authenticated users)
   if (userId) {

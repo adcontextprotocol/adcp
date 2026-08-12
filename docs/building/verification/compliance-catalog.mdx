@@ -5,63 +5,32 @@ description: "Full index of AdCP protocols and specialisms an agent can claim �
 "og:title": "AdCP — Compliance Catalog"
 ---
 
-Every AdCP agent declares its `supported_protocols` and `specialisms` in `get_adcp_capabilities`. Each declaration maps to a compliance bundle at `/compliance/{version}/` that the storyboard runner executes to verify the claim.
+import ComplianceErrorCodes from "/docs/snippets/compliance-error-codes.mdx";
+import ComplianceStoryboardInventory from "/docs/snippets/compliance-storyboard-inventory.mdx";
+
+Every AdCP agent declares its `supported_protocols` and `specialisms` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). Each declaration maps to a compliance bundle at `/compliance/{version}/` that the storyboard runner executes to verify the claim.
 
 <Note>
-**`supported_protocols` is not exhaustive.** The `accounts` surface (`sync_accounts`, `list_accounts`, `sync_governance`) is a foundation implicit in every `media_buy`, `creative`, and `signals` agent and is intentionally not a `supported_protocols` value. See [Accounts tasks](/docs/accounts/tasks/sync_accounts) for the full account surface.
+**`supported_protocols` is not exhaustive.** The `accounts` surface ([`sync_accounts`](/docs/accounts/tasks/sync_accounts), [`list_accounts`](/docs/accounts/tasks/list_accounts), [`sync_governance`](/docs/accounts/tasks/sync_governance)) is a foundation implicit in every `media_buy`, `creative`, and `signals` agent and is intentionally not a `supported_protocols` value. See [Accounts tasks](/docs/accounts/tasks/sync_accounts) for the full account surface.
 </Note>
 
 This page is the human-readable index of that taxonomy. The machine-readable equivalent is `/compliance/{version}/index.json`.
 
 ## Universal storyboards
 
-Every agent runs every storyboard in `/compliance/{version}/universal/` regardless of which protocols or specialisms it claims. A few are *capability-gated* — they only run when the agent advertises the relevant capability — but the storyboard is still universal in scope: any agent claiming the capability is graded by it. Failing a universal storyboard fails overall compliance.
+Every agent runs every graded storyboard in `/compliance/{version}/universal/` regardless of which protocols or specialisms it claims. A few are *capability-gated* — they only run when the agent advertises the relevant capability — but the storyboard is still universal in scope: any agent claiming the capability is graded by it. Failing a universal storyboard fails overall compliance. Non-executable schemas and support fixtures shipped in the universal bundle are not runner scenarios and do not appear in this table.
 
-{/* Lint: scripts/lint-universal-storyboard-doc-parity.cjs keeps this table in sync with static/compliance/source/universal/. Add a row (kebab-case slug) when you add a graded storyboard; remove the row when one is deleted. The build fails on drift. */}
+{/* Generated from the compliance inventory; scripts/lint-universal-storyboard-doc-parity.cjs validates the literal slugs in the snippet. */}
 
-| Storyboard | Purpose |
-|-----------|---------|
-| `capability-discovery` | `get_adcp_capabilities` shape, protocol/specialism declarations, version advertising |
-| `comply-controller-mode-gate` | Sandbox/live isolation for sellers that expose `comply_test_controller` on a shared endpoint — live-mode principals must be refused before scenario dispatch |
-| `schema-validation` | Request and response schema conformance, ISO 8601 timestamps, temporal invariants |
-| `schema-validation-signals` | Response schema compliance for signals — required fields on every signal; gated on `get_signals` |
-| `version-negotiation` | Release-precision `adcp.supported_versions` advertisement and response-envelope `adcp_version` echo; advisory in 3.1, promoted in later cuts |
-| `v3-envelope-integrity` | v3 protocol envelopes MUST NOT carry the v2 legacy `task_status` or `response_status` fields — `status` is the single canonical lifecycle field in v3. |
-| `error-compliance` | Structured error shape, published error codes, transport binding, no existence leaks across tenants |
-| `error-compliance-signals` | Error handling for signals protocol — nonexistent signal IDs, missing fields, VERSION_UNSUPPORTED, transport binding; discovery phases are gated on `get_signals`; activation phases run only for agents that claim activation support such as `signal-marketplace` |
-| `stale-response-advisory` | `STALE_RESPONSE` wire placement — advisory rides in `errors[]` on a populated success response with transport success preserved; stale-cache forcing steps gated on `comply_test_controller` with `force_upstream_unavailable` |
-| `idempotency` | `idempotency_key` scoping, replay semantics, `IDEMPOTENCY_CONFLICT`, `replayed: true`, declared TTL |
-| `read-tool-idempotency` | Read-only task wrappers accept the 3.1 every-request `idempotency_key` envelope without strict request-wrapper rejection; includes the 3.1 omitted-key grace probe. |
-| `canonical-format-validate-input` | Canonical-format `validate_input` result semantics — structural pass/fail across required slots and `unvalidatable_nondeterministic` for seeded product declarations. Gated on agents that advertise `validate_input`; the seeded-product branch also requires `comply_test_controller` seeding support. |
-| `security` | **Authentication baseline — unauth rejection, static-credential enforcement (Bearer API key or HTTP Basic), OAuth discovery + RFC 9728 audience binding.** See [Authentication](/docs/building/by-layer/L2/authentication). |
-| `oauth-setup` | Complete RFC 9728 protected-resource and RFC 8414 authorization-server metadata graph — resource/issuer consistency, every referenced authorization server, and passive endpoint reachability. Gated on `oauth.supported: true`; RFC 7591 registration transactions are out of scope. |
-| `webhook-emission` | Outbound webhook conformance — stable `idempotency_key` across retries; RFC 9421 webhook signing (or HMAC fallback if the buyer opted in). Runs for any agent that accepts `push_notification_config` on any operation. |
-| `webhook-receiver-envelope` | Buyer receiver replay conformance: accepts full MCP webhook envelopes, rejects bare delivery-result payloads, verifies signatures over raw body bytes, and dedupes retries by `idempotency_key`. |
-| `agent-notification-configs` | Agent-level `capabilities.changed` registration: revision-fenced capability declaration, NO_AUTH rejection, and dry-run clear semantics for `sync_agent_notification_configs`. |
-| `notification-config-event-scope` | `sync_accounts.accounts[].notification_configs[]` semantic validation — account-level subscribers reject media-buy-anchored notification types (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) even though they are valid values in the shared notification-type enum. |
-| `notification-config-lifecycle` | Account-level `notification_configs[]` lifecycle on `sync_accounts`: paused registration, durable `list_accounts` echo, subscriber-keyed replacement, and clear-all semantics. |
-| `notification-config-rejections` | Semantic `notification_configs[]` request rejection path for duplicate `subscriber_id` values. |
-| `wholesale-feed-products` | Product wholesale feed versioning — bootstrap responses carry `wholesale_feed_version`/`cache_scope`, and matching `if_wholesale_feed_version` probes return `unchanged` without product rows. |
-| `wholesale-feed-signals` | Signals wholesale feed versioning — bootstrap responses carry `wholesale_feed_version`/`cache_scope`, and matching `if_wholesale_feed_version` probes return `unchanged` without signal rows. |
-| `wholesale-feed-products-scope-isolation` | Product wholesale feed cache-scope isolation — a `wholesale_feed_version` minted under one `cache_scope` must not short-circuit (`unchanged: true`) a request the seller resolves to a different `cache_scope`. |
-| `wholesale-feed-signals-scope-isolation` | Signals wholesale feed cache-scope isolation — a `wholesale_feed_version` minted under one `cache_scope` must not short-circuit (`unchanged: true`) a request the agent resolves to a different `cache_scope`. |
-| `wholesale-feed-product-webhooks` | Account-level `notification_configs[]` registration for agents that advertise product wholesale feed webhook events. |
-| `wholesale-feed-signal-webhooks` | Account-level `notification_configs[]` registration for agents that advertise signal wholesale feed webhook events. |
-| `wholesale-feed-bulk-webhooks` | Account-level `notification_configs[]` registration for agents that advertise `wholesale_feed.bulk_change`. |
-| `pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_creatives` response from a continuation page through to terminal. |
-| `get-products-pagination-integrity` | `get_products` wholesale pagination semantics — walks a seeded product feed from continuation to terminal while preserving brief/refine as capped curated/refined answers, not feed enumeration. |
-| `get-signals-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `get_signals` response under a broad query — page 1 must be non-terminal against any non-trivial signal set, page 2 follows the cursor. |
-| `pagination-integrity-list-accounts` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_accounts` response — storyboard bootstraps three accounts via `sync_accounts`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
-| `pagination-integrity-creative-formats` | Deprecated named-format compatibility check for agents that still expose paginated `list_creative_formats`. |
-| `get-media-buys-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `get_media_buys` response — storyboard seeds three media buys via `seed_media_buy`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
-| `content-standards-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_content_standards` response — storyboard bootstraps three content standards configurations via `create_content_standards`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
-| `collection-lists-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_collection_lists` response — storyboard bootstraps three collection lists via `create_collection_list`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
-| `property-lists-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_property_lists` response — storyboard bootstraps three property lists via `create_property_list`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
-| `deterministic-testing` | `comply_test_controller` state-machine verification — skipped if `capabilities.compliance_testing.supported: false`. |
-| `signed-requests` | RFC 9421 transport-layer request-signing verification — skipped if `request_signing.supported: false`. |
-| `billing-gate-dispatch` | `sync_accounts.billing` rejection dispatch — `BILLING_NOT_SUPPORTED` (capability gate, with `error.details.scope`) vs `BILLING_NOT_PERMITTED_FOR_AGENT` (per-buyer-agent commercial-relationship gate, with the clamped `rejected_billing` + `suggested_billing` shape). Capability phase skipped when the seller supports all three `billing` values; per-agent phases skipped when the test kit does not declare `commercial_relationship: passthrough_only`. |
+<ComplianceStoryboardInventory />
 
 Capability-gated rows (`deterministic-testing`, `oauth-setup`, `signed-requests`) are skipped when the corresponding capability is absent or advertises `supported: false`; they cannot be claimed and partially implemented. Declaring `supported: true` and failing the storyboard is non-conformant — omit the capability or declare `false` rather than ship a partial implementation. The `billing-gate-dispatch` and `comply-controller-mode-gate` rows are precondition-gated rather than ordinary capability-gated rows: each phase grades `not_applicable` when its precondition is not met. Sellers wanting full coverage of the per-agent billing gate SHOULD ship a test kit with `commercial_relationship: passthrough_only` declared so the per-agent phases run.
+
+## Standard error codes
+
+The compliance suite verifies that standard errors use the recovery classifications and remediation guidance defined by the canonical [`error-code.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/source/enums/error-code.json) source taxonomy. The vocabulary remains open: agents must also handle unknown codes using the response's `recovery` value.
+
+<ComplianceErrorCodes />
 
 ## Protocols
 
@@ -80,7 +49,7 @@ Top-level agent capability claims. An agent claims a protocol by listing it in `
 | `measurement` | Preview / no stable baseline | Experimental 3.1 metric-catalog discovery. Agents implementing it must list `measurement.core` in `experimental_features`. |
 
 <Note>
-Support for the [compliance test controller](/docs/building/by-layer/L3/comply-test-controller) is declared via the `capabilities.compliance_testing` block on `get_adcp_capabilities`, not via `supported_protocols`. Compliance testing is an RPC surface for the test harness, not a functional protocol.
+Support for the [compliance test controller](/docs/building/by-layer/L3/comply-test-controller) is declared via the `capabilities.compliance_testing` block on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities), not via `supported_protocols`. Compliance testing is an RPC surface for the test harness, not a functional protocol.
 </Note>
 
 <Tip>
@@ -115,8 +84,8 @@ Specialisms are grouped below by parent protocol.
 | `sales-catalog-driven` | stable | Catalog-driven commerce with conversion tracking |
 | `sales-broadcast-tv` | stable | Broadcast linear TV with guaranteed inventory and FCC cancellation rules |
 | `sales-social` | stable | Social media advertising platform with self-service flows |
-| `governance-aware-seller` | stable | Seller composes with the buyer's campaign-governance agent after baseline registration — calls `check_governance` and propagates approvals, conditions, and denials unchanged. Optional claim for the full governance-check loop. |
-| `audience-sync` | stable | Syncs buyer-provided audience segments into a platform for activation (uses `sync_audiences`, `list_accounts`) |
+| `governance-aware-seller` | stable | Seller composes with the buyer's campaign-governance agent after baseline registration — calls [`check_governance`](/docs/governance/campaign/tasks/check_governance) and propagates approvals, conditions, and denials unchanged. Optional claim for the full governance-check loop. |
+| `audience-sync` | stable | Syncs buyer-provided audience segments into a platform for activation (uses [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences), [`list_accounts`](/docs/accounts/tasks/list_accounts)) |
 
 <Note>
 **Coming in 3.1.** `sales-streaming-tv` (CTV / streaming), `sales-exchange` (programmatic SSP / exchange), and `sales-retail-media` (retail media network) are scheduled for 3.1. Sellers in those categories should claim `sales-guaranteed` or `sales-non-guaranteed` at 3.0 GA.
@@ -138,8 +107,8 @@ Specialisms are grouped below by parent protocol.
 
 | Specialism | Status | Purpose |
 |-----------|--------|---------|
-| `signal-owned` | stable | Owned signal agent exposing first-party segments through `get_signals`; activation is not required for this claim |
-| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data; requires `get_signals` and `activate_signal` |
+| `signal-owned` | stable | Owned signal agent exposing first-party segments through [`get_signals`](/docs/signals/tasks/get_signals); activation is not required for this claim |
+| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data; requires `get_signals` and [`activate_signal`](/docs/signals/tasks/activate_signal) |
 
 ### governance
 
@@ -166,7 +135,7 @@ Specialisms are grouped below by parent protocol.
 The `sales-*` specialisms are not mutually exclusive — a hybrid platform with both a guaranteed direct desk and an auction floor should claim both `sales-guaranteed` and `sales-non-guaranteed`. Follow the steps below to resolve your claim.
 
 <Warning>
-**`sales-proposal-mode` is deprecated in 3.1.** Do not claim it for new agents. Existing agents that declare it must drop it entirely and replace it with `sales-guaranteed` + `media_buy.supports_proposals: true` in `get_adcp_capabilities`. See [#3823](https://github.com/adcontextprotocol/adcp/issues/3823).
+**`sales-proposal-mode` is deprecated in 3.1.** Do not claim it for new agents. Existing agents that declare it must drop it entirely and replace it with `sales-guaranteed` + `media_buy.supports_proposals: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). See [#3823](https://github.com/adcontextprotocol/adcp/issues/3823).
 </Warning>
 
 <Steps>
@@ -240,8 +209,8 @@ Three specialisms apply to specific delivery channels and have their own storybo
 
 | Specialism | Status | Purpose |
 |-----------|--------|---------|
-| `signal-owned` | stable | Owned signal agent exposing first-party segments through `get_signals`; activation is not required for this claim |
-| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data; requires `get_signals` and `activate_signal` |
+| `signal-owned` | stable | Owned signal agent exposing first-party segments through [`get_signals`](/docs/signals/tasks/get_signals); activation is not required for this claim |
+| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data; requires `get_signals` and [`activate_signal`](/docs/signals/tasks/activate_signal) |
 
 ### governance
 
@@ -276,13 +245,13 @@ In addition to per-step validations, specialisms declare cross-step and cross-re
 | Invariant | Scope | Specialisms |
 |-----------|-------|-------------|
 | `status.monotonic` | Single-resource — rejects status transitions observed across steps that aren't on the spec lifecycle graph. | All specialisms with a stateful resource lifecycle. |
-| `impairment.coherence` | Cross-resource — verifies that `media_buy.impairments[]` stays in sync with referenced resources. **Forward**: every entry references a currently-offline resource. **Inverse**: any offline resource referenced by a non-terminal buy appears in `impairments[]`. **Health-iff**: on a non-terminal buy, `health == "impaired"` iff `impairments[]` is non-empty (strict iff — stale drift fails). Out of scope: all three rules relax on terminal-status buys (sellers MAY leave `impairments[]` and `health` in whatever state held at the terminal transition); materiality is schema-enforced via `package_ids: minItems: 1`. | `audience-sync`, `creative-ad-server`, `creative-template`, `creative-generative`, `sales-catalog-driven`. Driven by the `media_buy_seller/dependency_impairment` scenario (creative-track via `force_creative_status`); audience-track and catalog-track follow once the compliance test controller adds `force_audience_status` / `force_catalog_item_status`. Grades `not_applicable` on storyboards that don't observe both a resource transition and a media-buy snapshot read. |
+| `impairment.coherence` | Cross-resource — verifies that `media_buy.impairments[]` stays in sync with referenced resources. **Forward**: every entry references a currently-offline resource. **Inverse**: any offline resource referenced by a non-terminal buy appears in `impairments[]`. **Health-iff**: on a non-terminal buy, `health == "impaired"` iff `impairments[]` is non-empty (strict iff — stale drift fails). Out of scope: all three rules relax on terminal-status buys (sellers MAY leave `impairments[]` and `health` in whatever state held at the terminal transition); materiality is schema-enforced via `package_ids: minItems: 1`. | `audience-sync`, `creative-ad-server`, `creative-template`, `creative-generative`, `sales-catalog-driven`. Driven by the [`media_buy_seller/dependency_impairment`](/compliance/latest/protocols/media-buy/scenarios/dependency_impairment.yaml) scenario (creative-track via `force_creative_status`); audience-track and catalog-track follow once the compliance test controller adds `force_audience_status` / `force_catalog_item_status`. Grades `not_applicable` on storyboards that don't observe both a resource transition and a media-buy snapshot read. |
 
 Invariants are declared in the specialism YAML's `invariants:` array and documented inline with the rule they enforce. See [media-buy lifecycle § Compliance](/docs/media-buy/media-buys/lifecycle#compliance) for the full `impairment.coherence` contract.
 
 ## How to claim
 
-Declare your protocols and specialisms in `get_adcp_capabilities`:
+Declare your protocols and specialisms in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities):
 
 ```json
 {
@@ -310,7 +279,7 @@ Four casings coexist in the taxonomy. Which one applies depends on where the ide
 
 | Casing | Layer | Example | Where it appears |
 |--------|-------|---------|------------------|
-| `snake_case` | Wire enums (`supported_protocols`, `delivery_type`, channel IDs, `signal_type`) | `media_buy`, `non_guaranteed`, `ctv`, `custom` | `get_adcp_capabilities` response, JSON payloads, generated schemas |
+| `snake_case` | Wire enums (`supported_protocols`, `delivery_type`, channel IDs, `signal_type`) | `media_buy`, `non_guaranteed`, `ctv`, `custom` | [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) response, JSON payloads, generated schemas |
 | `kebab-case` | Specialism IDs and compliance URLs | `sales-broadcast-tv`, `property-lists`, `audience-sync` | `get_adcp_capabilities.specialisms`, `/compliance/.../specialisms/{id}/` paths |
 | `snake_case` | Storyboard `id:` and `category:` fields | `sales_broadcast_tv`, `audience_sync` | Compliance YAML frontmatter, runner output, test reports |
 | Prose / hyphenated | Titles and narrative | "Streaming TV", "non-guaranteed" | Catalog pages, narrative copy |
@@ -319,14 +288,14 @@ The kebab↔snake swap between wire specialism IDs and storyboard categories is 
 
 | Specialism ID (wire) | Channel / tool family | Storyboard category | Variant scenarios |
 |----------------------|-----------------------|---------------------|-------------------|
-| `sales-broadcast-tv` | `channels: ['linear_tv']` | `sales_broadcast_tv` | — |
-| `sales-social` | `channels: ['social']` | `sales_social` | — |
-| `audience-sync` | `sync_audiences` tool | `audience_sync` | — |
-| `property-lists` | `property_list` tools | `property_lists` | — |
-| `collection-lists` | `collection_list` tools | `collection_lists` | — |
-| `governance-spend-authority` | `check_governance`, `sync_plans` | `governance_spend_authority` | `governance_spend_authority/denied` |
-| `creative-generative` | `build_creative` | `creative_generative` | `creative_generative/seller` |
-| `brand-rights` | `get_brand_identity`, `acquire_rights` | `brand_rights` | `brand_rights/governance_denied` |
+| `sales-broadcast-tv` | `channels: ['linear_tv']` | [`sales_broadcast_tv`](/compliance/latest/specialisms/sales-broadcast-tv/index.yaml) | — |
+| `sales-social` | `channels: ['social']` | [`sales_social`](/compliance/latest/specialisms/sales-social/index.yaml) | — |
+| `audience-sync` | [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) tool | [`audience_sync`](/compliance/latest/specialisms/audience-sync/index.yaml) | — |
+| `property-lists` | `property_list` tools | [`property_lists`](/compliance/latest/specialisms/property-lists/index.yaml) | — |
+| `collection-lists` | `collection_list` tools | [`collection_lists`](/compliance/latest/specialisms/collection-lists/index.yaml) | — |
+| `governance-spend-authority` | [`check_governance`](/docs/governance/campaign/tasks/check_governance), [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) | [`governance_spend_authority`](/compliance/latest/specialisms/governance-spend-authority/index.yaml) | [`governance_spend_authority/denied`](/compliance/latest/specialisms/governance-spend-authority/denied.yaml) |
+| `creative-generative` | [`build_creative`](/docs/creative/task-reference/build_creative) | [`creative_generative`](/compliance/latest/specialisms/creative-generative/index.yaml) | [`creative_generative/seller`](/compliance/latest/specialisms/creative-generative/generative-seller.yaml) |
+| `brand-rights` | [`get_brand_identity`](/docs/brand-protocol/tasks/get_brand_identity), [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights) | [`brand_rights`](/compliance/latest/specialisms/brand-rights/index.yaml) | [`brand_rights/governance_denied`](/compliance/latest/specialisms/brand-rights/scenarios/governance_denied.yaml) |
 
 The case split is deliberate: `supported_protocols` is a pre-existing 3.0 field already shipped to production agents, while specialism IDs are new and URL-first (each is a directory name under `/compliance/.../specialisms/{id}/`). The runner handles the mapping transparently.
 
@@ -335,7 +304,7 @@ The case split is deliberate: `supported_protocols` is a pre-existing 3.0 field 
 The protocol an agent claims does not always match the tool family name a specialism uses:
 
 - `audience-sync` lives under the `media-buy` protocol because `sync_audiences` is a media-buy tool.
-- `property-lists` (specialism ID, kebab-case) maps to the `property_list` tool family (`create_property_list`, `validate_property_delivery`) and storyboard category `property_lists`.
+- `property-lists` (specialism ID, kebab-case) maps to the `property_list` tool family ([`create_property_list`](/docs/governance/property/tasks/property_lists#create_property_list), [`validate_property_delivery`](/docs/governance/property/tasks/validate_property_delivery)) and storyboard category `property_lists`.
 - `sales-broadcast-tv` declares `channels: ['linear_tv']` — "Broadcast TV" is the prose name; `linear_tv` is the wire value.
 
 `/compliance/{version}/index.json` surfaces each specialism's `required_tools` so agents can discover the tool families without reading the full storyboard YAML.

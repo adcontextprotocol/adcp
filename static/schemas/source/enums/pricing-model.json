@@ -12,6 +12,7 @@
     "cpv",
     "cpp",
     "cpa",
+    "revenue_share",
     "flat_rate",
     "time"
   ],
@@ -23,6 +24,7 @@
     "cpv": "Cost Per View - cost per view at publisher-defined threshold (e.g., 50% completion)",
     "cpp": "Cost Per Point - cost per Gross Rating Point or Target Rating Point (TV/audio)",
     "cpa": "Cost Per Acquisition - cost per conversion event (purchase, lead, signup, etc.)",
+    "revenue_share": "Revenue Share - decimal commission rate applied to settled commissionable conversion value",
     "flat_rate": "Flat Rate - fixed cost regardless of delivery volume (sponsorships, takeovers)",
     "time": "Time - cost per time unit (hour, day, week, or month) that scales with campaign duration"
   }

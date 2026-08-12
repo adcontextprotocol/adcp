@@ -43,7 +43,7 @@ Storyboards check the AdCP wire contract: did the response match the schema, did
 
 Adapters that look correct under shape-only validation but skip the upstream entirely have shipped to staging more than once. Common shapes:
 
-- Handler short-circuits before the upstream call when the input doesn't match a non-spec branch (e.g. empty `members[]` on `sync_audiences` → returns shape-valid empty response, never POSTs).
+- Handler short-circuits before the upstream call when the input doesn't match a non-spec branch (e.g. empty `members[]` on [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) → returns shape-valid empty response, never POSTs).
 - OAuth client is wired but never invoked from any handler; tree-shaking is defeated with a `void fetchUpstreamToken;` literal.
 - Synthetic placeholder data is injected to satisfy the upstream's required-field schema, masking real-data shape mismatches.
 
@@ -105,7 +105,7 @@ For agents claiming multiple specialisms, run one CI job per specialism in paral
 Realistically your first run will not pass both gates. Common shapes and how to debug:
 
 - **Storyboard `passing` but traffic gate fails on N endpoints** — classic façade. The handlers for those routes either short-circuited or never got exercised by the storyboard's input.
-- **Storyboard `partial` with cascade skips** — an early step (`get_products`, `get_signals`) returned a shape-valid response missing fields that the runner extracts state from. Downstream steps skip with `unresolved context variables`. Fix the early step's response shape and most cascade skips clear.
+- **Storyboard `partial` with cascade skips** — an early step ([`get_products`](/docs/media-buy/task-reference/get_products), [`get_signals`](/docs/signals/tasks/get_signals)) returned a shape-valid response missing fields that the runner extracts state from. Downstream steps skip with `unresolved context variables`. Fix the early step's response shape and most cascade skips clear.
 - **Storyboard `failing` on a single step + traffic gate clean** — usually a one-line shape bug (wrong field name, missing required field, status mismatch). The per-step `details` names the field via JSON pointer.
 - **Traffic gate empty (0 hits everywhere) + agent appears to start** — agent boot threw a recoverable error after listening on port. Check the agent's stderr.
 

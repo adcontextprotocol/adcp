@@ -60,6 +60,21 @@
             "minimum": 0,
             "description": "Media spend in currency for the period. Required when a percent_of_media pricing model was used, so the vendor can verify the applied rate."
           },
+          "conversions": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Number of attributed conversion events for the reporting period. Optional analytics context for revenue_share reconciliation."
+          },
+          "conversion_value": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Total monetary value of attributed conversions for the reporting period, in currency. Optional analytics context for revenue_share reconciliation; it is not the billing basis."
+          },
+          "commissionable_value": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Settled attributed value eligible for commission, in currency. Required when pricing_option_id selects a revenue_share option. The receiver verifies vendor_cost = round_currency(commissionable_value × the selected commission_rate)."
+          },
           "signal_agent_segment_id": {
             "type": "string",
             "description": "Signal identifier from get_signals. Required for signals agents.",

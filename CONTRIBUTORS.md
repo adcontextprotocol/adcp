@@ -84,7 +84,7 @@ Anthropic's Claude and Cursor are used throughout AAO's development workflow —
 - Open an [issue](https://github.com/adcontextprotocol/adcp/issues) to propose a change, report a bug, or start a discussion.
 - Submit a [pull request](https://github.com/adcontextprotocol/adcp/pulls) — see [CONTRIBUTING.md](https://github.com/adcontextprotocol/adcp/blob/main/CONTRIBUTING.md) for the PR workflow and changeset requirements.
 - Join a working group — see [docs/community/working-group](https://docs.adcontextprotocol.org/docs/community/working-group).
-- Join the community [Slack](https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA).
+- Join the community through the [Slack joining guide](https://docs.adcontextprotocol.org/docs/community/joining-slack).
 
 ## Corrections
 

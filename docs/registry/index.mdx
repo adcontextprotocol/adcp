@@ -605,7 +605,9 @@ Poll a cursor-based feed of registry changes. Use this to keep a local copy of t
 | `publisher.adagents_changed` | A semantic field of a publisher's adagents.json changed, including a formats-only or placements-only revision. The payload includes `changed_fields`, `format_count`, and `placement_count` on newly emitted 3.2 events. |
 | `authorization.granted` | An agent was authorized for a property |
 | `authorization.revoked` | An authorization was removed |
-| `authorization.modified` | An authorization stayed visible, but externally visible metadata changed |
+| `authorization.modified` | An authorization stayed visible, but externally visible metadata changed (including rotation of `signing_keys`) |
+
+`authorization.*` payloads carry `signing_keys` — the publisher-pinned JWK set from `authorized_agents[*].signing_keys` in `adagents.json`. Consumers verifying inbound TMP signatures key on `kid → JWK`; null when the publisher declared no keys, in which case consumers fall back to the agent-hosted JWKS per [spec R-2](/docs/governance/property/adagents#signing_keys). Note that per `specs/registry-change-feed.md` §Advisory identity material the feed is change-detection, not a trust anchor: consumers MUST re-verify against the publisher's own `adagents.json` before acting on identity changes.
 
 <CodeGroup>
 

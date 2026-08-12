@@ -1,4 +1,4 @@
-import { query } from './client.js';
+import { query, queryWithTimeout } from './client.js';
 import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
 
 /**
@@ -1003,6 +1003,93 @@ export class FederatedIndexDatabase {
        )
        SELECT * FROM deduped ORDER BY publisher_domain, property_type, name`,
       [agentUrl]
+    );
+    return result.rows.map(row => this.deserializeProperty(row));
+  }
+
+  /**
+   * Get an agent's authorized properties for one publisher domain.
+   *
+   * Publisher-facing reads must use this scoped form. Calling
+   * getPropertiesForAgent() and filtering in application code makes response
+   * time proportional to the agent's entire network. A network agent with
+   * thousands of publishers can otherwise turn a one-property publisher read
+   * into a registry-wide JSONB walk and sort.
+   */
+  async getPropertiesForAgentDomain(
+    agentUrl: string,
+    publisherDomain: string,
+  ): Promise<DiscoveredProperty[]> {
+    const canonicalDomain = canonicalizePublisherDomain(publisherDomain);
+    const result = await queryWithTimeout<DiscoveredProperty>(
+      `WITH unioned AS (
+         SELECT p.id, p.property_id, p.publisher_domain, p.property_type, p.name,
+                p.identifiers, p.tags, p.discovered_at, p.last_validated, p.expires_at,
+                0 AS src_priority
+           FROM discovered_properties p
+           JOIN agent_property_authorizations apa ON apa.property_id = p.id
+          WHERE apa.agent_url = $1
+            AND p.publisher_domain = $2
+         UNION ALL
+         SELECT
+           cp.property_rid AS id,
+           prop->>'property_id' AS property_id,
+           pub.domain AS publisher_domain,
+           prop->>'property_type' AS property_type,
+           prop->>'name' AS name,
+           CASE WHEN jsonb_typeof(prop->'identifiers') = 'array'
+                THEN prop->'identifiers'
+                ELSE '[]'::jsonb END AS identifiers,
+           COALESCE(
+             ARRAY(SELECT jsonb_array_elements_text(
+               CASE WHEN jsonb_typeof(prop->'tags') = 'array'
+                    THEN prop->'tags'
+                    ELSE '[]'::jsonb END
+             )),
+             ARRAY[]::text[]
+           ) AS tags,
+           cp.created_at AS discovered_at,
+           pub.last_validated AS last_validated,
+           pub.expires_at AS expires_at,
+           1 AS src_priority
+           FROM v_effective_agent_authorizations v
+           JOIN catalog_properties cp ON cp.property_rid = v.property_rid
+           JOIN publishers pub ON pub.domain = regexp_replace(cp.created_by, '^[^:]+:', '')
+                              AND pub.source_type = 'adagents_json'
+                              AND pub.domain = $2
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(pub.adagents_json->'properties') = 'array'
+                 THEN pub.adagents_json->'properties'
+                 ELSE '[]'::jsonb END
+          ) AS prop
+          WHERE v.agent_url_canonical = CASE WHEN $1 = '*' THEN '*' ELSE LOWER(RTRIM(BTRIM($1), '/')) END
+            AND v.publisher_domain = $2
+            AND v.property_rid IS NOT NULL
+            AND prop->>'property_id' IS NOT NULL
+            AND cp.property_id IS NOT NULL
+            AND prop->>'property_id' = cp.property_id
+            AND prop->>'name' IS NOT NULL
+            AND prop->>'property_type' IS NOT NULL
+            AND LOWER(REGEXP_REPLACE(
+                  REGEXP_REPLACE(
+                    BTRIM(COALESCE(NULLIF(prop->>'publisher_domain', ''), pub.domain)),
+                    '^https?://',
+                    '',
+                    'i'
+                  ),
+                  '[./]+$',
+                  ''
+                )) = pub.domain
+       ), deduped AS (
+         SELECT DISTINCT ON (publisher_domain, name, property_type)
+                id, property_id, publisher_domain, property_type, name,
+                identifiers, tags, discovered_at, last_validated, expires_at
+           FROM unioned
+          ORDER BY publisher_domain, name, property_type, src_priority
+       )
+       SELECT * FROM deduped ORDER BY publisher_domain, property_type, name`,
+      [agentUrl, canonicalDomain],
+      5_000,
     );
     return result.rows.map(row => this.deserializeProperty(row));
   }

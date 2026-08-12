@@ -6,19 +6,19 @@
  */
 
 import {
+  SAMPLE_BRIEFS,
+  getBriefsByVertical,
   setAgentTesterLogger,
   comply as sdkComply,
   loadComplianceIndex as sdkLoadComplianceIndex,
   testCapabilityDiscovery,
+  CapabilityResolutionError,
   type ComplyOptions,
   type ComplianceResult,
   type ComplianceTrack,
   type TrackResult,
   type AdvisoryObservation,
   type SampleBrief,
-  SAMPLE_BRIEFS,
-  getBriefsByVertical,
-  CapabilityResolutionError,
 } from '@adcp/sdk/testing';
 import {
   hostedComplianceTarget,
@@ -43,10 +43,11 @@ import type {
   StepDiagnosticEntry,
   LifecycleStage,
   TriggeredBy,
+  NoticeEntry,
 } from '../../db/compliance-db.js';
 
 const logger = createLogger('addie-compliance-testing');
-const DEFAULT_TARGET_DISCOVERY_TIMEOUT_MS = 10_000;
+export const HOSTED_TARGET_DISCOVERY_TIMEOUT_MS = 30_000;
 
 export interface ComplianceTargetSelection {
   target: HostedComplianceTarget;
@@ -54,28 +55,122 @@ export interface ComplianceTargetSelection {
   supportedVersions?: readonly string[];
 }
 
-function complianceTargetDiscoveryTimeoutMs(options: ComplyOptions): number {
-  const requested = options.timeout_ms;
-  if (typeof requested !== 'number' || !Number.isFinite(requested)) {
-    return DEFAULT_TARGET_DISCOVERY_TIMEOUT_MS;
-  }
-  return Math.max(1_000, Math.min(requested, DEFAULT_TARGET_DISCOVERY_TIMEOUT_MS));
+function abortReason(signal: AbortSignal, fallback: string): Error {
+  return signal.reason instanceof Error ? signal.reason : new Error(fallback);
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+function combineAbortSignals(signals: readonly AbortSignal[]): {
+  signal: AbortSignal;
+  cleanup: () => void;
+} {
+  const controller = new AbortController();
+  const handlers = new Map<AbortSignal, () => void>();
+
+  for (const signal of signals) {
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+      break;
+    }
+    const handler = () => controller.abort(signal.reason);
+    handlers.set(signal, handler);
+    signal.addEventListener('abort', handler, { once: true });
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      for (const [signal, handler] of handlers) {
+        signal.removeEventListener('abort', handler);
+      }
+    },
+  };
+}
+
+function discoveryOptions(
+  options: ComplyOptions,
+  deadlineSignal: AbortSignal,
+): ComplyOptions {
+  const withoutFullRunTimeout = { ...options };
+  delete withoutFullRunTimeout.timeout_ms;
+
+  const safeOptions = withSdkSafeTransport({
+    ...withoutFullRunTimeout,
+    signal: deadlineSignal,
+  });
+  const safeFetch = safeOptions.transport.fetchFn;
+
+  return {
+    ...safeOptions,
+    transport: {
+      ...safeOptions.transport,
+      // The SDK currently omits TestOptions.signal from its second capability
+      // tool call. Compose the deadline at the hosted fetch boundary as well so
+      // every discovery request is cancelled when the outer deadline fires.
+      fetchFn: async (input, init) => {
+        const request = new Request(input, init);
+        const combined = combineAbortSignals([request.signal, deadlineSignal]);
+        try {
+          return await safeFetch(request, { signal: combined.signal });
+        } finally {
+          combined.cleanup();
+        }
+      },
+    },
+  };
+}
+
+async function withDiscoveryDeadline<T>(
+  run: (signal: AbortSignal) => Promise<T>,
+  callerSignal: AbortSignal | undefined,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  let removeCallerAbort: (() => void) | undefined;
+  let removeDeadlineAbort: (() => void) | undefined;
+
   try {
+    if (callerSignal?.aborted) {
+      controller.abort(callerSignal.reason);
+    } else if (callerSignal) {
+      const onCallerAbort = () => controller.abort(callerSignal.reason);
+      callerSignal.addEventListener('abort', onCallerAbort, { once: true });
+      removeCallerAbort = () => callerSignal.removeEventListener('abort', onCallerAbort);
+    }
+
+    timeout = setTimeout(() => {
+      controller.abort(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    const aborted = new Promise<never>((_, reject) => {
+      if (controller.signal.aborted) {
+        reject(abortReason(controller.signal, `${label} aborted`));
+        return;
+      }
+      const onDeadlineAbort = () => reject(abortReason(controller.signal, `${label} aborted`));
+      controller.signal.addEventListener('abort', onDeadlineAbort, { once: true });
+      removeDeadlineAbort = () => controller.signal.removeEventListener('abort', onDeadlineAbort);
+    });
+
     return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => {
-          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
-      }),
+      run(controller.signal),
+      aborted,
     ]);
   } finally {
     if (timeout) clearTimeout(timeout);
+    removeCallerAbort?.();
+    removeDeadlineAbort?.();
   }
+}
+
+function discoverCapabilitiesWithDeadline(agentUrl: string, options: ComplyOptions) {
+  return withDiscoveryDeadline(
+    signal => testCapabilityDiscovery(agentUrl, discoveryOptions(options, signal)),
+    options.signal,
+    HOSTED_TARGET_DISCOVERY_TIMEOUT_MS,
+    'Hosted capability pre-discovery',
+  );
 }
 
 // ── Re-exports ────────────────────────────────────────────────────
@@ -103,7 +198,7 @@ async function hostedAuthDefaultsForRun(
   }
 
   try {
-    const discovery = await testCapabilityDiscovery(agentUrl, options);
+    const discovery = await discoverCapabilitiesWithDeadline(agentUrl, options);
     const apiKey = shouldInferStaticFixture
       ? hostedStaticApiKeyForProfile(discovery.profile)
       : undefined;
@@ -150,20 +245,38 @@ export async function selectComplianceTargetForAgentSelection(
   options: ComplyOptions,
   fallback: HostedComplianceTarget = defaultComplianceTarget(),
   mode: 'preferred' | 'canonical' = 'preferred',
+  seededSupportedVersions?: readonly string[],
 ): Promise<ComplianceTargetSelection> {
   try {
-    const safeOptions = withSdkSafeTransport(options);
-    const discovery = await withTimeout(
-      testCapabilityDiscovery(agentUrl, safeOptions),
-      complianceTargetDiscoveryTimeoutMs(safeOptions),
-      'Hosted compliance target pre-discovery',
-    );
+    const discovery = await discoverCapabilitiesWithDeadline(agentUrl, options);
     const target = mode === 'canonical'
       ? selectCanonicalHostedComplianceTargetForProfile(discovery.profile, fallback)
       : selectHostedComplianceTargetForProfile(discovery.profile, fallback);
     return { target, confirmed: true, supportedVersions: discovery.profile?.adcp_supported_versions };
   } catch (err) {
-    logger.warn({ err, agentUrl }, 'Could not pre-discover hosted compliance target; using fallback');
+    if (options.signal?.aborted) {
+      throw abortReason(options.signal, 'Hosted compliance target pre-discovery aborted');
+    }
+
+    const supportedVersions = [...new Set(
+      (seededSupportedVersions ?? []).filter(version => version.trim().length > 0),
+    )];
+    if (supportedVersions.length > 0) {
+      const profile = { adcp_supported_versions: supportedVersions };
+      const target = mode === 'canonical'
+        ? selectCanonicalHostedComplianceTargetForProfile(profile, fallback)
+        : selectHostedComplianceTargetForProfile(profile, fallback);
+      logger.warn(
+        { err, agentUrl, supportedVersions, selectedTarget: target.requested },
+        'Could not pre-discover hosted compliance target; using recent stored profile',
+      );
+      // The stored profile is safe for choosing which grader to attempt, but
+      // must not flow into badge eligibility. Only a profile observed during
+      // the current run may support issuing or retaining public badges.
+      return { target, confirmed: false };
+    }
+
+    logger.warn({ err, agentUrl }, 'Could not pre-discover hosted compliance target; using default fallback');
     return { target: fallback, confirmed: false };
   }
 }
@@ -173,8 +286,15 @@ export async function selectComplianceTargetForAgent(
   options: ComplyOptions,
   fallback: HostedComplianceTarget = defaultComplianceTarget(),
   mode: 'preferred' | 'canonical' = 'preferred',
+  seededSupportedVersions?: readonly string[],
 ): Promise<HostedComplianceTarget> {
-  const selection = await selectComplianceTargetForAgentSelection(agentUrl, options, fallback, mode);
+  const selection = await selectComplianceTargetForAgentSelection(
+    agentUrl,
+    options,
+    fallback,
+    mode,
+    seededSupportedVersions,
+  );
   return selection.target;
 }
 
@@ -530,6 +650,79 @@ function isRunnerApplicabilitySkip(step: {
   }
 }
 
+type SkipEvidenceStep = {
+  skip_reason?: string;
+  details?: unknown;
+  error?: unknown;
+  warnings?: unknown;
+  skip?: { detail?: unknown };
+};
+
+const NO_SKIP_REASONS: ReadonlySet<string> = new Set();
+
+function prerequisiteCascadeSource(step: SkipEvidenceStep): { reason: string } | null {
+  if (step.skip_reason !== 'prerequisite_failed') return null;
+  const warning = Array.isArray(step.warnings)
+    ? step.warnings.find((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : undefined;
+  const detail = firstString(step.skip?.detail, step.error, step.details, warning);
+  const match = detail?.match(/prior stateful step "([^"]+)" skipped \(([^)]+)\)/);
+  return match ? { reason: match[2] } : null;
+}
+
+function isApplicabilityCascade(
+  step: SkipEvidenceStep,
+  applicabilityReasons: ReadonlySet<string>,
+  nonApplicabilityReasons: ReadonlySet<string> = new Set(),
+): boolean {
+  const source = prerequisiteCascadeSource(step);
+  if (!source) return false;
+  // A controller absence is always runner-owned applicability, including
+  // cross-phase cascades where the originating step is not in this slice.
+  return source.reason === 'missing_test_controller' || (
+    applicabilityReasons.has(source.reason) && !nonApplicabilityReasons.has(source.reason)
+  );
+}
+
+export function isNonExecutableCoverageGapScenario(scenario: {
+  scenario?: unknown;
+  steps?: Array<{
+    passed?: boolean;
+    skipped?: boolean;
+    skip_reason?: string;
+    step_id?: unknown;
+    requirement?: unknown;
+    details?: unknown;
+    error?: unknown;
+    warnings?: unknown;
+    skip?: { detail?: unknown };
+  }>;
+}): boolean {
+  const steps = Array.isArray(scenario.steps) ? scenario.steps : [];
+  const scenarioId = typeof scenario.scenario === 'string' ? scenario.scenario : '';
+  const hasGenuineFailure = steps.some((step) => !step.skipped && step.passed === false);
+  if (!hasGenuineFailure && steps.some(
+    (step) => step.skipped && step.skip_reason === 'fixture_unavailable',
+  )) return true;
+  return steps.length > 0 && steps.every((step) => {
+    if (!step?.skipped) return false;
+    const isApplicabilitySkip = step.skip_reason === 'peer_branch_taken' ||
+      step.skip_reason === 'peer_substituted' ||
+      step.skip_reason === 'missing_test_controller' ||
+      step.skip_reason === 'fixture_unavailable' ||
+      (step.skip_reason === 'requirement_unmet' && step.requirement === 'controller') ||
+      isExplicitRequiresToolMissingSkip(step) ||
+      isRunnerApplicabilitySkip(step, scenarioId);
+    if (isApplicabilitySkip) {
+      return true;
+    }
+    // This UI helper receives one phase without prior-phase provenance.
+    // Only controller absence is intrinsically safe to classify as N/A;
+    // other same-reason cascades stay visible as executable coverage gaps.
+    return isApplicabilityCascade(step, NO_SKIP_REASONS);
+  });
+}
+
 function skipReasonIsCoverageGap(
   reason: string | undefined,
   step?: {
@@ -568,6 +761,14 @@ function trackHasCoverageGapSkip(track: TrackResult): boolean {
   return false;
 }
 
+function trackHasFixtureUnavailableSkip(track: TrackResult): boolean {
+  return track.scenarios.some((scenario) =>
+    (scenario.steps ?? []).some((step) =>
+      step.skipped && step.skip_reason === 'fixture_unavailable'
+    )
+  );
+}
+
 /**
  * Derive the effective overall status and track counters from a ComplianceResult.
  *
@@ -589,9 +790,30 @@ function effectiveRunStatus(result: ComplianceResult): {
   // e.g. a signals-only agent skipping controller-gated media-buy pagination
   // storyboards with `missing_test_controller` — are expected and must not
   // degrade an otherwise all-pass run (#5429, regression of #5328).
-  const hasCoverageGapSkip = result.tracks
-    .filter((t: TrackResult) => t.status === 'skip')
+  const hasFixtureUnavailable = result.tracks.some(trackHasFixtureUnavailableSkip);
+  const hasCoverageGapSkip = hasFixtureUnavailable || result.tracks
+    .filter((track: TrackResult) => track.status === 'skip')
     .some(trackHasCoverageGapSkip);
+  const hasGenuineFailure = activeTracks.some((track: TrackResult) => track.status === 'fail') ||
+    result.overall_status === 'failing' ||
+    result.overall_status === 'auth_required' ||
+    result.overall_status === 'unreachable';
+  if (hasGenuineFailure) {
+    return {
+      overall_status: mapOverallStatus(result.overall_status),
+      tracks_passed: result.summary.tracks_passed,
+      tracks_failed: result.summary.tracks_failed,
+      tracks_partial: result.summary.tracks_partial,
+    };
+  }
+  if (hasFixtureUnavailable) {
+    return {
+      overall_status: 'partial',
+      tracks_passed: result.summary.tracks_passed,
+      tracks_failed: result.summary.tracks_failed,
+      tracks_partial: result.summary.tracks_partial,
+    };
+  }
   if (
     !hasCoverageGapSkip &&
     activeTracks.length > 0 &&
@@ -654,6 +876,7 @@ export function deriveStoryboardStatuses(
     stepLessPhasesPassed: number;
     stepLessPhasesTotal: number;
     controllerSkipped: number;
+    fixtureUnavailable: boolean;
     failureCount: number;
     skippedCount: number;
     firstFailure: FirstFailure | null;
@@ -685,7 +908,10 @@ export function deriveStoryboardStatuses(
     },
     scenario: string,
   ): boolean => {
-    if (step.skip_reason === 'not_applicable') return true;
+    if (
+      step.skip_reason === 'not_applicable' ||
+      step.skip_reason === 'fixture_unavailable'
+    ) return true;
 
     // `@adcp/sdk` emits a single synthetic `missing_tool` phase when a
     // storyboard's `required_tools` gate is unmet. That means the storyboard is
@@ -716,6 +942,7 @@ export function deriveStoryboardStatuses(
           stepLessPhasesPassed: 0,
           stepLessPhasesTotal: 0,
           controllerSkipped: 0,
+          fixtureUnavailable: false,
           failureCount: 0,
           skippedCount: 0,
           firstFailure: null,
@@ -737,22 +964,30 @@ export function deriveStoryboardStatuses(
         }
         continue;
       }
-      let phaseSawNeutralApplicabilitySkip = false;
+      const phaseApplicabilityReasons = new Set<string>();
+      const phaseNonApplicabilityReasons = new Set<string>();
       for (const step of s.steps) {
         if (step.skipped) {
+          if (step.skip_reason === 'fixture_unavailable') {
+            agg.fixtureUnavailable = true;
+          }
           if (isBranchSkip(step)) {
             continue;
           }
           if (isControllerSkip(step)) {
             agg.controllerSkipped++;
+            phaseApplicabilityReasons.add('missing_test_controller');
             continue;
           }
           if (isNeutralApplicabilitySkip(step, String(s.scenario))) {
-            phaseSawNeutralApplicabilitySkip = true;
+            if (step.skip_reason) phaseApplicabilityReasons.add(step.skip_reason);
             continue;
           }
-          if (phaseSawNeutralApplicabilitySkip && isCascadeSkip(step)) {
+          if (isApplicabilityCascade(step, phaseApplicabilityReasons, phaseNonApplicabilityReasons)) {
             continue;
+          }
+          if (step.skip_reason !== 'prerequisite_failed' && step.skip_reason) {
+            phaseNonApplicabilityReasons.add(step.skip_reason);
           }
           if (isCascadeSkip(step)) {
             agg.skippedCount++;
@@ -786,6 +1021,19 @@ export function deriveStoryboardStatuses(
       if (hasExplicitIds) {
         entries.push({ storyboard_id: sbId, status: 'untested', steps_passed: 0, steps_total: 0 });
       }
+      continue;
+    }
+
+    // Fixture availability is a whole-storyboard preflight disposition. The
+    // producer step that captured the format may already have passed, but that
+    // partial execution is not evidence that the seller behavior was tested.
+    if (agg.fixtureUnavailable) {
+      entries.push({
+        storyboard_id: sbId,
+        status: 'untested',
+        steps_passed: 0,
+        steps_total: 0,
+      });
       continue;
     }
 
@@ -949,6 +1197,7 @@ export interface VerificationResult {
     specialisms: string[];
     passing: string[];
     failing: string[];
+    untested: string[];
   }>;
 }
 
@@ -986,7 +1235,9 @@ export function computeSpecialismStatus(
       result[specialism] = 'untested';
       continue;
     }
-    if (sbStatus.status === 'passing') {
+    if (sbStatus.steps_total === 0) {
+      result[specialism] = 'untested';
+    } else if (sbStatus.status === 'passing') {
       result[specialism] = 'passing';
     } else if (sbStatus.status === 'failing' || sbStatus.status === 'partial') {
       result[specialism] = 'failing';
@@ -1036,10 +1287,13 @@ export function deriveVerificationStatus(
   for (const [role, specialisms] of protocolSpecialisms) {
     const passing: string[] = [];
     const failing: string[] = [];
+    const untested: string[] = [];
     for (const specialism of specialisms) {
       const info = SPECIALISM_CATALOG[specialism];
       const status = info ? statusMap.get(info.storyboard_id) : undefined;
-      if (status?.status === 'passing') {
+      if (status?.steps_total === 0) {
+        untested.push(specialism);
+      } else if (status?.status === 'passing') {
         passing.push(specialism);
       } else {
         failing.push(specialism);
@@ -1047,10 +1301,11 @@ export function deriveVerificationStatus(
     }
     roles.push({
       role,
-      verified: failing.length === 0 && passing.length > 0,
+      verified: failing.length === 0 && untested.length === 0 && passing.length > 0,
       specialisms,
       passing,
       failing,
+      untested,
     });
   }
 
@@ -1081,6 +1336,17 @@ export function complianceResultToDbInput(
   }));
 
   const { overall_status, tracks_passed, tracks_failed, tracks_partial } = effectiveRunStatus(result);
+  const resultWithCompatibleNotices = result as unknown as {
+    notices?: NoticeEntry[] | null;
+    summary?: { notices?: NoticeEntry[] | null };
+  };
+  // Current SDK results expose notices at the top level. Preserve an explicit
+  // empty top-level array so a clean run clears any older advisory state; only
+  // payloads that omit the field entirely fall back to the legacy summary
+  // location.
+  const notices = resultWithCompatibleNotices.notices !== undefined
+    ? resultWithCompatibleNotices.notices
+    : resultWithCompatibleNotices.summary?.notices ?? null;
 
   return {
     agent_url: agentUrl,
@@ -1102,10 +1368,9 @@ export function complianceResultToDbInput(
     storyboard_statuses: deriveStoryboardStatuses(result, storyboardIds),
     replace_storyboard_statuses: !storyboardIds?.length,
     step_diagnostics: extractFailingStepDiagnostics(result),
-    // Forward-compat: notices are an optional field in the runner output
-    // contract (run_summary.notices). Unknown codes/severities are stored
-    // verbatim — do not filter or validate the values here.
-    notices_json: (result.summary as any).notices ?? null,
+    // Unknown fields, codes, and severities are stored verbatim for forward
+    // compatibility with newer runner contracts.
+    notices_json: notices,
   };
 }
 

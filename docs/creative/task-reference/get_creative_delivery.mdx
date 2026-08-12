@@ -348,7 +348,7 @@ When the publisher uses AdCP content standards, `generation_context` can include
 
 ## Previewing Variants
 
-Use `preview_creative` with `request_type: "variant"` to see what a specific variant looked like when served:
+Use [`preview_creative`](/docs/creative/task-reference/preview_creative) with `request_type: "variant"` to see what a specific variant looked like when served:
 
 ```json
 {
@@ -363,7 +363,7 @@ Since each variant includes its full `manifest`, you can also pass the manifest 
 
 | Task | Protocol | What it provides |
 |---|---|---|
-| `get_media_buy_delivery` | Media Buy | WHERE and HOW MUCH: impressions, spend, placement data, optional `by_creative` breakdown |
+| [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) | Media Buy | WHERE and HOW MUCH: impressions, spend, placement data, optional `by_creative` breakdown |
 | `get_creative_delivery` | Creative | WHAT RAN and HOW: variant manifests and variant-level metrics |
 
 Use `media_buy_id` + `creative_id` as join keys to correlate data across both responses.
@@ -391,7 +391,7 @@ When aggregating delivery data from multiple agents into a unified view, follow 
 
 4. **Prefix `variant_id`**: Create globally unique variant keys by combining `agent_url + variant_id` (e.g., `https://sales.pinnaclemedia-example.com/var_a1b2c3`). This prevents collisions when two agents assign the same variant ID independently.
 
-5. **Group by `concept_id`**: For campaign-level roll-ups, use `concept_id` to group related creatives across sizes and sellers. Pull the concept-to-creative mapping from `list_creatives` on each agent.
+5. **Group by `concept_id`**: For campaign-level roll-ups, use `concept_id` to group related creatives across sizes and sellers. Pull the concept-to-creative mapping from [`list_creatives`](/docs/creative/task-reference/list_creatives) on each agent.
 
 ```javascript
 // Pseudocode: aggregate delivery from 3 sellers
@@ -431,7 +431,7 @@ for (const c of Object.values(merged)) {
 
 ## Capability declaration
 
-Agents that support this task expose `get_creative_delivery` in their tool surface and declare Creative Protocol support through `get_adcp_capabilities`:
+Agents that support this task expose `get_creative_delivery` in their tool surface and declare Creative Protocol support through [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities):
 
 ```json
 {

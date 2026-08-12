@@ -2,7 +2,14 @@
  * Internal types for the training agent.
  * Schema-level types (Product, Format, etc.) come from @adcp/sdk.
  */
-import type { Product, Proposal, BrandReference, FormatID, CreateMediaBuyRequest, EventType } from '@adcp/sdk';
+import type {
+  LegacyProduct as Product,
+  Proposal,
+  BrandReference,
+  LegacyFormatID as FormatID,
+  LegacyCreateMediaBuyRequest as CreateMediaBuyRequest,
+  EventType,
+} from '@adcp/sdk';
 
 // SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/sdk types
 type SpecialCategory = 'premiere' | 'finale' | 'holiday' | 'awards' | 'reunion' | 'crossover' | 'championship';
@@ -29,7 +36,7 @@ type AccountReference = CreateMediaBuyRequest['account'];
 export interface TrainingContext {
   mode: 'open' | 'training';
   /** Per-tenant route id for capability projection on /sales, /signals, etc. */
-  tenantId?: 'sales' | 'signals' | 'governance' | 'creative' | 'creative-builder' | 'brand';
+  tenantId?: 'sales' | 'signals' | 'governance' | 'creative' | 'creative-builder' | 'brand' | 'si';
   userId?: string;
   moduleId?: string;
   trackId?: string;
@@ -176,7 +183,7 @@ export interface PricingTemplate {
 }
 
 export interface CatalogProduct {
-  product: import('@adcp/sdk').Product;
+  product: import('@adcp/sdk').LegacyProduct;
   publisherId: string;
   trainingTier: 'basics' | 'practitioner' | 'specialist';
   scenarioTags: string[];
@@ -217,6 +224,8 @@ export interface ComplyDeliveryAccumulator {
   clicks: number;
   reportedSpend: { amount: number; currency: string };
   conversions: number;
+  conversionValue?: number;
+  commissionableValue?: number;
   isFinal?: boolean;
   finalizedAt?: string;
   measurementWindow?: string;
@@ -493,6 +502,9 @@ export interface PackageState {
   startTime: string;
   endTime: string;
   formatIds?: FormatID[];
+  /** Resolved winning legacy selector for legacy-only compatibility records.
+   * Kept separate from formatIds, which is the caller's informational echo. */
+  selectedLegacyFormatIds?: FormatID[];
   formatOptionRefs?: unknown[];
   formatKind?: string;
   params?: Record<string, unknown>;
@@ -556,8 +568,8 @@ export interface CreativeState {
   creativeId: string;
   accountId?: string;
   accountRef?: AccountRef;
-  /** Internal legacy-shaped lookup key. Canonical rows emit formatKind instead. */
-  formatId: FormatID;
+  /** @deprecated Present only for creatives received through the AdCP 3.x compatibility facade. */
+  formatId?: FormatID;
   formatKind?: string;
   formatOptionRef?: Record<string, unknown>;
   assets?: Record<string, ManifestAsset | ManifestAsset[]>;
@@ -591,11 +603,15 @@ export interface CreativeWebhookActivityRecord {
 
 export interface UsageRecord {
   account: AccountRef;
+  mediaBuyId?: string;
   creativeId?: string;
   signalAgentSegmentId?: string;
   pricingOptionId?: string;
   impressions?: number;
   mediaSpend?: number;
+  conversions?: number;
+  conversionValue?: number;
+  commissionableValue?: number;
   vendorCost: number;
   currency: string;
   final?: boolean;

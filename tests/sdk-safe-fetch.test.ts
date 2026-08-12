@@ -6,6 +6,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
   createSdkSafeFetch,
+  MCP_ACCEPT_HEADER,
   sdkSafeFetch,
   withSdkSafeTransport,
 } from '../server/src/utils/sdk-safe-fetch.js';
@@ -35,7 +36,30 @@ describe('SDK safe fetch adapter', () => {
     expect(url).toBe('https://agent.example/mcp');
     expect(options).toMatchObject({ method: 'POST', maxRedirects: 0 });
     expect(options?.headers?.authorization).toBe('Bearer secret');
+    expect(options?.headers?.accept).toBe(MCP_ACCEPT_HEADER);
     expect(new TextDecoder().decode(options?.body as Uint8Array)).toContain('tools/list');
+  });
+
+  it('preserves an explicit Accept header on SDK POST requests', async () => {
+    const safeFetchImpl = vi.fn(async () => new Response('{}', { status: 200 }));
+    const fetchFn = createSdkSafeFetch(safeFetchImpl);
+
+    await fetchFn('https://agent.example/mcp', {
+      method: 'POST',
+      headers: { Accept: 'application/problem+json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method: 'tools/list' }),
+    });
+
+    expect(safeFetchImpl.mock.calls[0][1]?.headers?.accept).toBe('application/problem+json');
+  });
+
+  it('does not add the MCP Accept header to non-POST requests', async () => {
+    const safeFetchImpl = vi.fn(async () => new Response('{}', { status: 200 }));
+    const fetchFn = createSdkSafeFetch(safeFetchImpl);
+
+    await fetchFn('https://agent.example/.well-known/adagents.json');
+
+    expect(safeFetchImpl.mock.calls[0][1]?.headers?.accept).toBeUndefined();
   });
 
   it.each([

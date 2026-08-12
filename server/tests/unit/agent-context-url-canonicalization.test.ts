@@ -25,18 +25,21 @@ describe('AgentContextDatabase URL canonicalization', () => {
     await db.getAuthInfoByOrgAndUrl(ORG, VARIANT);
     await db.getOAuthTokensByOrgAndUrl(ORG, VARIANT);
     await db.getOAuthClientCredentialsByOrgAndUrl(ORG, VARIANT);
-    await db.findOrgWithSavedAuth(VARIANT);
+    await db.findOwnerOrgWithSavedAuth(VARIANT);
 
     expect(queryMock).toHaveBeenCalledTimes(5);
     for (const call of queryMock.mock.calls.slice(0, 4)) {
       expect(call[1]).toEqual([ORG, CANONICAL]);
     }
-    expect(queryMock.mock.calls[4][1]).toEqual([CANONICAL]);
+    expect(queryMock.mock.calls[4][1]).toEqual([
+      CANONICAL,
+      JSON.stringify([{ url: CANONICAL }]),
+    ]);
   });
 
   it('reports OAuth grants only when their ciphertext and IV are both present', async () => {
     await db.getByOrgAndUrl(ORG, VARIANT);
-    await db.findOrgWithSavedAuth(VARIANT);
+    await db.findOwnerOrgWithSavedAuth(VARIANT);
 
     const projectionSql = String(queryMock.mock.calls[0][0]);
     expect(projectionSql).toContain(
@@ -47,6 +50,9 @@ describe('AgentContextDatabase URL canonicalization', () => {
     );
 
     const savedAuthSql = String(queryMock.mock.calls[1][0]);
+    expect(savedAuthSql).toContain('JOIN member_profiles mp');
+    expect(savedAuthSql).toContain('mp.workos_organization_id = ac.organization_id');
+    expect(savedAuthSql).toContain('mp.agents @> $2::jsonb');
     expect(savedAuthSql).toContain('auth_token_iv IS NOT NULL');
     expect(savedAuthSql).toContain('oauth_access_token_iv IS NOT NULL');
     expect(savedAuthSql).toContain('oauth_cc_client_secret_iv IS NOT NULL');

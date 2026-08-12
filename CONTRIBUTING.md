@@ -20,6 +20,22 @@ Before adding or modifying schemas, read the [Specification Guidelines](https://
 ## Examples and sample data
 Docs, storyboards, and test vectors use **fictional brands and entities only** — Acme Outdoor, Nova Motors, Pinnacle Agency, StreamHaus, and the other names in `static/compliance/source/test-kits/`. Real brand, agency, publisher, or vendor names do not appear in normative examples. See the editorial rule in [`CLAUDE.md`](https://github.com/adcontextprotocol/adcp/blob/main/CLAUDE.md) and the universal fictional-entity registry at `static/compliance/source/universal/fictional-entities.yaml`. Reviewers will flag real-brand usage in examples the same way they flag vendor leakage in schemas.
 
+## Review and merge policy
+
+Pull request authors may merge their own changes after all required checks pass
+and the current head commit has the approvals required by branch protection and
+CODEOWNERS. An approving Secretariat review satisfies the review requirement for
+an editorial change when no gated path or other rule requires a specific human
+reviewer.
+
+Self-merge is not permitted for breaking changes, governance decisions,
+constitutional changes, or changes to gated paths that require designated human
+approval. It is also not permitted while a review requests changes, explicitly
+asks for human approval, or is stale because the head commit changed after the
+approval. The Secretariat prepares and reviews these changes but does not merge
+them; normative and breaking decisions follow the authority rules in
+[`.agents/wg/constitution.md`](.agents/wg/constitution.md).
+
 ## Issues
 [adcontextprotocol.org](http://adcontextprotocol.org/) contains documentation that may help answer questions you have about using AdCP.
 If you can't find the answer there, try searching for a similar issue on the [issues page](https://github.com/adcontextprotocol/adcp/issues).

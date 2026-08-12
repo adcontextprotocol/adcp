@@ -14,14 +14,14 @@ The runner drives your agent through the same public tools a buyer would call, p
 | Surface | What it tells the runner | Where it lives |
 |---------|--------------------------|----------------|
 | [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) | Which protocols and specialisms you claim, and that you support sandbox | Your agent's capability response |
-| [`sync_accounts`](/docs/media-buy/advanced-topics/sandbox) (or `list_accounts`) | How to obtain a sandbox account to run tests against | Your agent's account tool |
-| [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) | How to seed fixtures and force seller-side transitions deterministically | Your agent, sandbox-only |
+| [`sync_accounts`](/docs/accounts/tasks/sync_accounts) (or [`list_accounts`](/docs/accounts/tasks/list_accounts)) | How to obtain a sandbox account to run tests against | Your agent's account tool |
+| [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) | How to force seller-side transitions deterministically and, when supported, inject fixtures | Your agent, sandbox-only |
 
 You ship these three surfaces. The runner owns storyboard selection, fixture ordering, and response comparison.
 
 ## Step 1 — Declare capabilities honestly
 
-`get_adcp_capabilities` is how the runner picks which storyboards apply to you. It is also the [conformance](/docs/building/verification/conformance) contract: you are promising to pass every storyboard that matches what you declare.
+[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) is how the runner picks which storyboards apply to you. It is also the [conformance](/docs/building/verification/conformance) contract: you are promising to pass every storyboard that matches what you declare.
 
 The example below is for a full-service guaranteed seller (proposal lifecycle enabled). A direct-buy guaranteed seller would set `media_buy.supports_proposals: false` (or omit it). A broadcast-TV seller would claim `sales-broadcast-tv`; a creative-only agent would claim the `creative` protocol with `creative-ad-server` or `creative-generative` specialisms; a signals provider would claim `signals`. The pattern is the same: declare only what you actually implement.
 
@@ -52,9 +52,13 @@ Claiming `sales-guaranteed` when you only run RTB ships you into storyboards you
 
 The runner must obtain a sandbox account before it can do anything. Your `require_operator_auth` flag chooses the path:
 
-**Buyer-declared accounts (`require_operator_auth: false`).** Your agent accepts `sync_accounts` from any authenticated buyer. The runner calls `sync_accounts` with `sandbox: true` to mint a test account on demand. Most new sales agents start here.
+**Buyer-declared accounts (`require_operator_auth: false`).** Your agent accepts [`sync_accounts`](/docs/accounts/tasks/sync_accounts) from any authenticated buyer. The runner calls `sync_accounts` with `sandbox: true` to mint a test account on demand. Most new sales agents start here.
 
-**Account-id namespaces (`require_operator_auth: true`).** Accounts must be pre-provisioned by a human on your side or by an upstream platform. The runner calls `list_accounts` with a sandbox filter to discover pre-existing test accounts. If your credential is bound to exactly one sandbox account, return that singleton. Publish a short note telling operators how to request one — include the contact, the expected turnaround, and what credentials they'll receive.
+**Account-id namespaces (`require_operator_auth: true`).** Accounts must be pre-provisioned by a human on your side or by an upstream platform. The runner calls [`list_accounts`](/docs/accounts/tasks/list_accounts) with a sandbox filter to discover pre-existing test accounts. If your credential is bound to exactly one sandbox account, return that singleton. Publish a short note telling operators how to request one — include the contact, the expected turnaround, and what credentials they'll receive.
+
+<Note>
+When your response includes the `account` capability block, its `require_operator_auth` flag — not the presence of `list_accounts` — selects the account model. Keep the flag `false` (or omit the flag, since `false` is its schema default) for buyer-declared natural-key accounts even if your agent also exposes `list_accounts`. Do not omit the entire `account` block: without account capability data, runners may retain a legacy `list_accounts` discovery heuristic. Set the flag to `true` only when callers must use seller-assigned account IDs. In that mode, the sandbox credential must expose one unambiguous account for the storyboard brand; if it exposes a roster, make sure exactly one row matches the test kit's `brand.house.domain`. Do not advertise `false` merely to bypass an ambiguous roster — that tells buyers the wrong account model.
+</Note>
 
 Full details and examples: [Sandbox mode](/docs/media-buy/advanced-topics/sandbox).
 
@@ -67,7 +71,7 @@ In practice, sellers usually run both:
 | Run | Endpoint | Expected result |
 |-----|----------|-----------------|
 | Observational sandbox run | Production endpoint with sandbox accounts, no controller exposed | `steps_failed = 0`; live-only probes appear as not selected, and selected controller-dependent scenarios may make the summary `partial` with `missing_test_controller` skips |
-| Deterministic run | Dev/staging or sandbox-only endpoint with `comply_test_controller` | `steps_failed = 0` and no controller-dependent coverage skips |
+| Deterministic run | Dev/staging or sandbox-only endpoint with [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) | `steps_failed = 0` and no controller-dependent coverage skips |
 
 The first run answers "does the production buyer-visible path tolerate sandbox traffic?" The second answers "can the runner prove every lifecycle path for the declared specialisms?" Do not collapse those into one signal. A zero-failure partial run is useful, but buyers need the skip list to know exactly which lifecycle assertions were not graded.
 
@@ -75,11 +79,20 @@ The first run answers "does the production buyer-visible path tolerate sandbox t
 
 | Scenario family | What it does | When you need it |
 |-----------------|--------------|------------------|
-| `seed_*` | Create fixtures (products, pricing options, creatives, plans, media buys) with caller-supplied IDs | Almost every storyboard — this replaces hardcoded-ID discovery |
+| `seed_*` | Create fixtures (products, pricing options, creatives, plans, media buys) with caller-supplied IDs | Seed-only storyboards and fixture-store sellers; 3.2 storyboards may instead resolve explicitly declared requirements through normal discovery or construction |
 | `force_*` | Drive entities through state transitions that are normally seller-initiated | Any storyboard that tests a state machine (creative approval, account suspension, etc.) |
 | `simulate_*` | Inject delivery data or budget spend | Reporting and budgeting storyboards |
 
 See the [Compliance test controller reference](/docs/building/by-layer/L3/comply-test-controller) for scenario-by-scenario parameters and response shapes, and the [Compliance Catalog](/docs/building/verification/compliance-catalog) for which scenarios each specialism requires.
+
+If your products come from a publisher-owned catalog and use seller-issued or
+derived IDs, do not add a test-only alias layer merely to accept storyboard
+literals. For storyboards that publish `fixture_resolution` rules, provision
+representative inventory through your normal platform path and let the runner
+discover and bind it. The run will report any requirement your sandbox catalog
+cannot satisfy as `fixture_unsatisfied`. Storyboards that have not yet migrated
+remain seed-only, so inspect the coverage report rather than assuming discovery
+applies suite-wide.
 
 ### Wiring the SDK scaffold
 
@@ -137,10 +150,10 @@ if (process.env.ADCP_SANDBOX === '1') {
 What the scaffold handles for you:
 
 - **Tool registration and schema.** `controller.toolDefinition` stays in sync with the published spec version.
-- **Dispatch and `UNKNOWN_SCENARIO`.** Scenarios you do not register return `UNKNOWN_SCENARIO` automatically — never a schema error.
-- **Param validation.** Invalid params produce `INVALID_PARAMS` with a readable `error_detail` without reaching your adapter.
+- **Dispatch and [`UNKNOWN_SCENARIO`](/docs/building/by-layer/L3/comply-test-controller#error-codes).** Scenarios you do not register return `UNKNOWN_SCENARIO` automatically — never a schema error.
+- **Param validation.** Invalid params produce [`INVALID_PARAMS`](/docs/building/by-layer/L3/comply-test-controller#error-codes) with a readable `error_detail` without reaching your adapter.
 - **Seed idempotency.** Calling `seed_product` twice with the same `product_id` and an equivalent `fixture` returns `previous_state: "existing"`; a divergent `fixture` returns `INVALID_PARAMS`. Your adapter is only invoked on the first seed.
-- **Typed error envelopes.** Throw `TestControllerError(code, message, currentState?)` with `code` from the controller error-code table. Common adapter codes are `'INVALID_TRANSITION' | 'NOT_FOUND' | 'FORBIDDEN' | 'INVALID_PARAMS'`; digest-mode `query_upstream_traffic` implementations may also return `JCS_NON_FINITE_NUMBER` when RFC 8785/JCS canonicalization encounters a non-finite numeric value.
+- **Typed error envelopes.** Throw `TestControllerError(code, message, currentState?)` with `code` from the controller error-code table. Common adapter codes are `'INVALID_TRANSITION' | 'NOT_FOUND' | 'FORBIDDEN' | 'INVALID_PARAMS'`; digest-mode `query_upstream_traffic` implementations may also return [`JCS_NON_FINITE_NUMBER`](/docs/building/by-layer/L3/comply-test-controller#error-codes) when RFC 8785/JCS canonicalization encounters a non-finite numeric value.
 
 The scaffold does **not** own the state machine. Transition rules live in your adapters, so compliance testing and production share one source of truth — the mechanic the [anti-teach-to-test section](#avoiding-the-teach-to-test-trap) depends on.
 
@@ -149,7 +162,7 @@ The scaffold does **not** own the state machine. Transition rules live in your a
 The scaffold supports two gates. Ship both in any deployment that serves both sandbox and production traffic from the same process:
 
 1. **Registration gate (primary).** Wrap `controller.register(server)` in an environment check. This is what keeps `comply_test_controller` out of production `tools/list` entirely. Without it, a leaked sandbox credential on a production endpoint exposes seller-side state-forcing.
-2. **Per-request gate (defense-in-depth).** Pass a `sandboxGate: (input) => boolean` to `createComplyController`. The scaffold calls it on every request and returns `FORBIDDEN` when it returns `false`. Use this on shared-process deployments where the tool IS registered but some requests might still reference a production account.
+2. **Per-request gate (defense-in-depth).** Pass a `sandboxGate: (input) => boolean` to `createComplyController`. The scaffold calls it on every request and returns [`FORBIDDEN`](/docs/building/by-layer/L3/comply-test-controller#error-codes) when it returns `false`. Use this on shared-process deployments where the tool IS registered but some requests might still reference a production account.
 
 `sandboxGate` receives the raw tool input (`Record<string, unknown>`). The SDK does not plumb auth context onto it — you decide what to inspect. A typical pattern is to pull the referenced entity ID out of `params` and verify it belongs to a sandbox account in your own data layer:
 
@@ -194,11 +207,11 @@ To check: swap a storyboard's fixture IDs for random UUIDs and rerun. If the run
 
 Before your first full storyboard sweep:
 
-- [ ] `get_adcp_capabilities` returns only protocols and specialisms you actually implement
+- [ ] [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) returns only protocols and specialisms you actually implement
 - [ ] `account.sandbox: true` is declared and honored — sandbox requests produce no real spend, no production platform calls, no persisted production state
-- [ ] `sync_accounts` (implicit) or `list_accounts` (explicit) handles sandbox requests per step 2
-- [ ] `comply_test_controller` is absent from `tools/list` on any production endpoint
-- [ ] Requests that reference a non-sandbox account are rejected with `FORBIDDEN`
+- [ ] [`sync_accounts`](/docs/accounts/tasks/sync_accounts) (implicit) or [`list_accounts`](/docs/accounts/tasks/list_accounts) (explicit) handles sandbox requests per step 2
+- [ ] [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) is absent from `tools/list` on any production endpoint
+- [ ] Requests that reference a non-sandbox account are rejected with [`FORBIDDEN`](/docs/building/by-layer/L3/comply-test-controller#error-codes)
 - [ ] Every seed scenario your claimed storyboards depend on persists fixtures generically, with no ID special-cases
 - [ ] Every force scenario uses the same state-transition rules as production, returning typed errors on invalid transitions
 - [ ] A full storyboard sweep still passes when fixture IDs are swapped for random UUIDs

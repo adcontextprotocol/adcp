@@ -52,6 +52,83 @@ import {
 } from './exposed-tools.js';
 
 const logger = createLogger('mcp-server');
+const MAX_REPORTED_UNSUPPORTED_ARGUMENTS = 20;
+const MAX_REPORTED_ARGUMENT_NAME_LENGTH = 80;
+
+interface StrictToolArguments {
+  allowed: Set<string>;
+  supported: string[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Build opt-in top-level argument allowlists from advertised tool schemas.
+ * JSON Schema permits additional properties by default, so only an explicit
+ * `additionalProperties: false` makes a tool strict.
+ */
+function buildStrictToolArguments(
+  tools: ReadonlyArray<{ name: string; inputSchema: unknown }>,
+): Map<string, StrictToolArguments> {
+  const result = new Map<string, StrictToolArguments>();
+
+  for (const tool of tools) {
+    if (!isRecord(tool.inputSchema) || tool.inputSchema.additionalProperties !== false) continue;
+
+    const properties = isRecord(tool.inputSchema.properties)
+      ? tool.inputSchema.properties
+      : {};
+    const supported = Object.keys(properties).sort();
+    result.set(tool.name, { allowed: new Set(supported), supported });
+  }
+
+  return result;
+}
+
+/**
+ * Argument names are caller-controlled. Keep diagnostics identifier-like and
+ * bounded so a malformed key cannot inject markup or amplify the response.
+ */
+function sanitizeArgumentName(name: string): string {
+  let result = '';
+  let length = 0;
+  let truncated = false;
+
+  for (const character of name) {
+    if (length >= MAX_REPORTED_ARGUMENT_NAME_LENGTH) {
+      truncated = true;
+      break;
+    }
+
+    const codePoint = character.codePointAt(0) ?? 0;
+    const isAsciiLetter = (codePoint >= 65 && codePoint <= 90)
+      || (codePoint >= 97 && codePoint <= 122);
+    const isDigit = codePoint >= 48 && codePoint <= 57;
+    const isSafePunctuation = character === '_' || character === '.' || character === '-';
+    result += isAsciiLetter || isDigit || isSafePunctuation ? character : '?';
+    length++;
+  }
+
+  return truncated ? `${result}…` : result;
+}
+
+/** Keep only the lexicographically first reportable names in sorted order. */
+function retainUnsupportedArgument(reported: string[], argumentName: string): void {
+  let low = 0;
+  let high = reported.length;
+
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (reported[middle] < argumentName) low = middle + 1;
+    else high = middle;
+  }
+
+  if (low >= MAX_REPORTED_UNSUPPORTED_ARGUMENTS) return;
+  reported.splice(low, 0, argumentName);
+  if (reported.length > MAX_REPORTED_UNSUPPORTED_ARGUMENTS) reported.pop();
+}
 
 /**
  * Convert AddieTool format to MCP SDK tool format
@@ -175,6 +252,7 @@ export function createUnifiedMCPServer(authContext?: MCPAuthContext): Server {
 
   const tools = getAllTools();
   const { handlers, directoryHandler } = getHandlers();
+  const strictToolArguments = buildStrictToolArguments(tools.all);
 
   // List available tools
   server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -196,8 +274,38 @@ export function createUnifiedMCPServer(authContext?: MCPAuthContext): Server {
       };
     }
 
+    const normalizedArgs = args ?? {};
+    const strictArguments = strictToolArguments.get(name);
+    if (strictArguments) {
+      let unsupportedArgumentCount = 0;
+      const unsupportedArguments: string[] = [];
+      for (const argumentName in normalizedArgs) {
+        if (!Object.prototype.hasOwnProperty.call(normalizedArgs, argumentName)) continue;
+        if (strictArguments.allowed.has(argumentName)) continue;
+
+        unsupportedArgumentCount++;
+        retainUnsupportedArgument(unsupportedArguments, argumentName);
+      }
+
+      if (unsupportedArgumentCount > 0) {
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              error: 'Unsupported tool arguments',
+              tool: name,
+              unsupported_argument_count: unsupportedArgumentCount,
+              unsupported_arguments: unsupportedArguments.map(sanitizeArgumentName),
+              supported_arguments: strictArguments.supported,
+            }),
+          }],
+          isError: true,
+        };
+      }
+    }
+
     try {
-      const result = await handler(args as Record<string, unknown> || {}, authContext);
+      const result = await handler(normalizedArgs, authContext);
       return result as {
         content: Array<{ type: string; text?: string; resource?: { uri: string; mimeType: string; text: string } }>;
         isError?: boolean;

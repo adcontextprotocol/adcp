@@ -1,5 +1,5 @@
 import { createLogger } from '../logger.js';
-import { getWorkos } from '../auth/workos-client.js';
+import { getPipesWorkos } from '../auth/workos-client.js';
 
 const logger = createLogger('pipes');
 
@@ -11,7 +11,7 @@ export type PipesTokenResult =
   | { status: 'needs_reauthorization'; missingScopes: string[] };
 
 export async function getGitHubAccessToken(workosUserId: string): Promise<PipesTokenResult> {
-  const workos = getWorkos();
+  const workos = getPipesWorkos();
   const fetchToken = () =>
     workos.pipes.getAccessToken({ provider: GITHUB_PROVIDER, userId: workosUserId });
 
@@ -103,7 +103,7 @@ export async function resolveGitHubConnectUrl(
 }
 
 export async function getGitHubAuthorizeUrl(workosUserId: string, returnTo: string): Promise<string> {
-  const workos = getWorkos();
+  const workos = getPipesWorkos();
   let returnToHost = '';
   try {
     returnToHost = new URL(returnTo).host;
@@ -154,7 +154,7 @@ export type ConnectedAccountResult =
   | { status: 'unavailable'; reason: string };
 
 export async function getGitHubConnectedAccount(workosUserId: string): Promise<ConnectedAccountResult> {
-  const workos = getWorkos();
+  const workos = getPipesWorkos();
   try {
     const response = await workos.get(
       `/user_management/users/${encodeURIComponent(workosUserId)}/connected_accounts/${GITHUB_PROVIDER}`,
@@ -182,7 +182,7 @@ export type DisconnectResult =
   | { status: 'unavailable'; reason: string };
 
 export async function disconnectGitHub(workosUserId: string): Promise<DisconnectResult> {
-  const workos = getWorkos();
+  const workos = getPipesWorkos();
   try {
     await workos.delete(
       `/user_management/users/${encodeURIComponent(workosUserId)}/connected_accounts/${GITHUB_PROVIDER}`,

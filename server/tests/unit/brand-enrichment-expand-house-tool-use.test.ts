@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   upsertDiscoveredBrand: vi.fn(),
   query: vi.fn(),
   registryRequestsMarkResolved: vi.fn(),
+  fetchBrandData: vi.fn(),
+  classifyBrand: vi.fn(),
 }));
 
 vi.mock('@anthropic-ai/sdk', () => {
@@ -45,8 +47,8 @@ vi.mock('../../src/db/client.js', () => ({
 }));
 
 vi.mock('../../src/services/brandfetch.js', () => ({
-  fetchBrandData: vi.fn(),
-  isBrandfetchConfigured: () => false,
+  fetchBrandData: mocks.fetchBrandData,
+  isBrandfetchConfigured: () => true,
   ENRICHMENT_CACHE_MAX_AGE_MS: 86_400_000,
 }));
 
@@ -55,7 +57,7 @@ vi.mock('../../src/services/logo-cdn.js', () => ({
 }));
 
 vi.mock('../../src/services/brand-classifier.js', () => ({
-  classifyBrand: vi.fn().mockResolvedValue(null),
+  classifyBrand: mocks.classifyBrand,
 }));
 
 vi.mock('../../src/services/enrichment.js', () => ({
@@ -84,6 +86,8 @@ describe('expandHouse: tool_use contract', () => {
     mocks.upsertDiscoveredBrand.mockReset();
     mocks.query.mockReset();
     mocks.registryRequestsMarkResolved.mockReset();
+    mocks.fetchBrandData.mockReset();
+    mocks.classifyBrand.mockReset();
 
     // Default house: a master brand
     mocks.getDiscoveredBrandByDomain.mockResolvedValue({
@@ -94,6 +98,8 @@ describe('expandHouse: tool_use contract', () => {
     });
     mocks.query.mockResolvedValue({ rows: [] }); // no existing sub-brands
     mocks.upsertDiscoveredBrand.mockResolvedValue({});
+    mocks.classifyBrand.mockResolvedValue(null);
+    mocks.registryRequestsMarkResolved.mockResolvedValue(undefined);
 
     vi.resetModules();
     ({ expandHouse } = await import('../../src/services/brand-enrichment.js'));
@@ -134,6 +140,13 @@ describe('expandHouse: tool_use contract', () => {
     expect(result.discovered).toBe(2);
     expect(result.seeded).toBe(2);
     expect(mocks.upsertDiscoveredBrand).toHaveBeenCalledTimes(2);
+    expect(mocks.upsertDiscoveredBrand).toHaveBeenCalledWith(expect.objectContaining({
+      house_domain: 'pg.com',
+      house_domain_audit: {
+        actor_user_id: 'system:house-expansion',
+        source: 'house_expansion',
+      },
+    }));
   });
 
   it('throws when the model does not emit a tool_use block (defensive)', async () => {
@@ -144,5 +157,36 @@ describe('expandHouse: tool_use contract', () => {
     await expect(expandHouse('pg.com', { enrichAfterSeed: false })).rejects.toThrow(
       /Failed to parse brand discovery response/,
     );
+  });
+
+  it('passes an explicit classifier null through as an audited clear', async () => {
+    mocks.getDiscoveredBrandByDomain.mockResolvedValue(null);
+    mocks.fetchBrandData.mockResolvedValue({
+      success: true,
+      domain: 'standalone.test',
+      manifest: { name: 'Standalone', url: 'https://standalone.test' },
+      highQuality: true,
+    });
+    mocks.classifyBrand.mockResolvedValue({
+      keller_type: 'master',
+      house_domain: null,
+      parent_brand: null,
+      canonical_domain: 'standalone.test',
+      related_domains: [],
+      confidence: 'high',
+      reasoning: 'Top-level brand',
+    });
+
+    const { enrichBrand } = await import('../../src/services/brand-enrichment.js');
+    const result = await enrichBrand('standalone.test');
+
+    expect(result.status).toBe('enriched');
+    expect(mocks.upsertDiscoveredBrand).toHaveBeenCalledWith(expect.objectContaining({
+      house_domain: null,
+      house_domain_audit: {
+        actor_user_id: 'system:brand-classifier',
+        source: 'classifier',
+      },
+    }));
   });
 });

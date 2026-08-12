@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   getAgentsDueForCheck: vi.fn(),
+  getRecentSupportedVersions: vi.fn(),
   resolveOwnerAuth: vi.fn(),
   recordComplianceRun: vi.fn(),
   query: vi.fn(),
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../src/db/compliance-db.js', () => ({
   ComplianceDatabase: class {
     getAgentsDueForCheck = mocks.getAgentsDueForCheck;
+    getRecentSupportedVersions = mocks.getRecentSupportedVersions;
     resolveOwnerAuth = mocks.resolveOwnerAuth;
     recordComplianceRun = mocks.recordComplianceRun;
     getBadgesForAgent = vi.fn().mockResolvedValue([]);
@@ -33,6 +35,7 @@ vi.mock('../../src/db/client.js', () => ({
 }));
 
 vi.mock('../../src/addie/services/compliance-testing.js', () => ({
+  HOSTED_TARGET_DISCOVERY_TIMEOUT_MS: 30_000,
   comply: mocks.comply,
   complianceResultToDbInput: mocks.complianceResultToDbInput,
   classifyCapabilityResolutionError: mocks.classifyCapabilityResolutionError,
@@ -79,6 +82,7 @@ describe('runComplianceHeartbeatJob', () => {
     ]);
     mocks.query.mockResolvedValue({ rows: [], rowCount: 0 });
     mocks.resolveOwnerAuth.mockResolvedValue(undefined);
+    mocks.getRecentSupportedVersions.mockResolvedValue(['3.1']);
     mocks.adaptAuthForSdk.mockResolvedValue(undefined);
     mocks.selectComplianceTargetForAgentSelection.mockResolvedValue({ target, confirmed: false });
     mocks.classifyCapabilityResolutionError.mockReturnValue(null);
@@ -122,6 +126,11 @@ describe('runComplianceHeartbeatJob', () => {
       expect.objectContaining({ timeout_ms: 600_000 }),
       target,
       'canonical',
+      ['3.1'],
+    );
+    expect(mocks.query).toHaveBeenCalledWith(
+      expect.stringContaining('make_interval'),
+      [['https://agent.example.com/mcp'], 960],
     );
     expect(mocks.comply).toHaveBeenCalledWith(
       'https://agent.example.com/mcp',

@@ -19,7 +19,12 @@ const logger = createLogger('adcp-tools');
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
-import { AuthenticationRequiredError } from '@adcp/sdk';
+import {
+  AuthenticationRequiredError,
+  type AdcpTaskName,
+  type AgentClient,
+  type TaskRequestFor,
+} from '@adcp/sdk';
 import { buildAgentOAuthAuthorizeUrl } from '../../routes/helpers/agent-oauth-prompt.js';
 import { TRAINING_AGENT_HOSTNAMES } from '../../training-agent/config.js';
 import { agentConfigAuthFields, type SdkAuth } from '../../services/sdk-auth-adapter.js';
@@ -312,6 +317,84 @@ export const ADCP_TASK_REGISTRY: Record<string, AdcpTaskMeta> = {
 
 const TASK_NAMES = Object.keys(ADCP_TASK_REGISTRY);
 
+export const CANONICAL_ADCP_TASK_NAMES = [
+  'get_products',
+  'create_media_buy',
+  'update_media_buy',
+  'sync_creatives',
+  'list_creatives',
+  'get_media_buys',
+  'get_media_buy_delivery',
+  'get_creative_delivery',
+  'provide_performance_feedback',
+  'get_signals',
+  'activate_signal',
+  'get_adcp_capabilities',
+  'create_property_list',
+  'get_property_list',
+  'update_property_list',
+  'list_property_lists',
+  'delete_property_list',
+  'si_get_offering',
+  'si_initiate_session',
+  'si_send_message',
+  'si_terminate_session',
+  'get_brand_identity',
+] as const satisfies readonly AdcpTaskName[];
+
+export const LEGACY_ADCP_TASK_NAMES = [
+  'list_creative_formats',
+  'build_creative',
+  'preview_creative',
+  'create_content_standards',
+  'get_content_standards',
+  'update_content_standards',
+  'list_content_standards',
+  'calibrate_content',
+  'get_media_buy_artifacts',
+  'validate_content_delivery',
+  'get_rights',
+  'acquire_rights',
+  'update_rights',
+] as const;
+
+// Current protocol tasks not yet represented in the SDK's typed task map.
+// These are vendor/custom from the SDK's perspective, not legacy format APIs.
+export const CUSTOM_ADCP_TASK_NAMES = [
+  'sync_catalogs',
+  'create_collection_list',
+  'update_collection_list',
+  'get_collection_list',
+  'list_collection_lists',
+  'delete_collection_list',
+] as const;
+
+const canonicalAdcpTasks = new Set<string>(CANONICAL_ADCP_TASK_NAMES);
+const legacyAdcpTasks = new Set<string>(LEGACY_ADCP_TASK_NAMES);
+
+export type AdcpExecutionMode = 'canonical' | 'legacy' | 'custom';
+
+export function adcpExecutionMode(task: string): AdcpExecutionMode {
+  if (canonicalAdcpTasks.has(task)) return 'canonical';
+  if (legacyAdcpTasks.has(task)) return 'legacy';
+  return 'custom';
+}
+
+function isCanonicalAdcpTask(task: string): task is AdcpTaskName {
+  return canonicalAdcpTasks.has(task);
+}
+
+function executeCanonicalAdcpTask(
+  client: AgentClient,
+  task: AdcpTaskName,
+  params: Record<string, unknown>,
+  debug: boolean,
+) {
+  // call_adcp_task is an untyped MCP boundary. The SDK performs the canonical
+  // task-specific runtime validation and projection after this single cast.
+  return client.executeTask(task, params as TaskRequestFor<typeof task>, undefined, { debug });
+}
+
 // ============================================
 // SKILL.MD DOCUMENTATION LOADER
 // ============================================
@@ -546,7 +629,7 @@ const BUYER_RULES_PREAMBLE = [
   '- **account is oneOf**: pick ONE variant — `{account_id}` OR `{brand:{domain}, operator}`. Don\'t merge fields across variants.',
   '- **brand uses {domain}**, not `{brand_id}`.',
   '- **budget is a number**; currency is implied by `pricing_option_id`.',
-  '- **format_id is `{agent_url, id}`**, never a bare string.',
+  '- **format identity is canonical**: use `format_kind`, `format_options`, and `format_option_refs`. Named-format `{agent_url, id}` objects are legacy compatibility only.',
   '- **Async response `{status:"submitted", task_id}`** = queued, NOT done. Poll the task_id.',
   '- **On adcp_error**: read `issues[]`. For oneOf failures, `issues[].variants[]` gives the exact valid shape — patch and retry, do not re-guess.',
   '',
@@ -883,7 +966,12 @@ export function createAdcpToolHandlers(
       );
       const client = multiClient.agent('target');
 
-      const result = await client.executeTask(task, params, undefined, { debug });
+      const executionMode = adcpExecutionMode(task);
+      const result = isCanonicalAdcpTask(task)
+        ? await executeCanonicalAdcpTask(client, task, params, debug)
+        : executionMode === 'legacy'
+          ? await client.executeTaskLegacy(task, params, undefined, { debug })
+          : await client.executeCustomTask(task, params, undefined, { debug });
 
       if (!result.success) {
         let output = `**Task failed:** \`${task}\`\n\n**Error:**\n\`\`\`json\n${JSON.stringify(result.error, null, 2)}\n\`\`\``;

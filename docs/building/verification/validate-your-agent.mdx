@@ -27,7 +27,7 @@ Storyboards are organized into three layers so agents declare only what they act
 | **Protocol** | `/compliance/{version}/protocols/{protocol}/` | Any agent claiming a protocol (`media-buy`, `creative`, `signals`, `governance`, `brand`) |
 | **Specialism** | `/compliance/{version}/specialisms/{id}/` | Opt-in claims (e.g. `sales-guaranteed`, `sales-broadcast-tv`, `creative-generative`) — see the [Compliance Catalog](/docs/building/verification/compliance-catalog) |
 
-Declare your `supported_protocols` and `specialisms` in `get_adcp_capabilities` — the runner picks the matching storyboards automatically. See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for the full taxonomy.
+Declare your `supported_protocols` and `specialisms` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) — the runner picks the matching storyboards automatically. See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for the full taxonomy.
 
 ## Setup
 
@@ -110,6 +110,20 @@ npx @adcp/sdk@latest storyboard run my-agent
 
 Add `--json` for structured output.
 
+### Select a compliance cache and test kit
+
+`--compliance-version` selects a cache bundled with the SDK. For an extracted cache, pass its versioned directory to `--compliance-dir`; `--test-kit` takes a YAML file from the `test-kits/` directory below that same cache root. After extracting the `@adcp/sdk` 13.0.0-rc.15 npm tarball in the current directory, use its versioned cache root like this:
+
+```bash
+npx @adcp/sdk@13.0.0-rc.15 storyboard run my-agent \
+  --compliance-dir ./package/compliance/cache/3.1.13 \
+  --test-kit ./package/compliance/cache/3.1.13/test-kits/acme-outdoor.yaml
+```
+
+<Warning>
+`@adcp/sdk` 13.0.0-rc.15 does not verify that `--test-kit` and the selected storyboard cache use the same AdCP version. Locate the versioned cache root containing the YAML file passed to `--test-kit` (the directory above `test-kits/`) and open that root's `index.json`. Before using the result, confirm that its `published_version` matches the `AdCP` version in the report's `SDK` line. If they differ, discard the result and rerun with both paths from the same versioned cache. Automatic enforcement is tracked in [adcp-client#2514](https://github.com/adcontextprotocol/adcp-client/issues/2514).
+</Warning>
+
 The storyboard runner operates in two modes depending on whether your agent implements the optional [compliance test controller](/docs/building/by-layer/L3/comply-test-controller):
 
 | Mode | When | What it tests |
@@ -119,7 +133,7 @@ The storyboard runner operates in two modes depending on whether your agent impl
 
 ### Reading `partial`
 
-`partial` is a coverage result, not automatically a failure. The runner uses it when one or more selected scenarios could not be graded even though no executed assertion failed. The most common cause is intentional: production endpoints MUST NOT expose `comply_test_controller`, so controller-seeded or controller-forced phases skip with `missing_test_controller`.
+`partial` is a coverage result, not automatically a failure. The runner uses it when one or more selected scenarios could not be graded even though no executed assertion failed. The most common cause is intentional: production endpoints MUST NOT expose [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller), so controller-seeded or controller-forced phases skip with `missing_test_controller`.
 
 Read `steps_not_selected` separately from `steps_skipped`. Not-selected scenarios were outside the suite or run mode you asked for. Skipped scenarios were inside the selected suite, but the runner could not execute them because of an applicability gate, missing test surface, missing tool, or prerequisite.
 
@@ -149,11 +163,11 @@ Addie runs the same storyboards as the CLI but walks you through each step inter
 
 ### RFP testing
 
-Share a real RFP or campaign brief with Addie. She'll parse it, call your agent's `get_products` with the buyer's actual requirements, and compare results against what your sales team would normally propose. This tests whether your agent can handle real buyer demand — not just synthetic briefs derived from your own inventory description.
+Share a real RFP or campaign brief with Addie. She'll parse it, call your agent's [`get_products`](/docs/media-buy/task-reference/get_products) with the buyer's actual requirements, and compare results against what your sales team would normally propose. This tests whether your agent can handle real buyer demand — not just synthetic briefs derived from your own inventory description.
 
 ### IO execution testing
 
-Share an insertion order with Addie. She'll extract the line items, match them against your agent's product catalog, and test whether `create_media_buy` can execute the deal. The output shows line-by-line matching quality (exact, close, weak, unmapped) and rate comparisons so you can see exactly where execution would break down.
+Share an insertion order with Addie. She'll extract the line items, match them against your agent's product catalog, and test whether [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) can execute the deal. The output shows line-by-line matching quality (exact, close, weak, unmapped) and rate comparisons so you can see exactly where execution would break down.
 
 ### Recommended testing sequence
 
@@ -168,7 +182,7 @@ Each step builds confidence. Storyboards prove protocol compliance. RFP and IO t
 
 All storyboard runs use sandbox mode by default. The storyboard runner sets `sandbox: true` on every account reference, so your agent processes requests without real platform calls or spend.
 
-Your agent should declare sandbox support in `get_adcp_capabilities`:
+Your agent should declare sandbox support in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities):
 
 ```json
 {

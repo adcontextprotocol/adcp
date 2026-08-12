@@ -236,6 +236,7 @@
                 "expanded": false,
                 "pages": [
                   "docs/accounts/overview",
+                  "docs/accounts/provisioning-walkthrough",
                   "docs/accounts/tasks/sync_accounts",
                   "docs/accounts/tasks/list_accounts",
                   "docs/accounts/tasks/report_usage",
@@ -1329,7 +1330,7 @@
         ]
       },
       {
-        "version": "2.5",
+        "version": "2.5 (archived)",
         "groups": [
           {
             "group": "Getting Started",
@@ -1555,7 +1556,7 @@
     "linkedin": "https://www.linkedin.com/company/ad-context-protocol/",
     "youtube": "https://www.youtube.com/@AgenticAdvertising",
     "github": "https://github.com/adcontextprotocol/adcp",
-    "slack": "https://join.slack.com/t/agenticads/shared_invite/zt-3h15gj6c0-FRTrD_y4HqmeXDKBl2TDEA"
+    "slack": "https://docs.adcontextprotocol.org/docs/community/joining-slack"
   },
   "api": {
     "maintainOrder": true

@@ -4,9 +4,11 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('workos-client');
 const OWNERLESS_PROMOTION_WORKOS_TIMEOUT_MS = 10_000;
+const PIPES_WORKOS_TIMEOUT_MS = 10_000;
 
 let _workos: WorkOS | null = null;
 let _ownerlessPromotionWorkos: WorkOS | null = null;
+let _pipesWorkos: WorkOS | null = null;
 let _clientId = '';
 
 /** Returns the shared WorkOS client. Constructed on first call; WORKOS_API_KEY and WORKOS_CLIENT_ID must be set by then. */
@@ -32,6 +34,25 @@ export function getOwnerlessPromotionWorkos(): WorkOS {
     });
   }
   return _ownerlessPromotionWorkos;
+}
+
+/**
+ * Returns a WorkOS client for interactive Pipes requests. Retries are disabled
+ * because the SDK timeout is per attempt; the bouncer must fail within the
+ * edge request budget instead of retrying for 40+ seconds.
+ */
+export function getPipesWorkos(): WorkOS {
+  if (!_pipesWorkos) {
+    if (!process.env.WORKOS_API_KEY) throw new Error('WORKOS_API_KEY environment variable is required');
+    if (!process.env.WORKOS_CLIENT_ID) throw new Error('WORKOS_CLIENT_ID environment variable is required');
+    _clientId = process.env.WORKOS_CLIENT_ID;
+    _pipesWorkos = new WorkOS(process.env.WORKOS_API_KEY, {
+      clientId: _clientId,
+      timeout: PIPES_WORKOS_TIMEOUT_MS,
+      maxRetries: 0,
+    });
+  }
+  return _pipesWorkos;
 }
 
 /**

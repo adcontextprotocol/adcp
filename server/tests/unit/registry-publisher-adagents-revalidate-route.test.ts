@@ -175,6 +175,38 @@ describe('POST /api/registry/publisher/:domain/adagents/revalidate', () => {
     expect(revalidatePublisherAdagents).toHaveBeenCalledTimes(1);
   });
 
+  it('returns a retryable 503 and releases the rate-limit reservation on crawl contention', async () => {
+    const revalidatePublisherAdagents = vi.fn()
+      .mockRejectedValueOnce(Object.assign(new Error('crawl busy'), { code: 'crawl_deferred' }))
+      .mockResolvedValueOnce({
+        domain: 'busy.example',
+        adagents_valid: true,
+        checked_at: '2026-06-16T12:00:00.000Z',
+        status_code: 200,
+      });
+    const app = buildApp({
+      user: { id: 'admin_user', email: 'admin@example.com', isAdmin: true },
+      crawler: { revalidatePublisherAdagents },
+    });
+
+    const busy = await request(app)
+      .post('/api/registry/publisher/busy.example/adagents/revalidate')
+      .send();
+    const retry = await request(app)
+      .post('/api/registry/publisher/busy.example/adagents/revalidate')
+      .send();
+
+    expect(busy.status).toBe(503);
+    expect(busy.headers['retry-after']).toBe('5');
+    expect(busy.body).toEqual({
+      error: 'Publisher crawl is temporarily busy',
+      code: 'publisher_crawl_busy',
+      retry_after: 5,
+    });
+    expect(retry.status).toBe(200);
+    expect(revalidatePublisherAdagents).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects authenticated non-admin callers', async () => {
     const revalidatePublisherAdagents = vi.fn();
     isWebUserAAOAdminMock.mockResolvedValue(false);

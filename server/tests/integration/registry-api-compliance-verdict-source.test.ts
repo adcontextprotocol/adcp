@@ -3,7 +3,8 @@
  * GET /api/registry/agents/:encodedUrl/compliance.
  *
  * Pins the verdict_source / membership_tier / subscription_status /
- * is_api_access_tier scoping: those keys MUST exist on every response
+ * is_api_access_tier scoping and the public storyboard-status contract.
+ * The owner-only keys MUST exist on every response
  * (so non-owners can't detect ownership via Object.keys shape), but
  * carry null/false values for anonymous and cross-org callers. Only
  * an authenticated viewer whose org owns the agent sees populated
@@ -211,11 +212,12 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
       `INSERT INTO agent_compliance_step_diagnostics (
          run_id, agent_url, storyboard_id, phase_id, step_id, task,
          step_passed, duration_ms, request_url, request_jsonb,
-         response_status, response_jsonb, error_text
+         response_status, response_jsonb, error_text, failed_validations_jsonb
        ) VALUES (
          $1, $2, 'debug_storyboard', 'debug_phase', 'debug_step', 'get_products',
          false, 42, $2, '{"params":{"brief":"debug"}}'::jsonb,
-         200, '{"ok":false}'::jsonb, 'debug failure'
+         200, '{"ok":false}'::jsonb, 'debug failure',
+         '[{"field":"products","message":"must not be empty"}]'::jsonb
        )`,
       [complianceRunId, AGENT_URL],
     );
@@ -258,6 +260,29 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     'is_api_access_tier',
   ] as const;
 
+  const expectPublicStoryboardStatus = (
+    body: Record<string, unknown>,
+    options: { includeDiagnostics?: boolean } = {},
+  ) => {
+    expect(body.storyboard_statuses).toEqual([
+      expect.objectContaining({
+        storyboard_id: 'debug_storyboard',
+        status: 'failing',
+        steps_passed: 1,
+        steps_total: 2,
+        first_failed_step_id: options.includeDiagnostics ? 'debug_step' : null,
+        first_failed_step_title: options.includeDiagnostics ? 'Debug step' : null,
+        first_failed_step_task: options.includeDiagnostics ? 'get_products' : null,
+        first_failure_message: options.includeDiagnostics ? 'debug failure' : null,
+        first_failure_validations: options.includeDiagnostics
+          ? [{ field: 'products', message: 'must not be empty' }]
+          : [],
+      }),
+    ]);
+    expect(body.storyboards_passing).toBe(0);
+    expect(body.storyboards_total).toBe(1);
+  };
+
   it('anonymous caller: shape is intact, owner-only fields are null/false', async () => {
     currentUserId = null;
     const res = await request(app).get(endpoint);
@@ -273,6 +298,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     expect(res.body.membership_tier_label).toBeNull();
     expect(res.body.subscription_status).toBeNull();
     expect(res.body.is_api_access_tier).toBe(false);
+    expectPublicStoryboardStatus(res.body);
   });
 
   it('cross-org caller: shape is intact, owner-only fields are null/false', async () => {
@@ -287,6 +313,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     expect(res.body.membership_tier_label).toBeNull();
     expect(res.body.subscription_status).toBeNull();
     expect(res.body.is_api_access_tier).toBe(false);
+    expectPublicStoryboardStatus(res.body);
   });
 
   it('owner caller: verdict_source + membership tier populated', async () => {
@@ -297,6 +324,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     expect(res.body.membership_tier).toBe('company_standard');
     expect(res.body.subscription_status).toBe('active');
     expect(res.body.is_api_access_tier).toBe(true);
+    expectPublicStoryboardStatus(res.body, { includeDiagnostics: true });
   });
 
   it('owner of a free-tier org still sees verdict_source (is_owner is broader than is_api_access_tier)', async () => {
