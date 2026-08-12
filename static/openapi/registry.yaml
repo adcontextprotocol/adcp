@@ -3694,6 +3694,9 @@ components:
             - deprecated
         compliance_opt_out:
           type: boolean
+        badge_requalification_required:
+          type: boolean
+          description: True when monitoring is enabled but badges remain suppressed until a fresh passing full-suite run completes.
         tracks:
           type: object
           additionalProperties:
@@ -4180,6 +4183,9 @@ components:
             - deprecated
         compliance_opt_out:
           type: boolean
+        badge_requalification_required:
+          type: boolean
+          description: True after opt-out until a fresh full-suite compliance run completes badge requalification.
         monitoring_paused:
           type: boolean
         check_interval_hours:
@@ -4196,6 +4202,7 @@ components:
         - agent_url
         - lifecycle_stage
         - compliance_opt_out
+        - badge_requalification_required
         - monitoring_paused
         - check_interval_hours
         - monitoring_paused_at
@@ -10286,8 +10293,8 @@ paths:
   /api/registry/agents/{encodedUrl}/verification:
     get:
       operationId: getAgentVerification
-      summary: Get agent AAO Verified status
-      description: Returns AAO Verified badge status for a single agent. Public and cacheable. Includes role badges, verified storyboards, and a link to the agent's registry listing.
+      summary: Get agent AgenticAdvertising.org Verified status
+      description: Returns AgenticAdvertising.org Verified badge status for a single agent. Registry visibility controls discovery, not verification, so earned badges remain publicly verifiable for private agents. Compliance opt-out immediately suppresses all badges and returns the same unverified shape as an unknown or never-verified agent.
       tags:
         - Agent Compliance
       parameters:
@@ -10328,7 +10335,7 @@ paths:
     get:
       operationId: getAgentBadgeSvg
       summary: Get agent verification badge SVG
-      description: Returns an SVG badge image for the specified agent and role. Shows the role-specific AgenticAdvertising.org Verified mark (teal) when verified, or 'Not Verified' (grey) when not. Cacheable and suitable for embedding in websites.
+      description: Returns an SVG badge image for the specified agent and role. Shows the role-specific AgenticAdvertising.org Verified mark (teal) when verified, or 'Not Verified' (grey) when not. Responses use ETags but must be revalidated before reuse so opt-out revocation is reflected immediately. Registry visibility does not affect verification.
       tags:
         - Agent Compliance
       parameters:
@@ -10392,7 +10399,7 @@ paths:
     get:
       operationId: getAgentBadgeEmbed
       summary: Get embeddable badge code
-      description: Returns HTML and Markdown embed snippets for displaying an AAO Verified badge on websites, social profiles, and documentation. The badge links to the agent's AAO registry listing.
+      description: "Returns HTML and Markdown embed snippets for displaying an AgenticAdvertising.org Verified badge on websites, social profiles, and documentation. Private registry visibility does not suppress verification. Compliance opt-out returns `verified: false` without revealing why the badge is ineligible."
       tags:
         - Agent Compliance
       parameters:
@@ -10485,7 +10492,7 @@ paths:
     get:
       operationId: getAgentBadgeVersionedSvg
       summary: Get version-pinned agent verification badge SVG
-      description: Returns an SVG badge image scoped to a specific AdCP release (MAJOR.MINOR, e.g. '3.0'). Buyers who want to call out 'verified for 3.0' embed this instead of the legacy `/badge/{role}.svg` (which auto-upgrades to the highest active version). Renders 'Not Verified' when the agent never earned a badge at this version.
+      description: Returns an SVG badge image scoped to a specific AdCP release (MAJOR.MINOR, e.g. '3.0'). Buyers who want to call out 'verified for 3.0' embed this instead of the legacy `/badge/{role}.svg` (which auto-upgrades to the highest active version). Renders 'Not Verified' when the agent never earned a badge at this version or opted out of compliance monitoring. Registry visibility does not affect verification.
       tags:
         - Agent Compliance
       parameters:
@@ -10556,7 +10563,7 @@ paths:
     get:
       operationId: getAgentBadgeVersionedEmbed
       summary: Get version-pinned embeddable badge code
-      description: Returns HTML and Markdown embed snippets that point at the version-pinned SVG. Alt text includes the version (e.g. 'AAO Verified Media Buy Agent 3.0'). Buyers who want to freeze on a specific AdCP release embed these instead of the legacy `/badge/{role}/embed`.
+      description: "Returns HTML and Markdown embed snippets that point at the version-pinned SVG. Alt text includes the version (e.g. 'AgenticAdvertising.org Verified Media Buy Agent 3.0'). Buyers who want to freeze on a specific AdCP release embed these instead of the legacy `/badge/{role}/embed`. Compliance opt-out returns `verified: false`; registry visibility does not affect verification."
       tags:
         - Agent Compliance
       parameters:
@@ -10942,7 +10949,7 @@ paths:
     put:
       operationId: updateAgentComplianceOptOut
       summary: Update compliance opt-out
-      description: Opt an agent in or out of public compliance reporting. Requires authentication and ownership of the agent.
+      description: Opt an agent in or out of public compliance reporting. Opting out immediately revokes every active badge version. Re-enabling monitoring keeps badges suppressed until a fresh passing full-suite run earns them again; partial storyboard reruns cannot restore verification first. Requires authentication and ownership of the agent.
       tags:
         - Agent Compliance
       security:

@@ -46,6 +46,8 @@ export async function revokeUnsupportedPublicBadges(params: {
   const result: BadgeIssuanceResult = { issued: [], revoked: [], degraded: [], unchanged: [] };
   if (!supportedVersions?.length) return result;
 
+  const metadata = await complianceDb.getRegistryMetadata(agentUrl);
+  const expectedBadgeGeneration = metadata?.badge_requalification_generation ?? '0';
   const publicBadgeVersions = new Set<string>(SUPPORTED_BADGE_VERSIONS);
   const existingBadges = await complianceDb.getBadgesForAgent(agentUrl);
 
@@ -54,7 +56,14 @@ export async function revokeUnsupportedPublicBadges(params: {
     if (advertisesPublicBadgeVersion(supportedVersions, badge.adcp_version)) continue;
 
     const reason = `Agent no longer advertises AdCP ${badge.adcp_version} support`;
-    await complianceDb.revokeBadge(agentUrl, badge.role, badge.adcp_version, reason);
+    const revoked = await complianceDb.revokeBadge(
+      agentUrl,
+      badge.role,
+      badge.adcp_version,
+      reason,
+      expectedBadgeGeneration,
+    );
+    if (!revoked) continue;
     result.revoked.push({ role: badge.role, reason, adcp_version: badge.adcp_version });
     logger.info(
       { agentUrl, role: badge.role, adcpVersion: badge.adcp_version },
@@ -84,6 +93,8 @@ export async function processAgentBadges(
   overallPassing: boolean,
   membershipOrgId?: string,
   adcpVersion: string = DEFAULT_BADGE_ADCP_VERSION,
+  expectedBadgeGeneration?: string,
+  requalificationAttempt = false,
 ): Promise<BadgeIssuanceResult> {
   const result: BadgeIssuanceResult = { issued: [], revoked: [], degraded: [], unchanged: [] };
 
@@ -102,7 +113,14 @@ export async function processAgentBadges(
   // trust mark.
   if (!membershipOrgId) {
     for (const existing of existingAllVersions) {
-      await complianceDb.revokeBadge(agentUrl, existing.role, existing.adcp_version, 'Membership lapsed');
+      const revoked = await complianceDb.revokeBadge(
+        agentUrl,
+        existing.role,
+        existing.adcp_version,
+        'Membership lapsed',
+        expectedBadgeGeneration,
+      );
+      if (!revoked) continue;
       result.revoked.push({ role: existing.role, reason: 'Membership lapsed', adcp_version: existing.adcp_version });
       logger.info({ agentUrl, role: existing.role, adcpVersion: existing.adcp_version }, 'Badge revoked — membership lapsed');
     }
@@ -145,7 +163,7 @@ export async function processAgentBadges(
         }
       }
 
-      await complianceDb.upsertBadge({
+      const persistedBadge = await complianceDb.upsertBadge({
         agent_url: agentUrl,
         role: roleResult.role,
         adcp_version: adcpVersion,
@@ -154,7 +172,17 @@ export async function processAgentBadges(
         verification_token: token,
         token_expires_at: tokenExpiresAt,
         membership_org_id: membershipOrgId,
+        expected_badge_generation: expectedBadgeGeneration,
+        requalification_attempt: requalificationAttempt,
       });
+
+      if (!persistedBadge) {
+        logger.info(
+          { agentUrl, role: roleResult.role, adcpVersion },
+          'Badge issuance suppressed because compliance monitoring is opted out',
+        );
+        continue;
+      }
 
       if (!existing) {
         result.issued.push({ role: roleResult.role, specialisms: roleResult.specialisms, adcp_version: adcpVersion });
@@ -164,7 +192,13 @@ export async function processAgentBadges(
       }
     } else if (existing) {
       if (existing.status === 'active') {
-        await complianceDb.degradeBadge(agentUrl, roleResult.role, adcpVersion);
+        const degraded = await complianceDb.degradeBadge(
+          agentUrl,
+          roleResult.role,
+          adcpVersion,
+          expectedBadgeGeneration,
+        );
+        if (!degraded) continue;
         result.degraded.push({ role: roleResult.role, adcp_version: adcpVersion });
         logger.info({ agentUrl, role: roleResult.role, adcpVersion, failing: roleResult.failing, untested: roleResult.untested }, 'Badge degraded');
       } else if (existing.status === 'degraded') {
@@ -176,7 +210,14 @@ export async function processAgentBadges(
             roleResult.failing.length > 0 ? `Failing specialisms: ${roleResult.failing.join(', ')}` : undefined,
             roleResult.untested.length > 0 ? `Untested specialisms: ${roleResult.untested.join(', ')}` : undefined,
           ].filter(Boolean).join('; ');
-          await complianceDb.revokeBadge(agentUrl, roleResult.role, adcpVersion, `${reason} for 48+ hours`);
+          const revoked = await complianceDb.revokeBadge(
+            agentUrl,
+            roleResult.role,
+            adcpVersion,
+            `${reason} for 48+ hours`,
+            expectedBadgeGeneration,
+          );
+          if (!revoked) continue;
           result.revoked.push({ role: roleResult.role, reason, adcp_version: adcpVersion });
           logger.info({ agentUrl, role: roleResult.role, adcpVersion, failing: roleResult.failing, untested: roleResult.untested }, 'Badge revoked after 48h grace');
         } else {
@@ -190,7 +231,14 @@ export async function processAgentBadges(
   const activeRoles = new Set(verification.roles.map(r => r.role));
   for (const existing of existingBadges) {
     if (!activeRoles.has(existing.role)) {
-      await complianceDb.revokeBadge(agentUrl, existing.role, adcpVersion, 'Role no longer in declared specialisms');
+      const revoked = await complianceDb.revokeBadge(
+        agentUrl,
+        existing.role,
+        adcpVersion,
+        'Role no longer in declared specialisms',
+        expectedBadgeGeneration,
+      );
+      if (!revoked) continue;
       result.revoked.push({ role: existing.role, reason: 'Role no longer declared', adcp_version: adcpVersion });
     }
   }
@@ -225,6 +273,49 @@ export async function runBadgeFanOut(params: {
   const adcpVersions = (params.adcpVersions === undefined ? [DEFAULT_BADGE_ADCP_VERSION] : params.adcpVersions)
     .filter((version): version is string => typeof version === 'string' && version.length > 0);
   const aggregate: BadgeIssuanceResult = { issued: [], revoked: [], degraded: [], unchanged: [] };
+
+  const metadata = await complianceDb.getRegistryMetadata(agentUrl);
+  if (metadata?.compliance_opt_out) {
+    const revoked = await complianceDb.revokeAllBadgesIfOptedOut(
+      agentUrl,
+      'Compliance monitoring opted out',
+    );
+    aggregate.revoked.push(...revoked.map((badge) => ({
+      role: badge.role,
+      adcp_version: badge.adcp_version,
+      reason: 'Compliance monitoring opted out',
+    })));
+    logger.info(
+      { agentUrl, revoked: revoked.length },
+      'Badge fan-out suppressed because compliance monitoring is opted out',
+    );
+    return aggregate;
+  }
+
+  // Re-enabling monitoring never restores old trust state. Partial owner
+  // retests continue to be recorded, but only a fresh authoritative full-suite
+  // run (identified by runId) may rebuild badges and open the public-read gate.
+  if (metadata?.badge_requalification_required && !runId) {
+    logger.info(
+      { agentUrl },
+      'Badge fan-out suppressed until a fresh full-suite compliance run completes',
+    );
+    return aggregate;
+  }
+
+  let expectedBadgeGeneration = metadata?.badge_requalification_generation ?? '0';
+  let requalificationGeneration: string | undefined;
+  if (metadata?.badge_requalification_required && runId) {
+    const attemptGeneration = await complianceDb.prepareBadgeRequalification(
+      agentUrl,
+      expectedBadgeGeneration,
+    );
+    // A newer opt-out/re-enable transition superseded this run before badge
+    // processing began. Do not let old evidence write into the new epoch.
+    if (!attemptGeneration) return aggregate;
+    expectedBadgeGeneration = attemptGeneration;
+    requalificationGeneration = attemptGeneration;
+  }
 
   if (declaredSpecialisms.length === 0 || adcpVersions.length === 0) {
     return aggregate;
@@ -272,7 +363,7 @@ export async function runBadgeFanOut(params: {
     storyboardStatuses.every(s => s.status === 'passing');
 
   if (!membershipOrgId) {
-    return processAgentBadges(
+    const result = await processAgentBadges(
       complianceDb,
       agentUrl,
       declaredSpecialisms,
@@ -280,7 +371,10 @@ export async function runBadgeFanOut(params: {
       overallPassing,
       undefined,
       adcpVersions[0] ?? DEFAULT_BADGE_ADCP_VERSION,
+      expectedBadgeGeneration,
+      requalificationGeneration !== undefined,
     );
+    return result;
   }
 
   const supportedBadgeVersions = new Set<string>(SUPPORTED_BADGE_VERSIONS);
@@ -297,7 +391,14 @@ export async function runBadgeFanOut(params: {
     }
     if (!reason) continue;
 
-    await complianceDb.revokeBadge(agentUrl, badge.role, badge.adcp_version, reason);
+    const revoked = await complianceDb.revokeBadge(
+      agentUrl,
+      badge.role,
+      badge.adcp_version,
+      reason,
+      expectedBadgeGeneration,
+    );
+    if (!revoked) continue;
     aggregate.revoked.push({ role: badge.role, reason, adcp_version: badge.adcp_version });
     logger.info(
       { agentUrl, role: badge.role, adcpVersion: badge.adcp_version },
@@ -305,6 +406,7 @@ export async function runBadgeFanOut(params: {
     );
   }
 
+  let processingFailed = false;
   for (const adcpVersion of adcpVersions) {
     // Per-version try/catch matches the heartbeat behavior: a failure
     // at one version must not poison another version's issuance, and a
@@ -322,6 +424,8 @@ export async function runBadgeFanOut(params: {
         overallPassing,
         membershipOrgId,
         adcpVersion,
+        expectedBadgeGeneration,
+        requalificationGeneration !== undefined,
       );
 
       for (const issued of versionResult.issued) aggregate.issued.push(issued);
@@ -329,6 +433,7 @@ export async function runBadgeFanOut(params: {
       for (const degraded of versionResult.degraded) aggregate.degraded.push(degraded);
       for (const unchanged of versionResult.unchanged) aggregate.unchanged.push(unchanged);
     } catch (versionError) {
+      processingFailed = true;
       const errorMessage = versionError instanceof Error ? versionError.message : String(versionError);
       logger.error(
         { versionError, agentUrl, adcpVersion },
@@ -339,6 +444,10 @@ export async function runBadgeFanOut(params: {
         errorMessage: `Per-version badge processing failed for ${agentUrl} at AdCP ${adcpVersion}: ${errorMessage}`,
       });
     }
+  }
+
+  if (requalificationGeneration && runId && !processingFailed && aggregate.issued.length > 0) {
+    await complianceDb.completeBadgeRequalification(agentUrl, requalificationGeneration);
   }
 
   return aggregate;

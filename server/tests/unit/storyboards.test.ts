@@ -36,6 +36,7 @@ import {
 } from '@adcp/sdk/testing';
 import {
   badgeEligibleVersionsForTargetSelection,
+  storedComplianceTargetMatchesObservedProfile,
 } from '../../src/addie/services/compliance-testing.js';
 
 /**
@@ -274,12 +275,30 @@ describe('wrapper contract', () => {
   it('does not treat an unconfirmed fallback target as badge eligible', () => {
     const stable = hostedComplianceTarget('3.0');
 
-    expect(badgeEligibleVersionsForTargetSelection({ target: stable, confirmed: false })).toEqual([]);
+    expect(badgeEligibleVersionsForTargetSelection({ target: stable, confirmed: false, source: 'default' })).toEqual([]);
     expect(badgeEligibleVersionsForTargetSelection(
-      { target: stable, confirmed: false },
+      { target: stable, confirmed: false, source: 'stored' },
       { adcp_supported_versions: ['3.0'] },
     )).toEqual(['3.0']);
-    expect(badgeEligibleVersionsForTargetSelection({ target: stable, confirmed: true })).toEqual(['3.0']);
+    expect(badgeEligibleVersionsForTargetSelection(
+      { target: stable, confirmed: false, source: 'explicit' },
+      { adcp_supported_versions: ['3.0'] },
+    )).toEqual(['3.0']);
+    expect(badgeEligibleVersionsForTargetSelection({ target: stable, confirmed: true, source: 'live' })).toEqual(['3.0']);
+  });
+
+  it('lets the live run profile supersede a stored compliance target before publication', () => {
+    const stable = hostedComplianceTarget('3.0');
+    const storedSelection = { target: stable, confirmed: false, source: 'stored' as const };
+
+    expect(storedComplianceTargetMatchesObservedProfile(
+      storedSelection,
+      { adcp_supported_versions: ['3.0'] },
+    )).toBe(true);
+    expect(storedComplianceTargetMatchesObservedProfile(
+      storedSelection,
+      { adcp_supported_versions: ['3.1'] },
+    )).toBe(false);
   });
 
   it('rejects unsupported compliance targets before path resolution', () => {

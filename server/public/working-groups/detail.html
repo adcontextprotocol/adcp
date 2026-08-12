@@ -26,6 +26,7 @@
   <link rel="stylesheet" href="/design-system.css">
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <script src="/js/markdown-to-plain-text.js"></script>
   <script src="/perspective-url.js"></script>
   <script src="/external-url.js"></script>
   <script src="/slack-cta.js"></script>
@@ -1174,7 +1175,7 @@
               <line x1="20" y1="8" x2="20" y2="14"/>
               <line x1="23" y1="11" x2="17" y2="11"/>
             </svg>
-            Join Working Group
+            <span id="joinBtnLabel">Join Working Group</span>
           </button>
           <button id="leaveBtn" class="btn btn-danger" style="display: none;" onclick="leaveGroup()">
             Leave Group
@@ -1581,8 +1582,12 @@
         document.getElementById('privateBadge').style.display = 'inline';
       }
 
-      // Region badge and back link for chapters
-      if (currentGroup.committee_type === 'chapter') {
+      // Type-specific back links and action copy
+      if (currentGroup.committee_type === 'council') {
+        document.getElementById('backLink').href = '/committees?type=council';
+        document.getElementById('backLinkText').textContent = 'Back to Councils';
+        document.getElementById('joinBtnLabel').textContent = 'Join Council';
+      } else if (currentGroup.committee_type === 'chapter') {
         document.getElementById('backLink').href = '/chapters';
         document.getElementById('backLinkText').textContent = 'Back to Chapters';
         if (currentGroup.region) {
@@ -2033,7 +2038,7 @@
                   ${lastModified ? `<span>Updated ${lastModified}</span>` : ''}
                   ${doc.index_status !== 'success' ? `<span class="document-status ${statusClass}">${formatIndexStatus(doc.index_status)}</span>` : ''}
                 </div>
-                ${doc.document_summary ? `<div class="document-summary">${escapeHtml(doc.document_summary)}</div>` : ''}
+                ${doc.document_summary ? `<div class="document-summary">${escapeHtml(markdownToPlainText(doc.document_summary))}</div>` : ''}
                 ${doc.index_status === 'access_denied' && (isMember || isAdmin) ? `
                   <div class="document-fix-banner">
                     <p>Addie can't read this document. To fix it:</p>
@@ -2179,6 +2184,13 @@
       `;
     }
 
+    function resetJoinButton() {
+      const joinBtn = document.getElementById('joinBtn');
+      joinBtn.disabled = false;
+      document.getElementById('joinBtnLabel').textContent =
+        currentGroup.committee_type === 'council' ? 'Join Council' : 'Join Working Group';
+    }
+
     async function joinGroup() {
       if (!currentUser) {
         window.location.href = `/auth/login?return_to=${encodeURIComponent(window.location.pathname)}`;
@@ -2187,7 +2199,7 @@
 
       const joinBtn = document.getElementById('joinBtn');
       joinBtn.disabled = true;
-      joinBtn.textContent = 'Joining...';
+      document.getElementById('joinBtnLabel').textContent = 'Joining...';
 
       try {
         const response = await fetch(`/api/working-groups/${currentSlug}/join`, {
@@ -2197,6 +2209,7 @@
 
         if (response.ok) {
           isMember = true;
+          resetJoinButton();
           joinBtn.style.display = 'none';
           document.getElementById('membershipStatus').style.display = 'block';
           document.getElementById('leaveBtn').style.display = 'inline-flex';
@@ -2206,22 +2219,13 @@
           await loadWorkingGroup();
         } else {
           const data = await response.json();
-          alert(data.error || 'Failed to join group');
-          joinBtn.disabled = false;
-          joinBtn.innerHTML = `
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="8.5" cy="7" r="4"/>
-              <line x1="20" y1="8" x2="20" y2="14"/>
-              <line x1="23" y1="11" x2="17" y2="11"/>
-            </svg>
-            Join Working Group
-          `;
+          alert(data.message || data.error || 'Failed to join group');
+          resetJoinButton();
         }
       } catch (error) {
         console.error('Error joining group:', error);
         alert('Failed to join group');
-        joinBtn.disabled = false;
+        resetJoinButton();
       }
     }
 
@@ -2243,6 +2247,7 @@
           document.getElementById('newPostBtn').style.display = 'none';
 
           if (!currentGroup.is_private) {
+            resetJoinButton();
             document.getElementById('joinBtn').style.display = 'inline-flex';
           }
 

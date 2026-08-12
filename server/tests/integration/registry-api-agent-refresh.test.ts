@@ -180,7 +180,7 @@ function makeComplianceResult(options: { specialisms?: string[]; storyboardId?: 
         message: 'Fixture observation',
       },
     ],
-    agent_profile: { specialisms },
+    agent_profile: { specialisms, adcp_supported_versions: ['3.0'] },
   };
 }
 
@@ -297,6 +297,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
         tools: [],
         supported_protocols: ['media_buy'],
         specialisms: [],
+        adcp_supported_versions: ['3.0'],
       },
       steps: [{ step: 'Discover agent profile', passed: true, duration_ms: 1 }],
     });

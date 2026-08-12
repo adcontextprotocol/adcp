@@ -24,6 +24,7 @@ import {
   hostedComplianceTarget,
   hostedAuthProbeTaskForProfile,
   hostedStaticApiKeyForProfile,
+  agentAdvertisesHostedComplianceTarget,
   agentAdvertisesBadgeEligibleHostedComplianceTarget,
   badgeEligibleVersionsForHostedComplianceTarget,
   selectCanonicalHostedComplianceTargetForProfile,
@@ -52,7 +53,31 @@ export const HOSTED_TARGET_DISCOVERY_TIMEOUT_MS = 30_000;
 export interface ComplianceTargetSelection {
   target: HostedComplianceTarget;
   confirmed: boolean;
+  source: 'live' | 'stored' | 'explicit' | 'default';
   supportedVersions?: readonly string[];
+}
+
+export const UNRESOLVED_COMPLIANCE_TARGET_MESSAGE =
+  'Could not determine a compatible compliance target from live capabilities or recent compliance history.';
+
+export function hasTrustworthyComplianceTarget(selection: ComplianceTargetSelection): boolean {
+  return selection.source !== 'default';
+}
+
+/**
+ * A stored profile may choose a safe target for a diagnostic attempt, but the
+ * profile observed by that attempt is newer evidence. Refuse to publish the
+ * result if the agent no longer advertises the stored target.
+ */
+export function storedComplianceTargetMatchesObservedProfile(
+  selection: ComplianceTargetSelection,
+  profile?: { adcp_supported_versions?: readonly string[] },
+): boolean {
+  if (selection.source !== 'stored') return true;
+  return agentAdvertisesHostedComplianceTarget(
+    profile?.adcp_supported_versions,
+    selection.target,
+  );
 }
 
 function abortReason(signal: AbortSignal, fallback: string): Error {
@@ -252,7 +277,15 @@ export async function selectComplianceTargetForAgentSelection(
     const target = mode === 'canonical'
       ? selectCanonicalHostedComplianceTargetForProfile(discovery.profile, fallback)
       : selectHostedComplianceTargetForProfile(discovery.profile, fallback);
-    return { target, confirmed: true, supportedVersions: discovery.profile?.adcp_supported_versions };
+    const supportedVersions = discovery.profile?.adcp_supported_versions;
+    if (!agentAdvertisesHostedComplianceTarget(supportedVersions, target)) {
+      logger.warn(
+        { agentUrl, supportedVersions },
+        'Could not match live profile to a hosted compliance target; using default fallback',
+      );
+      return { target: fallback, confirmed: false, source: 'default', supportedVersions };
+    }
+    return { target, confirmed: true, source: 'live', supportedVersions };
   } catch (err) {
     if (options.signal?.aborted) {
       throw abortReason(options.signal, 'Hosted compliance target pre-discovery aborted');
@@ -266,6 +299,13 @@ export async function selectComplianceTargetForAgentSelection(
       const target = mode === 'canonical'
         ? selectCanonicalHostedComplianceTargetForProfile(profile, fallback)
         : selectHostedComplianceTargetForProfile(profile, fallback);
+      if (!agentAdvertisesHostedComplianceTarget(supportedVersions, target)) {
+        logger.warn(
+          { err, agentUrl, supportedVersions },
+          'Could not match recent stored profile to a hosted compliance target; using default fallback',
+        );
+        return { target: fallback, confirmed: false, source: 'default' };
+      }
       logger.warn(
         { err, agentUrl, supportedVersions, selectedTarget: target.requested },
         'Could not pre-discover hosted compliance target; using recent stored profile',
@@ -273,11 +313,11 @@ export async function selectComplianceTargetForAgentSelection(
       // The stored profile is safe for choosing which grader to attempt, but
       // must not flow into badge eligibility. Only a profile observed during
       // the current run may support issuing or retaining public badges.
-      return { target, confirmed: false };
+      return { target, confirmed: false, source: 'stored' };
     }
 
     logger.warn({ err, agentUrl }, 'Could not pre-discover hosted compliance target; using default fallback');
-    return { target: fallback, confirmed: false };
+    return { target: fallback, confirmed: false, source: 'default' };
   }
 }
 
@@ -302,6 +342,7 @@ export function badgeEligibleVersionsForTargetSelection(
   selection: ComplianceTargetSelection,
   profile?: { adcp_supported_versions?: readonly string[] },
 ): readonly string[] {
+  if (!hasTrustworthyComplianceTarget(selection)) return [];
   const versions = badgeEligibleVersionsForHostedComplianceTarget(selection.target);
   if (versions.length === 0) return [];
   if (selection.confirmed) return versions;

@@ -32,6 +32,35 @@
 
 import { query } from '../db/client.js';
 import { canonicalizeAgentUrl } from '../db/publisher-db.js';
+import type { AgentVisibility } from '../types.js';
+
+/** Resolve the owned agent's directory visibility without exposing it publicly. */
+export async function findOwnedAgentVisibility(
+  userId: string,
+  agentUrl: string,
+): Promise<AgentVisibility | null> {
+  try {
+    const lookupAgentUrl = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
+    const result = await query<{ visibility: string | null }>(
+      `SELECT agent->>'visibility' AS visibility
+       FROM member_profiles mp
+       JOIN organization_memberships om
+         ON om.workos_organization_id = mp.workos_organization_id
+       CROSS JOIN LATERAL jsonb_array_elements(mp.agents) agent
+       WHERE agent->>'url' = $1
+         AND om.workos_user_id = $2
+       LIMIT 1`,
+      [lookupAgentUrl, userId],
+    );
+    if (!result.rows[0]) return null;
+    const visibility = result.rows[0].visibility;
+    return visibility === 'public' || visibility === 'members_only' || visibility === 'private'
+      ? visibility
+      : 'private';
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Find the org id of any org the user is a member of that owns the agent.

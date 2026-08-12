@@ -41,6 +41,8 @@ vi.mock('../../src/services/hosted-compliance-version.js', () => ({
     profile?.adcp_supported_versions?.includes('3.1')
       ? mocks.selectedTarget
       : mocks.fallbackTarget,
+  agentAdvertisesHostedComplianceTarget: (versions: string[] | undefined, target: { requested: string }) =>
+    Boolean(versions?.includes(target.requested)),
   withHostedComplianceRunOptions: (options: unknown) => options,
 }));
 
@@ -96,6 +98,7 @@ describe('hosted compliance target discovery deadline', () => {
     await expect(selectionPromise).resolves.toEqual({
       target: mocks.selectedTarget,
       confirmed: true,
+      source: 'live',
       supportedVersions: ['3.1'],
     });
     expect(receivedOptions).toMatchObject({
@@ -137,6 +140,7 @@ describe('hosted compliance target discovery deadline', () => {
     await expect(selectionPromise).resolves.toEqual({
       target: mocks.fallbackTarget,
       confirmed: false,
+      source: 'default',
     });
     expect(transportSignal?.aborted).toBe(true);
   });
@@ -163,6 +167,7 @@ describe('hosted compliance target discovery deadline', () => {
     await expect(selectionPromise).resolves.toEqual({
       target: mocks.fallbackTarget,
       confirmed: false,
+      source: 'default',
     });
   });
 
@@ -178,6 +183,23 @@ describe('hosted compliance target discovery deadline', () => {
     )).resolves.toEqual({
       target: mocks.selectedTarget,
       confirmed: false,
+      source: 'stored',
+    });
+  });
+
+  it('rejects recent stored versions that do not match a hosted target', async () => {
+    mocks.discovery.mockRejectedValue(new Error('temporary probe failure'));
+
+    await expect(selectComplianceTargetForAgentSelection(
+      'https://agent.example/mcp',
+      {},
+      mocks.fallbackTarget,
+      'canonical',
+      ['4.0'],
+    )).resolves.toEqual({
+      target: mocks.fallbackTarget,
+      confirmed: false,
+      source: 'default',
     });
   });
 
@@ -196,7 +218,27 @@ describe('hosted compliance target discovery deadline', () => {
     )).resolves.toEqual({
       target: mocks.fallbackTarget,
       confirmed: true,
+      source: 'live',
       supportedVersions: ['3.0'],
+    });
+  });
+
+  it('does not trust successful live discovery when no hosted target matches', async () => {
+    mocks.discovery.mockResolvedValue({
+      profile: { adcp_supported_versions: ['4.0'] },
+      steps: [],
+    });
+
+    await expect(selectComplianceTargetForAgentSelection(
+      'https://agent.example/mcp',
+      {},
+      mocks.fallbackTarget,
+      'canonical',
+    )).resolves.toEqual({
+      target: mocks.fallbackTarget,
+      confirmed: false,
+      source: 'default',
+      supportedVersions: ['4.0'],
     });
   });
 
@@ -275,6 +317,7 @@ describe('hosted compliance target discovery deadline', () => {
     await expect(selectionPromise).resolves.toEqual({
       target: mocks.fallbackTarget,
       confirmed: false,
+      source: 'default',
     });
     expect(forwardedSignal?.aborted).toBe(true);
     expect(forwardedSignal?.reason).toBe(requestAbort);
