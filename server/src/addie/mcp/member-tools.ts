@@ -111,6 +111,7 @@ import {
   withdrawCommitteeInterest as withdrawCommitteeInterestService,
   listMyWorkingGroups as listMyWorkingGroupsService,
   listMyCommitteeInterests as listMyCommitteeInterestsService,
+  MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE,
   WorkingGroupMembershipError,
 } from '../../services/working-group-membership-service.js';
 import { listMyContent as listMyContentService } from '../../services/my-content-service.js';
@@ -2593,7 +2594,7 @@ export function createMemberToolHandlers(
         user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
         slug,
       });
-      return `Successfully joined the "${result.groupName}" working group! You can now participate in discussions and see group posts.`;
+      return `Successfully joined "${result.groupName}"! You can now participate in discussions and see group posts.`;
     } catch (error) {
       if (error instanceof WorkingGroupMembershipError) {
         if (error.is('group_not_found')) {
@@ -2602,11 +2603,14 @@ export function createMemberToolHandlers(
         if (error.is('group_private')) {
           return `"${error.meta.groupName}" is a private working group that requires an invitation. Use request_working_group_invitation to request access.`;
         }
+        if (error.is('council_membership_required')) {
+          return MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE;
+        }
         if (error.is('community_only_seat_blocked')) {
           return `Joining "${error.meta.groupName}" requires a contributor seat. Ask your org admin to upgrade your access.`;
         }
         if (error.is('already_member')) {
-          return `You're already a member of the "${error.meta.groupName}" working group!`;
+          return `You're already a member of "${error.meta.groupName}"!`;
         }
       }
       throw new ToolError(`Failed to join working group: ${error instanceof Error ? error.message : String(error)}`);

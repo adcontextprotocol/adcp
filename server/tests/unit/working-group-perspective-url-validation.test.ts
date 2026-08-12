@@ -62,6 +62,7 @@ vi.mock('../../src/db/community-db.js', () => ({ CommunityDatabase: class {} }))
 vi.mock('../../src/slack/db.js', () => ({ SlackDatabase: class {} }));
 vi.mock('../../src/addie/services/wg-welcome.js', () => ({ sendWgWelcomeMessage: vi.fn() }));
 vi.mock('../../src/services/working-group-membership-service.js', () => ({
+  MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE: 'Our Mastermind Councils are for paying member tiers only. AgenticAdvertising.org membership starts at $50 annually.',
   joinWorkingGroup: vi.fn(),
   expressCommitteeInterest: vi.fn(),
   withdrawCommitteeInterest: vi.fn(),

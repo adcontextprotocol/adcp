@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   loadSealedSession: vi.fn(),
   checkPlatformBanForApiKey: vi.fn(),
   checkPlatformBan: vi.fn(),
+  invalidateMembershipCache: vi.fn(),
   resolveEffectiveMembership: vi.fn(),
   getAdminWorkingGroupBySlug: vi.fn(),
   isAdminGroupMember: vi.fn(),
@@ -41,6 +42,7 @@ vi.mock('../../src/db/bans-db.js', () => ({
 }));
 
 vi.mock('../../src/db/org-filters.js', () => ({
+  invalidateMembershipCache: mocks.invalidateMembershipCache,
   resolveEffectiveMembership: mocks.resolveEffectiveMembership,
 }));
 
