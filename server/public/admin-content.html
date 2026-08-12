@@ -8,6 +8,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.min.js"></script>
+  <script src="/content-image-upload.js"></script>
   <link rel="stylesheet" href="/design-system.css">
   <style>
     body { background: var(--color-bg-page); min-height: 100vh; }
@@ -148,6 +149,16 @@
     .url-input-group input { flex: 1; }
     .markdown-editor-container { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
     .markdown-editor-container textarea { min-height: 300px; font-family: var(--font-mono); }
+    .preview-pane img { max-width: 100%; height: auto; }
+    .body-image-toolbar { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-2) 0; flex-wrap: wrap; }
+    .body-image-toolbar small { color: var(--color-text-secondary); font-size: var(--text-xs); }
+    .body-image-panel { border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-3); background: var(--color-bg-subtle); }
+    .body-image-fields { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+    .body-image-fields .file-field { grid-column: 1 / -1; }
+    .body-image-actions { display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-3); flex-wrap: wrap; }
+    .body-image-status { color: var(--color-success-700); font-size: var(--text-sm); }
+    .body-image-status.error { color: var(--color-error-600); }
+    @media (max-width: 600px) { .body-image-fields { grid-template-columns: 1fr; } }
     .preview-pane { border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); padding: var(--space-4); background: var(--color-bg-subtle); min-height: 300px; max-height: 400px; overflow-y: auto; }
     .preview-pane.empty { display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); font-style: italic; }
     .char-count { font-size: var(--text-xs); color: var(--color-text-secondary); text-align: right; margin-top: var(--space-1); }
@@ -438,6 +449,32 @@
         <div id="articleFields">
           <div class="form-group">
             <label>Content (Markdown)</label>
+            <div class="body-image-toolbar">
+              <button type="button" class="btn btn-secondary" id="insertBodyImageBtn">Insert image</button>
+              <small id="bodyImageHint">Save as a draft before adding images.</small>
+            </div>
+            <div class="body-image-panel hidden" id="bodyImagePanel">
+              <div class="body-image-fields">
+                <div class="file-field">
+                  <label for="bodyImageFile">Image file</label>
+                  <input type="file" id="bodyImageFile" accept="image/jpeg,image/png,image/webp,image/gif">
+                  <small>JPEG, PNG, WebP, or GIF; maximum 10 MB.</small>
+                </div>
+                <div>
+                  <label for="bodyImageAlt">Alt text</label>
+                  <input type="text" id="bodyImageAlt" required maxlength="300" placeholder="Describe the image">
+                </div>
+                <div>
+                  <label for="bodyImageLink">Link URL (optional)</label>
+                  <input type="url" id="bodyImageLink" placeholder="https://example.com/report">
+                </div>
+              </div>
+              <div class="body-image-actions">
+                <button type="button" class="btn btn-primary" id="uploadBodyImageBtn">Upload and insert</button>
+                <button type="button" class="btn btn-secondary" id="cancelBodyImageBtn">Cancel</button>
+                <span class="body-image-status" id="bodyImageStatus" role="status" aria-live="polite"></span>
+              </div>
+            </div>
             <div class="markdown-editor-container">
               <div><textarea id="articleContent" oninput="updatePreview()" placeholder="Write your perspective in Markdown..."></textarea></div>
               <div><div id="contentPreview" class="preview-pane empty">Start typing to see preview...</div></div>
@@ -661,6 +698,7 @@
     let pendingContent = [];
     let collections = [];
     let editingContent = null;
+    let bodyImageUploader = null;
     let reviewingContent = null;
     let currentDetailItem = null;
     let adminSortField = 'published_at';
@@ -1396,6 +1434,8 @@
       document.getElementById('sectionSelect').value = 'member';
       document.getElementById('autoCoverToggle').checked = true;
       document.getElementById('heroPreview').innerHTML = '<p style="color: var(--color-text-muted); font-size: var(--text-sm);">Cover will be auto-generated after save. Uncheck the toggle above to upload your own.</p>';
+      bodyImageUploader?.close();
+      bodyImageUploader?.refresh();
       document.getElementById('contentModal').style.display = 'flex';
     }
 
@@ -1443,6 +1483,8 @@
       document.getElementById('bylineGroup').classList.remove('hidden');
       document.getElementById('authorNameInput').value = item.author_name || '';
       loadCoauthors(item.id);
+      bodyImageUploader?.close();
+      bodyImageUploader?.refresh();
       document.getElementById('contentModal').style.display = 'flex';
     }
 
@@ -1484,7 +1526,12 @@
       } catch (e) { alert(e.message || 'Failed to delete content. Please try again.'); }
     }
 
-    function closeModal() { document.getElementById('contentModal').style.display = 'none'; editingContent = null; }
+    function closeModal() {
+      document.getElementById('contentModal').style.display = 'none';
+      editingContent = null;
+      bodyImageUploader?.close();
+      bodyImageUploader?.refresh();
+    }
 
     // Quick Share Link modal
     let shareLinkFetchTimer = null;
@@ -1601,7 +1648,22 @@
         el.dispatchEvent(new Event('input', { bubbles: true }));
       });
     }
-    window.addEventListener('DOMContentLoaded', () => wireRichTextPaste('articleContent'));
+    window.addEventListener('DOMContentLoaded', () => {
+      wireRichTextPaste('articleContent');
+      bodyImageUploader = ContentImageUpload.mount({
+        triggerButtonId: 'insertBodyImageBtn',
+        panelId: 'bodyImagePanel',
+        fileInputId: 'bodyImageFile',
+        altInputId: 'bodyImageAlt',
+        linkInputId: 'bodyImageLink',
+        submitButtonId: 'uploadBodyImageBtn',
+        cancelButtonId: 'cancelBodyImageBtn',
+        statusId: 'bodyImageStatus',
+        hintId: 'bodyImageHint',
+        textareaId: 'articleContent',
+        getSlug: () => editingContent?.slug || '',
+      });
+    });
 
     function updateStatusHint() {
       const slug = document.getElementById('collection').value;

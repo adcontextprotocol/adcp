@@ -735,6 +735,36 @@ export const contentFetchUrlRateLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for perspective asset uploads.
+ * Limits: 30 uploads per hour per authenticated user.
+ *
+ * Asset uploads buffer data in memory and persist it in Postgres, so this
+ * endpoint needs a tighter write ceiling than ordinary content edits.
+ */
+export const contentAssetUploadRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('content-asset-upload:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for content asset uploads');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Image upload rate limit exceeded (30 per hour). Please try again later.',
+      retryAfter: Math.ceil(60 * 60),
+    });
+  },
+});
+
+/**
  * Rate limiter for the unauthenticated /api/registry/publisher endpoint.
  * Tighter than the generic registry read limit because each request fans out
  * to up to 50 DB queries (per-agent rollup cap from PR #4106). At 20 req/min

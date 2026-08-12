@@ -6821,6 +6821,7 @@ export class HTTPServer {
         const { slug, filename } = req.params;
         const pool = getPool();
         const userId = req.user?.id ?? null;
+        const userIsAdmin = userId ? await isWebUserAAOAdmin(userId) : false;
 
         const perspResult = await pool.query(
           `SELECT p.id,
@@ -6832,12 +6833,14 @@ export class HTTPServer {
              AND (
                (p.status = 'published' AND p.is_members_only = false
                  AND (p.working_group_id IS NULL OR wg.slug = 'editorial'))
-               OR ($2::text IS NOT NULL AND p.status IN ('draft', 'pending_review') AND (
+               OR ($2::text IS NOT NULL AND (
                  p.author_user_id = $2
+                 OR p.proposer_user_id = $2
                  OR EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id AND ca.user_id = $2)
+                 OR $3::boolean
                ))
              )`,
-          [slug, userId]
+          [slug, userId, userIsAdmin]
         );
         if (perspResult.rows.length === 0) {
           return res.status(404).send('Not found');
