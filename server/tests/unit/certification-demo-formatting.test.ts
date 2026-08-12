@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../src/db/certification-db.js', () => ({
+  getActiveAttemptForModule: vi.fn(async () => null),
   getModule: vi.fn(async (moduleId: string) => (
     moduleId === 'A2' ? mocks.moduleWithDemo : null
   )),

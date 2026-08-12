@@ -981,7 +981,7 @@ async function buildRequestContext(
         // If no module is in progress, inject a strong reminder to call start_certification_module.
         // Without this, Addie can teach certification content in a guardrail-free zone where
         // demonstrations aren't tracked and no progress is recorded.
-        if (inProgress.length === 0) {
+        if (!certContextText) {
           const noModuleWarning = [
             '⚠️ [CERTIFICATION — NO MODULE ACTIVE] ⚠️',
             'No certification module is currently in progress for this learner.',
