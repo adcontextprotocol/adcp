@@ -2014,7 +2014,7 @@
             <div class="agent-meta-row">
               <span></span>
               <div class="agent-meta-row-actions">
-                <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Re-probe this agent so the public registry shows fresh online / tools / type">Recheck status</button>
+                <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Re-detect supported AdCP versions, refresh registry status, and run compliance now">Recheck &amp; retest</button>
                 <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
                 <button class="agent-action-link agent-action-link--danger" onclick="deleteAgent(${index})">Delete</button>
               </div>
@@ -2143,7 +2143,7 @@
                 <button class="agent-connect-toggle agent-action-link" data-card-id="${cardId}" data-agent-url="${escapeHtml(agent.url)}">${hasAuth ? 'Update auth' : 'Connect agent'}</button>
                 <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">History</button>
                 <button class="agent-requests-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Requests</button>
-                <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Re-probe this agent so the public registry shows fresh online / tools / type. Distinct from Test (which runs storyboard compliance).">Recheck status</button>
+                <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Re-detect supported AdCP versions, refresh registry status, and rerun the full compliance suite">Recheck &amp; retest</button>
                 <button class="agent-requeue-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Queue this agent for the next scheduled compliance heartbeat (runs within ~1 hour).">Requeue comply</button>
                 <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" data-agent-tracks="${escapeHtml(JSON.stringify(tracks))}" title="Run the full storyboard compliance suite against this agent.">Test</button>
                 <button class="agent-action-link agent-action-link--danger" onclick="deleteAgent(${index})">Delete</button>
@@ -3250,18 +3250,54 @@
       }
     });
 
-    // Recheck registry snapshot for one agent. Re-probes capabilities + health
-    // and updates the public registry's online / tools / type display without
-    // waiting for the periodic crawl. Successes flash and auto-dismiss; errors
-    // and rate-limit messages persist on the card so an operator who alt-tabs
-    // doesn't lose the diagnostic.
+    function buildAgentRefreshSummary(data) {
+      const parts = [
+        data.online ? '✓ Online' : '✗ Offline',
+        (data.tools_count ?? 0) + ' tools',
+        data.inferred_type && data.inferred_type !== 'unknown' ? data.inferred_type : 'type unknown',
+      ];
+      if (data.type_promoted) parts.push('type promoted');
+      if (data.oauth_required) parts.push('OAuth required');
+      if (data.compliance?.ran) {
+        const requestedTarget = data.compliance.requested_compliance_target;
+        const cacheVersion = data.compliance.adcp_version;
+        if (requestedTarget && cacheVersion) {
+          parts.push(`Retested against AdCP ${requestedTarget} (cache ${cacheVersion})`);
+        } else if (requestedTarget) {
+          parts.push(`Retested against AdCP ${requestedTarget}`);
+        }
+        const passing = data.compliance.storyboards_passing ?? 0;
+        const total = data.compliance.storyboards_total ?? 0;
+        parts.push(`compliance: ${passing}/${total}`);
+      } else if (data.compliance?.error) {
+        parts.push(`compliance not run (${data.compliance.error})`);
+      }
+      return parts.join(' · ');
+    }
+
+    function isSuccessfulAgentRetest(data) {
+      return data.online === true && data.compliance?.ran === true;
+    }
+
+    async function reloadAgentCardAfterRefresh(agentUrl) {
+      const state = await fetchAgentState({ url: agentUrl }, pageState.orgId);
+      pageState.complianceMap.set(agentUrl, state);
+      swapAgentCard(agentUrl);
+    }
+
+    // Recheck registry snapshot for one agent. Re-probes capabilities + health,
+    // negotiates against the agent's current supported_versions, and reruns
+    // compliance without waiting for the periodic crawl. Successes flash and
+    // auto-dismiss; errors and rate-limit messages persist on the card so an
+    // operator who alt-tabs doesn't lose the diagnostic.
     document.addEventListener('click', async function(e) {
       const btn = e.target.closest('.agent-refresh-btn');
       if (!btn) return;
 
       const agentUrl = btn.dataset.agentUrl;
+      const cardId = btn.dataset.cardId;
       const originalLabel = btn.textContent;
-      const actionsRow = btn.closest('.agent-meta-row-actions');
+      let actionsRow = btn.closest('.agent-meta-row-actions');
 
       // Kill any prior result message on this card so a re-click doesn't
       // stack flashes — only the latest matters.
@@ -3300,27 +3336,19 @@
         const data = await res.json().catch(() => ({}));
 
         if (res.status === 200) {
-          const parts = [
-            data.online ? '✓ Online' : '✗ Offline',
-            (data.tools_count ?? 0) + ' tools',
-            data.inferred_type && data.inferred_type !== 'unknown' ? data.inferred_type : 'type unknown',
-          ];
-          if (data.type_promoted) parts.push('type promoted');
-          if (data.oauth_required) parts.push('OAuth required');
-          if (data.compliance?.ran) {
-            const passing = data.compliance.storyboards_passing ?? 0;
-            const total = data.compliance.storyboards_total ?? 0;
-            parts.push(`compliance: ${passing}/${total}`);
-          } else if (data.compliance?.error) {
-            parts.push(`compliance not run (${data.compliance.error})`);
-          }
+          // The refresh response is written before it returns. Re-fetch and
+          // replace this card so a previous-version verdict does not linger
+          // until the operator reloads the entire dashboard.
+          await reloadAgentCardAfterRefresh(agentUrl);
+          actionsRow = document.getElementById(cardId)?.querySelector('.agent-meta-row-actions') || null;
           // Online flashes auto-dismiss; offline-but-reachable persists so
           // the operator can read the diagnostic at their pace.
+          const retestSucceeded = isSuccessfulAgentRetest(data);
           const flash = renderFlash({
-            severity: data.online ? 'success' : 'warning',
-            text: parts.join(' · '),
+            severity: retestSucceeded ? 'success' : 'warning',
+            text: buildAgentRefreshSummary(data),
           });
-          if (data.online && flash) setTimeout(() => flash.remove(), 8000);
+          if (retestSucceeded && flash) setTimeout(() => flash.remove(), 8000);
         } else if (res.status === 429) {
           renderFlash({
             severity: 'warning',
@@ -3826,7 +3854,7 @@
             let html = '<div style="padding:var(--space-3);background:var(--color-error-50);border:1px solid var(--color-error-200);border-radius:var(--radius-md);color:var(--color-error-700);font-size:var(--text-sm);">';
             html += '<strong>Unsupported compliance target.</strong> This check selected <code>' + escapeHtml(String(complianceVersion)) + '</code>, but the agent advertises <code>adcp.supported_versions</code>:';
             html += '<div style="margin-top:var(--space-2);font-family:var(--font-mono);font-size:var(--text-xs);">' + escapeHtml(String(supportedVersions)) + '</div>';
-            html += '<div style="margin-top:var(--space-2);font-size:var(--text-xs);color:var(--color-error-600);">Select a compliance target the agent supports, or update the agent\'s capabilities if it is ready for this target.</div>';
+            html += '<div style="margin-top:var(--space-2);font-size:var(--text-xs);color:var(--color-error-600);">Targets are selected automatically. Use Recheck &amp; retest to re-detect the advertised versions and run the matching suite. If the versions shown above are not what the agent intends to support, update <code>get_adcp_capabilities</code> first.</div>';
             html += '</div>';
             panel.innerHTML = html;
             return;

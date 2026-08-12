@@ -38,9 +38,40 @@ Every seller exposes a *test surface* — the mechanism that lets a storyboard r
 |---|---|
 | Local DB only (typically SSPs, creative agents) | The storyboard runner writes fixtures via `comply_test_controller.seed_*`; the seller's read handlers consume the same store. The seed → read loop closes naturally. |
 | Upstream system the seller does not control (DSPs proxying to platforms, retail-media networks reading retailer catalogs, signals brokers) | Seeded writes are dead to the read handler. The TypeScript SDK ships a `TestControllerBridge` that runs the real adapter call first (so a broken upstream call still fails the gate), then merges seeded fixtures into the response. |
+| Platform catalog with seller-issued or derived identifiers | For storyboards that declare `fixture_resolution`, the runner discovers qualifying entities through the seller's normal AdCP read surface, pins the seller-issued IDs to run-scoped fixture handles, and exercises the normal booking path. Requirements the sandbox catalog cannot satisfy remain visible as `fixture_unsatisfied` coverage gaps. |
 | Mixed (some tools local, some upstream) | Both, per tool. |
 
-Both paths earn `(Spec)` — both prove the seller's wire format matches the storyboards. The bridge is **one implementation** of the test-surface pattern, not a separate seller category. A state-local seller without wired seeds and an upstream-proxy seller without a wired bridge are in the same position: storyboards cannot run end-to-end against them. Neither category is what `(Sandbox)` attests; `(Sandbox)` is the separate axis covering whether the seller's production stack honors `account.sandbox: true` without real-world side effects.
+All three paths can earn `(Spec)` — each proves the seller's wire behavior against the storyboards, and the run report identifies which fixture strategy supplied the evidence. The bridge is **one implementation** of the test-surface pattern, not a separate seller category. Discovery is not a blanket opt-out from controlled setup: a seller still needs the `force_*` and `simulate_*` scenarios required to prove lifecycle behavior, and an unsatisfied catalog requirement reduces reported coverage rather than passing the test. Neither category is what `(Sandbox)` attests; `(Sandbox)` is the separate axis covering whether the seller's production stack honors `account.sandbox: true` without real-world side effects.
+
+### Fixture handles and catalog resolution
+
+In AdCP 3.2, fixture IDs are run-scoped handles. Existing storyboards and
+sellers retain literal `seed_*` injection by default. A storyboard opts a
+fixture into catalog resolution through explicit `fixture_resolution` match
+rules; the runner never guesses that an arbitrary fixture object is a generic
+subset predicate.
+
+For product discovery, the runner reads the fully paginated wholesale catalog
+for the resolved sandbox account, validates the response normally, selects a
+qualifying entity deterministically, and binds the authored handle to the
+seller's `product_id`. Product pricing options bind as the scoped pair
+`(product_id, pricing_option_id)`. The binding stays fixed for the run and is
+substituted only into request fields carrying the corresponding `x-entity`
+annotation.
+
+The grading boundary is important:
+
+- No qualifying entity after every declared strategy is
+  `fixture_unsatisfied`: an explicit, reported coverage gap.
+- A rejected, malformed, incomplete, or transport-failed discovery call is a
+  conformance failure.
+- Once a supported setup operation begins, its failure is a conformance
+  failure; the runner cannot fall back to another strategy to conceal it.
+
+The normative authoring and output contracts live in
+[`storyboard-schema.yaml`](https://adcontextprotocol.org/compliance/latest/universal/storyboard-schema)
+and
+[`runner-output-contract.yaml`](https://adcontextprotocol.org/compliance/latest/universal/runner-output-contract).
 
 ### Distinguishing fixture-merged from upstream-derived responses
 

@@ -6,7 +6,7 @@ const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { pathToFileURL } = require('node:url');
 
-const PATCHER = path.resolve(__dirname, '..', 'scripts', 'patch-sdk-rc11.mjs');
+const PATCHER = path.resolve(__dirname, '..', 'scripts', 'patch-sdk-rc15.mjs');
 const TASK_MAP_FILES = [
   'node_modules/@adcp/sdk/dist/lib/testing/storyboard/task-map.js',
   'node_modules/@adcp/sdk/dist/lib/testing/storyboard/task-map.mjs',
@@ -23,8 +23,8 @@ async function executeStoryboardTask(client, taskName, params) {
 module.exports = { executeStoryboardTask };
 `;
 
-function writeFixture(version = '13.0.0-rc.13') {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk-rc11-patch-'));
+function writeFixture(version = '13.0.0-rc.15') {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk-rc15-patch-'));
   const sdkRoot = path.join(root, 'node_modules', '@adcp', 'sdk');
   fs.mkdirSync(sdkRoot, { recursive: true });
   fs.writeFileSync(path.join(sdkRoot, 'package.json'), JSON.stringify({ version }));
@@ -42,7 +42,7 @@ function runPatcher(root) {
   return spawnSync(process.execPath, [PATCHER], { cwd: root, encoding: 'utf8' });
 }
 
-test('rc.13 patch fixes get_products routing in CJS and ESM idempotently', async (t) => {
+test('rc.15 patch fixes get_products routing in CJS and ESM idempotently', async (t) => {
   const root = writeFixture();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
@@ -78,15 +78,15 @@ test('rc.13 patch fixes get_products routing in CJS and ESM idempotently', async
   assert.deepEqual(files.map(file => fs.readFileSync(file, 'utf8')), once);
 });
 
-test('rc.13 patch refuses an unreviewed SDK version before modifying artifacts', (t) => {
-  const root = writeFixture('13.0.0-rc.14');
+test('rc.15 patch refuses an unreviewed SDK version before modifying artifacts', (t) => {
+  const root = writeFixture('13.0.0-rc.16');
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const result = runPatcher(root);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Refusing to patch @adcp\/sdk 13\.0\.0-rc\.14/);
+  assert.match(result.stderr, /Refusing to patch @adcp\/sdk 13\.0\.0-rc\.16/);
 });
 
-test('rc.13 patch rejects an unexpected task-map source shape', (t) => {
+test('rc.15 patch rejects an unexpected task-map source shape', (t) => {
   const root = writeFixture();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   for (const relative of TASK_MAP_FILES) {
@@ -100,10 +100,41 @@ test('rc.13 patch rejects an unexpected task-map source shape', (t) => {
 
   const result = runPatcher(root);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.13 storyboard task-map shape/);
+  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.15 storyboard task-map shape/);
 });
 
-test('rc.13 patch preflights both module formats before writing either one', (t) => {
+test('rc.15 patch rejects mixed original and patched call sites before writing either format', (t) => {
+  const root = writeFixture();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const cjsFile = path.join(root, TASK_MAP_FILES[0]);
+  const esmFile = path.join(root, TASK_MAP_FILES[1]);
+  const cjsBefore = fs.readFileSync(cjsFile, 'utf8');
+  const original = '  const callParams = legacyMethodName ? withLegacyCreativeWireHint(params) : params;';
+  const patched = '  const callParams = legacyMethodName && taskName !== "get_products" ? withLegacyCreativeWireHint(params) : params;';
+  fs.writeFileSync(esmFile, fs.readFileSync(esmFile, 'utf8').replace(original, `${original}\n${patched}`));
+
+  const result = runPatcher(root);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.15 storyboard task-map shape/);
+  assert.equal(fs.readFileSync(cjsFile, 'utf8'), cjsBefore);
+});
+
+test('rc.15 patch rejects duplicate original call sites before writing either format', (t) => {
+  const root = writeFixture();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const cjsFile = path.join(root, TASK_MAP_FILES[0]);
+  const esmFile = path.join(root, TASK_MAP_FILES[1]);
+  const cjsBefore = fs.readFileSync(cjsFile, 'utf8');
+  const original = '  const callParams = legacyMethodName ? withLegacyCreativeWireHint(params) : params;';
+  fs.writeFileSync(esmFile, fs.readFileSync(esmFile, 'utf8').replace(original, `${original}\n${original}`));
+
+  const result = runPatcher(root);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.15 storyboard task-map shape/);
+  assert.equal(fs.readFileSync(cjsFile, 'utf8'), cjsBefore);
+});
+
+test('rc.15 patch preflights both module formats before writing either one', (t) => {
   const root = writeFixture();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const cjsFile = path.join(root, TASK_MAP_FILES[0]);
@@ -119,6 +150,6 @@ test('rc.13 patch preflights both module formats before writing either one', (t)
 
   const result = runPatcher(root);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.13 storyboard task-map shape/);
+  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.15 storyboard task-map shape/);
   assert.equal(fs.readFileSync(cjsFile, 'utf8'), cjsBefore);
 });

@@ -659,6 +659,29 @@ test('fixtures hash still discriminates genuinely different entries', () => {
   assert.notEqual(fingerprintEnv(step, {}, docA), fingerprintEnv(step, {}, docB));
 });
 
+test('fixture-resolution hash is stable by handle and discriminates match rules', () => {
+  const display = {
+    handle: 'display',
+    strategies: ['seed', 'discover'],
+    match: [{ path: '/channels', operator: 'contains_all', value: ['display'] }],
+  };
+  const video = {
+    handle: 'video',
+    strategies: ['seed', 'discover'],
+    match: [{ path: '/channels', operator: 'contains_all', value: ['video'] }],
+  };
+  const step = { comply_scenario: 'test' };
+  const docA = { fixture_resolution: { products: [display, video] } };
+  const docB = { fixture_resolution: { products: [video, display] } };
+  const docC = {
+    fixture_resolution: {
+      products: [{ ...display, match: [{ path: '/channels', operator: 'contains_all', value: ['audio'] }] }, video],
+    },
+  };
+  assert.equal(fingerprintEnv(step, {}, docA), fingerprintEnv(step, {}, docB));
+  assert.notEqual(fingerprintEnv(step, {}, docA), fingerprintEnv(step, {}, docC));
+});
+
 test('normalizeFixturesForHashing throws on unknown fixture category', () => {
   // Schema-lint coupling: a new category added to storyboard-schema.yaml
   // without updating FIXTURE_CATEGORY_PRIMARY_ID would silently create a

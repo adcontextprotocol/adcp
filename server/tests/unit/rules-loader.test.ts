@@ -43,6 +43,9 @@ describe('Rules Loader', () => {
     // Identity (now consolidates voice / character traits previously
     // spread across constraints — Honesty, Welcoming people in, etc.)
     expect(rules).toContain('## Core Mission');
+    expect(rules).toContain('### Certification identity handoff');
+    expect(rules).toContain('Stay Sage while that context is present');
+    expect(rules).toContain('## Sage certification resume');
     expect(rules).toContain('## Welcoming people in');
     expect(rules).toContain('## Honesty over confidence');
 

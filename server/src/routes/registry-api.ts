@@ -44,8 +44,11 @@ import {
   presentCapabilityResolutionError,
   computeSpecialismStatus,
   badgeEligibleVersionsForTargetSelection,
+  hasTrustworthyComplianceTarget,
   selectComplianceTargetForAgent,
   selectComplianceTargetForAgentSelection,
+  storedComplianceTargetMatchesObservedProfile,
+  UNRESOLVED_COMPLIANCE_TARGET_MESSAGE,
 } from "../addie/services/compliance-testing.js";
 import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
@@ -7520,14 +7523,22 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             userAgent: AAO_UA_COMPLIANCE,
             ...(resolvedAuth && { auth: resolvedAuth }),
           };
+          const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agentUrl);
           const runTargetSelection = await selectComplianceTargetForAgentSelection(
             agentUrl,
             complyOptions,
             complianceTarget,
             'canonical',
+            seededSupportedVersions,
           );
+          if (!hasTrustworthyComplianceTarget(runTargetSelection)) {
+            throw new Error(UNRESOLVED_COMPLIANCE_TARGET_MESSAGE);
+          }
           const runTarget = runTargetSelection.target;
           const complyResult = await comply(agentUrl, complyOptions, runTarget);
+          if (!storedComplianceTargetMatchesObservedProfile(runTargetSelection, complyResult.agent_profile)) {
+            throw new Error(UNRESOLVED_COMPLIANCE_TARGET_MESSAGE);
+          }
           const runBadgeEligibleVersions = [
             ...badgeEligibleVersionsForTargetSelection(runTargetSelection, complyResult.agent_profile),
           ];
@@ -8386,12 +8397,20 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           storyboards: [req.params.storyboardId],
           ...(sdkAuth && { auth: sdkAuth }),
         };
+        const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agentUrl);
         const runTargetSelection = await selectComplianceTargetForAgentSelection(
           agentUrl,
           complyOptions,
           complianceTarget,
           'canonical',
+          seededSupportedVersions,
         );
+        if (!hasTrustworthyComplianceTarget(runTargetSelection)) {
+          return res.status(422).json({
+            error: UNRESOLVED_COMPLIANCE_TARGET_MESSAGE,
+            error_kind: 'unresolved_compliance_target',
+          });
+        }
         const runTarget = runTargetSelection.target;
         const storyboard = getComplianceStoryboardById(req.params.storyboardId, hostedComplianceOptions(runTarget));
         if (!storyboard) {
@@ -8399,9 +8418,6 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         }
 
         const complyResult = await comply(agentUrl, complyOptions, runTarget);
-        const runBadgeEligibleVersions = [
-          ...badgeEligibleVersionsForTargetSelection(runTargetSelection, complyResult.agent_profile),
-        ];
 
         if (complyResult.overall_status === 'auth_required') {
           const agentContextId = await ensureAgentContextId(orgId, agentUrl, req.user.id);
@@ -8411,6 +8427,15 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             ...(agentContextId && { agent_context_id: agentContextId }),
           });
         }
+        if (!storedComplianceTargetMatchesObservedProfile(runTargetSelection, complyResult.agent_profile)) {
+          return res.status(422).json({
+            error: UNRESOLVED_COMPLIANCE_TARGET_MESSAGE,
+            error_kind: 'unresolved_compliance_target',
+          });
+        }
+        const runBadgeEligibleVersions = [
+          ...badgeEligibleVersionsForTargetSelection(runTargetSelection, complyResult.agent_profile),
+        ];
 
         // Record the run (pass storyboard ID for per-storyboard status materialization).
         // Owner-only path (gated above by resolveAgentOwnerOrg), so triggered_by

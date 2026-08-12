@@ -51,6 +51,25 @@ function makeClient() {
   };
 }
 
+function mockUpsertClient(
+  returned: Record<string, unknown>,
+  priorHouseDomain: string | null | undefined = undefined,
+) {
+  const client = makeClient();
+  client.query.mockImplementation(async (sql: string) => {
+    if (sql.includes('SELECT house_domain FROM brands')) {
+      return priorHouseDomain === undefined
+        ? { rows: [] }
+        : { rows: [{ house_domain: priorHouseDomain }] };
+    }
+    if (sql.includes('INSERT INTO brands')) return { rows: [returned] };
+    if (sql.includes('FROM organization_domains')) return { rows: [] };
+    return { rows: [] };
+  });
+  mocks.getClient.mockResolvedValueOnce(client);
+  return client;
+}
+
 describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
   let db: BrandDatabase;
 
@@ -73,9 +92,9 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
     });
 
     it('strips caller-supplied classification.confidence and brand_context from brand_manifest', async () => {
-      mocks.query.mockResolvedValueOnce({
-        rows: [{ domain: 'attacker.example', brand_names: '[]', brand_manifest: null, discovered_at: new Date(), last_validated: new Date() }],
-      });
+      const client = mockUpsertClient(
+        { domain: 'attacker.example', brand_names: '[]', brand_manifest: null, discovered_at: new Date(), last_validated: new Date() },
+      );
 
       await db.upsertDiscoveredBrand({
         domain: 'attacker.example',
@@ -89,8 +108,10 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
         source_type: 'community',
       });
 
-      expect(mocks.query).toHaveBeenCalledTimes(1);
-      const params = mocks.query.mock.calls[0][1] as unknown[];
+      const insertCall = client.query.mock.calls.find(call =>
+        typeof call[0] === 'string' && call[0].includes('INSERT INTO brands'),
+      );
+      const params = insertCall![1] as unknown[];
       // brand_manifest is the 12th positional param ($12) in the INSERT.
       const persistedManifest = JSON.parse(params[11] as string);
       expect(persistedManifest).not.toHaveProperty('classification');
@@ -99,9 +120,9 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
     });
 
     it('writes a trusted classification via input.classification (round-trip)', async () => {
-      mocks.query.mockResolvedValueOnce({
-        rows: [{ domain: 'attacker.example', brand_names: '[]', brand_manifest: null, discovered_at: new Date(), last_validated: new Date() }],
-      });
+      const client = mockUpsertClient(
+        { domain: 'attacker.example', brand_names: '[]', brand_manifest: null, discovered_at: new Date(), last_validated: new Date() },
+      );
 
       await db.upsertDiscoveredBrand({
         domain: 'attacker.example',
@@ -111,7 +132,10 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
         source_type: 'enriched',
       });
 
-      const params = mocks.query.mock.calls[0][1] as unknown[];
+      const insertCall = client.query.mock.calls.find(call =>
+        typeof call[0] === 'string' && call[0].includes('INSERT INTO brands'),
+      );
+      const params = insertCall![1] as unknown[];
       const persistedManifest = JSON.parse(params[11] as string);
       expect(persistedManifest.classification).toEqual({
         confidence: 'high',
@@ -156,8 +180,13 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
     });
 
     it('canonicalizes a valid house_domain (lowercases, strips www)', async () => {
-      mocks.query.mockResolvedValueOnce({
-        rows: [{ domain: 'sub.example', brand_names: '[]', brand_manifest: null, discovered_at: new Date(), last_validated: new Date() }],
+      const client = mockUpsertClient({
+        domain: 'sub.example',
+        house_domain: 'house.example',
+        brand_names: '[]',
+        brand_manifest: null,
+        discovered_at: new Date(),
+        last_validated: new Date(),
       });
 
       await db.upsertDiscoveredBrand({
@@ -167,7 +196,10 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
         source_type: 'community',
       });
 
-      const params = mocks.query.mock.calls[0][1] as unknown[];
+      const insertCall = client.query.mock.calls.find(call =>
+        typeof call[0] === 'string' && call[0].includes('INSERT INTO brands'),
+      );
+      const params = insertCall![1] as unknown[];
       // house_domain is the 4th positional param ($4) in the INSERT.
       expect(params[3]).toBe('house.example');
     });
@@ -179,6 +211,8 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
       mocks.getClient.mockResolvedValueOnce(client);
       client.query
         // BEGIN
+        .mockResolvedValueOnce(undefined)
+        // advisory lock
         .mockResolvedValueOnce(undefined)
         // INSERT into brands
         .mockResolvedValueOnce({
@@ -241,6 +275,8 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
       const client = makeClient();
       mocks.getClient.mockResolvedValueOnce(client);
       // BEGIN
+      client.query.mockResolvedValueOnce(undefined);
+      // advisory lock
       client.query.mockResolvedValueOnce(undefined);
       // SELECT ... FOR UPDATE returns prior state with a trusted classification block
       client.query.mockResolvedValueOnce({
@@ -314,6 +350,8 @@ describe('BrandDatabase: house_domain write-path validation (#3467)', () => {
       mocks.getClient.mockResolvedValueOnce(client);
       client.query
         // BEGIN
+        .mockResolvedValueOnce(undefined)
+        // advisory lock
         .mockResolvedValueOnce(undefined)
         // SELECT target revision
         .mockResolvedValueOnce({

@@ -1,10 +1,9 @@
 import { PropertyDefinition, PlacementDefinition } from './types.js';
 import { AAO_UA_VALIDATOR } from './config/user-agents.js';
 import { safeFetchAxiosLike, classifySafeFetchError } from './utils/url-security.js';
-import { withSdkSafeTransport } from './utils/sdk-safe-fetch.js';
+import { MCP_ACCEPT_HEADER, withSdkSafeTransport } from './utils/sdk-safe-fetch.js';
 import { canonicalizePublisherDomain } from './services/publisher-domain.js';
 
-const MCP_ACCEPT_HEADER = 'application/json, text/event-stream';
 const ADS_TXT_MAX_REDIRECTS = 5;
 // The initial /.well-known/adagents.json fetch follows same-registrable-domain
 // redirects only (apex↔www, HTTPS-preserving), capped at 3 hops, so standard

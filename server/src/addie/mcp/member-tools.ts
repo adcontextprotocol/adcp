@@ -47,8 +47,11 @@ import {
   complianceResultToDbInput,
   loadComplianceIndex,
   badgeEligibleVersionsForTargetSelection,
+  hasTrustworthyComplianceTarget,
   selectComplianceTargetForAgent,
   selectComplianceTargetForAgentSelection,
+  storedComplianceTargetMatchesObservedProfile,
+  UNRESOLVED_COMPLIANCE_TARGET_MESSAGE,
   type ComplyOptions,
   type CapabilityResolutionErrorInfo,
   type ComplianceTargetSelection,
@@ -108,6 +111,7 @@ import {
   withdrawCommitteeInterest as withdrawCommitteeInterestService,
   listMyWorkingGroups as listMyWorkingGroupsService,
   listMyCommitteeInterests as listMyCommitteeInterestsService,
+  MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE,
   WorkingGroupMembershipError,
 } from '../../services/working-group-membership-service.js';
 import { listMyContent as listMyContentService } from '../../services/my-content-service.js';
@@ -2594,7 +2598,7 @@ export function createMemberToolHandlers(
         user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
         slug,
       });
-      return `Successfully joined the "${result.groupName}" working group! You can now participate in discussions and see group posts.`;
+      return `Successfully joined "${result.groupName}"! You can now participate in discussions and see group posts.`;
     } catch (error) {
       if (error instanceof WorkingGroupMembershipError) {
         if (error.is('group_not_found')) {
@@ -2603,11 +2607,14 @@ export function createMemberToolHandlers(
         if (error.is('group_private')) {
           return `"${error.meta.groupName}" is a private working group that requires an invitation. Use request_working_group_invitation to request access.`;
         }
+        if (error.is('council_membership_required')) {
+          return MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE;
+        }
         if (error.is('community_only_seat_blocked')) {
           return `Joining "${error.meta.groupName}" requires a contributor seat. Ask your org admin to upgrade your access.`;
         }
         if (error.is('already_member')) {
-          return `You're already a member of the "${error.meta.groupName}" working group!`;
+          return `You're already a member of "${error.meta.groupName}"!`;
         }
       }
       throw new ToolError(`Failed to join working group: ${error instanceof Error ? error.message : String(error)}`);
@@ -4520,6 +4527,7 @@ export function createMemberToolHandlers(
     let runTargetSelection: ComplianceTargetSelection = {
       target: runTarget,
       confirmed: false,
+      source: 'explicit',
     };
     let skippedCanonicalWriteReason: 'target' | 'tracks' | null = null;
 
@@ -4543,12 +4551,20 @@ export function createMemberToolHandlers(
     const authOption = buildAuthOption(resolved);
 
     if (!hasExplicitComplianceTarget(input)) {
+      const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(resolved.resolvedUrl);
       runTargetSelection = await selectComplianceTargetForAgentSelection(
         resolved.resolvedUrl,
         { auth: authOption },
         complianceTarget,
         'canonical',
+        seededSupportedVersions,
       );
+      if (!hasTrustworthyComplianceTarget(runTargetSelection)) {
+        return (
+          `**Compliance target unavailable**\n\n${UNRESOLVED_COMPLIANCE_TARGET_MESSAGE} ` +
+          `Retry after \`get_adcp_capabilities\` is responding reliably, or choose an explicit supported target for a diagnostic run.`
+        );
+      }
       runTarget = runTargetSelection.target;
     } else {
       const targetError = await explicitTargetSupportErrorFromAgent(
@@ -4570,6 +4586,12 @@ export function createMemberToolHandlers(
 
     try {
       const result = await comply(resolved.resolvedUrl, complyOptions, runTarget);
+      if (!storedComplianceTargetMatchesObservedProfile(runTargetSelection, result.agent_profile)) {
+        return (
+          `**Compliance target unavailable**\n\n${UNRESOLVED_COMPLIANCE_TARGET_MESSAGE} ` +
+          `The agent's live profile changed after the diagnostic target was selected; retry the evaluation.`
+        );
+      }
       const badgeEligibleAdcpVersions = [
         ...badgeEligibleVersionsForTargetSelection(runTargetSelection, result.agent_profile),
       ];

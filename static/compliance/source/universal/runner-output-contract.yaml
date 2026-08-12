@@ -98,6 +98,42 @@ cross_response_check_kinds:
 # the storyboard's step.validations array, plus any transport-level check
 # the runner performs (e.g., extraction path).
 
+fixture_resolution_result:
+  description: |
+    Runners implementing storyboard fixture resolution MUST emit one record for
+    every authored fixture handle before ordinary phases execute. Records are
+    run-scoped evidence: they explain whether the runner injected a literal,
+    selected a seller-owned entity, constructed state through buyer tools, or
+    exhausted the declared strategies. UIs MAY redact seller identifiers in
+    human-readable output, but the machine-readable result MUST retain them so
+    an implementor can reproduce the run.
+  required_fields:
+    - fixture_type           # product | pricing_option | creative_format |
+                             # creative | plan | media_buy | account
+    - handle                 # authored fixture identity, e.g. sports_display_auction
+    - strategies_attempted   # ordered array of { strategy, disposition, detail }
+    - status                 # resolved | unsatisfied | failed
+    - requirements           # exact authored match clauses; [] for seed-only
+  optional_fields:
+    - product_handle         # required in practice for product-scoped pricing options
+    - strategy               # seed | discover | construct; required when resolved
+    - seller_ids             # object keyed by schema identity field; required when resolved
+    - matched_candidate      # redaction-safe candidate evidence or canonical hash
+    - setup_steps            # synthetic step ids used by seed/construct
+    - failure                # request/response/schema detail when status = failed
+  invariants:
+    pinned_binding: |
+      Once status is resolved, seller_ids MUST remain unchanged for the run.
+      Retries and later storyboard phases reuse the same binding.
+    no_hidden_fallback: |
+      A strategies_attempted entry with disposition `failed` MUST be terminal.
+      No later strategy may appear in the record. Only `unavailable` advances
+      to the next declared strategy.
+    scoped_pricing_identity: |
+      A pricing_option result MUST include product_handle and seller_ids MUST
+      include both product_id and pricing_option_id. pricing_option_id alone is
+      not a globally unique binding.
+
 step_result:
   description: |
     Runners MUST emit one step result per executed step. Skipped steps MUST
@@ -826,7 +862,8 @@ skip_result:
                               # missing_test_controller |
                               # fixture_unavailable | unsatisfied_contract |
                               # peer_branch_taken |
-                              # peer_substituted | requirement_unmet
+                              # peer_substituted | requirement_unmet |
+                              # fixture_unsatisfied
     - detail                  # human-readable explanation citing the
                               # declared supported_protocols / specialisms
                               # and, if relevant, the missing tool,
@@ -876,6 +913,27 @@ skip_result:
       capability/applicability gate evaluated false) and
       `unsatisfied_contract` (a declared harness contract was required but not
       in scope, which follows that contract's fail-or-skip semantics).
+    fixture_unsatisfied: |
+      The storyboard declared one or more `fixture_resolution` entries and the
+      runner exhausted every enabled strategy for at least one handle without
+      finding or creating a qualifying entity. This is an explicit coverage
+      gap, not a pass and not an agent failure. detail MUST name every
+      unsatisfied fixture as `<fixture_type>:<handle>` (pricing options use
+      `pricing_option:<product_handle>/<handle>`) and the run summary MUST carry
+      the corresponding fixture_resolution_result records.
+
+      The runner evaluates this at storyboard preflight. It emits the skip at
+      storyboard scope and MUST NOT execute ordinary phases. Renderers that also
+      materialize the selected ordinary steps MAY attach the same skip reason to
+      them, but MUST NOT rewrite it to prerequisite_failed or count the same
+      preflight gap more than once in storyboard-level coverage summaries.
+
+      This reason is valid only when every attempted strategy was unavailable.
+      If an advertised seed scenario fails, discovery returns malformed or
+      rejected data, pagination cannot complete, or a supported construct call
+      fails, the synthetic fixture-resolution phase fails and the storyboard
+      contributes to steps_failed. Runners MUST NOT convert those failures to
+      fixture_unsatisfied.
     unsatisfied_contract: |
       A test-kit harness contract (e.g., signed-requests-runner) is not in
       scope for this grading run. detail MUST cite the contract key. Per
@@ -1398,6 +1456,10 @@ run_summary:
                               # SHOULD select the highest-capability runner
                               # for conformance grading.
   optional_fields:
+    - fixture_resolutions        # array of fixture_resolution_result records.
+                                  # Required whenever the selected storyboard
+                                  # declares fixture_resolution, including when
+                                  # every handle resolved successfully.
     - not_selected             # array of selection_result objects, or
                               # implementation-specific objects carrying at
                               # least selection_result.reason/detail plus the
