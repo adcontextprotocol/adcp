@@ -625,6 +625,66 @@ describe('training agent idempotency middleware', () => {
       expect((conflict.parsed as any).adcp_error?.code).toBe('IDEMPOTENCY_CONFLICT');
     });
 
+    it('replays compact finalization without allocating a second inventory hold', async () => {
+      const requested = await call(server, 'request_proposals', {
+        idempotency_key: `proposal-request-finalize-${randomUUID()}`,
+        brand: BRAND,
+        brief: 'cross-channel sports',
+      });
+      const draft = (requested.parsed.proposals as Array<Record<string, unknown>>)[0];
+      expect(draft).toMatchObject({ proposal_status: 'draft' });
+
+      const payload = {
+        idempotency_key: `proposal-finalize-${randomUUID()}`,
+        refinements: [{ proposal_id: draft.proposal_id, action: 'finalize' }],
+      };
+      const first = await call(server, 'refine_proposals', payload);
+      expect(first.isError).toBeFalsy();
+      const firstResult = (first.parsed.results as Array<Record<string, unknown>>)[0];
+      expect(firstResult).toMatchObject({
+        source_proposal_id: draft.proposal_id,
+        outcome: 'finalized',
+        proposal: { proposal_status: 'committed', expires_at: expect.any(String) },
+      });
+
+      const replay = await call(server, 'refine_proposals', payload);
+      expect(replay.parsed.replayed).toBe(true);
+      expect((replay.parsed.results as Array<Record<string, unknown>>)[0]).toEqual(firstResult);
+
+      const secondLogicalFinalize = await call(server, 'refine_proposals', {
+        ...payload,
+        idempotency_key: `proposal-finalize-second-${randomUUID()}`,
+      });
+      expect(secondLogicalFinalize.isError).toBe(true);
+      expect((secondLogicalFinalize.parsed as any).adcp_error?.code).toBe('INVALID_STATE');
+    });
+
+    it('recovers compact finalization when domain state flushes before receipt publication', async () => {
+      const requested = await call(server, 'request_proposals', {
+        idempotency_key: `proposal-request-recovery-${randomUUID()}`,
+        brand: BRAND,
+        brief: 'cross-channel sports',
+      });
+      const draft = (requested.parsed.proposals as Array<Record<string, unknown>>)[0];
+      const payload = {
+        idempotency_key: `proposal-finalize-recovery-${randomUUID()}`,
+        refinements: [{ proposal_id: draft.proposal_id, action: 'finalize' }],
+      };
+
+      const store = getIdempotencyStore();
+      const saveFailure = vi.spyOn(store, 'save').mockRejectedValueOnce(new Error('injected finalize receipt failure'));
+      await expect(call(server, 'refine_proposals', payload)).rejects.toThrow('injected finalize receipt failure');
+      saveFailure.mockRestore();
+
+      const recovered = await call(server, 'refine_proposals', payload);
+      expect(recovered.isError).toBeFalsy();
+      expect((recovered.parsed.results as Array<Record<string, unknown>>)[0]).toMatchObject({
+        source_proposal_id: draft.proposal_id,
+        outcome: 'finalized',
+        proposal: { proposal_status: 'committed' },
+      });
+    });
+
     it('validates the complete get_products payload before consulting the cache', async () => {
       const key = `products-schema-first-${randomUUID()}`;
       await call(server, 'get_products', {

@@ -1561,7 +1561,12 @@ describe('tenant routing smoke', () => {
         items: { $ref: '#/$defs/media-buy~1proposal-refinement.json' },
       });
       expect(refineAlias?.inputSchema?.$defs?.['media-buy/proposal-refinement.json'])
-        .toMatchObject({ type: 'object', required: ['proposal_id', 'instructions'] });
+        .toMatchObject({
+          type: 'object',
+          required: ['proposal_id'],
+          properties: { action: { enum: ['revise', 'finalize'] } },
+          oneOf: expect.any(Array),
+        });
 
       const keylessLegacy = await callTenantTool(url, 3, 'get_products', {
         buying_mode: 'wholesale',

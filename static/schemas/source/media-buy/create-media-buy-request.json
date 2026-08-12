@@ -80,7 +80,7 @@
     "proposal_id": {
       "type": "string",
       "x-entity": "proposal",
-      "description": "ID of the exact committed proposal snapshot to execute. With total_budget, the publisher creates packages using the proposal's fixed percentages or seller-optimized constraints. Alternative to providing packages. AdCP 3.2 request_proposals and refine_proposals issue executable committed snapshots; sellers reject declined or previously executed snapshots with INVALID_STATE, while exact retries with the original idempotency key replay historical success. Changed commercial terms are issued under a new proposal_id, so no separate proposal version is required. Legacy get_products drafts remain supported throughout AdCP 3.x and fail with PROPOSAL_NOT_COMMITTED until finalized through that compatibility task."
+      "description": "ID of the exact committed proposal snapshot to execute. With total_budget, the publisher creates packages using the proposal's fixed percentages or seller-optimized constraints. Alternative to providing packages. AdCP 3.2 request_proposals and ordinary refine_proposals revisions issue drafts; refine_proposals action finalize creates the executable committed hold. Sellers reject draft, declined, or previously executed snapshots, while exact retries with the original idempotency key replay historical success. Changed commercial terms are issued under a new proposal_id, so no separate proposal version is required."
     },
     "opportunity": {
       "allOf": [

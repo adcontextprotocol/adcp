@@ -49,6 +49,7 @@ import { TrainingSalesPlatform } from '../../src/training-agent/v6-sales-platfor
 import { TrainingCreativePlatform } from '../../src/training-agent/v6-creative-platform.js';
 import { TrainingCreativeBuilderPlatform } from '../../src/training-agent/v6-creative-builder-platform.js';
 import { clearAudienceStore } from '../../src/training-agent/audience-handlers.js';
+import { validateProductDiscoverySourceResponse } from '../../src/training-agent/source-schema.js';
 import {
   projectCreativeForDelivery,
   projectMediaBuyCreativesForDelivery,
@@ -12767,6 +12768,27 @@ describe('proposal lifecycle', () => {
 
   const account = { brand: { domain: 'proposal-test.example' }, operator: 'proposal-test.example' };
 
+  async function finalizeCompactProposal(
+    server: ReturnType<typeof createTrainingAgentServer>,
+    draft: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const { result, isError } = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{ proposal_id: draft.proposal_id, action: 'finalize' }],
+    });
+    expect(isError, JSON.stringify(result)).toBeFalsy();
+    const finalized = (result.results as Array<Record<string, unknown>>)[0];
+    expect(finalized).toMatchObject({
+      source_proposal_id: draft.proposal_id,
+      outcome: 'finalized',
+      proposal: { proposal_status: 'committed', expires_at: expect.any(String) },
+    });
+    expect(
+      validateProductDiscoverySourceResponse('refine-proposals-response', result),
+      JSON.stringify(result),
+    ).toBeUndefined();
+    return finalized.proposal as Record<string, unknown>;
+  }
+
   it('serializes concurrent proposal requests without losing returned snapshots', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const requests = await Promise.all([
@@ -12797,6 +12819,72 @@ describe('proposal lifecycle', () => {
     });
   });
 
+  it('finalizes drafts into new held snapshots atomically without mutating their sources', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const requested = await Promise.all([
+      simulateCallTool(server, 'request_proposals', {
+        idempotency_key: 'compact-finalize-source-0001',
+        brand: account.brand,
+        brief: 'social engagement display',
+      }),
+      simulateCallTool(server, 'request_proposals', {
+        idempotency_key: 'compact-finalize-source-0002',
+        brand: account.brand,
+        brief: 'social engagement display',
+      }),
+    ]);
+    const drafts = requested.map(response => (
+      response.result.proposals as Array<Record<string, unknown>>
+    )[0]);
+    expect(drafts).toHaveLength(2);
+    expect(drafts.every(draft => draft.proposal_status === 'draft')).toBe(true);
+
+    const rejectedBatch = await simulateCallTool(server, 'refine_proposals', {
+      idempotency_key: 'compact-finalize-atomic-failure-0001',
+      refinements: [
+        { proposal_id: drafts[0]!.proposal_id, action: 'finalize' },
+        { proposal_id: 'proposal-not-visible-to-caller', action: 'finalize' },
+      ],
+    });
+    expect(rejectedBatch.isError).toBe(true);
+    expect(rejectedBatch.result).toMatchObject({ code: 'PROPOSAL_NOT_FOUND' });
+
+    const storedDraftsBeforeFinalize = await runWithSessionContext(async () => {
+      const session = await getSession(
+        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+      );
+      return structuredClone(session.lastGetProductsContext?.proposals?.filter(
+        proposal => drafts.some(draft => draft.proposal_id === proposal.proposal_id),
+      ) ?? []);
+    });
+
+    const finalizedBatch = await simulateCallTool(server, 'refine_proposals', {
+      idempotency_key: 'compact-finalize-atomic-success-0001',
+      refinements: drafts.map(draft => ({ proposal_id: draft.proposal_id, action: 'finalize' })),
+    });
+    expect(finalizedBatch.isError, JSON.stringify(finalizedBatch.result)).toBeFalsy();
+    const results = finalizedBatch.result.results as Array<Record<string, unknown>>;
+    expect(results).toHaveLength(2);
+    expect(results).toEqual(expect.arrayContaining(drafts.map(draft => expect.objectContaining({
+      source_proposal_id: draft.proposal_id,
+      outcome: 'finalized',
+      proposal: expect.objectContaining({ proposal_status: 'committed', expires_at: expect.any(String) }),
+    }))));
+
+    await runWithSessionContext(async () => {
+      const session = await getSession(
+        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+      );
+      for (const [index, draft] of drafts.entries()) {
+        const storedSource = session.lastGetProductsContext?.proposals?.find(
+          proposal => proposal.proposal_id === draft.proposal_id,
+        );
+        expect(storedSource).toMatchObject({ proposal_status: 'draft' });
+        expect(storedSource).toEqual(storedDraftsBeforeFinalize[index]);
+      }
+    });
+  });
+
   it('connects the compact request, refine, and purchase lifecycle', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const lifecycleOpportunity = {
@@ -12813,7 +12901,17 @@ describe('proposal lifecycle', () => {
     expect(requested).not.toHaveProperty('pagination');
     expect(requested).not.toHaveProperty('refinement_applied');
     const source = (requested.proposals as Array<Record<string, unknown>>)[0];
-    expect(source).toMatchObject({ proposal_status: 'committed' });
+    expect(source).toMatchObject({
+      proposal_kind: 'new_media_buy',
+      proposal_status: 'draft',
+      commercial_terms: expect.any(Object),
+      terms_digest: expect.stringMatching(/^sha256:[A-Za-z0-9_-]{43}$/),
+    });
+    expect(source).not.toHaveProperty('allocations');
+    expect(
+      validateProductDiscoverySourceResponse('request-proposals-response', requested),
+      JSON.stringify(requested),
+    ).toBeUndefined();
 
     const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', {
       refinements: [{
@@ -12830,7 +12928,7 @@ describe('proposal lifecycle', () => {
     expect(refinement).toMatchObject({
       source_proposal_id: source.proposal_id,
       outcome: 'partial',
-      proposal: { proposal_status: 'committed' },
+      proposal: { proposal_status: 'draft' },
     });
     const revision = refinement.proposal as Record<string, unknown>;
     expect(revision.proposal_id).not.toBe(source.proposal_id);
@@ -12838,12 +12936,15 @@ describe('proposal lifecycle', () => {
       source_proposal_id: 'proposal-not-visible-to-caller',
       outcome: 'unable',
     });
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', refined)).toBeUndefined();
 
-    const committed = revision;
+    const committed = await finalizeCompactProposal(server, revision);
     expect(committed).toMatchObject({
-      proposal_id: revision.proposal_id,
       proposal_status: 'committed',
     });
+    expect(committed.proposal_id).not.toBe(revision.proposal_id);
+    expect(committed.commercial_terms).toEqual(revision.commercial_terms);
+    expect(committed.terms_digest).toBe(revision.terms_digest);
 
     const createArgs = {
       idempotency_key: 'compact-purchase-once-0001',
@@ -12913,13 +13014,52 @@ describe('proposal lifecycle', () => {
     const refineAfterExecution = await simulateCallTool(server, 'refine_proposals', {
       refinements: [{
         proposal_id: committed.proposal_id,
-        instructions: 'Mint another buyable revision after executing this snapshot.',
+        change_kind: 'amendment',
+        instructions: 'Reduce the budget while preserving the accepted flight.',
       }],
     });
     expect(refineAfterExecution.isError).toBeFalsy();
     expect(refineAfterExecution.result).toMatchObject({
-      results: [{ source_proposal_id: committed.proposal_id, outcome: 'unable' }],
+      results: [{
+        source_proposal_id: committed.proposal_id,
+        outcome: expect.stringMatching(/^(revised|partial)$/),
+        proposal: {
+          proposal_kind: 'media_buy_update',
+          proposal_status: 'draft',
+          parent_proposal_id: committed.proposal_id,
+          media_buy_id: purchased.media_buy_id,
+          base_media_buy_revision: 1,
+        },
+      }],
     });
+
+    const cancellationAfterExecution = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: committed.proposal_id,
+        change_kind: 'cancellation',
+        instructions: 'Cancel by mutual agreement before the next billing period.',
+      }],
+    });
+    expect(cancellationAfterExecution.isError).toBeFalsy();
+    expect(cancellationAfterExecution.result).toMatchObject({
+      results: [{
+        source_proposal_id: committed.proposal_id,
+        proposal: {
+          proposal_kind: 'media_buy_cancellation',
+          proposal_status: 'draft',
+          commercial_terms: {
+            cancellation_terms: {
+              effective_at: expect.any(String),
+              reason: 'Cancel by mutual agreement before the next billing period.',
+            },
+          },
+        },
+      }],
+    });
+    expect(
+      validateProductDiscoverySourceResponse('refine-proposals-response', cancellationAfterExecution.result),
+      JSON.stringify(cancellationAfterExecution.result),
+    ).toBeUndefined();
 
     const secondExecution = await simulateCallTool(server, 'create_media_buy', {
       ...createArgs,
@@ -12943,7 +13083,8 @@ describe('proposal lifecycle', () => {
       brand: account.brand,
       brief: 'social engagement display',
     });
-    const committed = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const draft = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const committed = await finalizeCompactProposal(server, draft);
     const base = {
       account,
       brand: account.brand,
@@ -12980,7 +13121,8 @@ describe('proposal lifecycle', () => {
       brand: account.brand,
       brief: 'social engagement display',
     });
-    const committed = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const draft = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const committed = await finalizeCompactProposal(server, draft);
     const [create, decline] = await Promise.all([
       simulateCallTool(server, 'create_media_buy', {
         idempotency_key: `test-${randomUUID()}`,
@@ -13233,7 +13375,7 @@ describe('proposal lifecycle', () => {
     expect(revision).toMatchObject({
       source_proposal_id: source.proposal_id,
       outcome: 'revised',
-      proposal: { proposal_status: 'committed' },
+      proposal: { proposal_status: 'draft' },
     });
     expect(revision).not.toHaveProperty('notes');
   });
@@ -13249,7 +13391,8 @@ describe('proposal lifecycle', () => {
       brief: 'social engagement display',
     });
     expect(requestError).toBeFalsy();
-    const committed = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const draft = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const committed = await finalizeCompactProposal(server, draft);
 
     const purchase = (billingAccount: string, brand: typeof originalBrand) => simulateCallTool(
       server,

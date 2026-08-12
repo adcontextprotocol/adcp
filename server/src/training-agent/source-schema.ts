@@ -220,3 +220,20 @@ export function validateProductDiscoverySourceInput(
     ...(field && { field }),
   };
 }
+
+/** Validate a split-tool response against its normative source schema. This
+ * is primarily used by the training-agent contract tests so a compatibility
+ * handler cannot accidentally leak legacy shapes onto the compact wire. */
+export function validateProductDiscoverySourceResponse(
+  fileName: string,
+  response: Record<string, unknown>,
+): { message: string; field?: string } | undefined {
+  const validator = productDiscoverySourceValidator(fileName);
+  if (validator(response)) return undefined;
+  const error = validator.errors?.[0];
+  const field = error && errorField(error);
+  return {
+    message: `Invalid ${fileName.replaceAll('-', '_')}${field ? ` at ${field}` : ''}: ${error?.message ?? 'schema validation failed'}`,
+    ...(field && { field }),
+  };
+}

@@ -16,7 +16,7 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { PostgresTaskStore } from '@adcp/sdk';
+import { canonicalize, PostgresTaskStore } from '@adcp/sdk';
 import {
   canonicalFormatLegacyResolverFromCatalogSnapshots,
   canonicalFormatLegacyResolverFromRoutes,
@@ -1412,16 +1412,16 @@ function signalPricingSatisfiedInCurrencies(signalOption: { pricing_options?: un
 
 // Proposal lifecycle fields not yet in @adcp/sdk — remove after client update
 interface ProposalLifecycle {
-  proposal_status?: 'draft' | 'committed';
+  proposal_status?: 'draft' | 'committed' | 'accepted';
   insertion_order?: { io_id: string; requires_signature: boolean; terms?: Record<string, unknown> };
 }
 function proposalLifecycle(proposal: Proposal): ProposalLifecycle {
+  const internal = proposal as unknown as Record<string, unknown>;
+  if (internal.__executed === true) return { ...proposal as unknown as ProposalLifecycle, proposal_status: 'accepted' };
   return proposal as unknown as ProposalLifecycle;
 }
 
-/** Return an exact proposal snapshot that can be accepted directly through
- * create_media_buy. The compact 3.2 lifecycle has no separate finalize step;
- * legacy get_products may still use this helper for its finalize refinement. */
+/** Return an exact proposal snapshot backed by a 24-hour inventory hold. */
 function executableProposalSnapshot(proposal: Proposal, brandDomain?: string): Proposal {
   const executable = { ...proposal } as Record<string, unknown> & ProposalLifecycle;
   executable.proposal_status = 'committed';
@@ -1457,6 +1457,16 @@ function executableProposalSnapshot(proposal: Proposal, brandDomain?: string): P
   }
 
   return executable as unknown as Proposal;
+}
+
+/** Return an immutable indicative proposal. Its expiry is a terms-freshness
+ * deadline, not an inventory hold; only finalize creates a committed hold. */
+function draftProposalSnapshot(proposal: Proposal): Proposal {
+  const draft = { ...proposal } as Record<string, unknown> & ProposalLifecycle;
+  draft.proposal_status = 'draft';
+  draft.expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  delete draft.insertion_order;
+  return draft as unknown as Proposal;
 }
 
 type ConcreteCpmAsk = {
@@ -4303,8 +4313,13 @@ export function normalizeProductDiscoveryArgs(
             return {
               scope: 'proposal',
               proposal_id: entry.proposal_id,
-              action: 'include',
-              ...(typeof entry.instructions === 'string' && { ask: entry.instructions }),
+              action: entry.action === 'finalize' ? 'finalize' : 'include',
+              ...(entry.action !== 'finalize'
+                && typeof entry.instructions === 'string'
+                && { ask: entry.instructions }),
+              ...(entry.action !== 'finalize'
+                && (entry.change_kind === 'amendment' || entry.change_kind === 'cancellation')
+                && { change_kind: entry.change_kind }),
             };
           })
         : [],
@@ -4340,8 +4355,11 @@ function supportingProductsForProposals(
 ): Array<Record<string, unknown>> {
   const referenced = new Set<string>();
   for (const proposal of proposals) {
-    if (!Array.isArray(proposal.allocations)) continue;
-    for (const allocation of proposal.allocations) {
+    const commercialTerms = isRecord(proposal.commercial_terms) ? proposal.commercial_terms : undefined;
+    const selections = Array.isArray(commercialTerms?.purchases)
+      ? commercialTerms.purchases
+      : Array.isArray(proposal.allocations) ? proposal.allocations : [];
+    for (const allocation of selections) {
       if (isRecord(allocation) && typeof allocation.product_id === 'string') {
         referenced.add(allocation.product_id);
       }
@@ -4350,23 +4368,139 @@ function supportingProductsForProposals(
   return products.filter(product => typeof product.product_id === 'string' && referenced.has(product.product_id));
 }
 
-function outwardProposal(proposal: Record<string, unknown>): Record<string, unknown> {
-  const {
-    __source_proposal_id: _sourceProposalId,
-    __brand_domain: _brandDomain,
-    __brand_id: _brandId,
-    __account_id: _accountId,
-    __refinement_outcome: _refinementOutcome,
-    __refinement_notes: _refinementNotes,
-    __opportunity_id: _opportunityId,
-    __declined: _declined,
-    __decline_reason: _declineReason,
-    __decline_detail: _declineDetail,
-    __executed: _executed,
-    __opportunity_update: _opportunityUpdate,
-    ...outward
-  } = proposal;
-  return outward;
+const CANONICAL_PRICING_FIELDS = [
+  'pricing_option_id', 'pricing_model', 'currency', 'price_guidance',
+  'min_spend_per_package', 'price_breakdown', 'eligible_adjustments',
+  'parameters', 'event_type', 'custom_event_name', 'event_source_id',
+  'commission_rate', 'commission_basis_description',
+] as const;
+
+function canonicalPricingSnapshot(raw: unknown, pricingOptionId: string): Record<string, unknown> {
+  const source = isRecord(raw) ? raw : {};
+  const snapshot: Record<string, unknown> = {};
+  for (const field of CANONICAL_PRICING_FIELDS) {
+    if (source[field] !== undefined) snapshot[field] = structuredClone(source[field]);
+  }
+  snapshot.pricing_option_id = pricingOptionId;
+  if (typeof snapshot.pricing_model !== 'string') snapshot.pricing_model = 'cpm';
+  if (typeof snapshot.currency !== 'string') snapshot.currency = 'USD';
+  // A selected fixed price supersedes an auction floor in the canonical
+  // snapshot; the schema intentionally forbids carrying both.
+  if (typeof source.fixed_price === 'number') snapshot.fixed_price = source.fixed_price;
+  else if (typeof source.floor_price === 'number') snapshot.floor_price = source.floor_price;
+  return snapshot;
+}
+
+function proposalTermsDigest(commercialTerms: Record<string, unknown>): string {
+  return `sha256:${createHash('sha256').update(canonicalize(commercialTerms), 'utf8').digest('base64url')}`;
+}
+
+function buildCanonicalCommercialTerms(
+  proposal: Proposal,
+  products: Map<string, Product>,
+  brand: { domain: string; brand_id?: string },
+): Record<string, unknown> {
+  const internal = proposal as unknown as Record<string, unknown>;
+  if (isRecord(internal.__canonical_commercial_terms)) {
+    return structuredClone(internal.__canonical_commercial_terms);
+  }
+  const startTime = typeof internal.__commercial_start_time === 'string'
+    ? internal.__commercial_start_time
+    : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const endTime = typeof internal.__commercial_end_time === 'string'
+    ? internal.__commercial_end_time
+    : new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString();
+  const recommendedBudget = proposal.total_budget_guidance?.recommended;
+  const currency = proposal.total_budget_guidance?.currency ?? 'USD';
+  const purchases = proposal.allocations.map(allocation => {
+    const product = products.get(allocation.product_id)
+      ?? getCatalog().find(entry => entry.product.product_id === allocation.product_id)?.product;
+    const pricingOptionId = allocation.pricing_option_id
+      ?? product?.pricing_options?.[0]?.pricing_option_id
+      ?? `${allocation.product_id}_pricing`;
+    const pricing = product?.pricing_options?.find(option => option.pricing_option_id === pricingOptionId)
+      ?? product?.pricing_options?.[0];
+    return {
+      product_id: allocation.product_id,
+      pricing_option_id: pricingOptionId,
+      pricing: canonicalPricingSnapshot(pricing, pricingOptionId),
+      start_time: startTime,
+      end_time: endTime,
+      ...(typeof recommendedBudget === 'number' && {
+        budget: recommendedBudget * allocation.allocation_percentage / 100,
+      }),
+      ...(isRecord((product as unknown as Record<string, unknown> | undefined)?.measurement_terms)
+        && { measurement_terms: structuredClone((product as unknown as Record<string, unknown>).measurement_terms) }),
+      ...(Array.isArray((product as unknown as Record<string, unknown> | undefined)?.performance_standards)
+        && { performance_standards: structuredClone((product as unknown as Record<string, unknown>).performance_standards) }),
+    };
+  });
+  return {
+    brand,
+    purchases,
+    start_time: startTime,
+    end_time: endTime,
+    ...(typeof recommendedBudget === 'number' && {
+      total_budget: { amount: recommendedBudget, currency },
+    }),
+  };
+}
+
+function withCanonicalProposalEnvelope(
+  proposal: Proposal,
+  products: Map<string, Product>,
+  brand: { domain: string; brand_id?: string },
+  options: { rebuild?: boolean } = {},
+): Proposal {
+  const internal = { ...proposal } as unknown as Record<string, unknown>;
+  if (options.rebuild) {
+    delete internal.__canonical_commercial_terms;
+    delete internal.__canonical_terms_digest;
+  }
+  internal.__commercial_start_time ??= new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  internal.__commercial_end_time ??= new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString();
+  internal.__proposal_kind ??= 'new_media_buy';
+  const commercialTerms = buildCanonicalCommercialTerms(internal as unknown as Proposal, products, brand);
+  internal.__canonical_commercial_terms = commercialTerms;
+  internal.__canonical_terms_digest = proposalTermsDigest(commercialTerms);
+  return internal as unknown as Proposal;
+}
+
+function compactCanonicalProduct(product: Record<string, unknown>): Record<string, unknown> {
+  return {
+    product_id: product.product_id,
+    name: product.name,
+  };
+}
+
+function outwardProposal(proposal: Record<string, unknown>, products: Map<string, Product>): Record<string, unknown> {
+  const brand = {
+    domain: typeof proposal.__brand_domain === 'string' ? proposal.__brand_domain : 'advertiser.example',
+    ...(typeof proposal.__brand_id === 'string' && { brand_id: proposal.__brand_id }),
+  };
+  const terms = isRecord(proposal.__canonical_commercial_terms)
+    ? structuredClone(proposal.__canonical_commercial_terms)
+    : buildCanonicalCommercialTerms(proposal as unknown as Proposal, products, brand);
+  const status = proposalLifecycle(proposal as unknown as Proposal).proposal_status ?? 'draft';
+  return {
+    proposal_id: proposal.proposal_id,
+    proposal_kind: typeof proposal.__proposal_kind === 'string' ? proposal.__proposal_kind : 'new_media_buy',
+    ...(typeof proposal.__parent_proposal_id === 'string' && { parent_proposal_id: proposal.__parent_proposal_id }),
+    ...(typeof proposal.__media_buy_id === 'string' && { media_buy_id: proposal.__media_buy_id }),
+    ...(typeof proposal.__base_media_buy_revision === 'number' && { base_media_buy_revision: proposal.__base_media_buy_revision }),
+    ...(typeof proposal.__opportunity_id === 'string' && { opportunity_id: proposal.__opportunity_id }),
+    proposal_status: status,
+    ...(status === 'accepted' && typeof proposal.__accepted_at === 'string' && { accepted_at: proposal.__accepted_at }),
+    ...(typeof proposal.expires_at === 'string' && { expires_at: proposal.expires_at }),
+    name: proposal.name,
+    ...(typeof proposal.description === 'string' && { description: proposal.description }),
+    ...(typeof proposal.brief_alignment === 'string' && { brief_alignment: proposal.brief_alignment }),
+    commercial_terms: terms,
+    terms_digest: typeof proposal.__canonical_terms_digest === 'string'
+      ? proposal.__canonical_terms_digest
+      : proposalTermsDigest(terms),
+    ...(isRecord(proposal.insertion_order) && { insertion_order: proposal.insertion_order }),
+  };
 }
 
 /** Project the broad 3.x handler result into the compact split-tool domain
@@ -4390,6 +4524,9 @@ export function projectProductDiscoveryResult(
   let products = Array.isArray(result.products)
     ? result.products.filter(isRecord)
     : [];
+  const proposalProducts = new Map(products
+    .filter((product): product is Record<string, unknown> & { product_id: string } => typeof product.product_id === 'string')
+    .map(product => [product.product_id, product as unknown as Product]));
   let proposals = Array.isArray(result.proposals)
     ? result.proposals.filter(isRecord)
     : [];
@@ -4435,32 +4572,39 @@ export function projectProductDiscoveryResult(
   }
 
   if (toolName === 'request_proposals') {
-    const outwardProposals = proposals.map(outwardProposal);
+    const outwardProposals = proposals.map(proposal => outwardProposal(proposal, proposalProducts));
+    const supportingProducts = supportingProductsForProposals(outwardProposals, products).map(compactCanonicalProduct);
     return {
       outcome: 'proposed',
       proposals: outwardProposals,
-      products: supportingProductsForProposals(outwardProposals, products),
+      products: supportingProducts,
       ...(isRecord(result.targeting_resolution) && { targeting_resolution: result.targeting_resolution }),
     };
   }
 
   if (toolName === 'refine_proposals') {
-    const sourceIds = Array.isArray(originalArgs.refinements)
-      ? originalArgs.refinements
-          .filter(isRecord)
-          .map(entry => entry.proposal_id)
-          .filter((id): id is string => typeof id === 'string')
+    const requestedRefinements = Array.isArray(originalArgs.refinements)
+      ? originalArgs.refinements.filter(isRecord)
       : [];
+    const sourceIds = requestedRefinements
+      .map(entry => entry.proposal_id)
+      .filter((id): id is string => typeof id === 'string');
+    const actionBySource = new Map(requestedRefinements
+      .filter((entry): entry is Record<string, unknown> & { proposal_id: string } => typeof entry.proposal_id === 'string')
+      .map(entry => [entry.proposal_id, entry.action === 'finalize' ? 'finalize' : 'revise'] as const));
     const proposalsBySource = new Map(proposals.map(proposal => [
       proposal.__source_proposal_id,
       proposal,
     ]));
-    const outwardProposals = Array.from(proposalsBySource.values()).map(outwardProposal);
+    const outwardProposals = Array.from(proposalsBySource.values())
+      .map(proposal => outwardProposal(proposal, proposalProducts));
     return {
       results: sourceIds.map(sourceProposalId => {
         const internalProposal = proposalsBySource.get(sourceProposalId);
-        const proposal = internalProposal && outwardProposal(internalProposal);
-        const outcome = internalProposal?.__refinement_outcome === 'partial' ? 'partial' : 'revised';
+        const proposal = internalProposal && outwardProposal(internalProposal, proposalProducts);
+        const outcome = actionBySource.get(sourceProposalId) === 'finalize'
+          ? 'finalized'
+          : internalProposal?.__refinement_outcome === 'partial' ? 'partial' : 'revised';
         return proposal
           ? {
               source_proposal_id: sourceProposalId,
@@ -4475,7 +4619,7 @@ export function projectProductDiscoveryResult(
               reason: 'The source proposal was not found or could not be revised under the requested terms.',
             };
       }),
-      products: supportingProductsForProposals(outwardProposals, products),
+      products: supportingProductsForProposals(outwardProposals, products).map(compactCanonicalProduct),
     };
   }
   if (toolName === 'decline_proposals') {
@@ -4625,7 +4769,21 @@ export function validateProductDiscoveryAliasInput(
       }
       proposalIds.add(entry.proposal_id);
       if (!(typeof entry.instructions === 'string' && entry.instructions.length > 0)) {
-        return { message: 'each refinement requires instructions', field: `refinements[${index}].instructions` };
+        if (entry.action !== 'finalize') {
+          return { message: 'each revision requires instructions', field: `refinements[${index}].instructions` };
+        }
+      }
+      if (entry.action !== undefined && entry.action !== 'revise' && entry.action !== 'finalize') {
+        return {
+          message: 'action must be revise or finalize',
+          field: `refinements[${index}].action`,
+        };
+      }
+      if (entry.action === 'finalize' && (entry.instructions !== undefined || entry.change_kind !== undefined)) {
+        return {
+          message: 'finalize cannot be combined with instructions or change_kind',
+          field: `refinements[${index}].action`,
+        };
       }
       if (
         entry.change_kind !== undefined
@@ -4638,11 +4796,18 @@ export function validateProductDiscoveryAliasInput(
         };
       }
       const unknown = Object.keys(entry).find(
-        field => !['proposal_id', 'change_kind', 'instructions'].includes(field),
+        field => !['proposal_id', 'action', 'change_kind', 'instructions'].includes(field),
       );
       if (unknown) {
         return { message: `${unknown} is not supported on proposal refinements`, field: `refinements[${index}].${unknown}` };
       }
+    }
+    const hasFinalize = args.refinements.some(entry => isRecord(entry) && entry.action === 'finalize');
+    if (hasFinalize && args.refinements.some(entry => !isRecord(entry) || entry.action !== 'finalize')) {
+      return {
+        message: 'finalize entries cannot be mixed with proposal revisions',
+        field: 'refinements',
+      };
     }
   }
   if (toolName === 'decline_proposals') {
@@ -4764,14 +4929,14 @@ const TOOLS = [
   },
   {
     name: 'request_proposals',
-    description: 'Request executable media-plan proposals from a brief and optional listed product IDs. Each proposal_id is an exact snapshot that can be refined, purchased, or declined.',
+    description: 'Request immutable draft media-plan proposals from a brief and optional listed product IDs. Drafts can be revised, finalized into inventory holds, or declined.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: REQUEST_PROPOSALS_INPUT_SCHEMA,
   },
   {
     name: 'refine_proposals',
-    description: 'Create executable revisions from one or more proposals. Changed terms receive a new proposal_id; source snapshots remain immutable.',
+    description: 'Create draft revisions or finalize drafts into committed inventory holds. Every result receives a new proposal_id; source snapshots remain immutable.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: REFINE_PROPOSALS_INPUT_SCHEMA,
@@ -5588,6 +5753,7 @@ async function handleGetProductsUnlocked(
         proposal_id: string;
         action?: 'include' | 'omit' | 'finalize' | 'decline';
         ask?: string;
+        change_kind?: 'amendment' | 'cancellation';
         reason?: string;
         detail?: string;
       };
@@ -5603,6 +5769,13 @@ async function handleGetProductsUnlocked(
     && (req as unknown as Record<string, unknown>).__compact_proposal_lifecycle === true;
   const declineProposals = buyingMode === 'refine'
     && (req as unknown as Record<string, unknown>).__decline_proposals === true;
+  const compactFinalizeSourceIds = new Set(
+    immutableRefine && Array.isArray(req.refine)
+      ? (req.refine as unknown as RefineEntry[])
+          .filter(entry => entry.scope === 'proposal' && entry.action === 'finalize')
+          .map(entry => (entry as Extract<RefineEntry, { scope: 'proposal' }>).proposal_id)
+      : [],
+  );
   const refinementApplied: RefinementAppliedEntry[] = [];
   const proposalOmitIds = new Set<string>();
   const refinedProposalOverrides = new Map<string, Proposal>();
@@ -5663,6 +5836,16 @@ async function handleGetProductsUnlocked(
       const proposal = resolveProposal(op.proposal_id);
       if (!proposal) {
         if (declineProposals) everyDeclineApplicable = false;
+        if (immutableRefine && op.action === 'finalize') {
+          return {
+            errors: [{
+              code: 'PROPOSAL_NOT_FOUND',
+              message: `Proposal not found: ${op.proposal_id}`,
+              field: `refine[${opIndex}].proposal_id`,
+              recovery: 'correctable',
+            }] as TaskError[],
+          };
+        }
         if (immutableRefine || declineProposals) continue;
         return {
           errors: [{
@@ -5691,11 +5874,43 @@ async function handleGetProductsUnlocked(
         }
       }
       if (op.action === 'finalize') {
-        if ((proposal as unknown as Record<string, unknown>).__declined === true) {
+        const internal = proposal as unknown as Record<string, unknown>;
+        const lifecycleLink = session.proposalLifecycleLinks.get(op.proposal_id);
+        if (lifecycleLink) {
+          if (
+            lifecycleLink.operation === 'finalize'
+            && lifecycleLink.idempotencyKey === req.idempotency_key
+            && previousProposals.some(candidate => candidate.proposal_id === lifecycleLink.successorProposalId)
+          ) {
+            continue;
+          }
           return {
             errors: [{
               code: 'INVALID_STATE',
-              message: `Proposal has been declined and cannot be finalized: ${op.proposal_id}`,
+              message: `Proposal was already finalized: ${op.proposal_id}`,
+              field: `refine[${opIndex}].proposal_id`,
+              recovery: 'correctable',
+            }] as TaskError[],
+          };
+        }
+        if (
+          internal.__declined === true
+          || internal.__executed === true
+        ) {
+          return {
+            errors: [{
+              code: 'INVALID_STATE',
+              message: `Proposal is terminal and cannot be finalized: ${op.proposal_id}`,
+              field: `refine[${opIndex}].proposal_id`,
+              recovery: 'correctable',
+            }] as TaskError[],
+          };
+        }
+        if (immutableRefine && proposalLifecycle(proposal).proposal_status !== 'draft') {
+          return {
+            errors: [{
+              code: 'INVALID_STATE',
+              message: `Only a draft proposal can be finalized: ${op.proposal_id}`,
               field: `refine[${opIndex}].proposal_id`,
               recovery: 'correctable',
             }] as TaskError[],
@@ -5815,15 +6030,9 @@ async function handleGetProductsUnlocked(
             });
             continue;
           }
-          if (immutableRefine && (proposal as unknown as Record<string, unknown>).__executed === true) {
-            refinementApplied.push({
-              scope: 'proposal',
-              proposal_id: op.proposal_id,
-              status: 'unable',
-              notes: 'Proposal was already executed and cannot be refined',
-            });
-            continue;
-          }
+          // An executed compact proposal is the accepted immutable snapshot.
+          // Refining it forks an amendment/cancellation draft; the accepted
+          // source remains the historical terms attached to the MediaBuy.
           explicitlySelectedProposals.set(proposal.proposal_id, proposal);
           for (const allocation of proposal.allocations) includeIds.add(allocation.product_id);
           if (!immutableRefine && proposalLifecycle(proposal).proposal_status === 'committed' && op.ask) {
@@ -5887,7 +6096,16 @@ async function handleGetProductsUnlocked(
           }
         } else if (action === 'finalize') {
           const status = proposalLifecycle(proposal).proposal_status;
-          if (status === 'committed') {
+          if (immutableRefine) {
+            explicitlySelectedProposals.set(proposal.proposal_id, proposal);
+            for (const allocation of proposal.allocations) includeIds.add(allocation.product_id);
+            refinementApplied.push({
+              scope: 'proposal',
+              proposal_id: op.proposal_id,
+              status: 'applied',
+              notes: 'Proposal finalized — pricing committed and inventory held for 24 hours',
+            });
+          } else if (status === 'committed') {
             refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal already committed' });
           } else {
             const accountBrand = (req as unknown as Record<string, unknown>).account as Record<string, unknown> | undefined;
@@ -6042,7 +6260,10 @@ async function handleGetProductsUnlocked(
     .map(proposal => {
       // A committed proposal is a receipt for a specific inventory hold.
       // Later catalog/pricing discovery must not rewrite any part of it.
-      if (proposalLifecycle(proposal).proposal_status === 'committed') return proposal;
+      if (
+        proposalLifecycle(proposal).proposal_status === 'committed'
+        || compactFinalizeSourceIds.has(proposal.proposal_id)
+      ) return proposal;
       return {
         ...proposal,
         allocations: proposal.allocations.map(alloc => {
@@ -6101,9 +6322,15 @@ async function handleGetProductsUnlocked(
           && { __opportunity_id: requestOpportunity.opportunity_id }),
       } as unknown as Proposal;
       return existingById.get(proposalId)
-        ?? executableProposalSnapshot(
-          snapshot,
-          typeof requestBrand?.domain === 'string' ? requestBrand.domain.toLowerCase() : undefined,
+        ?? withCanonicalProposalEnvelope(
+          draftProposalSnapshot(snapshot),
+          productsById,
+          {
+            domain: typeof requestBrand?.domain === 'string'
+              ? requestBrand.domain.toLowerCase()
+              : 'advertiser.example',
+            ...(typeof requestBrand?.brand_id === 'string' && { brand_id: requestBrand.brand_id }),
+          },
         );
     });
     if (proposals.length === 0) {
@@ -6129,23 +6356,76 @@ async function handleGetProductsUnlocked(
         .filter((entry): entry is Extract<RefinementAppliedEntry, { scope: 'proposal' }> => entry.scope === 'proposal')
         .map(entry => [entry.proposal_id, entry]),
     );
+    const actionBySource = new Map(
+      (req.refine as unknown as RefineEntry[])
+        .filter((entry): entry is Extract<RefineEntry, { scope: 'proposal' }> => entry.scope === 'proposal')
+        .map(entry => [entry.proposal_id, {
+          action: entry.action === 'finalize' ? 'finalize' as const : 'revise' as const,
+          changeKind: entry.change_kind,
+          instructions: entry.ask,
+        }]),
+    );
     proposals = sourceProposalOrder.flatMap((sourceId, index) => {
       const proposal = proposalsById.get(sourceId);
       const outcome = outcomesBySource.get(sourceId);
       if (!proposal || outcome?.status === 'unable') return [];
       const digest = createHash('sha256').update(`${key}:${sourceId}:${index}`).digest('hex').slice(0, 24);
+      const sourceInternal = proposal as unknown as Record<string, unknown>;
+      const refinement = actionBySource.get(sourceId);
+      const isAcceptedSource = sourceInternal.__executed === true;
       const revision = {
         ...proposal,
         proposal_id: `proposal_revision_${digest}`,
         __source_proposal_id: sourceId,
         __refinement_outcome: outcome?.status === 'partial' ? 'partial' : 'revised',
         ...(outcome?.notes && { __refinement_notes: outcome.notes }),
+        ...(isAcceptedSource && {
+          __proposal_kind: refinement?.changeKind === 'cancellation'
+            ? 'media_buy_cancellation'
+            : 'media_buy_update',
+          __parent_proposal_id: sourceId,
+          __media_buy_id: sourceInternal.__media_buy_id,
+          __base_media_buy_revision: sourceInternal.__media_buy_revision,
+        }),
       } as unknown as Proposal;
+      if (isAcceptedSource) {
+        const revisionInternal = revision as unknown as Record<string, unknown>;
+        delete revisionInternal.__executed;
+        delete revisionInternal.__accepted_at;
+        delete revisionInternal.__opportunity_update;
+      }
+      const existingSuccessor = session.lastGetProductsContext?.proposals?.find(
+        candidate => candidate.proposal_id === revision.proposal_id,
+      );
+      if (existingSuccessor) return [existingSuccessor];
       const brandDomain = (proposal as unknown as Record<string, unknown>).__brand_domain;
-      return [executableProposalSnapshot(
-        revision,
-        typeof brandDomain === 'string' ? brandDomain : undefined,
-      )];
+      const brandId = (proposal as unknown as Record<string, unknown>).__brand_id;
+      let successor = refinement?.action === 'finalize'
+        ? executableProposalSnapshot(
+          revision,
+          typeof brandDomain === 'string' ? brandDomain : undefined,
+        )
+        : withCanonicalProposalEnvelope(
+          draftProposalSnapshot(revision),
+          productsById,
+          {
+            domain: typeof brandDomain === 'string' ? brandDomain : 'advertiser.example',
+            ...(typeof brandId === 'string' && { brand_id: brandId }),
+          },
+          { rebuild: true },
+        );
+      if (refinement?.changeKind === 'cancellation') {
+        const successorInternal = successor as unknown as Record<string, unknown>;
+        const commercialTerms = structuredClone(successorInternal.__canonical_commercial_terms) as Record<string, unknown>;
+        commercialTerms.cancellation_terms = {
+          effective_at: new Date().toISOString(),
+          ...(typeof refinement.instructions === 'string' && { reason: refinement.instructions.slice(0, 500) }),
+        };
+        successorInternal.__canonical_commercial_terms = commercialTerms;
+        successorInternal.__canonical_terms_digest = proposalTermsDigest(commercialTerms);
+        successor = successorInternal as unknown as Proposal;
+      }
+      return [successor];
     });
   }
   const canonicalFormatAdvisories = collectCanonicalFormatAdvisories(products);
@@ -6167,11 +6447,33 @@ async function handleGetProductsUnlocked(
       .filter(proposal => proposalLifecycle(proposal).proposal_status === 'committed')
       .map(proposal => [proposal.proposal_id, proposal]),
   );
+  const finalizedBySource = new Map(
+    proposals
+      .map(proposal => proposal as unknown as Record<string, unknown>)
+      .filter(proposal => (
+        typeof proposal.__source_proposal_id === 'string'
+        && proposal.proposal_status === 'committed'
+        && typeof proposal.proposal_id === 'string'
+      ))
+      .map(proposal => [proposal.__source_proposal_id as string, proposal.proposal_id as string]),
+  );
   const priorProposals = session.lastGetProductsContext?.proposals ?? [];
+  const refinementIdempotencyKey = typeof (req as unknown as Record<string, unknown>).idempotency_key === 'string'
+    ? (req as unknown as Record<string, unknown>).idempotency_key as string
+    : undefined;
+  if (refinementIdempotencyKey) {
+    for (const [sourceProposalId, successorProposalId] of finalizedBySource) {
+      session.proposalLifecycleLinks.set(sourceProposalId, {
+        operation: 'finalize',
+        idempotencyKey: refinementIdempotencyKey,
+        successorProposalId,
+      });
+    }
+  }
   const persistedProposals = buyingMode === 'wholesale'
     ? []
     : immutableRefine
-      ? [...priorProposals, ...proposals]
+      ? [...new Map([...priorProposals, ...proposals].map(proposal => [proposal.proposal_id, proposal])).values()]
       : requireProposals
         ? [
             ...priorProposals.filter(prior => !proposals.some(proposal => proposal.proposal_id === prior.proposal_id)),
@@ -7662,14 +7964,14 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
     const proposalStatus = proposalLifecycle(proposal).proposal_status;
     if (proposalStatus === 'draft' && !(isThreeZeroStoryboardCompat(ctx) && req.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID)) {
       return {
-        errors: [{ code: 'PROPOSAL_NOT_COMMITTED', message: `Proposal "${req.proposal_id}" has legacy draft status — finalize it through get_products before retrying.` }] as TaskError[],
+        errors: [{ code: 'PROPOSAL_NOT_COMMITTED', message: `Proposal "${req.proposal_id}" is a draft — finalize it through refine_proposals before retrying.` }] as TaskError[],
       };
     }
 
     // Enforce proposal expiry
     if (proposal.expires_at && new Date(proposal.expires_at) < new Date()) {
       return {
-        errors: [{ code: 'PROPOSAL_EXPIRED', message: `Proposal "${req.proposal_id}" expired at ${proposal.expires_at}. Request a fresh proposal before retrying.` }] as TaskError[],
+        errors: [{ code: 'PROPOSAL_EXPIRED', message: `Proposal "${req.proposal_id}" expired at ${proposal.expires_at}. Request and finalize a fresh proposal before retrying.` }] as TaskError[],
       };
     }
 
@@ -8055,6 +8357,9 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
   if (executedCompactProposal) {
     const internal = executedCompactProposal as unknown as Record<string, unknown>;
     internal.__executed = true;
+    internal.__accepted_at = now;
+    internal.__media_buy_id = mediaBuyId;
+    internal.__media_buy_revision = mediaBuy.revision;
     const suppliedOpportunity = isRecord((req as unknown as Record<string, unknown>).opportunity)
       ? (req as unknown as Record<string, unknown>).opportunity as Record<string, unknown>
       : undefined;

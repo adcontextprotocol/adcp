@@ -18,9 +18,16 @@
       "description": "Buyer planning cycle associated with this proposal. Revisions inherit it; it does not participate in proposal identity."
     },
     "base_media_buy_revision": { "type": "integer", "minimum": 1 },
-    "proposal_status": { "$ref": "/schemas/enums/proposal-status.json" },
+    "proposal_status": {
+      "$ref": "/schemas/enums/proposal-status.json",
+      "description": "draft is indicative and unreserved; committed has firm terms with inventory reserved until expires_at; accepted is the historical snapshot attached to a MediaBuy."
+    },
     "accepted_at": { "type": "string", "format": "date-time" },
-    "expires_at": { "type": "string", "format": "date-time" },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "For a draft, the indicative-terms freshness deadline. For a committed proposal, the inventory-hold deadline."
+    },
     "name": { "type": "string", "minLength": 1, "maxLength": 500 },
     "description": { "type": "string", "maxLength": 2000 },
     "brief_alignment": { "type": "string", "maxLength": 2000 },

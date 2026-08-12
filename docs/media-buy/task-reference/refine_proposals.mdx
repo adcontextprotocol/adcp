@@ -1,11 +1,16 @@
 ---
 title: refine_proposals
-description: "Create executable revisions from one or more proposals."
+description: "Revise proposals or finalize drafts into inventory holds."
 "og:title": "AdCP refine_proposals Task"
 testable: false
 ---
 
-`refine_proposals` creates executable committed revisions directly. Each entry targets one draft, committed, or accepted proposal. Proposal IDs must be unique within the request, and results preserve request order. Successful refinement returns a new `proposal_id`; that ID is the complete version identity for the immutable commercial snapshot, and the source remains unchanged.
+`refine_proposals` has two explicit operations over immutable proposal snapshots:
+
+- `action: "revise"` (the default) applies `instructions` and returns a new draft proposal.
+- `action: "finalize"` changes no commercial terms and returns a new committed proposal backed by an inventory hold until `expires_at`.
+
+Revision may target a draft, committed, or accepted proposal; finalization must target a draft. Proposal IDs must be unique within the request, and results preserve request order. Every successful operation returns a new `proposal_id`; that ID is the complete version identity for the immutable commercial snapshot, and the source remains unchanged.
 
 **Request schema:** [`/schemas/v3/media-buy/refine-proposals-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/refine-proposals-request.json)
 
@@ -25,7 +30,25 @@ testable: false
 }
 ```
 
-The response contains one ordered `results[]` entry per request. `revised` means the requested change was applied, `partial` returns an honest executable revision plus explanatory notes, and `unable` returns a reason without minting a misleading revision. Every returned revision carries typed `commercial_terms` and a `terms_digest`. Pass a new-buy proposal to [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal), or use [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) when the buyer stops pursuing it. The deprecated [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) proposal mode remains only as the 3.x compatibility adapter.
+The response contains one ordered `results[]` entry per request. `revised` means the requested change produced a new draft, `partial` returns an honest draft plus explanatory notes, `finalized` returns a committed held snapshot, and `unable` returns a reason without minting a misleading result. Every returned proposal carries typed `commercial_terms` and a `terms_digest`. Pass only a finalized committed proposal to [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal), or use [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) when the buyer stops pursuing it. The deprecated [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) proposal mode remains only as the 3.x compatibility adapter.
+
+## Finalize and hold inventory
+
+Finalization is seller commitment, not buyer acceptance. It locks the already-negotiated terms and reserves inventory until the returned `expires_at`:
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441003",
+  "refinements": [
+    {
+      "proposal_id": "proposal_draft_789",
+      "action": "finalize"
+    }
+  ]
+}
+```
+
+A request containing `finalize` must contain only finalize entries. Sellers validate the complete batch before creating any holds; multi-proposal finalization is atomic. Exact retries use the same idempotency key. A new key does not extend or recreate an existing hold.
 
 Every revised proposal inherits the source proposal's opportunity association. Callers do not repeat opportunity context during refinement.
 
@@ -46,6 +69,6 @@ An accepted proposal is the immutable commercial envelope attached to its MediaB
 }
 ```
 
-Use `change_kind: "cancellation"` when cancellation requires counterparty agreement. The returned proposal has `proposal_kind: "media_buy_cancellation"`, identifies the MediaBuy and base revision, and is applied only through [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal).
+Use `change_kind: "cancellation"` when cancellation requires counterparty agreement. The returned draft has `proposal_kind: "media_buy_cancellation"`, identifies the MediaBuy and base revision, and must be finalized before it can be applied through [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal).
 
-Sellers MAY respond asynchronously with `status: "submitted"` when a complex multi-publisher revision requires upstream pricing queries or manual re-underwriting. In that case the response contains a `task_id` for polling via [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json); terminal revised proposals are delivered on the completion artifact or via push notification if `push_notification_config` was supplied.
+Sellers MAY respond asynchronously with `status: "submitted"` when a complex multi-publisher revision or inventory hold requires upstream pricing queries or manual re-underwriting. In that case the response contains a `task_id` for polling via [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json); terminal results are delivered on the completion artifact or via push notification if `push_notification_config` was supplied.

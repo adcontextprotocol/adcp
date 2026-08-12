@@ -2,16 +2,14 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/refine-proposals-response.json",
   "title": "Refine Proposals Response",
-  "description": "One ordered immutable revision result per requested source proposal, plus compact canonical products needed to evaluate the revised purchases. Products always carry product_id and name and never carry legacy named-format identifiers.",
+  "description": "One ordered immutable revision or finalization result per requested source proposal, plus compact canonical products needed to evaluate the resulting terms. Products always carry product_id and name and never carry legacy named-format identifiers.",
   "type": "object",
   "anyOf": [
     {
+      "properties": { "status": { "type": "string", "const": "completed" } },
       "required": ["results", "products"],
       "not": {
-        "anyOf": [
-          { "required": ["status"] },
-          { "required": ["task_id"] }
-        ]
+        "required": ["task_id"]
       }
     },
     {
@@ -19,8 +17,10 @@
     }
   ],
   "properties": {
+    "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
     "results": {
       "type": "array",
+      "description": "Ordered results. If any result is finalized, every result MUST be finalized; a finalize batch either creates every requested hold or none.",
       "minItems": 1,
       "items": {
         "type": "object",
@@ -35,20 +35,9 @@
           },
           "outcome": {
             "type": "string",
-            "enum": ["revised", "partial", "unable"]
+            "enum": ["revised", "partial", "finalized", "unable"]
           },
-          "proposal": {
-            "allOf": [
-              { "$ref": "/schemas/core/canonical-proposal.json" },
-              {
-                "properties": {
-                  "proposal_status": { "type": "string", "const": "committed" },
-                  "expires_at": { "type": "string", "format": "date-time" }
-                },
-                "required": ["proposal_status", "expires_at", "proposal_kind", "commercial_terms", "terms_digest"]
-              }
-            ]
-          },
+          "proposal": { "$ref": "/schemas/core/canonical-proposal.json" },
           "reason": { "type": "string", "minLength": 1 },
           "notes": { "type": "string", "minLength": 1 },
           "suggestions": {
@@ -60,7 +49,13 @@
         "required": ["source_proposal_id", "outcome"],
         "oneOf": [
           {
-            "properties": { "outcome": { "type": "string", "const": "revised" } },
+            "properties": {
+              "outcome": { "type": "string", "const": "revised" },
+              "proposal": {
+                "properties": { "proposal_status": { "type": "string", "const": "draft" } },
+                "required": ["proposal_status"]
+              }
+            },
             "required": ["outcome", "proposal"],
             "not": {
               "anyOf": [
@@ -70,9 +65,34 @@
             }
           },
           {
-            "properties": { "outcome": { "type": "string", "const": "partial" } },
+            "properties": {
+              "outcome": { "type": "string", "const": "partial" },
+              "proposal": {
+                "properties": { "proposal_status": { "type": "string", "const": "draft" } },
+                "required": ["proposal_status"]
+              }
+            },
             "required": ["outcome", "proposal", "notes"],
             "not": { "required": ["reason"] }
+          },
+          {
+            "properties": {
+              "outcome": { "type": "string", "const": "finalized" },
+              "proposal": {
+                "properties": {
+                  "proposal_status": { "type": "string", "const": "committed" },
+                  "expires_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["proposal_status", "expires_at"]
+              }
+            },
+            "required": ["outcome", "proposal"],
+            "not": {
+              "anyOf": [
+                { "required": ["reason"] },
+                { "required": ["notes"] }
+              ]
+            }
           },
           {
             "properties": { "outcome": { "type": "string", "const": "unable" } },
@@ -81,13 +101,29 @@
           }
         ],
         "additionalProperties": false
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "contains": {
+              "properties": { "outcome": { "type": "string", "const": "finalized" } },
+              "required": ["outcome"]
+            }
+          },
+          "then": {
+            "items": {
+              "properties": { "outcome": { "type": "string", "const": "finalized" } },
+              "required": ["outcome"]
+            }
+          }
+        }
+      ]
     },
     "products": {
       "type": "array",
       "items": { "$ref": "/schemas/core/canonical-product.json" }
     },
-    "status": { "type": "string", "const": "submitted" },
+    "status": { "type": "string", "enum": ["completed", "submitted"] },
     "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
     "message": { "type": "string", "maxLength": 2000 },
     "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },

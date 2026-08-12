@@ -7,6 +7,8 @@ testable: true
 
 `accept_proposal` is the single terminal action for the compact proposal lifecycle. It accepts exactly one committed immutable proposal snapshot.
 
+`committed` retains the AdCP 3.1 reservation guarantee: the seller has locked the proposal's commercial terms and reserved its inventory until `expires_at`. Finalization creates that hold; acceptance consumes it and creates, amends, or cancels the MediaBuy.
+
 Depending on `proposal_kind`, acceptance:
 
 - creates a new MediaBuy;
@@ -32,4 +34,4 @@ If the proposal belongs to an `opportunity`, acceptance closes that planning cyc
 
 Success returns the resulting MediaBuy identity, the proposal with `proposal_status: "accepted"`, and `purchase_bindings[]` mapping proposal purchase positions to package IDs for later creative assignment. Acceptance is idempotent. The seller atomically verifies `proposal_id`, `proposal_terms_digest`, expiry, and any `base_media_buy_revision`; stale or mismatched acceptance never applies different terms.
 
-A seller that did not reserve inventory at proposal time MAY reject an unexpired committed proposal with [`PROPOSAL_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-proposal-unavailable). Inventory availability risk before acceptance is on the buyer unless the proposal explicitly commits a hold. Buyers that require reservation guarantees should request a hold in the [`request_proposals`](/docs/media-buy/task-reference/request_proposals) brief.
+An unexpired committed proposal cannot be rejected merely because its reserved inventory was sold elsewhere. Once `expires_at` passes, the hold lapses and the seller returns [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired); the buyer must request and finalize a fresh proposal.

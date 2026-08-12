@@ -710,7 +710,7 @@
         },
         "supports_proposals": {
           "type": "boolean",
-          "description": "Conformance declaration that this seller supports actionable proposals through either the compact request/refine lifecycle or the legacy get_products facade. create_media_buy consumes an executable proposal_id before expires_at.",
+          "description": "Conformance declaration that this seller supports proposals through either the compact request/refine/finalize lifecycle or the legacy get_products facade. accept_proposal, or the create_media_buy compatibility facade, consumes a finalized committed proposal_id before expires_at.",
           "default": false
         },
         "governance_aware": {

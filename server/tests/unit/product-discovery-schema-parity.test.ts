@@ -80,7 +80,14 @@ describe('product discovery MCP schema parity', () => {
     });
     expect(resolveLocalRef(list, list.properties.criteria)).toMatchObject({ additionalProperties: false });
     expect(resolveLocalRef(refineTool, refineTool.properties.refinements.items))
-      .toMatchObject({ required: ['proposal_id', 'instructions'], additionalProperties: false });
+      .toMatchObject({
+        required: ['proposal_id'],
+        additionalProperties: false,
+        // Definition annotations are intentionally stripped from tools/list;
+        // dispatch still applies the source-schema default semantics.
+        properties: { action: { enum: ['revise', 'finalize'] } },
+        oneOf: expect.any(Array),
+      });
     const declineTool = tools.get('decline_proposals')!;
     expect(resolveLocalRef(declineTool, declineTool.properties.declines.items))
       .toMatchObject({ required: ['proposal_id', 'reason'], additionalProperties: false });

@@ -145,7 +145,7 @@
                   "finalize"
                 ],
                 "default": "include",
-                "description": "'include' (default): return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response. 'finalize': request firm pricing and inventory hold. New callers use refine_proposals, which returns an executable immutable revision directly; terminal feedback is available through decline_proposals.\n\nLegacy finalize is exclusive within the parent `refine[]` array: see the array-level description for the finalize-exclusivity rule (mixing finalize with non-finalize entries is rejected) and multi-finalize atomicity contract."
+                "description": "'include' (default): return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response. 'finalize': request firm pricing and inventory hold. New callers use refine_proposals with action revise for a draft successor or action finalize for a committed held successor; terminal feedback is available through decline_proposals.\n\nLegacy finalize is exclusive within the parent `refine[]` array: see the array-level description for the finalize-exclusivity rule (mixing finalize with non-finalize entries is rejected) and multi-finalize atomicity contract."
               },
               "ask": {
                 "type": "string",

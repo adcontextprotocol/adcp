@@ -35,7 +35,7 @@ It does not accept creatives, creative assignments, new products/packages, fligh
 }
 ```
 
-When an otherwise valid control would exceed the accepted budget, targeting, or delivery envelope, the seller returns [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required). The buyer reads `accepted_proposal_id` from [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), passes it to [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), receives a new committed amendment proposal, and applies it through [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal). This pointer survives SDK restart and moves atomically after each accepted amendment.
+When an otherwise valid control would exceed the accepted budget, targeting, or delivery envelope, the seller returns [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required). The buyer reads `accepted_proposal_id` from [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), passes it to [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) to create a draft amendment, finalizes that draft into a committed hold, and applies it through [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal). This pointer survives SDK restart and moves atomically after each accepted amendment.
 
 `canceled: true` is direct only when the accepted cancellation policy already grants the caller that right. A cancellation requiring counterparty agreement uses `refine_proposals` with `change_kind: "cancellation"`.
 

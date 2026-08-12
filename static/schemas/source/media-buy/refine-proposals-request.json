@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/refine-proposals-request.json",
   "title": "Refine Proposals Request",
-  "description": "Create executable revisions from one or more existing proposal snapshots. Each source remains addressable so buyers can explore alternatives safely.",
+  "description": "Create draft revisions or finalize draft proposals into held committed snapshots. Each result receives a new proposal_id and every source remains unchanged.",
   "type": "object",
   "x-mutates-state": true,
   "x-operation-family": "refine_proposals",
@@ -30,10 +30,26 @@
     },
     "refinements": {
       "type": "array",
-      "description": "Proposal revisions to create. Sources may be draft, committed, or accepted. An accepted source is forked into a MediaBuy amendment or cancellation proposal and remains immutable. proposal_id values MUST be unique within the request; results preserve request order.",
+      "description": "Proposal operations to apply. revise creates a draft successor from a draft, committed, or accepted source. finalize MUST target a draft, reserves inventory, and creates a committed successor whose expires_at is the hold deadline. A batch containing finalize MUST contain only finalize entries and is atomic. proposal_id values MUST be unique; results preserve request order.",
       "items": { "$ref": "/schemas/media-buy/proposal-refinement.json" },
       "minItems": 1,
-      "uniqueItems": true
+      "uniqueItems": true,
+      "allOf": [
+        {
+          "if": {
+            "contains": {
+              "properties": { "action": { "type": "string", "const": "finalize" } },
+              "required": ["action"]
+            }
+          },
+          "then": {
+            "items": {
+              "properties": { "action": { "type": "string", "const": "finalize" } },
+              "required": ["action"]
+            }
+          }
+        }
+      ]
     }
   },
   "required": ["idempotency_key", "refinements"],

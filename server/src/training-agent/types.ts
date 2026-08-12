@@ -355,6 +355,15 @@ export interface SessionState {
     productId: string;
     option: Product['pricing_options'][number];
   }>;
+  /** Durable proposal-successor receipts kept outside immutable proposal
+   * snapshots. Finalization uses this to recover an exact idempotent retry
+   * after domain state was flushed but before the idempotency receipt was
+   * published. */
+  proposalLifecycleLinks: Map<string, {
+    operation: 'finalize';
+    idempotencyKey: string;
+    successorProposalId: string;
+  }>;
   usageRecords: UsageRecord[];
   /** Maps build_variant_id → the FormatID target used to produce it.
    * Populated when build_creative returns a build_variant_id so that a

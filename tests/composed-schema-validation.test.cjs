@@ -3125,13 +3125,24 @@ async function runTests() {
     },
     'refine_proposals forks an accepted proposal into a cancellation proposal'
   );
-  await testSchemaRejection(
+  await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-request.json',
     {
       idempotency_key: 'refine-proposals-0002',
       refinements: [{ proposal_id: 'proposal-1', action: 'finalize' }]
     },
-    'refine_proposals rejects finalization'
+    'refine_proposals accepts explicit finalization without fake revision instructions'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-mixed-finalize-0001',
+      refinements: [
+        { proposal_id: 'proposal-1', action: 'finalize' },
+        { proposal_id: 'proposal-2', instructions: 'Change the budget.' }
+      ]
+    },
+    'refine_proposals keeps finalize batches exclusive and atomic'
   );
   const cleanPurchase = {
     idempotency_key: 'buy-products-clean-0001',
@@ -3532,7 +3543,7 @@ async function runTests() {
         proposal_id: 'proposal-1',
         name: 'Draft premium video plan',
         proposal_kind: 'new_media_buy',
-        proposal_status: 'committed',
+        proposal_status: 'draft',
         expires_at: '2027-06-30T23:59:59Z',
         commercial_terms: {
           brand: { domain: 'buyer.example' },
@@ -3599,6 +3610,72 @@ async function runTests() {
       products: []
     },
     'refine_proposals partial results require explanatory notes'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-draft-1',
+        outcome: 'finalized',
+        proposal: {
+          proposal_id: 'proposal-committed-1',
+          proposal_kind: 'new_media_buy',
+          proposal_status: 'committed',
+          expires_at: '2027-06-30T23:59:59Z',
+          name: 'Held premium video plan',
+          commercial_terms: {
+            brand: { domain: 'buyer.example' },
+            purchases: [{
+              product_id: 'premium-video',
+              pricing_option_id: 'fixed-cpm',
+              pricing: { pricing_option_id: 'fixed-cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 28 },
+              start_time: '2027-06-01T12:00:00Z',
+              end_time: '2027-07-01T00:00:00Z'
+            }],
+            start_time: 'asap',
+            end_time: '2027-07-01T00:00:00Z'
+          },
+          terms_digest: `sha256:${'A'.repeat(43)}`
+        }
+      }],
+      products: []
+    },
+    'refine_proposals finalization returns a committed proposal with a hold deadline'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-draft-1',
+        outcome: 'finalized',
+        proposal: {
+          proposal_id: 'proposal-committed-1',
+          proposal_kind: 'new_media_buy',
+          proposal_status: 'committed',
+          expires_at: '2027-06-30T23:59:59Z',
+          name: 'Held premium video plan',
+          commercial_terms: {
+            brand: { domain: 'buyer.example' },
+            purchases: [{
+              product_id: 'premium-video',
+              pricing_option_id: 'fixed-cpm',
+              pricing: { pricing_option_id: 'fixed-cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 28 },
+              start_time: '2027-06-01T12:00:00Z',
+              end_time: '2027-07-01T00:00:00Z'
+            }],
+            start_time: '2027-06-01T12:00:00Z',
+            end_time: '2027-07-01T00:00:00Z'
+          },
+          terms_digest: `sha256:${'A'.repeat(43)}`
+        }
+      }, {
+        source_proposal_id: 'proposal-draft-2',
+        outcome: 'unable',
+        reason: 'Inventory could not be held.'
+      }],
+      products: []
+    },
+    'refine_proposals forbids partially successful atomic finalization batches'
   );
   log('');
 

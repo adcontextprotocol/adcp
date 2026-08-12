@@ -145,7 +145,7 @@ npx @adcp/sdk@latest \
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `account` | [account-ref](/docs/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required for billing and policy evaluation. |
-| `proposal_id` | string | No* | ID of the exact executable proposal snapshot from [`request_proposals`](/docs/media-buy/task-reference/request_proposals) or [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals). Declined or already executed proposals fail with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state). Exact retries reuse the original idempotency key and replay success. Legacy [`get_products`](/docs/media-buy/task-reference/get_products) drafts fail with [`PROPOSAL_NOT_COMMITTED`](/docs/building/verification/compliance-catalog#error-code-proposal-not-committed) until finalized through that compatibility task. |
+| `proposal_id` | string | No* | ID of the exact committed proposal snapshot produced by [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) with `action: "finalize"`, or by the legacy [`get_products`](/docs/media-buy/task-reference/get_products) finalize action. Drafts fail with [`PROPOSAL_NOT_COMMITTED`](/docs/building/verification/compliance-catalog#error-code-proposal-not-committed); declined or already executed proposals fail with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state). Exact retries reuse the original idempotency key and replay success. |
 | `opportunity` | OpportunityContext | No | Proposal-mode planning-cycle closure shared with [`request_proposals`](/docs/media-buy/task-reference/request_proposals) and [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals); requires `proposal_id`. Omitting status is the create-specific signal to infer closed with `accepted_with_seller`; if status is sent, it must explicitly carry that closure. |
 | `total_budget` | TotalBudget | No* | Hard aggregate lifetime budget. Its currency is the single media-buy denomination for package constraints and canonical bidding. Required for proposals and seller-optimized explicit packages. Optional in fixed explicit-package mode; when supplied there, it must equal the sum of package budgets. |
 | `budget_allocation` | BudgetAllocation | No | Cross-package allocation mode. Omit for fixed allocation. Use `seller_optimized` with media-buy optimization goals to delegate allocation to the seller. Must be omitted when executing a proposal because the committed proposal supplies it. |
@@ -164,9 +164,9 @@ npx @adcp/sdk@latest \
 
 \* Either `packages` OR (`proposal_id` + `total_budget`) must be provided.
 
-When executing a proposal through this 3.x compatibility facade, `proposal_status` determines whether `create_media_buy` is valid. The split 3.2 request and refine tasks return `committed` snapshots that can be accepted before `expires_at`; new callers use [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal). Legacy [`get_products`](/docs/media-buy/task-reference/get_products) drafts require its finalize form, which remains supported throughout 3.x.
+When executing a proposal through this 3.x compatibility facade, `proposal_status` determines whether `create_media_buy` is valid. The split 3.2 request and revise operations return drafts; `refine_proposals` with `action: "finalize"` returns the `committed` snapshot that can be accepted before `expires_at`. New callers use [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal). Legacy [`get_products`](/docs/media-buy/task-reference/get_products) drafts require its finalize form, which remains supported throughout 3.x.
 
-A seller that did not reserve inventory at proposal time MAY reject an unexpired `committed` proposal at execution with [`PROPOSAL_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-proposal-unavailable). Inventory availability risk pre-execution is on the buyer unless the seller explicitly commits a hold in the proposal terms. Buyers that need reservation guarantees should request a hold in the `request_proposals` brief.
+An unexpired `committed` proposal carries an inventory hold and cannot be rejected merely because the seller sold that reserved inventory elsewhere. After `expires_at`, the hold lapses and the seller returns [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired).
 
 ### TotalBudget Object
 
@@ -895,7 +895,7 @@ asyncio.run(create_with_reporting())
 
 ### Executing a Proposal
 
-Execute a committed proposal from [`request_proposals`](/docs/media-buy/task-reference/request_proposals) or [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) without manually constructing packages:
+Execute a committed proposal finalized through [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) without manually constructing packages:
 
 <CodeGroup>
 
@@ -908,7 +908,7 @@ const endDate = new Date();
 endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
-  proposal_id: 'swiss_balanced_v1',  // From request_proposals or refine_proposals
+  proposal_id: 'swiss_balanced_v1',  // From refine_proposals action: "finalize"
   total_budget: {
     amount: 50000,
     currency: 'USD'
@@ -947,7 +947,7 @@ async def execute_proposal():
     end_date = datetime.now(timezone.utc) + timedelta(days=90)
 
     result = await test_agent.simple.create_media_buy(
-        proposal_id='swiss_balanced_v1',  # From request_proposals or refine_proposals
+        proposal_id='swiss_balanced_v1',  # From refine_proposals action: "finalize"
         total_budget={
             'amount': 50000,
             'currency': 'USD'
