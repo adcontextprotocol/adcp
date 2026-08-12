@@ -398,7 +398,7 @@ Prose may mention https://agenticadvertising.org/not-an-entry.
       assert.equal(ok, false);
       assert.ok(captured.errors.includes('Broken browser-facing links found:'));
       assert.ok(captured.errors.includes('Canonical URL policy failures found:'));
-      assert.ok(captured.errors.some((line) => line.includes(broken)));
+      assert.ok(captured.errors.includes(`- ${broken} (GET 404)`));
       assert.ok(captured.errors.some((line) => line.includes('REDIRECT DRIFT')));
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
