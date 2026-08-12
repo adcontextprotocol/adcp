@@ -64,8 +64,9 @@ The router sends you page context. You evaluate your active packages against tha
 3. Return offers for packages that match, each with a creative manifest
 
 ```json
-// Your response
+// Your provider→router response (provider-context-match-response.json)
 {
+  "status": "completed",
   "type": "context_match_response",
   "request_id": "ctx-8f3a2b",
   "offers": [
