@@ -150,6 +150,29 @@ Orchestrators SHOULD cross-check entries by the echoed id rather than trusting p
 
 ## Common refinement patterns
 
+### Price and budget asks
+
+Use the free-text `ask` field for commercial requests such as a lower price or a different budget allocation. For example, a buyer can ask for a proposal-scoped CPM reduction:
+
+```json
+{
+  "buying_mode": "refine",
+  "refine": [
+    {
+      "scope": "proposal",
+      "proposal_id": "prop_awareness_q2",
+      "ask": "reduce the CPM by 10% while keeping the same inventory and dates"
+    }
+  ]
+}
+```
+
+Buyers discover refinement support when `get_adcp_capabilities.media_buy.buying_modes` includes `"refine"`. That declaration means the seller can receive this free-text ask; it does not guarantee that the seller understands every negotiation strategy or has commercial flexibility on price. There is no finer-grained price-negotiation capability flag.
+
+When the seller returns `refinement_applied`, read the matching entry's `status` (`applied`, `partial`, or `unable`) and optional `notes` to learn how it handled this specific request. These fields acknowledge handling; they are not the executable commercial terms. Inspect the returned proposal's pricing and allocations before finalizing or buying.
+
+Because the entire `refinement_applied` field is optional, omission communicates no per-ask outcome: do not infer `applied`, `partial`, or `unable`. A seller may omit it even when the response applies the requested change. Treat the returned proposal and any reported outcome as runtime evidence for this request, not as a general promise that the seller can negotiate price.
+
 ### Find similar products
 
 Use `more_like_this` to discover products similar to ones you like. The seller returns the original product plus additional options matching its characteristics:
