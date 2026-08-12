@@ -37,7 +37,7 @@
     },
     "brand": {
       "$ref": "/schemas/core/brand-ref.json",
-      "description": "Brand identity reference (BrandRef — `domain` plus optional `brand_id` for house-of-brands; plus optional inline `brand_kit_override` for per-creative tweaks where brand.json is missing/stale). When present, the seller pulls brand context (logos, colors, voice, taglines) from the brand's brand.json automatically; any `brand_kit_override` fields on the BrandRef take precedence. v2 formats no longer redeclare brand_logo / brand_colors / brand_voice as explicit slots — brand identity is implicit context."
+      "description": "Brand identity reference (BrandRef — `domain` plus optional `brand_id` for house-of-brands; plus optional inline `brand_kit_override` for per-creative tweaks where brand.json is missing/stale). When present, the seller pulls master brand identity (logo, palette, fonts, voice, and visual guidelines) from the brand's brand.json automatically; supported fields present in `brand_kit_override` take precedence, and all other master identity fields continue to come from brand.json. Catalogs supply product or item payload. Catalog item asset groups — including an item-level `logo` for a property or franchise — are item identity selected through format field bindings; they do not override brand.json's master logo or other brand identity fields. v2 formats no longer redeclare brand_logo / brand_colors / brand_voice as explicit slots — brand identity is implicit context."
     },
     "rights": {
       "type": "array",

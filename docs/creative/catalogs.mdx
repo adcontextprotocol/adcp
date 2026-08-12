@@ -131,7 +131,7 @@ Each vertical type has a defined AdCP item schema, so formats can declare `catal
 
 ## Typed catalog assets
 
-Vertical catalog items support an `assets` array using the same `OfferingAssetGroup` structure as offering-type catalogs. This solves a concrete problem: standard catalog feeds have a single `image_url` field, but a hotel ad on Snap needs a 1080×1920 vertical image, a display banner needs a 1920×1080 landscape hero, and the advertiser's logo goes in a separate slot. Without typed pools, a creative agent has to guess which image to use for which slot.
+Vertical catalog items support an `assets` array using the same `OfferingAssetGroup` structure as offering-type catalogs. This solves a concrete problem: standard catalog feeds have a single `image_url` field, but a hotel ad on Snap needs a 1080×1920 vertical image, a display banner needs a 1920×1080 landscape hero, and a property's item-level logo goes in a separate slot. Without typed pools, a creative agent has to guess which image to use for which slot.
 
 By providing assets grouped by role, each catalog item self-describes the images it carries:
 
@@ -160,12 +160,14 @@ By providing assets grouped by role, each catalog item self-describes the images
       "asset_group_id": "logo",
       "asset_type": "image",
       "items": [
-        { "url": "https://images.acmehotels.com/logo.png", "width": 400, "height": 200 }
+        { "url": "https://images.acmehotels.com/grand-amsterdam/logo.png", "width": 400, "height": 200 }
       ]
     }
   ]
 }
 ```
+
+**Catalog assets do not override master brand identity.** The creative manifest's `brand` reference resolves the master logo, palette, fonts, voice, and visual guidelines from `brand.json`, then applies the supported per-call fields in `brand_kit_override`. A catalog `logo` asset group represents item-level identity — for example, a hotel, property, or franchise logo — that a format may select through `field_bindings`; it does not replace the master logo or other brand identity fields from `brand.json`.
 
 The `asset_group_id` vocabulary is not standardized at the protocol level — each format defines which group IDs it uses via `offering_asset_constraints` in the catalog asset's `requirements`. Common conventions: `images_landscape` (16:9), `images_vertical` (9:16), `images_square` (1:1), `logo`, `video`. Video pools are first-class catalog asset groups alongside image pools — beyond the generic `video` pool, orientation-specific `video_vertical` (9:16) and `video_horizontal` (16:9) pool IDs let a feed carry per-orientation video the same way the image pools do.
 
