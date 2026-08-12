@@ -25,6 +25,7 @@ import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "./schemas-middleware.js";
+import { renderLegalMarkdown } from "./legal-markdown.js";
 import { closeDatabase, getPool, healthCheck } from "./db/client.js";
 import { AuthenticationRequiredError, CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
 import { sdkSafeFetch, withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
@@ -2774,9 +2775,16 @@ export class HTTPServer {
     this.app.get('/dashboard/api-keys', (req, res) => serveDashboardPage(req, res, 'dashboard-api-keys.html'));
     this.app.get('/dashboard/addie', (_req, res) => res.redirect('/chat'));
 
-    // Legal page redirects — canonical paths are /legal/terms and /legal/privacy
+    // Public membership agreement. The page shell fetches the current database-backed
+    // agreement, so this canonical URL always matches the agreement used at checkout.
+    this.app.get('/legal/membership-agreement', async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'agreement.html');
+    });
+
+    // Legal page redirects — canonical paths live under /legal/.
     this.app.get('/terms', (_req, res) => res.redirect(301, '/legal/terms'));
     this.app.get('/privacy', (_req, res) => res.redirect(301, '/legal/privacy'));
+    this.app.get('/membership-agreement', (_req, res) => res.redirect(301, '/legal/membership-agreement'));
 
     // My Content redirect is handled in pre-static middleware block above
 
@@ -9209,6 +9217,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
     // GET /api/agreement/current - Get current agreement by type
     this.app.get('/api/agreement/current', async (req, res) => {
+      res.setHeader('Cache-Control', 'no-store');
       try {
         const type = (req.query.type as string) || 'membership';
 
@@ -9244,6 +9253,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
     // GET /api/agreement - Get specific agreement by type and version (or current if no version)
     this.app.get('/api/agreement', async (req, res) => {
+      res.setHeader('Cache-Control', 'no-store');
       try {
         const type = req.query.type as string;
         const version = req.query.version as string;
@@ -9282,8 +9292,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           });
         }
 
-        const { marked } = await import('marked');
-        const htmlContent = await marked(agreement.text);
+        const htmlContent = renderLegalMarkdown(agreement.text);
 
         return res.json({
           version: agreement.version,

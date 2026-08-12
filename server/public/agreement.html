@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Agreement - AgenticAdvertising.org</title>
+  <meta name="description" content="Read the current AgenticAdvertising.org membership agreement.">
   <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <link rel="stylesheet" href="/layout.css">
@@ -58,8 +59,13 @@
   <script>
     (async function() {
       const params = new URLSearchParams(window.location.search);
-      const type = params.get('type');
-      const version = params.get('version');
+      const canonicalMembershipPath = '/legal/membership-agreement';
+      const normalizedPath = window.location.pathname.replace(/\/$/, '');
+      const isCanonicalMembership = normalizedPath === canonicalMembershipPath;
+      const type = isCanonicalMembership ? 'membership' : params.get('type');
+      // The canonical legal URL is intentionally always current. Versioned
+      // historical documents remain available through /api/agreement.
+      const version = isCanonicalMembership ? null : params.get('version');
 
       if (!type) {
         document.getElementById('loading').style.display = 'none';
@@ -75,10 +81,18 @@
         ip_policy: 'IP Policy'
       };
 
-      const qs = version ? `type=${type}&version=${version}&format=json` : `type=${type}&format=json`;
+      const query = new URLSearchParams({ type, format: 'json' });
+      if (version) query.set('version', version);
+
+      if (isCanonicalMembership) {
+        const canonical = document.createElement('link');
+        canonical.rel = 'canonical';
+        canonical.href = 'https://agenticadvertising.org/legal/membership-agreement';
+        document.head.appendChild(canonical);
+      }
 
       try {
-        const res = await fetch(`/api/agreement?${qs}`);
+        const res = await fetch(`/api/agreement?${query.toString()}`);
         if (!res.ok) throw new Error('Not found');
         const data = await res.json();
 

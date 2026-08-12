@@ -4621,7 +4621,9 @@
       const baseUrl = window.location.hostname === 'localhost'
         ? window.location.origin
         : 'https://agenticadvertising.org';
-      const url = `${baseUrl}/api/agreement?type=${type}`;
+      const url = type === 'membership'
+        ? `${baseUrl}/legal/membership-agreement`
+        : `${baseUrl}/api/agreement?type=${encodeURIComponent(type)}`;
 
       try {
         await navigator.clipboard.writeText(url);
