@@ -2823,6 +2823,12 @@ async function runTests() {
       date_range_support: 'date_range'
     }
   };
+  const canonicalProductBase = structuredClone(productBase);
+  delete canonicalProductBase.format_ids;
+  canonicalProductBase.format_options = [{
+    format_kind: 'image',
+    params: { width: 300, height: 250 }
+  }];
   const productSignalOption = {
     signal_ref: { scope: 'product', signal_id: 'high_intent_shoppers' },
     name: 'High intent shoppers',
@@ -3025,6 +3031,11 @@ async function runTests() {
     '/schemas/media-buy/list-products-request.json',
     { fields: ['product_id', 'pricing_options'] },
     'list_products is a key-optional synchronous read'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-products-request.json',
+    { fields: ['product_id', 'format_ids'] },
+    'list_products does not expose the legacy named-format field selector'
   );
   await testSchemaValidation(
     '/schemas/media-buy/list-products-request.json',
@@ -3236,6 +3247,63 @@ async function runTests() {
     'list_products treats no matches as an empty successful product page'
   );
   await testSchemaValidation(
+    '/schemas/core/canonical-product.json',
+    canonicalProductBase,
+    'split product tools accept canonical format options'
+  );
+  await testSchemaRejection(
+    '/schemas/core/canonical-product.json',
+    productBase,
+    'split product tools reject legacy-only product format IDs'
+  );
+  await testSchemaRejection(
+    '/schemas/core/canonical-product.json',
+    { ...canonicalProductBase, format_ids: productBase.format_ids },
+    'split product tools reject dual-emitted legacy product format IDs'
+  );
+  await testSchemaRejection(
+    '/schemas/core/canonical-product.json',
+    {
+      ...canonicalProductBase,
+      format_options: [{
+        ...canonicalProductBase.format_options[0],
+        v1_format_ref: productBase.format_ids
+      }]
+    },
+    'split product tools reject legacy named-format links inside canonical options'
+  );
+  await testSchemaRejection(
+    '/schemas/core/canonical-product.json',
+    {
+      ...canonicalProductBase,
+      placements: [{
+        kind: 'seller_inline',
+        placement_id: 'homepage',
+        name: 'Homepage',
+        mode: 'targetable',
+        format_ids: productBase.format_ids
+      }]
+    },
+    'split product tools reject legacy placement format IDs'
+  );
+  await testSchemaRejection(
+    '/schemas/core/canonical-product.json',
+    {
+      ...canonicalProductBase,
+      placements: [{
+        kind: 'seller_inline',
+        placement_id: 'homepage',
+        name: 'Homepage',
+        mode: 'targetable',
+        format_options: [{
+          ...canonicalProductBase.format_options[0],
+          v1_format_ref: productBase.format_ids
+        }]
+      }]
+    },
+    'split product tools reject legacy named-format links inside placement options'
+  );
+  await testSchemaValidation(
     '/schemas/media-buy/list-products-response.json',
     { outcome: 'unchanged', feed_version: 'feed-v2', cache_scope: 'public' },
     'list_products explicitly discriminates an unchanged feed response'
@@ -3251,7 +3319,7 @@ async function runTests() {
         proposal_status: 'committed',
         expires_at: '2027-06-30T23:59:59Z'
       }],
-      products: [{ ...productBase, product_id: 'premium-video' }]
+      products: [{ ...canonicalProductBase, product_id: 'premium-video' }]
     },
     'request_proposals explicitly discriminates a successful proposal response'
   );
@@ -3280,7 +3348,7 @@ async function runTests() {
         expires_at: '2027-06-30T23:59:59Z'
       }],
       outcome: 'proposed',
-      products: [{ ...productBase, product_id: 'premium-video' }],
+      products: [{ ...canonicalProductBase, product_id: 'premium-video' }],
       reason: 'This must not appear on the success arm.'
     },
     'request_proposals success cannot carry rejection fields'

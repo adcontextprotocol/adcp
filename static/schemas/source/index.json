@@ -45,6 +45,10 @@
           "$ref": "/schemas/core/product.json",
           "description": "Represents available advertising inventory"
         },
+        "canonical-product": {
+          "$ref": "/schemas/core/canonical-product.json",
+          "description": "Canonical-only product view for the AdCP 3.2 split product and proposal tools"
+        },
         "media-buy": {
           "$ref": "/schemas/core/media-buy.json",
           "description": "Represents a purchased advertising campaign"

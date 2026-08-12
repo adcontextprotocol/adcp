@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/refine-proposals-response.json",
   "title": "Refine Proposals Response",
-  "description": "One ordered immutable revision result per requested source proposal, plus the products needed to evaluate the revised allocations.",
+  "description": "One ordered immutable revision result per requested source proposal, plus the canonical products needed to evaluate the revised allocations. Products require format_options and never carry legacy named-format identifiers.",
   "type": "object",
   "properties": {
     "results": {
@@ -71,7 +71,7 @@
     },
     "products": {
       "type": "array",
-      "items": { "$ref": "/schemas/core/product.json" }
+      "items": { "$ref": "/schemas/core/canonical-product.json" }
     }
   },
   "required": ["results", "products"],

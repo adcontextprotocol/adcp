@@ -438,9 +438,57 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     const output = JSON.stringify(readJson(path.join(PROJECTION_DIR, tool.outputSchema)));
     assert.doesNotMatch(input, /(?:Provenance|provenance\.json|AssetVariant|asset-variant\.json)/,
       `${toolName} input must not depend on the creative provenance graph`);
+    assert.doesNotMatch(input, /format_ids|format-id\.json|v1_format_ref/,
+      `${toolName} input must not expose legacy named-format creatives`);
     assert.doesNotMatch(output, /(?:AssetVariant|asset-variant\.json)/,
       `${toolName} output must not depend on creative asset variants`);
+    if (toolName !== 'decline_proposals') {
+      assert.match(output, /Canonical Product/,
+        `${toolName} output must use the canonical-only Product view`);
+    }
   }
+
+  const projectedListProductsOutput = readJson(path.join(
+    PROJECTION_DIR,
+    projectionManifest.tools.list_products.outputSchema
+  ));
+  const validateProjectedListProducts = createValidator(Ajv2020).compile(projectedListProductsOutput);
+  const projectedProductBase = {
+    product_id: 'canonical-product-1',
+    name: 'Canonical product',
+    description: 'Projection boundary fixture',
+    publisher_properties: [{ publisher_domain: 'publisher.example', selection_type: 'all' }],
+    delivery_type: 'guaranteed',
+    pricing_options: [{
+      pricing_option_id: 'cpm',
+      pricing_model: 'cpm',
+      rate: 10,
+      currency: 'USD',
+      is_fixed: true,
+    }],
+    reporting_capabilities: {
+      available_reporting_frequencies: ['daily'],
+      expected_delay_minutes: 240,
+      timezone: 'UTC',
+      supports_webhooks: false,
+      available_metrics: ['impressions'],
+      date_range_support: 'date_range',
+    },
+  };
+  assert.equal(validateProjectedListProducts({
+    outcome: 'listed',
+    products: [{
+      ...projectedProductBase,
+      format_options: [{ format_kind: 'image', params: { width: 300, height: 250 } }],
+    }],
+  }), true, JSON.stringify(validateProjectedListProducts.errors));
+  assert.equal(validateProjectedListProducts({
+    outcome: 'listed',
+    products: [{
+      ...projectedProductBase,
+      format_ids: [{ agent_url: 'https://legacy-creative.example', id: 'display_300x250' }],
+    }],
+  }), false, 'projected list_products output accepted a legacy-only creative declaration');
 
   const seen = new Set();
   const paritySchemas = new Map();

@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-product.json",
+  "title": "Canonical Product",
+  "description": "Canonical-only Product view returned by the AdCP 3.2 split product and proposal tools. It requires format_options and forbids legacy named-format identifiers at the product, placement, and format-option levels. The get_products compatibility facade remains the only product-discovery surface that may emit those legacy creative declarations.",
+  "allOf": [
+    { "$ref": "/schemas/core/product.json" },
+    {
+      "type": "object",
+      "properties": {
+        "format_options": {
+          "type": "array",
+          "items": {
+            "not": { "required": ["v1_format_ref"] }
+          }
+        },
+        "placements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "format_options": {
+                "type": "array",
+                "items": {
+                  "not": { "required": ["v1_format_ref"] }
+                }
+              }
+            },
+            "not": { "required": ["format_ids"] }
+          }
+        }
+      },
+      "required": ["format_options"],
+      "not": { "required": ["format_ids"] }
+    }
+  ]
+}
