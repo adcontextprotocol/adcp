@@ -2,6 +2,7 @@
 title: Provision a seller-mediated account
 sidebarTitle: Provision an account
 description: "Follow an AdCP buyer-declared account from capability discovery through human setup, activation, and its first media buy."
+"og:title": "AdCP — Provision a seller-mediated account"
 testable: true
 ---
 
@@ -71,7 +72,7 @@ Sam calls `get_adcp_capabilities` before choosing an account workflow. The relev
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/protocol/get-adcp-capabilities-response.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
   "status": "completed",
   "adcp": {
     "major_versions": [3],
@@ -104,13 +105,13 @@ The `notifications` block selects the preferred observation strategy: register a
 
 Sam sends a fresh `idempotency_key`, the Nova Motors brand, Pinnacle Agency as operator, the advertised billing model, and the requested payment terms. The same account entry registers a durable lifecycle subscriber. The top-level `push_notification_config` is optional and applies only to the async result of this provisioning task; it does not replace the durable subscriber.
 
-<!-- account.status_changed is merged for the next minor release but is not part of released 3.1.13, so the account-lifecycle examples intentionally use /schemas/latest/. -->
+<!-- account.status_changed is a next-minor surface; the stable v3 alias resolves to it when that release becomes current. -->
 
-**Schema:** [`sync-accounts-request.json`](https://adcontextprotocol.org/schemas/latest/account/sync-accounts-request.json)
+**Schema:** [`sync-accounts-request.json`](https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json)
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/account/sync-accounts-request.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-accounts-request.json",
   "idempotency_key": "2fc44b7a-6c1c-4cb9-83da-bdcce1b6c0f8",
   "accounts": [
     {
@@ -160,11 +161,11 @@ The seller also validates the durable endpoint and completes its proof-of-contro
 
 The account needs a human credit and legal review, so StreamHaus returns `pending_approval`:
 
-**Schema:** [`sync-accounts-response.json`](https://adcontextprotocol.org/schemas/latest/account/sync-accounts-response.json)
+**Schema:** [`sync-accounts-response.json`](https://adcontextprotocol.org/schemas/v3/account/sync-accounts-response.json)
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/account/sync-accounts-response.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-accounts-response.json",
   "status": "completed",
   "accounts": [
     {
@@ -230,11 +231,11 @@ Setup URLs can expire or be single-use. If one is missing, expired, or already c
 
 After approval, StreamHaus sends the durable subscriber a complete `account.status_changed` event. The receiver verifies the webhook signature, scopes deduplication to the authenticated sender, and deduplicates retries by `idempotency_key`.
 
-**Schema:** [`account-status-changed-webhook.json`](https://adcontextprotocol.org/schemas/latest/core/account-status-changed-webhook.json)
+**Schema:** [`account-status-changed-webhook.json`](https://adcontextprotocol.org/schemas/v3/core/account-status-changed-webhook.json)
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/core/account-status-changed-webhook.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/account-status-changed-webhook.json",
   "idempotency_key": "whk_01J5C8PX4W6EJYNRDT30M0VN4A",
   "notification_id": "acctchg_streamhaus_nova_20260812T143000Z",
   "notification_type": "account.status_changed",
@@ -261,11 +262,11 @@ The event's `status` and `reason_code` are advisory. It deliberately omits the c
 }
 ```
 
-**Schema:** [`list-accounts-response.json`](https://adcontextprotocol.org/schemas/latest/account/list-accounts-response.json)
+**Schema:** [`list-accounts-response.json`](https://adcontextprotocol.org/schemas/v3/account/list-accounts-response.json)
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/latest/account/list-accounts-response.json",
+  "$schema": "https://adcontextprotocol.org/schemas/v3/account/list-accounts-response.json",
   "status": "completed",
   "accounts": [
     {
