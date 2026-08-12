@@ -73,6 +73,17 @@ describe('Rules Loader', () => {
     expect(rules).not.toContain('tmpm');
   });
 
+  it('routes Prebid Sales Agent build questions to the owning project without guessing', () => {
+    const rules = loadRules();
+
+    expect(rules).toContain('Prebid.org maintains the Prebid Sales Agent');
+    expect(rules).toContain('repo_id "salesagent"');
+    expect(rules).toContain('https://prebid.org/product-suite/sales-agent/');
+    expect(rules).toContain('support@prebid.org');
+    expect(rules).toContain('Do not invent package files, repository names, versions, or upgrade steps');
+    expect(rules).toContain('do not route these questions to AgenticAdvertising.org Slack');
+  });
+
   it('should cache results across calls', () => {
     const first = loadRules();
     const second = loadRules();
