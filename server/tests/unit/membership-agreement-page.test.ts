@@ -61,10 +61,16 @@ describe('public membership agreement page', () => {
 [Unsafe](javascript:alert('link'))
 
 [Safe](https://agenticadvertising.org/legal/terms "Terms")
+
+[Email](mailto:legal@agenticadvertising.org)
+
+[Insecure](http://agenticadvertising.org/legal/terms)
 `);
 
     expect(rendered).toContain('<h1>Membership Agreement</h1>');
     expect(rendered).toContain('href="https://agenticadvertising.org/legal/terms"');
+    expect(rendered).toContain('href="mailto:legal@agenticadvertising.org"');
+    expect(rendered).not.toContain('href="http://agenticadvertising.org/legal/terms"');
     expect(rendered).not.toMatch(/<script|<img|onerror|javascript:/i);
   });
 
