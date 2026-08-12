@@ -7,8 +7,7 @@ testable: false
 
 `refine_proposals` creates executable committed revisions directly. Each entry targets one draft, committed, or accepted proposal. Proposal IDs must be unique within the request, and results preserve request order. Successful refinement returns a new `proposal_id`; that ID is the complete version identity for the immutable commercial snapshot, and the source remains unchanged.
 
-{/* Using latest because accepted-proposal refinement is not yet released. Update after the 3.2 release. */}
-**Request schema:** [`/schemas/latest/media-buy/refine-proposals-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/refine-proposals-request.json)
+**Request schema:** [`/schemas/v3/media-buy/refine-proposals-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/refine-proposals-request.json)
 
 ```json
 {

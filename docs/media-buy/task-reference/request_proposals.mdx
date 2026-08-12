@@ -9,8 +9,7 @@ testable: false
 
 `brand` contains only the stable BrandKey (`domain` plus optional `brand_id`); the seller resolves the canonical brand manifest rather than receiving a full brand file in every call. `account` is optional and adds seller-specific commercial terms. A natural-key account (`brand` plus `operator`) can supply the request's sole brand identity instead of repeating top-level `brand`.
 
-{/* Using latest because request_proposals is not yet released. Update after the 3.2 release. */}
-**Request schema:** [`/schemas/latest/media-buy/request-proposals-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/request-proposals-request.json)
+**Request schema:** [`/schemas/v3/media-buy/request-proposals-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/request-proposals-request.json)
 
 ```json
 {
