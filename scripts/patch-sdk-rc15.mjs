@@ -3,7 +3,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const EXPECTED_VERSION = '13.0.0-rc.15';
+// This temporary patch remains version-locked even though its filename dates
+// from the release where it was introduced. Remove it when the upstream
+// get_products routing fix ships.
+const EXPECTED_VERSION = '13.0.0-rc.17';
 const packageJson = JSON.parse(fs.readFileSync(path.resolve('node_modules/@adcp/sdk/package.json'), 'utf8'));
 
 if (packageJson.version !== EXPECTED_VERSION) {
