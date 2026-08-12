@@ -76,6 +76,10 @@
           },
           "minItems": 1
         },
+        "quality_used": {
+          "$ref": "/schemas/enums/creative-quality.json",
+          "description": "Actual render quality applied to every preview in this response. This field MUST be present when the corresponding request supplied `quality`, and SHOULD be present otherwise. It may differ from the requested value when the agent cannot provide that tier, allowing buyers to detect a downgrade before approval."
+        },
         "interactive_url": {
           "type": "string",
           "format": "uri",
@@ -133,6 +137,10 @@
                 "type": "string",
                 "description": "ID of the creative this result corresponds to. Enables correlation when processing batch results.",
                 "x-entity": "creative"
+              },
+              "quality_used": {
+                "$ref": "/schemas/enums/creative-quality.json",
+                "description": "Actual render quality applied to every preview in this successful batch result. This field MUST be present when the effective item request supplied `quality`, whether directly or through the batch-level default, and SHOULD be present otherwise. It may differ from the requested value when the agent cannot provide that tier."
               },
               "response": {
                 "type": "object",

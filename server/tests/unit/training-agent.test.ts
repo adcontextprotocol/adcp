@@ -7338,6 +7338,8 @@ describe('canonical creative build capabilities', () => {
     });
 
     const results = result.results as Array<Record<string, any>>;
+    expect(results[0].quality_used).toBe('draft');
+    expect(results[1].quality_used).toBe('production');
     const firstRender = results[0].response.previews[0].renders[0];
     expect(firstRender.output_format).toBe('html');
     expect(firstRender.preview_url).toBeUndefined();

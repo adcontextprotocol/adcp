@@ -10986,6 +10986,7 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
       return {
         success: true,
         creative_id: item.creative_id || 'unknown',
+        quality_used: effectiveQuality,
         response: { previews: [preview], expires_at: expiresAt },
       };
     });
@@ -11032,6 +11033,7 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
   return {
     response_type: 'single',
     previews: [preview],
+    quality_used: req.quality ?? 'production',
     expires_at: expiresAt,
   };
 }

@@ -1088,7 +1088,7 @@
           <div id="invoice-agreement-section" style="background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
             <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
               <input type="checkbox" id="invoice-agreement-checkbox" style="margin-top: 3px; cursor: pointer;">
-              <span style="font-size: 14px;">I have read and agree to the <a href="/membership-agreement" target="_blank" rel="noopener" style="color: var(--color-brand);">AgenticAdvertising.org membership agreement</a>.</span>
+              <span style="font-size: 14px;">I have read and agree to the <a href="/legal/membership-agreement" target="_blank" rel="noopener" style="color: var(--color-brand);">AgenticAdvertising.org membership agreement</a>.</span>
             </label>
           </div>
 
@@ -2313,7 +2313,10 @@
 
     // View an agreement
     function viewAgreement(type) {
-      window.open(`/api/agreement?type=${encodeURIComponent(type)}`, '_blank');
+      const url = type === 'membership'
+        ? '/legal/membership-agreement'
+        : `/api/agreement?type=${encodeURIComponent(type)}`;
+      window.open(url, '_blank', 'noopener');
     }
 
     // Standalone "Review & Sign" flow for the membership agreement. Opens a
