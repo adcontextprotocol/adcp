@@ -162,6 +162,8 @@ npx @adcp/sdk@latest \
 
 When executing a proposal, `proposal_status` on the returned proposal determines whether `create_media_buy` is valid. The split 3.2 request and refine tasks return `committed` snapshots that can be executed before `expires_at`; `create_media_buy` is the buyer acceptance/execution step. Legacy [`get_products`](/docs/media-buy/task-reference/get_products) drafts require its finalize form, which remains supported throughout 3.x.
 
+A seller that did not reserve inventory at proposal time MAY reject an unexpired `committed` proposal at execution with [`PROPOSAL_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-proposal-unavailable). Inventory availability risk pre-execution is on the buyer unless the seller explicitly commits a hold in the proposal terms. Buyers that need reservation guarantees should request a hold in the `request_proposals` brief.
+
 ### TotalBudget Object
 
 | Parameter | Type | Required | Description |

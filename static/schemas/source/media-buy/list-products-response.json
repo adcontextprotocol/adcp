@@ -25,7 +25,11 @@
     "feed_version": { "type": "string", "description": "Opaque version of the selected offer feed." },
     "pricing_version": { "type": "string", "description": "Opaque version of the selected pricing layer." },
     "cache_scope": { "type": "string", "enum": ["public", "account"] },
-    "incomplete": { "$ref": "/schemas/media-buy/get-products-response.json#/properties/incomplete" }
+    "incomplete": {
+      "allOf": [{ "$ref": "/schemas/media-buy/get-products-response.json#/properties/incomplete" }],
+      "description": "Declares that the result set was truncated because the page cap (max_results) was reached before all matching products could be returned. time_budget has no meaning for this synchronous task and MUST NOT be used as a trigger condition. When incomplete is present, callers should paginate via next_cursor to retrieve remaining products.",
+      "x-adcp-schema-uri": "/schemas/media-buy/get-products-response.json#/properties/incomplete"
+    }
   },
   "oneOf": [
     {

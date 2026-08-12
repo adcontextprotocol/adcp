@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/request-proposals-async-response-submitted.json",
+  "title": "Request Proposals - Submitted",
+  "description": "Async task envelope returned when request_proposals cannot produce executable proposals before the response — for example, when consultative planning requires upstream system queries or human sales-desk review. The buyer can poll get_task_status with task_id. If the originating request carried push_notification_config, the seller delivers at least the terminal completion or failure notification to that webhook URL; intermediate progress notifications are MAY. The proposals array lands on the completion artifact, not this envelope.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "const": "submitted",
+      "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shape, whose proposals array is issued in-line. See task-status.json for the full task-status enum."
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Task handle the buyer uses with tasks/get, and that the seller references on push-notification callbacks. The proposals array is issued on the completion artifact, not here.",
+      "x-entity": "task"
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Proposal planning queued for sales-desk review; typical turnaround 1–4 hours.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context."
+    },
+    "estimated_completion": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Estimated completion time for proposal generation."
+    },
+    "errors": {
+      "type": "array",
+      "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings. Terminal failures belong in the error branch, not here.",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["status", "task_id"],
+  "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      { "required": ["proposals"] },
+      { "required": ["products"] },
+      { "required": ["result"] }
+    ]
+  }
+}

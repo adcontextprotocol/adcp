@@ -25,6 +25,7 @@
     "governance_context": { "type": "string", "minLength": 1, "maxLength": 4096 },
     "push_notification_config": {
       "allOf": [{ "$ref": "/schemas/core/push-notification-config.json" }],
+      "description": "Reserved surface; list_products is synchronous and does not dispatch push notifications. Sellers MUST ignore this field. It is accepted without error so buyers can send a uniform request envelope. If a future amendment makes list_products async, this field will become active.",
       "x-adcp-schema-uri": "/schemas/core/push-notification-config.json"
     },
     "account_id": {

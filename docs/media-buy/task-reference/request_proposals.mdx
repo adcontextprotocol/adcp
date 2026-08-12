@@ -2,7 +2,7 @@
 title: request_proposals
 description: "Request one or more actionable seller-authored media plans."
 "og:title": "AdCP request_proposals Task"
-testable: true
+testable: false
 ---
 
 `request_proposals` creates one or more executable media-plan proposal snapshots from a brief. It can begin a consultative workflow directly or use `product_ids` returned by [`list_products`](/docs/media-buy/task-reference/list_products). Success always contains at least one proposal; returning products without a proposal does not satisfy this task.
@@ -33,3 +33,5 @@ Every returned allocation references the exact `product_id` whose pricing and fo
 `opportunity` is optional shared planning-cycle context and must be open when supplied here. Its buyer-assigned `opportunity_id` can span request, decline, and purchase calls without becoming part of proposal identity. Sellers associate it with every proposal created by the request, and revised proposals inherit the same association.
 
 The response uses `outcome: "proposed"` for a successful executable set and `outcome: "rejected"` with a reason when the seller cannot construct an actionable plan.
+
+Sellers MAY respond asynchronously with `status: "submitted"` when consultative planning requires upstream system queries or human sales-desk review. In that case the response contains a `task_id` for polling via [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json); terminal proposals are delivered on the completion artifact or via push notification if `push_notification_config` was supplied.

@@ -86,6 +86,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `PROPOSAL_EXPIRED` | correctable | call request_proposals for a fresh executable proposal, or re-discover through legacy get_products |
 | `PROPOSAL_NOT_COMMITTED` | correctable | finalize the legacy draft through get_products, or request a fresh executable proposal |
 | `PROPOSAL_NOT_FOUND` | correctable | request a fresh executable proposal, then retry |
+| `PROPOSAL_UNAVAILABLE` | correctable | call request_proposals for a fresh executable proposal; consider requesting a hold in the brief if inventory reservation is required |
 | `PROVENANCE_CLAIM_CONTRADICTED` | correctable | revise the provenance claim to match the verifier's observation or replace the creative; auto-retry without correction will not pass |
 | `PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING` | correctable | set provenance.digital_source_type to a value from the digital-source-type enum and resubmit |
 | `PROVENANCE_DISCLOSURE_MISSING` | correctable | set provenance.disclosure.required and, when true, populate disclosure.jurisdictions |
@@ -841,6 +842,15 @@ The referenced legacy get_products proposal has proposal_status 'draft' and cann
 **Suggested action:** request a fresh executable proposal, then retry
 
 The referenced proposal_id is not recognized by the seller — it belongs to a different tenant, was never issued, or was evicted from the seller's session cache before consumption. Distinct from <code>{"PROPOSAL_EXPIRED"}</code> (a known proposal whose <code>{"expires_at"}</code> window has passed) and <code>{"PROPOSAL_NOT_COMMITTED"}</code> (a known legacy get_products proposal still in <code>{"draft"}</code>). Recovery: correctable (request a fresh executable proposal, then retry create_media_buy).
+
+</Accordion>
+<a id="error-code-proposal-unavailable"></a>
+
+<Accordion title="PROPOSAL_UNAVAILABLE — correctable">
+
+**Suggested action:** call request_proposals for a fresh executable proposal; consider requesting a hold in the brief if inventory reservation is required
+
+An unexpired committed proposal cannot be executed because inventory is no longer available and the seller did not reserve it at proposal time. The proposal was valid when issued; the seller has not reserved the inventory and the available slots have since sold. Distinct from <code>{"PROPOSAL_EXPIRED"}</code> (expires_at window passed) and <code>{"PROPOSAL_NOT_FOUND"}</code> (unknown proposal_id). Recovery: correctable (call request_proposals to obtain a fresh proposal; consider asking the seller about hold options in the request brief).
 
 </Accordion>
 <a id="error-code-provenance-claim-contradicted"></a>

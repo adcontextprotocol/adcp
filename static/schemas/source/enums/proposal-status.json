@@ -10,6 +10,6 @@
   ],
   "enumDescriptions": {
     "draft": "Indicative pricing and availability. The buyer can compare and plan but must finalize before purchasing. Use the 'finalize' refine action to request firm pricing and any inventory hold.",
-    "committed": "Firm, executable terms. The buyer can execute this proposal via create_media_buy before expires_at. The status does not by itself promise that inventory is reserved; a seller that provides a hold must state it in the proposal terms. Execution is buyer acceptance. After expires_at, the buyer must request or discover a fresh proposal."
+    "committed": "Firm, executable terms. The buyer can execute this proposal via create_media_buy before expires_at. The status does not by itself promise that inventory is reserved; a seller that provides a hold must state it in the proposal terms. A seller that has not reserved inventory MAY reject an unexpired committed proposal at the create_media_buy step via PROPOSAL_UNAVAILABLE; in that case, availability risk pre-execution is on the buyer. Execution is buyer acceptance. After expires_at, the buyer must request or discover a fresh proposal."
   }
 }
