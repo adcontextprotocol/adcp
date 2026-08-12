@@ -24,6 +24,7 @@ versioned documentation snapshot.
 - https://agenticadvertising.org/community — Community hub
 - https://agenticadvertising.org/legal/terms — Terms of Service (canonical path; /terms redirects here)
 - https://agenticadvertising.org/legal/privacy — Privacy Policy (canonical path; /privacy redirects here)
+- https://agenticadvertising.org/legal/membership-agreement — Current AgenticAdvertising.org membership agreement (canonical path; /membership-agreement redirects here)
 - https://agenticadvertising.org/.well-known/oauth-authorization-server — OAuth authorization server metadata (RFC 8414)
 - https://agenticadvertising.org/.well-known/oauth-protected-resource/api — Protected resource metadata for /api (RFC 9728)
 - https://agenticadvertising.org/.well-known/oauth-protected-resource/mcp — Protected resource metadata for /mcp (RFC 9728)
@@ -67,9 +68,10 @@ substitute listed or call `search_docs`. Do not emit the hallucinated path.
 | `agenticadvertising.org/faq` | Doesn't exist — use `search_docs` |
 | `agenticadvertising.org/contact` | Doesn't exist — direct users to the community hub (`/community`) or working groups (`/committees?type=working_group`) |
 | `agenticadvertising.org/help` | Doesn't exist — use `search_docs` or `/docs/quickstart` |
-| `agenticadvertising.org/legal/about` | Doesn't exist — `/legal/` only has `terms` and `privacy` |
+| `agenticadvertising.org/legal/about` | Doesn't exist — use `search_docs` or one of the listed canonical legal pages |
 | `agenticadvertising.org/terms` | Redirect only — always cite the canonical `/legal/terms` |
 | `agenticadvertising.org/privacy` | Redirect only — always cite the canonical `/legal/privacy` |
+| `agenticadvertising.org/membership-agreement` | Redirect only — always cite the canonical `/legal/membership-agreement` |
 
 ## Deprecated — do not cite
 
