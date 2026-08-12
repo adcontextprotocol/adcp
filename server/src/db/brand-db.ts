@@ -1,5 +1,6 @@
 import { query, getClient } from './client.js';
 import { canonicalizeBrandDomain, assertValidBrandDomain } from '../services/identifier-normalization.js';
+import type { PoolClient } from 'pg';
 import type {
   HostedBrand,
   DiscoveredBrand,
@@ -97,14 +98,16 @@ export function sanitizeBrandSnapshot<T extends Record<string, unknown>>(snapsho
  *    `organization_domains.domain` but pollutes the registry)
  *  - self-reference (a brand cannot be its own house)
  *
- * Empty / null / undefined are passed through — callers use those to clear
- * the field.
+ * `undefined` means "not provided" while null / empty string mean "clear".
+ * Keeping that distinction prevents unrelated cache upserts from silently
+ * removing an existing hierarchy edge.
  */
 function validateHouseDomainArg(
   houseDomain: string | undefined | null,
   brandDomain: string,
-): string | undefined {
-  if (houseDomain == null || houseDomain === '') return undefined;
+): string | null | undefined {
+  if (houseDomain === undefined) return undefined;
+  if (houseDomain === null || houseDomain === '') return null;
   if (typeof houseDomain !== 'string') {
     throw new Error('house_domain must be a string');
   }
@@ -117,6 +120,96 @@ function validateHouseDomainArg(
     throw new Error('house_domain cannot equal the brand domain (self-reference)');
   }
   return canonical;
+}
+
+export interface BrandHouseDomainAuditContext {
+  actor_user_id: string;
+  source: string;
+  revision_number?: number;
+  rolled_back_to_revision?: number;
+}
+
+/** Serialize every hierarchy-edge writer, including writers for absent rows. */
+export async function lockBrandHouseDomainWriter(
+  client: Pick<PoolClient, 'query'>,
+  domain: string,
+): Promise<void> {
+  await client.query(
+    'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+    [domain],
+  );
+}
+
+/**
+ * Record one canonical hierarchy-edge mutation on the caller's transaction.
+ * The brand write and audit insert must succeed or roll back together.
+ */
+export async function recordBrandHouseDomainChange(
+  client: Pick<PoolClient, 'query'>,
+  input: {
+    domain: string;
+    prior_house_domain: string | null;
+    new_house_domain: string | null;
+    audit: BrandHouseDomainAuditContext;
+  },
+): Promise<void> {
+  if (input.prior_house_domain === input.new_house_domain) return;
+
+  const parentDomains = [...new Set([
+    input.new_house_domain,
+    input.prior_house_domain,
+  ]
+    .filter((domain): domain is string => Boolean(domain))
+    .map(domain => domain.toLowerCase()))];
+  const parentOrgByDomain = new Map<string, string>();
+  if (parentDomains.length > 0) {
+    const orgResult = await client.query<{ domain: string; workos_organization_id: string }>(
+      `SELECT LOWER(domain) AS domain, MIN(workos_organization_id) AS workos_organization_id
+       FROM organization_domains
+       WHERE verified = true AND LOWER(domain) = ANY($1::text[])
+       GROUP BY LOWER(domain)`,
+      [parentDomains],
+    );
+    for (const row of orgResult.rows) {
+      parentOrgByDomain.set(row.domain, row.workos_organization_id);
+    }
+  }
+
+  const priorParentOrgId = input.prior_house_domain
+    ? parentOrgByDomain.get(input.prior_house_domain.toLowerCase()) ?? null
+    : null;
+  const newParentOrgId = input.new_house_domain
+    ? parentOrgByDomain.get(input.new_house_domain.toLowerCase()) ?? null
+    : null;
+  const auditOrgId = newParentOrgId
+    ?? priorParentOrgId
+    ?? 'system_brand_registry';
+
+  await client.query(
+    `INSERT INTO registry_audit_log
+     (workos_organization_id, workos_user_id, action, resource_type, resource_id, details)
+     VALUES ($1, $2, 'brand_house_domain_changed', 'brand', $3, $4)`,
+    [
+      auditOrgId,
+      input.audit.actor_user_id,
+      input.domain,
+      JSON.stringify({
+        schema_version: 1,
+        domain: input.domain,
+        prior_house_domain: input.prior_house_domain,
+        new_house_domain: input.new_house_domain,
+        prior_parent_org_id: priorParentOrgId,
+        new_parent_org_id: newParentOrgId,
+        mutation_source: input.audit.source,
+        ...(input.audit.revision_number !== undefined
+          ? { revision_number: input.audit.revision_number }
+          : {}),
+        ...(input.audit.rolled_back_to_revision !== undefined
+          ? { rolled_back_to_revision: input.audit.rolled_back_to_revision }
+          : {}),
+      }),
+    ],
+  );
 }
 
 /**
@@ -263,7 +356,7 @@ export interface UpsertDiscoveredBrandInput {
   domain: string;
   brand_id?: string;
   canonical_domain?: string;
-  house_domain?: string;
+  house_domain?: string | null;
   brand_name?: string;
   brand_names?: LocalizedName[];
   keller_type?: KellerType;
@@ -280,6 +373,7 @@ export interface UpsertDiscoveredBrandInput {
   classification?: TrustedBrandClassification;
   source_type: 'brand_json' | 'community' | 'enriched' | 'stub';
   expires_at?: Date;
+  house_domain_audit?: BrandHouseDomainAuditContext;
 }
 
 /**
@@ -711,46 +805,79 @@ export class BrandDatabase {
       ? { ...(sanitized ?? {}), classification: { ...input.classification } }
       : sanitized;
 
-    const result = await query<DiscoveredBrand>(
-      `INSERT INTO brands (
-        domain, brand_id, canonical_domain, house_domain, brand_name, brand_names,
-        keller_type, parent_brand, brand_agent_url, brand_agent_capabilities,
-        has_brand_manifest, brand_manifest, source_type, last_validated, expires_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14)
-      ON CONFLICT (domain) DO UPDATE SET
-        brand_id = COALESCE(EXCLUDED.brand_id, brands.brand_id),
-        canonical_domain = EXCLUDED.canonical_domain,
-        house_domain = EXCLUDED.house_domain,
-        brand_name = EXCLUDED.brand_name,
-        brand_names = EXCLUDED.brand_names,
-        keller_type = EXCLUDED.keller_type,
-        parent_brand = EXCLUDED.parent_brand,
-        brand_agent_url = EXCLUDED.brand_agent_url,
-        brand_agent_capabilities = EXCLUDED.brand_agent_capabilities,
-        has_brand_manifest = COALESCE(EXCLUDED.has_brand_manifest, brands.has_brand_manifest),
-        brand_manifest = COALESCE(EXCLUDED.brand_manifest, brands.brand_manifest),
-        source_type = EXCLUDED.source_type,
-        last_validated = NOW(),
-        expires_at = EXCLUDED.expires_at
-      RETURNING *`,
-      [
-        canonicalDomain,
-        input.brand_id || null,
-        input.canonical_domain || null,
-        canonicalHouseDomain ?? null,
-        input.brand_name || null,
-        input.brand_names ? JSON.stringify(input.brand_names) : '[]',
-        input.keller_type || null,
-        input.parent_brand || null,
-        input.brand_agent_url || null,
-        input.brand_agent_capabilities || null,
-        input.has_brand_manifest != null ? input.has_brand_manifest : null,
-        persistedManifest ? JSON.stringify(persistedManifest) : null,
-        input.source_type,
-        input.expires_at || null,
-      ]
-    );
-    return this.deserializeDiscoveredBrand(result.rows[0]);
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      // Serialize writers for one domain even when the row does not exist yet,
+      // so the audit event always describes the immediately preceding value.
+      await lockBrandHouseDomainWriter(client, canonicalDomain);
+      const priorResult = await client.query<{ house_domain: string | null }>(
+        'SELECT house_domain FROM brands WHERE domain = $1',
+        [canonicalDomain],
+      );
+      const priorHouseDomain = priorResult.rows[0]?.house_domain ?? null;
+
+      const result = await client.query<DiscoveredBrand>(
+        `INSERT INTO brands (
+          domain, brand_id, canonical_domain, house_domain, brand_name, brand_names,
+          keller_type, parent_brand, brand_agent_url, brand_agent_capabilities,
+          has_brand_manifest, brand_manifest, source_type, last_validated, expires_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14)
+        ON CONFLICT (domain) DO UPDATE SET
+          brand_id = COALESCE(EXCLUDED.brand_id, brands.brand_id),
+          canonical_domain = EXCLUDED.canonical_domain,
+          house_domain = CASE WHEN $15::boolean THEN EXCLUDED.house_domain ELSE brands.house_domain END,
+          brand_name = EXCLUDED.brand_name,
+          brand_names = EXCLUDED.brand_names,
+          keller_type = EXCLUDED.keller_type,
+          parent_brand = EXCLUDED.parent_brand,
+          brand_agent_url = EXCLUDED.brand_agent_url,
+          brand_agent_capabilities = EXCLUDED.brand_agent_capabilities,
+          has_brand_manifest = COALESCE(EXCLUDED.has_brand_manifest, brands.has_brand_manifest),
+          brand_manifest = COALESCE(EXCLUDED.brand_manifest, brands.brand_manifest),
+          source_type = EXCLUDED.source_type,
+          last_validated = NOW(),
+          expires_at = EXCLUDED.expires_at
+        RETURNING *`,
+        [
+          canonicalDomain,
+          input.brand_id || null,
+          input.canonical_domain || null,
+          canonicalHouseDomain ?? null,
+          input.brand_name || null,
+          input.brand_names ? JSON.stringify(input.brand_names) : '[]',
+          input.keller_type || null,
+          input.parent_brand || null,
+          input.brand_agent_url || null,
+          input.brand_agent_capabilities || null,
+          input.has_brand_manifest != null ? input.has_brand_manifest : null,
+          persistedManifest ? JSON.stringify(persistedManifest) : null,
+          input.source_type,
+          input.expires_at || null,
+          input.house_domain !== undefined,
+        ],
+      );
+
+      if (input.house_domain !== undefined) {
+        await recordBrandHouseDomainChange(client, {
+          domain: canonicalDomain,
+          prior_house_domain: priorHouseDomain,
+          new_house_domain: result.rows[0].house_domain ?? null,
+          audit: input.house_domain_audit ?? {
+            actor_user_id: 'system:brand-database',
+            source: 'upsert_discovered_brand',
+          },
+        });
+      }
+
+      await client.query('COMMIT');
+      return this.deserializeDiscoveredBrand(result.rows[0]);
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch { /* preserve original error */ }
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   /**
@@ -862,15 +989,49 @@ export class BrandDatabase {
   }
 
   /**
-   * Delete a discovered brand
+   * Delete a discovered brand and record removal of any hierarchy edge.
    */
-  async deleteDiscoveredBrand(domain: string): Promise<boolean> {
-    const result = await query('DELETE FROM brands WHERE domain = $1', [domain.toLowerCase()]);
-    return result.rowCount !== null && result.rowCount > 0;
+  async deleteDiscoveredBrand(
+    domain: string,
+    audit: BrandHouseDomainAuditContext = {
+      actor_user_id: 'system:brand-database',
+      source: 'delete_discovered_brand',
+    },
+  ): Promise<boolean> {
+    const canonicalDomain = domain.toLowerCase();
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      await lockBrandHouseDomainWriter(client, canonicalDomain);
+      const result = await client.query<{ domain: string; house_domain: string | null }>(
+        'DELETE FROM brands WHERE domain = $1 RETURNING domain, house_domain',
+        [canonicalDomain],
+      );
+      const deleted = result.rows[0];
+      if (deleted) {
+        await recordBrandHouseDomainChange(client, {
+          domain: deleted.domain,
+          prior_house_domain: deleted.house_domain,
+          new_house_domain: null,
+          audit,
+        });
+      }
+      await client.query('COMMIT');
+      return Boolean(deleted);
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch { /* preserve original error */ }
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   /**
-   * Delete expired discovered brands
+   * Delete expired discovered brands.
+   *
+   * This maintenance primitive currently has no runtime caller. It must be
+   * routed through deleteDiscoveredBrand (with a stable maintenance actor)
+   * before activation so hierarchy-edge removals remain auditable.
    */
   async deleteExpiredBrands(): Promise<number> {
     const result = await query('DELETE FROM brands WHERE expires_at < NOW()');
@@ -1150,6 +1311,7 @@ export class BrandDatabase {
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      await lockBrandHouseDomainWriter(client, canonicalDomain);
 
       const insertResult = await client.query<DiscoveredBrand>(
         `INSERT INTO brands (
@@ -1191,6 +1353,17 @@ export class BrandDatabase {
           editor.name || null,
         ]
       );
+
+      await recordBrandHouseDomainChange(client, {
+        domain: brand.domain,
+        prior_house_domain: null,
+        new_house_domain: brand.house_domain ?? null,
+        audit: {
+          actor_user_id: editor.user_id,
+          source: 'community_create',
+          revision_number: 1,
+        },
+      });
 
       await client.query('COMMIT');
       return this.deserializeDiscoveredBrand(brand);
@@ -1300,7 +1473,7 @@ export class BrandDatabase {
       brand_names?: LocalizedName[];
       keller_type?: KellerType;
       parent_brand?: string;
-      house_domain?: string;
+      house_domain?: string | null;
       canonical_domain?: string;
       brand_agent_url?: string;
       brand_agent_capabilities?: string[];
@@ -1320,6 +1493,7 @@ export class BrandDatabase {
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      await lockBrandHouseDomainWriter(client, canonicalDomain);
 
       // Lock the row
       const lockResult = await client.query<DiscoveredBrand>(
@@ -1469,6 +1643,19 @@ export class BrandDatabase {
         values
       );
 
+      if (input.house_domain !== undefined) {
+        await recordBrandHouseDomainChange(client, {
+          domain: canonicalDomain,
+          prior_house_domain: current.house_domain ?? null,
+          new_house_domain: updateResult.rows[0].house_domain ?? null,
+          audit: {
+            actor_user_id: input.editor_user_id,
+            source: 'community_edit',
+            revision_number: revisionNumber,
+          },
+        });
+      }
+
       await client.query('COMMIT');
       return {
         brand: this.deserializeDiscoveredBrand(updateResult.rows[0]),
@@ -1490,14 +1677,16 @@ export class BrandDatabase {
     toRevisionNumber: number,
     editor: { user_id: string; email?: string; name?: string }
   ): Promise<{ brand: DiscoveredBrand; revision_number: number }> {
+    const canonicalDomain = domain.toLowerCase();
     const client = await getClient();
     try {
       await client.query('BEGIN');
+      await lockBrandHouseDomainWriter(client, canonicalDomain);
 
       // Get target revision
       const targetResult = await client.query<{ snapshot: string }>(
         'SELECT snapshot FROM brand_revisions WHERE brand_domain = $1 AND revision_number = $2',
-        [domain.toLowerCase(), toRevisionNumber]
+        [canonicalDomain, toRevisionNumber]
       );
       if (targetResult.rows.length === 0) {
         throw new Error(`Revision ${toRevisionNumber} not found for ${domain}`);
@@ -1510,7 +1699,7 @@ export class BrandDatabase {
       // Lock current row and get current state for the new revision snapshot
       const currentResult = await client.query<DiscoveredBrand>(
         'SELECT * FROM brands WHERE domain = $1 FOR UPDATE',
-        [domain.toLowerCase()]
+        [canonicalDomain]
       );
       if (currentResult.rows.length === 0) {
         throw new Error(`Brand not found: ${domain}`);
@@ -1526,7 +1715,7 @@ export class BrandDatabase {
       // Get next revision number
       const revResult = await client.query<{ next_rev: number }>(
         'SELECT COALESCE(MAX(revision_number), 0) + 1 as next_rev FROM brand_revisions WHERE brand_domain = $1',
-        [domain.toLowerCase()]
+        [canonicalDomain]
       );
       const revisionNumber = revResult.rows[0].next_rev;
 
@@ -1538,7 +1727,7 @@ export class BrandDatabase {
           edit_summary, is_rollback, rolled_back_to
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8)`,
         [
-          domain.toLowerCase(),
+          canonicalDomain,
           revisionNumber,
           JSON.stringify(sanitizeBrandSnapshot(current as unknown as Record<string, unknown>)),
           editor.user_id,
@@ -1565,7 +1754,7 @@ export class BrandDatabase {
         WHERE domain = $1
         RETURNING *`,
         [
-          domain.toLowerCase(),
+          canonicalDomain,
           snapshot.canonical_domain || null,
           snapshot.house_domain || null,
           snapshot.brand_name || null,
@@ -1578,6 +1767,18 @@ export class BrandDatabase {
           snapshot.brand_manifest ? JSON.stringify(snapshot.brand_manifest) : null,
         ]
       );
+
+      await recordBrandHouseDomainChange(client, {
+        domain: canonicalDomain,
+        prior_house_domain: current.house_domain ?? null,
+        new_house_domain: updateResult.rows[0].house_domain ?? null,
+        audit: {
+          actor_user_id: editor.user_id,
+          source: 'rollback',
+          revision_number: revisionNumber,
+          rolled_back_to_revision: toRevisionNumber,
+        },
+      });
 
       await client.query('COMMIT');
       return {
