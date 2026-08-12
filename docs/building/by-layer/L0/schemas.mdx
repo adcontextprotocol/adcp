@@ -236,19 +236,73 @@ https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/profiles/producti
 For AdCP 3.2, this is the clean active structural catalog: it excludes the
 compliance-only controller and tools deprecated by 3.2, including the
 `get_products` and `list_creative_formats` compatibility facades. Its schemas
-remove only presentation annotations (`description`, `title`, `examples`, and
-`$comment`), so validation semantics are identical to the full MCP projection.
+remove only presentation annotations (`description`, `enumDescriptions`,
+`title`, `examples`, and `$comment`), so validation semantics are identical to
+the full MCP projection.
 Each manifest tool retains its `protocol` classification for deterministic
 selection.
 
 The profile is not a recommendation to load all active AdCP tools into one
-agent context. It currently spans 65 tools across the protocol families. A
+agent context. It currently spans 66 tools across the protocol families. A
 production host MUST expose only the protocols and tools it implements and
 SHOULD further select the smallest capability-appropriate subset for each
 agent session. Use the full projection for documentation, compatibility, and
 conformance; use this profile as the filtered catalog and structural validation
 source from which a host builds that subset. Removing descriptions makes the
 artifacts smaller, but does not by itself solve `tools/list` context cost.
+
+#### Active role catalogs
+
+Hosts and clients can use one of two role-filtered catalogs instead of selecting
+active tools from the entire production profile:
+
+```
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/profiles/media-buy/manifest.json
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/profiles/creative/manifest.json
+```
+
+The `media-buy` catalog covers active 3.2 operations for a seller-hosted
+product-to-delivery role. It includes product discovery, proposals, purchase,
+control, reporting, audiences, catalogs, event sources, accounts, governance,
+and separately synchronized creatives. These operations are one production
+lifecycle rather than separate "sales" and "sales lifecycle" surfaces.
+Creative construction is deliberately excluded.
+
+The `creative` catalog covers creative construction, transformation, preview,
+validation, catalog inputs, library synchronization, delivery, accounts,
+governance, usage, and task management. Shared account, catalog, and
+creative-trafficking tools intentionally appear in both catalogs; they describe
+role-oriented active surfaces, not mutually exclusive protocol ownership.
+
+These are active-3.2 catalogs, not complete 3.x server registrations. A server
+that supports callers using the deprecated 3.x compatibility facades must also
+advertise the applicable `get_products`, `create_media_buy`, and
+`update_media_buy` definitions from the full projection. Cross-agent buyer
+orchestration can additionally require signals, brand, external governance,
+property, or content-standard services that are intentionally outside the
+seller-hosted role catalog.
+Clients that combine compatibility facades with an active role catalog use the
+full projection's `task_result_resolution`, because the role-scoped resolver
+intentionally covers only task types present in that active catalog.
+
+Each role also publishes an input-only client prompt view:
+
+```
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/profiles/media-buy/model-context/manifest.json
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/profiles/creative/model-context/manifest.json
+```
+
+Model-context manifests contain only structural `inputSchema` entries. They are
+client-side prompt projections, not standalone MCP `tools/list` registrations:
+servers SHOULD continue advertising `outputSchema`, and clients SHOULD validate
+structured results with the parent role catalog. A controlled client can omit
+the output schema only when assembling its model prompt while retaining the
+parent response schemas and task-result resolution metadata out of band.
+
+Structural schemas deliberately omit descriptions. To support tool selection,
+clients combine the model-context inputs with each live MCP tool's concise
+`name` and `description`; the downloadable model-context manifest is not a
+description catalog by itself.
 
 AdCP 4.0 will make JSON Schema 2020-12 the canonical source dialect. That
 major-version migration is where the protocol may selectively use
@@ -289,7 +343,10 @@ dist/schemas/{VERSION}/
 │   ├── protocol/                 # Protocol tasks
 │   └── core/                     # Core shared schemas and legacy task lifecycle schemas
 ├── mcp/2026-07-28/               # Self-contained JSON Schema 2020-12 tool projections
-│   └── profiles/production/      # Active, non-compliance structural surface
+│   └── profiles/
+│       ├── production/           # Active, non-compliance structural catalog
+│       ├── media-buy/            # Active seller media-buy catalog + prompt view
+│       └── creative/             # Active creative catalog + prompt view
 ├── core/                         # Modular schemas with $ref
 ├── trusted-match/                # Serve-time Context Match and Identity Match schemas
 ├── media-buy/

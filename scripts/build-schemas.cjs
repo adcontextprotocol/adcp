@@ -44,6 +44,64 @@ const PACKAGE_JSON = path.join(__dirname, '../package.json');
 const SKILLS_DIR = path.join(__dirname, '../skills');
 const SCHEMA_ORIGIN = 'https://adcontextprotocol.org';
 
+// Active MCP role catalogs intentionally use explicit tool sets. Protocol
+// tags alone are not sufficient: creative construction is historically tagged
+// media-buy, while a seller-hosted media-buy role also needs account, task,
+// governance, reporting, and separately-synced creative operations.
+const MCP_ROLE_PROFILE_TOOLS = {
+  'media-buy': [
+    'accept_proposal',
+    'buy_products',
+    'control_media_buy',
+    'decline_proposals',
+    'get_account_financials',
+    'get_adcp_capabilities',
+    'get_media_buy_delivery',
+    'get_media_buys',
+    'get_task_status',
+    'list_accounts',
+    'list_creatives',
+    'list_products',
+    'list_tasks',
+    'log_event',
+    'provide_performance_feedback',
+    'refine_proposals',
+    'report_usage',
+    'request_proposals',
+    'sync_accounts',
+    'sync_agent_notification_configs',
+    'sync_audiences',
+    'sync_catalogs',
+    'sync_creatives',
+    'sync_event_sources',
+    'sync_governance',
+  ],
+  creative: [
+    'build_creative',
+    'get_account_financials',
+    'get_adcp_capabilities',
+    'get_creative_delivery',
+    'get_creative_features',
+    'get_task_status',
+    'list_accounts',
+    'list_creatives',
+    'list_tasks',
+    'list_transformers',
+    'preview_creative',
+    'report_usage',
+    'sync_accounts',
+    'sync_agent_notification_configs',
+    'sync_catalogs',
+    'sync_creatives',
+    'sync_governance',
+    'validate_input',
+  ],
+};
+const MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES = {
+  'media-buy': ['media_buy_delivery'],
+  creative: [],
+};
+
 /**
  * Turn a source-form schema URI into its canonical published identity.
  * Source schemas intentionally use `/schemas/...` paths for local authoring;
@@ -2169,6 +2227,11 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
     canonicalManifest.adcp_version,
     ...Object.values(canonicalManifest.tools || {}).map(tool => tool.added_in).filter(Boolean),
   ].filter(version => semver.valid(version)).sort(semver.rcompare)[0];
+  const isActiveProductionTool = tool => (
+    tool.protocol !== 'compliance'
+    && (!tool.added_in || semver.lte(tool.added_in, surfaceVersion))
+    && (!tool.deprecated_in || semver.gt(tool.deprecated_in, surfaceVersion))
+  );
   const productionTargetDir = path.join(targetDir, 'profiles', 'production');
   const productionStats = generateMcpSchemaProjection({
     sourceDir: SOURCE_DIR,
@@ -2177,11 +2240,7 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
     urlVersion,
     schemaUrlPrefix: `${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}/profiles/production`,
     annotationMode: 'structural',
-    toolFilter: (_toolName, tool) => (
-      tool.protocol !== 'compliance'
-      && (!tool.added_in || semver.lte(tool.added_in, surfaceVersion))
-      && (!tool.deprecated_in || semver.gt(tool.deprecated_in, surfaceVersion))
-    ),
+    toolFilter: (_toolName, tool) => isActiveProductionTool(tool),
     manifestMetadata: {
       profile: 'production',
       surface_version: surfaceVersion,
@@ -2197,6 +2256,83 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
       + `${productionStats.schemaCount} schemas, `
       + `${(productionStats.totalBytes / (1024 * 1024)).toFixed(2)} MiB structural projection`
   );
+
+  for (const [profileName, toolNames] of Object.entries(MCP_ROLE_PROFILE_TOOLS)) {
+    const missingTools = toolNames.filter(toolName => !canonicalManifest.tools?.[toolName]);
+    if (missingTools.length > 0) {
+      throw new Error(`${profileName} MCP profile names unknown tools: ${missingTools.join(', ')}`);
+    }
+    const inactiveTools = toolNames.filter(toolName => (
+      !isActiveProductionTool(canonicalManifest.tools[toolName])
+    ));
+    if (inactiveTools.length > 0) {
+      throw new Error(`${profileName} MCP profile names inactive tools: ${inactiveTools.join(', ')}`);
+    }
+
+    const selectedTools = new Set(toolNames);
+    const selectedTaskResultOverrides = new Set(
+      MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES[profileName] || []
+    );
+    const profileTargetDir = path.join(targetDir, 'profiles', profileName);
+    const profileStats = generateMcpSchemaProjection({
+      sourceDir: SOURCE_DIR,
+      targetDir: profileTargetDir,
+      manifestPath,
+      urlVersion,
+      schemaUrlPrefix: `${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}/profiles/${profileName}`,
+      annotationMode: 'structural',
+      toolFilter: (toolName, tool) => selectedTools.has(toolName) && isActiveProductionTool(tool),
+      taskResultOverrideFilter: taskType => selectedTaskResultOverrides.has(taskType),
+      manifestMetadata: {
+        profile: profileName,
+        profile_kind: 'active-role-catalog',
+        surface_version: surfaceVersion,
+        compatibility_scope: 'active-3.2-only',
+        filters: {
+          include_tools: toolNames,
+          exclude_deprecated: true,
+        },
+        delivery: 'active 3.2 role-filtered validation artifacts; not a complete 3.x tools/list registration',
+        canonical_projection: '../../manifest.json',
+      },
+    });
+    if (profileStats.toolCount !== toolNames.length) {
+      throw new Error(
+        `${profileName} MCP profile generated ${profileStats.toolCount} tools; expected ${toolNames.length}`
+      );
+    }
+
+    const modelContextTargetDir = path.join(profileTargetDir, 'model-context');
+    const modelContextStats = generateMcpSchemaProjection({
+      sourceDir: SOURCE_DIR,
+      targetDir: modelContextTargetDir,
+      manifestPath,
+      urlVersion,
+      schemaUrlPrefix: `${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}/profiles/${profileName}/model-context`,
+      annotationMode: 'structural',
+      schemaFields: ['inputSchema'],
+      toolFilter: (toolName, tool) => selectedTools.has(toolName) && isActiveProductionTool(tool),
+      manifestMetadata: {
+        profile: profileName,
+        profile_kind: 'active-role-catalog',
+        view: 'client-prompt-inputs',
+        surface_version: surfaceVersion,
+        compatibility_scope: 'active-3.2-only',
+        filters: {
+          include_tools: toolNames,
+          exclude_deprecated: true,
+        },
+        delivery: 'client-side prompt input projection; servers continue to advertise outputSchema and clients validate with the parent profile',
+        validation_profile: '../manifest.json',
+        canonical_projection: '../../../manifest.json',
+      },
+    });
+    console.log(
+      `   ✓ ${profileName} ${surfaceVersion} profile: ${profileStats.toolCount} tools, `
+        + `${(profileStats.totalBytes / (1024 * 1024)).toFixed(2)} MiB validation, `
+        + `${(modelContextStats.totalBytes / 1024).toFixed(0)} KiB model context`
+    );
+  }
   return stats;
 }
 
@@ -2480,6 +2616,8 @@ async function main() {
 }
 
 module.exports = {
+  MCP_ROLE_PROFILE_TOOLS,
+  MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES,
   canonicalPublishedSchemaUri,
   canonicalizePublishedSchemaUris,
   generateExtensionRegistry,

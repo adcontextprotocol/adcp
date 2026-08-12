@@ -14,6 +14,8 @@ const {
   normalizeSubstitutions,
 } = require('../scripts/lint-storyboard-sample-request-schema.cjs');
 const {
+  MCP_ROLE_PROFILE_TOOLS,
+  MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES,
   buildTaskResultResolution,
   validateManifestToolRelationships,
 } = require('../scripts/build-schemas.cjs');
@@ -140,6 +142,7 @@ test('structural presentation mode removes only schema annotations', () => {
   const source = {
     title: 'Request title',
     description: 'Request description',
+    enumDescriptions: { value: 'Display label' },
     type: 'object',
     properties: {
       payload: {
@@ -446,6 +449,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   assert.equal(projectionManifest.mcp_protocol_version, MCP_PROTOCOL_VERSION);
   assert.equal(projectionManifest.schema_dialect, JSON_SCHEMA_2020_12);
   assert.equal(projectionManifest.annotation_mode, 'full');
+  assert.deepEqual(projectionManifest.schema_fields, ['inputSchema', 'outputSchema']);
   assert.match(projectionManifest.delivery, /downloadable schema artifacts/);
   assert.deepEqual(canonicalManifest.task_result_resolution, {
     discriminator_field: 'task_type',
@@ -454,6 +458,17 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
       media_buy_delivery: 'media-buy/media-buy-delivery-webhook-result.json',
     },
   });
+  assert.deepEqual(projectionManifest.task_result_resolution, {
+    discriminator_field: 'task_type',
+    terminal_schema_pointer_template: '/tools/{task_type}/outputSchema',
+    terminal_schema_overrides: {
+      media_buy_delivery: 'media-buy/media-buy-delivery-webhook-result.json',
+    },
+  });
+  assert.ok(fs.existsSync(path.join(
+    PROJECTION_DIR,
+    projectionManifest.task_result_resolution.terminal_schema_overrides.media_buy_delivery
+  )));
   const taskTypes = readJson(path.join(SOURCE_DIR, 'enums', 'task-type.json')).enum;
   for (const taskType of taskTypes) {
     const selectedSchema = canonicalManifest.task_result_resolution.terminal_schema_overrides[taskType]
@@ -749,4 +764,99 @@ test('generated production profile exposes the active 3.2 surface without compli
     }
   }
   assert.ok(profileBytes < canonicalBytes * 0.65, `${profileBytes} should be materially smaller than ${canonicalBytes}`);
+});
+
+test('generated role profiles are active validation catalogs with bounded model-context views', () => {
+  const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
+
+  for (const [profileName, expectedTools] of Object.entries(MCP_ROLE_PROFILE_TOOLS)) {
+    const profileDir = path.join(PROJECTION_DIR, 'profiles', profileName);
+    const modelContextDir = path.join(profileDir, 'model-context');
+    const profile = readJson(path.join(profileDir, 'manifest.json'));
+    const modelContext = readJson(path.join(modelContextDir, 'manifest.json'));
+
+    assert.equal(profile.profile, profileName);
+    assert.equal(profile.profile_kind, 'active-role-catalog');
+    assert.equal(profile.surface_version, '3.2.0');
+    assert.equal(profile.compatibility_scope, 'active-3.2-only');
+    assert.equal(profile.annotation_mode, 'structural');
+    assert.deepEqual(profile.schema_fields, ['inputSchema', 'outputSchema']);
+    assert.deepEqual(profile.filters, {
+      include_tools: expectedTools,
+      exclude_deprecated: true,
+    });
+    assert.deepEqual(Object.keys(profile.tools).sort(), [...expectedTools].sort());
+
+    assert.equal(modelContext.profile, profileName);
+    assert.equal(modelContext.view, 'client-prompt-inputs');
+    assert.equal(modelContext.validation_profile, '../manifest.json');
+    assert.equal(
+      path.resolve(modelContextDir, modelContext.validation_profile),
+      path.join(profileDir, 'manifest.json')
+    );
+    assert.deepEqual(modelContext.schema_fields, ['inputSchema']);
+    assert.deepEqual(Object.keys(modelContext.tools).sort(), [...expectedTools].sort());
+
+    const expectedOverrides = Object.fromEntries(
+      MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES[profileName].map(taskType => [
+        taskType,
+        canonicalManifest.task_result_resolution.terminal_schema_overrides[taskType],
+      ])
+    );
+    assert.deepEqual(profile.task_result_resolution, {
+      discriminator_field: 'task_type',
+      terminal_schema_pointer_template: '/tools/{task_type}/outputSchema',
+      terminal_schema_overrides: expectedOverrides,
+    });
+    for (const relativePath of Object.values(expectedOverrides)) {
+      assert.ok(fs.existsSync(path.join(profileDir, relativePath)));
+    }
+    assert.equal(modelContext.task_result_resolution, undefined);
+
+    let modelContextBytes = 0;
+    for (const toolName of expectedTools) {
+      const fullTool = profile.tools[toolName];
+      const modelTool = modelContext.tools[toolName];
+      assert.equal(fullTool.protocol, canonicalManifest.tools[toolName].protocol);
+      assert.equal(modelTool.protocol, fullTool.protocol);
+      assert.equal(modelTool.inputSchema, fullTool.inputSchema);
+      assert.equal(modelTool.outputSchema, undefined);
+      assert.ok(fs.existsSync(path.join(profileDir, fullTool.inputSchema)));
+      assert.ok(fs.existsSync(path.join(profileDir, fullTool.outputSchema)));
+      const modelInputPath = path.join(modelContextDir, modelTool.inputSchema);
+      assert.ok(fs.existsSync(modelInputPath));
+      modelContextBytes += Buffer.byteLength(JSON.stringify(readJson(modelInputPath)));
+    }
+    assert.ok(
+      modelContextBytes < 384 * 1024,
+      `${profileName} model-context inputs exceed 384 KiB: ${modelContextBytes}`
+    );
+  }
+
+  const mediaBuyTools = new Set(MCP_ROLE_PROFILE_TOOLS['media-buy']);
+  const activeMediaBuyTools = Object.entries(canonicalManifest.tools)
+    .filter(([, tool]) => tool.protocol === 'media-buy')
+    .filter(([, tool]) => !tool.deprecated_in || tool.deprecated_in > '3.2.0')
+    .map(([toolName]) => toolName)
+    .filter(toolName => toolName !== 'build_creative');
+  for (const toolName of activeMediaBuyTools) assert.ok(mediaBuyTools.has(toolName), toolName);
+  assert.ok(mediaBuyTools.has('sync_creatives'));
+  assert.ok(mediaBuyTools.has('sync_governance'));
+  assert.ok(mediaBuyTools.has('provide_performance_feedback'));
+  assert.ok(!mediaBuyTools.has('build_creative'));
+  for (const compatibilityFacade of ['get_products', 'create_media_buy', 'update_media_buy']) {
+    assert.ok(!mediaBuyTools.has(compatibilityFacade));
+    assert.ok(canonicalManifest.tools[compatibilityFacade].deprecated_in);
+  }
+
+  const creativeTools = new Set(MCP_ROLE_PROFILE_TOOLS.creative);
+  const activeCreativeTools = Object.entries(canonicalManifest.tools)
+    .filter(([, tool]) => tool.protocol === 'creative')
+    .filter(([, tool]) => !tool.deprecated_in || tool.deprecated_in > '3.2.0')
+    .map(([toolName]) => toolName);
+  for (const toolName of activeCreativeTools) assert.ok(creativeTools.has(toolName), toolName);
+  assert.ok(creativeTools.has('build_creative'));
+  assert.ok(creativeTools.has('sync_catalogs'));
+  assert.ok(creativeTools.has('sync_creatives'));
+  assert.ok(!creativeTools.has('list_products'));
 });
