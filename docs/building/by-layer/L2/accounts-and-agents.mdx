@@ -8,14 +8,14 @@ AdCP distinguishes four entities in every billable operation:
 
 | Entity | Question | How identified |
 |--------|----------|----------------|
-| **Brand** | Whose products are advertised? | Brand reference: `domain` + optional `brand_id` ([brand.json](/docs/brand-protocol/brand-json)) |
+| **Brand** | Whose products are advertised? | Brand reference: `domain` + optional `brand_id` and country `market` ([brand.json](/docs/brand-protocol/brand-json)) |
 | **Account** | Who gets billed? What rates apply? | [Account reference](#account-references) |
 | **Operator** | Who operates on the brand's behalf? | Domain (e.g., `pinnacle-media.com`) |
 | **Agent** | What software is placing the buy? | Authenticated session |
 
-**Brand** — The advertiser whose products or services are promoted. Identified by a `brand` reference (`domain` + optional `brand_id`), resolved via `/.well-known/brand.json`. Single-brand houses use the domain alone (no `brand_id`).
+**Brand** — The advertiser whose products or services are promoted. Identified by a `brand` reference (`domain` + optional `brand_id` and ISO country `market`), resolved via `/.well-known/brand.json`. `market` distinguishes local-market identities without becoming delivery targeting.
 
-**Account** — A billing relationship between a buyer and seller. Determines rate card, payment terms, credit limit, and who receives invoices. Every billable operation requires an account reference — a seller-assigned `account_id` when the seller or upstream platform owns the canonical account namespace, or a natural key (`brand`, `operator`) when that tuple is the durable protocol key for buyer-declared accounts. Sandbox accounts follow the same model — account-id namespaces use pre-existing sandbox IDs from `list_accounts` or out-of-band setup, while buyer-declared sandboxes use the natural key with `sandbox: true`.
+**Account** — A billing relationship between a buyer and seller. Determines rate card, payment terms, credit limit, and who receives invoices. Every billable operation requires an account reference — a seller-assigned `account_id` when the seller or upstream platform owns the canonical account namespace, or a natural key (`brand`, `operator`, optional `operator_region`, `sandbox`) for buyer-declared accounts.
 
 **Operator** — The entity driving buys — an agency trading desk, the brand's internal team, or another entity acting on behalf of the advertiser. Identified by domain and verifiable via [authorized operators](#authorized-operators) in `brand.json`.
 
@@ -385,7 +385,7 @@ Some sellers use `account_id` without exposing an account discovery surface. In 
 
 The agent manages the buying relationship. It calls `sync_accounts` to tell the seller who's advertising, who's operating on the brand's behalf, and who's paying. The seller provisions accounts and responds with status — the account IDs are a byproduct of the declaration, not something the buyer needs to know upfront.
 
-Buyer-declared-account sellers SHOULD also expose `list_accounts` as the recovery read for stateless buyers. Replaying `sync_accounts` is not a cold-start recovery mechanism when the buyer has lost the `(brand, operator, sandbox)` natural keys required to compose that replay. `list_accounts` returns the relationships the seller already acknowledged; it does not change the natural-key contract or make the seller-issued `account_id` mandatory on later calls.
+Buyer-declared-account sellers SHOULD also expose `list_accounts` as the recovery read for stateless buyers. Replaying `sync_accounts` is not a cold-start recovery mechanism when the buyer has lost the `(brand, operator, operator_region, sandbox)` natural keys required to compose that replay. `list_accounts` returns the relationships the seller already acknowledged; it does not change the natural-key contract or make the seller-issued `account_id` mandatory on later calls.
 
 **Typical sellers:** Traditional publishers, retail media networks, DSPs — anywhere the buying relationship is established programmatically.
 
@@ -393,8 +393,9 @@ Buyer-declared-account sellers SHOULD also expose `list_accounts` as the recover
 
 | Flag | What it tells the seller |
 |------|-------------------------|
-| `brand` (`domain` + optional `brand_id`) | Which brand is advertising |
+| `brand` (`domain` + optional `brand_id`/`market`) | Which brand and country market is advertising |
 | `operator` | Who operates on the brand's behalf (agency, trading desk, or the brand itself) |
+| `operator_region` | Optional operator-defined business region |
 | `billing` | Who gets the invoice — `operator`, `agent`, or `advertiser` |
 | `billing_entity` | Structured business entity details for the party responsible for payment — legal name, VAT ID, tax ID, address, contacts, and bank details. Used for formal B2B invoicing. Bank details are write-only (never echoed in responses). |
 | `payment_terms` | Payment terms for this account (`net_15`, `net_30`, `net_45`, `net_60`, `net_90`, `prepay`). The seller must accept these terms or reject the account — terms are never silently remapped. |
@@ -427,7 +428,7 @@ The agent may be directly responsible for billing when `billing` is `"agent"`. W
 
 ### Natural key semantics
 
-The tuple `(brand, operator, sandbox)` uniquely identifies an account relationship. The `brand` is a nested object with `domain` and optional `brand_id`. `operator` is always required — when the brand operates directly, set `operator` to the brand's domain. `sandbox` defaults to `false` when omitted. For example, `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (brand buying direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (brand via agency). Adding `sandbox: true` references the sandbox account for the same pair.
+The tuple `(brand, operator, operator_region, sandbox)` uniquely identifies an account relationship. The nested `brand` carries `domain`, optional `brand_id`, and optional ISO country `market`; `operator_region` is an optional operator-defined ID such as `emea`. Both qualifiers participate in identity and neither targets delivery. For example, `{brand: {domain: "nova-athletics.example", market: "NL"}, operator: "nova-athletics.example", operator_region: "emea"}` identifies the NL brand market under its EMEA operator unit.
 
 See [sync_accounts task reference](/docs/accounts/tasks/sync_accounts) for the full request/response schema.
 
@@ -457,7 +458,7 @@ The agent does not choose the scope — the seller assigns it based on its own a
 
 When multiple natural keys resolve to the same scope, the `account_scope` explains why.
 
-For buyer-declared accounts (`require_operator_auth: false`), use natural keys (`brand` + `operator`) on subsequent requests — adding `sandbox: true` for sandbox accounts. A seller may also return an `account_id` from `sync_accounts` as its internal handle, but the seller MUST continue accepting the natural-key `AccountRef` for every account provisioned this way. For account-id namespaces (`require_operator_auth: true`), discover account IDs via `list_accounts` for upstream-managed namespaces, or receive them out-of-band for seller-defined namespaces — including sandbox test accounts.
+For buyer-declared accounts (`require_operator_auth: false`), use the complete natural key (`brand` + `operator` + optional `operator_region`) on subsequent requests — adding `sandbox: true` for sandbox accounts. A seller may also return an `account_id` from `sync_accounts` as its internal handle, but the seller MUST continue accepting the natural-key `AccountRef` for every account provisioned this way. For account-id namespaces (`require_operator_auth: true`), discover account IDs via `list_accounts` for upstream-managed namespaces, or receive them out-of-band for seller-defined namespaces — including sandbox test accounts.
 
 ## Error codes
 

@@ -3067,13 +3067,40 @@ async function runTests() {
     {
       idempotency_key: 'request-proposals-natural-account-0001',
       account: {
-        brand: { domain: 'acmeoutdoor.example' },
+        brand: { domain: 'acmeoutdoor.example', market: 'NL' },
         operator: 'buyer.example',
+        operator_region: 'emea',
         sandbox: true
       },
       brief: 'Reach streaming audio listeners in Rome'
     },
-    'request_proposals accepts a natural-key account as the single brand source'
+    'request_proposals accepts market and operator-region qualifiers in its natural account key'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-request.json',
+    {
+      idempotency_key: 'request-proposals-invalid-market-0001',
+      account: {
+        brand: { domain: 'acmeoutdoor.example', market: 'nl' },
+        operator: 'buyer.example',
+        operator_region: 'EMEA'
+      },
+      brief: 'Reach streaming audio listeners in Rome'
+    },
+    'request_proposals rejects non-canonical market and operator-region identifiers'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-regional-0001',
+      accounts: [{
+        brand: { domain: 'nova-athletics.example', market: 'NL' },
+        operator: 'nova-athletics.example',
+        operator_region: 'emea',
+        billing: 'operator'
+      }]
+    },
+    'sync_accounts provisions the same market and operator-region natural key used by compact tools'
   );
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-request.json',

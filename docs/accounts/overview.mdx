@@ -43,7 +43,7 @@ The Accounts Protocol applies across all vendor protocols. An orchestrator estab
 | Governance | Content standards billing |
 | Creative | Creative service billing |
 
-The account reference may be a seller-assigned `account_id` (seller-owned namespaces, usually `require_operator_auth: true`) or a natural key — `brand` + `operator` (buyer-declared accounts, `require_operator_auth: false`). For buyer-declared accounts, the natural-key `AccountRef` MUST remain valid on subsequent calls even if the seller also echoes an internal `account_id`. For sandbox, account-id namespaces use pre-existing test accounts discovered via `list_accounts` or supplied out-of-band, while buyer-declared accounts declare sandbox via `sync_accounts` with `sandbox: true`. See [Account references](/docs/building/by-layer/L2/accounts-and-agents#account-references) for details.
+The account reference may be a seller-assigned `account_id` (seller-owned namespaces, usually `require_operator_auth: true`) or a natural key — `brand` + `operator` + optional `operator_region` (buyer-declared accounts, `require_operator_auth: false`). `brand.market` may independently distinguish a country-market identity. For buyer-declared accounts, the complete natural-key `AccountRef` MUST remain valid on subsequent calls even if the seller also echoes an internal `account_id`. For sandbox, account-id namespaces use pre-existing test accounts discovered via `list_accounts` or supplied out-of-band, while buyer-declared accounts declare sandbox via `sync_accounts` with `sandbox: true`. See [Account references](/docs/building/by-layer/L2/accounts-and-agents#account-references) for details.
 
 ## Account Status Lifecycle
 
@@ -267,14 +267,14 @@ The Accounts Protocol operates with four party types. See [Accounts and agents](
 
 | Party | Role | Identified by |
 |-----------|------|---------------|
-| Brand | Whose products are advertised | `brand.domain` + optional `brand.brand_id` via brand.json |
+| Brand | Whose products are advertised | `brand.domain` + optional `brand.brand_id`/`brand.market` via brand.json |
 | Operator | Who drives the buys | Domain (e.g., `pinnacle-media.com`) |
 | Agent | What software places the buys | Authenticated session |
 | Vendor agent | The seller's AdCP agent | `agent_url` |
 
 ## Tasks
 
-**Account discovery (normative).** Every agent accepting accounts MUST expose at least one of `list_accounts` (upstream-managed account-id namespaces) or `sync_accounts` (buyer-declared accounts, `require_operator_auth: false`). A seller-defined account-id namespace MAY omit both account-discovery tasks only when account IDs are supplied out-of-band and no account settings are managed through AdCP. Buyer-declared-account sellers SHOULD expose `list_accounts` in addition to `sync_accounts`: a stateless buyer cannot recover its acknowledged portfolio by re-running `sync_accounts` when the lost state is the set of `(brand, operator, sandbox)` natural keys needed to construct that request. For account-id namespaces, `sync_accounts` is settings-update only in 3.0.x unless a future explicit capability declares account-id provisioning. See [Required tasks by protocol](/docs/protocol/required-tasks#any-agent-accepting-accounts).
+**Account discovery (normative).** Every agent accepting accounts MUST expose at least one of `list_accounts` (upstream-managed account-id namespaces) or `sync_accounts` (buyer-declared accounts, `require_operator_auth: false`). A seller-defined account-id namespace MAY omit both account-discovery tasks only when account IDs are supplied out-of-band and no account settings are managed through AdCP. Buyer-declared-account sellers SHOULD expose `list_accounts` in addition to `sync_accounts`: a stateless buyer cannot recover its acknowledged portfolio by re-running `sync_accounts` when the lost state is the set of `(brand, operator, operator_region, sandbox)` natural keys needed to construct that request. For account-id namespaces, `sync_accounts` is settings-update only in 3.0.x unless a future explicit capability declares account-id provisioning. See [Required tasks by protocol](/docs/protocol/required-tasks#any-agent-accepting-accounts).
 
 | Task | Purpose |
 |------|--------|

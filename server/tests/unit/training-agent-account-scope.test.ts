@@ -39,8 +39,27 @@ describe('canonical AccountRef scope', () => {
       accountScopeFromRef({ ...base, operator: 'two.example' }),
       accountScopeFromRef({ ...base, sandbox: true }),
       accountScopeFromRef({ ...base, brand: { ...base.brand, brand_id: 'spark' } }),
+      accountScopeFromRef({ ...base, brand: { ...base.brand, market: 'NL' } }),
+      accountScopeFromRef({ ...base, operator_region: 'emea' }),
     ]);
-    expect(scopes.size).toBe(4);
+    expect(scopes.size).toBe(6);
+  });
+
+  it('represents a country-market brand under a regional operator', () => {
+    const account = {
+      brand: { domain: 'Nova-Athletics.Example', market: 'NL' },
+      operator: 'Nova-Athletics.Example',
+      operator_region: 'emea',
+    };
+    expect(canonicalizeAccountRef(account)).toEqual({
+      kind: 'natural',
+      brand: { domain: 'nova-athletics.example', market: 'NL' },
+      operator: 'nova-athletics.example',
+      operator_region: 'emea',
+      sandbox: false,
+    });
+    expect(accountScopeFromRef(account))
+      .toBe('n:nova-athletics.example:-:nova-athletics.example:0:m:NL:r:emea');
   });
 
   it.each([
@@ -49,6 +68,8 @@ describe('canonical AccountRef scope', () => {
     [{ account_id: 'acct_123', sandbox: false }, 'exactly one identity'],
     [{ brand: { domain: 'house.example' } }, 'exactly one identity'],
     [{ brand: { domain: 'house.example' }, operator: 'one.example', unexpected: true }, "field 'unexpected'"],
+    [{ brand: { domain: 'house.example', market: 'nl' }, operator: 'one.example' }, 'ISO 3166-1'],
+    [{ brand: { domain: 'house.example' }, operator: 'one.example', operator_region: 'EMEA' }, 'lowercase'],
     [{ account_id: 'acct_123', unexpected: true }, "field 'unexpected'"],
   ])('rejects invalid closed-union shape %#', (value, message) => {
     expect(() => canonicalizeAccountRef(value)).toThrow(AccountRefValidationError);

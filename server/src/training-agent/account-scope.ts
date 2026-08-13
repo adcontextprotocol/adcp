@@ -1,17 +1,21 @@
 import type { AccountRef } from './types.js';
 
 const ACCOUNT_ID_KEYS = new Set(['account_id']);
-const NATURAL_ACCOUNT_KEYS = new Set(['brand', 'operator', 'sandbox']);
+const NATURAL_ACCOUNT_KEYS = new Set(['brand', 'operator', 'operator_region', 'sandbox']);
 const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i;
 const BRAND_ID_RE = /^[a-z0-9_]+$/;
+const MARKET_RE = /^[A-Z]{2}$/;
+const OPERATOR_REGION_RE = /^[a-z0-9][a-z0-9_-]*$/;
 const MAX_DOMAIN_LENGTH = 253;
+const MAX_OPERATOR_REGION_LENGTH = 64;
 
 export type CanonicalAccountRef =
   | { kind: 'account_id'; account_id: string }
   | {
       kind: 'natural';
-      brand: { domain: string; brand_id?: string };
+      brand: { domain: string; brand_id?: string; market?: string };
       operator: string;
+      operator_region?: string;
       sandbox: boolean;
     };
 
@@ -93,6 +97,24 @@ export function canonicalizeAccountRef(value: unknown): CanonicalAccountRef {
     }
     brandId = value.brand.brand_id;
   }
+  let market: string | undefined;
+  if (Object.prototype.hasOwnProperty.call(value.brand, 'market')) {
+    if (typeof value.brand.market !== 'string' || !MARKET_RE.test(value.brand.market)) {
+      invalid('account.brand.market must be an ISO 3166-1 alpha-2 country code.');
+    }
+    market = value.brand.market;
+  }
+  let operatorRegion: string | undefined;
+  if (Object.prototype.hasOwnProperty.call(value, 'operator_region')) {
+    if (
+      typeof value.operator_region !== 'string'
+      || value.operator_region.length > MAX_OPERATOR_REGION_LENGTH
+      || !OPERATOR_REGION_RE.test(value.operator_region)
+    ) {
+      invalid('account.operator_region must be a lowercase operator-defined region identifier.');
+    }
+    operatorRegion = value.operator_region;
+  }
   if (value.sandbox !== undefined && typeof value.sandbox !== 'boolean') {
     invalid('account.sandbox must be a boolean when provided.');
   }
@@ -102,8 +124,10 @@ export function canonicalizeAccountRef(value: unknown): CanonicalAccountRef {
     brand: {
       domain,
       ...(brandId !== undefined && { brand_id: brandId }),
+      ...(market !== undefined && { market }),
     },
     operator,
+    ...(operatorRegion !== undefined && { operator_region: operatorRegion }),
     sandbox: value.sandbox ?? false,
   };
 }
@@ -112,11 +136,19 @@ export function canonicalizeAccountRef(value: unknown): CanonicalAccountRef {
 export function accountScopeFromRef(value: AccountRef | unknown): string {
   const account = canonicalizeAccountRef(value);
   if (account.kind === 'account_id') return `a:${account.account_id}`;
-  return [
+  const base = [
     'n',
     account.brand.domain,
     account.brand.brand_id ?? '-',
     account.operator,
     account.sandbox ? '1' : '0',
+  ].join(':');
+  if (account.brand.market === undefined && account.operator_region === undefined) return base;
+  return [
+    base,
+    'm',
+    account.brand.market ?? '-',
+    'r',
+    account.operator_region ?? '-',
   ].join(':');
 }

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/canonical-account-ref.json",
   "title": "Canonical Account Reference",
-  "description": "Compact account identity for canonical 3.2 tools. Uses either a seller-assigned account_id or the buyer-declared natural key without BrandRef inline overrides.",
+  "description": "Compact account identity for canonical 3.2 tools. Uses either a seller-assigned account_id or the buyer-declared natural key without BrandRef inline overrides. The natural key is (brand, operator, operator_region, sandbox): brand.market identifies the advertiser's country market, while operator_region identifies the operator's business region.",
   "type": "object",
   "anyOf": [
     {
@@ -26,6 +26,13 @@
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
           "x-entity": "operator"
         },
+        "operator_region": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z0-9][a-z0-9_-]*$",
+          "description": "Stable operator-defined business-region identifier (for example, emea, apac, or benelux). Omit when the operator does not split accounts regionally. This is part of the natural account key and is not a delivery-targeting instruction."
+        },
         "sandbox": {
           "type": "boolean",
           "default": false
@@ -33,6 +40,14 @@
       },
       "required": ["brand", "operator"],
       "additionalProperties": false
+    }
+  ],
+  "examples": [
+    { "account_id": "acc_nova_nl" },
+    {
+      "brand": { "domain": "nova-athletics.example", "market": "NL" },
+      "operator": "nova-athletics.example",
+      "operator_region": "emea"
     }
   ]
 }

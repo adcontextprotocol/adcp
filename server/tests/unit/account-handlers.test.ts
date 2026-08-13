@@ -125,6 +125,36 @@ describe('sync_accounts', () => {
     expect(acct.setup).toBeUndefined();
   });
 
+  it('keeps brand markets and operator regions distinct in the natural key', async () => {
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [
+        {
+          brand: { domain: 'nova-athletics.example', market: 'NL' },
+          operator: 'nova-athletics.example',
+          operator_region: 'emea',
+          billing: 'operator',
+          sandbox: true,
+        },
+        {
+          brand: { domain: 'nova-athletics.example', market: 'BE' },
+          operator: 'nova-athletics.example',
+          operator_region: 'emea',
+          billing: 'operator',
+          sandbox: true,
+        },
+      ],
+    });
+
+    const accounts = result.accounts as Record<string, unknown>[];
+    expect(accounts).toHaveLength(2);
+    expect(new Set(accounts.map(account => account.account_id)).size).toBe(2);
+    expect(accounts[0]).toMatchObject({
+      brand: { domain: 'nova-athletics.example', market: 'NL' },
+      operator: 'nova-athletics.example',
+      operator_region: 'emea',
+    });
+  });
+
   it('non-sandbox account is pending_approval with setup URL', async () => {
     const { result } = await simulateCallTool(server, 'sync_accounts', {
       accounts: [{
@@ -915,7 +945,7 @@ describe('sync_governance', () => {
 
     const { result } = await simulateCallTool(server, 'sync_governance', {
       accounts: [{
-        account: { brand: { domain: 'acme.com' }, operator: 'agency-one' },
+        account: { brand: { domain: 'acme.com' }, operator: 'agency-one', sandbox: true },
         governance_agents: [{
           url: 'https://governance.example.com/mcp',
           authentication: { schemes: ['bearer'], credentials: 'tok_123' },
@@ -935,7 +965,7 @@ describe('sync_governance', () => {
   it('replaces the governance agent on second call', async () => {
     await createSandboxAccount();
 
-    const ref = { brand: { domain: 'acme.com' }, operator: 'agency-one' };
+    const ref = { brand: { domain: 'acme.com' }, operator: 'agency-one', sandbox: true };
 
     // First sync — one agent
     await simulateCallTool(server, 'sync_governance', {

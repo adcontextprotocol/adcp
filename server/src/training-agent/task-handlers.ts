@@ -2375,11 +2375,13 @@ async function deriveProductDiscoveryAccountScope(
   const scopes = new Set<string>();
   for (const proposalId of proposalIds) {
     const internal = proposalsById.get(proposalId) as unknown as Record<string, unknown> | undefined;
-    if (typeof internal?.__account_id === 'string') scopes.add(`a:${internal.__account_id}`);
+    if (typeof internal?.__account_scope === 'string') scopes.add(internal.__account_scope);
+    else if (typeof internal?.__account_id === 'string') scopes.add(`a:${internal.__account_id}`);
     else if (typeof internal?.__brand_domain === 'string') {
       scopes.add(compactBrandScope({
         domain: internal.__brand_domain,
         ...(typeof internal.__brand_id === 'string' && { brand_id: internal.__brand_id }),
+        ...(typeof internal.__brand_market === 'string' && { market: internal.__brand_market }),
       })!);
     }
   }
@@ -4208,7 +4210,8 @@ function isProductDiscoveryTool(toolName: string): boolean {
 function compactBrandScope(brand: unknown): string | undefined {
   if (!isRecord(brand) || typeof brand.domain !== 'string' || brand.domain.length === 0) return undefined;
   const brandId = typeof brand.brand_id === 'string' ? brand.brand_id : '';
-  return `b:${brand.domain.toLowerCase()}#${brandId}`;
+  const market = typeof brand.market === 'string' ? brand.market : '';
+  return `b:${brand.domain.toLowerCase()}#${brandId}${market ? `@${market}` : ''}`;
 }
 
 function productDiscoverySourceSchemaName(toolName: string): string | undefined {
@@ -4398,7 +4401,7 @@ function proposalTermsDigest(commercialTerms: Record<string, unknown>): string {
 function buildCanonicalCommercialTerms(
   proposal: Proposal,
   products: Map<string, Product>,
-  brand: { domain: string; brand_id?: string },
+  brand: { domain: string; brand_id?: string; market?: string },
 ): Record<string, unknown> {
   const internal = proposal as unknown as Record<string, unknown>;
   if (isRecord(internal.__canonical_commercial_terms)) {
@@ -4449,7 +4452,7 @@ function buildCanonicalCommercialTerms(
 function withCanonicalProposalEnvelope(
   proposal: Proposal,
   products: Map<string, Product>,
-  brand: { domain: string; brand_id?: string },
+  brand: { domain: string; brand_id?: string; market?: string },
   options: { rebuild?: boolean } = {},
 ): Proposal {
   const internal = { ...proposal } as unknown as Record<string, unknown>;
@@ -4477,6 +4480,7 @@ function outwardProposal(proposal: Record<string, unknown>, products: Map<string
   const brand = {
     domain: typeof proposal.__brand_domain === 'string' ? proposal.__brand_domain : 'advertiser.example',
     ...(typeof proposal.__brand_id === 'string' && { brand_id: proposal.__brand_id }),
+    ...(typeof proposal.__brand_market === 'string' && { market: proposal.__brand_market }),
   };
   const terms = isRecord(proposal.__canonical_commercial_terms)
     ? structuredClone(proposal.__canonical_commercial_terms)
@@ -6297,14 +6301,23 @@ async function handleGetProductsUnlocked(
     );
     const requestRecord = req as unknown as Record<string, unknown>;
     const requestAccount = isRecord(requestRecord.account) ? requestRecord.account : undefined;
-    const requestBrand = isRecord(requestRecord.brand) ? requestRecord.brand : undefined;
+    const accountBrand = isRecord(requestAccount?.brand) ? requestAccount.brand : undefined;
+    const requestBrand = isRecord(requestRecord.brand) ? requestRecord.brand : accountBrand;
     const requestOpportunity = isRecord(requestRecord.opportunity) ? requestRecord.opportunity : undefined;
+    const proposalAccountScope = requestAccount
+      ? accountScopeFromRef(requestAccount)
+      : compactBrandScope(requestBrand);
     const proposalOwner = JSON.stringify({
       ...(typeof requestAccount?.account_id === 'string' && { account_id: requestAccount.account_id }),
       brand: {
         domain: typeof requestBrand?.domain === 'string' ? requestBrand.domain.toLowerCase() : '',
         ...(typeof requestBrand?.brand_id === 'string' && { brand_id: requestBrand.brand_id }),
+        ...(typeof requestBrand?.market === 'string' && { market: requestBrand.market }),
       },
+      ...(typeof requestAccount?.operator === 'string' && { operator: requestAccount.operator.toLowerCase() }),
+      ...(typeof requestAccount?.operator_region === 'string'
+        && { operator_region: requestAccount.operator_region }),
+      ...(typeof requestAccount?.sandbox === 'boolean' && { sandbox: requestAccount.sandbox }),
     });
     proposals = proposals.map((proposal, index) => {
       const digest = createHash('sha256')
@@ -6317,7 +6330,9 @@ async function handleGetProductsUnlocked(
         proposal_id: proposalId,
         ...(typeof requestBrand?.domain === 'string' && { __brand_domain: requestBrand.domain.toLowerCase() }),
         ...(typeof requestBrand?.brand_id === 'string' && { __brand_id: requestBrand.brand_id }),
+        ...(typeof requestBrand?.market === 'string' && { __brand_market: requestBrand.market }),
         ...(typeof requestAccount?.account_id === 'string' && { __account_id: requestAccount.account_id }),
+        ...(proposalAccountScope && { __account_scope: proposalAccountScope }),
         ...(typeof requestOpportunity?.opportunity_id === 'string'
           && { __opportunity_id: requestOpportunity.opportunity_id }),
       } as unknown as Proposal;
@@ -6330,6 +6345,7 @@ async function handleGetProductsUnlocked(
               ? requestBrand.domain.toLowerCase()
               : 'advertiser.example',
             ...(typeof requestBrand?.brand_id === 'string' && { brand_id: requestBrand.brand_id }),
+            ...(typeof requestBrand?.market === 'string' && { market: requestBrand.market }),
           },
         );
     });
@@ -6400,6 +6416,7 @@ async function handleGetProductsUnlocked(
       if (existingSuccessor) return [existingSuccessor];
       const brandDomain = (proposal as unknown as Record<string, unknown>).__brand_domain;
       const brandId = (proposal as unknown as Record<string, unknown>).__brand_id;
+      const brandMarket = (proposal as unknown as Record<string, unknown>).__brand_market;
       let successor = refinement?.action === 'finalize'
         ? executableProposalSnapshot(
           revision,
@@ -6411,6 +6428,7 @@ async function handleGetProductsUnlocked(
           {
             domain: typeof brandDomain === 'string' ? brandDomain : 'advertiser.example',
             ...(typeof brandId === 'string' && { brand_id: brandId }),
+            ...(typeof brandMarket === 'string' && { market: brandMarket }),
           },
           { rebuild: true },
         );
@@ -7887,10 +7905,11 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
     if (proposal) {
       const internal = proposal as unknown as Record<string, unknown>;
       const accountRef = req.account as unknown as { account_id?: string };
-      const requestBrand = req.brand as unknown as { domain?: string; brand_id?: string };
+      const requestBrand = req.brand as unknown as { domain?: string; brand_id?: string; market?: string };
       const boundAccountId = internal.__account_id;
       const boundBrandDomain = internal.__brand_domain;
       const boundBrandId = internal.__brand_id;
+      const boundBrandMarket = internal.__brand_market;
       const hasCompactOwnerBinding = typeof boundAccountId === 'string'
         || typeof boundBrandDomain === 'string'
         || typeof boundBrandId === 'string';
@@ -7901,6 +7920,8 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
           requestBrand?.domain?.toLowerCase() === boundBrandDomain
           && (typeof requestBrand.brand_id === 'string' ? requestBrand.brand_id : undefined)
             === (typeof boundBrandId === 'string' ? boundBrandId : undefined)
+          && (typeof requestBrand.market === 'string' ? requestBrand.market : undefined)
+            === (typeof boundBrandMarket === 'string' ? boundBrandMarket : undefined)
         );
       if (hasCompactOwnerBinding && (!accountMatches || !brandMatches)) proposal = undefined;
     }
@@ -7921,6 +7942,7 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
     const internalProposal = proposal as unknown as Record<string, unknown>;
     const compactProposal = typeof internalProposal.__brand_domain === 'string'
       || typeof internalProposal.__brand_id === 'string'
+      || typeof internalProposal.__brand_market === 'string'
       || typeof internalProposal.__account_id === 'string';
     if (internalProposal.__declined === true) {
       return {

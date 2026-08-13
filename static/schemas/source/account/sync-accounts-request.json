@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/sync-accounts-request.json",
   "title": "Sync Accounts Request",
-  "description": "Sync advertiser account state with a seller. Two modes, distinguished by the key on each per-account entry:\n\n- **Provisioning mode** (`brand` + `operator` + `billing` at the entry root): the agent declares which brands it represents, who operates on each brand's behalf, and the billing model. The seller provisions or links accounts via upsert. Used when brand + operator (+ sandbox) is the durable protocol key for buyer-declared accounts (`require_operator_auth: false`). Sellers MAY echo a seller-assigned account_id, but they MUST continue accepting the natural-key AccountRef for every account provisioned this way.\n\n- **Settings-update mode** (`account` field carrying an [`AccountRef`](/schemas/core/account-ref.json)): targets an existing account by `account_id` (or by natural key for buyer-declared accounts). The seller updates the account's settable state (notification subscriptions, payment terms, billing entity refinements) — no provisioning side effects. Used for account_id namespaces only when the seller exposes this task for account settings; the account_id itself is discovered via `list_accounts` for upstream-managed namespaces or supplied out-of-band for seller-defined namespaces. Buyer-declared account sellers MAY also accept this mode for settings updates against accounts they previously provisioned.\n\nExactly one of the two key shapes is allowed per entry. Sellers that do not implement settings-update mode MUST return `UNSUPPORTED_PROVISIONING` on entries keyed by `account.account_id`; sellers that do not provision through sync_accounts MUST return `UNSUPPORTED_PROVISIONING` on entries keyed by the natural-key trio. Account-id namespace provisioning is out of scope unless a future explicit capability declares it.",
+  "description": "Sync advertiser account state with a seller. Two modes, distinguished by the key on each per-account entry:\n\n- **Provisioning mode** (`brand` + `operator` + `billing` at the entry root): the agent declares which brands it represents, who operates on each brand's behalf, and the billing model. Optional `brand.market` and `operator_region` qualify those identities. The seller provisions or links accounts via upsert. Used when brand + operator + optional operator_region (+ sandbox) is the durable protocol key for buyer-declared accounts (`require_operator_auth: false`). Sellers MAY echo a seller-assigned account_id, but they MUST continue accepting the complete natural-key AccountRef for every account provisioned this way.\n\n- **Settings-update mode** (`account` field carrying an [`AccountRef`](/schemas/core/account-ref.json)): targets an existing account by `account_id` (or by natural key for buyer-declared accounts). The seller updates the account's settable state (notification subscriptions, payment terms, billing entity refinements) — no provisioning side effects. Used for account_id namespaces only when the seller exposes this task for account settings; the account_id itself is discovered via `list_accounts` for upstream-managed namespaces or supplied out-of-band for seller-defined namespaces. Buyer-declared account sellers MAY also accept this mode for settings updates against accounts they previously provisioned.\n\nExactly one of the two key shapes is allowed per entry. Sellers that do not implement settings-update mode MUST return `UNSUPPORTED_PROVISIONING` on entries keyed by `account.account_id`; sellers that do not provision through sync_accounts MUST return `UNSUPPORTED_PROVISIONING` on entries keyed by the natural-key fields. Account-id namespace provisioning is out of scope unless a future explicit capability declares it.",
   "type": "object",
   "allOf": [
     {
@@ -13,7 +13,7 @@
   "properties": {
     "idempotency_key": {
       "type": "string",
-      "description": "Client-generated unique key for at-most-once execution. Natural per-account upsert keys (brand, operator) handle resource-level dedup, but the envelope triggers onboarding webhooks, billing setup, and audit events — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
+      "description": "Client-generated unique key for at-most-once execution. Natural per-account upsert keys (brand, operator, optional operator_region, sandbox) handle resource-level dedup, but the envelope triggers onboarding webhooks, billing setup, and audit events — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
       "minLength": 16,
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
@@ -37,6 +37,13 @@
             "type": "string",
             "description": "Domain of the entity operating on the brand's behalf (e.g., 'pinnacle-media.com'). When the brand operates directly, this is the brand's domain. Verified against the brand's authorized_operators in brand.json. Required for **provisioning mode**; MUST be absent in settings-update mode.",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "operator_region": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9_-]*$",
+            "description": "Optional operator-defined business region for provisioning mode. It becomes part of the natural account key. MUST be absent in settings-update mode."
           },
           "billing": {
             "$ref": "/schemas/enums/billing-party.json",
@@ -120,6 +127,13 @@
                 "not": {
                   "required": [
                     "operator"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "operator_region"
                   ]
                 }
               },

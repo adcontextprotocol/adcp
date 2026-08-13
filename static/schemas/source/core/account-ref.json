@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/account-ref.json",
   "title": "Account Reference",
-  "description": "Reference to an account by seller-assigned ID or natural key. Use account_id when the seller or upstream platform owns the canonical account namespace: either a seller-defined account supplied out-of-band, or an upstream-managed namespace discovered with list_accounts before account-scoped calls. If a credential may access more than one account, the seller MUST expose list_accounts; if a credential is bound to exactly one account, the seller SHOULD expose list_accounts returning that singleton and MAY omit it only when the same explicit account_id is provided through another declared path or out-of-band onboarding. Use the natural key (brand + operator) when brand + operator (+ sandbox) is the durable protocol key for buyer-declared accounts provisioned through sync_accounts (require_operator_auth: false). For sandbox: account_id namespaces use pre-existing test accounts discovered via list_accounts or supplied out-of-band; buyer-declared accounts use the natural key with sandbox: true.",
+  "description": "Reference to an account by seller-assigned ID or natural key. Use account_id when the seller or upstream platform owns the canonical account namespace: either a seller-defined account supplied out-of-band, or an upstream-managed namespace discovered with list_accounts before account-scoped calls. If a credential may access more than one account, the seller MUST expose list_accounts; if a credential is bound to exactly one account, the seller SHOULD expose list_accounts returning that singleton and MAY omit it only when the same explicit account_id is provided through another declared path or out-of-band onboarding. Use the natural key (brand + operator + optional operator_region + sandbox) for buyer-declared accounts provisioned through sync_accounts (require_operator_auth: false). brand.market independently qualifies the advertiser's country market. For sandbox: account_id namespaces use pre-existing test accounts discovered via list_accounts or supplied out-of-band; buyer-declared accounts use the natural key with sandbox: true.",
   "type": "object",
   "oneOf": [
     {
@@ -28,6 +28,13 @@
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
           "x-entity": "operator"
         },
+        "operator_region": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z0-9][a-z0-9_-]*$",
+          "description": "Stable operator-defined business-region identifier. Omit when the operator does not split accounts regionally."
+        },
         "sandbox": {
           "type": "boolean",
           "description": "When true, references the sandbox account for this brand/operator pair. Defaults to false (production account).",
@@ -42,6 +49,7 @@
     { "account_id": "acc_acme_001" },
     { "brand": { "domain": "acme-corp.com" }, "operator": "acme-corp.com" },
     { "brand": { "domain": "nova-brands.com", "brand_id": "spark" }, "operator": "pinnacle-media.com" },
+    { "brand": { "domain": "nova-athletics.example", "market": "NL" }, "operator": "nova-athletics.example", "operator_region": "emea" },
     { "brand": { "domain": "acme-corp.com" }, "operator": "acme-corp.com", "sandbox": true }
   ]
 }
