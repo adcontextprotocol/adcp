@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/brand-ref.json",
   "title": "Brand Reference",
-  "description": "Reference to a brand by domain and optional brand_id. The domain hosts /.well-known/brand.json or is registered in the brand registry. For single-brand domains, brand_id can be omitted. For house-of-brands domains, brand_id identifies the specific brand.",
+  "description": "Reference to a brand by domain and optional brand_id. The domain hosts /.well-known/brand.json or is registered in the brand registry. For single-brand domains, brand_id can be omitted. For house-of-brands domains, brand_id identifies the specific brand. For creative production, brand.json is the canonical source of master brand identity (logo, palette, fonts, voice, and visual guidelines), subject only to the supported per-call fields in brand_kit_override. Catalogs supply product or item payload; catalog item asset groups, including property- or franchise-level logos, are item identity and do not override these master brand fields.",
   "type": "object",
   "properties": {
     "domain": {
