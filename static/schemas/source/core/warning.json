@@ -20,7 +20,7 @@
     },
     "details": {
       "type": "object",
-      "description": "Optional structured diagnostics specific to code, such as requested and forecast delivery values. Standard-code documentation defines interoperable keys; seller-only detail remains namespaced in ext.",
+      "description": "Optional seller-specific structured diagnostics. AdCP 3.2 defines interoperability through code and affected_resource only; buyers MUST NOT require portable keys inside details. Seller extensions that are not direct diagnostics belong in ext.",
       "additionalProperties": true
     },
     "ext": {
@@ -78,9 +78,13 @@
   "x-adcp-validation": {
     "verifier_constraints": {
       "warning_capability_requirements": {
-        "inventory_shortfall_forecast": "media_buy.supported_indicator_types contains inventory_shortfall_forecast",
-        "flight_change_creates_pacing_risk": "media_buy.supported_indicator_types contains pacing_risk",
-        "fields_ignored_due_to_precedence": "none"
+        "inventory_shortfall_forecast": {
+          "supported_indicator_type": "inventory_shortfall_forecast"
+        },
+        "flight_change_creates_pacing_risk": {
+          "supported_indicator_type": "pacing_risk"
+        },
+        "fields_ignored_due_to_precedence": null
       }
     },
     "spec": "specs/relationship-scoped-indicators.md#warning-contract"

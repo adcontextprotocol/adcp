@@ -40,7 +40,7 @@
     },
     "indicator_types": {
       "type": "array",
-      "description": "Return media buys with at least one matching current indicator on the media buy, a package, or a package–creative assignment. Values within this field use OR logic; this field composes with status_filter using AND logic. Buyers MUST request only types advertised in get_adcp_capabilities.media_buy.supported_indicator_types. Sellers that do not advertise indicator support SHOULD ignore this filter and apply the remaining filters rather than reject the read.",
+      "description": "Return media buys with at least one matching current indicator on the media buy, a package, or a package–creative assignment. Values within this field use OR logic; this field composes with status_filter using AND logic. Buyers MUST NOT send this filter unless the seller advertises every requested type in get_adcp_capabilities.media_buy.supported_indicator_types. A seller MAY reject a request that violates this precondition with UNSUPPORTED_FEATURE rather than silently returning an unfiltered superset.",
       "items": {
         "$ref": "/schemas/enums/indicator-type.json"
       },

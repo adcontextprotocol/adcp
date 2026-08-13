@@ -138,6 +138,17 @@
       }
     }
   ],
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "lifecycle_event_fires": {
+        "subscriber_activated": [],
+        "assertion_set_changed": ["indicators.changed"],
+        "indicators_as_of_only_changed": [],
+        "creative_content_materially_changed": ["indicators.changed"]
+      }
+    },
+    "spec": "specs/relationship-scoped-indicators.md#webhook-contract"
+  },
   "additionalProperties": false,
   "examples": [
     {

@@ -27,6 +27,21 @@
           "items": { "$ref": "/schemas/core/canonical-media-buy-action.json" },
           "uniqueItems": true
         },
+        "warnings": {
+          "type": "array",
+          "description": "Non-blocking observations about this completed control. The control was still applied exactly as represented. Continuing conditions also appear as indicators on get_media_buys.",
+          "items": {
+            "allOf": [
+              { "$ref": "/schemas/core/warning.json" },
+              {
+                "properties": {
+                  "code": { "const": "inventory_shortfall_forecast" }
+                }
+              }
+            ]
+          },
+          "minItems": 1
+        },
         "context": { "$ref": "/schemas/core/context.json" },
         "ext": { "$ref": "/schemas/core/ext.json" },
         "replayed": { "type": "boolean", "const": true }

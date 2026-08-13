@@ -37,7 +37,7 @@ creatives[]
 └── assignments.assigned_packages[]   assignment approval + indicators
 ```
 
-When `media_buy.relationship_notifications.projection_tasks` includes `list_creatives`, the two assignment projections MUST agree on `media_buy_id`, `package_id`, `creative_id`, approval state, rejection reason, scoped approval outcomes, and evaluated indicator state. The seller includes `media_buy_id` and `approval_status` on every creative assignment row, even when indicators are unknown. Inline-only sellers use `get_media_buys` without implementing this reverse projection.
+When `media_buy.relationship_notifications.projection_tasks` includes `list_creatives`, the two assignment projections MUST agree on `media_buy_id`, `package_id`, `creative_id`, approval state, rejection reason, and scoped approval outcomes. Indicator state SHOULD converge, but separate reads can legitimately straddle a reevaluation; buyers reconcile toward the snapshot with the strictly newer `indicators_as_of`. The seller includes `media_buy_id` and `approval_status` on every creative assignment row, even when indicators are unknown. Inline-only sellers use `get_media_buys` without implementing this reverse projection.
 
 Do not put assignment-specific fatigue or approval on the creative root. One creative can be fatigued or rejected on one publisher while remaining effective and approved elsewhere. When a multi-publisher assignment has mixed eligibility, the scalar is `partially_approved` and complete `approval_scopes[]` carries a disjoint partition: one row per normalized scope, using either publisher-wide or placement-specific rows for a publisher, never both. Uniform assignments omit the array.
 
@@ -127,11 +127,11 @@ Use `list_creatives` for portfolio-wide assignment indicator discovery:
 
 The outer cursor limits creatives. For bounded portfolio discovery, request `assignment_projection: "matching"` and `assignment_limit`; each result reports `returned_assignment_count` and `assignments_truncated`. A truncated reverse projection is discovery-only—repair complete state through `get_media_buys`. Reread known relationships without `indicator_types` when reconciling clearing.
 
-`get_media_buys.indicator_types` matches an indicator at any of the three levels and returns the selected full buy. Use it for buy/package conclusions such as budget, inventory, audience, diversity, or pacing.
+`get_media_buys.indicator_types` matches an indicator at any of the three levels and returns the selected full buy. Use it for buy/package conclusions such as budget, inventory, audience, diversity, or pacing. Buyers MUST NOT send the filter unless every requested type appears in `supported_indicator_types`; a seller MAY reject a violation with `UNSUPPORTED_FEATURE`. This avoids an undetectable unfiltered superset on a response that has no `filters_applied` receipt.
 
 ## Webhooks
 
-Sellers advertise this contract with `media_buy.relationship_notifications`. Every indicator-capable seller also declares `supported_indicator_types` and includes `indicators.changed`; a seller without an indicator catalog may declare `creative.assignment_changed` alone when it can detect assignment or approval changes, including when it is inline-only. A creative-library seller may independently advertise the bounded `list_creatives` reverse projection. The capability also declares whether activity logs are available:
+`supported_indicator_types` declares polling readback independently of webhook support. A seller may expose indicators through `get_media_buys` and omit `relationship_notifications` entirely. Sellers that support push additionally declare `media_buy.relationship_notifications`; `indicators.changed` requires an indicator catalog, while `creative.assignment_changed` may be declared alone when the seller can detect assignment or approval changes. A creative-library seller may advertise the bounded `list_creatives` reverse projection inside that block. The capability also declares whether activity logs are available:
 
 ```json
 {
@@ -160,7 +160,7 @@ Retries reuse the same `idempotency_key`. Poll-based upstream integrations fire 
 
 ## Success warnings
 
-Synchronous success arms of `create_media_buy` and `update_media_buy` may return structured `warnings[]`. Initial codes are:
+Completed `buy_products` and `accept_proposal` commitments and completed `control_media_buy` controls may return structured `warnings[]`. The 3.x `create_media_buy` and `update_media_buy` compatibility facades mirror the warning returned by the canonical operation they map to. Proposal planning (`request_proposals` and `refine_proposals`) carries forecasts in proposal state rather than using commitment warnings. Initial codes are:
 
 | Code | Typical durable readback |
 |---|---|
@@ -168,6 +168,8 @@ Synchronous success arms of `create_media_buy` and `update_media_buy` may return
 | `flight_change_creates_pacing_risk` | Package `pacing_risk` |
 | `fields_ignored_due_to_precedence` | Operation-relative receipt; no continuing condition. `details` identifies ignored fields |
 
-Every warning includes typed `affected_resource` identity so buyers can join it to durable state in multi-package and multi-creative responses. Warnings never change success, never appear on terminal or submitted arms, and never grant action authority. Codes are the closed vocabulary of the negotiated AdCP release. Whether `inventory_shortfall_forecast` surfaces as a warning on a successful `create_media_buy` or instead blocks via `input-required` is seller discretion; a buyer unconditionally carries delivery risk on a buy created with that warning.
+Canonical commitments use the first two codes: direct or newly accepted purchases may report `inventory_shortfall_forecast`, and an accepted flight amendment may report `flight_change_creates_pacing_risk`. `control_media_buy` does not change flight dates and therefore only uses `inventory_shortfall_forecast` from this initial catalog. `fields_ignored_due_to_precedence` remains a compatibility-facade receipt; canonical inputs reject conflicting intent instead of silently applying legacy precedence.
+
+Every warning includes typed `affected_resource` identity so buyers can join it to durable state in multi-package and multi-creative responses. On compact commitment responses, package IDs come from `purchase_bindings[]`. Warnings never change success, never appear on terminal or submitted arms, and never grant action authority. Codes are the closed vocabulary of the negotiated AdCP release. `details` is seller-specific in 3.2; portable handling relies only on `code` and `affected_resource`. Whether `inventory_shortfall_forecast` surfaces as a warning on a completed commitment or instead blocks via `input-required` is seller discretion; a buyer unconditionally carries delivery risk on a MediaBuy committed with that warning.
 
 A seller MUST NOT emit `inventory_shortfall_forecast` unless it advertises that indicator type, or `flight_change_creates_pacing_risk` unless it advertises `pacing_risk`. This keeps the promised durable readback available; `fields_ignored_due_to_precedence` is operation-relative and needs no indicator capability.

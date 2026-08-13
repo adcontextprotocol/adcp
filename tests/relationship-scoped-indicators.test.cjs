@@ -51,6 +51,8 @@ describe('relationship-scoped indicators', () => {
   let validateGetRequest;
   let validateCreateResponse;
   let validateUpdateResponse;
+  let validateCommitmentResponse;
+  let validateControlResponse;
   let validateSyncResponse;
   let validateIndicatorsWebhook;
   let validateAssignmentWebhook;
@@ -67,6 +69,8 @@ describe('relationship-scoped indicators', () => {
       validateGetRequest,
       validateCreateResponse,
       validateUpdateResponse,
+      validateCommitmentResponse,
+      validateControlResponse,
       validateSyncResponse,
       validateIndicatorsWebhook,
       validateAssignmentWebhook,
@@ -81,6 +85,8 @@ describe('relationship-scoped indicators', () => {
       compile('media-buy/get-media-buys-request.json'),
       compile('media-buy/create-media-buy-response.json'),
       compile('media-buy/update-media-buy-response.json'),
+      compile('media-buy/media-buy-commitment-response.json'),
+      compile('media-buy/control-media-buy-response.json'),
       compile('creative/sync-creatives-response.json'),
       compile('core/indicators-changed-webhook.json'),
       compile('creative/creative-assignment-changed-webhook.json'),
@@ -215,6 +221,15 @@ describe('relationship-scoped indicators', () => {
     };
     assertValid(validateCapabilities, fullCapabilities);
 
+    const pollOnlyCapabilities = {
+      status: 'completed',
+      supported_protocols: ['media_buy'],
+      adcp: { major_versions: [3], idempotency: { supported: false } },
+      account: { supported_billing: ['operator'] },
+      media_buy: { supported_indicator_types: ['pacing_risk'] }
+    };
+    assertValid(validateCapabilities, pollOnlyCapabilities);
+
     const unsigned = {
       status: 'completed',
       supported_protocols: ['media_buy', 'creative'],
@@ -271,7 +286,7 @@ describe('relationship-scoped indicators', () => {
       }
     };
     assertValid(validateCapabilities, inlineOnlyCapabilities);
-    assert.equal(validateCapabilities({
+    assertValid(validateCapabilities, {
       ...inlineOnlyCapabilities,
       media_buy: {
         ...inlineOnlyCapabilities.media_buy,
@@ -280,7 +295,7 @@ describe('relationship-scoped indicators', () => {
           event_types: ['creative.assignment_changed']
         }
       }
-    }), false);
+    });
     assertValid(validateCapabilities, {
       ...inlineOnlyCapabilities,
       media_buy: {
@@ -458,12 +473,12 @@ describe('relationship-scoped indicators', () => {
     }
 
     function firesForVector(vector) {
-      const firesByEvent = {
-        subscriber_activated: [],
-        assertion_set_changed: ['indicators.changed'],
-        indicators_as_of_only_changed: [],
-        creative_content_materially_changed: ['indicators.changed']
-      };
+      const webhookSchema = JSON.parse(fs.readFileSync(
+        path.join(SCHEMA_BASE_DIR, 'core', 'indicators-changed-webhook.json'),
+        'utf8'
+      ));
+      const firesByEvent = webhookSchema['x-adcp-validation']
+        .verifier_constraints.lifecycle_event_fires;
       if (vector.event !== 'assignment_removed') {
         return [...firesByEvent[vector.event]];
       }
@@ -494,12 +509,14 @@ describe('relationship-scoped indicators', () => {
       }
     }
 
-    const requiredIndicatorByWarning = {
-      inventory_shortfall_forecast: 'inventory_shortfall_forecast',
-      flight_change_creates_pacing_risk: 'pacing_risk'
-    };
+    const warningSchema = JSON.parse(fs.readFileSync(
+      path.join(SCHEMA_BASE_DIR, 'core', 'warning.json'),
+      'utf8'
+    ));
+    const warningRequirements = warningSchema['x-adcp-validation']
+      .verifier_constraints.warning_capability_requirements;
     for (const vector of vectors.warning_capability_cases) {
-      const requiredType = requiredIndicatorByWarning[vector.warning_code];
+      const requiredType = warningRequirements[vector.warning_code]?.supported_indicator_type;
       const actual = !requiredType || vector.supported_indicator_types.includes(requiredType);
       assert.equal(actual, vector.valid, vector.name);
     }
@@ -721,7 +738,7 @@ describe('relationship-scoped indicators', () => {
     assert.equal(validateGetMediaBuys(payload), false);
   });
 
-  it('returns structured warnings only on synchronous media-buy success arms', () => {
+  it('returns structured warnings only on completed media-buy success arms', () => {
     const warning = {
       code: 'inventory_shortfall_forecast',
       message: 'Forecast delivery is below the requested goal.',
@@ -756,6 +773,72 @@ describe('relationship-scoped indicators', () => {
         }
       }]
     });
+    const commitment = {
+      status: 'completed',
+      media_buy_id: 'mb_1',
+      revision: 1,
+      accepted_proposal: {
+        proposal_id: 'proposal_1',
+        name: 'Accepted direct purchase',
+        proposal_kind: 'new_media_buy',
+        proposal_status: 'accepted',
+        media_buy_id: 'mb_1',
+        accepted_at: '2026-08-04T12:00:00Z',
+        commercial_terms: {
+          source_feed_version: 'feed_1',
+          source_pricing_version: 'pricing_1',
+          brand: { domain: 'acme.example' },
+          purchases: [{
+            product_id: 'product_1',
+            pricing_option_id: 'cpm_1',
+            pricing: {
+              pricing_option_id: 'cpm_1',
+              pricing_model: 'cpm',
+              currency: 'USD',
+              fixed_price: 12
+            },
+            budget: 1000,
+            start_time: '2026-08-05T00:00:00Z',
+            end_time: '2026-09-05T00:00:00Z'
+          }],
+          start_time: 'asap',
+          end_time: '2026-09-05T00:00:00Z'
+        },
+        terms_digest: `sha256:${'A'.repeat(43)}`
+      },
+      purchase_bindings: [{ purchase_index: 0, product_id: 'product_1', package_id: 'pkg_1' }],
+      available_actions: [],
+      warnings: [warning]
+    };
+    assertValid(validateCommitmentResponse, commitment);
+    assertValid(validateControlResponse, {
+      status: 'completed',
+      media_buy_id: 'mb_1',
+      revision: 2,
+      warnings: [warning]
+    });
+    assert.equal(validateCommitmentResponse({
+      ...commitment,
+      warnings: [{
+        code: 'fields_ignored_due_to_precedence',
+        message: 'Legacy precedence was applied.',
+        affected_resource: { resource_type: 'media_buy', media_buy_id: 'mb_1' }
+      }]
+    }), false);
+    assert.equal(validateControlResponse({
+      status: 'completed',
+      media_buy_id: 'mb_1',
+      revision: 2,
+      warnings: [{
+        code: 'flight_change_creates_pacing_risk',
+        message: 'A flight change created risk.',
+        affected_resource: {
+          resource_type: 'package',
+          media_buy_id: 'mb_1',
+          package_id: 'pkg_1'
+        }
+      }]
+    }), false);
     const syncSuccess = {
       status: 'completed',
       creatives: [{ creative_id: 'creative_1', action: 'created' }]
@@ -772,6 +855,8 @@ describe('relationship-scoped indicators', () => {
     assertValid(validateSyncResponse, terminalError);
     assert.equal(validateCreateResponse({ ...terminalError, warnings: [warning] }), false);
     assert.equal(validateUpdateResponse({ ...terminalError, warnings: [warning] }), false);
+    assert.equal(validateCommitmentResponse({ ...terminalError, warnings: [warning] }), false);
+    assert.equal(validateControlResponse({ ...terminalError, warnings: [warning] }), false);
     assert.equal(validateSyncResponse({ ...terminalError, warnings: [warning] }), false);
 
     const submitted = { status: 'submitted', task_id: 'task_123' };
@@ -780,6 +865,8 @@ describe('relationship-scoped indicators', () => {
     assertValid(validateSyncResponse, submitted);
     assert.equal(validateCreateResponse({ ...submitted, warnings: [warning] }), false);
     assert.equal(validateUpdateResponse({ ...submitted, warnings: [warning] }), false);
+    assert.equal(validateCommitmentResponse({ ...submitted, warnings: [warning] }), false);
+    assert.equal(validateControlResponse({ ...submitted, warnings: [warning] }), false);
     assert.equal(validateSyncResponse({ ...submitted, warnings: [warning] }), false);
   });
 
