@@ -16,6 +16,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const yaml = require('js-yaml');
 
 const { lint, classify, RULE_MESSAGES } = require('../scripts/lint-storyboard-test-kits.cjs');
 
@@ -27,6 +28,38 @@ test('source tree passes the test-kits lint', () => {
     'real test kits violate the bimodal partition:\n' +
       violations.map((v) => `  ${v.file} — ${v.rule}`).join('\n'),
   );
+});
+
+test('rate-limit trip exhaustion uses the canonical not-applicable result', () => {
+  const sourceRoot = path.join(__dirname, '..', 'static', 'compliance', 'source');
+  const loadYaml = (...segments) => yaml.load(
+    fs.readFileSync(path.join(sourceRoot, ...segments), 'utf8'),
+  );
+  const testKit = loadYaml('test-kits', 'rate-limit-trip-runner.yaml');
+  const outputContract = loadYaml('universal', 'runner-output-contract.yaml');
+  const storyboard = loadYaml('universal', 'idempotency.yaml');
+  const phase = storyboard.phases.find(({ id }) => id === 'rate_limit_replay_invariant');
+  const step = phase.steps.find(({ id }) => id === 'expect_rate_limit_not_replayed');
+
+  assert.deepEqual(
+    {
+      reason: testKit.burst_step_contract.exhausted_outcome,
+      detail: testKit.burst_step_contract.exhausted_detail,
+    },
+    { reason: 'not_applicable', detail: 'rate_limit_not_triggered' },
+  );
+  assert.ok(
+    outputContract.skip_result.canonical_detail_sub_reasons
+      .not_applicable.rate_limit_not_triggered,
+    'runner output contract registers the exhaustion detail',
+  );
+  assert.equal(step.requires_contract, testKit.id);
+  assert.deepEqual(
+    step.validations.map(({ check }) => check),
+    ['replay_not_cached_rate_limit'],
+  );
+  assert.match(step.expected, /skip_result\.reason: not_applicable/);
+  assert.match(step.expected, /skip_result\.detail: rate_limit_not_triggered/);
 });
 
 test('classify: brand kit (auth.api_key only)', () => {
