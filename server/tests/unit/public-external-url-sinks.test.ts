@@ -118,6 +118,7 @@ describe('public external URL navigation guard', () => {
     ['working-groups/detail.html', 'safeExternalHttpUrl(currentGroup.slack_channel_url)'],
     ['working-groups/detail.html', 'safeExternalHttpUrl(meeting.zoom_join_url)'],
     ['working-groups/detail.html', 'safeExternalHttpUrl(doc.document_url)'],
+    ['working-groups/detail.html', 'safeExternalHttpUrl(data?.cta_url)'],
     ['admin-account-detail.html', 'safeExternalHttpUrl(pendingInvoice.hosted_invoice_url)'],
     ['chat.html', 'safeExternalHttpUrl(data.url)'],
     ['chat.html', 'safeExternalHttpUrl(item.url)'],
