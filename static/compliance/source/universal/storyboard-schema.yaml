@@ -139,8 +139,17 @@
 #   rule above), not a schema concern — the same storyboard runs against
 #   different topologies.)
 #
+# Applicability order: a storyboard-level `requires_capability` predicate MUST
+#   be evaluated before the runner evaluates `requires`. When the capability
+#   predicate is not satisfied, the runner emits `not_applicable` and MUST NOT
+#   report a missing runtime requirement. Only an agent that selected the
+#   storyboard by satisfying `requires_capability` can receive
+#   `requirement_unmet`. This keeps optional capability storyboards out of the
+#   coverage totals of agents that never claimed the capability.
+#
 # requires: string[] (optional — storyboard-level runtime requirement gate.
-#   Known values: controller | seeded_state | real_wire | webhook_receiver | multi_agent (forward-compat:
+#   Known values: controller | seeded_state | real_wire | webhook_receiver | multi_agent |
+#   trusted_match_publisher_auth_runner (forward-compat:
 #   unrecognized values are NOT schema violations — runners emit
 #   requirement_unmet at runtime; see Forward compatibility below).
 #   Default when absent: [real_wire] — untagged storyboards run unchanged.
@@ -239,6 +248,33 @@
 #                    Storyboards SHOULD declare this when the scenario's setup
 #                    and execution require distinct logical tenants, such as a
 #                    seller agent plus a governance agent.
+#
+#     trusted_match_publisher_auth_runner
+#                  — gate on runner-owned, credential-profile-neutral Trusted
+#                    Match publisher-authentication probes. Available when the
+#                    runner has exact HTTPS `contextEndpoint` and
+#                    `identityEndpoint` values for the publisher-facing ingress,
+#                    plus an operator adapter exposing
+#                    `preparePublisherAuthProbe({ operation, credentialState })`.
+#                    The adapter supplies only declarative credential headers
+#                    and optional PEM-encoded client-certificate, private-key,
+#                    passphrase, and CA-certificate material for `absent` and
+#                    `invalid` credential states. It MUST NOT supply a URL,
+#                    dispatcher, fetch implementation, method, body, response,
+#                    SNI override, proxy, or TLS verification override. The
+#                    runner rejects Host, content-framing, hop-by-hop, forwarding,
+#                    routing-override, and proxy headers from the adapter and
+#                    constructs its own HTTP client/dispatcher. The runner owns
+#                    the POST, endpoint SSRF
+#                    validation, redirect rejection, timeout, bounded response
+#                    read, and output redaction. The adapter, not storyboard YAML
+#                    or the generic AdCP `auth` override, is responsible for
+#                    removing ambient deployment credentials or supplying a
+#                    credential known to be invalid for that deployment. When
+#                    unmet, the runner emits
+#                    skip_result.reason: requirement_unmet naming
+#                    "trusted_match_publisher_auth_runner"; it MUST NOT route
+#                    this pseudo-task through MCP or A2A as a fallback.
 #
 #   Forward compatibility: runners encountering a requires value they do not
 #   recognize MUST emit skip_result.reason: requirement_unmet (not fail-load)
@@ -361,7 +397,7 @@
 #   indicator separately rather than splitting `detail` themselves.)
 #
 # agent:
-#   interaction_model: enum (stateless_transform | stateful_preloaded | stateful_push | stateless_generate | media_buy_seller | marketplace_catalog | owned_signals | si_platform | brand_rights_holder | governance_agent)
+#   interaction_model: enum (stateless_transform | stateful_preloaded | stateful_push | stateless_generate | media_buy_seller | marketplace_catalog | owned_signals | si_platform | brand_rights_holder | governance_agent | tmp_router)
 #   capabilities: string[] (legacy descriptive capability labels; bundle selection is driven by get_adcp_capabilities.supported_protocols and specialisms)
 #   examples: string[] (real-world examples: "Celtra", "Innovid")
 #
@@ -751,6 +787,23 @@
 # task: string (AdCP task name: list_creative_formats, preview_creative, build_creative, get_products,
 #               create_media_buy, sync_accounts, etc. May reference a test-kit field, e.g.
 #               "$test_kit.auth.probe_task", in which case `task_default` provides the fallback.)
+#   Runner-owned Trusted Match probes:
+#     `trusted_match_missing_auth_context_probe`,
+#     `trusted_match_invalid_auth_context_probe`,
+#     `trusted_match_missing_auth_identity_probe`, and
+#     `trusted_match_invalid_auth_identity_probe` send the step's schema-valid
+#     sample_request to the matching operator-supplied publisher-facing endpoint.
+#     TMP does not prescribe router-ingress paths; the endpoint MUST NOT be
+#     inferred from provider-facing `/context` and `/identity` paths. The runner
+#     obtains declarative credential-header/TLS configuration from
+#     `preparePublisherAuthProbe`, then owns the guarded HTTP request and bounded
+#     response read. It MUST NOT implement these tasks through the generic
+#     step-level `auth` override because that path is scoped to AdCP task
+#     transports. The result exposed to ordinary validations includes HTTP
+#     status, headers, and any body. These pseudo-tasks are valid only in a
+#     storyboard gated by
+#     `requires: [trusted_match_publisher_auth_runner]` and MUST NOT be
+#     dispatched through an AdCP task transport.
 # task_default: string (optional — default task name when `task` is a test-kit reference that resolves to null)
 # schema_ref: string (path to request schema, e.g., "creative/list-creative-formats-request.json" or "media-buy/get-products-request.json")
 # response_schema_ref: string (path to response schema)

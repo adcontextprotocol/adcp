@@ -1,5 +1,5 @@
 ---
-title: Brief Expectations
+title: Brief expectations
 description: "AdCP brief expectations — how to write campaign briefs for get_products. Required fields, optional details, and implementation guidance for publishers and buyer agents."
 "og:title": "AdCP — Brief Expectations"
 ---
@@ -11,19 +11,21 @@ A comprehensive brief is essential for effective media buying through AdCP. This
 
 A brief in AdCP is a natural language description of campaign requirements that helps publishers understand and fulfill media buying requests. While briefs can be as simple or detailed as needed, complete briefs enable better product recommendations and more efficient campaign execution.
 
-## Required Components
+## Request requirements
 
-Every `get_products` and `create_media_buy` request MUST include:
+Every `get_products` request MUST include `buying_mode`. For `buying_mode: "brief"`, `brief` is required. For `buying_mode: "wholesale"`, omit `brief`. For `buying_mode: "refine"`, omit `brief` and use the `refine` array instead.
 
-### Brand
+### Brand context
 
-The `brand` field is **required** in all requests. It identifies the advertiser brand:
+The `brand` field is optional for `get_products` unless the request includes `catalog`, in which case `brand` is required. Include `brand` whenever the advertiser is known so the publisher can provide advertiser-specific recommendations and policy checks. A context-rich discovery request looks like this:
 
 ```json
 {
+  "buying_mode": "brief",
   "brand": {
     "domain": "acmecorp.com"
-  }
+  },
+  "brief": "Build awareness for Acme Corp's new commuter bicycle among urban professionals"
 }
 ```
 
@@ -32,7 +34,9 @@ This enables publishers to:
 - Verify brand identity
 - Enforce brand safety standards
 
-### Brief Field
+If `brand` is absent, a seller may apply general policy rules or limit discovery rather than perform advertiser-specific checks. The `create_media_buy` request always requires `brand`, even if the preceding discovery request omitted it.
+
+### Brief field
 
 The `brief` field describes **what is being promoted** and **campaign requirements**:
 
@@ -40,15 +44,15 @@ The `brief` field describes **what is being promoted** and **campaign requiremen
 {
   "idempotency_key": "550e8400-e29b-41d4-a716-446655442020",
   "buying_mode": "brief",
-  "brief": "Nike Air Max 2024 - the latest innovation in cushioning technology featuring sustainable materials, targeting runners and fitness enthusiasts"
+  "brief": "Nova Run shoes feature plant-based materials and target recreational runners"
 }
 ```
 
-## When Briefs Are Optional
+## Brief requirements by mode
 
-The `brief` field is **optional only when `buying_mode` is `"wholesale"`**. For catalog discovery without publisher curation, set `buying_mode: "wholesale"` explicitly:
+The `brief` field is required in brief mode and omitted in the other modes. For wholesale discovery without publisher curation, set `buying_mode: "wholesale"` explicitly:
 
-### Wholesale Buying Mode
+### Wholesale buying mode
 
 When the buyer will apply their own audience targeting and does not want publisher curation:
 
@@ -67,6 +71,10 @@ When the buyer will apply their own audience targeting and does not want publish
 ```
 
 `buying_mode: "wholesale"` and `brief` are mutually exclusive — providing both is an error. If `buying_mode: "brief"` is set explicitly, `brief` is required.
+
+### Refine mode
+
+Use `buying_mode: "refine"` with a `refine` array to iterate on products or proposals from an earlier response. Omit `brief`; each `refine` entry describes the requested change and its scope.
 
 When a publisher receives `buying_mode: "wholesale"`:
 1. Returns products that support buyer-directed targeting
@@ -343,10 +351,10 @@ Publishers should implement NLP to extract:
 - **Geographic references**: "west coast", "major cities", "nationwide"
 - **Objective keywords**: "awareness", "drive sales", "generate leads"
 
-## Best Practices
+## Best practices
 
-### DO:
-- ✅ Include both advertiser and product in brand and brief
+### Do
+- ✅ Include the advertiser as `brand` when known and describe the promoted product in the brief
 - ✅ Specify measurable success criteria
 - ✅ Provide clear timing requirements
 - ✅ Describe target audience in detail
@@ -354,7 +362,7 @@ Publishers should implement NLP to extract:
 - ✅ State budget or budget constraints
 - ✅ Include brand safety requirements
 
-### DON'T:
+### Don't
 - ❌ Provide vague objectives like "good performance"
 - ❌ Omit timing without expecting clarification requests
 - ❌ Use undefined abbreviations or jargon
@@ -364,7 +372,7 @@ Publishers should implement NLP to extract:
 
 ## Examples
 
-### Wholesale Buying
+### Wholesale buying
 ```json
 {
   "idempotency_key": "550e8400-e29b-41d4-a716-446655442027",

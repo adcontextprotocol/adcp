@@ -1,5 +1,5 @@
 ---
-title: Policy Compliance
+title: Policy compliance
 description: "AdCP policy compliance — how publishers enforce brand safety and regulatory checks during product discovery and media buy creation. Includes policy types and violation handling."
 "og:title": "AdCP — Policy Compliance"
 ---
@@ -9,7 +9,7 @@ AdCP includes comprehensive policy compliance features to ensure brand safety an
 
 ## Overview
 
-Policy compliance in AdCP centers around the `brand` field - a required reference to the advertiser brand. This enables publishers to:
+Policy compliance in AdCP uses the `brand` field when advertiser-specific context is available. `brand` is optional for `get_products` unless the request includes `catalog`; it is required for `create_media_buy`. Brand context enables publishers to:
 
 - Filter inappropriate advertisers before showing inventory
 - Enforce category-specific restrictions
@@ -18,7 +18,7 @@ Policy compliance in AdCP centers around the `brand` field - a required referenc
 
 ## Brand
 
-All product discovery and media buy creation requests must include a `brand` field that identifies the advertiser brand:
+Buyers should include `brand` in `get_products` when the advertiser is known so sellers can return context-rich recommendations and apply advertiser-specific policy checks. A catalog-bearing `get_products` request must include `brand`, and every `create_media_buy` request must include `brand`.
 
 ```json
 {
@@ -28,110 +28,130 @@ All product discovery and media buy creation requests must include a `brand` fie
 }
 ```
 
-The brand domain is used to look up the brand's published identity (via `brand.json`), which provides:
+The brand domain resolves `/.well-known/brand.json`. On a single-brand domain, `brand_id` can be omitted. On a house or portfolio domain, use `brand_id` to select the intended entry. The selected entry provides:
 - **Brand name and identity** for verification
-- **Industry category** for policy filtering
+- **Industries** for policy filtering
 - **Brand assets** for creative compliance
 
-Combined with the `brief` field (which describes what's being promoted), publishers have full context for policy decisions.
+Callers can supply `brand.industries` as a per-request override when the canonical entry is missing or does not describe the campaign's current industry context. When that field is absent, sellers and governance agents resolve `industries` from the selected `brand.json` entry.
+
+Combined with the `brief` field (which describes what's being promoted), publishers have fuller context for policy decisions. When `brand` is absent from a non-catalog discovery request, a seller may apply general policy rules or limit the products it returns rather than perform advertiser-specific checks.
 
 For comprehensive guidance on briefs and brand information, see [Brief Expectations](/docs/media-buy/product-discovery/brief-expectations).
 
-## Policy Check Implementation
+## Policy check implementation
 
 Publishers must implement policy checks at two key points in the workflow:
 
-### 1. During Product Discovery (`get_products`)
+### 1. During product discovery (`get_products`)
 
 When a `get_products` request is received, the publisher should:
 
-1. Validate that the `brand` field is present and meaningful
-2. Extract brand and category information
-3. Check against publisher policies
-4. Filter out unsuitable products
+1. Require `brand` when `catalog` is present
+2. When `brand` is present, validate it and resolve the selected brand entry and its `industries`
+3. Apply advertiser-specific policy checks when that context is available
+4. Otherwise, apply general policy rules or limit discovery
+5. Filter out unsuitable products
 
-**Example Policy Check Flow:**
+**Example policy context resolution:**
 ```python
-def check_brand_policy(brand: dict) -> PolicyResult:
-    # Look up brand identity from domain
-    domain = brand.get("domain")
-    brand_identity = fetch_brand_json(domain)
+def resolve_policy_industries(brand: dict | None) -> list[str] | None:
+    if brand is None:
+        return None
 
-    # Verify brand identity if needed
-    if not verify_brand_domain(domain, brand_identity):
-        return PolicyResult(
-            status="blocked",
-            message="Brand verification failed"
-        )
+    manifest = fetch_brand_json(brand["domain"])
+    brand_entry = select_brand_entry(manifest, brand.get("brand_id"))
 
-    category = brand_identity.get("category")
-
-    # Check blocked categories
-    if category in BLOCKED_CATEGORIES:
-        return PolicyResult(
-            status="blocked",
-            message=f"{category} advertising is not permitted on this publisher"
-        )
-
-    # Check restricted categories
-    if category in RESTRICTED_CATEGORIES:
-        return PolicyResult(
-            status="restricted",
-            message=f"{category} advertising requires manual approval",
-            contact="sales@publisher.com"
-        )
-
-    return PolicyResult(status="allowed", category=category)
+    if "industries" in brand:
+        return brand["industries"]
+    return brand_entry.get("industries", [])
 ```
 
-### 2. During Media Buy Creation (`create_media_buy`)
+If this function returns `None`, apply general discovery policy or limit the returned products. Otherwise, evaluate policy against the resolved industries and any other applicable request context.
 
-When creating a media buy:
+### 2. During media buy creation (`create_media_buy`)
+
+When creating a media buy, the publisher must first require `brand`, then:
 
 1. Validate the `brand` against publisher policies
 2. Ensure consistency with the campaign brief
 3. Flag for manual review if needed
 4. Return appropriate errors for violations
 
-## Policy Compliance Responses
+## Policy outcomes
 
-The protocol defines three compliance statuses:
+AdCP does not define a separate policy-compliance status or response field. Use the task status and error model that matches the outcome.
 
-### `allowed`
-The brand passes initial policy checks. Products are returned normally.
+### Products can be returned
+
+When policy checks pass, return the ordinary completed response. An empty `products` array means the search completed but no products matched.
 
 ```json
 {
-  "products": [...],
-  "policy_compliance": {
-    "status": "allowed"
-  }
+  "status": "completed",
+  "products": [],
+  "cache_scope": "public",
+  "message": "No products matched the request."
 }
 ```
 
-### `restricted`
-The brand category requires manual approval before products can be shown.
+### More information is needed
+
+Use `input-required` only when the buyer must supply information before the seller can continue. Include `task_id` and `context_id` so the buyer can continue the same task, plus the status-specific reason and optional suggestions.
 
 ```json
 {
-  "products": [],
-  "policy_compliance": {
-    "status": "restricted",
-    "message": "Cryptocurrency advertising is restricted but may be approved on a case-by-case basis.",
-    "contact": "sales@publisher.com"
-  }
+  "status": "input-required",
+  "task_id": "task_policy_clarification_001",
+  "context_id": "ctx_policy_clarification_001",
+  "message": "Which country will this campaign target?",
+  "reason": "CLARIFICATION_NEEDED",
+  "suggestions": ["United States", "Canada"]
 }
 ```
 
-### `blocked`
-The brand category cannot be supported by this publisher.
+### Seller-side review continues asynchronously
+
+Seller-internal review does not require buyer input. When a well-formed `brief` or `refine` request needs human review that cannot finish within the current time budget, return `submitted` with a `task_id`; use `working` for subsequent progress. Wholesale discovery is synchronous and does not use these async states.
+
+### The seller declines a well-formed request
+
+When the request is valid and understood but the seller makes a business decision not to offer products, use the typed `rejected` outcome. This remains a successful transport response.
 
 ```json
 {
-  "products": [],
-  "policy_compliance": {
-    "status": "blocked",
-    "message": "Publisher policy prohibits alcohol advertising without age verification capabilities."
+  "status": "rejected",
+  "reason": "This publisher does not offer inventory for the requested campaign.",
+  "suggestions": ["Try a different channel or publisher."]
+}
+```
+
+### The request violates a policy
+
+When the request itself violates an applicable content or advertising policy and can be corrected, return a failed response with `POLICY_VIOLATION`. Populate `errors[]` and mirror the fatal error in `adcp_error` so clients can handle both response layers.
+
+```json
+{
+  "status": "failed",
+  "message": "The request violates an applicable advertising policy.",
+  "errors": [
+    {
+      "code": "POLICY_VIOLATION",
+      "message": "The requested campaign is not permitted on this inventory.",
+      "field": "brand",
+      "recovery": "correctable",
+      "details": {
+        "policy_id": "publisher-restricted-industries",
+        "policy_url": "https://publisher.example/policies/restricted-industries",
+        "violated_rules": ["restricted-industry"]
+      }
+    }
+  ],
+  "adcp_error": {
+    "code": "POLICY_VIOLATION",
+    "message": "The requested campaign is not permitted on this inventory.",
+    "field": "brand",
+    "recovery": "correctable"
   }
 }
 ```
@@ -179,29 +199,14 @@ Publishers typically implement restrictions for:
 4. **Documentation**: Maintain clear policy documentation for advertisers
 5. **Appeals Process**: Allow advertisers to request policy exceptions
 
-## Error Handling
-
-For policy violations during media buy creation:
-
-```json
-{
-  "error": {
-    "code": "POLICY_VIOLATION",
-    "message": "Brand category not permitted on this publisher",
-    "field": "brand",
-    "suggestion": "Contact publisher for category approval process"
-  }
-}
-```
-
 ## Integration with HITL
 
-Policy decisions can trigger Human-in-the-Loop workflows:
+Keep the two human-in-the-loop paths distinct:
 
-1. Restricted categories create `pending_manual` tasks
-2. Human reviewers assess the campaign
-3. Approval or rejection is communicated back
-4. Campaign proceeds or is terminated based on decision
+- **Buyer clarification:** Return `input-required` only when the buyer must answer a question. Include `task_id` and `context_id`, then continue that task context after the buyer responds.
+- **Seller-internal review:** For `brief` or `refine`, return `submitted` when review cannot finish within the current time budget and `working` while it remains active. Do not use `input-required` merely because a seller-side reviewer is involved.
+
+After review, return the canonical completed, rejected, or failed outcome.
 
 ## Related Documentation
 

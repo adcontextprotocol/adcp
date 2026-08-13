@@ -775,6 +775,7 @@ function projectSalesCapabilities(
           adcp_version?: unknown;
           adcp?: Record<string, unknown>;
           supported_protocols?: unknown;
+          experimental_features?: unknown;
           creative?: Record<string, unknown>;
           media_buy?: Record<string, unknown>;
           signals?: Record<string, unknown>;
@@ -820,6 +821,13 @@ function projectSalesCapabilities(
       };
     }
     if (tenantId === 'sales') {
+      const experimentalFeatures = Array.isArray(structured.experimental_features)
+        ? structured.experimental_features.filter((feature): feature is string => typeof feature === 'string')
+        : [];
+      if (!experimentalFeatures.includes('measurement.core')) {
+        experimentalFeatures.push('measurement.core');
+      }
+      structured.experimental_features = experimentalFeatures;
       const mediaBuy = structured.media_buy && typeof structured.media_buy === 'object'
         ? structured.media_buy
         : {};

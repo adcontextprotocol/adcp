@@ -43,6 +43,10 @@ const workingGroupDb = new WorkingGroupDatabase();
 
 export const MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE =
   'Our Mastermind Councils are for paying member tiers only. AgenticAdvertising.org membership starts at $50 annually.';
+export const MASTERMIND_COUNCIL_MEMBERSHIP_DENIAL =
+  'Our Mastermind Councils are for paying member tiers only.';
+export const MASTERMIND_COUNCIL_MEMBERSHIP_URL =
+  'https://agenticadvertising.org/membership#:~:text=Membership%20pricing,-Explorer';
 
 /**
  * Caller identity. Both route (`req.user`) and Addie tool
@@ -139,6 +143,10 @@ function userDisplayName(user: WorkingGroupServiceUser): string {
   return user.email;
 }
 
+function isAgenticAdvertisingStaff(user: WorkingGroupServiceUser): boolean {
+  return user.email.trim().toLowerCase().endsWith('@agenticadvertising.org');
+}
+
 export interface JoinWorkingGroupInput {
   user: WorkingGroupServiceUser;
   slug: string;
@@ -173,7 +181,11 @@ export async function joinWorkingGroup({ user, slug }: JoinWorkingGroupInput): P
     // Mastermind Councils are open to every active paid tier, including the
     // $50 Explorer tier. This is deliberately separate from contributor-seat
     // and API-access eligibility, both of which exclude Explorer.
-    const hasActiveMembership = await hasActiveMembershipForUser(user.id);
+    // The platform organization is the operator, not a Stripe subscriber, so
+    // staff do not have a paid subscription row even though they are eligible
+    // to participate. Keep the exception narrow to authenticated staff email.
+    const hasActiveMembership =
+      isAgenticAdvertisingStaff(user) || (await hasActiveMembershipForUser(user.id));
     if (!hasActiveMembership) {
       throw new WorkingGroupMembershipError(
         'council_membership_required',

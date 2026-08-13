@@ -130,6 +130,22 @@
       margin-bottom: var(--space-6);
     }
 
+    .join-notice {
+      flex-basis: 100%;
+      padding: var(--space-3) var(--space-4);
+      border: var(--border-1) solid var(--color-warning-300);
+      border-radius: var(--radius-md);
+      background: var(--color-warning-bg);
+      color: var(--color-warning-fg);
+      font-size: var(--text-sm);
+    }
+
+    .join-notice a {
+      color: inherit;
+      font-weight: var(--font-semibold);
+      text-decoration: underline;
+    }
+
     .btn {
       display: inline-flex;
       align-items: center;
@@ -1196,6 +1212,11 @@
           <div id="loginPromptInline" style="display: none;">
             <a href="/auth/login" class="btn btn-secondary">Log in to join</a>
           </div>
+          <div id="joinNotice" class="join-notice" role="alert" aria-atomic="true" hidden>
+            <span id="joinNoticeMessage"></span>
+            <a id="joinNoticeLink" href="" hidden></a>
+            <span id="joinNoticeSuffix"></span>
+          </div>
         </div>
 
         <!-- Leadership -->
@@ -2191,6 +2212,33 @@
         currentGroup.committee_type === 'council' ? 'Join Council' : 'Join Working Group';
     }
 
+    function hideJoinNotice() {
+      document.getElementById('joinNotice').hidden = true;
+    }
+
+    function showJoinNotice(data) {
+      const notice = document.getElementById('joinNotice');
+      const message = document.getElementById('joinNoticeMessage');
+      const link = document.getElementById('joinNoticeLink');
+      const suffix = document.getElementById('joinNoticeSuffix');
+      const ctaUrl = safeExternalHttpUrl(data?.cta_url);
+
+      message.textContent = data?.message || data?.error || 'Failed to join group';
+      link.hidden = !ctaUrl;
+      link.removeAttribute('href');
+      link.textContent = '';
+      suffix.textContent = '';
+
+      if (ctaUrl) {
+        message.textContent += ' ';
+        link.href = ctaUrl;
+        link.textContent = data.cta_label || 'Learn more';
+        suffix.textContent = data.cta_suffix ? ` ${data.cta_suffix}` : '';
+      }
+
+      notice.hidden = false;
+    }
+
     async function joinGroup() {
       if (!currentUser) {
         window.location.href = `/auth/login?return_to=${encodeURIComponent(window.location.pathname)}`;
@@ -2198,6 +2246,7 @@
       }
 
       const joinBtn = document.getElementById('joinBtn');
+      hideJoinNotice();
       joinBtn.disabled = true;
       document.getElementById('joinBtnLabel').textContent = 'Joining...';
 
@@ -2219,12 +2268,12 @@
           await loadWorkingGroup();
         } else {
           const data = await response.json();
-          alert(data.message || data.error || 'Failed to join group');
+          showJoinNotice(data);
           resetJoinButton();
         }
       } catch (error) {
         console.error('Error joining group:', error);
-        alert('Failed to join group');
+        showJoinNotice({ error: 'Failed to join group' });
         resetJoinButton();
       }
     }
