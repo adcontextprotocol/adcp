@@ -589,7 +589,8 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 | Field | Type | Description |
 |-------|------|-------------|
 | `geo_countries` | boolean | Country-level targeting using ISO 3166-1 alpha-2 codes |
-| `geo_regions` | boolean | Region/state-level targeting using ISO 3166-2 codes (e.g., `US-NY`, `GB-SCT`) |
+| `geo_regions` | boolean or object | ISO 3166-2 subdivision inclusion targeting. Structured entries declare individual country/value support; a boolean is the legacy coarse rollup. |
+| `geo_regions_exclude` | boolean or object | ISO 3166-2 subdivision exclusion targeting, declared independently from inclusion, with structured entries declaring individual country/value support. |
 | `geo_metros` | object | Metro area targeting with system-specific support |
 | `geo_postal_areas` | object | Postal area targeting with country and precision support |
 | `geo_places` | object | Named-place targeting keyed by collision-safe identifier system, with exact country/type support, catalog versions, and resolver metadata |
@@ -607,7 +608,7 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 
 Device platform and device type targeting are implied by `media_buy` support. Audience include/exclude targeting is implied by the presence of the `audience_targeting` capabilities object.
 
-Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. For **any targeting-overlay list dimension** declared in this table — geo, `collection_list`, or `property_list` — if a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them; silently dropping a brand-safety exclusion list is an unsafe failure mode. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
+Subdivision inclusion and exclusion are declared independently through `geo_regions` and `geo_regions_exclude`. Seller-wide structured values are individual routing claims within the capability response's scope; they do not promise that multiple values are jointly composable or available through the same execution route or account. Only Product `overlay_support` supplies the binding set of executable targeting permissions for that Product. For other geographic levels that retain a combined legacy rollup, sellers SHOULD support both directions. For **any targeting-overlay list dimension** declared in this table — geo, `collection_list`, or `property_list` — if a seller only supports one direction, it MUST return a validation error for unsupported fields rather than silently ignoring them; silently dropping an exclusion is an unsafe failure mode. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
 
 **geo_proximity** specifies which proximity targeting methods are supported:
 

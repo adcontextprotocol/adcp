@@ -974,8 +974,18 @@
                   "description": "Country-level targeting using ISO 3166-1 alpha-2 codes"
                 },
                 "geo_regions": {
-                  "type": "boolean",
-                  "description": "Region/state-level targeting using ISO 3166-2 codes (e.g., US-NY, GB-SCT)"
+                  "description": "ISO 3166-2 subdivision inclusion targeting. A legacy boolean is a coarse seller-wide declaration. Structured country/value entries are individually supported within the response scope, but do not promise joint composability or availability through the same execution route or account. Only Product.overlay_support supplies the binding set of executable targeting permissions for a configured Product.",
+                  "anyOf": [
+                    { "type": "boolean" },
+                    { "$ref": "/schemas/core/geo-region-support.json" }
+                  ]
+                },
+                "geo_regions_exclude": {
+                  "description": "ISO 3166-2 subdivision exclusion targeting, declared independently from inclusion. Structured country/value entries are individually supported within the response scope, but do not promise joint composability or availability through the same execution route or account. Only Product.overlay_support supplies the binding set of executable targeting permissions for a configured Product; absence means buyers cannot infer exclusion support from geo_regions alone.",
+                  "anyOf": [
+                    { "type": "boolean" },
+                    { "$ref": "/schemas/core/geo-region-support.json" }
+                  ]
                 },
                 "geo_metros": {
                   "type": "object",

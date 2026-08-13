@@ -273,6 +273,20 @@ price. If a supported selection has no current inventory, creation returns
 [`PRODUCT_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-product-unavailable)
 rather than silently substituting or repricing it.
 
+For ISO subdivisions, known values belong in
+`targeting_overlay.geo_regions` / `geo_regions_exclude` and therefore scope the
+configured product's price and aggregate forecast. Values intentionally chosen
+later use structured `required_overlay_support` independently for inclusion and
+exclusion. Each country requirement uses either `all_values: true` or an exact
+candidate `values` set. A matching Product `overlay_support` must contain every
+requested country and value; product support with `all_values: true` satisfies
+any finite requirement for that country. `all_values` is evaluated against the
+seller's support snapshot when the declaration is issued and does not
+automatically include values introduced by a later catalog revision.
+Configured discovery or refinement
+with the exact overlay is the authoritative value-level preflight—there is no
+separate region resolver task.
+
 If the seller can honor a structured overlay exactly, the returned product
 omits Product `targeting_resolution`. Request-level brief confirmation appears
 once on the response, not on each product. Every request-specific configured

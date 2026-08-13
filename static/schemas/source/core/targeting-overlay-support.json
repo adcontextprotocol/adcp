@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-overlay-support.json",
   "title": "Targeting Overlay Support",
-  "description": "Product-scoped package targeting dimensions that may be supplied or changed after discovery. This is the seller response shape and may disclose seller limits such as max_values_per_package and max_packages. Product.overlay_support is the binding selectable-targeting contract: the seller can apply protocol-valid values subject to the disclosed limits, including values within declared named-place systems, countries, types, and versions, but does not guarantee inventory or a forecast for every possible value. Inherent product coverage alone does not satisfy a future-support requirement. Buyer minimums use targeting-overlay-requirements.json. A requirement value of true matches true or any valid support object; an object requirement matches true or a containing support object. Every valid structured support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Unrequested object fields and numeric seller limits do not participate in matching.",
+  "description": "Product-scoped package targeting dimensions that may be supplied or changed after discovery. This is the seller response shape and may disclose seller limits such as max_values_per_package and max_packages. Product.overlay_support is the binding selectable-targeting contract: presence means the seller can apply protocol-valid values within the declared systems, countries, values, types, versions, and limits. Inherent product coverage alone does not satisfy a future-support requirement. Support does not guarantee inventory or a value-specific forecast before values are supplied; fixed prices and floors remain binding for supported selections. geo_regions and geo_regions_exclude are independent: structured support either exhaustively declares every value active in the seller's support snapshot for a country or lists the exact finite selectable subset. Buyer minimums use targeting-overlay-requirements.json. A requirement value of true matches true or any valid support object; an object requirement matches true or a containing support object. Every valid structured support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Unrequested object fields and numeric seller limits do not participate in matching.",
   "type": "object",
   "definitions": {
     "supported": {
@@ -149,8 +149,18 @@
   "properties": {
     "geo_countries": { "$ref": "#/definitions/supported" },
     "geo_countries_exclude": { "$ref": "#/definitions/supported" },
-    "geo_regions": { "$ref": "#/definitions/supported" },
-    "geo_regions_exclude": { "$ref": "#/definitions/supported" },
+    "geo_regions": {
+      "anyOf": [
+        { "$ref": "#/definitions/supported" },
+        { "$ref": "/schemas/core/geo-region-support.json" }
+      ]
+    },
+    "geo_regions_exclude": {
+      "anyOf": [
+        { "$ref": "#/definitions/supported" },
+        { "$ref": "/schemas/core/geo-region-support.json" }
+      ]
+    },
     "geo_metros": { "$ref": "#/definitions/metroSupport" },
     "geo_metros_exclude": { "$ref": "#/definitions/metroSupport" },
     "geo_places": { "$ref": "#/definitions/placeSupport" },

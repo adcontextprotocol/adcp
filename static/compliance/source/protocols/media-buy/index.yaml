@@ -20,6 +20,9 @@ requires_scenarios:
   - media_buy_seller/product_filter_behavior
   - media_buy_seller/targeting_aware_discovery
   - media_buy_seller/geo_place_targeting
+  - media_buy_seller/geo_region_all_values_support
+  - media_buy_seller/geo_region_exclusion_support
+  - media_buy_seller/geo_region_targeting
   - media_buy_seller/available_actions
   - media_buy_seller/invalid_transitions
   - media_buy_seller/creative_fate_after_cancellation
