@@ -19,7 +19,6 @@ const { App, Assistant, LogLevel } = bolt;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ExpressReceiver = (bolt as any).default?.ExpressReceiver ?? (bolt as any).ExpressReceiver;
 import type { SlackEventMiddlewareArgs } from '@slack/bolt';
-import type { ChatAppendStreamArguments } from '@slack/web-api';
 // Import internal Assistant types for handler signatures
 import type {
   AssistantThreadStartedMiddlewareArgs,
@@ -112,15 +111,19 @@ import {
 import {
   splitMrkdwnIntoSections,
   truncateNotificationText,
-  decideStreamAppend,
   planStreamStopFailureFallback,
   resolveStreamTurnCompletion,
-  summarizeSlackStreamError,
   STREAM_DELIVERY_UNCERTAIN_NOTICE,
   DEFAULT_STREAM_SOFT_CAP,
 } from './slack-blocks.js';
-
-type StreamChunk = NonNullable<ChatAppendStreamArguments['chunks']>[number];
+import {
+  createSlackDmStreamState,
+  interpretSlackDmStreamEvent,
+  planSlackDmTerminalDelivery,
+  resolveSlackDmStreamSoftCap,
+  shouldStopSlackDmStream,
+  type SlackDmStreamInterpreter,
+} from './slack-dm-stream.js';
 
 /**
  * Slack rejects `chat.stopStream` with `msg_too_long` once the cumulative
@@ -133,16 +136,14 @@ type StreamChunk = NonNullable<ChatAppendStreamArguments['chunks']>[number];
  */
 const STREAM_SOFT_CAP = (() => {
   const raw = process.env.ADDIE_STREAM_SOFT_CAP;
-  if (!raw) return DEFAULT_STREAM_SOFT_CAP;
-  const parsed = parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 1000 || parsed > 11000) {
+  const resolution = resolveSlackDmStreamSoftCap(raw, DEFAULT_STREAM_SOFT_CAP);
+  if (resolution.invalid) {
     logger.warn(
       { raw, default: DEFAULT_STREAM_SOFT_CAP },
       'Addie Bolt: ADDIE_STREAM_SOFT_CAP invalid — using default. Must parse as int in [1000, 11000].',
     );
-    return DEFAULT_STREAM_SOFT_CAP;
   }
-  return parsed;
+  return resolution.value;
 })();
 
 const STREAM_CONTINUATION_TAIL = '\n\n_(continued in next message ↓)_';
@@ -898,33 +899,6 @@ async function setAgentViewSuggestedPrompts(client: any, userId: string, channel
     // In Slack's Agent messaging experience, prompts are pinned to the app
     // Messages tab and do not belong to a specific assistant thread.
   });
-}
-
-function formatToolTaskTitle(toolName: string): string {
-  return toolName.trim() ? `Call ${toolName}` : 'Call Addie tool';
-}
-
-function buildPlanTitleChunk(): StreamChunk {
-  return {
-    type: 'plan_update',
-    title: 'Addie is working',
-  };
-}
-
-function buildToolTaskChunk(
-  taskId: string,
-  toolName: string,
-  status: 'in_progress' | 'complete' | 'error',
-): StreamChunk {
-  return {
-    type: 'task_update',
-    id: taskId,
-    title: formatToolTaskTitle(toolName),
-    status,
-    ...(status === 'in_progress'
-      ? { details: `Using Addie tool: ${toolName}` }
-      : { output: status === 'error' ? `Tool failed: ${toolName}` : `Tool completed: ${toolName}` }),
-  };
 }
 
 /**
@@ -1778,23 +1752,16 @@ async function handleUserMessage({
   // Process with Claude using streaming
   let response: AddieResponse | undefined;
   let fullText = '';
-  const toolsUsed: string[] = [];
-  const toolExecutions: { tool_name: string; parameters: Record<string, unknown>; result: string }[] = [];
+  let toolsUsed: string[] = [];
+  let toolExecutions: { tool_name: string; parameters: Record<string, unknown>; result: string }[] = [];
   // Mid-stream upstream failure tracking (#4797). When set, we render a recovery
   // banner in Slack and skip persisting the partial turn so prompt assembly for
   // the next turn doesn't feed the model a truncated assistant message.
   let streamWasInterrupted = false;
   let streamInterruptCategory = '';
-  // Length-cap continuation state. When the streamed message approaches
-  // Slack's `msg_too_long` cap, we finalize the in-flight stream and route
-  // subsequent deltas into a continuation buffer that ships as a follow-up
-  // message after the model finishes. `streamWriteable` flips false the
-  // moment we attempt to stop — subsequent text deltas skip the stream API
-  // either way (continuation goes into the buffer; failed-stop falls
-  // through to the post-loop chunked-say() fallback via fullText).
+  // Length-cap continuation state. The reducer tracks whether Slack remains
+  // writeable and routes subsequent deltas into this post-loop buffer.
   let streamedLen = 0;
-  let streamWriteable = true;
-  let streamFinalizedEarly = false;
   let continuationBuffer = '';
 
   try {
@@ -1817,149 +1784,37 @@ async function handleUserMessage({
         task_display_mode: 'plan',
       });
 
-      // Process Claude response stream (pass conversation history for context)
-      // Track tool invocations for unique task_update IDs (same tool can run multiple times)
-      let toolInvocationCount = 0;
-      const activeToolTaskIds: string[] = [];
-      let planTitleSent = false;
+      // Process Claude response stream (pass conversation history for context).
+      // The reducer owns the event state; this interpreter executes each Slack
+      // effect sequentially and feeds its outcome back before advancing.
+      let streamState = createSlackDmStreamState();
+      const streamInterpreter: SlackDmStreamInterpreter = {
+        append: payload => streamer.append(payload),
+        stop: () => streamer.stop({ blocks: [buildFeedbackBlock()] }),
+        say: message => say(message),
+        setStatus: status => setStatus(status),
+        log: (level, fields, message) => logger[level](fields, message),
+      };
 
       for await (const event of claudeClient.processMessageStream(inputValidation.sanitized, conversationHistory, routedTools.tools, processOptions)) {
-        if (event.type === 'text') {
-          fullText += event.text;
-          // Once we've attempted to stop the stream (whether stop succeeded
-          // and we're in continuation mode, or stop failed and we're heading
-          // for the post-loop fallback), don't touch the stream API. In the
-          // continuation case, accumulate into the buffer for the follow-up
-          // post; in the failed-stop case, fullText carries the full reply
-          // and the post-loop fallback will chunk it via say().
-          if (!streamWriteable) {
-            if (streamFinalizedEarly) continuationBuffer += event.text;
-            continue;
-          }
-          // Note: don't apply wrapUrlsForSlack() per-chunk — URLs can span chunk
-          // boundaries. Slack auto-links bare https:// URLs in streamed messages.
-          const decision = decideStreamAppend(streamedLen, event.text, STREAM_SOFT_CAP);
-          if (decision.appendPart) {
-            try {
-              await streamer.append({ markdown_text: decision.appendPart });
-              streamedLen += decision.appendPart.length;
-            } catch (streamError) {
-              logger.warn({ streamError }, 'Addie Bolt: Stream append failed for chunk, continuing');
-            }
-          }
-          if (decision.shouldFinalize) {
-            logger.info(
-              { streamedLen, softCap: STREAM_SOFT_CAP, carryLen: decision.carryPart.length, fullTextLen: fullText.length },
-              'Addie Bolt: Stream length cap reached — finalizing and switching to continuation',
-            );
-            try {
-              await streamer.append({ markdown_text: STREAM_CONTINUATION_TAIL });
-            } catch (appendError) {
-              logger.warn({ appendError }, 'Addie Bolt: Continuation tail marker append failed');
-            }
-            streamWriteable = false;
-            try {
-              await streamer.stop({ blocks: [buildFeedbackBlock()] });
-              streamFinalizedEarly = true;
-              continuationBuffer = decision.carryPart;
-            } catch (stopError) {
-              // Stop failed — the first chunk's wire delivery is uncertain.
-              // Don't flip `streamFinalizedEarly`; let the existing post-loop
-              // fallback recover via `fullText` (it can post the entire reply
-              // as a chunked say()).
-              logger.warn({ stopError }, 'Addie Bolt: Stream stop at length cap failed — falling through to post-loop fallback');
-            }
-          }
-        } else if (event.type === 'tool_start') {
-          toolsUsed.push(event.tool_name);
-          toolInvocationCount++;
-          const taskId = `${event.tool_name}_${toolInvocationCount}`;
-          activeToolTaskIds.push(taskId);
-          // Skip the task widget once we've closed the stream — any
-          // append would throw on a completed stream. Tool widgets simply
-          // won't render for tools that fire after the cap.
-          if (streamWriteable) {
-            try {
-              const chunks: StreamChunk[] = [];
-              if (!planTitleSent) {
-                chunks.push(buildPlanTitleChunk());
-                planTitleSent = true;
-              }
-              chunks.push(buildToolTaskChunk(taskId, event.tool_name, 'in_progress'));
-              await streamer.append({
-                chunks,
-              });
-            } catch {
-              // Ignore stream errors for status updates
-            }
-          }
-        } else if (event.type === 'tool_end') {
-          toolExecutions.push({
-            tool_name: event.tool_name,
-            parameters: {},
-            result: event.result,
-          });
-          const taskId = activeToolTaskIds.pop() || event.tool_name;
-          if (streamWriteable) {
-            try {
-              await streamer.append({
-                chunks: [buildToolTaskChunk(taskId, event.tool_name, event.is_error ? 'error' : 'complete')],
-              });
-            } catch {
-              // Ignore stream errors for status updates
-            }
-          }
-        } else if (event.type === 'retry') {
-          // Show retry status to user
-          try {
-            await setStatus(`${event.reason}, retrying (${event.attempt}/${event.maxRetries})...`);
-          } catch {
-            // Ignore status update errors
-          }
-        } else if (event.type === 'stream_error') {
-          // Mid-stream upstream failure after partial delivery (#4797). Render
-          // the recovery banner in place, finalize the Slack message with
-          // feedback buttons, and mark the terminal turn for discard. The
-          // Claude client may complete the generator normally after yielding
-          // this event, so persistence cannot depend on an outer exception.
-          streamWasInterrupted = true;
-          const errorSummary = summarizeSlackStreamError(event.reason);
-          streamInterruptCategory = errorSummary.category;
-          logger.warn(
-            { category: errorSummary.category, deltasBeforeError: event.deltasBeforeError, fullTextLength: fullText.length, streamFinalizedEarly },
-            'Addie Bolt: Stream interrupted mid-reply — discarding partial turn'
-          );
-          if (!streamWriteable) {
-            // First chunk already shipped + sealed (or stop attempt already
-            // happened); post the recovery banner as a follow-up in the
-            // same thread so the user knows the rest isn't coming.
-            try {
-              await say(errorSummary.followupRecoveryText);
-            } catch (sayError) {
-              logger.warn({ sayError }, 'Addie Bolt: Recovery banner say() failed after stream close');
-            }
-          } else {
-            try {
-              await streamer.append({
-                markdown_text: errorSummary.inlineRecoveryText,
-              });
-            } catch (appendError) {
-              logger.warn({ appendError }, 'Addie Bolt: Recovery banner append failed');
-            }
-            streamWriteable = false;
-            try {
-              await streamer.stop({ blocks: [buildFeedbackBlock()] });
-            } catch (stopError) {
-              logger.warn({ stopError }, 'Addie Bolt: Streamer stop after interruption failed');
-            }
-          }
-          break;
-        } else if (event.type === 'done') {
-          response = event.response;
-        } else if (event.type === 'error') {
-          throw new Error(event.error);
-        }
+        streamState = await interpretSlackDmStreamEvent(
+          streamState,
+          event,
+          { softCap: STREAM_SOFT_CAP, continuationTail: STREAM_CONTINUATION_TAIL },
+          streamInterpreter,
+        );
+        fullText = streamState.fullText;
+        toolsUsed = [...streamState.toolsUsed];
+        toolExecutions = [...streamState.toolExecutions];
+        response = streamState.response;
+        streamedLen = streamState.delivery.streamedLen;
+        continuationBuffer = streamState.continuationBuffer;
+        streamWasInterrupted = streamState.streamWasInterrupted;
+        streamInterruptCategory = streamState.streamInterruptCategory;
+        if (shouldStopSlackDmStream(streamState)) break;
       }
+
+      const terminalDeliveryPlan = planSlackDmTerminalDelivery(streamState);
 
       // If the stream was finalized early due to length cap, post the
       // continuation buffer as a follow-up message in the same thread.
@@ -1970,7 +1825,7 @@ async function handleUserMessage({
       // we've already shipped the first chunk, the downstream persistence
       // logic still discards the turn. The user sees both messages but
       // the next turn starts fresh — matching #4797's contract.
-      if (streamFinalizedEarly) {
+      if (terminalDeliveryPlan === 'continuation') {
         try {
           const guarded = guardBareJsonEnvelope(continuationBuffer, { pathTag: 'dm-streaming-continuation' });
           const continuationValidation = validateOutput(guarded.text);
@@ -1994,46 +1849,38 @@ async function handleUserMessage({
         } catch (continuationError) {
           logger.warn({ continuationError, continuationLen: continuationBuffer.length }, 'Addie Bolt: Continuation post failed');
         }
-      } else if (!streamWriteable) {
-        // Stream was closed mid-flow (length-cap stop failed, or upstream
-        // interruption with a successful recovery banner). Skip the second
-        // stop attempt — it would throw and we'd just land in the same
-        // fallback branch. If answer text already reached Slack, post only a
-        // delivery notice so we do not duplicate the streamed response.
-        if (!streamWasInterrupted) {
-          const fallbackPlan = planStreamStopFailureFallback(streamedLen);
-          if (fallbackPlan === 'delivery-notice') {
-            try {
-              await say(STREAM_DELIVERY_UNCERTAIN_NOTICE);
-            } catch (noticeError) {
-              logger.warn({ noticeError, streamedLen, fullTextLen: fullText.length }, 'Addie Bolt: Stream delivery notice say() failed');
-            }
-          } else {
-            try {
-              const guarded = guardBareJsonEnvelope(fullText, { pathTag: 'dm-streaming-stop-failed' });
-              const fallbackValidation = validateOutput(guarded.text);
-              const { text: fallbackText, images: fallbackImages } = extractMarkdownImages(fallbackValidation.sanitized);
-              const slackText = wrapUrlsForSlack(fallbackText);
-              if (slackText.trim()) {
-                await say({
-                  text: truncateNotificationText(slackText),
-                  blocks: [
-                    ...splitMrkdwnIntoSections(slackText),
-                    ...fallbackImages.slice(0, 3).map(img => ({
-                      type: 'image' as const,
-                      image_url: img.url,
-                      alt_text: img.alt,
-                    })),
-                    buildFeedbackBlock(),
-                  ],
-                });
-              }
-            } catch (fallbackError) {
-              logger.error({ fallbackError, fullTextLen: fullText.length }, 'Addie Bolt: Stop-failed fallback say() also failed');
-            }
-          }
+      } else if (terminalDeliveryPlan === 'delivery-notice') {
+        // The length-cap stop failed after answer text already reached Slack.
+        // Post only a delivery notice so we do not duplicate the response.
+        try {
+          await say(STREAM_DELIVERY_UNCERTAIN_NOTICE);
+        } catch (noticeError) {
+          logger.warn({ noticeError, streamedLen, fullTextLen: fullText.length }, 'Addie Bolt: Stream delivery notice say() failed');
         }
-      } else {
+      } else if (terminalDeliveryPlan === 'full-response') {
+        try {
+          const guarded = guardBareJsonEnvelope(fullText, { pathTag: 'dm-streaming-stop-failed' });
+          const fallbackValidation = validateOutput(guarded.text);
+          const { text: fallbackText, images: fallbackImages } = extractMarkdownImages(fallbackValidation.sanitized);
+          const slackText = wrapUrlsForSlack(fallbackText);
+          if (slackText.trim()) {
+            await say({
+              text: truncateNotificationText(slackText),
+              blocks: [
+                ...splitMrkdwnIntoSections(slackText),
+                ...fallbackImages.slice(0, 3).map(img => ({
+                  type: 'image' as const,
+                  image_url: img.url,
+                  alt_text: img.alt,
+                })),
+                buildFeedbackBlock(),
+              ],
+            });
+          }
+        } catch (fallbackError) {
+          logger.error({ fallbackError, fullTextLen: fullText.length }, 'Addie Bolt: Stop-failed fallback say() also failed');
+        }
+      } else if (terminalDeliveryPlan === 'normal-stop') {
         // Stop the stream with feedback buttons and any inline images.
         try {
           // Cap-exceeded responses have no streamed text — deliver the cap
