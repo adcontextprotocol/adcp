@@ -11,7 +11,7 @@ The caller is therefore either:
 - an authenticated measurement agent calling the buyer orchestrator; or
 - the buyer orchestrator calling a seller.
 
-Measurement agents do not receive seller credentials. In the first experimental gateway tier, the provider reads buyer-approved cross-seller delivery from the orchestrator's `get_media_buy_delivery` task and returns compact assertions through its `provide_performance_feedback` task.
+Measurement agents do not receive seller credentials. In the first experimental gateway tier, the provider reads buyer-approved cross-seller delivery from the orchestrator's [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) task and returns compact assertions through its `provide_performance_feedback` task.
 
 **Request schema:** [`provide-performance-feedback-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json)
 
@@ -176,12 +176,12 @@ Both tasks are part of the first-tier gateway contract. The provider never recei
 The resulting flow is:
 
 1. The orchestrator discovers a measurement agent and its metrics.
-2. The provider calls the orchestrator's `get_media_buy_delivery` task for buyer-approved, cross-seller delivery.
+2. The provider calls the orchestrator's [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) task for buyer-approved, cross-seller delivery.
 3. The provider calls `provide_performance_feedback` on the orchestrator gateway. The orchestrator authenticates the provider, validates provenance, and stores its own `feedback_id`.
 4. The orchestrator decides what to share with each seller, maps its cross-seller identifiers to seller-local media-buy/package/creative IDs, and calls each seller's `provide_performance_feedback` under the buyer's identity.
 5. Seller receipts and `application_status` values return to the orchestrator, which owns the cross-seller audit trail.
 
-This hub-and-spoke boundary lets the buyer keep treatment users and geographies consistent across sellers, prevents a measurement provider from accumulating seller credentials, and gives the orchestrator control over normalization and disclosure. Measurement data MUST NOT be forced through `report_usage`; that task reports consumption and billing for vendor services.
+This hub-and-spoke boundary lets the buyer keep treatment users and geographies consistent across sellers, prevents a measurement provider from accumulating seller credentials, and gives the orchestrator control over normalization and disclosure. Measurement data MUST NOT be forced through [`report_usage`](/docs/accounts/tasks/report_usage); that task reports consumption and billing for vendor services.
 
 ## Capability examples
 
