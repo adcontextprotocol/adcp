@@ -2430,9 +2430,9 @@
 #   replay returned the cached RATE_LIMITED response shape.
 #
 #   When `max_attempts` requests complete without producing a RATE_LIMITED
-#   response, the step grades as `not_applicable` with reason
-#   `rate_limit_not_triggered` — a seller's sandbox limiter may legitimately
-#   sit above the contract's burst ceiling. Runner delegates the burst,
+#   response, the step grades with `skip_result.reason: not_applicable` and
+#   `skip_result.detail: rate_limit_not_triggered` — a seller's sandbox limiter
+#   may legitimately sit above the contract's burst ceiling. Runner delegates the burst,
 #   wait, and replay mechanics to the `@adcp/client` RateLimitTripObserver
 #   primitive (see test-kit rate-limit-trip-runner.yaml).
 #
@@ -2451,9 +2451,12 @@
 #                                       # invariant itself.
 #     requires_contract: rate_limit_trip_runner
 #
-#   Error modes: rate_limit_response_cached_as_replay,
-#   missing_retry_after, replay_wait_exceeded, rate_limit_not_triggered
-#   (the not_applicable case, surfaced for runner output transparency).
+#   Failure outcomes: rate_limit_response_cached_as_replay,
+#   missing_retry_after, replay_wait_exceeded.
+#
+#   Not-applicable outcome: rate_limit_not_triggered. This is emitted when
+#   max_attempts exhausts without observing RATE_LIMITED and MUST NOT be
+#   counted as a seller conformance failure.
 #
 # --- shared_receiver (deferred / out of scope v1) ---
 #
