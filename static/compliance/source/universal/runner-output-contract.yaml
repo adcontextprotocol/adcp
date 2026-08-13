@@ -247,21 +247,57 @@ skip_result:
     the skip is informative (the agent did not claim the protocol) or
     masking (the runner could not apply the storyboard even though the
     agent claimed the protocol).
+
+    Selection is separate from skipping. If the caller asks for a narrower
+    suite or run mode (for example, "Sandbox only") and the runner excludes
+    live-only storyboards before execution, those items are `not_selected`,
+    not `skipped`. A `skip_result` is emitted only after an item was selected
+    for this run and the runner could not execute it because an applicability
+    gate, required tool, test controller, prerequisite, or harness contract
+    was unavailable, or because a bounded observation contract exhausted its
+    attempts without observing the condition it was designed to test.
   required_fields:
     - reason                  # not_applicable | no_phases |
                               # prerequisite_failed | missing_tool |
                               # missing_test_controller |
                               # unsatisfied_contract | peer_branch_taken |
                               # peer_substituted
-    - detail                  # human-readable explanation citing the
-                              # declared supported_protocols / specialisms
-                              # and, if relevant, the missing tool,
-                              # prerequisite step id, or contract key.
+    - detail                  # explanation citing the declared
+                              # supported_protocols / specialisms and, if
+                              # relevant, the missing tool, prerequisite step
+                              # id, or contract key. Some reasons define an
+                              # exact machine-readable detail registered in
+                              # canonical_detail_sub_reasons below.
+  canonical_detail_sub_reasons:
+    not_applicable:
+      rate_limit_not_triggered:
+        spec_source: test-kits/rate-limit-trip-runner.yaml
+        description: |
+          The rate-limit trip runner exhausted max_attempts without observing
+          RATE_LIMITED. This is a coverage gap caused by the seller's permitted
+          limiter configuration, not a seller conformance failure.
   reasons:
     not_applicable: |
-      The agent did not declare the protocol or specialism this storyboard
-      targets. detail MUST cite the agent's declared supported_protocols
-      and specialisms.
+      The item was selected for this run, but either an applicability gate
+      evaluated false or a bounded observation contract exhausted without
+      observing its trigger. Applicability-gate examples include the agent not
+      declaring the protocol or specialism this storyboard targets. For this
+      form, detail MUST cite the failed gate and the agent's relevant declared
+      supported_protocols or specialisms.
+
+      Observation exhaustion is distinct from an applicability-gate failure.
+      When rate_limit_trip_runner reaches max_attempts without observing
+      RATE_LIMITED, the runner MUST emit reason: not_applicable with detail
+      exactly `rate_limit_not_triggered`. It MUST do so before dispatching the
+      step's validations, MUST emit an empty validations array, and MUST count
+      the step in steps_skipped and, when emitted, skipped_by_reason.not_applicable.
+      It MUST NOT increment steps_passed, steps_failed, any validation counter,
+      or validations_not_applicable.
+
+      When the runner excludes an item before execution because it is outside
+      the caller's requested suite, run mode, AdCP version, or verification
+      profile, use selection_result instead. Do not report run-mode exclusions
+      as not_applicable skips.
 
       Branch-set grading uses `peer_branch_taken` (see below), not this
       reason — keeping the two distinct lets dashboards filter coverage
