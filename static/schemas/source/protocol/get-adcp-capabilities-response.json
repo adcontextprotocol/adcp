@@ -13,6 +13,56 @@
     },
     {
       "if": {
+        "required": ["measurement_gateway"]
+      },
+      "then": {
+        "properties": {
+          "supported_protocols": {
+            "contains": { "const": "measurement" }
+          },
+          "experimental_features": {
+            "contains": { "const": "measurement.gateway" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "required": ["measurement"]
+      },
+      "then": {
+        "properties": {
+          "supported_protocols": {
+            "contains": { "const": "measurement" }
+          },
+          "experimental_features": {
+            "contains": { "const": "measurement.core" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "required": ["performance_feedback"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "measurement.core" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
         "allOf": [
           {
             "properties": {
@@ -568,7 +618,7 @@
     },
     "supported_protocols": {
       "type": "array",
-      "description": "AdCP protocols this agent supports. Stable values both (a) declare which tools the agent implements and (b) commit the agent to pass the baseline compliance storyboard at /compliance/{version}/protocols/{protocol}/ (with snake_case → kebab-case path mapping, e.g. media_buy → /compliance/.../protocols/media-buy/). The `measurement` protocol is experimental in 3.1 and currently scoped to `get_adcp_capabilities` catalog discovery; agents implementing it MUST also list `measurement.core` in `experimental_features`. Additional measurement tasks (reporting, attribution, etc.) and a baseline storyboard land in subsequent minors. Compliance testing support is declared separately via the `compliance_testing` capability block (below), not as a protocol claim.",
+      "description": "AdCP protocols this agent supports. Stable values both (a) declare which tools the agent implements and (b) commit the agent to pass the baseline compliance storyboard at /compliance/{version}/protocols/{protocol}/ (with snake_case → kebab-case path mapping, e.g. media_buy → /compliance/.../protocols/media-buy/). The `measurement` protocol is experimental and currently covers provider catalog/output declaration (`measurement.core`) and buyer-orchestrator interchange gateways (`measurement.gateway`). Measurement agents exchange delivery and feedback with the gateway rather than receiving direct seller access. Additional provider tasks and a baseline storyboard land only when concrete workflows require them. Compliance testing support is declared separately via the `compliance_testing` capability block (below), not as a protocol claim.",
       "items": {
         "type": "string",
         "enum": [
@@ -589,7 +639,7 @@
       "properties": {
         "require_operator_auth": {
           "type": "boolean",
-          "description": "Whether the seller requires operator-level credentials. This declares who must authenticate; it does not by itself declare whether OAuth is used, whether list_accounts is exposed, or which sync_accounts modes are supported. When true, operators authenticate independently with the seller and account-scoped calls use seller-assigned account_id values because the seller or upstream platform owns the canonical account namespace. If a credential may access more than one account, the seller MUST expose list_accounts and buyers MUST resolve an explicit account_id before the first account-scoped request. If a credential is bound to exactly one account, the seller SHOULD expose list_accounts returning that singleton; a seller MAY omit list_accounts only when it provides the same explicit account_id through another declared path or out-of-band onboarding. When false (default, buyer-declared accounts), the seller trusts the agent's identity claims — the agent authenticates once and declares brands/operators via sync_accounts, then references accounts by natural key.",
+          "description": "Whether the seller requires operator-level credentials. This declares who must authenticate; it does not by itself declare whether OAuth is used, whether list_accounts is exposed, or which sync_accounts modes are supported. When true, operators authenticate independently with the seller and account-scoped calls use seller-assigned account_id values because the seller or upstream platform owns the canonical account namespace. If a credential may access more than one account, the seller MUST expose list_accounts and buyers MUST resolve an explicit account_id before the first account-scoped request. If a credential is bound to exactly one account, the seller SHOULD expose list_accounts returning that singleton; a seller MAY omit list_accounts only when it provides the same explicit account_id through another declared path or out-of-band onboarding. When false (default, buyer-declared accounts), the seller trusts the agent's identity claims and account-scoped calls use the natural key. The seller normally provisions through sync_accounts, but MAY lazily provision on the first account-scoped request when billing and other required settings are unambiguous from capabilities or onboarding defaults. A lazy-provisioning seller MUST keep accepting the natural key and MUST expose list_accounts for recovery; if buyer input is needed before use, the seller MUST expose sync_accounts.",
           "default": false
         },
         "authorization_endpoint": {
@@ -599,7 +649,7 @@
         },
         "supported_billing": {
           "type": "array",
-          "description": "Billing models this seller supports. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing. advertiser: seller invoices the advertiser directly, even when a different operator places orders on their behalf. The buyer must pass one of these values in sync_accounts.",
+          "description": "Billing models this seller supports. operator: seller invoices the operator (agency or brand buying direct). agent: agent consolidates billing. advertiser: seller invoices the advertiser directly, even when a different operator places orders on their behalf. When the buyer calls sync_accounts, it must pass one of these values. A lazy-provisioning seller may omit sync_accounts only when billing can be resolved unambiguously from this capability or the authenticated agent's onboarding defaults.",
           "items": {
             "$ref": "/schemas/enums/billing-party.json"
           },
@@ -700,7 +750,7 @@
         },
         "sandbox": {
           "type": "boolean",
-          "description": "Whether this seller supports sandbox accounts for testing. Buyer-declared account sellers provision sandbox accounts via sync_accounts with sandbox: true. Sellers with account_id namespaces expose sandbox accounts as pre-existing test accounts through list_accounts or supply them out-of-band. Requests using a sandbox account perform no real platform calls or spend.",
+          "description": "Whether this seller supports sandbox accounts for testing. Buyer-declared accounts use sandbox: true in sync_accounts or, for an unambiguous lazy-provisioning seller, in the natural-key account reference. Sellers with account_id namespaces expose sandbox accounts as pre-existing test accounts through list_accounts or supply them out-of-band. Requests using a sandbox account perform no real platform calls or spend.",
           "default": false
         }
       },
@@ -749,6 +799,20 @@
           },
           "minItems": 1,
           "uniqueItems": true
+        },
+        "performance_feedback": {
+          "type": "object",
+          "x-status": "experimental",
+          "description": "Structured seller performance-feedback support beyond the legacy scalar contract. Presence means the seller accepts compact baseline/metric/provenance fields from a buyer orchestrator and returns a feedback_id.",
+          "properties": {
+            "reports_application_status": {
+              "type": "boolean",
+              "x-status": "experimental",
+              "description": "Whether provide_performance_feedback responses include an honest application_status of accepted, applied, or not_applied. accepted is explicitly not an application claim. Sellers that cannot determine optimizer disposition omit this claim or set it false.",
+              "default": false
+            }
+          },
+          "additionalProperties": true
         },
         "offline_delivery_protocols": {
           "type": "array",
@@ -2127,11 +2191,35 @@
       },
       "additionalProperties": true
     },
+    "measurement_gateway": {
+      "type": "object",
+      "x-status": "experimental",
+      "description": "Buyer-controlled task gateway between an orchestrator and measurement providers. In the first experimental tier, providers read buyer-approved cross-seller delivery through get_media_buy_delivery and return compact assertions through provide_performance_feedback, without receiving seller credentials. Orchestrators implementing this block MUST include measurement in supported_protocols and measurement.gateway in experimental_features; this gateway role does not claim the media_buy seller protocol.",
+      "properties": {
+        "delivery_task": {
+          "type": "string",
+          "const": "get_media_buy_delivery",
+          "description": "Task providers call on the orchestrator gateway to read buyer-approved delivery."
+        },
+        "feedback_task": {
+          "type": "string",
+          "const": "provide_performance_feedback",
+          "description": "Task providers call on the orchestrator gateway to return one compact assertion."
+        }
+      },
+      "required": ["delivery_task", "feedback_task"],
+      "additionalProperties": true
+    },
     "measurement": {
       "type": "object",
       "x-status": "experimental",
-      "description": "Experimental measurement capability block. Presence indicates this agent computes one or more quantitative metrics about ad delivery, exposure, or effect, and is willing to be discovered as a measurement vendor. Agents implementing this block MUST list `measurement.core` in experimental_features. Returns metric definitions (this surface), not pricing/coverage (negotiated via `measurement_terms` on `create_media_buy`) or live values (returned per buy via `vendor_metric_values`). AAO crawls each measurement agent's `metrics[]` on a TTL to populate the federated cross-vendor index. Same self-describing pattern as `governance.property_features[]`: agents own the catalog; the registry aggregates.",
+      "description": "Experimental measurement capability block. Presence indicates this agent computes one or more quantitative metrics about ad delivery, exposure, or effect, and is willing to be discovered as a measurement vendor. Agents implementing this block MUST list `measurement.core` in experimental_features. Returns metric definitions and whether the provider produces compact performance feedback, not pricing/coverage (negotiated via `measurement_terms` on `create_media_buy`) or raw/live datasets. Per-buy vendor values remain on delivery reports; optimizer-ready projections use provide_performance_feedback. AgenticAdvertising.org crawls each measurement agent's `metrics[]` on a TTL to populate the federated cross-vendor index.",
       "properties": {
+        "produces_performance_feedback": {
+          "type": "boolean",
+          "description": "Whether this measurement agent produces compact provide_performance_feedback assertions for a buyer-controlled orchestrator gateway. In the first experimental tier the provider reads delivery through the gateway's get_media_buy_delivery task and returns assertions through its provide_performance_feedback task. The gateway decides what to forward to each seller.",
+          "default": false
+        },
         "metrics": {
           "type": "array",
           "description": "Metrics this agent computes. Each entry is identified by `metric_id` within the vendor's vocabulary; the canonical reference everywhere a measurement value appears (`committed_metrics`, `vendor_metric_values`, `missing_metrics`) is the tuple `(vendor.domain, vendor.brand_id, metric_id)`.",

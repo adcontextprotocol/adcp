@@ -1,16 +1,27 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
 
 const root = process.cwd();
 const committees = readFileSync(join(root, 'server/public/committees.html'), 'utf8');
 const detail = readFileSync(join(root, 'server/public/working-groups/detail.html'), 'utf8');
 const markdownHelper = readFileSync(join(root, 'server/public/js/markdown-to-plain-text.js'), 'utf8');
+const externalUrlHelper = readFileSync(join(root, 'server/public/external-url.js'), 'utf8');
 const service = readFileSync(join(root, 'server/src/services/working-group-membership-service.ts'), 'utf8');
 const route = readFileSync(join(root, 'server/src/routes/committees.ts'), 'utf8');
 const addie = readFileSync(join(root, 'server/src/addie/mcp/member-tools.ts'), 'utf8');
 
 const notice = 'Our Mastermind Councils are for paying member tiers only. AgenticAdvertising.org membership starts at $50 annually.';
+
+function sourceSection(source: string, start: string, end: string): string {
+  const startIndex = source.indexOf(start);
+  const endIndex = source.indexOf(end, startIndex);
+  if (startIndex < 0 || endIndex < 0) {
+    throw new Error(`Could not extract source section from ${start} to ${end}`);
+  }
+  return source.slice(startIndex, endIndex);
+}
 
 describe('Mastermind Council public and adapter surfaces', () => {
   it('uses the requested Council landing-page copy while preserving other type copy', () => {
@@ -49,10 +60,64 @@ describe('Mastermind Council public and adapter surfaces', () => {
     expect(detail.match(/resetJoinButton\(\);/g)).toHaveLength(4);
   });
 
-  it('shares the exact denial notice across HTTP, browser, and Addie adapters', () => {
+  it('shares the denial and linked membership CTA across HTTP, browser, and Addie adapters', () => {
     expect(service).toContain(`'${notice}'`);
-    expect(route).toMatch(/error\.is\('council_membership_required'\)[\s\S]*?res\.status\(403\)[\s\S]*?message: MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE/);
-    expect(detail).toContain("alert(data.message || data.error || 'Failed to join group')");
-    expect(addie).toMatch(/error\.is\('council_membership_required'\)[\s\S]*?return MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE/);
+    expect(route).toMatch(/error\.is\('council_membership_required'\)[\s\S]*?res\.status\(403\)[\s\S]*?cta_url: MASTERMIND_COUNCIL_MEMBERSHIP_URL/);
+    expect(detail).toContain('id="joinNotice" class="join-notice" role="alert" aria-atomic="true" hidden');
+    expect(detail).toContain('const ctaUrl = safeExternalHttpUrl(data?.cta_url);');
+    expect(detail).toContain("message.textContent = data?.message || data?.error || 'Failed to join group';");
+    expect(detail).toContain("link.textContent = data.cta_label || 'Learn more';");
+    expect(detail).toContain("suffix.textContent = data.cta_suffix ? ` ${data.cta_suffix}` : '';");
+    expect(detail).toContain('showJoinNotice(data);');
+    expect(detail).not.toContain("alert(data.message || data.error || 'Failed to join group')");
+    expect(addie).toMatch(/error\.is\('council_membership_required'\)[\s\S]*?\[Sign up for membership here\]\(\$\{MASTERMIND_COUNCIL_MEMBERSHIP_URL\}\)/);
+  });
+
+  it('renders the council denial as safe inline text and an allowlisted membership link', () => {
+    const dom = new JSDOM(`
+      <div id="joinNotice" hidden>
+        <span id="joinNoticeMessage"></span>
+        <a id="joinNoticeLink" href="" hidden></a>
+        <span id="joinNoticeSuffix"></span>
+      </div>
+    `, { url: 'https://agenticadvertising.org/working-groups/growth-council' });
+    const browserGlobal: Record<string, unknown> = {};
+    new Function('window', externalUrlHelper)(browserGlobal);
+    const safeExternalHttpUrl = browserGlobal.safeExternalHttpUrl as (value: unknown) => string | null;
+    const noticeFunctions = sourceSection(detail, 'function hideJoinNotice()', 'async function joinGroup()');
+    const { showJoinNotice } = new Function(
+      'document',
+      'safeExternalHttpUrl',
+      `${noticeFunctions}\nreturn { showJoinNotice, hideJoinNotice };`,
+    )(dom.window.document, safeExternalHttpUrl) as {
+      showJoinNotice: (data: Record<string, string>) => void;
+    };
+
+    showJoinNotice({
+      message: '<img src=x onerror="globalThis.__councilXss = true">',
+      cta_url: 'javascript:globalThis.__councilXss = true',
+      cta_label: 'Unsafe link',
+      cta_suffix: 'unsafe suffix',
+    });
+
+    const noticeElement = dom.window.document.getElementById('joinNotice')!;
+    const link = dom.window.document.getElementById('joinNoticeLink') as HTMLAnchorElement;
+    expect(noticeElement.hidden).toBe(false);
+    expect(noticeElement.textContent).toContain('<img src=x onerror="globalThis.__councilXss = true">');
+    expect(noticeElement.querySelector('img')).toBeNull();
+    expect(link.hidden).toBe(true);
+    expect(link.hasAttribute('href')).toBe(false);
+
+    showJoinNotice({
+      message: 'Our Mastermind Councils are for paying member tiers only.',
+      cta_url: 'https://agenticadvertising.org/membership#:~:text=Membership%20pricing,-Explorer',
+      cta_label: 'Sign up for membership here',
+      cta_suffix: 'starting at $50 annually.',
+    });
+
+    expect(link.hidden).toBe(false);
+    expect(link.href).toBe('https://agenticadvertising.org/membership#:~:text=Membership%20pricing,-Explorer');
+    expect(link.textContent).toBe('Sign up for membership here');
+    expect(noticeElement.textContent).toContain('starting at $50 annually.');
   });
 });

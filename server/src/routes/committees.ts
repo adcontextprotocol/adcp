@@ -40,7 +40,8 @@ import {
   withdrawCommitteeInterest as withdrawCommitteeInterestService,
   listMyWorkingGroups as listMyWorkingGroupsService,
   listMyCommitteeInterests as listMyCommitteeInterestsService,
-  MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE,
+  MASTERMIND_COUNCIL_MEMBERSHIP_DENIAL,
+  MASTERMIND_COUNCIL_MEMBERSHIP_URL,
   WorkingGroupMembershipError,
 } from "../services/working-group-membership-service.js";
 import {
@@ -1205,7 +1206,10 @@ export function createCommitteeRouters(): {
         if (error.is('council_membership_required')) {
           return res.status(403).json({
             error: 'Paid membership required',
-            message: MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE,
+            message: MASTERMIND_COUNCIL_MEMBERSHIP_DENIAL,
+            cta_url: MASTERMIND_COUNCIL_MEMBERSHIP_URL,
+            cta_label: 'Sign up for membership here',
+            cta_suffix: 'starting at $50 annually.',
           });
         }
         if (error.is('community_only_seat_blocked')) {

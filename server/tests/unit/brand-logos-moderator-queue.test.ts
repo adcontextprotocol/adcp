@@ -46,6 +46,7 @@ vi.mock('../../src/middleware/rate-limit.js', () => ({
 vi.mock('../../src/middleware/auth.js', () => ({
   requireAuth: (req: any, _res: unknown, next: () => void) => {
     req.user = { id: currentUserId, email: `${currentUserId}@test.example`, isMember: true };
+    if (currentIsStaticAdmin) req.isStaticAdminApiKey = true;
     next();
   },
   optionalAuth: (req: any, _res: unknown, next: () => void) => {
@@ -83,6 +84,7 @@ import type { BrandDatabase } from '../../src/db/brand-db.js';
 import type { BansDatabase } from '../../src/db/bans-db.js';
 
 let currentUserId = 'user_test';
+let currentIsStaticAdmin = false;
 
 function makeApp() {
   const brandDb = {
@@ -103,6 +105,7 @@ describe('GET /api/brand-logos/pending', () => {
     mocks.isModerator.mockReset();
     mocks.getPending.mockReset();
     currentUserId = 'user_test';
+    currentIsStaticAdmin = false;
   });
 
   it('403s non-moderators', async () => {
@@ -145,6 +148,24 @@ describe('GET /api/brand-logos/pending', () => {
     });
   });
 
+  it('allows the static admin principal to list the queue', async () => {
+    currentUserId = 'admin_api_key';
+    currentIsStaticAdmin = true;
+    mocks.isModerator.mockResolvedValue(false);
+    mocks.getPending.mockResolvedValue([]);
+    const res = await request(makeApp()).get('/api/brand-logos/pending');
+    expect(res.status).toBe(200);
+    expect(mocks.isModerator).not.toHaveBeenCalled();
+  });
+
+  it('does not trust the static admin user id without validated credential state', async () => {
+    currentUserId = 'admin_api_key';
+    mocks.isModerator.mockResolvedValue(false);
+    const res = await request(makeApp()).get('/api/brand-logos/pending');
+    expect(res.status).toBe(403);
+    expect(mocks.getPending).not.toHaveBeenCalled();
+  });
+
   it('clamps limit to a sane upper bound and rejects negative offset', async () => {
     mocks.isModerator.mockResolvedValue(true);
     mocks.getPending.mockResolvedValue([]);
@@ -158,6 +179,8 @@ describe('GET /api/brand-logos/:id/preview', () => {
     mocks.isModerator.mockReset();
     mocks.isOwner.mockReset();
     mocks.getLogoById.mockReset();
+    currentUserId = 'user_test';
+    currentIsStaticAdmin = false;
   });
 
   it('400s on a non-uuid id', async () => {
@@ -181,6 +204,37 @@ describe('GET /api/brand-logos/:id/preview', () => {
     // approval/rejection/deletion mid-cache.
     expect(res.headers['cache-control']).toBe('private, no-store');
     expect(res.body).toBeInstanceOf(Buffer);
+  });
+
+  it('serves pending bytes to the static admin principal', async () => {
+    currentUserId = 'admin_api_key';
+    currentIsStaticAdmin = true;
+    mocks.isModerator.mockResolvedValue(false);
+    mocks.getLogoById.mockResolvedValue({
+      id: '66666666-6666-6666-6666-666666666666',
+      domain: 'acme.example',
+      content_type: 'image/png',
+      data: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+      review_status: 'pending',
+    });
+    const res = await request(makeApp()).get('/api/brand-logos/66666666-6666-6666-6666-666666666666/preview');
+    expect(res.status).toBe(200);
+    expect(mocks.isModerator).not.toHaveBeenCalled();
+  });
+
+  it('does not serve pending bytes to the static admin id without validated credential state', async () => {
+    currentUserId = 'admin_api_key';
+    mocks.isModerator.mockResolvedValue(false);
+    mocks.isOwner.mockResolvedValue(false);
+    mocks.getLogoById.mockResolvedValue({
+      id: '77777777-7777-7777-7777-777777777777',
+      domain: 'acme.example',
+      content_type: 'image/png',
+      data: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+      review_status: 'pending',
+    });
+    const res = await request(makeApp()).get('/api/brand-logos/77777777-7777-7777-7777-777777777777/preview');
+    expect(res.status).toBe(403);
   });
 
   it('falls back to owner check when caller is not a moderator', async () => {

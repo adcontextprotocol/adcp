@@ -339,10 +339,10 @@ The response includes the variant's actual manifest — the specific headline, i
 
 | Aspect | Standard creative | Generative creative |
 |---|---|---|
-| Pre-flight preview | Exact — what you see is what runs | Representative — shows the agent's interpretation of the brief under simulated conditions |
+| Pre-flight preview | At production quality, fidelity-accurate within the selected renderer's presentation; draft may approximate | Representative — shows the agent's interpretation of the brief under simulated conditions |
 | Post-flight preview | Same as pre-flight | Exact — faithful replay of served output via variant mode |
-| `quality: "draft"` | Fast wireframe-quality render | Fast, lower-fidelity generation for reviewing creative direction |
-| `quality: "production"` | Full-fidelity render | Full-quality generation for stakeholder sign-off |
+| `quality: "draft"` | Iteration render; final fidelity is not guaranteed | Lower-fidelity sample for reviewing creative direction |
+| `quality: "production"` | Fidelity-accurate review render | Fidelity-accurate sample of serve-time presentation |
 | Number of variants | Typically 1 (or a few device variants) | Potentially thousands — one per context |
 
 For generative formats where every impression produces a different creative (like AI chat or real-time contextual), pre-flight previews are best understood as *samples from a distribution* rather than *the ad*. The brief and brand identity constrain the distribution; previews let you verify the agent interprets those constraints correctly.
@@ -356,11 +356,28 @@ For formats where the ad is stateful — AI chat, interactive experiences, conve
 
 These formats have the widest gap between pre-flight and post-flight: a pre-flight preview can only approximate one possible conversation path, while the live experience adapts to each user. Preview enough scenarios to verify tone, guardrails, and brand consistency.
 
+### Quality levels
+
+The preview quality tier describes render fidelity, not merely the renderer's relative cost or speed. It is not a validation result, compliance or brand-safety clearance, seller acceptance, or authorization to serve. Buyers use the applicable validation, governance, and seller creative-review workflows for those decisions.
+
+- **`draft`** is an iteration render for reviewing creative direction. It MUST preserve the supplied manifest or brief's core concept, content, and non-fidelity constraints, but it MAY use lower-resolution or placeholder assets; approximate layout, typography, color, motion, audio, or interactive behavior; and omit final polish. The protocol does not guarantee that any of those listed fidelity dimensions is final in a draft preview.
+- **`production`** is a fidelity-accurate review render. For standard or otherwise deterministic creative, it MUST faithfully render the supplied manifest—or the stored manifest resolved from `creative_id`—and its assets using the serve-time presentation controlled by the selected renderer. In `preview_creative`, material asset substitution or approximation requires `quality_used: "draft"`. It MUST include disclosure and compliance elements required by the manifest and those owned by that rendering layer for the supplied context.
+
+Publisher- or serving-layer elements outside the selected renderer are guaranteed only when the targeted preview capability represents that integrated rendering context. A standalone creative renderer is not responsible for reproducing downstream elements it cannot determine. Buyers that need an end-to-end composed review SHOULD request a preview from the applicable seller or publisher rendering capability.
+
+For generative creative, `production` means that the sample uses the serve-equivalent generation pipeline and configuration, honors the same declared constraints, and uses the same full-fidelity presentation rules as serve-time generation. It does not promise that the same content will be generated for every impression. Final assets and layout MAY vary where the format varies them at serve time.
+
+For stateful or interactive creative, a `production` preview MUST render the sampled state or path with serve-time visual and control fidelity. The tier makes no behavioral-coverage guarantee beyond that sample. Buyers assessing guardrails, disclosure persistence, error states, or multi-turn behavior SHOULD use `interactive_url`, when present, and exercise a scenario suite appropriate to the format.
+
+These definitions also apply to `preview_quality` on an inline [`build_creative`](/docs/creative/task-reference/build_creative) preview. In 3.x, that inline response does not echo `quality_used`, so an agent MUST either meet the requested `preview_quality` or return `preview_error`; it cannot silently substitute another tier. Buyers that need a successful response to echo the rendered tier use `preview_creative`.
+
 ### Quality mismatch
 
 If the requested quality level is not supported, the agent renders at the best quality it can provide and reports that tier in `quality_used`. When a single request supplies `quality`, the response MUST include `quality_used`. For batch mode, each successful result whose effective request supplied `quality`—either on the item or through the batch-level default—MUST include `quality_used`. Agents SHOULD report `quality_used` even when the request omitted `quality`, so buyers can record the renderer's default tier.
 
-Buyers MUST compare `quality_used` with the requested value before treating a preview as approval-ready. A mismatch is an explicit downgrade, not confirmation that the requested fidelity was honored. `quality_used` does not appear on variant-mode replay because that mode reproduces a historical execution rather than selecting a new render-quality tier. Agents are not required to support both quality levels or advertise per-capability quality discovery.
+Buyers MUST compare `quality_used` with the requested value before treating a preview as a production-fidelity review artifact. A mismatch means the agent applied a different tier; specifically, requested `production` with `quality_used: "draft"` is an explicit downgrade. `quality_used` does not appear on variant-mode replay because that mode reproduces a historical execution rather than selecting a new render-quality tier. Agents are not required to support both quality levels or advertise per-capability quality discovery.
+
+In 3.x, `quality_used` is a binary fidelity gate: it does not identify which dimensions caused a downgrade. Buyers that receive a mismatch need agent-specific or out-of-band diagnostics before deciding whether to retry, select another renderer, or revise the creative.
 
 ### Preview expiration and variant retention
 

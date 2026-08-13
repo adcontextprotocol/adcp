@@ -1245,6 +1245,23 @@ describe('createMemberToolHandlers', () => {
       expect(result).toContain('Media Buying Protocol');
     });
 
+    it('join_working_group renders a linked membership CTA for council denials', async () => {
+      vi.spyOn(wgService, 'joinWorkingGroup').mockRejectedValue(
+        new wgService.WorkingGroupMembershipError('council_membership_required', 'Paid membership required', {
+          slug: 'growth-council',
+          groupName: 'Growth Council',
+        }),
+      );
+      const handlers = createMemberToolHandlers(memberCtx);
+      const result = await handlers.get('join_working_group')!({ slug: 'growth-council' });
+
+      expect(result).toBe(
+        'Our Mastermind Councils are for paying member tiers only. ' +
+          '[Sign up for membership here](https://agenticadvertising.org/membership#:~:text=Membership%20pricing,-Explorer) ' +
+          'starting at $50 annually.',
+      );
+    });
+
     it('join_working_group disambiguates private vs not-found vs already-member by code, not status', async () => {
       // Private group
       vi.spyOn(wgService, 'joinWorkingGroup').mockRejectedValueOnce(

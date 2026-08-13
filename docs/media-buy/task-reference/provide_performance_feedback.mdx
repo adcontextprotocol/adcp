@@ -1,402 +1,246 @@
 ---
 title: provide_performance_feedback
-description: "provide_performance_feedback task — share normalized performance scores with AdCP publishers so sellers can optimize delivery based on buyer-observed outcomes."
+description: "Submit a compact buyer- or measurement-provider performance assertion that a seller can use for optimization."
 "og:title": "AdCP — provide_performance_feedback"
 ---
 
+`provide_performance_feedback` sends one optimizer-ready assertion across either hop of a buyer-controlled feedback path. A measurement provider submits to the orchestrator's gateway; the orchestrator validates and normalizes the assertion before forwarding appropriate feedback to each media-buy seller. The payload carries the decision signal and enough provenance to interpret it, not raw exposure logs, attribution models, or a complete measurement study.
 
-Share performance outcomes with publishers to enable data-driven optimization and improved campaign delivery.
+The caller is therefore either:
 
-**Response Time**: ~5 seconds (data ingestion)
+- an authenticated measurement agent calling the buyer orchestrator; or
+- the buyer orchestrator calling a seller.
 
-**Request Schema**: [`https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json)
-**Response Schema**: [`https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-response.json)
+Measurement agents do not receive seller credentials. In the first experimental gateway tier, the provider reads buyer-approved cross-seller delivery from the orchestrator's [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) task and returns compact assertions through its `provide_performance_feedback` task.
 
-## Request Parameters
+**Request schema:** [`provide-performance-feedback-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-request.json)
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `media_buy_id` | string | Yes | Seller's media buy identifier |
-| `measurement_period` | object | Yes | Time period for performance measurement |
-| `performance_index` | number | Yes | Normalized performance score (0.0 = no value, 1.0 = expected, >1.0 = above expected) |
-| `package_id` | string | No | Specific package within the media buy (if feedback is package-specific) |
-| `creative_id` | string | No | Specific creative asset (if feedback is creative-specific) |
-| `metric_type` | string | **Deprecated** | Legacy free-form metric enum (mixes metrics, verification, attribution into one list). New implementations SHOULD use `metric` instead. No longer required at the schema level; retained for one-minor backwards compatibility; removed at the next major. See the [metric-type migration table](https://adcontextprotocol.org/schemas/v3/enums/metric-type.json) for the mapping. |
-| `metric` | object | No | The metric this feedback row pertains to, using the `(scope, metric_id, qualifier)` row shape symmetric with `committed_metrics`. Preferred over the deprecated `metric_type`. Standard metrics: `{ scope: "standard", metric_id: "viewable_rate", qualifier: { viewability_standard: "mrc" } }`. Vendor metrics: `{ scope: "vendor", vendor: { domain: "nielsen.com" }, metric_id: "brand_lift" }`. **Omit entirely for holistic feedback** — a trader flagging a campaign as underperforming without a specific metric carries the signal via `performance_index` plus the response narrative, no `metric` row needed. Senders SHOULD populate `metric` when the feedback is metric-specific so consumers can route it. |
-| `feedback_source` | string | No | Source of the performance data (defaults to "buyer_attribution") |
-| `vendor` | [BrandRef](/docs/reference/glossary#b) | No | Vendor that produced this feedback. SHOULD be populated when `feedback_source` is `third_party_measurement` or `verification_partner` AND a single attesting vendor exists. OMIT for blended outputs (MMM mixes, multi-touch attribution that joins across vendors, clean-room outputs where the clean room is not the measurement source). Optional for `buyer_attribution` and `platform_analytics`. **Distinct from the nested `metric.vendor` field** — this top-level `vendor` identifies the *source* of the feedback (the party producing it); `metric.vendor` (when present in vendor-scope `metric` entries) identifies the *vendor that defines the metric*. Often the same; can differ. |
+**Response schema:** [`provide-performance-feedback-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/provide-performance-feedback-response.json)
 
-## Response (Message)
-
-The response includes a human-readable message that:
-- Confirms receipt of the performance feedback
-- Summarizes the performance level provided
-- Explains how the feedback will be used for optimization
-- Provides next steps or recommendations
-
-The message is returned differently in each protocol:
-- **MCP**: Returned as a `message` field in the JSON response
-- **A2A**: Returned as a text part in the artifact
-
-## Response (Payload)
+## Compact contract
 
 ```json
 {
-  "success": "boolean",
-  "message": "string"
+  "idempotency_key": "d8e9f0a1-b2c3-4456-d789-456789012345",
+  "media_buy_id": "mb_123",
+  "package_id": "pkg_streaming_video",
+  "measurement_period": {
+    "start": "2026-07-01T00:00:00Z",
+    "end": "2026-07-31T23:59:59Z"
+  },
+  "metric": {
+    "scope": "standard",
+    "metric_id": "conversion_value",
+    "qualifier": {
+      "attribution_methodology": "modeled"
+    }
+  },
+  "performance_index": 1.35,
+  "baseline": "control_group",
+  "producer": {
+    "domain": "measurement.example"
+  },
+  "methodology": "geo_incrementality",
+  "methodology_version": "2026-07",
+  "study_ref": "study_42",
+  "evidence": {
+    "sample_size": 14820,
+    "confidence_interval": {
+      "lower": 1.18,
+      "upper": 1.49,
+      "level": 0.95
+    }
+  },
+  "evidence_ref": "https://measurement.example/results/study_42",
+  "as_of": "2026-08-04T12:00:00Z",
+  "final": true
 }
 ```
 
-### Field Descriptions
+### Required fields
 
-- **success**: Whether the performance feedback was successfully received
-- **message**: Optional human-readable message about the feedback processing
+| Field                | Meaning                                                                                                         |
+| -------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `idempotency_key`    | Unique key for this logical assertion. MUST be unique per receiving agent to prevent cross-agent correlation; use a fresh UUID v4 for each new assertion. Retries use the same key and payload. |
+| `media_buy_id`       | Receiver-scoped buy identifier: orchestrator-issued on the provider hop, seller-issued on the seller hop.       |
+| `measurement_period` | Period summarized by the assertion.                                                                             |
+| `performance_index`  | Normalized decision signal: `1.0` equals the named baseline, lower underperforms it, and higher outperforms it. |
 
-## Protocol-Specific Examples
+`baseline` is optional in the JSON Schema so legacy 3.x requests remain valid. Producers using the compact contract MUST populate it.
 
-The AdCP payload is identical across protocols. Only the request/response wrapper differs.
+### Scope
 
-### MCP Request
+| Field         | Meaning                                |
+| ------------- | -------------------------------------- |
+| `package_id`  | Narrows the assertion to one package.  |
+| `creative_id` | Narrows the assertion to one creative. |
+
+Omit both for media-buy-level feedback. `media_buy_id`, `package_id`, and `creative_id` are scoped to the receiver: the gateway exposes measurement-facing identifiers to the provider and maps them to each seller's local identifiers during fan-out. The initial compact contract deliberately does not enumerate every delivery dimension. A later revision can add an opaque receiver-issued delivery key without copying the entire reporting-dimension taxonomy into this task.
+
+### Metric identity
+
+`metric` reuses the standard/vendor discriminator used by `committed_metrics`, `missing_metrics`, and delivery metric aggregates:
+
+```json
+{ "scope": "standard", "metric_id": "roas" }
+```
+
 ```json
 {
-  "tool": "provide_performance_feedback",
-  "arguments": {
-    "media_buy_id": "gam_1234567890",
-    "measurement_period": {
-      "start": "2024-01-15T00:00:00Z",
-      "end": "2024-01-21T23:59:59Z"
-    },
-    "performance_index": 1.35,
-    "metric_type": "conversion_rate"
+  "scope": "vendor",
+  "vendor": { "domain": "attentionvendor.example" },
+  "metric_id": "attention_units"
+}
+```
+
+The nested `metric.vendor` identifies who defines the metric. It can differ from top-level `producer`, which identifies who produced this assertion.
+
+`metric_type` remains accepted for backwards compatibility but is deprecated. When both fields are present, consumers use `metric`.
+
+### Baseline
+
+`baseline` names what `performance_index = 1.0` represents:
+
+| Value              | Meaning                                                             |
+| ------------------ | ------------------------------------------------------------------- |
+| `campaign_target`  | Target or expectation for this buy or package.                      |
+| `control_group`    | Buyer- or measurement-provider-defined counterfactual control.      |
+| `seller_history`   | Historical performance for this seller or subject.                  |
+| `buyer_portfolio`  | Buyer-side portfolio benchmark.                                     |
+| `market_benchmark` | External market or category benchmark.                              |
+| `other`            | Another producer-defined baseline described in the linked evidence. |
+
+The producer does not need to disclose the raw baseline value. For ratio-compatible metrics, compact-contract producers (baseline present) MUST use `observed / baseline` for higher-is-better measures and `baseline / observed` for lower-is-better measures such as CPA. In both cases values above `1.0` mean better performance.
+
+### Producer and methodology
+
+`producer` is the BrandRef of the party that produced the analysis. On the provider-to-orchestrator hop, authenticated caller identity is authoritative and the orchestrator verifies that `producer` matches it. On the orchestrator-to-seller hop, `producer` preserves analytical provenance while the authenticated orchestrator remains responsible for the submission. Sellers never need to authenticate or authorize the measurement provider directly.
+
+`methodology` and `methodology_version` are producer-scoped open strings. AdCP does not impose a universal methodology enum: `geo_incrementality`, `media_mix_model`, and `deterministic_attribution` mean what the identified producer's catalog and methodology documentation say they mean.
+
+`study_ref` is opaque correlation metadata. It does not instruct the seller to create experiment arms or assign users/geographies. Buyers and measurement providers define cohorts once and apply them consistently through ordinary audience and geographic targeting.
+
+### Evidence and historical backfill
+
+The inline `evidence` object is intentionally small:
+
+- `sample_size`;
+- `confidence_interval` on the performance-index scale.
+
+`evidence_ref` points to the provider-hosted result for authorized reviewers. Large historical datasets and study artifacts stay with the measurement provider. Historical backfills use `measurement_period` plus `as_of`; submit one assertion per task call.
+
+`final: false` means the producer expects maturation. A later correction is a new immutable assertion carrying `supersedes_feedback_id` from the prior response.
+
+## Response and application status
+
+```json
+{
+  "status": "completed",
+  "success": true,
+  "feedback_id": "fb_01J5Y5KQ2T8B2M8P0A4E6R3C9D",
+  "application_status": "applied",
+  "received_at": "2026-08-04T12:00:02Z",
+  "applied_at": "2026-08-04T12:00:02Z"
+}
+```
+
+| Status        | Meaning                                                                                      |
+| ------------- | -------------------------------------------------------------------------------------------- |
+| `accepted`    | Stored and eligible for evaluation. This is not a claim that an optimizer used it.           |
+| `applied`     | Incorporated into the seller's optimization inputs. It does not guarantee a delivery change. |
+| `not_applied` | Evaluated but not incorporated; `status_reason` explains why.                                |
+
+Legacy task bodies may contain only `success`. Orchestrator gateways and sellers declaring `media_buy.performance_feedback` return a hop-local `feedback_id`. A gateway normally reports receipt only. Sellers declaring `reports_application_status: true` return an honest `application_status`. Top-level `status` remains the protocol task lifecycle and is not optimizer disposition.
+
+The initial contract reports disposition at response time. A durable asynchronous status read or webhook is deferred until implementations demonstrate that optimizers can expose it reliably.
+
+## Orchestrator-hosted measurement gateway
+
+Measurement agents are discoverable through `brand.json` entries with `type: "measurement"` and publish their metric catalogs in `get_adcp_capabilities.measurement.metrics[]`.
+
+A measurement agent that sets `measurement.produces_performance_feedback: true` can produce this task's compact assertion. A buyer orchestrator exposes the receiving boundary through the separate experimental `measurement_gateway` capability, without claiming to be a media-buy seller.
+
+The orchestrator gives each provider a scoped account. The first experimental tier uses existing task authorization:
+
+```json
+{
+  "authorization": {
+    "allowed_tasks": ["get_media_buy_delivery", "provide_performance_feedback"],
+    "read_only": false
   }
 }
 ```
 
-### MCP Response
+Both tasks are part of the first-tier gateway contract. The provider never receives seller-account access. Webhook and offline interchange are deferred until AdCP defines their registration, credential, payload, and receipt contracts.
+
+The resulting flow is:
+
+1. The orchestrator discovers a measurement agent and its metrics.
+2. The provider calls the orchestrator's [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) task for buyer-approved, cross-seller delivery.
+3. The provider calls `provide_performance_feedback` on the orchestrator gateway. The orchestrator authenticates the provider, validates provenance, and stores its own `feedback_id`.
+4. The orchestrator decides what to share with each seller, maps its cross-seller identifiers to seller-local media-buy/package/creative IDs, and calls each seller's `provide_performance_feedback` under the buyer's identity.
+5. Seller receipts and `application_status` values return to the orchestrator, which owns the cross-seller audit trail.
+
+This hub-and-spoke boundary lets the buyer keep treatment users and geographies consistent across sellers, prevents a measurement provider from accumulating seller credentials, and gives the orchestrator control over normalization and disclosure. Measurement data MUST NOT be forced through [`report_usage`](/docs/accounts/tasks/report_usage); that task reports consumption and billing for vendor services.
+
+## Capability examples
+
+Buyer orchestrator gateway:
+
 ```json
 {
-  "message": "Performance feedback received for campaign gam_1234567890. The 35% above-expected conversion rate will be used to optimize future delivery. Next optimization cycle runs tonight at midnight UTC.",
-  "success": true
+  "supported_protocols": ["measurement"],
+  "experimental_features": ["measurement.gateway"],
+  "measurement_gateway": {
+    "delivery_task": "get_media_buy_delivery",
+    "feedback_task": "provide_performance_feedback"
+  }
 }
 ```
 
-### A2A Request
+Seller:
 
-#### Natural Language Invocation
-```javascript
-await a2a.send({
-  message: {
-    parts: [{
-      kind: "text",
-      text: "The campaign gam_1234567890 had a conversion rate 35% above expectations for the week of January 15-21. Please use this to optimize future delivery."
-    }]
-  }
-});
-```
-
-#### Explicit Skill Invocation
-```javascript
-await a2a.send({
-  message: {
-    parts: [{
-      kind: "data",
-      data: {
-        skill: "provide_performance_feedback",
-        parameters: {
-          media_buy_id: "gam_1234567890",
-          measurement_period: {
-            start: "2024-01-15T00:00:00Z",
-            end: "2024-01-21T23:59:59Z"
-          },
-          performance_index: 1.35,
-          metric_type: "conversion_rate"
-        }
-      }
-    }]
-  }
-});
-```
-
-### A2A Response
-A2A returns results as artifacts:
 ```json
 {
-  "artifacts": [{
-    "artifactId": "artifact-perf-feedback-abc789",
-    "name": "performance_feedback_confirmation",
-    "parts": [
+  "experimental_features": ["measurement.core"],
+  "media_buy": {
+    "performance_feedback": {
+      "reports_application_status": true
+    }
+  }
+}
+```
+
+Measurement provider:
+
+```json
+{
+  "supported_protocols": ["measurement"],
+  "experimental_features": ["measurement.core"],
+  "measurement": {
+    "produces_performance_feedback": true,
+    "metrics": [
       {
-        "kind": "text",
-        "text": "Performance feedback received for campaign gam_1234567890. The 35% above-expected conversion rate will be used to optimize future delivery. Next optimization cycle runs tonight at midnight UTC."
-      },
-      {
-        "kind": "data",
-        "data": {
-          "success": true
-        }
+        "metric_id": "incremental_revenue_index",
+        "unit": "index",
+        "methodology_url": "https://measurement.example/methodology"
       }
     ]
-  }]
+  }
 }
 ```
 
-### Key Differences
-- **MCP**: Direct tool call with arguments, returns flat JSON response
-- **A2A**: Skill invocation with input, returns artifacts with text and data parts
-- **Payload**: The `input` field in A2A contains the exact same structure as MCP's `arguments`
+## Privacy and trust
 
-## Scenarios
+- Submit aggregate decision signals, not user-level outcomes or identity paths.
+- The orchestrator authorizes each measurement provider; sellers authorize only the orchestrator.
+- A `producer` field cannot override provider identity at the gateway or orchestrator identity at the seller.
+- `evidence_ref` remains subject to the provider's access controls.
+- Accepted feedback is not necessarily true or applied. Identity, evidence, attestation, and disposition answer different questions.
 
-### Example 1: Campaign-Level Performance Feedback
+## Related documentation
 
-#### Request
-```json
-{
-  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
-  "idempotency_key": "c7d8e9f0-a1b2-4345-c678-345678901234",
-  "media_buy_id": "gam_1234567890",
-  "measurement_period": {
-    "start": "2024-01-01T00:00:00Z",
-    "end": "2024-01-31T23:59:59Z"
-  },
-  "performance_index": 0.85,
-  "metric_type": "brand_lift",
-  "feedback_source": "third_party_measurement",
-  "vendor": { "domain": "doubleverify.com" }
-}
-```
-
-#### Response - Below Expected Performance
-**Message**: "Performance feedback received for campaign gam_1234567890. The 15% below-expected brand lift suggests targeting refinement is needed. Our optimization algorithms will reduce spend on underperforming segments starting with the next cycle."
-
-**Payload**:
-```json
-{
-  "$schema": "/schemas/media-buy/provide-performance-feedback-response.json",
-  "status": "completed",
-  "success": true,
-  "message": "Performance feedback processed successfully. Optimization algorithms updated."
-}
-```
-
-### Example 2: Package-Specific Performance Feedback
-
-#### Request
-```json
-{
-  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
-  "idempotency_key": "d8e9f0a1-b2c3-4456-d789-456789012345",
-  "media_buy_id": "meta_9876543210",
-  "package_id": "pkg_social_feed",
-  "measurement_period": {
-    "start": "2024-02-01T00:00:00Z",
-    "end": "2024-02-07T23:59:59Z"
-  },
-  "performance_index": 2.1,
-  "metric_type": "click_through_rate",
-  "feedback_source": "buyer_attribution"
-}
-```
-
-#### Response - Exceptional Performance
-**Message**: "Outstanding performance feedback for package pkg_social_feed! The 110% above-expected click-through rate indicates this audience segment is highly engaged. We'll increase allocation to similar inventory and audiences."
-
-**Payload**:
-```json
-{
-  "$schema": "/schemas/media-buy/provide-performance-feedback-response.json",
-  "status": "completed",
-  "success": true,
-  "message": "Exceptional performance noted. Increasing allocation to similar segments."
-}
-```
-
-### Example 3: Creative-Specific Performance Feedback
-
-#### Request
-```json
-{
-  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
-  "idempotency_key": "e9f0a1b2-c3d4-4567-e890-567890123456",
-  "media_buy_id": "ttd_5555555555",
-  "creative_id": "creative_video_123",
-  "measurement_period": {
-    "start": "2024-02-01T00:00:00Z",
-    "end": "2024-02-07T23:59:59Z"
-  },
-  "performance_index": 0.65,
-  "metric_type": "completion_rate",
-  "feedback_source": "verification_partner"
-}
-```
-
-#### Response - Poor Creative Performance
-**Message**: "Creative creative_video_123 shows 35% below-expected completion rate. Consider creative refresh or A/B testing alternative versions."
-
-**Payload**:
-```json
-{
-  "$schema": "/schemas/media-buy/provide-performance-feedback-response.json",
-  "status": "completed",
-  "success": true,
-  "message": "Creative performance feedback recorded. Consider creative optimization."
-}
-```
-
-### Example 4: Multiple Performance Metrics
-
-To report multiple metrics for the same media buy, send one request per metric type:
-
-#### Request - Viewability Feedback
-```json
-{
-  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
-  "idempotency_key": "f0a1b2c3-d4e5-4678-f901-678901234567",
-  "media_buy_id": "ttd_5555555555",
-  "measurement_period": {
-    "start": "2024-02-01T00:00:00Z",
-    "end": "2024-02-14T23:59:59Z"
-  },
-  "metric_type": "viewability",
-  "performance_index": 1.15,
-  "feedback_source": "verification_partner"
-}
-```
-
-#### Request - Completion Rate Feedback
-```json
-{
-  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
-  "idempotency_key": "a1b2c3d4-e5f6-4789-a012-789012345678",
-  "media_buy_id": "ttd_5555555555",
-  "measurement_period": {
-    "start": "2024-02-01T00:00:00Z",
-    "end": "2024-02-14T23:59:59Z"
-  },
-  "metric_type": "completion_rate",
-  "performance_index": 0.92,
-  "feedback_source": "verification_partner"
-}
-```
-
-#### Request - Brand Safety Feedback
-```json
-{
-  "$schema": "/schemas/media-buy/provide-performance-feedback-request.json",
-  "idempotency_key": "b2c3d4e5-f6a7-4890-b123-890123456789",
-  "media_buy_id": "ttd_5555555555",
-  "measurement_period": {
-    "start": "2024-02-01T00:00:00Z",
-    "end": "2024-02-14T23:59:59Z"
-  },
-  "metric_type": "brand_safety",
-  "performance_index": 1.05,
-  "feedback_source": "verification_partner"
-}
-```
-
-## Performance Index Scale
-
-The performance index provides a normalized way to communicate business outcomes:
-
-- **0.0**: No measurable value or impact
-- **0.5**: Significantly below expectations (-50%)
-- **1.0**: Meets baseline expectations (0% variance)
-- **1.5**: Exceeds expectations by 50%
-- **2.0+**: Exceptional performance (100%+ above expected)
-
-### Common Metric Types
-
-- **overall_performance**: General campaign success (default)
-- **conversion_rate**: Post-click or post-view conversions
-- **brand_lift**: Brand awareness or consideration lift
-- **click_through_rate**: Engagement with creative
-- **completion_rate**: Video or audio completion rates
-- **viewability**: Viewable impression rate
-- **brand_safety**: Brand safety compliance
-- **cost_efficiency**: Cost per desired outcome
-
-### Feedback Sources
-
-- **buyer_attribution**: Buyer's own measurement and attribution
-- **third_party_measurement**: Independent measurement partner
-- **platform_analytics**: Publisher platform's analytics
-- **verification_partner**: Third-party verification service
-
-## How Publishers Use Performance Feedback
-
-Publishers leverage performance indices to:
-
-1. **Optimize Targeting**: Shift impressions to high-performing segments and audiences
-2. **Improve Inventory**: Identify and prioritize high-value placements
-3. **Adjust Pricing**: Update CPMs based on proven value delivery
-4. **Enhance Algorithms**: Train machine learning models on actual business outcomes
-5. **Product Development**: Refine product definitions based on performance patterns
-
-## Usage Notes
-
-- Performance feedback is optional but highly valuable for optimization
-- Feedback can be provided at campaign or package level
-- Multiple performance indices can be shared for the same period (batch submission planned for future releases)
-- Optimization impact depends on the publisher's algorithm sophistication
-- Feedback is processed asynchronously; status can be checked via the response
-- Historical feedback helps improve future campaign performance across the publisher's inventory
-
-## Privacy and Data Sharing
-
-- Performance feedback sharing is voluntary and controlled by the buyer
-- Aggregate performance patterns may be used to improve overall platform performance
-- Individual campaign details remain confidential to the buyer-publisher relationship
-- Publishers should provide clear data usage policies in their AdCP documentation
-
-## Implementation Guide
-
-### Calculating Performance Index
-
-```python
-def calculate_performance_index(actual_metric, expected_metric):
-    """
-    Calculate normalized performance index
-    
-    Args:
-        actual_metric: Measured performance value
-        expected_metric: Baseline or expected performance value
-        
-    Returns:
-        Performance index (0.0 = no value, 1.0 = expected, >1.0 = above expected)
-    """
-    if expected_metric == 0:
-        return 0.0
-        
-    return actual_metric / expected_metric
-
-# Examples:
-# CTR: 0.15% actual vs 0.12% expected = 1.25 performance index (25% above)
-# Conversions: 45 actual vs 60 expected = 0.75 performance index (25% below)
-# Brand lift: 8% actual vs 5% expected = 1.6 performance index (60% above)
-```
-
-### Determining Metric Types
-
-Choose metric types based on campaign objectives:
-
-```python
-METRIC_TYPE_MAPPING = {
-    'awareness': 'brand_lift',
-    'consideration': 'brand_lift', 
-    'traffic': 'click_through_rate',
-    'conversions': 'conversion_rate',
-    'sales': 'conversion_rate',
-    'engagement': 'completion_rate',
-    'reach': 'overall_performance'
-}
-
-def get_metric_type(campaign_objective):
-    return METRIC_TYPE_MAPPING.get(campaign_objective, 'overall_performance')
-```
-
-## Related Documentation
-
-- [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) - Retrieve delivery metrics
-- [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) - Performance feedback concepts
-- [Targeting](/docs/media-buy/advanced-topics/targeting) - Understanding targeting for optimization
+- [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
+- [Measurement taxonomy](/docs/measurement/taxonomy)
+- [Caller authorization](/docs/accounts/overview#caller-authorization)
+- [Optimization and reporting](/docs/media-buy/media-buys/optimization-reporting)
