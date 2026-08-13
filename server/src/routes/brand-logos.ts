@@ -76,13 +76,16 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         const domain = req.params.domain.toLowerCase();
         const user = (req as any).user;
         const apiKey = (req as Request & { apiKey?: ValidatedApiKey }).apiKey;
+        const isStaticAdmin = Boolean(
+          (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey,
+        );
 
         if (!logoDomainPattern.test(domain)) {
           return res.status(400).json({ error: 'Invalid domain' });
         }
 
         // Membership check
-        if (!user.isMember) {
+        if (!isStaticAdmin && !user.isMember) {
           const enriched = await enrichUserWithMembership(user);
           if (!enriched?.isMember) {
             return res.status(403).json({ error: 'Membership required to upload logos' });
@@ -107,8 +110,13 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           hostedForOwnership?.domain_verified &&
           hostedForOwnership.workos_organization_id === apiKey.organizationId
         );
-        const isOwner = isApiKeyOwner || (await isVerifiedBrandOwner(user.id, domain, brandDb));
-        if (!isOwner) {
+        const isOwner = !isStaticAdmin
+          && (isApiKeyOwner || (await isVerifiedBrandOwner(user.id, domain, brandDb)));
+        // Static-admin uploads are support actions, not owner attestations.
+        // They bypass the community queue, but attribution below remains tied
+        // to a hosted member org when one exists.
+        const isTrustedUploader = isOwner || isStaticAdmin;
+        if (!isTrustedUploader) {
           if (hostedForOwnership?.domain_verified && hostedForOwnership.workos_organization_id) {
             return res.status(403).json({
               error: `This brand is verified-owned. Only members of the owning organization can change its logo. If you believe you own ${domain}, start a brand-claim challenge to prove DNS control.`,
@@ -135,7 +143,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         // both insert (cap = N×concurrency). The HTTP route's rate
         // limiter bounds this. Hard upper limit is moderator workload,
         // not a security boundary.
-        if (!isOwner) {
+        if (!isTrustedUploader) {
           const pendingDomainCount = await brandLogoDb.countPendingDomainsForUser(
             user.id,
             PENDING_THRESHOLD_WINDOW_MS,
@@ -161,8 +169,9 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         // rejected/deleted don't permanently consume slots) are reserved
         // to MAX_COMMUNITY_LOGOS_PER_BRAND so a verified owner uploading
         // after the community-pending pool filled isn't locked out of
-        // their own brand. Owner uploads still respect the overall cap.
-        if (isOwner) {
+        // their own brand. Owner and static-admin uploads still respect the
+        // overall cap.
+        if (isTrustedUploader) {
           const count = await brandLogoDb.countBrandLogos(domain);
           if (count >= MAX_LOGOS_PER_BRAND) {
             return res.status(400).json({ error: `Maximum ${MAX_LOGOS_PER_BRAND} logos per brand` });
@@ -212,20 +221,24 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
 
         // Original filename
         const originalFilename = req.file.originalname?.slice(0, 255);
-        const uploaderOrgId = isOwner
-          ? hostedForOwnership?.workos_organization_id ?? apiKey?.organizationId ?? null
+        const uploaderOrgId = isTrustedUploader
+          ? hostedForOwnership?.workos_organization_id
+            ?? (isOwner ? apiKey?.organizationId ?? null : null)
           : apiKey?.organizationId ?? (await resolvePrimaryOrganization(user.id).catch((err) => {
               logger.warn({ err, userId: user.id }, 'Failed to resolve uploader org for brand-logo provenance');
               return null;
             }));
 
-        // Verified owners are auto-approved — domain control is the attestation.
+        // Verified owners and authenticated support actions are auto-approved.
+        // Only the former are owner-attested; `source` preserves that distinction.
         // Community uploads (only allowed when no owner has verified yet) queue
         // for moderator review so a bad actor can't instantly swap a brand's
         // storefront logo. Walks back the community half of #3393 per Brian's
         // direction; ops tunes the moderation cadence.
-        const source = isOwner ? 'brand_owner' : 'community';
-        const reviewStatus = isOwner ? 'approved' : 'pending';
+        const isAttributedToMemberOrg = isOwner
+          || Boolean(isStaticAdmin && hostedForOwnership?.workos_organization_id);
+        const source = isAttributedToMemberOrg ? 'brand_owner' : 'community';
+        const reviewStatus = isTrustedUploader ? 'approved' : 'pending';
 
         // Insert
         const logo = await brandLogoDb.insertBrandLogo({
@@ -243,12 +256,24 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           uploaded_by_email: user.email,
           upload_note: note,
           original_filename: originalFilename,
-          source_flow: isOwner ? 'brand_builder_owner_upload' : 'community_logo_upload',
+          source_flow: isStaticAdmin
+            ? 'static_admin_logo_upload'
+            : isOwner
+              ? 'brand_builder_owner_upload'
+              : 'community_logo_upload',
           provenance: {
-            approval_path: isOwner ? 'owner_auto_approved' : 'moderator_review_required',
-            source_flow: isOwner ? 'brand_builder_owner_upload' : 'community_logo_upload',
+            approval_path: isStaticAdmin
+              ? 'static_admin_support_action'
+              : isOwner
+                ? 'owner_auto_approved'
+                : 'moderator_review_required',
+            source_flow: isStaticAdmin
+              ? 'static_admin_logo_upload'
+              : isOwner
+                ? 'brand_builder_owner_upload'
+                : 'community_logo_upload',
             intended_use: 'brand_json',
-            uploader_path: isOwner ? 'owner' : 'community',
+            uploader_path: isStaticAdmin ? 'admin' : isOwner ? 'owner' : 'community',
           },
         });
 
@@ -285,7 +310,11 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
 
         // Create a brand revision noting the upload
         try {
-          const reviewNote = isOwner ? 'verified owner — auto-approved' : 'community — pending review';
+          const reviewNote = isStaticAdmin
+            ? 'static admin support action — approved'
+            : isOwner
+              ? 'verified owner — auto-approved'
+              : 'community — pending review';
           await brandDb.editDiscoveredBrand(domain, {
             edit_summary: `Logo uploaded by ${user.email} (${reviewNote})`,
             editor_user_id: user.id,
@@ -513,7 +542,9 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
     async (req: Request, res: Response) => {
       try {
         const user = (req as any).user;
-        const moderator = await isRegistryModerator(user.id);
+        const isStaticAdmin = (req as Request & { isStaticAdminApiKey?: boolean })
+          .isStaticAdminApiKey === true;
+        const moderator = isStaticAdmin || await isRegistryModerator(user.id);
         if (!moderator) {
           return res.status(403).json({ error: 'Brand-registry moderators only' });
         }
@@ -573,7 +604,9 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         }
 
         const row = await brandLogoDb.getBrandLogoById(logoId);
-        const moderator = await isRegistryModerator(user.id);
+        const isStaticAdmin = (req as Request & { isStaticAdminApiKey?: boolean })
+          .isStaticAdminApiKey === true;
+        const moderator = isStaticAdmin || await isRegistryModerator(user.id);
         const owner = row ? await isVerifiedBrandOwner(user.id, row.domain, brandDb) : false;
 
         // Conflate not-found and not-authorized for unauthorized callers

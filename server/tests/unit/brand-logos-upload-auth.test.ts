@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   rebuildManifestLogos: vi.fn().mockResolvedValue(undefined),
   notifyPendingBrandLogo: vi.fn().mockResolvedValue(null),
   resolvePrimaryOrganization: vi.fn().mockResolvedValue('org_test'),
+  enrichUserWithMembership: vi.fn().mockResolvedValue({ isMember: true }),
 }));
 
 vi.mock('../../src/notifications/registry.js', () => ({
@@ -41,7 +42,7 @@ vi.mock('../../src/services/brand-logo-auth.js', () => ({
 }));
 
 vi.mock('../../src/utils/html-config.js', () => ({
-  enrichUserWithMembership: vi.fn().mockResolvedValue({ isMember: true }),
+  enrichUserWithMembership: (...args: unknown[]) => mocks.enrichUserWithMembership(...args),
 }));
 
 vi.mock('../../src/middleware/rate-limit.js', () => ({
@@ -51,7 +52,16 @@ vi.mock('../../src/middleware/rate-limit.js', () => ({
 vi.mock('../../src/middleware/auth.js', () => ({
   requireAuth: (req: any, _res: unknown, next: () => void) => {
     const apiKeyOrgId = req.headers['x-test-api-key-org-id'];
-    if (typeof apiKeyOrgId === 'string') {
+    if (req.headers['x-test-static-admin'] === 'true') {
+      req.isStaticAdminApiKey = true;
+      req.user = {
+        id: 'admin_api_key',
+        email: 'admin-api-key@internal',
+        firstName: 'Admin',
+        lastName: 'API Key',
+        isMember: false,
+      };
+    } else if (typeof apiKeyOrgId === 'string') {
       req.apiKey = {
         id: 'key_test',
         organizationId: apiKeyOrgId,
@@ -150,6 +160,8 @@ describe('POST /api/brands/:domain/logos write authority', () => {
     mocks.setSlackThreadTs.mockResolvedValue(undefined);
     mocks.resolvePrimaryOrganization.mockReset();
     mocks.resolvePrimaryOrganization.mockResolvedValue('org_test');
+    mocks.enrichUserWithMembership.mockReset();
+    mocks.enrichUserWithMembership.mockResolvedValue({ isMember: true });
     mocks.insertLogo.mockImplementation(async (input) => ({
       id: 'logo_test_id',
       ...input,
@@ -234,6 +246,89 @@ describe('POST /api/brands/:domain/logos write authority', () => {
     );
     expect(mocks.resolvePrimaryOrganization).not.toHaveBeenCalled();
     expect(mocks.notifyPendingBrandLogo).not.toHaveBeenCalled();
+  });
+
+  it('allows the static admin key to repair a verified owner logo', async () => {
+    const { app, brandDb } = makeApp({
+      hostedBrand: { workos_organization_id: 'org_owner', domain_verified: true },
+      isOwner: false,
+    });
+    const res = await request(app)
+      .post('/api/brands/example.com/logos')
+      .set('x-test-static-admin', 'true')
+      .field('tags', 'primary')
+      .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.review_status).toBe('approved');
+    expect(mocks.insertLogo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'brand_owner',
+        review_status: 'approved',
+        uploaded_by_user_id: 'admin_api_key',
+        uploaded_by_org_id: 'org_owner',
+        source_flow: 'static_admin_logo_upload',
+        provenance: expect.objectContaining({
+          approval_path: 'static_admin_support_action',
+          source_flow: 'static_admin_logo_upload',
+          uploader_path: 'admin',
+        }),
+      }),
+    );
+    expect(mocks.enrichUserWithMembership).not.toHaveBeenCalled();
+    expect(mocks.isVerifiedOwner).not.toHaveBeenCalled();
+    expect(brandDb.editDiscoveredBrand).toHaveBeenCalledWith(
+      'example.com',
+      expect.objectContaining({ edit_summary: expect.stringContaining('static admin support action — approved') }),
+    );
+  });
+
+  it('allows the static admin key to repair an unverified member brand', async () => {
+    const { app } = makeApp({
+      hostedBrand: { workos_organization_id: 'org_owner', domain_verified: false },
+      isOwner: false,
+    });
+    const res = await request(app)
+      .post('/api/brands/example.com/logos')
+      .set('x-test-static-admin', 'true')
+      .field('tags', 'primary')
+      .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.review_status).toBe('approved');
+    expect(mocks.insertLogo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'brand_owner',
+        uploaded_by_org_id: 'org_owner',
+        source_flow: 'static_admin_logo_upload',
+      }),
+    );
+    expect(mocks.enrichUserWithMembership).not.toHaveBeenCalled();
+    expect(mocks.isVerifiedOwner).not.toHaveBeenCalled();
+  });
+
+  it('keeps an admin-approved unowned upload out of owner-attested provenance', async () => {
+    const { app } = makeApp({ hostedBrand: null, isOwner: false });
+    const res = await request(app)
+      .post('/api/brands/example.com/logos')
+      .set('x-test-static-admin', 'true')
+      .field('tags', 'primary')
+      .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.review_status).toBe('approved');
+    expect(mocks.insertLogo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'community',
+        review_status: 'approved',
+        uploaded_by_org_id: undefined,
+        source_flow: 'static_admin_logo_upload',
+        provenance: expect.objectContaining({
+          approval_path: 'static_admin_support_action',
+          uploader_path: 'admin',
+        }),
+      }),
+    );
   });
 
   it('queues community uploads as pending when no verified owner exists', async () => {
