@@ -72,6 +72,8 @@ const TEST_PROFILES: ProfileUpsertInput[] = [
   },
 ];
 
+const MEMBER_ONLY_AGENT = 'https://member-only-agent.example.com';
+
 describe('Registry Search Integration Tests', () => {
   let pool: Pool;
   let profilesDb: AgentInventoryProfilesDatabase;
@@ -95,7 +97,8 @@ describe('Registry Search Integration Tests', () => {
   });
 
   afterAll(async () => {
-    // Clean up in reverse FK order
+    // Clean up test fixtures.
+    await pool.query('DELETE FROM agent_inventory_profiles WHERE agent_url = $1', [MEMBER_ONLY_AGENT]);
     for (const p of TEST_PROFILES) {
       await pool.query('DELETE FROM agent_inventory_profiles WHERE agent_url = $1', [p.agent_url]);
       await pool.query('DELETE FROM discovered_agents WHERE agent_url = $1', [p.agent_url]);
@@ -257,6 +260,23 @@ describe('Registry Search Integration Tests', () => {
       const result = await profilesDb.search({ channels: ['ctv'] });
       const countA = result.results.filter(r => r.agent_url === 'https://agent-a.example.com').length;
       expect(countA).toBe(1);
+    });
+  });
+
+  describe('member-profile agents', () => {
+    it('batch-upserts a profile without a discovered_agents row', async () => {
+      await pool.query('DELETE FROM agent_inventory_profiles WHERE agent_url = $1', [MEMBER_ONLY_AGENT]);
+      await pool.query('DELETE FROM discovered_agents WHERE agent_url = $1', [MEMBER_ONLY_AGENT]);
+
+      const persisted = await profilesDb.upsertProfiles([{
+        agent_url: MEMBER_ONLY_AGENT,
+        channels: ['display'],
+        property_count: 1,
+        publisher_count: 1,
+      }]);
+
+      expect(persisted).toHaveLength(1);
+      expect(persisted[0].agent_url).toBe(MEMBER_ONLY_AGENT);
     });
   });
 
