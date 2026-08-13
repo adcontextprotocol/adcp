@@ -111,7 +111,8 @@ import {
   withdrawCommitteeInterest as withdrawCommitteeInterestService,
   listMyWorkingGroups as listMyWorkingGroupsService,
   listMyCommitteeInterests as listMyCommitteeInterestsService,
-  MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE,
+  MASTERMIND_COUNCIL_MEMBERSHIP_DENIAL,
+  MASTERMIND_COUNCIL_MEMBERSHIP_URL,
   WorkingGroupMembershipError,
 } from '../../services/working-group-membership-service.js';
 import { listMyContent as listMyContentService } from '../../services/my-content-service.js';
@@ -2604,7 +2605,7 @@ export function createMemberToolHandlers(
           return `"${error.meta.groupName}" is a private working group that requires an invitation. Use request_working_group_invitation to request access.`;
         }
         if (error.is('council_membership_required')) {
-          return MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE;
+          return `${MASTERMIND_COUNCIL_MEMBERSHIP_DENIAL} [Sign up for membership here](${MASTERMIND_COUNCIL_MEMBERSHIP_URL}) starting at $50 annually.`;
         }
         if (error.is('community_only_seat_blocked')) {
           return `Joining "${error.meta.groupName}" requires a contributor seat. Ask your org admin to upgrade your access.`;

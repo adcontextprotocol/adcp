@@ -23,6 +23,36 @@
           "description": "Whether the performance feedback was successfully received",
           "const": true
         },
+        "feedback_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-status": "experimental",
+          "description": "Receiver-issued identifier for this immutable assertion. Orchestrator gateways and sellers declaring media_buy.performance_feedback MUST return it; legacy sellers may omit it. The identifier is local to the receiving hop. Use it in supersedes_feedback_id when revising that hop's assertion."
+        },
+        "application_status": {
+          "type": "string",
+          "enum": ["accepted", "applied", "not_applied"],
+          "x-status": "experimental",
+          "description": "Optimizer disposition at response time, distinct from the protocol envelope's task status. accepted means stored and eligible for evaluation, not that optimizer use is guaranteed. applied means incorporated into the seller's optimization inputs. not_applied means evaluated but not incorporated. Sellers declaring reports_application_status MUST return this field."
+        },
+        "status_reason": {
+          "type": "string",
+          "maxLength": 500,
+          "x-status": "experimental",
+          "description": "Human-readable explanation when application_status is not_applied. May also explain material qualifications on accepted feedback."
+        },
+        "received_at": {
+          "type": "string",
+          "format": "date-time",
+          "x-status": "experimental",
+          "description": "When the receiving orchestrator gateway or seller stored the assertion."
+        },
+        "applied_at": {
+          "type": "string",
+          "format": "date-time",
+          "x-status": "experimental",
+          "description": "When the seller incorporated the assertion into its optimization inputs. Present only when application_status is applied."
+        },
         "sandbox": {
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."
@@ -34,14 +64,37 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": [
-        "success"
+      "required": ["success"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "application_status": { "const": "applied" }
+            },
+            "required": ["application_status"]
+          },
+          "then": {
+            "required": ["applied_at"]
+          },
+          "else": {
+            "not": { "required": ["applied_at"] }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "application_status": { "const": "not_applied" }
+            },
+            "required": ["application_status"]
+          },
+          "then": {
+            "required": ["status_reason"]
+          }
+        }
       ],
       "additionalProperties": true,
       "not": {
-        "required": [
-          "errors"
-        ]
+        "required": ["errors"]
       }
     },
     {
@@ -64,21 +117,15 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": [
-        "errors"
-      ],
+      "required": ["errors"],
       "additionalProperties": true,
       "not": {
         "anyOf": [
           {
-            "required": [
-              "success"
-            ]
+            "required": ["success"]
           },
           {
-            "required": [
-              "sandbox"
-            ]
+            "required": ["sandbox"]
           }
         ]
       }

@@ -120,6 +120,33 @@ describe('Mastermind Council join membership boundary', () => {
     expect(mocks.sendWelcome).toHaveBeenCalledOnce();
   });
 
+  it('allows authenticated AgenticAdvertising.org staff without a paid subscription row', async () => {
+    const staffUser = { ...user, email: 'Mary@AgenticAdvertising.org' };
+
+    await expect(joinWorkingGroup({ user: staffUser, slug: council.slug })).resolves.toMatchObject({
+      groupId: council.id,
+      groupSlug: council.slug,
+    });
+
+    expect(mocks.hasActiveMembership).not.toHaveBeenCalled();
+    expect(mocks.addMembership).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    'mary@notagenticadvertising.org',
+    'mary@agenticadvertising.org.evil.test',
+    'mary@updates.agenticadvertising.org',
+  ])('does not treat the non-staff domain in %s as staff', async (email) => {
+    const lookalikeUser = { ...user, email };
+
+    await expect(joinWorkingGroup({ user: lookalikeUser, slug: council.slug })).rejects.toMatchObject({
+      code: 'council_membership_required',
+    });
+
+    expect(mocks.hasActiveMembership).toHaveBeenCalledWith(lookalikeUser.id);
+    expect(mocks.addMembership).not.toHaveBeenCalled();
+  });
+
   it('leaves non-council contributor-seat behavior unchanged', async () => {
     mocks.getGroup.mockResolvedValue(workingGroup);
 

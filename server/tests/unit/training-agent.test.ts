@@ -1293,6 +1293,78 @@ describe('createTrainingAgentServer', () => {
     ]);
   });
 
+  it('returns and replays an accepted receipt for compact performance feedback', async () => {
+    await runWithSessionContext(async () => {
+      const session = await getSession('open:default');
+      session.mediaBuys.set('mb_feedback_test', {} as any);
+      await flushDirtySessions();
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const request = {
+        idempotency_key: 'feedback-handler-test-0001',
+        media_buy_id: 'mb_feedback_test',
+        measurement_period: {
+          start: '2026-07-01T00:00:00Z',
+          end: '2026-07-31T23:59:59Z',
+        },
+        performance_index: 1.35,
+        baseline: 'control_group',
+        metric: {
+          scope: 'vendor',
+          vendor: { domain: 'measurement.example' },
+          metric_id: 'incremental_revenue_index',
+        },
+        producer: { domain: 'measurement.example' },
+        methodology: 'geo_incrementality',
+        study_ref: 'study_42',
+      };
+
+      const { result } = await simulateCallTool(server, 'provide_performance_feedback', request);
+      const { result: replay } = await simulateCallTool(server, 'provide_performance_feedback', request);
+
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      expect(result.feedback_id).toMatch(/^fb_[0-9a-f]{32}$/);
+      expect(result.application_status).toBe('accepted');
+      expect(result.applied_at).toBeUndefined();
+      expect(Number.isNaN(Date.parse(result.received_at as string))).toBe(false);
+      expect(result).toMatchObject({
+        media_buy_id: 'mb_feedback_test',
+        baseline: 'control_group',
+        producer: { domain: 'measurement.example' },
+        methodology: 'geo_incrementality',
+        study_ref: 'study_42',
+      });
+      expect(replay.feedback_id).toBe(result.feedback_id);
+      expect(replay.replayed).toBe(true);
+    });
+  });
+
+  it('rejects malformed compact performance feedback fields', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const base = {
+      idempotency_key: 'feedback-invalid-test-0001',
+      media_buy_id: 'mb_feedback_test',
+      measurement_period: {
+        start: '2026-07-01T00:00:00Z',
+        end: '2026-07-31T23:59:59Z',
+      },
+      performance_index: 1.1,
+    };
+
+    for (const invalid of [
+      { baseline: 'secret_scale' },
+      { metric: { scope: 'vendor', metric_id: 'attention_score' } },
+      { evidence: { sample_size: 0 } },
+      { methodology: 'geo_incrementality' },
+    ]) {
+      const { result } = await simulateCallTool(server, 'provide_performance_feedback', {
+        ...base,
+        ...invalid,
+        idempotency_key: `feedback-invalid-${randomUUID()}`,
+      });
+      expect(result.code).toBe('INVALID_REQUEST');
+    }
+  });
+
   it('get_adcp_capabilities response uses 3.0 capability model', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
@@ -1332,6 +1404,10 @@ describe('createTrainingAgentServer', () => {
     expect(mediaBuy.vendor_metric_optimization).toEqual({
       supported_targets: ['threshold_rate'],
     });
+    expect(mediaBuy.performance_feedback).toEqual({
+      reports_application_status: true,
+    });
+    expect(caps.experimental_features).toContain('measurement.core');
 
     // account required for media_buy sellers
     expect(caps.account).toBeDefined();
@@ -1346,6 +1422,9 @@ describe('createTrainingAgentServer', () => {
     const platform = new TrainingSalesPlatform();
     expect((platform.capabilities as Record<string, unknown>).vendor_metric_optimization).toEqual({
       supported_targets: ['threshold_rate'],
+    });
+    expect((platform.capabilities as Record<string, unknown>).performance_feedback).toEqual({
+      reports_application_status: true,
     });
   });
 
