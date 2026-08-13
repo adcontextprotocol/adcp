@@ -711,10 +711,9 @@ phases:
     title: "Performance feedback and optimization"
     narrative: |
       The buyer closes the optimization loop by telling your platform how the campaign
-      is performing against their goals. A performance_index above 1.0 means the
-      campaign is exceeding expectations — your platform should maintain or increase
-      delivery. Below 1.0 means underperforming — your platform should adjust targeting,
-      item selection, or pacing.
+      is performing against a named baseline. A performance_index above 1.0 means the
+      campaign exceeds that baseline; below 1.0 means it underperforms. The seller must
+      distinguish receipt from actual optimizer application.
 
     steps:
       - id: provide_feedback
@@ -729,8 +728,8 @@ phases:
         doc_ref: "/media-buy/task-reference/provide_performance_feedback"
         stateful: true
         expected: |
-          Acknowledge the feedback. The seller should adjust delivery optimization
-          based on the performance_index signal.
+          Return an honest disposition. `accepted` acknowledges stored receipt and
+          eligibility for evaluation; only `applied` claims optimizer use.
 
         sample_request:
           account:
@@ -742,8 +741,14 @@ phases:
             start: "2099-04-07T00:00:00Z"
             end: "2099-04-14T23:59:59Z"
           performance_index: 1.4
-          metric_type: "conversion_rate"
-          feedback_source: "buyer_attribution"
+          baseline: "campaign_target"
+          metric:
+            scope: "standard"
+            metric_id: "conversions"
+          producer:
+            domain: "pinnacle-agency.example"
+          methodology: "deterministic_attribution"
+          final: true
 
           idempotency_key: "$generate:uuid_v4#sales_catalog_driven_optimization_loop_provide_feedback"
           context:

@@ -12,6 +12,6 @@
     "creative": "Creative asset management, format discovery, and rendering",
     "brand": "Brand identity, rights discovery, and rights acquisition",
     "sponsored-intelligence": "AI-mediated commerce and conversational sponsored experiences, including buyer-agent sessions and measurement of AI-surfaced outcomes",
-    "measurement": "Experimental in 3.1. Measurement vendor capability discovery and per-metric reporting. Currently scoped to `get_adcp_capabilities` for catalog discovery (the `measurement` capability block); agents implementing it must list `measurement.core` in experimental_features. Additional measurement tasks (reporting, attribution, panel queries) land in subsequent minors."
+    "measurement": "Experimental in 3.1. Measurement vendor capability discovery and buyer-orchestrator interchange. Providers list `measurement.core` in experimental_features; orchestrator gateways list `measurement.gateway`. The first gateway tier reuses get_media_buy_delivery and provide_performance_feedback; additional measurement tasks and transports land only with complete contracts."
   }
 }
