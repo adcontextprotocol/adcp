@@ -17,6 +17,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const yaml = require('js-yaml');
 
 const {
   lint,
@@ -49,6 +50,28 @@ test('authored_check_kinds enum loads from runner-output-contract.yaml', () => {
       `synthesized code "${synth}" must not appear in authored_check_kinds`,
     );
   }
+});
+
+test('field-strip notice attributes noncanonical fields to the request payload', () => {
+  const contractPath = path.join(
+    __dirname,
+    '..',
+    'static',
+    'compliance',
+    'source',
+    'universal',
+    'runner-output-contract.yaml',
+  );
+  const contract = yaml.load(fs.readFileSync(contractPath, 'utf8'));
+  const notice = contract.notice.canonical_codes.input_schema_field_stripped;
+
+  assert.equal(contract.version, '2.9.1');
+  assert.equal(notice.severity, 'info');
+  assert.equal('spec_source' in notice, false, 'the notice is task-neutral and must not cite one creative schema');
+  assert.match(notice.message_template, /neither the agent's MCP inputSchema nor the canonical/);
+  assert.match(notice.message_template, /Check the caller or runner\s+payload/);
+  assert.doesNotMatch(notice.message_template, /spec-defined/);
+  assert.doesNotMatch(notice.message_template, /Agents should declare/);
 });
 
 function withTempStoryboardDir(name, doc, fn) {
