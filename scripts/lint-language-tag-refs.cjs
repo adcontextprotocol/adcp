@@ -271,12 +271,15 @@ function hasCanonicalLocaleConstraint(schema, document, registry, seen = new Set
     if (resolved.isLocaleTag) return true;
     const nextSeen = new Set(seen);
     nextSeen.add(marker);
-    if (hasCanonicalLocaleConstraint(
+    // Source schemas use Draft-07, where a $ref replaces the containing
+    // schema and sibling keywords are ignored. Do not let an adjacent allOf,
+    // anyOf, or oneOf make a non-canonical ref appear constrained.
+    return hasCanonicalLocaleConstraint(
       resolved.node,
       resolved.document,
       registry,
       nextSeen,
-    )) return true;
+    );
   }
 
   if (Array.isArray(schema.allOf) && schema.allOf.some((branch) =>

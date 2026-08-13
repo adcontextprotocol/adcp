@@ -82,6 +82,26 @@ test('accepts direct, array-item, local-wrapper, and external-wrapper refs', () 
   });
 });
 
+test('ignores sibling constraints beside Draft-07 refs', () => {
+  withFixture({
+    'example.json': {
+      definitions: {
+        bare_string: { type: 'string' },
+      },
+      properties: {
+        language: {
+          $ref: '#/definitions/bare_string',
+          allOf: [{ $ref: '/schemas/core/locale-tag.json' }],
+        },
+      },
+    },
+  }, [], (result) => {
+    assert.equal(result.findings.length, 1);
+    assert.equal(result.findings[0].property, 'language');
+    assert.ok(result.errors.some((error) => error.includes('undispositioned finding')));
+  });
+});
+
 test('accepts only supported AdCP absolute aliases and rejects hostile or versioned refs', () => {
   withFixture({
     'example.json': {
