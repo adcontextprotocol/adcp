@@ -154,7 +154,7 @@
     "docs:json-field-audit": "node scripts/docs-json-field-audit.cjs"
   },
   "dependencies": {
-    "@adcp/sdk": "13.0.0-rc.17",
+    "@adcp/sdk": "13.0.0-rc.18",
     "@anthropic-ai/sdk": "^0.115.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.8.3",
