@@ -100,8 +100,84 @@ curl -X POST "https://agenticadvertising.org/api/registry/crawl-request" \
 Expected accepted response:
 
 ```json
-{ "message": "Crawl request accepted", "domain": "example.publisher" }
+{
+  "message": "Crawl request accepted",
+  "domain": "example.publisher",
+  "crawl_request_id": "8d127de4-5568-4756-b66c-dd9b0780fd8f"
+}
 ```
+
+Acceptance means the request was committed to the durable PostgreSQL queue; it
+does not mean the crawl has completed. Check the request with the same member
+or admin session:
+
+```bash
+CRAWL_REQUEST_ID="8d127de4-5568-4756-b66c-dd9b0780fd8f"
+curl "https://agenticadvertising.org/api/registry/crawl-request/$CRAWL_REQUEST_ID" \
+  -b "$SESSION_COOKIE"
+```
+
+The lifecycle is `queued` → `running` → `completed` or `invalid`. Transient
+failures move through `retrying`; full-crawl contention produces `deferred`
+without consuming an attempt. `failed` is terminal after the bounded retry
+budget. Request history is retained for 30 days.
+
+If a worker exits while a request is running, its two-minute lease expires and
+another worker reclaims the request. Do not manually change queue rows. For a
+terminal `failed` request, correct the reported error category and submit a new
+crawl request after the per-domain rate-limit window; the old request remains
+as the audit record.
+
+Workers claim at most the configured crawl concurrency per tick. If a periodic
+full crawl is active, claimed requests are persisted as `deferred`, their claim
+attempt is refunded, and they become eligible again after 30 seconds. This
+makes contention visible without spending the retry budget or performing
+origin work. On worker startup, the durable queue starts immediately and the
+initial full crawl waits a fixed 30 seconds. This gives already-due requests a
+bounded opportunity to run after a deploy. After that window, the full crawl
+holds an exclusive PostgreSQL intent lock while waiting for active publisher
+crawls, including across bounded execution-lock timeouts and retries. New
+publisher crawls therefore defer instead of starving the six-hour full crawl.
+Each active publisher crawl holds a PostgreSQL shared global execution lock and
+an exclusive per-domain lock for the fetch/write lifecycle; the periodic full
+crawl holds the exclusive global lock. These session locks use dedicated
+connections outside the application pool, so crawl concurrency does not consume
+the connections needed by heartbeats, status reads, or mirror transactions. A
+lost worker session releases its locks automatically. The locks prevent an
+expired or duplicate attempt from
+overwriting newer mirror state. The mirror transaction
+also verifies the current request lease token before committing. Publisher GET
+requests do not acquire these locks and continue to serve the last committed
+mirror state while crawling is delayed or unavailable.
+
+Routine dedicated lock-session operations are bounded at 10 seconds. Full-crawl
+intent acquisition may wait 10 seconds, with a 10-second socket-operation
+margin. The periodic full crawl may wait up to two minutes for the global lock,
+plus the same operation margin. A missed keepalive or unlock deadline
+invalidates the lock and forcibly closes its dedicated connection so a wedged
+socket cannot hold a queue worker or request lease indefinitely.
+
+For the first deployment, use Fly's `immediate` strategy and leave
+`PUBLISHER_CRAWL_QUEUE_ENABLED=false`. Immediate replacement prevents an old
+image, which does not participate in the new PostgreSQL execution locks, from
+overlapping a new worker. After every machine runs the lock-participating image,
+set the gate to `true` and restart that image before accepting requests. Keep
+that consumer-capable image available for rollback; rolling back to an older
+image pauses queued work and removes status lookup until the new image is
+restored, but does not delete committed requests. Restore the normal rolling
+strategy only after every deployable image participates in these locks.
+
+Admission returns `crawl_queue_at_capacity` with `503` and `Retry-After` when
+10,000 active requests are already queued or running. This is backpressure, not
+acceptance; retry later rather than inserting or editing queue rows manually.
+
+Operational logs include `crawl_request_id`, attempt count,
+`accepted_to_terminal_ms`, queue depth, oldest-due lateness, reclaimed-lease
+count, and final-attempt lease expirations. A `Publisher crawl request queue
+requires attention` warning means a lease is expired or due work is more than
+five minutes late; requests intentionally waiting in retry backoff do not
+trigger it. Confirm that the worker process is healthy, then use the status
+endpoint to determine whether the request recovered before escalating.
 
 For brand manifests, use the same body shape:
 

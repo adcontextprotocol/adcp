@@ -547,14 +547,14 @@ export class EventsDatabase {
   async addInvites(eventId: string, emails: string[], invitedByUserId?: string): Promise<number> {
     if (emails.length === 0) return 0;
 
-    const values = emails.map((_, i) => `($1, $${i + 2}, $${emails.length + 2})`).join(', ');
-    const params: unknown[] = [eventId, ...emails.map(e => e.toLowerCase().trim()), invitedByUserId || null];
+    const normalizedEmails = emails.map(email => email.toLowerCase().trim());
 
     const result = await query(
       `INSERT INTO event_invites (event_id, email, invited_by_user_id)
-       VALUES ${values}
+       SELECT $1, invite.email, $3
+       FROM UNNEST($2::text[]) AS invite(email)
        ON CONFLICT (event_id, email) DO NOTHING`,
-      params
+      [eventId, normalizedEmails, invitedByUserId || null]
     );
     return result.rowCount || 0;
   }

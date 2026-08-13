@@ -9,8 +9,7 @@ For comprehensive security guidance, see our [Security Documentation](https://do
 | Version | Supported          |
 | ------- | ------------------ |
 | 3.x     | :white_check_mark: |
-| 2.5     | :white_check_mark: (security-only until August 1, 2026 — see [v2 sunset](https://docs.adcontextprotocol.org/docs/reference/v2-sunset)) |
-| < 2.5   | :x:                |
+| < 3.0   | :x: (see [v2 sunset](https://docs.adcontextprotocol.org/docs/reference/v2-sunset)) |
 
 ## Reporting a Vulnerability
 
@@ -69,4 +68,4 @@ For security questions that are not sensitive vulnerability reports:
 - **Documentation**: https://docs.adcontextprotocol.org/docs/building/implementation/security
 - **GitHub Discussions**: Security category
 - **Email**: security@adcontextprotocol.org
-- **Slack**: https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg
+- **Slack**: https://docs.adcontextprotocol.org/docs/community/joining-slack

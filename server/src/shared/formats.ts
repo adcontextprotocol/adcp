@@ -4,7 +4,7 @@
  * Each format is a schema-compliant object matching
  * static/schemas/source/core/format.json.
  */
-import type { Format, FormatID } from '@adcp/sdk';
+import type { LegacyFormat as Format, LegacyFormatID as FormatID } from '@adcp/sdk';
 
 // The SDK's BaseIndividualAsset omits asset_type and requirements which are
 // part of the full protocol schema. We extend Format to include these fields

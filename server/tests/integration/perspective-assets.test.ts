@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 
+const adminAccess = vi.hoisted(() => ({ enabled: true }));
+
 // Mock WorkOS client before any imports that depend on it
 vi.mock('../../src/auth/workos-client.js', () => ({
   workos: {
@@ -34,6 +36,7 @@ vi.mock('../../src/middleware/auth.js', () => {
   return {
     requireAuth: requireAuthMock,
     requireAdmin: passthrough,
+    requireTenantAdminForOrganization: passthrough,
     optionalAuth: (req: any, _res: any, next: any) => { setTestUser(req); next(); },
     requireCompanyAccess: passthrough,
     requireActiveSubscription: passthrough,
@@ -41,9 +44,8 @@ vi.mock('../../src/middleware/auth.js', () => {
     requireRole: () => passthrough,
     createRequireWorkingGroupLeader: () => passthrough,
     createRequireWorkingGroupMember: () => passthrough,
-    refuseCrossTenantAdminApiKey: () => false,
     refuseAnyApiKeyOnGlobalAdmin: () => false,
-    requireGlobalAdmin: [requireAuthMock, passthrough, passthrough],
+    requireGlobalAdmin: [requireAuthMock, passthrough],
     invalidateSessionCache: vi.fn(),
     invalidateBanCache: vi.fn(),
     invalidateSessionsForUsers: vi.fn(),
@@ -70,7 +72,7 @@ vi.mock('../../src/addie/mcp/admin-tools.js', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
   return {
     ...actual,
-    isWebUserAAOAdmin: vi.fn().mockResolvedValue(true),
+    isWebUserAAOAdmin: vi.fn().mockImplementation(async () => adminAccess.enabled),
   };
 });
 
@@ -249,6 +251,50 @@ describe('Perspective Assets Integration Tests', () => {
         .expect(400);
     });
 
+    it('should reject content whose bytes do not match the declared image type', async () => {
+      const response = await request(app)
+        .post(`/api/content/${TEST_SLUG}/assets`)
+        .attach('file', Buffer.from('<html><body>not an image</body></html>'), {
+          filename: 'spoofed.png',
+          contentType: 'image/png',
+        })
+        .field('asset_type', 'attachment')
+        .expect(400);
+
+      expect(response.body.error).toContain('do not match');
+    });
+
+    it('should enforce the per-perspective asset count quota', async () => {
+      const slug = 'test-asset-quota';
+      const result = await pool.query(
+        `INSERT INTO perspectives (slug, content_type, title, content, status, working_group_id, content_origin, author_user_id)
+         VALUES ($1, 'article', 'Quota test', 'Body', 'draft', $2, 'member', 'user_test_assets')
+         ON CONFLICT (slug) DO UPDATE SET author_user_id = 'user_test_assets'
+         RETURNING id`,
+        [slug, testWgId]
+      );
+      const perspectiveId = result.rows[0].id;
+      await pool.query(
+        `INSERT INTO perspective_assets
+           (perspective_id, asset_type, file_name, file_mime_type, file_data, file_size_bytes, uploaded_by_user_id)
+         SELECT $1, 'attachment', 'quota-' || n || '.png', 'image/png', decode('00', 'hex'), 1, 'user_test_assets'
+         FROM generate_series(1, 100) AS n
+         ON CONFLICT (perspective_id, file_name) DO NOTHING`,
+        [perspectiveId]
+      );
+
+      try {
+        const response = await request(app)
+          .post(`/api/content/${slug}/assets`)
+          .attach('file', createTestPng(), { filename: 'over-quota.png', contentType: 'image/png' })
+          .field('asset_type', 'attachment')
+          .expect(413);
+        expect(response.body.message).toContain('100 files');
+      } finally {
+        await pool.query(`DELETE FROM perspectives WHERE id = $1`, [perspectiveId]);
+      }
+    });
+
     it('should sanitize filenames', async () => {
       const png = createTestPng();
       const response = await request(app)
@@ -276,7 +322,7 @@ describe('Perspective Assets Integration Tests', () => {
       expect(response.headers['content-type']).toBe('image/png');
       expect(response.headers['x-content-type-options']).toBe('nosniff');
       expect(response.headers['content-security-policy']).toBe("default-src 'none'");
-      expect(response.headers['cache-control']).toBe('public, max-age=86400');
+      expect(response.headers['cache-control']).toBe('public, max-age=0, must-revalidate');
       expect(response.body).toBeInstanceOf(Buffer);
     });
 
@@ -316,6 +362,53 @@ describe('Perspective Assets Integration Tests', () => {
         .expect(404);
 
       await pool.query(`DELETE FROM perspectives WHERE slug = 'test-draft-perspective'`);
+    });
+
+    it('allows an author to preview an asset while revisions are needed', async () => {
+      adminAccess.enabled = false;
+      await pool.query(`UPDATE perspectives SET status = 'needs_revisions' WHERE id = $1`, [testPerspectiveId]);
+
+      try {
+        const response = await request(app)
+          .get(`/api/perspectives/${TEST_SLUG}/assets/new-cover.png`)
+          .expect(200);
+
+        expect(response.headers['cache-control']).toBe('private, no-store');
+      } finally {
+        adminAccess.enabled = true;
+        await pool.query(`UPDATE perspectives SET status = 'published' WHERE id = $1`, [testPerspectiveId]);
+      }
+    });
+
+    it('lets admins preview private assets without exposing them to other users', async () => {
+      const slug = 'test-admin-private-asset';
+      await pool.query(
+        `INSERT INTO perspectives (slug, content_type, title, content, status, working_group_id, content_origin, author_user_id)
+         VALUES ($1, 'article', 'Private draft', 'Draft body', 'draft', $2, 'member', 'another_user')
+         ON CONFLICT (slug) DO UPDATE SET status = 'draft', author_user_id = 'another_user'`,
+        [slug, testWgId]
+      );
+
+      try {
+        await request(app)
+          .post(`/api/content/${slug}/assets`)
+          .attach('file', createTestPng(), { filename: 'private.png', contentType: 'image/png' })
+          .field('asset_type', 'attachment')
+          .expect(201);
+
+        const adminResponse = await request(app)
+          .get(`/api/perspectives/${slug}/assets/private.png`)
+          .expect(200);
+        expect(adminResponse.headers['cache-control']).toBe('private, no-store');
+
+        adminAccess.enabled = false;
+        await request(app)
+          .get(`/api/perspectives/${slug}/assets/private.png`)
+          .expect(404);
+      } finally {
+        adminAccess.enabled = true;
+        await pool.query(`DELETE FROM perspectives WHERE slug = $1`, [slug]);
+      }
     });
   });
 

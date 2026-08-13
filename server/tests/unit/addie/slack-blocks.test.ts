@@ -1,9 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   splitMrkdwnIntoSections,
   truncateNotificationText,
   decideStreamAppend,
   planStreamStopFailureFallback,
+  resolveStreamTurnCompletion,
+  summarizeSlackStreamError,
   STREAM_DELIVERY_UNCERTAIN_NOTICE,
   SLACK_SECTION_MRKDWN_LIMIT,
   SLACK_SECTION_HARD_LIMIT,
@@ -232,6 +234,79 @@ describe('planStreamStopFailureFallback', () => {
   it('uses a delivery notice when text already streamed successfully', () => {
     expect(planStreamStopFailureFallback(1)).toBe('delivery-notice');
     expect(STREAM_DELIVERY_UNCERTAIN_NOTICE).toContain('Some of the response may be missing');
+  });
+});
+
+describe('resolveStreamTurnCompletion', () => {
+  it('discards a terminal stream_error when the async generator completes normally', async () => {
+    async function* interruptedStream() {
+      yield { type: 'text' as const, text: 'partial answer' };
+      yield { type: 'stream_error' as const, reason: 'Upstream overloaded' };
+    }
+
+    let interrupted = false;
+    for await (const event of interruptedStream()) {
+      if (event.type === 'stream_error') {
+        interrupted = true;
+        break;
+      }
+    }
+
+    const createFallback = vi.fn(() => ({ text: 'must not be persisted' }));
+    const persistAssistant = vi.fn();
+    const completion = resolveStreamTurnCompletion(interrupted, undefined, createFallback);
+    if (completion.kind === 'persist') persistAssistant(completion.response);
+
+    expect(completion).toEqual({ kind: 'discard-interrupted' });
+    expect(createFallback).not.toHaveBeenCalled();
+    expect(persistAssistant).not.toHaveBeenCalled();
+  });
+
+  it('uses a completed response and only synthesizes fallback without one', () => {
+    const response = { text: 'complete' };
+    const createFallback = vi.fn(() => ({ text: 'fallback' }));
+
+    expect(resolveStreamTurnCompletion(false, response, createFallback)).toEqual({
+      kind: 'persist', response, source: 'stream',
+    });
+    expect(createFallback).not.toHaveBeenCalled();
+
+    expect(resolveStreamTurnCompletion(false, undefined, createFallback)).toEqual({
+      kind: 'persist', response: { text: 'fallback' }, source: 'fallback',
+    });
+    expect(createFallback).toHaveBeenCalledOnce();
+  });
+
+  it('never persists a response after an interruption', () => {
+    const createFallback = vi.fn(() => ({ text: 'fallback' }));
+    expect(resolveStreamTurnCompletion(true, { text: 'late response' }, createFallback)).toEqual({
+      kind: 'discard-interrupted',
+    });
+    expect(createFallback).not.toHaveBeenCalled();
+  });
+});
+
+describe('summarizeSlackStreamError', () => {
+  it.each([
+    ['API is busy', 'overloaded', 'The AI service is temporarily overloaded'],
+    ['429 rate limit', 'rate_limited', 'The AI service is temporarily rate limited'],
+    ['Request timed out', 'timeout', 'The AI service timed out'],
+    ['Connection broke mid-reply', 'connection_interrupted', 'The connection broke mid-reply'],
+  ])('maps %s to a bounded category', (reason, category, publicMessage) => {
+    const summary = summarizeSlackStreamError(reason);
+    expect(summary).toMatchObject({ category, publicMessage });
+    expect(summary.followupRecoveryText).toContain(publicMessage);
+    expect(summary.inlineRecoveryText).toContain(publicMessage);
+  });
+
+  it('does not expose unexpected upstream exception text', () => {
+    const secretBearingReason = 'Tool failed for user token sk-secret-value and prompt contents';
+    const summary = summarizeSlackStreamError(secretBearingReason);
+    expect(summary).toMatchObject({
+      category: 'upstream_error',
+      publicMessage: 'The AI service interrupted the response',
+    });
+    expect(JSON.stringify(summary)).not.toContain('sk-secret-value');
   });
 });
 

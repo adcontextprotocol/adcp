@@ -13,7 +13,7 @@ The initial event type is `capabilities.changed`, an invalidation signal for cac
 
 ## When to call
 
-First call `get_adcp_capabilities`. Only call this task when the seller advertises:
+First call [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). Only call this task when the seller advertises:
 
 ```json
 {
@@ -35,7 +35,7 @@ Sellers that do not advertise support MUST reject the task rather than silently 
 
 ## Authentication and Caller Scope
 
-This task MUST only be accepted when the transport request resolves to a stable authenticated principal. The principal can be an OAuth client subject, API-key subject, verified signed-request subject, registry identity, or equivalent deployment identity, but it MUST be stable across retries and future replacements. Sellers MUST reject NO_AUTH, anonymous, or otherwise unbound registrations with `AUTH_MISSING` when no credentials are present, `AUTH_INVALID` when presented credentials fail validation, or `INVALID_REQUEST` when the transport exposes anonymous registration as a malformed request.
+This task MUST only be accepted when the transport request resolves to a stable authenticated principal. The principal can be an OAuth client subject, API-key subject, verified signed-request subject, registry identity, or equivalent deployment identity, but it MUST be stable across retries and future replacements. Sellers MUST reject NO_AUTH, anonymous, or otherwise unbound registrations with [`AUTH_MISSING`](/docs/building/verification/compliance-catalog#error-code-auth-missing) when no credentials are present, [`AUTH_INVALID`](/docs/building/verification/compliance-catalog#error-code-auth-invalid) when presented credentials fail validation, or [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) when the transport exposes anonymous registration as a malformed request.
 
 The authenticated principal is the owner key for declarative replacement. Sellers MUST NOT key agent-level subscribers only by `subscriber_id` or URL, because two callers can legitimately choose the same local subscriber ID. One caller's replacement set MUST NOT read, delete, pause, overwrite, or infer subscribers owned by another principal.
 
@@ -78,7 +78,7 @@ One caller's replacement MUST NOT delete, pause, or mutate subscribers registere
 
 ## Webhook Payload
 
-When the seller's advertised capability document materially changes, it publishes the new `get_adcp_capabilities` snapshot first, then fires `capabilities.changed` to active subscribers:
+When the seller's advertised capability document materially changes, it publishes the new [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) snapshot first, then fires `capabilities.changed` to active subscribers:
 
 ```json
 {

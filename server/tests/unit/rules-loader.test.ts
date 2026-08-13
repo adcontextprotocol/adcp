@@ -43,6 +43,9 @@ describe('Rules Loader', () => {
     // Identity (now consolidates voice / character traits previously
     // spread across constraints — Honesty, Welcoming people in, etc.)
     expect(rules).toContain('## Core Mission');
+    expect(rules).toContain('### Certification identity handoff');
+    expect(rules).toContain('Stay Sage while that context is present');
+    expect(rules).toContain('## Sage certification resume');
     expect(rules).toContain('## Welcoming people in');
     expect(rules).toContain('## Honesty over confidence');
 
@@ -71,6 +74,17 @@ describe('Rules Loader', () => {
     expect(rules).not.toContain('tmpi');
     expect(rules).not.toContain('tmpx');
     expect(rules).not.toContain('tmpm');
+  });
+
+  it('routes Prebid Sales Agent build questions to the owning project without guessing', () => {
+    const rules = loadRules();
+
+    expect(rules).toContain('Prebid.org maintains the Prebid Sales Agent');
+    expect(rules).toContain('repo_id "salesagent"');
+    expect(rules).toContain('https://prebid.org/product-suite/sales-agent/');
+    expect(rules).toContain('support@prebid.org');
+    expect(rules).toContain('Do not invent package files, repository names, versions, or upgrade steps');
+    expect(rules).toContain('do not route these questions to AgenticAdvertising.org Slack');
   });
 
   it('should cache results across calls', () => {
@@ -121,6 +135,16 @@ describe('Addie tool reference', () => {
     const rules = loadRules();
     expect(rules).toContain('## Honest Reporting After Search');
     expect(rules).toContain("aren't loaded in this conversation");
+  });
+
+  it('uses a valid human-action escalation category for failed Slack invites', () => {
+    const rules = loadRules();
+    const slackRules = rules.slice(
+      rules.indexOf('## Slack Invite Domain Restrictions'),
+      rules.indexOf('## Email Verification and Notification Failures')
+    );
+    expect(slackRules).toContain('category `needs_human_action`');
+    expect(slackRules).not.toContain("'invite' category");
   });
 
   it('every tool in the public docs page is also referenced in the prompt catalog', async () => {

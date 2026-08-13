@@ -80,6 +80,7 @@ async function insertCAA(
     createdBy?: string;
     expiresAt?: Date | null;
     propertyIdSlug?: string;
+    signingKeys?: unknown[];
   },
 ): Promise<string> {
   const evidence = opts.evidence ?? 'adagents_json';
@@ -88,8 +89,8 @@ async function insertCAA(
     `INSERT INTO catalog_agent_authorizations
        (agent_url, agent_url_canonical, publisher_domain, property_rid,
         property_id_slug, authorized_for, evidence, disputed, deleted_at,
-        created_by, expires_at)
-     VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        created_by, expires_at, signing_keys)
+     VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
      RETURNING id`,
     [
       opts.agent,
@@ -102,6 +103,7 @@ async function insertCAA(
       opts.deletedAt ?? null,
       createdBy,
       opts.expiresAt ?? null,
+      opts.signingKeys ? JSON.stringify(opts.signingKeys) : null,
     ],
   );
   return rows[0].id;
@@ -218,6 +220,39 @@ describe('AuthorizationSnapshotDatabase', () => {
       expect(x.rows[0].publisher_domain).toBe(PUB_A);
       expect(x.rows[0].evidence).toBe('adagents_json');
       expect(x.rows[0].override_applied).toBe(false);
+    });
+
+    it('surfaces signing_keys in raw and effective reads', async () => {
+      const keys = [
+        { kid: 'k1', kty: 'OKP', crv: 'Ed25519', x: 'AAAA', alg: 'EdDSA' },
+      ];
+      await insertCAA(pool, { agent: AGENT_X, publisher: PUB_A, signingKeys: keys });
+
+      const eff = await db.getNarrow({
+        agentUrlCanonical: AGENT_X,
+        evidence: ['adagents_json'],
+        include: 'effective',
+      });
+      expect(eff.rows).toHaveLength(1);
+      expect(eff.rows[0].signing_keys).toEqual(keys);
+
+      const raw = await db.getNarrow({
+        agentUrlCanonical: AGENT_X,
+        evidence: ['adagents_json'],
+        include: 'raw',
+      });
+      expect(raw.rows).toHaveLength(1);
+      expect(raw.rows[0].signing_keys).toEqual(keys);
+    });
+
+    it('rows without signing_keys read back as null', async () => {
+      await insertCAA(pool, { agent: AGENT_X, publisher: PUB_A });
+      const eff = await db.getNarrow({
+        agentUrlCanonical: AGENT_X,
+        evidence: ['adagents_json'],
+        include: 'effective',
+      });
+      expect(eff.rows[0].signing_keys).toBeNull();
     });
 
     it('agent_claim is excluded by default; included with explicit evidence', async () => {

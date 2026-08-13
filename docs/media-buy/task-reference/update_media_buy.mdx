@@ -12,13 +12,13 @@ Modify an existing media buy using PATCH semantics. Supports campaign-level and 
 
 ## Scope
 
-`update_media_buy` operates on any `media_buy_id` returned by [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), not just buys created via `create_media_buy`. Sales agents MUST NOT refuse updates on the basis that a buy was originally created outside AdCP (direct ad-server entry, legacy APIs, manual trafficking). Creation surface is not a supported axis of authorization; account ownership is.
+`update_media_buy` operates on any `media_buy_id` returned by [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), not just buys created via [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy). Sales agents MUST NOT refuse updates on the basis that a buy was originally created outside AdCP (direct ad-server entry, legacy APIs, manual trafficking). Creation surface is not a supported axis of authorization; account ownership is.
 
-When a specific action is unsupported for a given buy for business reasons (contractual obligations, platform constraints, policy), the seller MUST omit only that action from `valid_actions` (and the corresponding entry from `available_actions[]`) on the buy rather than silently rejecting the corresponding update. **Creation surface is not a business reason.** Sellers MUST NOT return `INVALID_STATE` on an otherwise-valid update against a non-AdCP-created buy, and MUST NOT return a buy with systematically empty `valid_actions` simply because it was booked outside AdCP — that pattern is indistinguishable from hiding the buy and violates the [Account Ownership vs. Creation Surface](/docs/media-buy/specification#account-ownership-vs-creation-surface) rule.
+When a specific action is unsupported for a given buy for business reasons (contractual obligations, platform constraints, policy), the seller MUST omit only that action from `valid_actions` (and the corresponding entry from `available_actions[]`) on the buy rather than silently rejecting the corresponding update. **Creation surface is not a business reason.** Sellers MUST NOT return [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state) on an otherwise-valid update against a non-AdCP-created buy, and MUST NOT return a buy with systematically empty `valid_actions` simply because it was booked outside AdCP — that pattern is indistinguishable from hiding the buy and violates the [Account Ownership vs. Creation Surface](/docs/media-buy/specification#account-ownership-vs-creation-surface) rule.
 
 ## Action vocabulary and field mapping
 
-Buyers express intent through actions; the seller declares the actions available on each buy via the structured `available_actions[]` field (authoritative) and the flat `valid_actions[]` field (legacy, deprecated in 4.0). When both fields are present, consumers MUST prefer `available_actions[]` — it carries the resolved `mode`, optional `sla`, and optional `terms_ref` that the flat string array cannot represent. When a buyer issues an `update_media_buy` request, the seller maps the request's fields to one or more actions and rejects with `ACTION_NOT_ALLOWED` (carrying `attempted_action`, `reason`, and `currently_available_actions` in `error.details`) if any mapped action is not in the buy's resolved `available_actions[]`.
+Buyers express intent through actions; the seller declares the actions available on each buy via the structured `available_actions[]` field (authoritative) and the flat `valid_actions[]` field (legacy, deprecated in 4.0). When both fields are present, consumers MUST prefer `available_actions[]` — it carries the resolved `mode`, optional `sla`, and optional `terms_ref` that the flat string array cannot represent. When a buyer issues an `update_media_buy` request, the seller maps the request's fields to one or more actions and rejects with [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) (carrying `attempted_action`, `reason`, and `currently_available_actions` in `error.details`) if any mapped action is not in the buy's resolved `available_actions[]`.
 
 The mapping is normative — sellers and SDKs MUST use this table to translate between request fields and action identifiers so the surface is consistent across implementations.
 
@@ -48,7 +48,7 @@ The direction-of-change actions (`extend_flight` / `shorten_flight`, `increase_b
 
 For seller-optimized constraints, clearing `packages[].budget` with `null` resolves to `increase_budget` because it removes a hard ceiling. Clearing `packages[].min_spend_target` resolves to `update_budget_allocation`. A request clearing both requires both actions when the seller enforces field-level actions conjunctively. Sellers that do not advertise the required action reject the update without mutation; `seller_optimized_budget: true` alone does not promise mid-flight constraint changes.
 
-The coarse legacy actions (`update_budget`, `update_dates`, `update_packages`, `sync_creatives`) cover the finer-grained vocabulary in a single value for sellers still emitting the 3.0 enum surface. Sellers SHOULD migrate to the finer set; the legacy values are removed in 4.0.
+The coarse legacy actions (`update_budget`, `update_dates`, `update_packages`, [`sync_creatives`](/docs/creative/task-reference/sync_creatives)) cover the finer-grained vocabulary in a single value for sellers still emitting the 3.0 enum surface. Sellers SHOULD migrate to the finer set; the legacy values are removed in 4.0.
 
 ### Action modes
 
@@ -60,7 +60,7 @@ Each entry in `available_actions[]` carries a singular `mode` (resolved against 
 | `conditional_self_serve` | Auto-approves within tolerances, escalates outside them (programmatic guaranteed pattern) |
 | `requires_approval` | Human-in-the-loop, async, no proposal artifact; buyer SDK polls or awaits webhook |
 
-Buyer SDKs MUST branch on `mode` to decide whether to expect a synchronous response, conditional handling, or an asynchronous approval callback. Requotes are not modeled as an action mode in 3.1; sellers return `REQUOTE_REQUIRED` when a requested update exceeds the current quoted envelope.
+Buyer SDKs MUST branch on `mode` to decide whether to expect a synchronous response, conditional handling, or an asynchronous approval callback. Requotes are not modeled as an action mode in 3.1; sellers return [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required) when a requested update exceeds the current quoted envelope.
 
 **PATCH Semantics**: Only specified fields are updated; omitted fields remain unchanged.
 
@@ -187,17 +187,17 @@ asyncio.run(create_and_pause_campaign())
 |-----------|------|----------|-------------|
 | `account` | [account-ref](/docs/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account that owns this media buy. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }`. Required for governance checks and account resolution. |
 | `media_buy_id` | string | Yes | Seller's media buy identifier to update |
-| `revision` | integer | No | Expected current revision for optimistic concurrency. Seller rejects with `CONFLICT` on mismatch. Obtain from `get_media_buys` or the most recent response. |
+| `revision` | integer | No | Expected current revision for optimistic concurrency. Seller rejects with [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) on mismatch. Obtain from [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) or the most recent response. |
 | `start_time` | string | No | Updated campaign start time |
 | `end_time` | string | No | Updated campaign end time |
 | `paused` | boolean | No | Pause/resume entire media buy (`true` = paused, `false` = active) |
-| `canceled` | boolean | No | Cancel the entire media buy (irreversible). Must be `true` when present. Seller may reject with `NOT_CANCELLABLE`. |
+| `canceled` | boolean | No | Cancel the entire media buy (irreversible). Must be `true` when present. Seller may reject with [`NOT_CANCELLABLE`](/docs/building/verification/compliance-catalog#error-code-not-cancellable). |
 | `cancellation_reason` | string | No | Reason for cancellation |
 | `packages` | PackageUpdate[] | No | Package-level updates (see below) |
 | `reporting_webhook` | object | No | Update reporting webhook configuration (see below) |
 | `idempotency_key` | string | No | Unique key for safe retries. If an update with the same key has already been processed, the seller returns the original response. MUST be unique per (seller, request) pair. Min 16 chars. |
-| `invoice_recipient` | [BusinessEntity](/docs/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override who receives the invoice for this buy. The seller MUST validate authorization and include in `check_governance` when governance agents are configured. |
-| `new_packages` | PackageRequest[] | No | New packages to add to this media buy. Same shape as `create_media_buy` packages. When `budget_allocation` is omitted or fixed, each new package requires `budget` and cannot use `min_spend_target`. To add an uncapped package to an existing seller-optimized buy, include the resulting seller-optimized `budget_allocation` block so the allocation context is explicit. Only supported by sellers that advertise `add_packages` in `valid_actions`. |
+| `invoice_recipient` | [BusinessEntity](/docs/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override who receives the invoice for this buy. The seller MUST validate authorization and include in [`check_governance`](/docs/governance/campaign/tasks/check_governance) when governance agents are configured. |
+| `new_packages` | PackageRequest[] | No | New packages to add to this media buy. Same shape as [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) packages. When `budget_allocation` is omitted or fixed, each new package requires `budget` and cannot use `min_spend_target`. To add an uncapped package to an existing seller-optimized buy, include the resulting seller-optimized `budget_allocation` block so the allocation context is explicit. Only supported by sellers that advertise `add_packages` in `valid_actions`. |
 | `total_budget` | TotalBudget | No | Updated hard aggregate lifetime budget. Already-spent amounts continue to count against the new total. `currency` must equal the existing media-buy currency; updates do not redenominate a buy. |
 | `budget_allocation` | BudgetAllocation | No | Updated fixed or seller-optimized allocation configuration. Mode changes require `update_budget_allocation` in `available_actions`. |
 | `pacing` | string | No | Updated aggregate media-buy pacing strategy. |
@@ -243,7 +243,7 @@ Configure automated delivery reporting for this media buy:
 | `bidding` | BiddingPolicy \| null | Replace the complete package-authored override, use `{automatic: true}` to explicitly disable inherited buyer controls, or clear it with `null` so the package inherits media-buy bidding. During legacy migration, `null` may accompany `bid_price` or a monetary optimization-goal target; only a non-null canonical block conflicts with those representations. |
 | `bid_price` | number | **Deprecated in 3.2.** Legacy package bid representation; cannot be combined with a non-null `bidding` object. |
 | `optimization_goals` | OptimizationGoal[] | Replace objective functions for this package. Currency-bearing policy belongs in `bidding`; legacy monetary targets cannot be combined with canonical bidding. |
-| `targeting_overlay` | TargetingOverlay | Updated targeting restrictions. Uses replacement semantics; changing `signal_targeting_groups` can alter priced signal selection, so sellers MAY reject with `REQUOTE_REQUIRED` when the selected signal, group expression, or signal `pricing_option_id` falls outside the original quote. Sellers SHOULD reject attempts to change fixed signal selections and MUST echo applied fixed/default signal groups on the resulting package state. A demographic change is compiled against the product's current `demographic_targeting` declaration and refreshes `demographic_targeting_resolution` atomically; unsupported or inexact changes are rejected rather than broadened. |
+| `targeting_overlay` | TargetingOverlay | Updated targeting restrictions. Uses replacement semantics; changing `signal_targeting_groups` can alter priced signal selection, so sellers MAY reject with [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required) when the selected signal, group expression, or signal `pricing_option_id` falls outside the original quote. Sellers SHOULD reject attempts to change fixed signal selections and MUST echo applied fixed/default signal groups on the resulting package state. A demographic change is compiled against the product's current `demographic_targeting` declaration and refreshes `demographic_targeting_resolution` atomically; unsupported or inexact changes are rejected rather than broadened. |
 | `catalogs` | Catalog[] | Replace the catalogs this package promotes. Uses replacement semantics — omit to leave unchanged. |
 | `keyword_targets_add` | KeywordTarget[] | Keyword targets to add or upsert by (keyword, match_type) identity. On create, these are set as `keyword_targets` inside `targeting_overlay`. |
 | `keyword_targets_remove` | KeywordTarget[] | Keyword targets to remove by (keyword, match_type) identity. |
@@ -268,7 +268,7 @@ For budget/pacing interaction and bidding inheritance, see [Budget & Pacing Cont
 | `revision` | Revision number after this update. Use in subsequent requests intended to change state for optimistic concurrency. Exact idempotency replays return the prior revision. |
 | `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
 | `invoice_recipient` | Updated invoice recipient, echoed from request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
-| `valid_actions` | Flat-vocabulary actions the buyer can perform after this update. Saves a round-trip to `get_media_buys`. Deprecated in favor of `available_actions[]` and removed in 4.0. |
+| `valid_actions` | Flat-vocabulary actions the buyer can perform after this update. Saves a round-trip to [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). Deprecated in favor of `available_actions[]` and removed in 4.0. |
 | `available_actions` | Structured per-buy resolution of actions available after this update, each entry with action, resolved `mode`, optional `sla`, optional `terms_ref`. Authoritative — buyer SDKs SHOULD prefer this over `valid_actions` when both are present. |
 | `affected_packages` | For package-level updates, array of full Package objects showing complete post-update state for each directly modified package. This is a state snapshot, not a sparse delta: sellers MUST NOT return `{ package_id }`-only stubs. Campaign-level updates that do not modify packages may return an empty array. |
 
@@ -639,7 +639,7 @@ Cancel an entire media buy:
 
 The body-level `media_buy_status` is the canonical 3.1 field for the buy's lifecycle state. The legacy top-level `status: MediaBuyStatus` form (e.g., `"status": "canceled"`) is deprecated and removed in 3.2 ([#4906](https://github.com/adcontextprotocol/adcp/issues/4906)) — it collided with the envelope task-status at the same root key. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status) for the migration.
 
-**`NOT_CANCELLABLE` error response:**
+**[`NOT_CANCELLABLE`](/docs/building/verification/compliance-catalog#error-code-not-cancellable) error response:**
 ```json
 {
   "errors": [{
@@ -650,7 +650,7 @@ The body-level `media_buy_status` is the canonical 3.1 field for the buy's lifec
 }
 ```
 
-**`INVALID_STATE` error response** (e.g., trying to update a completed media buy):
+**[`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state) error response** (e.g., trying to update a completed media buy):
 ```json
 {
   "errors": [{
@@ -661,7 +661,7 @@ The body-level `media_buy_status` is the canonical 3.1 field for the buy's lifec
 }
 ```
 
-**`REQUOTE_REQUIRED` error response** (update changes the parameter envelope the quote was priced against):
+**[`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required) error response** (update changes the parameter envelope the quote was priced against):
 ```json
 {
   "errors": [{
@@ -735,21 +735,20 @@ Common errors and resolutions:
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify `media_buy_id`; for legacy correlation use `get_media_buys` + `context.internal_campaign_id` |
-| `PACKAGE_NOT_FOUND` | Package doesn't exist | Verify `package_id`; for legacy package correlation use `get_media_buys` + package `context.buyer_ref` |
-| `UPDATE_NOT_ALLOWED` | Field cannot be changed | See "What Can Be Updated" above |
-| `BUDGET_INSUFFICIENT` | New budget below minimum | Increase budget amount |
-| `POLICY_VIOLATION` | Update violates content policy | Review policy requirements |
-| `INVALID_STATE` | Operation not allowed in current state (e.g., updating completed/canceled media buy) | Check campaign status via `get_media_buys` |
-| `NOT_CANCELLABLE` | Media buy or package cannot be canceled | Check seller's cancellation policy or contact seller |
-| `CREATIVE_REJECTED` | Creative failed content policy review | Revise the creative per the seller's advertising policies |
-| `CREATIVE_LOCALE_NOT_ACCEPTED` | Creative has no materialized variant accepted by the package's effective format locale policy, or its serving default is ineligible | Supply a matching locale variant, assign a different creative, or change the creative's default behavior |
-| `CREATIVE_DEADLINE_EXCEEDED` | Creative change submitted past the package's `creative_deadline` | Check package `creative_deadline` before submitting creative changes |
-| `CREATIVE_ID_EXISTS` | Creative ID already exists in the seller's creative namespace | For library-backed sellers, assign existing creatives via `creative_assignments` or update via `sync_creatives`; for inline-only sellers, use a different package-scoped `creative_id` |
-| `BUDGET_EXCEEDED` | Operation would exceed allocated budget | Reduce the amount or increase media buy total budget |
-| `CONFLICT` | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
-| `REQUOTE_REQUIRED` | Requested change (budget, dates, volume, targeting, or signal targeting price) falls outside the envelope the original quote was priced against | Adjust the update to fit the current quote, rediscover products/terms, add packages when `add_packages` is available, or create a separate media buy. 3.1 does not define an amendment-quote artifact for `update_media_buy`. Seller's `error.details.envelope_field` names which fields breached. |
-| `VALIDATION_ERROR` | Request format or business rule violation | Check error `field` and `message` for specifics |
+| [`MEDIA_BUY_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-media-buy-not-found) | Media buy doesn't exist | Verify `media_buy_id`; for legacy correlation use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) + `context.internal_campaign_id` |
+| [`PACKAGE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-package-not-found) | Package doesn't exist | Verify `package_id`; for legacy package correlation use `get_media_buys` + package `context.buyer_ref` |
+| [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) | Field cannot be changed | See "What Can Be Updated" above |
+| [`BUDGET_TOO_LOW`](/docs/building/verification/compliance-catalog#error-code-budget-too-low) | New budget below minimum | Increase budget amount |
+| [`POLICY_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-policy-violation) | Update violates content policy | Review policy requirements |
+| [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state) | Operation not allowed in current state (e.g., updating completed/canceled media buy) | Check campaign status via `get_media_buys` |
+| [`NOT_CANCELLABLE`](/docs/building/verification/compliance-catalog#error-code-not-cancellable) | Media buy or package cannot be canceled | Check seller's cancellation policy or contact seller |
+| [`CREATIVE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-rejected) | Creative failed content policy review | Revise the creative per the seller's advertising policies |
+| [`CREATIVE_LOCALE_NOT_ACCEPTED`](/docs/building/verification/compliance-catalog#error-code-creative-locale-not-accepted) | Creative has no materialized variant accepted by the package's effective format locale policy, or its serving default is ineligible | Supply a matching locale variant, assign a different creative, or change the creative's default behavior |
+| [`CREATIVE_DEADLINE_EXCEEDED`](/docs/building/verification/compliance-catalog#error-code-creative-deadline-exceeded) | Creative change submitted past the package's `creative_deadline` | Check package `creative_deadline` before submitting creative changes |
+| [`BUDGET_EXCEEDED`](/docs/building/verification/compliance-catalog#error-code-budget-exceeded) | Operation would exceed allocated budget | Reduce the amount or increase media buy total budget |
+| [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
+| [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required) | Requested change (budget, dates, volume, targeting, or signal targeting price) falls outside the envelope the original quote was priced against | Adjust the update to fit the current quote, rediscover products/terms, add packages when `add_packages` is available, or create a separate media buy. 3.1 does not define an amendment-quote artifact for `update_media_buy`. Seller's `error.details.envelope_field` names which fields breached. |
+| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | Request field values, including a duplicate submitted `creative_id`, violate seller/product business rules | Follow `error.field` and `error.message`; for a duplicate inline creative, use a different package-scoped `creative_id` |
 
 Example error response:
 

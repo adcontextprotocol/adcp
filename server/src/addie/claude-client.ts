@@ -30,8 +30,45 @@ import {
 } from './claude-cost-tracker.js';
 import { EMPTY_RESPONSE_FALLBACK, applyResponsePipeline, stripBannedRituals, hasPersonaCollapse } from './response-postprocess.js';
 import type { AddieInputAttachment } from './chat-attachments.js';
+import {
+  MAX_OUTPUT_LENGTH,
+  formatTruncatedOutput,
+} from './security.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
+
+type StopAction = 'complete' | 'truncated' | 'tool_use' | 'continue';
+
+/**
+ * Keep every Anthropic stop reason explicit. In particular, truncation is a
+ * terminal response (never a reason to sample the same prompt again), while
+ * pause_turn/compaction continue with the provider response in history.
+ * Do not infer truncation from an alphanumeric final character: headings,
+ * URLs, code, and terse list items commonly end that way. The provider's
+ * stop_reason is the reliable under-10k completion sentinel.
+ */
+function classifyStopReason(reason: Anthropic.Beta.BetaStopReason | null): StopAction {
+  switch (reason) {
+    case 'end_turn':
+    case 'stop_sequence':
+    case 'refusal':
+      return 'complete';
+    case 'max_tokens':
+    case 'model_context_window_exceeded':
+      return 'truncated';
+    case 'tool_use':
+      return 'tool_use';
+    case 'pause_turn':
+    case 'compaction':
+      return 'continue';
+    case null:
+      throw new Error('Anthropic response completed without a stop reason');
+    default: {
+      const exhaustiveReason: never = reason;
+      throw new Error(`Unhandled Anthropic stop reason: ${String(exhaustiveReason)}`);
+    }
+  }
+}
 
 /**
  * Convert MessageTurn[] into Anthropic.MessageParam[] with proper tool_use/tool_result
@@ -336,6 +373,29 @@ function applyResponsePipelineWithEmptyMonitoring(
   return { text: applyResponsePipeline(question, rawText), reason: null };
 }
 
+interface FinalizedAssistantText {
+  text: string;
+  emptyReason: string | null;
+  lengthExceeded: boolean;
+}
+
+/** Apply the safety/style pipeline exactly once before any terminal delivery. */
+function finalizeAssistantText(
+  question: string,
+  rawText: string,
+  toolExecutions: ToolExecution[],
+  forceTruncation: boolean = false,
+): FinalizedAssistantText {
+  const processed = applyResponsePipelineWithEmptyMonitoring(question, rawText, toolExecutions);
+  const lengthExceeded = processed.text.length > MAX_OUTPUT_LENGTH;
+  const truncated = forceTruncation || lengthExceeded;
+  return {
+    text: truncated ? formatTruncatedOutput(processed.text) : processed.text,
+    emptyReason: processed.reason,
+    lengthExceeded,
+  };
+}
+
 function reportEmptyResponseFallback(
   reason: string,
   toolsUsed: string[],
@@ -524,7 +584,7 @@ export type StreamEvent =
   | { type: 'tool_end'; tool_name: string; result: string; is_error: boolean }
   | { type: 'retry'; attempt: number; maxRetries: number; delayMs: number; reason: string }
   | {
-      // Mid-stream upstream failure after deltas were already yielded. Anthropic
+      // Mid-stream upstream failure after deltas were already received. Anthropic
       // streaming has no resumption token and prompt cache only dedupes input —
       // retrying produces a fresh sample, so we cannot stitch attempts together.
       // Consumers should render a recovery banner and drop the partial assistant
@@ -1003,8 +1063,79 @@ export class AddieClaudeClient {
         }
       }
 
+      const stopAction = classifyStopReason(
+        response.stop_reason as Anthropic.Beta.BetaStopReason | null,
+      );
+
+      if (stopAction === 'continue') {
+        // Anthropic pause_turn and compaction responses are resumable only
+        // when their content is included in the next request. Repeating the
+        // unchanged prompt can loop or repeat server-side work.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        messages.push({ role: 'assistant', content: response.content as any });
+        logger.info(
+          { stopReason: response.stop_reason, iteration },
+          'Addie: Continuing resumable Anthropic turn',
+        );
+        continue;
+      }
+
+      if (stopAction === 'truncated') {
+        const rawText = response.content
+          .map((block) => block.type === 'text' ? block.text : '')
+          .filter(Boolean)
+          .join('\n\n')
+          .trim();
+        const finalized = finalizeAssistantText(userMessage, rawText, toolExecutions, true);
+        if (finalized.emptyReason) {
+          reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
+        }
+        const text = finalized.text;
+        totalToolExecutionMs = toolExecutions.reduce((sum, execution) => sum + execution.duration_ms, 0);
+        const finalUsage = {
+          input_tokens: totalInputTokens,
+          output_tokens: totalOutputTokens,
+          ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
+          ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
+        };
+        logger.error(
+          {
+            event: 'addie_response_truncated',
+            source: 'processMessage',
+            stopReason: response.stop_reason,
+            iteration,
+            originalLength: rawText.length,
+            deliveredLength: text.length,
+          },
+          'Addie: Anthropic stopped before response completion',
+        );
+        if (options?.costScope) {
+          await recordCost(
+            options.costScope.userId,
+            options.modelOverride ?? AddieModelConfig.chat,
+            finalUsage,
+          );
+        }
+        return {
+          text,
+          tools_used: toolsUsed,
+          tool_executions: toolExecutions,
+          flagged: true,
+          flag_reason: `Response truncated: ${response.stop_reason}`,
+          active_rule_ids: undefined,
+          config_version_id: configVersionId ?? undefined,
+          timing: {
+            system_prompt_ms: systemPromptMs,
+            total_llm_ms: totalLlmMs,
+            total_tool_execution_ms: totalToolExecutionMs,
+            iterations: iteration,
+          },
+          usage: finalUsage,
+        };
+      }
+
       // Done - no tool use, just text
-      if (response.stop_reason === 'end_turn') {
+      if (stopAction === 'complete') {
         // Collect ALL text blocks (web search responses have multiple text blocks)
         const textBlocks = response.content.filter((c) => c.type === 'text');
         const rawText = textBlocks
@@ -1019,8 +1150,8 @@ export class AddieClaudeClient {
           logger.warn({ iteration, toolsUsed }, 'Addie: Retrying empty response after tool use');
           continue;
         }
-        const emptyResponse = applyResponsePipelineWithEmptyMonitoring(userMessage, rawText, toolExecutions);
-        const text = emptyResponse.text;
+        const finalized = finalizeAssistantText(userMessage, rawText, toolExecutions);
+        const text = finalized.text;
 
         // Calculate total tool execution time from tool_executions
         totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
@@ -1031,10 +1162,26 @@ export class AddieClaudeClient {
           logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie: Possible hallucinated action detected');
         }
 
-        if (emptyResponse.reason) {
-          reportEmptyResponseFallback(emptyResponse.reason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
+        if (finalized.emptyReason) {
+          reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
         }
-        const flagReason = hallucinationReason ?? emptyResponse.reason;
+        if (finalized.lengthExceeded) {
+          logger.error(
+            {
+              event: 'addie_response_truncated',
+              source: 'processMessage',
+              stopReason: response.stop_reason,
+              iteration,
+              originalLength: rawText.length,
+              deliveredLength: text.length,
+              localCapExceeded: true,
+            },
+            'Addie: Normally completed response exceeded output cap',
+          );
+        }
+        const flagReason = finalized.lengthExceeded
+          ? 'Output truncated due to length'
+          : hallucinationReason ?? finalized.emptyReason;
 
         const finalUsage = {
           input_tokens: totalInputTokens,
@@ -1073,7 +1220,7 @@ export class AddieClaudeClient {
       }
 
       // Handle tool use (both custom tools and server-managed tools like web_search)
-      if (response.stop_reason === 'tool_use') {
+      if (stopAction === 'tool_use') {
         // Get custom tool use blocks (these need our handlers)
         const toolUseBlocks = response.content.filter((c) => c.type === 'tool_use');
 
@@ -1156,18 +1303,33 @@ export class AddieClaudeClient {
         if (toolUseBlocks.length === 0 && serverToolBlocks.length === 0) {
           const textContent = response.content.find((c) => c.type === 'text');
           const rawText = textContent && textContent.type === 'text' ? textContent.text : "I'm not sure how to help with that.";
-          const emptyResponse = applyResponsePipelineWithEmptyMonitoring(userMessage, rawText, toolExecutions);
-          const text = emptyResponse.text;
-          if (emptyResponse.reason) {
-            reportEmptyResponseFallback(emptyResponse.reason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
+          const finalized = finalizeAssistantText(userMessage, rawText, toolExecutions);
+          const text = finalized.text;
+          if (finalized.emptyReason) {
+            reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
           }
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
+          const terminalUsage = {
+            input_tokens: totalInputTokens,
+            output_tokens: totalOutputTokens,
+            ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
+            ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
+          };
+          if (finalized.lengthExceeded) {
+            logger.error(
+              { event: 'addie_response_truncated', source: 'processMessage', originalLength: rawText.length, deliveredLength: text.length, localCapExceeded: true },
+              'Addie: Normally completed response exceeded output cap',
+            );
+          }
+          if (options?.costScope) {
+            await recordCost(options.costScope.userId, options.modelOverride ?? AddieModelConfig.chat, terminalUsage);
+          }
           return {
             text,
             tools_used: toolsUsed,
             tool_executions: toolExecutions,
-            flagged: !!emptyResponse.reason,
-            flag_reason: emptyResponse.reason ?? undefined,
+            flagged: finalized.lengthExceeded || !!finalized.emptyReason,
+            flag_reason: finalized.lengthExceeded ? 'Output truncated due to length' : finalized.emptyReason ?? undefined,
             active_rule_ids: undefined,
             config_version_id: configVersionId ?? undefined,
             timing: {
@@ -1176,12 +1338,7 @@ export class AddieClaudeClient {
               total_tool_execution_ms: totalToolExecutionMs,
               iterations: iteration,
             },
-            usage: {
-              input_tokens: totalInputTokens,
-              output_tokens: totalOutputTokens,
-              ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-              ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-            },
+            usage: terminalUsage,
           };
         }
 
@@ -1424,7 +1581,8 @@ export class AddieClaudeClient {
     const toolsUsed: string[] = [];
     const toolExecutions: ToolExecution[] = [];
     let executionSequence = 0;
-    let fullText = '';
+    let logicalText = '';
+    let totalReceivedDeltas = 0;
     let streamErrorEmitted = false;
 
     try {
@@ -1534,12 +1692,14 @@ export class AddieClaudeClient {
         let currentResponse: Anthropic.Beta.BetaMessage | null = null;
         const textChunks: string[] = [];
 
-        // Retry loop for streaming API calls (handles overloaded_error)
-        // Only retries if no content has been yielded yet (safe retry)
+        // Retry loop for streaming API calls (handles overloaded_error).
+        // Logical-turn buffering means no model output is exposed and no
+        // custom tool executes until a complete response is assembled, so a
+        // failed sample is safe to discard and retry even after deltas arrive.
         const maxStreamRetries = 3;
         let streamRetryCount = 0;
         let streamSucceeded = false;
-        let hasYieldedContent = false;
+        let receivedDeltaCount = 0;
 
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
           try {
@@ -1554,14 +1714,11 @@ export class AddieClaudeClient {
             // Process stream events
             for await (const event of stream) {
               if (event.type === 'content_block_delta') {
+                totalReceivedDeltas++;
+                receivedDeltaCount++;
                 const delta = event.delta;
                 if ('text' in delta && delta.text) {
                   textChunks.push(delta.text);
-                  if (!retriedEmptyPostToolResponse) {
-                    hasYieldedContent = true;
-                    fullText += delta.text;
-                    yield { type: 'text', text: delta.text };
-                  }
                 }
               } else if (event.type === 'message_stop') {
                 // Get the final message
@@ -1579,42 +1736,31 @@ export class AddieClaudeClient {
             const stats = this.buildPayloadDebugStats(effectiveModel, systemBlocks, customTools, messages, iteration);
             this.logPromptOverflow(streamError, stats, 'processMessageStream');
 
-            // Only retry if we haven't started streaming content to the user
-            // Once content is yielded, retry could cause duplicate/inconsistent output
-            const canRetry = !hasYieldedContent &&
-                             isRetryableError(streamError) &&
+            const retryable = isRetryableError(streamError);
+            const canRetry = retryable &&
                              streamRetryCount <= maxStreamRetries;
 
             if (!canRetry) {
-              // Check if this is exhausted retries on a retryable error (not yielded content)
-              // If so, wrap in RetriesExhaustedError for consistent error handling
-              const isExhausted = !hasYieldedContent &&
-                                  isRetryableError(streamError) &&
-                                  streamRetryCount > maxStreamRetries;
+              const isExhausted = retryable && streamRetryCount > maxStreamRetries;
               if (isExhausted) {
+                if (receivedDeltaCount > 0) {
+                  const errorMsg = streamError instanceof Error ? streamError.message : String(streamError);
+                  const reason = errorMsg.includes('overloaded') ? 'API is busy' :
+                                errorMsg.includes('rate') ? 'Rate limited' :
+                                errorMsg.includes('timeout') ? 'Request timed out' :
+                                'Connection broke mid-reply';
+                  streamErrorEmitted = true;
+                  yield {
+                    type: 'stream_error',
+                    reason,
+                    deltasBeforeError: receivedDeltaCount,
+                    tool_executions: [...toolExecutions],
+                    certification_reserve_used: certificationReserveUsed,
+                  };
+                }
                 throw new RetriesExhaustedError(streamError, streamRetryCount);
               }
-              // Mid-stream failure: deltas already shipped to the user, retry
-              // is impossible (no resumption token, prompt cache only dedupes
-              // input). Yield a stream_error so consumers can render a recovery
-              // banner and drop the partial assistant turn from conversation
-              // history. Then rethrow for the outer error path (#4797).
-              if (hasYieldedContent && isRetryableError(streamError)) {
-                const errorMsg = streamError instanceof Error ? streamError.message : String(streamError);
-                const reason = errorMsg.includes('overloaded') ? 'API is busy' :
-                              errorMsg.includes('rate') ? 'Rate limited' :
-                              errorMsg.includes('timeout') ? 'Request timed out' :
-                              'Connection broke mid-reply';
-                streamErrorEmitted = true;
-                yield {
-                  type: 'stream_error',
-                  reason,
-                  deltasBeforeError: textChunks.length,
-                  tool_executions: [...toolExecutions],
-                  certification_reserve_used: certificationReserveUsed,
-                };
-              }
-              // Not retryable or already yielded content - rethrow original error
+              // Non-retryable failures are surfaced by the outer error path.
               throw streamError;
             }
 
@@ -1651,8 +1797,9 @@ export class AddieClaudeClient {
 
             await new Promise(resolve => setTimeout(resolve, totalDelay));
 
-            // Reset for retry (safe since no content yielded yet)
+            // Discard the failed, never-exposed sample before retrying.
             textChunks.length = 0;
+            receivedDeltaCount = 0;
             currentResponse = null;
           }
         }
@@ -1693,15 +1840,7 @@ export class AddieClaudeClient {
             stop_reason: 'end_turn',
             content: [],
           };
-        } else if (retriedEmptyPostToolResponse) {
-          const recoveredText = textChunks.join('') || currentResponse.content
-            .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === 'text')
-            .map((block) => block.text)
-            .join('');
-          if (recoveredText) {
-            fullText += recoveredText;
-            yield { type: 'text', text: recoveredText };
-          }
+          textChunks.length = 0;
         }
 
         // Build the final usage block + charge the user's cost
@@ -1725,9 +1864,70 @@ export class AddieClaudeClient {
           }
         };
 
+        const stopAction = classifyStopReason(currentResponse.stop_reason);
+        const iterationText = textChunks.join('') || currentResponse.content
+          .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === 'text')
+          .map((block) => block.text)
+          .join('\n\n');
+        if (stopAction === 'continue') {
+          // Resume from the provider response without exposing interim text.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          messages.push({ role: 'assistant', content: currentResponse.content as any });
+          logger.info(
+            { stopReason: currentResponse.stop_reason, iteration },
+            'Addie Stream: Continuing resumable Anthropic turn',
+          );
+          continue;
+        }
+
+        if (stopAction === 'truncated') {
+          logicalText += iterationText;
+          const finalized = finalizeAssistantText(userMessage, logicalText, toolExecutions, true);
+          if (finalized.emptyReason) {
+            reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessageStream', effectiveModel, iteration);
+          }
+          totalToolExecutionMs = toolExecutions.reduce((sum, execution) => sum + execution.duration_ms, 0);
+          const streamUsage = buildStreamUsage();
+          logger.error(
+            {
+              event: 'addie_response_truncated',
+              source: 'processMessageStream',
+              stopReason: currentResponse.stop_reason,
+              iteration,
+              originalLength: logicalText.length,
+              deliveredLength: finalized.text.length,
+              localCapExceeded: finalized.lengthExceeded,
+            },
+            'Addie Stream: Response stopped before completion',
+          );
+          await chargeStreamCost(streamUsage);
+          yield { type: 'text', text: finalized.text };
+          yield {
+            type: 'done',
+            response: {
+              text: finalized.text,
+              tools_used: toolsUsed,
+              tool_executions: toolExecutions,
+              flagged: true,
+              flag_reason: `Response truncated: ${currentResponse.stop_reason}`,
+              active_rule_ids: undefined,
+              config_version_id: configVersionId ?? undefined,
+              timing: {
+                system_prompt_ms: systemPromptMs,
+                total_llm_ms: totalLlmMs,
+                total_tool_execution_ms: totalToolExecutionMs,
+                iterations: iteration,
+              },
+              usage: streamUsage,
+              capacity: { certification_reserve_used: certificationReserveUsed },
+            },
+          };
+          return;
+        }
+
         // Done - no tool use
-        if (currentResponse.stop_reason === 'end_turn') {
-          const iterationText = currentResponse.content
+        if (stopAction === 'complete') {
+          const completedIterationText = currentResponse.content
             .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === 'text')
             .map(block => block.text)
             .join('\n\n')
@@ -1735,34 +1935,45 @@ export class AddieClaudeClient {
 
           // No deltas were emitted for this iteration, so retrying the same
           // post-tool turn once cannot duplicate text in streaming clients.
-          if (!iterationText && toolExecutions.length > 0 && !retriedEmptyPostToolResponse && iteration < maxIterations) {
+          if (!completedIterationText && toolExecutions.length > 0 && !retriedEmptyPostToolResponse && iteration < maxIterations) {
             retriedEmptyPostToolResponse = true;
             logger.warn({ iteration, toolsUsed }, 'Addie Stream: Retrying empty response after tool use');
             continue;
           }
 
+          logicalText += iterationText;
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
-
-          // Run both detectors against the post-pipeline text — same as the
-          // non-stream path. If applyResponsePipeline strips the only text
-          // (e.g., scrubbed a refused-action sentence), that should look like
-          // an empty turn to the user, which is what we want to flag.
-          const emptyResponse = applyResponsePipelineWithEmptyMonitoring(userMessage, fullText, toolExecutions);
-          if (emptyResponse.reason) {
-            reportEmptyResponseFallback(emptyResponse.reason, toolsUsed, toolExecutions, options, 'processMessageStream', effectiveModel, iteration);
-            yield { type: 'text', text: emptyResponse.text };
-            fullText += emptyResponse.text;
+          const finalized = finalizeAssistantText(userMessage, logicalText, toolExecutions);
+          if (finalized.emptyReason) {
+            reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessageStream', effectiveModel, iteration);
           }
 
-          const finalText = emptyResponse.text;
+          const finalText = finalized.text;
           const hallucinationReason = detectHallucinatedAction(finalText, toolExecutions);
           if (hallucinationReason) {
             logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie Stream: Possible hallucinated action detected');
           }
-          const flagReason = hallucinationReason ?? emptyResponse.reason;
+          if (finalized.lengthExceeded) {
+            logger.error(
+              {
+                event: 'addie_response_truncated',
+                source: 'processMessageStream',
+                stopReason: currentResponse.stop_reason,
+                iteration,
+                originalLength: logicalText.length,
+                deliveredLength: finalText.length,
+                localCapExceeded: true,
+              },
+              'Addie Stream: Normally completed response exceeded output cap',
+            );
+          }
+          const flagReason = finalized.lengthExceeded
+            ? 'Output truncated due to length'
+            : hallucinationReason ?? finalized.emptyReason;
 
           const streamUsage = buildStreamUsage();
           await chargeStreamCost(streamUsage);
+          yield { type: 'text', text: finalText };
           yield {
             type: 'done',
             response: {
@@ -1787,28 +1998,34 @@ export class AddieClaudeClient {
         }
 
         // Handle tool use
-        if (currentResponse.stop_reason === 'tool_use') {
+        if (stopAction === 'tool_use') {
+          logicalText += iterationText;
           const toolUseBlocks = currentResponse.content.filter((c: Anthropic.Beta.BetaContentBlock) => c.type === 'tool_use');
 
           if (toolUseBlocks.length === 0) {
             // No tools to execute, return current text
             totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
             const streamUsage = buildStreamUsage();
-            await chargeStreamCost(streamUsage);
-            const emptyResponse = applyResponsePipelineWithEmptyMonitoring(userMessage, fullText, toolExecutions);
-            if (emptyResponse.reason) {
-              reportEmptyResponseFallback(emptyResponse.reason, toolsUsed, toolExecutions, options, 'processMessageStream', effectiveModel, iteration);
-              yield { type: 'text', text: emptyResponse.text };
-              fullText += emptyResponse.text;
+            const finalized = finalizeAssistantText(userMessage, logicalText, toolExecutions);
+            if (finalized.emptyReason) {
+              reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessageStream', effectiveModel, iteration);
             }
+            if (finalized.lengthExceeded) {
+              logger.error(
+                { event: 'addie_response_truncated', source: 'processMessageStream', originalLength: logicalText.length, deliveredLength: finalized.text.length, localCapExceeded: true },
+                'Addie Stream: Normally completed response exceeded output cap',
+              );
+            }
+            await chargeStreamCost(streamUsage);
+            yield { type: 'text', text: finalized.text };
             yield {
               type: 'done',
               response: {
-                text: emptyResponse.text,
+                text: finalized.text,
                 tools_used: toolsUsed,
                 tool_executions: toolExecutions,
-                flagged: !!emptyResponse.reason,
-                flag_reason: emptyResponse.reason ?? undefined,
+                flagged: finalized.lengthExceeded || !!finalized.emptyReason,
+                flag_reason: finalized.lengthExceeded ? 'Output truncated due to length' : finalized.emptyReason ?? undefined,
                 active_rule_ids: undefined,
                 config_version_id: configVersionId ?? undefined,
                 timing: {
@@ -1960,9 +2177,8 @@ export class AddieClaudeClient {
           });
 
           // Add spacing between tool use and subsequent text to prevent run-on text
-          if (fullText.length > 0 && !fullText.endsWith('\n')) {
-            fullText += '\n\n';
-            yield { type: 'text', text: '\n\n' };
+          if (logicalText.length > 0 && !logicalText.endsWith('\n')) {
+            logicalText += '\n\n';
           }
         }
       }
@@ -1985,10 +2201,22 @@ export class AddieClaudeClient {
           maxIterUsage,
         );
       }
+      const finalizedMaxIter = finalizeAssistantText(
+        userMessage,
+        logicalText || "I'm having trouble completing that request. Could you try rephrasing?",
+        toolExecutions,
+      );
+      if (finalizedMaxIter.lengthExceeded) {
+        logger.error(
+          { event: 'addie_response_truncated', source: 'processMessageStream', originalLength: logicalText.length, deliveredLength: finalizedMaxIter.text.length, localCapExceeded: true },
+          'Addie Stream: Max-iteration response exceeded output cap',
+        );
+      }
+      yield { type: 'text', text: finalizedMaxIter.text };
       yield {
         type: 'done',
         response: {
-          text: fullText || "I'm having trouble completing that request. Could you try rephrasing?",
+          text: finalizedMaxIter.text,
           tools_used: toolsUsed,
           tool_executions: toolExecutions,
           flagged: true,
@@ -2011,7 +2239,7 @@ export class AddieClaudeClient {
         yield {
           type: 'stream_error',
           reason: error instanceof Error ? error.message : 'Unknown error',
-          deltasBeforeError: fullText.length > 0 ? 1 : 0,
+          deltasBeforeError: totalReceivedDeltas,
           tool_executions: [...toolExecutions],
           certification_reserve_used: certificationReserveUsed,
         };

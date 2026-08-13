@@ -367,6 +367,120 @@ describe('MCP Protocol Compliance', () => {
   });
 
   describe('POST /mcp - Error Handling', () => {
+    it('rejects unsupported evaluate_agent_quality arguments before authentication', async () => {
+      const response = await callMcp({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'evaluate_agent_quality',
+          arguments: { agent_url: 'https://agent.example.com/mcp', force_refresh: true },
+        },
+      });
+
+      expect(response.body.result.isError).toBe(true);
+      expect(JSON.parse(response.body.result.content[0].text)).toEqual({
+        error: 'Unsupported tool arguments',
+        tool: 'evaluate_agent_quality',
+        unsupported_argument_count: 1,
+        unsupported_arguments: ['force_refresh'],
+        supported_arguments: ['agent_url', 'compliance_target', 'tracks'],
+      });
+    });
+
+    it('allows declared evaluate_agent_quality arguments through to authentication', async () => {
+      const response = await callMcp({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'evaluate_agent_quality',
+          arguments: {
+            agent_url: 'https://agent.example.com/mcp',
+            tracks: ['core'],
+            compliance_target: '3.1',
+          },
+        },
+      });
+
+      expect(response.body.result.isError).toBe(true);
+      expect(response.body.result.content[0].text).toContain('Authentication required');
+    });
+
+    it('keeps undeclared arguments permissive for tools that do not opt in', async () => {
+      const response = await callMcp({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'get_agent_status',
+          arguments: { agent_url: 'https://agent.example.com/mcp', force_refresh: true },
+        },
+      });
+
+      expect(response.body.result.isError).toBe(true);
+      expect(response.body.result.content[0].text).toContain('Authentication required');
+    });
+
+    it('bounds and sanitizes unsupported argument names', async () => {
+      const unsupportedArguments: Record<string, unknown> = Object.fromEntries(
+        Array.from({ length: 25 }, (_, index) => [`unknown_${String(index).padStart(2, '0')}`, true]),
+      );
+      unsupportedArguments[`!unsafe\n\`${'x'.repeat(100)}`] = true;
+      const hostileKeys: Array<[string, unknown]> = [
+        ['constructor', true],
+        ['prototype', true],
+        ['__proto__', { polluted: true }],
+        ['nul\0key', true],
+        ['rtl\u202ekey', true],
+        ['astral_\u{1f4a9}', true],
+      ];
+      for (const [key, value] of hostileKeys) {
+        Object.defineProperty(unsupportedArguments, key, {
+          value,
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
+      }
+
+      expect((Object.prototype as Record<string, unknown>).polluted).toBeUndefined();
+
+      const response = await callMcp({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'evaluate_agent_quality',
+          arguments: { agent_url: 'https://agent.example.com/mcp', ...unsupportedArguments },
+        },
+      });
+
+      const error = JSON.parse(response.body.result.content[0].text);
+      // Some SDK versions intentionally drop __proto__ while cloning records.
+      expect([31, 32]).toContain(error.unsupported_argument_count);
+      expect(error.unsupported_arguments).toHaveLength(20);
+      expect(error.unsupported_arguments[0]).toHaveLength(81);
+      expect(error.unsupported_arguments[0]).toMatch(/^\?unsafe\?\?[x]+…$/);
+      expect(error.unsupported_arguments).toEqual(
+        expect.arrayContaining([
+          'astral_?',
+          'constructor',
+          'nul?key',
+          'prototype',
+          'rtl?key',
+        ]),
+      );
+      expect(error.unsupported_arguments).not.toContain('polluted');
+      expect(error.unsupported_arguments.includes('__proto__') || error.unsupported_argument_count === 31).toBe(true);
+      expect(error.unsupported_arguments.join('')).not.toContain('\n');
+      expect(error.unsupported_arguments.join('')).not.toContain('`');
+      expect(error.unsupported_arguments.join('')).not.toContain('\0');
+      expect(error.unsupported_arguments.join('')).not.toContain('\u202e');
+      expect(error.unsupported_arguments.join('')).not.toContain('\u{1f4a9}');
+      expect((Object.prototype as Record<string, unknown>).polluted).toBeUndefined();
+    });
+
     // Unknown tool names come back as a tool-execution error (result.isError)
     // — the SDK doesn't elevate "tool not found" to a protocol-level
     // -32601 because tools/call itself is a known method.

@@ -58,13 +58,13 @@ If the batch fails wholesale (auth, rate-limit, malformed request), the response
 
 ## Partial failure — per-result errors
 
-Per-claim failures (an `UNSUPPORTED_CLAIM_TYPE` for one of many claims, an `AMBIGUOUS_MATCH` on one trademark query in a portfolio of properties) DO NOT fail the batch. The corresponding entry in `results[]` carries an `error` field instead of `claim_type`/`status`, and the rest of the batch is unaffected:
+Per-claim failures (an [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) for one of many claims, a [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) for an ambiguous trademark query in a portfolio of properties) DO NOT fail the batch. The corresponding entry in `results[]` carries an `error` field instead of `claim_type`/`status`, and the rest of the batch is unaffected:
 
 ```json
 {
   "results": [
     { "claim_type": "property", "status": "owned", "details": { "regions": ["US"] } },
-    { "error": { "code": "AMBIGUOUS_MATCH", "message": "Multiple registrations match 'CONVERSE'; narrow with registry+number." } },
+    { "error": { "code": "VALIDATION_ERROR", "message": "Multiple registrations match 'CONVERSE'; narrow with registry+number." } },
     { "claim_type": "subsidiary", "status": "not_ours" }
   ]
 }
@@ -74,8 +74,8 @@ Batch-level errors are reserved for failures that prevent the agent from answeri
 
 | Tier | Where it goes | Example codes |
 |---|---|---|
-| Per-result | `results[i].error` | `UNSUPPORTED_CLAIM_TYPE`, `INVALID_INPUT` for one item, `AMBIGUOUS_MATCH` |
-| Batch-level | top-level `errors[]` | `AUTH_INVALID`, `RATE_LIMITED`, malformed request, `claims[]` over the cap |
+| Per-result | `results[i].error` | `UNSUPPORTED_FEATURE`, [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) for malformed input in one item, `VALIDATION_ERROR` for an ambiguous match |
+| Batch-level | top-level `errors[]` | [`AUTH_INVALID`](/docs/building/verification/compliance-catalog#error-code-auth-invalid), [`RATE_LIMITED`](/docs/building/verification/compliance-catalog#error-code-rate-limited), malformed request, `claims[]` over the cap |
 
 Full error-code semantics are documented on the [single-target task page § Error handling](/docs/brand-protocol/tasks/verify_brand_claim#error-handling).
 
@@ -95,7 +95,7 @@ Implications:
 
 - Agents SHOULD size rate limits in calls/window rather than claims/window when bulk is advertised. If claim-volume matters operationally, advertise a per-batch claim cap (see Capability discovery).
 - Callers SHOULD prefer one bulk call over N single calls when verifying against the same agent — both for cost and for staying inside the limit.
-- A `RATE_LIMITED` response on a bulk call is a batch-level error; the whole batch is rejected. Retry with `Retry-After` honoured.
+- A [`RATE_LIMITED`](/docs/building/verification/compliance-catalog#error-code-rate-limited) response on a bulk call is a batch-level error; the whole batch is rejected. Retry with `Retry-After` honoured.
 
 ## Trust model
 

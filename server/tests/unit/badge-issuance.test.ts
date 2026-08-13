@@ -41,8 +41,8 @@ function makeMockDb(existingBadges: AgentVerificationBadge[]): ComplianceDatabas
   return {
     getBadgesForAgent: vi.fn().mockResolvedValue(existingBadges),
     upsertBadge: vi.fn().mockImplementation((b) => Promise.resolve({ ...makeBadge(b.role), ...b })),
-    degradeBadge: vi.fn().mockResolvedValue(undefined),
-    revokeBadge: vi.fn().mockResolvedValue(undefined),
+    degradeBadge: vi.fn().mockResolvedValue(true),
+    revokeBadge: vi.fn().mockResolvedValue(true),
   } as unknown as ComplianceDatabase;
 }
 
@@ -108,6 +108,24 @@ describe('processAgentBadges — membership gating', () => {
     expect(upsertCall.verification_modes).toEqual(['spec']);
   });
 
+  it('does not report issuance when the database suppresses a concurrent opt-out write', async () => {
+    const db = makeMockDb([]);
+    vi.mocked(db.upsertBadge).mockResolvedValueOnce(null);
+
+    const result = await processAgentBadges(
+      db,
+      'https://example.com/mcp',
+      ['sales-broadcast-tv'],
+      [makeStatus('sales_broadcast_tv', 'passing')],
+      true,
+      'org_test',
+    );
+
+    expect(db.upsertBadge).toHaveBeenCalledTimes(1);
+    expect(result.issued).toEqual([]);
+    expect(result.unchanged).toEqual([]);
+  });
+
   it('preserves an existing live mode when re-asserting spec', async () => {
     // Simulate an agent that earned (Spec + Live) earlier; storyboards still
     // pass — the upsert must not strip 'live' off the badge.
@@ -145,6 +163,25 @@ describe('processAgentBadges — membership gating', () => {
     expect(db.degradeBadge).toHaveBeenCalledTimes(1);
   });
 
+  it('does not report a degradation suppressed by a newer badge generation', async () => {
+    const db = makeMockDb([makeBadge('media-buy', 'active')]);
+    vi.mocked(db.degradeBadge).mockResolvedValueOnce(false);
+
+    const result = await processAgentBadges(
+      db,
+      'https://example.com/mcp',
+      ['sales-broadcast-tv'],
+      [makeStatus('sales_broadcast_tv', 'failing')],
+      false,
+      'org_test',
+      '3.0',
+      '7',
+    );
+
+    expect(result.degraded).toEqual([]);
+    expect(result.revoked).toEqual([]);
+  });
+
   it('revokes a degraded badge after 48-hour grace period', async () => {
     const existing = [makeBadge('media-buy', 'degraded', 49 * 60 * 60 * 1000)];
     const db = makeMockDb(existing);
@@ -161,6 +198,54 @@ describe('processAgentBadges — membership gating', () => {
     expect(result.revoked).toHaveLength(1);
     expect(result.revoked[0].role).toBe('media-buy');
     expect(result.revoked[0].reason).toMatch(/Failing specialisms/);
+  });
+
+  it('does not report a revocation suppressed by a newer badge generation', async () => {
+    const db = makeMockDb([makeBadge('media-buy', 'degraded', 49 * 60 * 60 * 1000)]);
+    vi.mocked(db.revokeBadge).mockResolvedValueOnce(false);
+
+    const result = await processAgentBadges(
+      db,
+      'https://example.com/mcp',
+      ['sales-broadcast-tv'],
+      [makeStatus('sales_broadcast_tv', 'failing')],
+      false,
+      'org_test',
+      '3.0',
+      '7',
+    );
+
+    expect(result.revoked).toEqual([]);
+  });
+
+  it('reports a zero-step specialism as untested when revoking after the grace period', async () => {
+    const existing = [makeBadge('media-buy', 'degraded', 49 * 60 * 60 * 1000)];
+    const db = makeMockDb(existing);
+    const untestedStatus = {
+      ...makeStatus('sales_broadcast_tv', 'failing'),
+      steps_total: 0,
+    };
+
+    const result = await processAgentBadges(
+      db,
+      'https://example.com/mcp',
+      ['sales-broadcast-tv'],
+      [untestedStatus],
+      false,
+      'org_test',
+    );
+
+    expect(result.revoked).toEqual([expect.objectContaining({
+      role: 'media-buy',
+      reason: 'Untested specialisms: sales-broadcast-tv',
+    })]);
+    expect(db.revokeBadge).toHaveBeenCalledWith(
+      'https://example.com/mcp',
+      'media-buy',
+      '3.0',
+      'Untested specialisms: sales-broadcast-tv for 48+ hours',
+      undefined,
+    );
   });
 
   it('keeps a degraded badge unchanged within the 48-hour grace period', async () => {

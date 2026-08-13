@@ -26,6 +26,8 @@ When `require_operator_auth` is `true` (**account-id namespaces**), operators au
 
 When `require_operator_auth` is `false` (**buyer-declared accounts**), the agent is trusted and account-scoped calls use the natural key (`brand` + `operator`). Most sellers provision these relationships through [`sync_accounts`](/docs/accounts/tasks/sync_accounts). A seller MAY instead lazily provision on the first account-scoped request when billing and every other required setting are unambiguous from capabilities or the authenticated agent's onboarding defaults. A lazy-provisioning seller MUST keep accepting the natural key and MUST expose [`list_accounts`](/docs/accounts/tasks/list_accounts) for recovery. If buyer input is required before use, the seller MUST expose `sync_accounts`.
 
+Follow [Provision a seller-mediated account](/docs/accounts/provisioning-walkthrough) for a complete buyer-declared workflow from discovery through human setup, activation, and first spend.
+
 An **ad network** may use both models simultaneously — buyer-declared accounts on the buyer-facing side (the network is agent-trusted) and an account-id namespace with each underlying platform (the network authenticates as an operator). See the [Sponsored Intelligence guide — account model for networks](/docs/sponsored-intelligence/networks#account-model-for-networks) for the full account chain: `buyer agent → network (buyer-declared) → AI platform (account-id namespace)`.
 
 After delivery, the orchestrator calls [`report_usage`](/docs/accounts/tasks/report_usage) to inform vendor agents (signals, governance, creative) how their services were consumed. This is not settlement — it's consumption reporting so the vendor can track earned revenue and verify billing.

@@ -8,7 +8,7 @@
   "properties": {
     "provider_id": {
       "type": "string",
-      "description": "Stable identifier for this provider registration. Used in logs, metrics, cache keys, and as the key in `tmpx_providers` on the identity-match response so the publisher can route each provider's TMPX chunks to that provider's pre-configured ad-server destinations via the publisher's `tmpx_macro_mapping` deployment configuration (see publisher-tmpx-config.json). Publishers assign this — it is not the provider's agent_url. Charset is constrained to a safe alphanumeric/underscore set so the value can appear in operational surfaces (logs, metrics, dashboards) without quoting.",
+      "description": "Stable identifier for this provider registration. Used in logs, metrics, cache keys, as the key in `signals_by_provider` on Context Match responses and `targeting_kv_mapping` in publisher configuration, and as the key in `tmpx_providers` on Identity Match responses and `tmpx_macro_mapping` in publisher configuration. Publishers assign this — it is not the provider's agent_url. Charset is constrained to a safe alphanumeric/underscore set so the value can appear in operational surfaces (logs, metrics, dashboards) without quoting. See publisher-targeting-kv-config.json and publisher-tmpx-config.json.",
       "pattern": "^[A-Za-z0-9_]+$",
       "minLength": 1,
       "maxLength": 64

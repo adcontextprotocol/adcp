@@ -120,7 +120,7 @@ Response contains results in order:
 
 ### Variant Preview (Post-Flight)
 
-Preview what a specific variant looked like when served. Use `variant_id` from `get_creative_delivery` response:
+Preview what a specific variant looked like when served. Use `variant_id` from [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery) response:
 
 ```json
 {
@@ -179,14 +179,14 @@ All modes use a single flat object with `request_type` as the discriminant.
 | `request_type` | string | Yes | `"single"`, `"batch"`, or `"variant"` |
 | `creative_manifest` | object | Conditional | Complete creative manifest with all required assets for the format. For single requests and batch items, supply either this field or `creative_id`. |
 | `creative_manifest.format_kind` | CanonicalFormatKind | Yes for inline manifests | Portable canonical format identity. |
-| `target_capability_id` | string | No | Agent-local renderer route from `get_adcp_capabilities.creative.supported_formats[]`; the selected entry's `operations` must contain `preview`. In batch mode this is the default for items, which may override it. Omit only when exactly one advertised preview capability matches the canonical manifest; zero or multiple matches return `FORMAT_NOT_SUPPORTED`. |
+| `target_capability_id` | string | No | Agent-local renderer route from `get_adcp_capabilities.creative.supported_formats[]`; the selected entry's `operations` must contain `preview`. In batch mode this is the default for items, which may override it. Omit only when exactly one advertised preview capability matches the canonical manifest; zero or multiple matches return [`FORMAT_NOT_SUPPORTED`](/docs/building/verification/compliance-catalog#error-code-format-not-supported). |
 | `inputs` | array | No | Array of input sets for multiple preview variants. Used in single mode. |
 | `quality` | string | No | `"draft"` (fast, lower-fidelity) or `"production"` (full quality). In batch mode, sets the default for all requests. |
 | `output_format` | string | No | `"url"` (default) or `"html"`. In batch mode, sets the default for all requests. |
 | `item_limit` | integer | No | Maximum catalog items to render per preview variant. Used in single mode. |
 | `template_id` | string | No | Specific template ID for custom format rendering. Used in single mode. |
 | `requests` | array | Batch | Array of 1-50 preview requests. Each item supplies either a canonical `creative_manifest` or library `creative_id`, and may also carry `target_capability_id`, inputs, quality, output format, item limit, and template ID. |
-| `variant_id` | string | Variant | Platform-assigned variant identifier from `get_creative_delivery`. |
+| `variant_id` | string | Variant | Platform-assigned variant identifier from [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery). |
 | `creative_id` | string | Conditional | Creative-library identifier. Use instead of `creative_manifest` to preview a stored canonical creative; in batch mode it is set per item. It may also provide creative context in variant mode. |
 | `allow_async` | boolean | No | Opt in to a `status: "submitted"` response for slow rendering. Defaults to `false`; agents MUST stay synchronous or return a terminal error when absent or false. |
 | `push_notification_config` | object | No | Optional terminal completion/failure webhook when `allow_async` is true and the agent returns `submitted`. The task remains pollable without it; this field alone never causes async execution. |
@@ -208,9 +208,9 @@ Discover renderers from `get_adcp_capabilities.creative.supported_formats[]` by 
 }
 ```
 
-The buyer polls `get_task_status` with `task_id`; the completed task result contains the normal single, batch, or variant preview response. If the request also supplies `push_notification_config`, the agent sends at least the terminal completion/failure notification and the same task remains pollable. `response_type: "submitted"` keeps this fourth arm in the same discriminator family as the three synchronous preview arms; `status: "submitted"` is the task-lifecycle signal.
+The buyer polls [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) with `task_id`; the completed task result contains the normal single, batch, or variant preview response. If the request also supplies `push_notification_config`, the agent sends at least the terminal completion/failure notification and the same task remains pollable. `response_type: "submitted"` keeps this fourth arm in the same discriminator family as the three synchronous preview arms; `status: "submitted"` is the task-lifecycle signal.
 
-`submitted` is for work that continues after the request connection is released, including a queued upstream renderer. If the agent is actively rendering while keeping the connection open, it uses `working` progress and returns the normal response on that connection. When `allow_async` is false or absent, agents MUST NOT return the submitted shape. `build_creative` already has a separate async response contract and is unchanged by this field.
+`submitted` is for work that continues after the request connection is released, including a queued upstream renderer. If the agent is actively rendering while keeping the connection open, it uses `working` progress and returns the normal response on that connection. When `allow_async` is false or absent, agents MUST NOT return the submitted shape. [`build_creative`](/docs/creative/task-reference/build_creative) already has a separate async response contract and is unchanged by this field.
 
 Preview remains read-only in every lifecycle state. Queuing a preview MUST NOT build or approve a creative, add it to a creative library, or modify the supplied or stored manifest.
 
@@ -239,6 +239,7 @@ Generate multiple preview variants by providing different contexts:
 ```typescript
 {
   response_type: "single";
+  quality_used?: "draft" | "production"; // Required when the request supplied quality
   previews: Preview[];       // One per input (or one default)
   interactive_url?: string;  // Optional sandbox for interactive formats
   expires_at?: string;       // Optional ISO 8601 expiration; omitted means no expiration
@@ -253,7 +254,11 @@ Generate multiple preview variants by providing different contexts:
   results: Array<{
     success: boolean;
     creative_id: string;
-    response?: { previews: Preview[]; expires_at?: string; };
+    quality_used?: "draft" | "production"; // Required when effective request supplied quality
+    response?: {
+      previews: Preview[];
+      expires_at?: string;
+    };
     errors?: Array<{ code: string; message: string; }>;
   }>;
 }
@@ -319,7 +324,7 @@ These previews are *representative*, not definitive. Real serve-time output depe
 
 ### Post-flight: exact replay
 
-After the campaign runs, use variant mode to see exactly what was served. Pass a `variant_id` from `get_creative_delivery`:
+After the campaign runs, use variant mode to see exactly what was served. Pass a `variant_id` from [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery):
 
 ```json
 {
@@ -334,10 +339,10 @@ The response includes the variant's actual manifest — the specific headline, i
 
 | Aspect | Standard creative | Generative creative |
 |---|---|---|
-| Pre-flight preview | Exact — what you see is what runs | Representative — shows the agent's interpretation of the brief under simulated conditions |
+| Pre-flight preview | At production quality, fidelity-accurate within the selected renderer's presentation; draft may approximate | Representative — shows the agent's interpretation of the brief under simulated conditions |
 | Post-flight preview | Same as pre-flight | Exact — faithful replay of served output via variant mode |
-| `quality: "draft"` | Fast wireframe-quality render | Fast, lower-fidelity generation for reviewing creative direction |
-| `quality: "production"` | Full-fidelity render | Full-quality generation for stakeholder sign-off |
+| `quality: "draft"` | Iteration render; final fidelity is not guaranteed | Lower-fidelity sample for reviewing creative direction |
+| `quality: "production"` | Fidelity-accurate review render | Fidelity-accurate sample of serve-time presentation |
 | Number of variants | Typically 1 (or a few device variants) | Potentially thousands — one per context |
 
 For generative formats where every impression produces a different creative (like AI chat or real-time contextual), pre-flight previews are best understood as *samples from a distribution* rather than *the ad*. The brief and brand identity constrain the distribution; previews let you verify the agent interprets those constraints correctly.
@@ -351,9 +356,28 @@ For formats where the ad is stateful — AI chat, interactive experiences, conve
 
 These formats have the widest gap between pre-flight and post-flight: a pre-flight preview can only approximate one possible conversation path, while the live experience adapts to each user. Preview enough scenarios to verify tone, guardrails, and brand consistency.
 
+### Quality levels
+
+The preview quality tier describes render fidelity, not merely the renderer's relative cost or speed. It is not a validation result, compliance or brand-safety clearance, seller acceptance, or authorization to serve. Buyers use the applicable validation, governance, and seller creative-review workflows for those decisions.
+
+- **`draft`** is an iteration render for reviewing creative direction. It MUST preserve the supplied manifest or brief's core concept, content, and non-fidelity constraints, but it MAY use lower-resolution or placeholder assets; approximate layout, typography, color, motion, audio, or interactive behavior; and omit final polish. The protocol does not guarantee that any of those listed fidelity dimensions is final in a draft preview.
+- **`production`** is a fidelity-accurate review render. For standard or otherwise deterministic creative, it MUST faithfully render the supplied manifest—or the stored manifest resolved from `creative_id`—and its assets using the serve-time presentation controlled by the selected renderer. In `preview_creative`, material asset substitution or approximation requires `quality_used: "draft"`. It MUST include disclosure and compliance elements required by the manifest and those owned by that rendering layer for the supplied context.
+
+Publisher- or serving-layer elements outside the selected renderer are guaranteed only when the targeted preview capability represents that integrated rendering context. A standalone creative renderer is not responsible for reproducing downstream elements it cannot determine. Buyers that need an end-to-end composed review SHOULD request a preview from the applicable seller or publisher rendering capability.
+
+For generative creative, `production` means that the sample uses the serve-equivalent generation pipeline and configuration, honors the same declared constraints, and uses the same full-fidelity presentation rules as serve-time generation. It does not promise that the same content will be generated for every impression. Final assets and layout MAY vary where the format varies them at serve time.
+
+For stateful or interactive creative, a `production` preview MUST render the sampled state or path with serve-time visual and control fidelity. The tier makes no behavioral-coverage guarantee beyond that sample. Buyers assessing guardrails, disclosure persistence, error states, or multi-turn behavior SHOULD use `interactive_url`, when present, and exercise a scenario suite appropriate to the format.
+
+These definitions also apply to `preview_quality` on an inline [`build_creative`](/docs/creative/task-reference/build_creative) preview. In 3.x, that inline response does not echo `quality_used`, so an agent MUST either meet the requested `preview_quality` or return `preview_error`; it cannot silently substitute another tier. Buyers that need a successful response to echo the rendered tier use `preview_creative`.
+
 ### Quality mismatch
 
-If the requested quality level is not supported, the agent renders at the best quality it can provide. The protocol does not require agents to support both levels, standardize per-capability quality discovery, or echo the actual quality used. Quality is therefore best-effort and not machine-verifiable in 3.x; if exact fidelity matters, verify the render by inspection before approval.
+If the requested quality level is not supported, the agent renders at the best quality it can provide and reports that tier in `quality_used`. When a single request supplies `quality`, the response MUST include `quality_used`. For batch mode, each successful result whose effective request supplied `quality`—either on the item or through the batch-level default—MUST include `quality_used`. Agents SHOULD report `quality_used` even when the request omitted `quality`, so buyers can record the renderer's default tier.
+
+Buyers MUST compare `quality_used` with the requested value before treating a preview as a production-fidelity review artifact. A mismatch means the agent applied a different tier; specifically, requested `production` with `quality_used: "draft"` is an explicit downgrade. `quality_used` does not appear on variant-mode replay because that mode reproduces a historical execution rather than selecting a new render-quality tier. Agents are not required to support both quality levels or advertise per-capability quality discovery.
+
+In 3.x, `quality_used` is a binary fidelity gate: it does not identify which dimensions caused a downgrade. Buyers that receive a mismatch need agent-specific or out-of-band diagnostics before deciding whether to retry, select another renderer, or revise the creative.
 
 ### Preview expiration and variant retention
 

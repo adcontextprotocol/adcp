@@ -28,16 +28,16 @@ Three protocol domains establish who the parties are before any transaction occu
 
 Four protocol domains handle core advertising operations. The [Trusted Match Protocol (TMP)](/docs/trusted-match) serves as the execution layer, connecting planning-time decisions to real-time activation through a four-phase lifecycle:
 
-1. **Planning** — `get_products` and `create_media_buy` establish packages, budgets, and targeting criteria.
+1. **Planning** — [`get_products`](/docs/media-buy/task-reference/get_products) and [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) establish packages, budgets, and targeting criteria.
 2. **Execution** — TMP Context Match determines content fit; TMP Identity Match checks user eligibility. Both operations run at serve time with structural privacy separation.
 3. **Engagement** — Sponsored Intelligence sessions deliver conversational brand experiences.
-4. **Reporting** — `get_media_buy_delivery` aggregates delivery data across sellers.
+4. **Reporting** — [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) aggregates delivery data across sellers.
 
 **Media Buy** covers inventory discovery (`get_products`), campaign creation (`create_media_buy`), and delivery reporting (`get_media_buy_delivery`). Publishers return structured media products with pricing, targeting options, and delivery forecasts. Buyers can request proposals — structured media plans that encode publisher expertise. See [Media Buy](/docs/media-buy).
 
-**Creative** handles canonical capability discovery (`get_adcp_capabilities`), AI-powered creative generation (`build_creative`), catalog synchronization (`sync_catalogs`), and creative delivery tracking. Creative agents resolve brand identity from the Brand Protocol to generate on-brand assets. See [Creative](/docs/creative).
+**Creative** handles canonical capability discovery ([`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)), AI-powered creative generation ([`build_creative`](/docs/creative/task-reference/build_creative)), catalog synchronization ([`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs)), and creative delivery tracking. Creative agents resolve brand identity from the Brand Protocol to generate on-brand assets. See [Creative](/docs/creative).
 
-**Signals** enables audience and targeting data discovery (`get_signals`) and activation (`activate_signal`). Data providers publish signal definitions that buyers can discover with natural language queries, then activate on decisioning platforms. See [Signals](/docs/signals/overview).
+**Signals** enables audience and targeting data discovery ([`get_signals`](/docs/signals/tasks/get_signals)) and activation ([`activate_signal`](/docs/signals/tasks/activate_signal)). Data providers publish signal definitions that buyers can discover with natural language queries, then activate on decisioning platforms. See [Signals](/docs/signals/overview).
 
 **Sponsored Intelligence** defines conversational brand experiences in AI assistants. When a user expresses interest in a brand, the host initiates a consent-first session where the brand's agent engages conversationally with text, voice, UI components, or commerce handoffs. See [Sponsored Intelligence](/docs/sponsored-intelligence/overview).
 
@@ -45,7 +45,7 @@ Four protocol domains handle core advertising operations. The [Trusted Match Pro
 
 **Governance** operates across all transaction domains. Governance agents manage property lists (curated sets of properties for targeting or exclusion), content standards (brand suitability policies), and creative governance (security scanning, content categorization). Governance data flows into media buy decisions, creative validation, and signal activation. See [Governance Protocol](/docs/governance/overview).
 
-Human-in-the-loop enters the protocol through two mechanisms: any mutation may be taken async for human review via the task lifecycle, and campaign governance provides a declarative buyer-side review channel via `sync_plans` and `check_governance`. See [How human-in-the-loop enters the protocol](/docs/governance/embedded-human-judgment#how-human-in-the-loop-enters-the-protocol). This is not a real-time protocol: operations may take minutes to days when human approval is required.
+Human-in-the-loop enters the protocol through two mechanisms: any mutation may be taken async for human review via the task lifecycle, and campaign governance provides a declarative buyer-side review channel via [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) and [`check_governance`](/docs/governance/campaign/tasks/check_governance). See [How human-in-the-loop enters the protocol](/docs/governance/embedded-human-judgment#how-human-in-the-loop-enters-the-protocol). This is not a real-time protocol: operations may take minutes to days when human approval is required.
 
 ### Privacy posture across domains
 
@@ -107,7 +107,7 @@ These parties exchange impressions and money through the orchestration layer.
 
 ## State persistence and horizontal scaling
 
-AdCP is a multi-instance protocol. A single buyer's workflow with an agent may be routed across multiple backend replicas — `create_media_buy` may land on one replica, the subsequent `get_media_buy` on another — and both calls MUST see the same state.
+AdCP is a multi-instance protocol. A single buyer's workflow with an agent may be routed across multiple backend replicas — [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) may land on one replica, the subsequent `get_media_buy` on another — and both calls MUST see the same state.
 
 ### Normative requirements
 
@@ -115,7 +115,7 @@ State keyed by a `(brand, account)` tuple MUST survive across agent process inst
 
 **Acceptable storage:** Postgres, Redis, DynamoDB, or any shared store that persists across process restarts and is reachable from every replica. **Not acceptable:** module-level variables, per-process Maps or dicts, single-node file storage, or sticky-session routing that masks the absence of shared state.
 
-Within a single `(brand, account)` context, implementations MUST support read-your-writes across replicas: after a successful non-async response, a subsequent request routed to any replica MUST observe the write. Async/pending task state (status transitions, `context_id`, push-notification subscriptions) is itself subject to this rule — once a task record is created, it MUST be readable from any replica. Eventual consistency is acceptable when the staleness window is bounded and disclosed — either capped at the implementation's documented async polling interval, or declared explicitly in `get_adcp_capabilities`.
+Within a single `(brand, account)` context, implementations MUST support read-your-writes across replicas: after a successful non-async response, a subsequent request routed to any replica MUST observe the write. Async/pending task state (status transitions, `context_id`, push-notification subscriptions) is itself subject to this rule — once a task record is created, it MUST be readable from any replica. Eventual consistency is acceptable when the staleness window is bounded and disclosed — either capped at the implementation's documented async polling interval, or declared explicitly in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).
 
 **Sandbox exemption.** Sandbox accounts are allowed to carry ephemeral state that does not persist across process restarts (see [Sandbox mode](/docs/media-buy/advanced-topics/sandbox)). Within a single sandbox session, read-your-writes across replicas still applies.
 

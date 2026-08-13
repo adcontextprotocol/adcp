@@ -1,9 +1,13 @@
 name: Deploy
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: [Build Check]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
 
 concurrency:
   group: fly-deploy
@@ -16,10 +20,40 @@ jobs:
   # here instead of shipping a container that crashloops on boot.
   preflight:
     name: Preflight
+    # workflow_run has access to deployment secrets, so only trust a successful
+    # push run from this repository's main branch. Never deploy a PR run.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
+    outputs:
+      deploy_current: ${{ steps.current-main.outputs.deploy_current }}
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - name: Require the tested SHA to still be current main
+        id: current-main
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          current_main_sha=$(git ls-remote origin refs/heads/main | awk '{print $1}')
+          if [ -z "${current_main_sha}" ]; then
+            echo "::error::Could not resolve the current origin/main SHA."
+            exit 1
+          fi
+          if [ "${TESTED_SHA}" != "${current_main_sha}" ]; then
+            echo "::notice::Skipping stale tested SHA ${TESTED_SHA}; origin/main is ${current_main_sha}."
+            echo "deploy_current=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "deploy_current=true" >> "${GITHUB_OUTPUT}"
+          fi
       - name: No duplicate migration numbers
+        if: steps.current-main.outputs.deploy_current == 'true'
         run: |
           dupes=$(ls server/src/db/migrations/*.sql \
             | xargs -n1 basename \
@@ -41,13 +75,44 @@ jobs:
   deploy:
     name: Deploy to Fly.io
     needs: preflight
+    if: needs.preflight.outputs.deploy_current == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Recheck tested SHA is still current main
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          current_main_sha=$(git ls-remote origin refs/heads/main | awk '{print $1}')
+          if [ -z "${current_main_sha}" ] || [ "${TESTED_SHA}" != "${current_main_sha}" ]; then
+            echo "::error::Refusing to deploy stale SHA ${TESTED_SHA}; origin/main is ${current_main_sha:-unavailable}."
+            exit 1
+          fi
 
       - name: Setup Fly CLI
-        uses: superfly/flyctl-actions/setup-flyctl@1.6
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+
+      - name: Reject publisher crawl queue secret override
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -eo pipefail
+          secrets=$(flyctl secrets list --json)
+          override_count=$(echo "$secrets" | jq -er '
+            if type == "array" then
+              [.[] | select((.Name // .name) == "PUBLISHER_CRAWL_QUEUE_ENABLED")] | length
+            else
+              error("expected Fly secrets JSON array")
+            end')
+          if [ "$override_count" -gt 0 ]; then
+            echo "::error::PUBLISHER_CRAWL_QUEUE_ENABLED is set as a Fly secret and would override fly.toml. Remove the secret before deploying."
+            exit 1
+          fi
 
       # flyctl deploy can fail for two very different reasons:
       #   1. The new image is broken (real failure — must block).
@@ -58,10 +123,9 @@ jobs:
       # was rate-limited from the earlier crashloop storm. The post-deploy
       # gates never ran. To distinguish, on failure we hit /health directly
       # — the same signal end users see — and only hard-fail if the app
-      # itself is unreachable. The "verify all machines on same image" gate
-      # below depends on the machines API, so it gates itself on
-      # `deploy_outcome != fallback-success`. The tenant smoke runs over
-      # plain HTTP and stays unconditional.
+      # itself is unreachable. The convergence gate below always remains
+      # mandatory: a public health response cannot prove every machine
+      # received the intended image and config.
       - name: Deploy
         id: deploy
         env:
@@ -105,10 +169,6 @@ jobs:
           exit 1
 
       - name: Verify all app machines are on same image
-        # Skipped on the fallback path because this gate also goes through
-        # the Fly machines API — if that's what timed out above, it'll time
-        # out again here.
-        if: steps.deploy.outputs.deploy_outcome != 'fallback-success'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
@@ -116,27 +176,58 @@ jobs:
           # surfaces as a real failure instead of being misread as
           # "no running web/worker machines."
           set -eo pipefail
-          echo "Checking that all app machines are running the same image..."
+          echo "Waiting for all app machines to converge on the same image..."
 
-          # Get image digests for started machines (web + worker process groups)
-          images=$(flyctl machines list --json | \
-            jq -r '[.[] | select((.config.metadata.fly_process_group == "web" or .config.metadata.fly_process_group == "worker") and .state == "started") | .image_ref.digest] | unique')
-
-          count=$(echo "$images" | jq 'length')
-
-          if [ "$count" -eq 0 ]; then
-            echo "❌ No running web/worker machines found"
-            flyctl machines list
+          # Verify the deployed value matches the checked-in kill-switch value.
+          # This keeps the gate useful for both queue enablement and an
+          # intentional emergency disablement.
+          expected_queue=$(sed -nE 's/^[[:space:]]*PUBLISHER_CRAWL_QUEUE_ENABLED[[:space:]]*=[[:space:]]*"(true|false)"[[:space:]]*$/\1/p' fly.toml)
+          if [ "$expected_queue" != "true" ] && [ "$expected_queue" != "false" ]; then
+            echo "::error::fly.toml must define PUBLISHER_CRAWL_QUEUE_ENABLED exactly once as \"true\" or \"false\""
             exit 1
           fi
 
-          if [ "$count" -ne 1 ]; then
-            echo "❌ Deploy split detected! Machines are running different images:"
-            flyctl machines list
-            exit 1
-          fi
+          # `flyctl deploy` can return while an immediate replacement is still
+          # transitioning through `replacing`. Require every web/worker machine
+          # to be started and on one digest, but give Fly a bounded settle window.
+          for attempt in $(seq 1 12); do
+            if ! machines=$(flyctl machines list --json); then
+              echo "attempt ${attempt}/12: Fly Machines API request failed"
+            elif ! summary=$(echo "$machines" | jq -ce --arg expected_queue "$expected_queue" '
+                if type != "array" then error("expected Fly machines JSON array") else . end |
+                [.[] | select(.config.metadata.fly_process_group == "web" or .config.metadata.fly_process_group == "worker")] |
+                {
+                  total: length,
+                  started: ([.[] | select(.state == "started")] | length),
+                  web: ([.[] | select(.config.metadata.fly_process_group == "web")] | length),
+                  worker: ([.[] | select(.config.metadata.fly_process_group == "worker")] | length),
+                  queue_matching: ([.[] | select(.config.env.PUBLISHER_CRAWL_QUEUE_ENABLED == $expected_queue)] | length),
+                  images: ([.[] | select(.state == "started") | .image_ref.digest] | unique)
+                }'); then
+              echo "attempt ${attempt}/12: invalid Fly Machines API response"
+            else
+              total=$(echo "$summary" | jq -r '.total')
+              started=$(echo "$summary" | jq -r '.started')
+              web=$(echo "$summary" | jq -r '.web')
+              worker=$(echo "$summary" | jq -r '.worker')
+              queue_matching=$(echo "$summary" | jq -r '.queue_matching')
+              image_count=$(echo "$summary" | jq -r '.images | length')
 
-          echo "✅ All web/worker machines running the same image"
+              echo "attempt ${attempt}/12: total=${total} started=${started} web=${web} worker=${worker} queue_expected=${expected_queue} queue_matching=${queue_matching} image_count=${image_count}"
+              if [ "$web" -ge 2 ] && [ "$worker" -ge 1 ] && \
+                [ "$started" -eq "$total" ] && [ "$queue_matching" -eq "$total" ] && \
+                [ "$image_count" -eq 1 ]; then
+                echo "✅ All ${started} web/worker machines are started on one image with crawl queue=${expected_queue}"
+                exit 0
+              fi
+            fi
+
+            if [ "$attempt" -lt 12 ]; then sleep 15; fi
+          done
+
+          echo "❌ App machines did not converge within 180 seconds"
+          flyctl machines list
+          exit 1
 
       # Smoke each training-agent tenant URL after the rolling restart.
       # Catches production-only failures that don't surface in CI: SDK
@@ -236,14 +327,14 @@ jobs:
           fi
 
       - name: Setup Node.js for artifact build
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: "24"
+          cache: "npm"
 
       - name: Install dependencies for artifact build
         env:
-          PUPPETEER_SKIP_DOWNLOAD: 'true'
+          PUPPETEER_SKIP_DOWNLOAD: "true"
         run: npm ci
 
       - name: Publish latest artifacts to R2
@@ -287,14 +378,14 @@ jobs:
           # Capture the deploy-outcome we computed so the artifact is
           # self-describing in 30 days.
           echo "deploy_outcome=${{ steps.deploy.outputs.deploy_outcome }}" > /tmp/forensics/summary.txt
-          echo "github_sha=${{ github.sha }}" >> /tmp/forensics/summary.txt
+          echo "github_sha=${{ github.event.workflow_run.head_sha }}" >> /tmp/forensics/summary.txt
           echo "github_run_id=${{ github.run_id }}" >> /tmp/forensics/summary.txt
           echo "note=fly-logs-tail.txt filtered for common secret shapes (Bearer/sk-/wos_/JWT/etc). Not exhaustive — treat as read-only." >> /tmp/forensics/summary.txt
           ls -la /tmp/forensics/
 
       - name: Upload Fly forensics
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: fly-forensics-${{ github.run_id }}
           path: /tmp/forensics/

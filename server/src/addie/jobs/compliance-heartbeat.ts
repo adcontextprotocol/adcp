@@ -11,7 +11,10 @@ import {
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
   badgeEligibleVersionsForTargetSelection,
+  hasTrustworthyComplianceTarget,
+  HOSTED_TARGET_DISCOVERY_TIMEOUT_MS,
   selectComplianceTargetForAgentSelection,
+  storedComplianceTargetMatchesObservedProfile,
   type ComplyOptions,
   type ComplianceTargetSelection,
 } from '../services/compliance-testing.js';
@@ -66,7 +69,11 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   // so a mid-loop process crash re-queues the agent after this TTL rather than
   // waiting the full check_interval (default 12 h).
   const urls = agentsDue.map(a => a.agent_url);
-  const lockSeconds = urls.length * (HOSTED_FULL_COMPLIANCE_TIMEOUT_MS / 1000) + 300;
+  // Each agent has two bounded capability pre-discoveries: target selection,
+  // then hosted auth defaults inside comply(). Account for both explicitly so
+  // the lock remains valid for the documented worst case.
+  const perAgentBudgetMs = HOSTED_FULL_COMPLIANCE_TIMEOUT_MS + (2 * HOSTED_TARGET_DISCOVERY_TIMEOUT_MS);
+  const lockSeconds = urls.length * (perAgentBudgetMs / 1000) + 300;
   await query(
     `INSERT INTO agent_compliance_status (agent_url, status, last_checked_at)
      SELECT unnest($1::text[]), 'unknown', NOW() + make_interval(secs => $2)
@@ -77,7 +84,11 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   for (const agent of agentsDue) {
     const startTime = Date.now();
     let runTarget = fallbackComplianceTarget;
-    let runTargetSelection: ComplianceTargetSelection = { target: fallbackComplianceTarget, confirmed: false };
+    let runTargetSelection: ComplianceTargetSelection = {
+      target: fallbackComplianceTarget,
+      confirmed: false,
+      source: 'default',
+    };
     try {
       const auth = await complianceDb.resolveOwnerAuth(agent.agent_url);
       const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `heartbeat:${agent.agent_url}` });
@@ -88,15 +99,39 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         auth: sdkAuth,
         userAgent: AAO_UA_COMPLIANCE,
       };
+      const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agent.agent_url);
 
       runTargetSelection = await selectComplianceTargetForAgentSelection(
         agent.agent_url,
         complyOptions,
         fallbackComplianceTarget,
         'canonical',
+        seededSupportedVersions,
       );
+      if (!hasTrustworthyComplianceTarget(runTargetSelection)) {
+        logger.warn(
+          { agentUrl: agent.agent_url, seededSupportedVersions },
+          'Compliance heartbeat skipped because no trustworthy target could be selected',
+        );
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        result.skipped++;
+        continue;
+      }
       runTarget = runTargetSelection.target;
       const complianceResult = await comply(agent.agent_url, complyOptions, runTarget);
+      if (!storedComplianceTargetMatchesObservedProfile(runTargetSelection, complianceResult.agent_profile)) {
+        logger.warn(
+          {
+            agentUrl: agent.agent_url,
+            selectedTarget: runTarget.requested,
+            observedSupportedVersions: complianceResult.agent_profile?.adcp_supported_versions,
+          },
+          'Compliance heartbeat skipped because the live run superseded its stored target',
+        );
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        result.skipped++;
+        continue;
+      }
 
       logOutboundRequest({
         agent_url: agent.agent_url,
@@ -200,6 +235,29 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      // Errors before a compatible target is selected are infrastructure or
+      // discovery failures, not evidence that the agent failed compliance.
+      // Never let the catch path turn the platform default into a canonical
+      // public verdict. Best-effort lock release preserves a concurrent owner
+      // refresh via the compare-and-set predicate in the database method.
+      if (!hasTrustworthyComplianceTarget(runTargetSelection)) {
+        logger.warn(
+          { agentUrl: agent.agent_url, err: error },
+          'Compliance heartbeat skipped after target selection remained inconclusive',
+        );
+        try {
+          await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        } catch (deferError) {
+          logger.error(
+            { agentUrl: agent.agent_url, deferError },
+            'Failed to defer compliance heartbeat after inconclusive target selection',
+          );
+        }
+        result.skipped++;
+        continue;
+      }
+
       const isAgentTimeout = /timed?\s*out/i.test(errorMessage);
       const isSavedAuthConfigError = /step\.auth\.basic\.username must be a non-empty string/i.test(errorMessage);
       const capsError = classifyCapabilityResolutionError(error);
@@ -272,16 +330,20 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
 
         if (badgeEligibleAdcpVersions.length > 0) {
           const eligibleBadgeVersions = new Set(badgeEligibleAdcpVersions);
+          const badgeMetadata = await complianceDb.getRegistryMetadata(agent.agent_url);
+          const expectedBadgeGeneration = badgeMetadata?.badge_requalification_generation ?? '0';
           const existingBadges = await complianceDb.getBadgesForAgent(agent.agent_url);
           const revoked = [];
           for (const badge of existingBadges) {
             if (!eligibleBadgeVersions.has(badge.adcp_version)) continue;
-            await complianceDb.revokeBadge(
+            const didRevoke = await complianceDb.revokeBadge(
               agent.agent_url,
               badge.role,
               badge.adcp_version,
               'Authoritative compliance run failed before storyboard verification',
+              expectedBadgeGeneration,
             );
+            if (!didRevoke) continue;
             revoked.push({
               role: badge.role,
               reason: 'Authoritative compliance run failed',

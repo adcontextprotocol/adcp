@@ -33,6 +33,7 @@ vi.mock('../../src/middleware/auth.js', () => {
   return {
     requireAuth: requireAuthMock,
     requireAdmin: passthrough,
+    requireTenantAdminForOrganization: passthrough,
     optionalAuth: (req: any, _res: any, next: any) => { setTestUser(req); next(); },
     requireCompanyAccess: passthrough,
     requireActiveSubscription: passthrough,
@@ -40,12 +41,11 @@ vi.mock('../../src/middleware/auth.js', () => {
     requireRole: () => passthrough,
     createRequireWorkingGroupLeader: () => passthrough,
     createRequireWorkingGroupMember: () => passthrough,
-    refuseCrossTenantAdminApiKey: () => false,
     refuseAnyApiKeyOnGlobalAdmin: () => false,
     // Composite chain for /api/admin/users routes — see auth.ts.
     // Captured-at-load-time references mean the per-export mocks above
     // can't propagate into the production array, so re-build it here.
-    requireGlobalAdmin: [requireAuthMock, passthrough, passthrough],
+    requireGlobalAdmin: [requireAuthMock, passthrough],
     invalidateSessionCache: vi.fn(),
     invalidateBanCache: vi.fn(),
     invalidateSessionsForUsers: vi.fn(),
@@ -122,6 +122,7 @@ describe('My Content — body, admin scope, status, delete', () => {
   const ELIGIBLE_ORG_ID = 'org_my_content_professional';
   const INELIGIBLE_USER_ID = 'user_my_content_ineligible';
   const RATE_LIMIT_USER_ID = 'user_mc_ratelimit_test';
+  const ESCALATION_SUMMARY_PREFIX = 'mc-test-perspective-cleanup';
 
   async function ensureContentSubmissionEligibleUser(userId: string, email: string) {
     await pool.query(
@@ -190,6 +191,7 @@ describe('My Content — body, admin scope, status, delete', () => {
   }, 30000);
 
   afterAll(async () => {
+    await pool.query(`DELETE FROM addie_escalations WHERE summary LIKE $1`, [`${ESCALATION_SUMMARY_PREFIX}%`]);
     await pool.query(`DELETE FROM content_authors WHERE perspective_id IN (SELECT id FROM perspectives WHERE slug LIKE 'mc-test-%')`);
     await pool.query(`DELETE FROM perspectives WHERE slug LIKE 'mc-test-%'`);
     await pool.query(
@@ -217,6 +219,7 @@ describe('My Content — body, admin scope, status, delete', () => {
     adminState.isAdmin = false;
     authState.userId = USER_ID;
     authState.email = 'mc@example.com';
+    await pool.query(`DELETE FROM addie_escalations WHERE summary LIKE $1`, [`${ESCALATION_SUMMARY_PREFIX}%`]);
     await pool.query(`DELETE FROM content_authors WHERE perspective_id IN (SELECT id FROM perspectives WHERE slug LIKE 'mc-test-%')`);
     await pool.query(`DELETE FROM perspectives WHERE slug LIKE 'mc-test-%'`);
   });
@@ -814,6 +817,87 @@ describe('My Content — body, admin scope, status, delete', () => {
   });
 
   describe('DELETE /api/admin/content/:id', () => {
+    it('resolves linked open escalations before deleting the perspective', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-admin-delete-escalation',
+        title: 'delete and resolve escalation',
+        status: 'published',
+        proposerUserId: OTHER_USER_ID,
+      });
+      const escalation = await pool.query(
+        `INSERT INTO addie_escalations
+           (category, summary, status, perspective_id, perspective_slug)
+         VALUES ('needs_human_action', $1, 'open', $2, 'mc-test-admin-delete-escalation')
+         RETURNING id`,
+        [`${ESCALATION_SUMMARY_PREFIX}-delete`, id]
+      );
+
+      await request(app).delete(`/api/admin/content/${id}`).expect(200);
+
+      const result = await pool.query(
+        `SELECT status, resolved_by, resolution_notes, perspective_id
+         FROM addie_escalations WHERE id = $1`,
+        [escalation.rows[0].id]
+      );
+      expect(result.rows[0]).toMatchObject({
+        status: 'resolved',
+        resolved_by: USER_ID,
+        resolution_notes: 'Auto-resolved: content deleted by admin',
+        perspective_id: null,
+      });
+    });
+
+    it('rolls back escalation resolution when deleting the perspective fails', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-admin-delete-rollback',
+        title: 'failed delete keeps escalation open',
+        status: 'published',
+        proposerUserId: OTHER_USER_ID,
+      });
+      const escalation = await pool.query(
+        `INSERT INTO addie_escalations
+           (category, summary, status, perspective_id, perspective_slug)
+         VALUES ('needs_human_action', $1, 'open', $2, 'mc-test-admin-delete-rollback')
+         RETURNING id`,
+        [`${ESCALATION_SUMMARY_PREFIX}-delete-rollback`, id]
+      );
+
+      await pool.query(`
+        CREATE OR REPLACE FUNCTION mc_test_reject_perspective_delete()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF OLD.slug = 'mc-test-admin-delete-rollback' THEN
+            RAISE EXCEPTION 'intentional perspective delete failure';
+          END IF;
+          RETURN OLD;
+        END;
+        $$;
+        DROP TRIGGER IF EXISTS mc_test_reject_perspective_delete ON perspectives;
+        CREATE TRIGGER mc_test_reject_perspective_delete
+          BEFORE DELETE ON perspectives
+          FOR EACH ROW EXECUTE FUNCTION mc_test_reject_perspective_delete();
+      `);
+
+      try {
+        await request(app).delete(`/api/admin/content/${id}`).expect(500);
+
+        const perspective = await pool.query(`SELECT id FROM perspectives WHERE id = $1`, [id]);
+        const escalationResult = await pool.query(
+          `SELECT status, resolved_by, resolved_at FROM addie_escalations WHERE id = $1`,
+          [escalation.rows[0].id]
+        );
+        expect(perspective.rows).toHaveLength(1);
+        expect(escalationResult.rows[0]).toMatchObject({
+          status: 'open',
+          resolved_by: null,
+          resolved_at: null,
+        });
+      } finally {
+        await pool.query(`DROP TRIGGER IF EXISTS mc_test_reject_perspective_delete ON perspectives`);
+        await pool.query(`DROP FUNCTION IF EXISTS mc_test_reject_perspective_delete()`);
+      }
+    });
+
     it('deletes linked content while preserving publication history', async () => {
       const id = await insertPerspective({
         slug: 'mc-test-admin-delete-linked',
@@ -861,6 +945,97 @@ describe('My Content — body, admin scope, status, delete', () => {
         await pool.query(`DELETE FROM weekly_digests WHERE id = $1`, [weeklyDigest.rows[0].id]);
         await pool.query(`DELETE FROM build_editions WHERE id = $1`, [buildEdition.rows[0].id]);
         await pool.query(`DELETE FROM moltbook_posts WHERE id = $1`, [moltbookPost.rows[0].id]);
+      }
+    });
+  });
+
+  describe('PUT /api/admin/content/:id/status', () => {
+    it('resolves linked open escalations when an admin archives content', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-admin-archive-escalation',
+        title: 'archive and resolve escalation',
+        status: 'published',
+        proposerUserId: OTHER_USER_ID,
+      });
+      const escalation = await pool.query(
+        `INSERT INTO addie_escalations
+           (category, summary, status, perspective_id, perspective_slug)
+         VALUES ('needs_human_action', $1, 'open', $2, 'mc-test-admin-archive-escalation')
+         RETURNING id`,
+        [`${ESCALATION_SUMMARY_PREFIX}-archive`, id]
+      );
+
+      const response = await request(app)
+        .put(`/api/admin/content/${id}/status`)
+        .send({ status: 'archived' })
+        .expect(200);
+
+      expect(response.body.status).toBe('archived');
+      const result = await pool.query(
+        `SELECT status, resolved_by, resolution_notes, perspective_id
+         FROM addie_escalations WHERE id = $1`,
+        [escalation.rows[0].id]
+      );
+      expect(result.rows[0]).toMatchObject({
+        status: 'resolved',
+        resolved_by: USER_ID,
+        resolution_notes: 'Auto-resolved: content archived by admin',
+        perspective_id: id,
+      });
+    });
+
+    it('rolls back the archive when escalation resolution fails', async () => {
+      const id = await insertPerspective({
+        slug: 'mc-test-admin-archive-rollback',
+        title: 'failed escalation cleanup keeps content published',
+        status: 'published',
+        proposerUserId: OTHER_USER_ID,
+      });
+      const escalation = await pool.query(
+        `INSERT INTO addie_escalations
+           (category, summary, status, perspective_id, perspective_slug)
+         VALUES ('needs_human_action', $1, 'open', $2, 'mc-test-admin-archive-rollback')
+         RETURNING id`,
+        [`${ESCALATION_SUMMARY_PREFIX}-archive-rollback`, id]
+      );
+
+      await pool.query(`
+        CREATE OR REPLACE FUNCTION mc_test_reject_escalation_resolution()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF OLD.summary = 'mc-test-perspective-cleanup-archive-rollback'
+             AND NEW.status = 'resolved' THEN
+            RAISE EXCEPTION 'intentional escalation resolution failure';
+          END IF;
+          RETURN NEW;
+        END;
+        $$;
+        DROP TRIGGER IF EXISTS mc_test_reject_escalation_resolution ON addie_escalations;
+        CREATE TRIGGER mc_test_reject_escalation_resolution
+          BEFORE UPDATE ON addie_escalations
+          FOR EACH ROW EXECUTE FUNCTION mc_test_reject_escalation_resolution();
+      `);
+
+      try {
+        await request(app)
+          .put(`/api/admin/content/${id}/status`)
+          .send({ status: 'archived' })
+          .expect(500);
+
+        const perspective = await pool.query(`SELECT status FROM perspectives WHERE id = $1`, [id]);
+        const escalationResult = await pool.query(
+          `SELECT status, resolved_by, resolved_at FROM addie_escalations WHERE id = $1`,
+          [escalation.rows[0].id]
+        );
+        expect(perspective.rows[0].status).toBe('published');
+        expect(escalationResult.rows[0]).toMatchObject({
+          status: 'open',
+          resolved_by: null,
+          resolved_at: null,
+        });
+      } finally {
+        await pool.query(`DROP TRIGGER IF EXISTS mc_test_reject_escalation_resolution ON addie_escalations`);
+        await pool.query(`DROP FUNCTION IF EXISTS mc_test_reject_escalation_resolution()`);
       }
     });
   });

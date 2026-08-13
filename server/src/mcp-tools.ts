@@ -981,7 +981,7 @@ export class MCPToolHandler {
 
           const result = canonical
             ? await client.getAdcpCapabilities({})
-            : await client.executeTask("list_creative_formats", params);
+            : await client.listCreativeFormatsLegacy(params);
 
           if ('success' in result && !result.success) {
             return {
@@ -1040,7 +1040,7 @@ export class MCPToolHandler {
           }], withSdkSafeTransport({}));
           const client = multiClient.agent("query");
 
-          const result = await client.executeTask("list_authorized_properties", {});
+          const result = await client.executeTaskLegacy("list_authorized_properties", {});
 
           if (!result.success) {
             return {

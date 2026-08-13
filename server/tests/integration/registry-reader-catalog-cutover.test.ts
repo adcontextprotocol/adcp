@@ -226,6 +226,40 @@ describe('Registry reader catalog cutover — catalog seeds + override layer', (
       expect(props[0].tags).toEqual(['news']);
     });
 
+    it('getPropertiesForAgentDomain scopes a network agent to one catalog publisher', async () => {
+      await publisherDb.upsertAdagentsCache({
+        domain: PUB_A,
+        manifest: manifest(
+          [{
+            url: AGENT_Y,
+            authorization_type: 'inline_properties',
+            properties: [{
+              property_id: 'cutover-home-a',
+              property_type: 'website',
+              name: 'Acme Home',
+              identifiers: [{ type: 'domain', value: PUB_A }],
+            }],
+          }],
+          [{
+            property_id: 'cutover-home-a',
+            property_type: 'website',
+            name: 'Acme Home',
+            identifiers: [{ type: 'domain', value: PUB_A }],
+          }],
+        ),
+      });
+
+      const props = await fedDb.getPropertiesForAgentDomain(AGENT_Y, PUB_A);
+
+      expect(props).toHaveLength(1);
+      expect(props[0]).toMatchObject({
+        publisher_domain: PUB_A,
+        property_id: 'cutover-home-a',
+        name: 'Acme Home',
+      });
+      expect(props.some((property) => property.publisher_domain === PUB_B)).toBe(false);
+    });
+
     it('getPublisherDomainsForAgent surfaces catalog-only per-property rows', async () => {
       const domains = await fedDb.getPublisherDomainsForAgent(AGENT_Y);
       expect(domains).toContain(PUB_B);

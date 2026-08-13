@@ -8,12 +8,12 @@ description: "report_plan_outcome sends action results to the AdCP governance ag
 # report_plan_outcome
 
 <Note>
-**Experimental.** Campaign governance (`sync_plans`, `check_governance`, `report_plan_outcome`, `get_plan_audit_logs`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+**Experimental.** Campaign governance ([`sync_plans`](/docs/governance/campaign/tasks/sync_plans), [`check_governance`](/docs/governance/campaign/tasks/check_governance), `report_plan_outcome`, [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs)) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
 </Note>
 
 Report the outcome of an action to the governance agent. Called by the orchestrator after a seller responds. The report closes the authorization record, but it does not let the caller choose the ledger amount: the governance agent reserves the amount from its own approved check state and retains the seller response for reconciliation and audit.
 
-Sellers do not call this task. They report delivery data via [`check_governance`](./check_governance) with `phase: "delivery"`.
+Sellers do not call this task. They report delivery data via [`check_governance`](/docs/governance/campaign/tasks/check_governance) with `phase: "delivery"`.
 
 ## Seller response (after `create_media_buy`)
 
@@ -67,7 +67,7 @@ Sellers do not call this task. They report delivery data via [`check_governance`
 }
 ```
 
-The governance agent updates its state from the amount it authorized. For a create, when an online purchase execution check approved a narrower `planned_delivery.total_budget`, that seller-side checked amount is authoritative; otherwise the approved intent amount remains reserved. For `update_media_buy`, the intent reserves the buyer-proposed positive-delta ceiling and a successful online execution check may narrow it to the seller-computed `execution_commitment`; the post-update total is never added again as a fresh commitment.
+The governance agent updates its state from the amount it authorized. For a create, when an online purchase execution check approved a narrower `planned_delivery.total_budget`, that seller-side checked amount is authoritative; otherwise the approved intent amount remains reserved. For [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy), the intent reserves the buyer-proposed positive-delta ceiling and a successful online execution check may narrow it to the seller-computed `execution_commitment`; the post-update total is never added again as a fresh commitment.
 
 The transport credential must resolve to the same buyer-side agent URL that made the original approved intent check. The governance agent also requires `purchase_type` to match that intent and allows only one terminal `completed` or `failed` settlement across the intent and execution checks sharing the same opaque action binding. Retrying the identical request with the same `idempotency_key` returns the cached response with `replayed: true`; reusing the key for a different payload is an idempotency conflict.
 
@@ -130,7 +130,7 @@ All monetary inputs MUST be finite and non-negative. Invalid or overflowing valu
 }
 ```
 
-This legacy buyer snapshot is audit evidence only. It does not add delivery spend to the already-recorded commitment; authoritative seller monitoring uses `check_governance` with `phase: "delivery"`.
+This legacy buyer snapshot is audit evidence only. It does not add delivery spend to the already-recorded commitment; authoritative seller monitoring uses [`check_governance`](/docs/governance/campaign/tasks/check_governance) with `phase: "delivery"`.
 
 ### Response (on track)
 
@@ -203,7 +203,7 @@ If the seller rejected the request, report it so the governance agent can update
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `plan_id` | string | Yes | The plan this outcome is for. |
-| `check_id` | string | Conditional | The `check_id` from `check_governance`. Required with `governance_context` for `completed` and `failed` outcomes. A deprecated `delivery` snapshot either supplies both fields as an exact tuple or omits both for the authenticated plan-owner path. |
+| `check_id` | string | Conditional | The `check_id` from [`check_governance`](/docs/governance/campaign/tasks/check_governance). Required with `governance_context` for `completed` and `failed` outcomes. A deprecated `delivery` snapshot either supplies both fields as an exact tuple or omits both for the authenticated plan-owner path. |
 | `idempotency_key` | string | Yes | Stable retry key. An identical replay returns the cached outcome without another ledger mutation; reuse with a different payload is rejected. |
 | `purchase_type` | enum | No | The kind of financial commitment: `media_buy` (default), `rights_license`, `signal_activation`, or `creative_services`. When omitted, the governance agent assumes `media_buy`. |
 | `outcome` | enum | Yes | `completed`, `failed`, or `delivery`. |
@@ -243,15 +243,15 @@ If the seller rejected the request, report it so the governance agent can update
 
 | Code | Recovery | Description |
 |------|----------|-------------|
-| `REFERENCE_NOT_FOUND` | correctable | `plan_id` or `check_id` does not resolve within the authenticated reporter's scope. Verify the identifiers and authenticated buyer; do not probe another buyer's plan. |
-| `VALIDATION_ERROR` | correctable | The exact tuple, purchase type, outcome-dependent fields, idempotency-key format, or monetary evidence is invalid. Correct the named value; for deprecated delivery snapshots supply both `check_id` and `governance_context` or neither. |
-| `IDEMPOTENCY_CONFLICT` | correctable | This reporter already used the key with another canonical payload. Resend the exact original request for replay, or use a fresh key for a genuinely distinct report. |
-| `PERMISSION_DENIED` | correctable | The authenticated reporter is not the buyer that owns the plan or made the original approved intent. Retry only with that buyer identity. |
-| `CONFLICT` | transient | The opaque governed action already has a different terminal settlement. Read the audit trail and accept the existing settlement; do not retry as a second terminal outcome. |
-| `CAMPAIGN_SUSPENDED` | transient | Plan outcome reporting is paused pending human review. Wait for resolution and contact the plan operator if the suspension persists. |
+| [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found) | correctable | `plan_id` or `check_id` does not resolve within the authenticated reporter's scope. Verify the identifiers and authenticated buyer; do not probe another buyer's plan. |
+| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | correctable | The exact tuple, purchase type, outcome-dependent fields, idempotency-key format, or monetary evidence is invalid. Correct the named value; for deprecated delivery snapshots supply both `check_id` and `governance_context` or neither. |
+| [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict) | correctable | This reporter already used the key with another canonical payload. Resend the exact original request for replay, or use a fresh key for a genuinely distinct report. |
+| [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied) | correctable | The authenticated reporter is not the buyer that owns the plan or made the original approved intent. Retry only with that buyer identity. |
+| [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) | transient | The opaque governed action already has a different terminal settlement. Read the audit trail and accept the existing settlement; do not retry as a second terminal outcome. |
+| [`CAMPAIGN_SUSPENDED`](/docs/building/verification/compliance-catalog#error-code-campaign-suspended) | transient | Plan outcome reporting is paused pending human review. Wait for resolution and contact the plan operator if the suspension persists. |
 
 ## Related tasks
 
-- [`check_governance`](./check_governance) -- The governance check that authorized the action
-- [`sync_plans`](./sync_plans) -- Push or update the plan
-- [`get_plan_audit_logs`](./get_plan_audit_logs) -- View plan state and audit trail
+- [`check_governance`](/docs/governance/campaign/tasks/check_governance) -- The governance check that authorized the action
+- [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) -- Push or update the plan
+- [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) -- View plan state and audit trail

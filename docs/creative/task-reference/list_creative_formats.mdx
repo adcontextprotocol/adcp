@@ -14,8 +14,8 @@ Existing 3.x agents MAY continue serving the task for compatibility. New impleme
 | Question | Canonical source |
 |---|---|
 | What formats does a publisher declare? | The publisher's `/.well-known/adagents.json` `formats[]`, with AgenticAdvertising.org community-mirror fallback when the publisher has not adopted |
-| What formats can this sales agent deliver for a product? | `get_products` → `Product.format_options[]` |
-| What can this creative agent build, validate, or preview? | `get_adcp_capabilities` → `creative.supported_formats[]` |
+| What formats can this sales agent deliver for a product? | [`get_products`](/docs/media-buy/task-reference/get_products) → `Product.format_options[]` |
+| What can this creative agent build, validate, or preview? | [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) → `creative.supported_formats[]` |
 
 Sales agents MUST NOT use an agent-global format list as a purchasability promise. Product `format_options[]` is the closed sellable set, and placement declarations may narrow it.
 
@@ -43,7 +43,7 @@ Creative agents advertise stable build routing separately from publisher/product
 }
 ```
 
-The buyer passes `streamhaus_vertical_video` as `target_capability_id` to `build_creative`. The returned manifest carries canonical `format_kind: "video_hosted"`; capability IDs never appear on products or manifests.
+The buyer passes `streamhaus_vertical_video` as `target_capability_id` to [`build_creative`](/docs/creative/task-reference/build_creative). The returned manifest carries canonical `format_kind: "video_hosted"`; capability IDs never appear on products or manifests.
 
 ## Registry reverse discovery
 

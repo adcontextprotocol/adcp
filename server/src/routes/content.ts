@@ -10,9 +10,11 @@
 
 import { Router } from 'express';
 import multer from 'multer';
+import { fileTypeFromBuffer } from 'file-type';
+import sharp from 'sharp';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
-import { contentProposeRateLimiter, contentFetchUrlRateLimiter } from '../middleware/rate-limit.js';
+import { contentProposeRateLimiter, contentFetchUrlRateLimiter, contentAssetUploadRateLimiter } from '../middleware/rate-limit.js';
 import { getPool } from '../db/client.js';
 import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 import { sendChannelMessage } from '../slack/client.js';
@@ -33,6 +35,8 @@ import { checkContentSubmissionTier } from '../services/membership-tiers.js';
 import { normalizePerspectiveExternalUrl } from '../utils/perspective-url.js';
 
 const logger = createLogger('content-routes');
+const MAX_ASSETS_PER_PERSPECTIVE = 100;
+const MAX_ASSET_BYTES_PER_PERSPECTIVE = 100 * 1024 * 1024;
 
 /**
  * In-process per-user submission rate tracker.
@@ -1511,7 +1515,7 @@ export function createContentRouter(): Router {
   });
 
   // POST /api/content/:slug/assets - Upload asset for a perspective
-  router.post('/:slug/assets', requireAuth, (req: any, res: any, next: any) => {
+  router.post('/:slug/assets', requireAuth, contentAssetUploadRateLimiter, (req: any, res: any, next: any) => {
     assetUpload.single('file')(req, res, (err: any) => {
       if (err instanceof multer.MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {
@@ -1543,6 +1547,18 @@ export function createContentRouter(): Router {
         return res.status(400).json({ error: 'Image files must be under 10MB' });
       }
 
+      const detectedType = await fileTypeFromBuffer(file.buffer);
+      if (detectedType?.mime !== file.mimetype) {
+        return res.status(400).json({ error: 'File contents do not match the declared file type' });
+      }
+      if (file.mimetype.startsWith('image/')) {
+        try {
+          await sharp(file.buffer, { limitInputPixels: 24_000_000, failOn: 'error' }).metadata();
+        } catch {
+          return res.status(400).json({ error: 'Image data is invalid or exceeds the 24 megapixel limit' });
+        }
+      }
+
       const pool = getPool();
       const perspResult = await pool.query(
         `SELECT id FROM perspectives WHERE slug = $1`,
@@ -1568,6 +1584,30 @@ export function createContentRouter(): Router {
       }
 
       const sanitizedFilename = file.originalname.replace(/[^\w.\-() ]/g, '_').slice(0, 200);
+      const usageResult = await pool.query(
+        `SELECT COUNT(*)::int AS asset_count,
+                COALESCE(SUM(file_size_bytes), 0)::bigint AS total_bytes,
+                COUNT(*) FILTER (
+                  WHERE ($2 = 'cover_image' AND asset_type = 'cover_image')
+                     OR ($2 <> 'cover_image' AND file_name = $3)
+                )::int AS replacement_count,
+                COALESCE(SUM(file_size_bytes) FILTER (
+                  WHERE ($2 = 'cover_image' AND asset_type = 'cover_image')
+                     OR ($2 <> 'cover_image' AND file_name = $3)
+                ), 0)::bigint AS replacement_bytes
+         FROM perspective_assets
+         WHERE perspective_id = $1`,
+        [perspectiveId, assetType, sanitizedFilename]
+      );
+      const usage = usageResult.rows[0];
+      const projectedCount = Number(usage.asset_count) + (Number(usage.replacement_count) > 0 ? 0 : 1);
+      const projectedBytes = Number(usage.total_bytes) - Number(usage.replacement_bytes) + file.size;
+      if (projectedCount > MAX_ASSETS_PER_PERSPECTIVE || projectedBytes > MAX_ASSET_BYTES_PER_PERSPECTIVE) {
+        return res.status(413).json({
+          error: 'Perspective asset storage limit exceeded',
+          message: 'Each article can store up to 100 files and 100MB of assets.',
+        });
+      }
 
       const asset = await createAsset({
         perspective_id: perspectiveId,

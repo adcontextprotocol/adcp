@@ -322,35 +322,40 @@ export class AgentContextDatabase {
   }
 
   /**
-   * Find an organization that has saved any kind of auth (bearer, OAuth tokens,
-   * or OAuth client-credentials) for the given agent URL. Returns the most
-   * recently updated row's org id, or null if no credentials are saved by any
-   * org. Used by the periodic crawler so its probe runs with owner credentials
-   * when available — keeping a per-org-aware view of `oauth_required` instead
-   * of clobbering it back to `true` on every anonymous heartbeat. When multiple
-   * orgs have independently registered the same agent, the most recently
-   * updated set wins; that matches "freshly-rotated creds take precedence" and
-   * the periodic snapshot is a single shared row anyway.
+   * Find an owning organization that has saved any kind of auth (bearer, OAuth
+   * tokens, or OAuth client-credentials) for the given agent URL. Returns the
+   * most recently updated eligible row's org id, or null if no credentials are
+   * saved by an owning org. Used by the periodic crawler so its probe runs with owner
+   * credentials when available — keeping a per-org-aware view of
+   * `oauth_required` instead of clobbering it back to `true` on every anonymous
+   * heartbeat. A context is eligible only when the same organization registers
+   * the URL in `member_profiles.agents`; this prevents a stale or accidentally
+   * misrouted credential from another tenant from driving the shared probe.
+   * When multiple owning orgs have independently registered the same agent, the
+   * most recently updated set wins; the periodic snapshot is a single shared row.
    */
-  async findOrgWithSavedAuth(agentUrl: string): Promise<string | null> {
+  async findOwnerOrgWithSavedAuth(agentUrl: string): Promise<string | null> {
     const canonicalUrl = requireCanonicalAgentUrl(agentUrl);
     const result = await query<{ organization_id: string }>(
-      `SELECT organization_id
-       FROM agent_contexts
-       WHERE agent_url = $1
+      `SELECT ac.organization_id
+       FROM agent_contexts ac
+       JOIN member_profiles mp
+         ON mp.workos_organization_id = ac.organization_id
+        AND mp.agents @> $2::jsonb
+       WHERE ac.agent_url = $1
          AND (
-           (auth_token_encrypted IS NOT NULL
-            AND auth_token_iv IS NOT NULL)
-           OR (oauth_access_token_encrypted IS NOT NULL
-               AND oauth_access_token_iv IS NOT NULL)
-           OR (oauth_cc_token_endpoint IS NOT NULL
-               AND oauth_cc_client_id IS NOT NULL
-               AND oauth_cc_client_secret_encrypted IS NOT NULL
-               AND oauth_cc_client_secret_iv IS NOT NULL)
+           (ac.auth_token_encrypted IS NOT NULL
+            AND ac.auth_token_iv IS NOT NULL)
+           OR (ac.oauth_access_token_encrypted IS NOT NULL
+               AND ac.oauth_access_token_iv IS NOT NULL)
+           OR (ac.oauth_cc_token_endpoint IS NOT NULL
+               AND ac.oauth_cc_client_id IS NOT NULL
+               AND ac.oauth_cc_client_secret_encrypted IS NOT NULL
+               AND ac.oauth_cc_client_secret_iv IS NOT NULL)
          )
-       ORDER BY updated_at DESC
+       ORDER BY ac.updated_at DESC
        LIMIT 1`,
-      [canonicalUrl],
+      [canonicalUrl, JSON.stringify([{ url: canonicalUrl }])],
     );
     return result.rows[0]?.organization_id ?? null;
   }

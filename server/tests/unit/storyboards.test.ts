@@ -36,6 +36,7 @@ import {
 } from '@adcp/sdk/testing';
 import {
   badgeEligibleVersionsForTargetSelection,
+  storedComplianceTargetMatchesObservedProfile,
 } from '../../src/addie/services/compliance-testing.js';
 
 /**
@@ -234,12 +235,21 @@ describe('wrapper contract', () => {
     expect(selectHostedComplianceTargetForSupportedVersions(['3.1-beta.5']).requested).toBe('3.1-beta.5');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.1-beta.5']).version).toBe('3.1.0-beta.5');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.5']).requested).toBe('3.1-beta.5');
-    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.3']).requested).toBe('3.1-rc.3');
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.4']).requested).toBe('3.1-rc.4');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.1']).requested).toBe('3.1');
     expect(selectHostedComplianceTargetForSupportedVersions(undefined).requested).toBe('3.0');
 
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1-rc.4']).requested).toBe('3.0');
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1-rc.4']).requested).toBe('3.1-rc.4');
+  });
+
+  it('caps hosted aliases at compliance bundles published through npm', () => {
+    expect(hostedComplianceTarget('3.0').version).toBe('3.0.18');
+    expect(hostedComplianceTarget('3.1').version).toBe('3.1.13');
+    expect(hostedComplianceTarget('3.1-beta').version).toBe('3.1.0-beta.7');
+    expect(hostedComplianceTarget('3.1-rc').version).toBe('3.1.0-rc.14');
+    expect(() => hostedComplianceTarget('3.1.12')).toThrow(/not available from a published/);
+    expect(() => hostedComplianceTarget('3.1-rc.15')).toThrow(/not available from a published/);
   });
 
   it('uses canonical hosted targets without silently upgrading 3.0-only agents', () => {
@@ -265,12 +275,30 @@ describe('wrapper contract', () => {
   it('does not treat an unconfirmed fallback target as badge eligible', () => {
     const stable = hostedComplianceTarget('3.0');
 
-    expect(badgeEligibleVersionsForTargetSelection({ target: stable, confirmed: false })).toEqual([]);
+    expect(badgeEligibleVersionsForTargetSelection({ target: stable, confirmed: false, source: 'default' })).toEqual([]);
     expect(badgeEligibleVersionsForTargetSelection(
-      { target: stable, confirmed: false },
+      { target: stable, confirmed: false, source: 'stored' },
       { adcp_supported_versions: ['3.0'] },
     )).toEqual(['3.0']);
-    expect(badgeEligibleVersionsForTargetSelection({ target: stable, confirmed: true })).toEqual(['3.0']);
+    expect(badgeEligibleVersionsForTargetSelection(
+      { target: stable, confirmed: false, source: 'explicit' },
+      { adcp_supported_versions: ['3.0'] },
+    )).toEqual(['3.0']);
+    expect(badgeEligibleVersionsForTargetSelection({ target: stable, confirmed: true, source: 'live' })).toEqual(['3.0']);
+  });
+
+  it('lets the live run profile supersede a stored compliance target before publication', () => {
+    const stable = hostedComplianceTarget('3.0');
+    const storedSelection = { target: stable, confirmed: false, source: 'stored' as const };
+
+    expect(storedComplianceTargetMatchesObservedProfile(
+      storedSelection,
+      { adcp_supported_versions: ['3.0'] },
+    )).toBe(true);
+    expect(storedComplianceTargetMatchesObservedProfile(
+      storedSelection,
+      { adcp_supported_versions: ['3.1'] },
+    )).toBe(false);
   });
 
   it('rejects unsupported compliance targets before path resolution', () => {

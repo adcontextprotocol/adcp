@@ -1,12 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 /**
  * Mid-stream upstream-failure event surface (#4797).
  *
- * When Anthropic's streaming API errors after deltas have already shipped
- * to the user, `processMessageStream` must yield a `stream_error` event
- * before the underlying error throws — so consumers (Slack via bolt-app,
- * web via addie-chat, voice via tavus) can render a recovery banner and
+ * When Anthropic's streaming API errors after deltas have arrived,
+ * `processMessageStream` must yield a `stream_error` event without exposing
+ * the unprocessed partial text. Consumers can render a recovery banner and
  * drop the partial assistant turn from conversation history.
  *
  * The "no retry after content yielded" guard in claude-client.ts is
@@ -95,6 +94,14 @@ beforeEach(() => {
   __setCostTrackerStore(__createInMemoryCostStore());
   // Default stub: keyword-only Error. Per-test overrides flip to APIError.
   streamStubFactory = makeKeywordErrorStub;
+  vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: () => void) => {
+    callback();
+    return 0;
+  }) as typeof setTimeout);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('processMessageStream — mid-stream upstream failure (#4797)', () => {
@@ -111,10 +118,9 @@ describe('processMessageStream — mid-stream upstream failure (#4797)', () => {
       events.push(event);
     }
 
-    // Should have seen the text delta then the stream_error event.
+    // Terminal buffering keeps the unsafe partial delta away from consumers.
     const textEvents = events.filter(e => e.type === 'text');
-    expect(textEvents.length).toBeGreaterThan(0);
-    expect((textEvents[0] as { type: 'text'; text: string }).text).toBe('Sure, the answer is ');
+    expect(textEvents).toHaveLength(0);
 
     const streamErrorEvents = events.filter(e => e.type === 'stream_error');
     expect(streamErrorEvents).toHaveLength(1);
@@ -131,7 +137,7 @@ describe('processMessageStream — mid-stream upstream failure (#4797)', () => {
     expect(errorEvents).toHaveLength(0);
   });
 
-  it('orders stream_error after text deltas (consumer can render in-place recovery)', async () => {
+  it('emits stream_error without leaking buffered text', async () => {
     const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
 
     const eventTypes: string[] = [];
@@ -148,10 +154,9 @@ describe('processMessageStream — mid-stream upstream failure (#4797)', () => {
       // expected
     }
 
-    const textIdx = eventTypes.indexOf('text');
     const streamErrorIdx = eventTypes.indexOf('stream_error');
-    expect(textIdx).toBeGreaterThanOrEqual(0);
-    expect(streamErrorIdx).toBeGreaterThan(textIdx);
+    expect(eventTypes).not.toContain('text');
+    expect(streamErrorIdx).toBeGreaterThanOrEqual(0);
   });
 
   it('also fires for the production-shape APIError (SSE-body overloaded_error, status undefined)', async () => {
@@ -179,5 +184,58 @@ describe('processMessageStream — mid-stream upstream failure (#4797)', () => {
     expect(streamErrorEvents).toHaveLength(1);
     const evt = streamErrorEvents[0] as Extract<StreamEvent, { type: 'stream_error' }>;
     expect(evt.deltasBeforeError).toBe(1);
+  });
+
+  it('safely retries after a buffered tool-input delta', async () => {
+    let streamCalls = 0;
+    streamStubFactory = () => {
+      streamCalls++;
+      if (streamCalls === 2) {
+        const recovered = {
+          stop_reason: 'end_turn',
+          content: [{ type: 'text', text: 'Recovered response.' }],
+          usage: { input_tokens: 4, output_tokens: 3 },
+        };
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield {
+              type: 'content_block_delta',
+              delta: { type: 'text_delta', text: 'Recovered response.' },
+            };
+          },
+          finalMessage: vi.fn().mockResolvedValue(recovered),
+        } as unknown as ReturnType<typeof makeKeywordErrorStub>;
+      }
+      return {
+        async *[Symbol.asyncIterator]() {
+          yield {
+            type: 'content_block_delta',
+            delta: { type: 'input_json_delta', partial_json: '{"query":' },
+          };
+          throw new Error('overloaded_error: Anthropic API is overloaded');
+        },
+        finalMessage: vi.fn().mockResolvedValue(null),
+      } as unknown as ReturnType<typeof makeKeywordErrorStub>;
+    };
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
+    const events: StreamEvent[] = [];
+
+    for await (const event of client.processMessageStream(
+      'use a tool',
+      undefined,
+      undefined,
+      { costScope: { userId: 'test-user-4', tier: 'member_paid' }, maxIterations: 1 },
+    )) {
+      events.push(event);
+    }
+
+    expect(streamCalls).toBe(2);
+    expect(events.filter((event) => event.type === 'retry')).toHaveLength(1);
+    expect(events.filter((event) => event.type === 'stream_error')).toHaveLength(0);
+    expect(events.filter((event) => event.type === 'text')).toEqual([
+      { type: 'text', text: 'Recovered response.' },
+    ]);
+    const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
+    expect(done?.response.text).toBe('Recovered response.');
   });
 });

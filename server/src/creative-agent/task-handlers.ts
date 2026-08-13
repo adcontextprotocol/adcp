@@ -404,7 +404,7 @@ function renderSinglePreview(
   req: PreviewRequest,
   formats: Format[],
   baseUrl: string,
-): { previews: unknown[]; expires_at: string } {
+): { previews: unknown[]; quality_used: 'draft' | 'production'; expires_at: string } {
   if (!req.creative_manifest) {
     throw new PreviewCreativeNotFoundError(`Creative "${req.creative_id ?? 'unknown'}" was not found in this agent's creative library.`);
   }
@@ -464,7 +464,11 @@ function renderSinglePreview(
     };
   });
 
-  return { previews, expires_at: expiresAt.toISOString() };
+  return {
+    previews,
+    quality_used: req.quality ?? 'production',
+    expires_at: expiresAt.toISOString(),
+  };
 }
 
 export function handlePreviewCreative(args: Record<string, unknown>, formats: Format[], baseUrl: string): Record<string, unknown> {
@@ -503,10 +507,12 @@ export function handlePreviewCreative(args: Record<string, unknown>, formats: Fo
       }
       try {
         const result = renderSinglePreview(withBatchDefaults(args, req), formats, baseUrl);
+        const { quality_used, ...response } = result;
         return {
           success: true,
           creative_id: (req.creative_manifest?.creative_id as string) || req.creative_id || `batch_${i}`,
-          response: result,
+          quality_used,
+          response,
         };
       } catch (err) {
         return {

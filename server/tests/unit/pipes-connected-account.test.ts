@@ -7,7 +7,7 @@ const { mockGet, mockDelete, mockGetAccessToken } = vi.hoisted(() => ({
 }));
 
 vi.mock('../../src/auth/workos-client.js', () => ({
-  getWorkos: () => ({
+  getPipesWorkos: () => ({
     get: mockGet,
     delete: mockDelete,
     pipes: { getAccessToken: mockGetAccessToken },

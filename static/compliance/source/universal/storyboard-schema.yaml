@@ -441,6 +441,132 @@
 #   MUST NOT hardcode fixture IDs without a corresponding `fixtures:` block or a
 #   test-kit substitution.)
 #
+# fixture_resolution: object (optional, introduced in 3.2 — runner-owned rules
+#   for satisfying fixture handles through the seller's normal AdCP surface).
+#
+#   Identity fields in `fixtures:` are run-scoped handles. They remain the
+#   caller-selected literal IDs for the `seed` strategy, but a seller is not
+#   required to persist those literals when another explicitly enabled strategy
+#   resolves the handle. Keeping this block separate from `fixtures:` is
+#   intentional: 3.1 runners continue to seed the unchanged fixture payload and
+#   never forward resolution metadata to the seller.
+#
+#   Structure:
+#
+#     fixture_resolution:
+#       products:
+#         - handle: "sports_display_auction"
+#           strategies: [seed, discover]
+#           match:
+#             - path: /delivery_type
+#               operator: equals
+#               value: non_guaranteed
+#             - path: /channels
+#               operator: contains_all
+#               value: [display]
+#             - path: /format_options
+#               operator: any_match
+#               where:
+#                 - path: /format_kind
+#                   operator: equals
+#                   value: image
+#                 - path: /params/width
+#                   operator: equals
+#                   value: 300
+#                 - path: /params/height
+#                   operator: equals
+#                   value: 250
+#       pricing_options:
+#         - product_handle: "sports_display_auction"
+#           handle: "cpm_auction"
+#           strategies: [seed, discover]
+#           match:
+#             - path: /pricing_model
+#               operator: equals
+#               value: cpm
+#             - path: /currency
+#               operator: equals
+#               value: USD
+#             - path: /floor_price
+#               operator: present
+#
+#   handles and parent scope:
+#     - `handle` MUST equal the corresponding identity value in `fixtures:`.
+#     - A pricing-option entry MUST also declare `product_handle`; the pair
+#       `(product_handle, handle)` is its identity because pricing_option_id is
+#       scoped to a product and may repeat across products.
+#     - Two handles MUST NOT bind the same seller entity unless both resolution
+#       entries set `allow_reuse: true`. The default is false so a storyboard
+#       requiring two contrasting products does not accidentally test one row
+#       twice.
+#
+#   strategies: non-empty array containing an ordered subset of:
+#     - seed: call the existing seed_* scenario with the authored literal ID and
+#       fixture exemplar.
+#     - discover: enumerate the normal read surface and match seller-owned
+#       entities. Product and pricing-option discovery uses a fully paginated
+#       `get_products` wholesale request, scoped to the run's resolved sandbox
+#       account when one exists. The request omits `brief`, filters, and `fields`
+#       so matching operates on the complete returned product objects.
+#     - construct: execute the entity-type-specific buyer lifecycle declared by
+#       the runner contract, then apply required force_* transitions. A runner
+#       MUST NOT invent a generic construct path for an entity type whose setup
+#       lifecycle has not been specified.
+#
+#   Backward compatibility: when a fixture has no matching
+#   `fixture_resolution` entry, its effective strategies are `[seed]`. Runners
+#   MUST NOT infer discoverability by treating the fixture object as a generic
+#   subset predicate. Existing fields include illustrative values and
+#   adversarial multi-entity relationships for which that inference would
+#   weaken or change the authored test.
+#
+#   match: non-empty array required when `strategies` includes `discover`.
+#   Every clause has an RFC 6901 `path` relative to the candidate entity and an
+#   operator from the following closed set:
+#     - equals: candidate value is JSON-deep-equal to `value`.
+#     - present: path resolves to a non-null value; `value` and `where` omitted.
+#     - contains_all: candidate array contains every JSON-deep-equal item in
+#       the `value` array; order is irrelevant.
+#     - any_match: candidate path is an array and at least one member satisfies
+#       every nested clause in non-empty `where`; `value` omitted.
+#     - canonical_format_satisfies: candidate format declaration at `path`
+#       satisfies the canonical format requirement in `value` using the same
+#       directional algorithm as the `canonical_format_satisfaction` check.
+#   Unknown operators are an authoring error, not a forward-compatible skip.
+#
+#   strategy disposition:
+#     - unavailable: an unadvertised seed scenario, no qualifying discovery
+#       candidate, or an unavailable construct prerequisite advances to the next
+#       declared strategy.
+#     - failed: a strategy the seller advertises or begins returns a transport,
+#       schema, protocol, pagination, or setup failure. The fixture resolution
+#       fails immediately; the runner MUST NOT fall back and hide the failure.
+#     - resolved: the handle binds to the seller identity and is pinned for the
+#       full run.
+#     - unsatisfied: every declared strategy was unavailable. The storyboard
+#       grades `fixture_unsatisfied`, not passed.
+#
+#   Discovery selection is deterministic. After excluding candidates already
+#   pinned to non-reusable handles, the runner sorts matches by UTF-8 bytewise
+#   seller identity (product_id; then product_id + U+0000 + pricing_option_id
+#   for pricing options) and selects the first. Response order is never the
+#   tie-breaker. An empty, valid result is an unavailable strategy; a malformed,
+#   rejected, incomplete-without-a-usable-continuation, or transport-failed
+#   discovery response is a conformance failure.
+#
+#   handle substitution: after the whole fixture dependency graph resolves,
+#   runners replace authored handles only in request fields whose resolved JSON
+#   Schema carries the matching `x-entity` annotation. Replacement is exact —
+#   handles embedded in larger strings are not rewritten. Product pricing-option
+#   handles resolve against the sibling/ancestor product binding; an ambiguous
+#   unscoped occurrence is an authoring failure. This translation applies to
+#   normal task calls and comply_test_controller force/simulate calls. The agent
+#   never sees the authored handle when discovery or construction supplied a
+#   seller-issued identity.
+#
+#   See runner-output-contract.yaml > fixture_resolution_result for evidence and
+#   `fixture_unsatisfied` grading. See governance decision DR-0010.
+#
 # --- Test kit flavors ---
 #
 # Files under `static/compliance/source/test-kits/` come in two shapes. The

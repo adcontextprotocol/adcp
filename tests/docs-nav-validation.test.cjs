@@ -7,6 +7,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
 const DOCS_JSON = path.join(__dirname, '../docs.json');
 
@@ -59,6 +60,20 @@ function collectGroups(node) {
     if (node.pages) groups.push(...collectGroups(node.pages));
   }
   return groups;
+}
+
+function isDirectSlackInvite(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'join.slack.com';
+  } catch {
+    return false;
+  }
+}
+
+function containsDirectSlackInvite(content) {
+  const urls = content.match(/https?:\/\/[^\s)\]>'\"]+/g) || [];
+  return urls.some(isDirectSlackInvite);
 }
 
 // --- Run tests ---
@@ -215,6 +230,124 @@ test('page files belong to only one version', () => {
   }
 });
 
+test('live docs route Slack invitations through the joining guide', () => {
+  const liveVersion = navigation.versions.find(version => version.default)
+    || navigation.versions[0];
+  const directInvitePages = [];
+
+  for (const page of collectPages(liveVersion.groups).filter(page => page.startsWith('docs/'))) {
+    if (page === 'docs/community/joining-slack') continue;
+    const filePath = fs.existsSync(path.join(rootDir, `${page}.mdx`))
+      ? path.join(rootDir, `${page}.mdx`)
+      : path.join(rootDir, `${page}.md`);
+    const content = fs.readFileSync(filePath, 'utf8');
+    if (containsDirectSlackInvite(content)) directInvitePages.push(page);
+  }
+
+  if (directInvitePages.length > 0) {
+    throw new Error(
+      `Direct Slack invites bypass the joining guide: ${directInvitePages.join(', ')}`
+    );
+  }
+
+  const currentEntryPoints = [
+    'CHARTER.md',
+    'CONTRIBUTORS.md',
+    'docs.json',
+    'server/public/dashboard.html',
+    'server/public/dashboard-membership.html',
+  ];
+  const directInviteEntryPoints = currentEntryPoints.filter(relativePath => (
+    containsDirectSlackInvite(fs.readFileSync(path.join(rootDir, relativePath), 'utf8'))
+  ));
+  if (directInviteEntryPoints.length > 0) {
+    throw new Error(
+      `Slack entry points bypass the joining guide: ${directInviteEntryPoints.join(', ')}`
+    );
+  }
+
+  // Mintlify temporarily redirects live routes to immutable 3.1.2 snapshots.
+  // Its global custom-script support lets us repair stale invite anchors at
+  // render time without mutating those release artifacts.
+  const recoveryScript = fs.readFileSync(
+    path.join(rootDir, 'docs/slack-invite-recovery.js'),
+    'utf8'
+  );
+  const loadRecoveryHarness = routePath => {
+    const directInvite = 'https://join.slack.com/t/agenticads/shared_invite/example';
+    const makeElement = (href = directInvite, text = '') => ({
+      nodeType: 1,
+      href,
+      textNodes: text ? [{ nodeValue: text }] : [],
+      matches: selector => (
+        selector === 'a[href^="https://join.slack.com/"]' && isDirectSlackInvite(href)
+      ),
+      querySelectorAll: () => [],
+    });
+    const initialAnchor = makeElement();
+    const document = {
+      readyState: 'complete',
+      documentElement: {},
+      textNodes: [],
+      querySelectorAll: () => [initialAnchor],
+      createTreeWalker: root => {
+        let index = 0;
+        return { nextNode: () => (root.textNodes || [])[index++] || null };
+      },
+    };
+    let observerCallback;
+    class MutationObserver {
+      constructor(callback) { observerCallback = callback; }
+      observe() {}
+    }
+    const window = { location: { pathname: routePath } };
+    vm.runInNewContext(recoveryScript, {
+      window,
+      document,
+      MutationObserver,
+      Node: { ELEMENT_NODE: 1, TEXT_NODE: 3 },
+      NodeFilter: { SHOW_TEXT: 4 },
+    });
+    return {
+      directInvite,
+      initialAnchor,
+      makeElement,
+      navigate(pathname) { window.location.pathname = pathname; },
+      add(node) { observerCallback([{ addedNodes: [node] }]); },
+    };
+  };
+
+  const guideUrl = 'https://docs.adcontextprotocol.org/docs/community/joining-slack';
+  const harness = loadRecoveryHarness('/dist/docs/3.1.2/intro');
+  if (harness.initialAnchor.href !== guideUrl) {
+    throw new Error('Snapshot pages must rewrite their direct Slack invite to the recovery guide');
+  }
+
+  const lookalikeUrl = 'https://attacker.example/?next=https://join.slack.com/t/example';
+  const lookalikeAnchor = harness.makeElement(lookalikeUrl);
+  harness.add(lookalikeAnchor);
+  if (lookalikeAnchor.href !== lookalikeUrl) {
+    throw new Error('Slack invite recovery must not rewrite URLs on unrelated hosts');
+  }
+
+  harness.navigate('/dist/docs/3.1.2/community/joining-slack');
+  const guideContent = harness.makeElement(harness.directInvite, 'For AAO members only');
+  harness.add(guideContent);
+  if (guideContent.href !== harness.directInvite) {
+    throw new Error('SPA navigation to the joining guide must preserve its direct Slack invite');
+  }
+  if (guideContent.textNodes[0].nodeValue.includes('AAO members')) {
+    throw new Error('The joining guide must repair legacy organization terminology');
+  }
+
+  harness.navigate('/dist/docs/3.1.2/intro');
+  const introContent = harness.makeElement();
+  harness.add(introContent);
+  if (introContent.href !== guideUrl) {
+    throw new Error('SPA navigation away from the joining guide must resume invite rewriting');
+  }
+});
+
 // Emergency fallback while Mintlify omits file-backed docs/** routes.
 // Remove this invariant with the temporary redirects once live files publish again.
 test('temporary snapshot redirects cover every available live page', () => {
@@ -247,6 +380,7 @@ test('temporary snapshot redirects cover every available live page', () => {
     'docs/reference/migration/cross-role-governance-enforcement',
     'docs/protocol/language-and-localization',
     'docs/protocol/sync_agent_notification_configs',
+    'docs/accounts/provisioning-walkthrough',
     'docs/creative/channels/radio',
     'docs/brand-protocol/tasks/search_brands',
   ];

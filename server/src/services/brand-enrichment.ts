@@ -158,7 +158,10 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
 
     // Remove the variant from brands (it's just a regional redirect)
     try {
-      await brandDb.deleteDiscoveredBrand(domain);
+      await brandDb.deleteDiscoveredBrand(domain, {
+        actor_user_id: 'system:brand-classifier',
+        source: 'classifier_variant_cleanup',
+      });
     } catch {
       // May not exist, that's fine
     }
@@ -235,9 +238,15 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
     // Apply classification fields if available
     ...(classification ? {
       keller_type: classification.keller_type,
-      house_domain: classification.house_domain || undefined,
+      // The classifier owns this field: null is an explicit decision to
+      // clear a stale hierarchy edge, while omission preserves it.
+      house_domain: classification.house_domain,
       parent_brand: classification.parent_brand || undefined,
       canonical_domain: classification.canonical_domain,
+      house_domain_audit: {
+        actor_user_id: 'system:brand-classifier',
+        source: 'classifier',
+      },
       classification: {
         confidence: classification.confidence,
         reasoning: classification.reasoning,
@@ -616,6 +625,10 @@ export async function expandHouse(houseDomain: string, options: {
         keller_type: brand.keller_type || 'sub_brand',
         house_domain: houseDomain,
         parent_brand: houseName,
+        house_domain_audit: {
+          actor_user_id: 'system:house-expansion',
+          source: 'house_expansion',
+        },
       });
       seeded++;
       existingBrands.add(domain);

@@ -558,6 +558,19 @@
         return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
+    function safeHttpsUrl(value) {
+        try {
+            const parsed = new URL(String(value));
+            return parsed.protocol === 'https:' ? parsed.href : null;
+        } catch {
+            return null;
+        }
+    }
+
+    function agentToolCount(agent) {
+        return Number(agent?.capabilities?.tools_count ?? agent?.health?.tools_count) || 0;
+    }
+
     window.addEventListener('DOMContentLoaded', async () => {
         handleRoute();
         window.addEventListener('hashchange', handleRoute);
@@ -692,7 +705,7 @@
 
         container.innerHTML = filtered.map(agent => {
             const agentSlug = agent.name.toLowerCase().replace(/\s+/g, '-');
-            const toolCount = agent.capabilities?.tools_count || 0;
+            const toolCount = agentToolCount(agent);
 
             let metaHtml = `
                 <div class="meta-item">
@@ -967,7 +980,7 @@
                                 <div class="compliance-badge__title">${hasCoreTools ? 'AdCP sales agent' : 'Incomplete implementation'}</div>
                                 <div class="compliance-badge__subtitle">
                                     ${capLabels.length > 0 ? capLabels.join(' &middot; ') : 'Implements ' + coreImplemented.length + ' tools'}
-                                    &middot; ${coreImplemented.length + optionalImplemented.length} tools
+                                    &middot; ${agentToolCount(agentWithCaps)} tools
                                 </div>
                             </div>
                         </div>
@@ -1079,7 +1092,7 @@
                     <details>
                         <summary class="detail-section__summary">
                             <span class="detail-section__arrow">&#9654;</span>
-                            Tools (${Number(agentWithCaps?.capabilities?.tools_count) || 0})
+                            Tools (${agentToolCount(agentWithCaps)})
                         </summary>
                         <div id="tools-section" class="detail-section__content"><div class="loading">Loading tools...</div></div>
                     </details>
@@ -1149,18 +1162,19 @@
             const allAgents = data.agents || data;
             const agentWithCaps = allAgents.find(a => a.url === agent.url);
 
-            if (!agentWithCaps || !agentWithCaps.capabilities || agentWithCaps.capabilities.tools_count === 0) {
+            const toolCount = agentToolCount(agentWithCaps);
+            if (toolCount === 0) {
                 section.innerHTML = `<div class="property-section-small">No tools discovered yet.</div>`;
                 return;
             }
 
-            const tools = agentWithCaps.capabilities.tools || [];
+            const tools = agentWithCaps?.capabilities?.tools || [];
 
             if (tools.length === 0) {
                 section.innerHTML = `
                     <div class="tools-summary">
-                        <span class="tools-summary__count">Total tools: ${agentWithCaps.capabilities.tools_count}</span>
-                        <p class="tools-summary__desc">This agent exposes ${agentWithCaps.capabilities.tools_count} tools via ${agent.protocol || 'mcp'} protocol.</p>
+                        <span class="tools-summary__count">Total tools: ${toolCount}</span>
+                        <p class="tools-summary__desc">This agent exposes ${toolCount} tools via ${agent.protocol || 'mcp'} protocol.</p>
                     </div>
                 `;
                 return;
@@ -1168,8 +1182,8 @@
 
             let html = `
                 <div class="tools-summary">
-                    <span class="tools-summary__count">Total tools: ${tools.length}</span>
-                    <p class="tools-summary__desc">This agent exposes ${tools.length} tools via ${agent.protocol || 'mcp'} protocol.</p>
+                    <span class="tools-summary__count">Total tools: ${toolCount}</span>
+                    <p class="tools-summary__desc">This agent exposes ${toolCount} tools via ${agent.protocol || 'mcp'} protocol.</p>
                 </div>
                 <div class="tools-list">
             `;
@@ -1199,41 +1213,22 @@
 
     async function fetchPublishers(agent) {
         try {
-            const response = await fetch(`/mcp`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    jsonrpc: '2.0',
-                    id: 1,
-                    method: 'tools/call',
-                    params: {
-                        name: 'get_properties_for_agent',
-                        arguments: { agent_url: agent.url }
-                    }
-                })
-            });
+            const response = await fetch(`/api/public/agent-publishers?url=${encodeURIComponent(agent.url)}`);
             const data = await response.json();
-            const content = data?.result?.content?.[0];
-            const text = content?.resource?.text || content?.text;
-            if (!text) {
-                document.getElementById('publishers-section').innerHTML = '<div style="color: var(--color-text-muted); font-size: var(--text-sm);">No publisher data available.</div>';
-                return;
-            }
-            const result = JSON.parse(text);
-
             const section = document.getElementById('publishers-section');
 
-            if (result.error) {
+            if (!response.ok || data.error) {
+                const message = data.error?.message || data.message || data.error || 'Unknown error';
                 section.innerHTML = `<div class="tool-error-box">
-                    <strong>Error:</strong> ${escapeHtml(result.error)}
+                    <strong>Error:</strong> ${escapeHtml(message)}
                 </div>`;
                 return;
             }
 
-            if (result.properties && result.properties.length > 0) {
-                const verified = result.properties.filter(p => p.verified === true);
-                const unverified = result.properties.filter(p => p.verified === false);
-                const unchecked = result.properties.filter(p => p.verified === undefined);
+            if (data.properties && data.properties.length > 0) {
+                const verified = data.properties.filter(p => p.verified === true);
+                const unverified = data.properties.filter(p => p.verified === false);
+                const unchecked = data.properties.filter(p => p.verified === undefined);
 
                 let html = '';
 
@@ -1251,9 +1246,9 @@
                                             ${p.country ? ` | <strong>Country:</strong> ${escapeHtml(p.country)}` : ''}
                                         </div>
                                     </div>
-                                    <a href="${escapeHtml(p.verification_url)}" target="_blank" rel="noopener noreferrer" class="publisher-verify-link" title="View adagents.json">
+                                    ${safeHttpsUrl(p.verification_url) ? `<a href="${escapeHtml(safeHttpsUrl(p.verification_url))}" target="_blank" rel="noopener noreferrer" class="publisher-verify-link" title="View adagents.json">
                                         Verified
-                                    </a>
+                                    </a>` : '<span class="publisher-verify-link">Verified</span>'}
                                 </div>
                                 ${p.description ? `<div class="property-section-small" style="margin-top: var(--space-2);">${escapeHtml(p.description)}</div>` : ''}
                                 ${p.tags && p.tags.length > 0 ? `
@@ -1282,7 +1277,7 @@
                                         <div class="publisher-domain">${escapeHtml(p.identifier || p.domain || 'Unknown')}</div>
                                         <div class="property-section-small" style="margin-top: var(--space-1);">${escapeHtml(p.type || 'domain')}</div>
                                     </div>
-                                    ${p.verification_url ? `<a href="${escapeHtml(p.verification_url)}" target="_blank" rel="noopener noreferrer" class="publisher-verify-link publisher-verify-link--error" title="Check adagents.json">
+                                    ${safeHttpsUrl(p.verification_url) ? `<a href="${escapeHtml(safeHttpsUrl(p.verification_url))}" target="_blank" rel="noopener noreferrer" class="publisher-verify-link publisher-verify-link--error" title="Check adagents.json">
                                         Check
                                     </a>` : ''}
                                 </div>
@@ -1323,7 +1318,7 @@
         section.innerHTML = '<div class="loading">Loading formats...</div>';
 
         try {
-            const response = await fetch(`/api/public/agent-products?url=${encodeURIComponent(agent.url)}`);
+            const response = await fetch(`/api/public/agent-formats?url=${encodeURIComponent(agent.url)}`);
             const data = await response.json();
 
             if (!response.ok || data.error) {
@@ -1331,13 +1326,11 @@
                 return;
             }
 
-            const formats = (data.products || []).flatMap(product =>
-                (product.format_options || []).map(option => ({
-                    name: option.display_name || option.label || option.format_option_id || option.format_kind,
-                    format: option,
-                    description: product.description
-                }))
-            );
+            const formats = (data.formats || []).map(entry => ({
+                name: entry.capability_id || entry.format?.display_name || entry.format?.format_kind,
+                format: entry.format || entry,
+                description: entry.description
+            }));
 
             if (formats.length === 0) {
                 section.innerHTML = '<div class="property-section-small">No creative formats available</div>';
@@ -1372,42 +1365,24 @@
         section.innerHTML = '<div class="loading">Loading products...</div>';
 
         try {
-            const response = await fetch(`/mcp`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    jsonrpc: '2.0',
-                    id: 1,
-                    method: 'tools/call',
-                    params: {
-                        name: 'get_products_for_agent',
-                        arguments: { agent_url: agent.url, params: {} }
-                    }
-                })
-            });
+            const response = await fetch(`/api/public/agent-products?url=${encodeURIComponent(agent.url)}`);
             const data = await response.json();
 
-            if (data.error) {
-                section.innerHTML = `<div class="property-section-small">Unable to fetch products: ${escapeHtml(data.error.message || 'Unknown error')}</div>`;
-                return;
-            }
-
-            const result = JSON.parse(data.result.content[0].resource.text);
-
-            if (result.error) {
-                const isValidationError = result.error.includes('does not match') || result.error.includes('Input should be');
+            if (!response.ok || data.error) {
+                const message = data.error?.message || data.message || data.error || 'Unknown error';
+                const isValidationError = message.includes('does not match') || message.includes('Input should be');
                 section.innerHTML = `
                     <div class="agent-params-required">
                         <div class="agent-params-required__title">${isValidationError ? 'Agent requires parameters' : 'Agent error'}</div>
                         <div class="agent-params-required__desc">
-                            ${isValidationError ? 'This agent requires specific targeting criteria (brief, brand_manifest, etc.) and does not support browsing public products.' : escapeHtml(result.error)}
+                            ${isValidationError ? 'This agent requires specific targeting criteria (brief, brand_manifest, etc.) and does not support browsing public products.' : escapeHtml(message)}
                         </div>
                     </div>
                 `;
                 return;
             }
 
-            const products = result.products || [];
+            const products = data.products || [];
 
             if (products.length === 0) {
                 section.innerHTML = '<div class="property-section-small">No public products available (may require targeting)</div>';
@@ -1418,11 +1393,10 @@
             products.forEach(product => {
                 html += `
                     <div class="product-card">
-                        <div class="product-card__name">${escapeHtml(product.name || product.id || 'Unnamed Product')}</div>
+                        <div class="product-card__name">${escapeHtml(product.name || product.product_id || 'Unnamed Product')}</div>
                         ${product.description ? `<div class="product-card__desc">${escapeHtml(product.description)}</div>` : ''}
-                        ${product.inventory_type ? `<div class="product-card__meta"><strong>Type:</strong> ${escapeHtml(product.inventory_type)}</div>` : ''}
-                        ${product.price ? `<div class="product-card__meta"><strong>Price:</strong> ${escapeHtml(String(product.price.amount))} ${escapeHtml(product.price.currency)}</div>` : ''}
-                        ${product.publisher_domain ? `<div class="product-card__meta"><strong>Publisher:</strong> ${escapeHtml(product.publisher_domain)}</div>` : ''}
+                        ${product.property_type ? `<div class="product-card__meta"><strong>Type:</strong> ${escapeHtml(product.property_type)}</div>` : ''}
+                        ${product.base_rate !== undefined && product.base_rate !== null ? `<div class="product-card__meta"><strong>Price:</strong> ${escapeHtml(String(product.base_rate))} ${escapeHtml(product.currency || '')}</div>` : ''}
                     </div>
                 `;
             });
@@ -1554,7 +1528,7 @@
                         <div><strong>Canonical kind:</strong> ${escapeHtml(format.format?.format_kind || '')}</div>
                         <div><strong>Operations:</strong> ${escapeHtml((format.operations || []).join(', '))}</div>
                         ${width && height ? `<div><strong>Dimensions:</strong> ${escapeHtml(String(width))}&times;${escapeHtml(String(height))}px</div>` : ''}
-                        ${params.min_width || params.min_height ? `<div><strong>Responsive:</strong> Yes (${params.min_width || 0}&times;${params.min_height || 0} to ${params.max_width || width}&times;${params.max_height || height})</div>` : ''}
+                        ${params.min_width || params.min_height ? `<div><strong>Responsive:</strong> Yes (${escapeHtml(String(params.min_width || 0))}&times;${escapeHtml(String(params.min_height || 0))} to ${escapeHtml(String(params.max_width || width || 0))}&times;${escapeHtml(String(params.max_height || height || 0))})</div>` : ''}
                     </div>
                 </div>
             </div>

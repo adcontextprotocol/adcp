@@ -109,7 +109,7 @@ asyncio.run(main())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `event_source_id` | string | Yes | Event source configured on the account via `sync_event_sources` |
+| `event_source_id` | string | Yes | Event source configured on the account via [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) |
 | `events` | [Event](/docs/media-buy/conversion-tracking/#event)[] | Yes | Events to log (min 1, max 10,000) |
 | `test_event_code` | string | No | Test event code for validation without affecting production data |
 
@@ -537,16 +537,14 @@ Choose `event_id` values that are stable across retries:
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `REFERENCE_NOT_FOUND` | Event source not configured or not accessible (`error.field` = `event_source_id`) | Run `sync_event_sources` first |
-| `INVALID_EVENT_TYPE` | Unrecognized or disallowed event type | Check event source's `event_types` configuration |
-| `INVALID_EVENT_TIME` | Event time too far in the past/future | Use timestamps within the seller's attribution window |
-| `MISSING_USER_MATCH` | No user identifiers provided | Include at least one of: uids, hashed_email, hashed_phone, click_id, or client_ip + client_user_agent |
-| `BATCH_TOO_LARGE` | More than 10,000 events | Split into smaller batches |
-| `RATE_LIMITED` | Too many requests | Wait and retry with exponential backoff |
+| [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found) | Event source not configured or not accessible (`error.field` = `event_source_id`) | Run [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) first |
+| [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | An event field violates its schema, or the batch contains more than 10,000 events | Correct the field identified by `error.field` or split the request |
+| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | The event type is disallowed for the configured source, the timestamp is outside the attribution window, or no usable user match is present | Check the event source configuration and correct the event values |
+| [`RATE_LIMITED`](/docs/building/verification/compliance-catalog#error-code-rate-limited) | Too many requests | Wait and retry with exponential backoff |
 
 ## Best Practices
 
-1. **Configure sources first** - Always run `sync_event_sources` before sending events. Events sent to unconfigured sources are rejected.
+1. **Configure sources first** - Always run [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) before sending events. Events sent to unconfigured sources are rejected.
 
 2. **Include user_match** - Events without user identifiers cannot be attributed. Provide the strongest identifiers available: hashed email/phone > UIDs > click IDs > IP/UA. Send multiple identifier types when available to maximize match rates.
 

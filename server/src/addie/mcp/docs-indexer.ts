@@ -1044,7 +1044,10 @@ async function loadPublishedPerspectives(): Promise<IndexedDoc[]> {
   }>(
     `SELECT slug, title, content, excerpt, author_name, category, content_origin
      FROM perspectives
-     WHERE status = 'published' AND content_type = 'article' AND content IS NOT NULL
+     WHERE status = 'published'
+       AND is_members_only = false
+       AND content_type = 'article'
+       AND content IS NOT NULL
      ORDER BY published_at DESC`
   );
 

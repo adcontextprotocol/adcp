@@ -1,23 +1,26 @@
 /**
  * Agent-ownership helpers — single source of truth for "who owns this agent."
  *
- * The query has two distinct semantic uses:
+ * The ownership relation has three distinct semantic uses:
  *
  *   1. `findOwnerOrgForUser(userId, agentUrl)` — "what org owns this agent
  *      for this user?" Returns the org_id (or null) for ANY org the user
  *      is a member of that has the agent in its member_profile. Used by
- *      route handlers gating per-agent operations (refresh, applicable-
- *      storyboards, run-storyboard) on ownership.
+ *      callers that only need to establish ownership by any organization.
  *
- *   2. `isOrgOwnerOfAgent(orgId, userId, agentUrl)` — "is THIS specific
+ *   2. `findSoleOwnerOrgForUser(userId, agentUrl)` — compatibility lookup
+ *      for credential-bearing routes whose caller omitted org context. It
+ *      succeeds only when exactly one organization matches.
+ *
+ *   3. `isOrgOwnerOfAgent(orgId, userId, agentUrl)` — "is THIS specific
  *      org the one that owns the agent for this user?" Tighter predicate
  *      than (1): requires the resolved org context to match the agent's
  *      owning org. Used by `evaluate_agent_quality`'s canonical-write
  *      gate where the calling-context org is known and must be confirmed
  *      as the owner (not "some org the user belongs to").
  *
- * Both queries join `member_profiles.agents` against `organization_memberships`
- * — the canonical ownership relation. The two-helper pattern exists because
+ * All queries join `member_profiles.agents` against `organization_memberships`
+ * — the canonical ownership relation. The shared helpers exist because
  * inlining the JOIN at every call site is a drift surface (PR #4250 review
  * flagged the duplication); a single shared helper keeps the predicate in
  * one place.
@@ -29,6 +32,35 @@
 
 import { query } from '../db/client.js';
 import { canonicalizeAgentUrl } from '../db/publisher-db.js';
+import type { AgentVisibility } from '../types.js';
+
+/** Resolve the owned agent's directory visibility without exposing it publicly. */
+export async function findOwnedAgentVisibility(
+  userId: string,
+  agentUrl: string,
+): Promise<AgentVisibility | null> {
+  try {
+    const lookupAgentUrl = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
+    const result = await query<{ visibility: string | null }>(
+      `SELECT agent->>'visibility' AS visibility
+       FROM member_profiles mp
+       JOIN organization_memberships om
+         ON om.workos_organization_id = mp.workos_organization_id
+       CROSS JOIN LATERAL jsonb_array_elements(mp.agents) agent
+       WHERE agent->>'url' = $1
+         AND om.workos_user_id = $2
+       LIMIT 1`,
+      [lookupAgentUrl, userId],
+    );
+    if (!result.rows[0]) return null;
+    const visibility = result.rows[0].visibility;
+    return visibility === 'public' || visibility === 'members_only' || visibility === 'private'
+      ? visibility
+      : 'private';
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Find the org id of any org the user is a member of that owns the agent.
@@ -54,6 +86,36 @@ export async function findOwnerOrgForUser(
       [JSON.stringify([{ url: lookupAgentUrl }]), userId],
     );
     return result.rows[0]?.workos_organization_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve an owner only when the URL maps to exactly one organization for
+ * this user. Credential-bearing routes use this compatibility path when an
+ * older caller omits its organization selection. Multiple matches must fail
+ * closed: choosing either tenant would select the wrong encryption context.
+ */
+export async function findSoleOwnerOrgForUser(
+  userId: string,
+  agentUrl: string,
+): Promise<string | null> {
+  try {
+    const lookupAgentUrl = canonicalizeAgentUrl(agentUrl) ?? agentUrl;
+    const result = await query<{ workos_organization_id: string }>(
+      `SELECT DISTINCT mp.workos_organization_id
+       FROM member_profiles mp
+       JOIN organization_memberships om
+         ON om.workos_organization_id = mp.workos_organization_id
+       WHERE mp.agents @> $1::jsonb
+         AND om.workos_user_id = $2
+       LIMIT 2`,
+      [JSON.stringify([{ url: lookupAgentUrl }]), userId],
+    );
+    return result.rows.length === 1
+      ? result.rows[0].workos_organization_id
+      : null;
   } catch {
     return null;
   }
@@ -90,4 +152,28 @@ export async function isOrgOwnerOfAgent(
   } catch {
     return false;
   }
+}
+
+/**
+ * Resolve the owning organization for an agent operation, honoring an
+ * explicit dashboard organization when one was supplied.
+ *
+ * A user can belong to more than one organization that registers the same
+ * agent URL. In that case `findOwnerOrgForUser` is intentionally ambiguous;
+ * dashboard writes must instead stay inside the organization the user
+ * selected. The explicit path therefore fails closed when that organization
+ * does not own the agent, rather than silently falling back to another org.
+ */
+export async function resolveOwnerOrgForUser(
+  userId: string,
+  agentUrl: string,
+  requestedOrgId?: string,
+): Promise<string | null> {
+  if (requestedOrgId === undefined) {
+    return findSoleOwnerOrgForUser(userId, agentUrl);
+  }
+
+  return (await isOrgOwnerOfAgent(requestedOrgId, userId, agentUrl))
+    ? requestedOrgId
+    : null;
 }

@@ -28,6 +28,7 @@ import { ToolError } from '../tool-error.js';
 import { checkToolRateLimit } from './tool-rate-limiter.js';
 import { isUuid } from '../../utils/uuid.js';
 import { neutralizeAndTruncate, wrapUntrustedInput } from './untrusted-input.js';
+import { formatComplianceDiagnostics } from './compliance-diagnostics.js';
 import { coerceStringArray } from './input-coercion.js';
 import {
   isCompleteStoredBasicCredential,
@@ -46,8 +47,11 @@ import {
   complianceResultToDbInput,
   loadComplianceIndex,
   badgeEligibleVersionsForTargetSelection,
+  hasTrustworthyComplianceTarget,
   selectComplianceTargetForAgent,
   selectComplianceTargetForAgentSelection,
+  storedComplianceTargetMatchesObservedProfile,
+  UNRESOLVED_COMPLIANCE_TARGET_MESSAGE,
   type ComplyOptions,
   type CapabilityResolutionErrorInfo,
   type ComplianceTargetSelection,
@@ -94,7 +98,7 @@ import {
 import { MemberDatabase } from '../../db/member-db.js';
 import { ensureMemberProfileExists } from '../../services/member-profile-autopublish.js';
 import { updateBrandIdentity, BrandIdentityError } from '../../services/brand-identity.js';
-import { canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
+import { assertValidBrandDomain, canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
 import { isOrgOwnerOfAgent } from '../../services/agent-ownership.js';
 import { getBrandPrimaryDomain } from '../../services/brand-domain-resolver.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
@@ -107,6 +111,7 @@ import {
   withdrawCommitteeInterest as withdrawCommitteeInterestService,
   listMyWorkingGroups as listMyWorkingGroupsService,
   listMyCommitteeInterests as listMyCommitteeInterestsService,
+  MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE,
   WorkingGroupMembershipError,
 } from '../../services/working-group-membership-service.js';
 import { listMyContent as listMyContentService } from '../../services/my-content-service.js';
@@ -888,10 +893,27 @@ function resolveStoryboardInputContext(
 }
 
 function formatStoryboardValidationLine(
-  validation: { id?: unknown; passed?: boolean; description?: string; error?: unknown },
+  validation: {
+    id?: unknown;
+    passed?: boolean;
+    severity?: 'required' | 'advisory';
+    severity_promoted_from_advisory?: boolean;
+    description?: string;
+    error?: unknown;
+  },
   options: { includeStatus?: boolean } = {},
 ): string {
-  const status = options.includeStatus === false ? '' : `${validation.passed ? 'PASS' : 'FAIL'}: `;
+  const status = options.includeStatus === false
+    ? ''
+    : `${validation.passed
+      ? validation.severity_promoted_from_advisory
+        ? 'PASS (PROMOTED ADVISORY — REQUIRED)'
+        : 'PASS'
+      : validation.severity_promoted_from_advisory
+        ? 'PROMOTED ADVISORY (REQUIRED)'
+        : validation.severity === 'advisory'
+          ? 'ADVISORY'
+          : 'FAIL'}: `;
   const id = formatValidationId(validation.id);
   const description = renderStoryboardDiagnostic(validation.description, RUNNER_ERROR_MAX_LEN);
   const error = validation.error
@@ -940,11 +962,47 @@ const PRICING_ALIASES: Record<string, string> = {
   'flat': 'flat_rate', 'flat rate': 'flat_rate', 'sponsorship': 'flat_rate',
   'cost per view': 'cpv',
   'cost per action': 'cpa', 'cost per acquisition': 'cpa',
+  'revenue share': 'revenue_share', 'rev share': 'revenue_share', 'commission': 'revenue_share',
 };
 
 function normalizeChannel(ch: string): string {
   const key = ch.toLowerCase().trim();
   return CHANNEL_ALIASES[key] ?? key;
+}
+
+/**
+ * Return searchable format labels from the canonical product declaration.
+ * Legacy aliases remain useful search terms during the 3.x migration, but
+ * canonical-only options must remain visible even when they have no alias.
+ */
+function productFormatLabels(product: Record<string, unknown>): string[] {
+  const labels = new Set<string>();
+  if (Array.isArray(product.format_options)) {
+    for (const rawOption of product.format_options) {
+      if (!rawOption || typeof rawOption !== 'object' || Array.isArray(rawOption)) continue;
+      const option = rawOption as Record<string, unknown>;
+      if (typeof option.format_kind === 'string') labels.add(option.format_kind);
+      if (typeof option.format_option_id === 'string') labels.add(option.format_option_id);
+      const params = option.params as Record<string, unknown> | undefined;
+      if (typeof params?.width === 'number' && typeof params?.height === 'number') {
+        labels.add(`${params.width}x${params.height}`);
+      }
+      if (Array.isArray(option.v1_format_ref)) {
+        for (const rawRef of option.v1_format_ref) {
+          const ref = rawRef as Record<string, unknown> | undefined;
+          if (typeof ref?.id === 'string') labels.add(ref.id);
+        }
+      }
+    }
+  }
+  // Tolerate dual/older peers without making the legacy arm authoritative.
+  if (Array.isArray(product.format_ids)) {
+    for (const rawRef of product.format_ids) {
+      const ref = rawRef as Record<string, unknown> | undefined;
+      if (typeof ref?.id === 'string') labels.add(ref.id);
+    }
+  }
+  return [...labels];
 }
 
 const GITHUB_SEARCH_BANNED_QUALIFIERS = /(^|\s)(repo|org|user|is)\s*:/i;
@@ -1854,6 +1912,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         compliance_target: { type: 'string', description: 'Compliance target to run, e.g. "3.1" or "3.0" for badge-eligible stable lines, or "3.1-rc"/"3.1-beta" for explicit prerelease diagnostics. Defaults to the canonical badge-eligible target when advertised.' },
       },
       required: ['agent_url'],
+      additionalProperties: false,
     },
   },
   {
@@ -1940,6 +1999,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
           minItems: 1,
         },
         advertiser: { type: 'string', description: 'Advertiser name from the IO' },
+        advertiser_domain: { type: 'string', description: 'Advertiser brand domain (for example, brand.example). Required to construct or execute create_media_buy.' },
+        account_id: { type: 'string', description: 'Seller-assigned advertiser account ID. Required to construct or execute create_media_buy.' },
         currency: { type: 'string', description: 'Currency for all line items (default: USD)' },
         execute: { type: 'boolean', description: 'If true, actually call create_media_buy on the agent. If false (default), only construct the JSON.', default: false },
       },
@@ -2533,7 +2594,7 @@ export function createMemberToolHandlers(
         user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
         slug,
       });
-      return `Successfully joined the "${result.groupName}" working group! You can now participate in discussions and see group posts.`;
+      return `Successfully joined "${result.groupName}"! You can now participate in discussions and see group posts.`;
     } catch (error) {
       if (error instanceof WorkingGroupMembershipError) {
         if (error.is('group_not_found')) {
@@ -2542,11 +2603,14 @@ export function createMemberToolHandlers(
         if (error.is('group_private')) {
           return `"${error.meta.groupName}" is a private working group that requires an invitation. Use request_working_group_invitation to request access.`;
         }
+        if (error.is('council_membership_required')) {
+          return MASTERMIND_COUNCIL_MEMBERSHIP_NOTICE;
+        }
         if (error.is('community_only_seat_blocked')) {
           return `Joining "${error.meta.groupName}" requires a contributor seat. Ask your org admin to upgrade your access.`;
         }
         if (error.is('already_member')) {
-          return `You're already a member of the "${error.meta.groupName}" working group!`;
+          return `You're already a member of "${error.meta.groupName}"!`;
         }
       }
       throw new ToolError(`Failed to join working group: ${error instanceof Error ? error.message : String(error)}`);
@@ -4313,6 +4377,7 @@ export function createMemberToolHandlers(
     }
 
     const optedOut = registryMetadata?.compliance_opt_out === true;
+    const requalificationRequired = registryMetadata?.badge_requalification_required === true;
 
     let response = `## Agent Status: ${registryUrl}\n\n`;
     if (registryMetadata?.lifecycle_stage) {
@@ -4358,6 +4423,8 @@ export function createMemberToolHandlers(
     response += `\n### Compliance (latest comply run)\n`;
     if (optedOut) {
       response += `_This agent has opted out of compliance monitoring._\n`;
+    } else if (requalificationRequired) {
+      response += `_Monitoring is enabled, but badges remain suppressed until a fresh passing full-suite compliance run completes. Partial storyboard reruns cannot restore verification first._\n`;
     } else if (complianceStatus) {
       response += `**Status:** ${complianceStatus.status}\n`;
       if (complianceStatus.headline) {
@@ -4459,6 +4526,7 @@ export function createMemberToolHandlers(
     let runTargetSelection: ComplianceTargetSelection = {
       target: runTarget,
       confirmed: false,
+      source: 'explicit',
     };
     let skippedCanonicalWriteReason: 'target' | 'tracks' | null = null;
 
@@ -4482,12 +4550,20 @@ export function createMemberToolHandlers(
     const authOption = buildAuthOption(resolved);
 
     if (!hasExplicitComplianceTarget(input)) {
+      const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(resolved.resolvedUrl);
       runTargetSelection = await selectComplianceTargetForAgentSelection(
         resolved.resolvedUrl,
         { auth: authOption },
         complianceTarget,
         'canonical',
+        seededSupportedVersions,
       );
+      if (!hasTrustworthyComplianceTarget(runTargetSelection)) {
+        return (
+          `**Compliance target unavailable**\n\n${UNRESOLVED_COMPLIANCE_TARGET_MESSAGE} ` +
+          `Retry after \`get_adcp_capabilities\` is responding reliably, or choose an explicit supported target for a diagnostic run.`
+        );
+      }
       runTarget = runTargetSelection.target;
     } else {
       const targetError = await explicitTargetSupportErrorFromAgent(
@@ -4509,6 +4585,12 @@ export function createMemberToolHandlers(
 
     try {
       const result = await comply(resolved.resolvedUrl, complyOptions, runTarget);
+      if (!storedComplianceTargetMatchesObservedProfile(runTargetSelection, result.agent_profile)) {
+        return (
+          `**Compliance target unavailable**\n\n${UNRESOLVED_COMPLIANCE_TARGET_MESSAGE} ` +
+          `The agent's live profile changed after the diagnostic target was selected; retry the evaluation.`
+        );
+      }
       const badgeEligibleAdcpVersions = [
         ...badgeEligibleVersionsForTargetSelection(runTargetSelection, result.agent_profile),
       ];
@@ -4703,44 +4785,7 @@ export function createMemberToolHandlers(
       output += `**Tools:** ${safeTools.length} (${safeTools.join(', ')})\n`;
       output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
 
-      output += `### Capability Tracks\n\n`;
-      output += `**Summary:** ${result.summary.headline}\n\n`;
-
-      const statusLabel: Record<string, string> = { pass: 'PASS', fail: 'FAIL', partial: 'PARTIAL', skip: 'SKIP' };
-      for (const track of result.tracks) {
-        const status = statusLabel[track.status] ?? track.status.toUpperCase();
-        const scenarioCount = track.scenarios.length;
-        const passedCount = track.scenarios.filter(s => s.overall_passed).length;
-
-        if (track.status === 'skip') {
-          output += `- **${track.label}** [${status}] — not applicable\n`;
-        } else {
-          output += `- **${track.label}** [${status}] — ${passedCount}/${scenarioCount} scenarios pass (${(track.duration_ms / 1000).toFixed(1)}s)\n`;
-          for (const scenario of track.scenarios) {
-            if (!scenario.overall_passed) {
-              output += `  - FAILED: ${scenario.scenario}\n`;
-              const failedSteps = (scenario.steps ?? []).filter(s => !s.passed);
-              for (const step of failedSteps.slice(0, 3)) {
-                output += `    - ${step.step}${step.error ? `: ${sanitizeAgentField(step.error, RUNNER_ERROR_MAX_LEN)}` : ''}\n`;
-              }
-              if (failedSteps.length > 3) {
-                output += `    - ... and ${failedSteps.length - 3} more\n`;
-              }
-            }
-          }
-        }
-      }
-
-      if (result.observations.length > 0) {
-        output += `\n### Advisory Observations\n\n`;
-        for (const obs of result.observations) {
-          const severity = obs.severity === 'error' ? 'ERROR' : obs.severity === 'warning' ? 'WARNING' : obs.severity === 'suggestion' ? 'SUGGESTION' : 'INFO';
-          output += `- [${severity}] (${obs.category}) ${obs.message}\n`;
-          if (obs.evidence) {
-            output += `  Evidence: ${JSON.stringify(obs.evidence).slice(0, 500)}\n`;
-          }
-        }
-      }
+      output += formatComplianceDiagnostics(result);
 
       output += `\nInterpret these results conversationally. Highlight what's working well, identify the most impactful gaps, and suggest concrete next steps.`;
 
@@ -5328,7 +5373,7 @@ export function createMemberToolHandlers(
       output += `## ${result.storyboard_title}\n\n`;
       output += `**Agent:** ${resolved.resolvedUrl}\n`;
       output += `**Compliance target:** ${formatComplianceTarget(runTarget)}\n`;
-      output += `**Result:** ${result.overall_passed ? 'PASSED' : 'FAILED'} — ${result.passed_count} passed, ${result.failed_count} failed, ${result.skipped_count} skipped\n`;
+      output += `**Result:** ${result.overall_passed ? 'PASSED' : 'FAILED'} — ${result.passed_count} passed, ${result.failed_count} failed, ${result.skipped_count} skipped, ${result.validations_advisory_failed ?? 0} advisory validation(s) failed\n`;
       output += `**Duration:** ${(result.total_duration_ms / 1000).toFixed(1)}s\n\n`;
 
       let anyFixPlans = false;
@@ -5343,8 +5388,14 @@ export function createMemberToolHandlers(
             if (step.error) {
               output += `  Error: ${renderStoryboardDiagnostic(step.error, RUNNER_ERROR_MAX_LEN)}\n`;
             }
-            for (const v of step.validations.filter(v => !v.passed)) {
-              output += `  Failed: ${formatStoryboardValidationLine(v, { includeStatus: false })}\n`;
+            for (const v of step.validations.filter(v => !v.passed && v.severity !== 'advisory')) {
+              const label = v.severity_promoted_from_advisory ? 'Promoted advisory (required)' : 'Failed';
+              output += `  ${label}: ${formatStoryboardValidationLine(v, { includeStatus: false })}\n`;
+            }
+          }
+          if (!step.skipped) {
+            for (const v of step.validations.filter(v => !v.passed && v.severity === 'advisory')) {
+              output += `  [ADVISORY] ${formatStoryboardValidationLine(v, { includeStatus: false })}\n`;
             }
           }
           // Hints are diagnostic-only and don't flip pass/fail per the
@@ -5656,10 +5707,9 @@ export function createMemberToolHandlers(
       }
       const briefResults: BriefResult[] = await Promise.all(briefsToRun.map(async (brief): Promise<BriefResult> => {
         try {
-          const result = await client.executeTask('get_products', {
+          const result = await client.getProducts({
             buying_mode: 'brief',
             brief: brief.brief,
-            brand: { name: 'Test Brand', url: 'https://example.com' },
           });
 
           if (!result.success) {
@@ -5682,12 +5732,7 @@ export function createMemberToolHandlers(
             if (Array.isArray(p.channels)) {
               for (const ch of p.channels) if (typeof ch === 'string') channelsFound.add(ch);
             }
-            if (Array.isArray(p.format_ids)) {
-              for (const fid of p.format_ids) {
-                const f = fid as Record<string, unknown>;
-                if (typeof f.id === 'string') formatsFound.add(f.id);
-              }
-            }
+            for (const label of productFormatLabels(p)) formatsFound.add(label);
             if (Array.isArray(p.pricing_options)) {
               for (const po of p.pricing_options) {
                 const pricing = po as Record<string, unknown>;
@@ -5881,10 +5926,9 @@ export function createMemberToolHandlers(
       const client = multiClient.agent('target');
 
       const result = await Promise.race([
-        client.executeTask('get_products', {
+        client.getProducts({
           buying_mode: 'brief',
           brief,
-          brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
         }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Agent did not respond within 30 seconds')), 30000)),
       ]);
@@ -5916,13 +5960,8 @@ export function createMemberToolHandlers(
         if (Array.isArray(p.channels)) {
           for (const ch of p.channels) if (typeof ch === 'string') { channels.push(ch); allChannels.add(ch); }
         }
-        const formatIds: string[] = [];
-        if (Array.isArray(p.format_ids)) {
-          for (const fid of p.format_ids) {
-            const f = fid as Record<string, unknown>;
-            if (typeof f.id === 'string') { formatIds.push(f.id); allFormats.add(f.id); }
-          }
-        }
+        const formatIds = productFormatLabels(p);
+        for (const label of formatIds) allFormats.add(label);
         const pricingOpts: Array<{ pricing_option_id: string; pricing_model: string; price?: number; currency?: string; minimum_spend?: number }> = [];
         if (Array.isArray(p.pricing_options)) {
           for (const po of p.pricing_options) {
@@ -6094,10 +6133,30 @@ export function createMemberToolHandlers(
     const agentUrl = input.agent_url as string;
     const lineItems = ((input.line_items as Array<Record<string, unknown>>) || []).slice(0, 20);
     const advertiser = input.advertiser as string | undefined;
+    const advertiserDomainInput = input.advertiser_domain as string | undefined;
+    const accountId = typeof input.account_id === 'string' && input.account_id.trim()
+      ? input.account_id.trim()
+      : undefined;
     const currency = (input.currency as string) || 'USD';
     const shouldExecute = (input.execute as boolean) || false;
 
     if (!lineItems.length) return '**Error:** line_items array is required and must have at least one item.';
+
+    let advertiserDomain: string | undefined;
+    if (advertiserDomainInput) {
+      try {
+        advertiserDomain = canonicalizeBrandDomain(advertiserDomainInput);
+        assertValidBrandDomain(advertiserDomain);
+      } catch {
+        return '**Error:** advertiser_domain must be a valid public brand domain.';
+      }
+    }
+    if (shouldExecute && !advertiserDomain) {
+      return '**Error:** advertiser_domain is required when execute is true.';
+    }
+    if (shouldExecute && !accountId) {
+      return '**Error:** account_id is required when execute is true.';
+    }
 
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
@@ -6118,9 +6177,10 @@ export function createMemberToolHandlers(
 
       // Get full catalog via wholesale mode
       const result = await Promise.race([
-        client.executeTask('get_products', {
+        client.getProducts({
           buying_mode: 'wholesale',
-          brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
+          ...(advertiserDomain && { brand: { domain: advertiserDomain } }),
+          ...(accountId && { account: { account_id: accountId } }),
         }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Agent did not respond within 30 seconds')), 30000)),
       ]);
@@ -6154,7 +6214,14 @@ export function createMemberToolHandlers(
         matched_product?: { product_id: string; name: string; match_quality: string; match_reasons: string[] };
         matched_pricing?: { pricing_option_id: string; pricing_model: string; agent_rate?: number; io_rate?: number; rate_context: { label: string; context: string } };
         unmapped_reasons?: string[];
-        proposed_package?: Record<string, unknown>;
+        proposed_package?: {
+          product_id: string;
+          pricing_option_id: string;
+          budget: number;
+          bid_price?: number;
+          start_time?: string;
+          end_time?: string;
+        };
       }
 
       const lineItemResults: LineItemResult[] = [];
@@ -6219,11 +6286,9 @@ export function createMemberToolHandlers(
           }
 
           // Format match (+2)
-          if (liFormat && Array.isArray(p.format_ids)) {
+          if (liFormat) {
             const liFormatLower = liFormat.toLowerCase();
-            const matched = (p.format_ids as Array<Record<string, unknown>>).some(fid =>
-              ((fid.id as string) || '').toLowerCase().includes(liFormatLower)
-            );
+            const matched = productFormatLabels(p).some(label => label.toLowerCase().includes(liFormatLower));
             if (matched) {
               score += 2;
               reasons.push(`format:${liFormat}`);
@@ -6307,10 +6372,10 @@ export function createMemberToolHandlers(
         if (liBudget && (status === 'mapped' || status === 'partial')) mappableBudget += liBudget;
 
         const proposedPackage = bestPricing ? {
-          product_id: bestProduct.product_id,
+          product_id: bestProduct.product_id as string,
           pricing_option_id: bestPricing.pricing_option_id,
           budget: liBudget || 0,
-          ...(bestPricing.pricing_model !== 'flat_rate' && liRate ? { bid_price: liRate } : {}),
+          ...(!['flat_rate', 'revenue_share'].includes(bestPricing.pricing_model) && liRate ? { bid_price: liRate } : {}),
           ...(liStartDate ? { start_time: liStartDate } : {}),
           ...(liEndDate ? { end_time: liEndDate } : {}),
         } : undefined;
@@ -6334,10 +6399,10 @@ export function createMemberToolHandlers(
       const earliestStart = allStartDates.length > 0 ? allStartDates.sort()[0] : new Date().toISOString();
       const latestEnd = allEndDates.length > 0 ? allEndDates.sort().reverse()[0] : new Date(Date.now() + 30 * 86400000).toISOString();
 
-      const proposedRequest = mappedPackages.length > 0 ? {
+      const proposedRequest = mappedPackages.length > 0 && advertiserDomain && accountId ? {
         idempotency_key: randomUUID(),
-        brand: { name: advertiser || 'Test Brand', url: 'https://example.com' },
-        account: { account_id: advertiser || 'test-account' },
+        brand: { domain: advertiserDomain },
+        account: { account_id: accountId },
         start_time: earliestStart,
         end_time: latestEnd,
         packages: mappedPackages,
@@ -6433,6 +6498,13 @@ export function createMemberToolHandlers(
         output += `### Proposed create_media_buy Request\n\n`;
         output += `This is the exact JSON a buyer agent would send to execute the mapped line items:\n\n`;
         output += '```json\n' + JSON.stringify(proposedRequest, null, 2) + '\n```\n\n';
+      } else if (mappedPackages.length > 0) {
+        output += `### Proposed create_media_buy Request\n\n`;
+        const missingFields = [
+          !advertiserDomain && '`advertiser_domain`',
+          !accountId && '`account_id`',
+        ].filter(Boolean).join(' and ');
+        output += `Provide ${missingFields} to construct the exact buyer request. Real identifiers are required; the tool will not fabricate them.\n\n`;
       }
 
       if (executeResult) {

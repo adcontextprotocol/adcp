@@ -24,7 +24,7 @@ const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { lint, discoverGradedUniversal, extractTableTokens } =
+const { lint, discoverGradedUniversal, extractTableTokens, expandImportedSnippets } =
   require('../scripts/lint-universal-storyboard-doc-parity.cjs');
 
 test('source tree passes the doc-parity lint', () => {
@@ -77,6 +77,25 @@ test('clean fixture: graded storyboard listed in both docs → no errors', () =>
   writeStoryboard(sourceDir, 'capability-discovery');
   writeConformance(repoRoot, [['capability_discovery', 'shape']]);
   writeCatalog(repoRoot, [['capability-discovery', 'shape']]);
+
+  const errors = lint({ sourceDir, repoRoot });
+  assert.deepEqual(errors, []);
+});
+
+test('catalog can list storyboard slugs through an imported MDX snippet', () => {
+  const { sourceDir, repoRoot } = makeFixture();
+  writeStoryboard(sourceDir, 'capability-discovery');
+  writeConformance(repoRoot, [['capability_discovery', 'shape']]);
+  fs.mkdirSync(path.join(repoRoot, 'docs/snippets'), { recursive: true });
+  fs.writeFileSync(
+    path.join(repoRoot, 'docs/snippets/storyboards.mdx'),
+    '| Storyboard | Purpose |\n|---|---|\n| `capability-discovery` | shape |\n',
+  );
+  fs.writeFileSync(
+    path.join(repoRoot, 'docs/building/verification/compliance-catalog.mdx'),
+    '# Catalog\n\nimport Storyboards from "/docs/snippets/storyboards.mdx";\n\n' +
+      '## Universal storyboards\n\n<Storyboards />\n\n## Protocols\n',
+  );
 
   const errors = lint({ sourceDir, repoRoot });
   assert.deepEqual(errors, []);
@@ -204,5 +223,48 @@ More prose with \`other_token\` that should be ignored.
   assert.deepEqual(
     [...tokens].sort(),
     ['capability_discovery', 'pagination_integrity', 'signed-requests'],
+  );
+});
+
+test('expandImportedSnippets reports missing imported files', () => {
+  const { repoRoot } = makeFixture();
+  const filePath = path.join(repoRoot, 'docs/building/verification/compliance-catalog.mdx');
+  const content = 'import Missing from "/docs/snippets/missing.mdx";\n\n<Missing />\n';
+  const result = expandImportedSnippets(content, content, filePath, repoRoot);
+  assert.deepEqual(result.errors, ['snippet import /docs/snippets/missing.mdx does not exist']);
+});
+
+test('expandImportedSnippets rejects directories and symlink imports', () => {
+  const { root, repoRoot } = makeFixture();
+  const filePath = path.join(repoRoot, 'docs/building/verification/compliance-catalog.mdx');
+  const snippetsDir = path.join(repoRoot, 'docs/snippets');
+  fs.mkdirSync(snippetsDir, { recursive: true });
+
+  const directoryContent = 'import Directory from "/docs/snippets/directory.mdx";\n<Directory />\n';
+  fs.mkdirSync(path.join(snippetsDir, 'directory.mdx'));
+  const directoryResult = expandImportedSnippets(
+    directoryContent,
+    directoryContent,
+    filePath,
+    repoRoot,
+  );
+  assert.deepEqual(
+    directoryResult.errors,
+    ['snippet import /docs/snippets/directory.mdx is not a regular file'],
+  );
+
+  const outside = path.join(root, 'outside.mdx');
+  fs.writeFileSync(outside, '| `capability-discovery` | escaped |\n');
+  fs.symlinkSync(outside, path.join(snippetsDir, 'linked.mdx'));
+  const symlinkContent = 'import Linked from "/docs/snippets/linked.mdx";\n<Linked />\n';
+  const symlinkResult = expandImportedSnippets(
+    symlinkContent,
+    symlinkContent,
+    filePath,
+    repoRoot,
+  );
+  assert.deepEqual(
+    symlinkResult.errors,
+    ['snippet import /docs/snippets/linked.mdx is not a regular file'],
   );
 });

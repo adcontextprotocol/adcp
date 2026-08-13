@@ -88,7 +88,7 @@ whole-value maps and explicit defaults rather than agent capability or error
 semantics.
 
 **`targeting.language` is a known vocabulary divergence.** The language filter
-in `get_products` and related tasks uses ISO 639-1 two-letter codes only
+in [`get_products`](/docs/media-buy/task-reference/get_products) and related tasks uses ISO 639-1 two-letter codes only
 (`^[a-z]{2}$`), not the shared BCP 47 tag profile. It is the one legacy field
 that can appear in the same request as creative locale eligibility: a buyer
 targeting `language: ["fr"]` against a creative with

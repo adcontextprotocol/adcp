@@ -16,7 +16,7 @@ export interface AgentProfile {
   categories: string[];
   tags: string[];
   delivery_types: string[];
-  format_ids: unknown[];
+  format_kinds: string[];
   property_count: number;
   publisher_count: number;
   has_tmp: boolean;
@@ -32,6 +32,7 @@ export interface AgentSearchQuery {
   categories?: string[];
   tags?: string[];
   delivery_types?: string[];
+  format_kinds?: string[];
   has_tmp?: boolean;
   min_properties?: number;
   limit?: number;
@@ -43,7 +44,7 @@ export interface AgentSearchResult extends AgentProfile {
 }
 
 const ARRAY_FILTER_KEYS = [
-  'channels', 'property_types', 'markets', 'categories', 'tags', 'delivery_types',
+  'channels', 'property_types', 'markets', 'categories', 'tags', 'delivery_types', 'format_kinds',
 ] as const;
 
 type ArrayFilterKey = typeof ARRAY_FILTER_KEYS[number];

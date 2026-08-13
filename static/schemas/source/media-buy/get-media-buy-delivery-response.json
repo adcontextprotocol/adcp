@@ -112,6 +112,11 @@
           "description": "Total conversion value across all media buys (if applicable)",
           "minimum": 0
         },
+        "commissionable_value": {
+          "type": "number",
+          "description": "Total settled conversion value eligible for revenue-share commission across all media buys (if applicable)",
+          "minimum": 0
+        },
         "roas": {
           "type": "number",
           "description": "Aggregate return on ad spend across all media buys (total conversion_value / total spend)",
@@ -308,7 +313,7 @@
                     },
                     "rate": {
                       "type": "number",
-                      "description": "The pricing rate for this package in the specified currency. For fixed-rate pricing, this is the agreed rate (e.g., CPM rate of 12.50 means $12.50 per 1,000 impressions). For auction-based pricing, this represents the effective rate based on actual delivery.",
+                      "description": "The pricing rate for this package. For fixed-rate pricing, this is the agreed currency-denominated unit rate (e.g., CPM rate of 12.50 means $12.50 per 1,000 impressions). For auction-based pricing, this is the effective rate based on actual delivery. For revenue_share, this is the decimal commission rate (e.g., 0.04 means 4%) and is not itself currency-denominated.",
                       "minimum": 0
                     },
                     "currency": {
@@ -580,6 +585,11 @@
                             "description": "Daily conversion value for this package",
                             "minimum": 0
                           },
+                          "commissionable_value": {
+                            "type": "number",
+                            "description": "Daily settled conversion value eligible for revenue-share commission for this package",
+                            "minimum": 0
+                          },
                           "roas": {
                             "type": "number",
                             "description": "Daily return on ad spend (conversion_value / spend)",
@@ -706,6 +716,11 @@
                 "conversion_value": {
                   "type": "number",
                   "description": "Daily conversion value",
+                  "minimum": 0
+                },
+                "commissionable_value": {
+                  "type": "number",
+                  "description": "Daily settled conversion value eligible for revenue-share commission",
                   "minimum": 0
                 },
                 "roas": {

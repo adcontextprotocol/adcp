@@ -21,9 +21,9 @@ interface SyncCatalogsInput extends ToolArgs {
 
 interface CatalogInput {
   catalog_id: string;
-  catalog_type: string;
+  type?: string;
   name?: string;
-  feed_url?: string;
+  url?: string;
   items?: CatalogItemInput[];
 }
 
@@ -555,8 +555,7 @@ export async function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
     // Default to 'product' when omitted — the most common catalog type in
     // practice, and the spec allows inferring from feed content. Explicit
     // invalid values still fail fast.
-    const rawType = input.catalog_type ?? (input as unknown as { type?: string }).type;
-    const catalogType = rawType ?? 'product';
+    const catalogType = input.type ?? 'product';
     if (!VALID_CATALOG_TYPES.includes(catalogType)) {
       results.push({
         catalog_id: input.catalog_id,
@@ -567,7 +566,7 @@ export async function handleSyncCatalogs(args: ToolArgs, ctx: TrainingContext) {
     }
 
     const existing = catalogs.get(input.catalog_id);
-    const feedUrl = input.feed_url ?? (input as unknown as { url?: string }).url;
+    const feedUrl = input.url;
     const itemCount = input.items?.length || (feedUrl ? 50 : 0); // Simulate feed fetch
     // Small inline catalogs: approve all. Larger feeds: simulate realistic review rates.
     const itemsApproved = itemCount <= 10 ? itemCount : Math.floor(itemCount * 0.9);

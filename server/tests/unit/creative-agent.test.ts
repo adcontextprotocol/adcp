@@ -378,6 +378,7 @@ describe('handlePreviewCreative', () => {
     }, formats, TEST_BASE_URL);
 
     expect(result.response_type).toBe('single');
+    expect(result.quality_used).toBe('production');
     expect(result.expires_at).toBeTruthy();
     const previews = result.previews as Array<Record<string, unknown>>;
     expect(previews).toHaveLength(1);
@@ -686,9 +687,13 @@ describe('handlePreviewCreative', () => {
 
     const results = result.results as Array<{
       success: boolean;
-      response: { previews: Array<{ input: { name: string }; renders: Array<Record<string, unknown>> }> };
+      quality_used: 'draft' | 'production';
+      response: {
+        previews: Array<{ input: { name: string }; renders: Array<Record<string, unknown>> }>;
+      };
     }>;
     expect(results.map(item => item.success)).toEqual([true, true]);
+    expect(results.map(item => item.quality_used)).toEqual(['draft', 'draft']);
 
     const defaultPreview = results[0].response.previews[0];
     expect(defaultPreview.input.name).toBe('Default preview');

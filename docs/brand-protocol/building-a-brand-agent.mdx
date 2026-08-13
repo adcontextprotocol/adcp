@@ -180,7 +180,7 @@ server.tool("get_adcp_capabilities", {}, async () => ({
 }));
 ```
 
-When `supported_claim_types` is omitted, the agent advertises support for all four. Consumers MUST check before relying on a specific claim type; unsupported types MUST return `UNSUPPORTED_CLAIM_TYPE`.
+When `supported_claim_types` is omitted, the agent advertises support for all four. Consumers MUST check before relying on a specific claim type; unsupported types MUST return `UNSUPPORTED_FEATURE`.
 
 ### State model
 
@@ -205,7 +205,7 @@ type SubsidiaryRecord = {
 };
 
 type PropertyRecord = {
-  type: "website" | "mobile_app" | "ctv_app" | "desktop_app" | "dooh" | "podcast" | "radio" | "streaming_audio";
+  type: "website" | "mobile_app" | "ctv_app" | "desktop_app" | "dooh" | "podcast" | "radio" | "linear_tv" | "streaming_audio" | "ai_assistant";
   identifier: string;
   brand_id: string;
   relationship: "owned" | "direct" | "delegated" | "ad_network";
@@ -229,7 +229,7 @@ type TrademarkRecord = {
 
 ### Tool registration and request validation
 
-`verify_brand_claim` discriminates on `claim_type`. Validate the `claim` payload per type — required fields differ, and `INVALID_INPUT` is the right response when they're missing or malformed.
+`verify_brand_claim` discriminates on `claim_type`. Validate the `claim` payload per type — required fields differ, and `INVALID_REQUEST` is the right response when they're missing or malformed.
 
 ```typescript
 import { z } from "zod";
@@ -248,7 +248,7 @@ const ParentClaim = z.object({
 
 const PropertyClaim = z.object({
   property: z.object({
-    type: z.enum(["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "streaming_audio"]),
+    type: z.enum(["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "linear_tv", "streaming_audio", "ai_assistant"]),
     identifier: z.string().min(1),
     store: z.enum(["apple", "google", "amazon", "roku", "fire_tv", "samsung", "lg", "vizio", "other"]).optional(),
     region: z.string().optional(),

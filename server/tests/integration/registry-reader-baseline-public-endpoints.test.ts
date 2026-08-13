@@ -32,6 +32,7 @@ import type { Pool } from 'pg';
 vi.hoisted(() => {
   process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
   process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
+  process.env.PUBLISHER_CRAWL_QUEUE_ENABLED = 'true';
 });
 
 // Bypass WorkOS auth — the registry feed requires `requireAuth`. Stamp
@@ -46,13 +47,30 @@ vi.hoisted(() => {
 const DEFAULT_TEST_USER_ID = 'user_test_registry_baseline_endpoints';
 const authState = vi.hoisted(() => ({
   optAuthUser: null as { id: string; email: string } | null,
+  requireAuthUser: {
+    id: 'user_test_registry_baseline_endpoints',
+    email: 'registry-baseline@test.com',
+  } as { id: string; email: string; isAdmin?: boolean } | null,
 }));
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>(
     '../../src/middleware/auth.js'
   );
-  const requireAuthPass = (req: { user: unknown }, _res: unknown, next: () => void) => {
-    req.user = { id: DEFAULT_TEST_USER_ID, email: 'registry-baseline@test.com' };
+  const requireAuthPass = (
+    req: { user: unknown; headers?: Record<string, unknown>; isStaticAdminApiKey?: boolean },
+    res: { status: (code: number) => { json: (body: unknown) => void } },
+    next: () => void,
+  ) => {
+    if (req.headers?.authorization === 'Bearer static-admin-test') {
+      req.isStaticAdminApiKey = true;
+      next();
+      return;
+    }
+    if (!authState.requireAuthUser) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+    req.user = authState.requireAuthUser;
     next();
   };
   const optAuthPass = (req: { user: unknown }, _res: unknown, next: () => void) => {
@@ -71,6 +89,10 @@ vi.mock('../../src/middleware/auth.js', async () => {
 
 function setOptAuthUser(user: { id: string; email: string } | null) {
   authState.optAuthUser = user;
+}
+
+function setRequireAuthUser(user: { id: string; email: string; isAdmin?: boolean } | null) {
+  authState.requireAuthUser = user;
 }
 
 vi.mock('../../src/middleware/csrf.js', async () => {
@@ -96,6 +118,8 @@ import { HTTPServer } from '../../src/http.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { FederatedIndexDatabase } from '../../src/db/federated-index-db.js';
+import { FederatedIndexService } from '../../src/federated-index.js';
+import { CrawlerService } from '../../src/crawler.js';
 
 // `endpoint-` prefix scopes this file's fixtures away from the sibling
 // baseline files (prop-, auth-, mcp-) so concurrent file execution can't
@@ -223,6 +247,178 @@ describe('Registry reader baseline — public endpoints', () => {
     it('GET /api/registry/publisher returns 400 when domain query is missing', async () => {
       const res = await request(app).get('/api/registry/publisher');
       expect(res.status).toBe(400);
+    });
+
+    it('does not consume crawl rate limits when durable queue admission fails', async () => {
+      const admission = vi.spyOn(
+        CrawlerService.prototype,
+        'enqueuePublisherCrawlRequest',
+      )
+        .mockRejectedValueOnce(new Error('database unavailable'))
+        .mockResolvedValueOnce({} as never);
+
+      try {
+        const busy = await request(app)
+          .post('/api/registry/crawl-request')
+          .send({ domain: 'example.com' });
+        expect(busy.status).toBe(503);
+        expect(busy.headers['retry-after']).toBe('5');
+        expect(busy.body.code).toBe('crawl_queue_unavailable');
+
+        const admitted = await request(app)
+          .post('/api/registry/crawl-request')
+          .send({ domain: 'example.com' });
+        expect(admitted.status).toBe(202);
+        expect(admitted.body).toMatchObject({
+          message: 'Crawl request accepted',
+          domain: 'example.com',
+        });
+        expect(admitted.body.crawl_request_id).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+        );
+      } finally {
+        admission.mockRestore();
+      }
+    });
+
+    it('does not admit crawl requests while the rollout gate is disabled', async () => {
+      const admission = vi.spyOn(
+        CrawlerService.prototype,
+        'enqueuePublisherCrawlRequest',
+      );
+      process.env.PUBLISHER_CRAWL_QUEUE_ENABLED = 'false';
+      try {
+        const response = await request(app)
+          .post('/api/registry/crawl-request')
+          .send({ domain: 'example.com' });
+        expect(response.status).toBe(503);
+        expect(response.body.code).toBe('crawl_queue_unavailable');
+        expect(admission).not.toHaveBeenCalled();
+      } finally {
+        process.env.PUBLISHER_CRAWL_QUEUE_ENABLED = 'true';
+        admission.mockRestore();
+      }
+    });
+
+    it('returns the durable lifecycle to the request owner', async () => {
+      const admission = vi.spyOn(
+        CrawlerService.prototype,
+        'enqueuePublisherCrawlRequest',
+      ).mockResolvedValue({} as never);
+      const statusLookup = vi.spyOn(
+        CrawlerService.prototype,
+        'getPublisherCrawlRequest',
+      );
+
+      try {
+        const admitted = await request(app)
+          .post('/api/registry/crawl-request')
+          .send({ domain: 'scope3.com' });
+        expect(admitted.status).toBe(202);
+        const requestInput = admission.mock.calls[0][0];
+        const now = new Date();
+        statusLookup.mockResolvedValue({
+          id: admitted.body.crawl_request_id,
+          publisher_domain: 'scope3.com',
+          source: 'api:crawl-request',
+          requester_type: 'user',
+          requested_by_user_id: requestInput.requestedByUserId,
+          status: 'completed',
+          attempts: 1,
+          max_attempts: 5,
+          available_at: now,
+          lease_owner: null,
+          lease_token: null,
+          lease_expires_at: null,
+          heartbeat_at: null,
+          last_attempted_at: now,
+          last_error_code: null,
+          last_error: null,
+          created_at: now,
+          started_at: now,
+          completed_at: now,
+          updated_at: now,
+        });
+
+        const status = await request(app)
+          .get(`/api/registry/crawl-request/${admitted.body.crawl_request_id}`);
+        expect(status.status).toBe(200);
+        expect(status.headers['cache-control']).toBe('private, no-store');
+        expect(status.body).toMatchObject({
+          crawl_request_id: admitted.body.crawl_request_id,
+          domain: 'scope3.com',
+          status: 'completed',
+          attempts: 1,
+          next_attempt_at: null,
+          last_error_code: null,
+        });
+      } finally {
+        admission.mockRestore();
+        statusLookup.mockRestore();
+      }
+    });
+
+    it('enforces non-enumerating crawl-status ownership and both admin paths', async () => {
+      const requestId = '22222222-2222-4222-8222-222222222222';
+      const missingId = '33333333-3333-4333-8333-333333333333';
+      const now = new Date();
+      const statusLookup = vi.spyOn(
+        CrawlerService.prototype,
+        'getPublisherCrawlRequest',
+      ).mockImplementation(async (id) => id === missingId ? null : ({
+        id: requestId,
+        publisher_domain: 'scope3.com',
+        source: 'api:crawl-request',
+        requester_type: 'user',
+        requested_by_user_id: 'request-owner',
+        status: 'running',
+        attempts: 1,
+        max_attempts: 5,
+        available_at: now,
+        lease_owner: 'worker-1',
+        lease_token: '11111111-1111-4111-8111-111111111111',
+        lease_expires_at: new Date(now.getTime() + 60_000),
+        heartbeat_at: now,
+        last_attempted_at: now,
+        last_error_code: null,
+        last_error: null,
+        created_at: now,
+        started_at: now,
+        completed_at: null,
+        updated_at: now,
+      }));
+
+      try {
+        setRequireAuthUser(null);
+        const unauthenticated = await request(app)
+          .get(`/api/registry/crawl-request/${requestId}`);
+        expect(unauthenticated.status).toBe(401);
+
+        setRequireAuthUser({ id: 'different-user', email: 'different@example.com' });
+        const forbidden = await request(app)
+          .get(`/api/registry/crawl-request/${requestId}`);
+        const missing = await request(app)
+          .get(`/api/registry/crawl-request/${missingId}`);
+        expect(forbidden.status).toBe(404);
+        expect(forbidden.body).toEqual(missing.body);
+
+        setRequireAuthUser({ id: 'web-admin', email: 'admin@example.com', isAdmin: true });
+        const webAdmin = await request(app)
+          .get(`/api/registry/crawl-request/${requestId}`);
+        expect(webAdmin.status).toBe(200);
+
+        setRequireAuthUser(null);
+        const staticAdmin = await request(app)
+          .get(`/api/registry/crawl-request/${requestId}`)
+          .set('Authorization', 'Bearer static-admin-test');
+        expect(staticAdmin.status).toBe(200);
+      } finally {
+        setRequireAuthUser({
+          id: DEFAULT_TEST_USER_ID,
+          email: 'registry-baseline@test.com',
+        });
+        statusLookup.mockRestore();
+      }
     });
   });
 
@@ -354,6 +550,29 @@ describe('Registry reader baseline — public endpoints', () => {
       });
     });
 
+    it('GET /api/registry/publisher returns a typed temporary error for a bounded DB timeout', async () => {
+      const timeoutError = Object.assign(new Error('statement timeout'), { code: '57014' });
+      const scopedRead = vi.spyOn(
+        FederatedIndexService.prototype,
+        'getPropertiesForAgentDomain',
+      ).mockRejectedValue(timeoutError);
+
+      try {
+        const res = await request(app).get(
+          `/api/registry/publisher?domain=${encodeURIComponent(PUB_A)}`
+        );
+        expect(res.status).toBe(503);
+        expect(res.headers['retry-after']).toBe('5');
+        expect(res.body).toEqual({
+          error: 'Publisher lookup temporarily unavailable',
+          code: 'publisher_lookup_timeout',
+          retry_after: 5,
+        });
+      } finally {
+        scopedRead.mockRestore();
+      }
+    });
+
     it('GET /api/registry/publisher reports publisher-wide auth as N of N', async () => {
       // Drop AGENT_X's property-level row so only the publisher-wide
       // authorization remains. The rollup should collapse to "all".
@@ -400,6 +619,29 @@ describe('Registry reader baseline — public endpoints', () => {
       expect(res.body.unauthorized_properties[0]).toMatchObject({
         name: 'Endpoint Mobile',
       });
+    });
+
+    it('GET /api/registry/publisher/authorization returns a typed temporary error for a lock timeout', async () => {
+      const timeoutError = Object.assign(new Error('lock timeout'), { code: '55P03' });
+      const scopedRead = vi.spyOn(
+        FederatedIndexService.prototype,
+        'getPropertiesForAgentDomain',
+      ).mockRejectedValue(timeoutError);
+
+      try {
+        const res = await request(app).get(
+          `/api/registry/publisher/authorization?domain=${encodeURIComponent(PUB_A)}&agent=${encodeURIComponent(AGENT_X)}`
+        );
+        expect(res.status).toBe(503);
+        expect(res.headers['retry-after']).toBe('5');
+        expect(res.body).toEqual({
+          error: 'Publisher authorization lookup temporarily unavailable',
+          code: 'publisher_lookup_timeout',
+          retry_after: 5,
+        });
+      } finally {
+        scopedRead.mockRestore();
+      }
     });
 
     it('GET /api/registry/publisher/authorization reports publisher-wide as N of N with no unauthorized list', async () => {

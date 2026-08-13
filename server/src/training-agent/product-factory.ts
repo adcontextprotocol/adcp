@@ -7,9 +7,9 @@
 
 import type { PublisherProfile, PricingTemplate, CatalogProduct, ShowDefinition, ShowResponse } from './types.js';
 import type {
-  Product,
+  LegacyProduct as Product,
   Proposal,
-  FormatID,
+  LegacyFormatID as FormatID,
   CPAPricingOption,
   CatalogType,
 } from '@adcp/sdk';
@@ -423,6 +423,13 @@ const CANONICAL_FORMAT_PROJECTION_BY_LEGACY_ID: Record<string, CanonicalFormatPr
   },
 };
 
+const CANONICAL_ONLY_FORMAT_KINDS = new Set([
+  'image_carousel',
+  'sponsored_placement',
+  'responsive_creative',
+  'agent_placement',
+]);
+
 function formatOptionsForFormatIds(formatIds: FormatID[]): ProductFormatDeclaration[] {
   return formatIds.map(formatId => {
     const projection = CANONICAL_FORMAT_PROJECTION_BY_LEGACY_ID[formatId.id];
@@ -433,7 +440,9 @@ function formatOptionsForFormatIds(formatIds: FormatID[]): ProductFormatDeclarat
       format_kind: projection.format_kind,
       format_option_id: `${formatId.id}_${projection.format_kind}`,
       params: projection.params,
-      v1_format_ref: [formatId],
+      ...(CANONICAL_ONLY_FORMAT_KINDS.has(projection.format_kind)
+        ? { canonical_formats_only: true }
+        : { v1_format_ref: [formatId] }),
     } as ProductFormatDeclaration;
   });
 }

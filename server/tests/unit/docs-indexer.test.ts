@@ -125,6 +125,16 @@ describe('docs-indexer', () => {
       const results = searchDocs('xyzzy_nonexistent_term_12345');
       expect(results.length).toBe(0);
     });
+
+    it('finds the distinction between refinement and price-negotiation capability', () => {
+      const results = searchDocs('price negotiation refinement capability', { limit: 5 });
+      expect(results.map((doc) => doc.id)).toContain('doc:media-buy/product-discovery/refinement');
+
+      const refinement = getDocById('media-buy/product-discovery/refinement');
+      expect(refinement?.content).toContain('There is no finer-grained price-negotiation capability flag.');
+      expect(refinement?.content).toContain('omission communicates no per-ask outcome');
+      expect(refinement?.content).toContain("Inspect the returned proposal's pricing and allocations");
+    });
   });
 
   describe('schema and MDX retrieval (#5861)', () => {

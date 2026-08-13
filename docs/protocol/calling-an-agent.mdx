@@ -16,7 +16,7 @@ The agent-facing version of this content lives at [`skills/call-adcp-agent/SKILL
 Walk these in order on first contact with any new agent:
 
 1. **Agent card** (A2A) or **`tools/list`** (MCP): returns tool *names*. AdCP MCP servers no longer publish per-tool parameter schemas in `tools/list` — every tool shows `{type: 'object', properties: {}}`. Don't try to infer shape from there.
-2. **`get_adcp_capabilities`**: returns supported protocols, AdCP major versions, and feature flags. Tells you *which* tools this agent supports, not how to call them. See [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).
+2. **[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)**: returns supported protocols, AdCP major versions, and feature flags. Tells you *which* tools this agent supports, not how to call them. See [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).
 3. **`get_schema(tool_name)`** *(when the agent exposes it — pending standardization, see [#3057](https://github.com/adcontextprotocol/adcp/issues/3057))*: returns the JSON Schema for a specific tool's request/response.
 4. **Bundled schemas** (offline, authoritative): every published AdCP version ships JSON Schemas for every tool, signed via Sigstore. The path differs by SDK — the spec repo source uses `dist/schemas/<version>/bundled/`, `@adcp/sdk` puts them at `schemas/cache/<version>/bundled/` after `npm run sync-schemas`, Python and Go SDKs use their own conventions. Don't hardcode a path; let the SDK's loader find them. Once located, each schema lives at `<protocol>/<tool>-{request,response}.json`.
 
@@ -26,18 +26,18 @@ Every mutating tool requires an `idempotency_key` (UUID).
 
 - **Same key on retry** → server replays the **same response**, byte-for-byte. Use this for transport-level retries (timeout, 5xx, dropped connection).
 - **Fresh key** → **new operation**, regardless of body. Generating a new UUID because the previous attempt failed is the most common way naïve callers create duplicate media buys.
-- **Same key, different canonical body** → `IDEMPOTENCY_CONFLICT`. Sellers MUST reject (rule 5 in [security.mdx#idempotency](/docs/building/by-layer/L1/security#idempotency)) — do not silently apply the second body, do not silently replay the first response.
-- **Same key while first request still running** → `IDEMPOTENCY_IN_FLIGHT` (rule 9 in [security.mdx#idempotency](/docs/building/by-layer/L1/security#idempotency)). The seller MAY return this code with top-level `error.retry_after` instead of blocking. Wait and retry with the **same key** — minting a fresh key on this code turns a safe retry into a double-execution race.
+- **Same key, different canonical body** → [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict). Sellers MUST reject (rule 5 in [security.mdx#idempotency](/docs/building/by-layer/L1/security#idempotency)) — do not silently apply the second body, do not silently replay the first response.
+- **Same key while first request still running** → [`IDEMPOTENCY_IN_FLIGHT`](/docs/building/verification/compliance-catalog#error-code-idempotency-in-flight) (rule 9 in [security.mdx#idempotency](/docs/building/by-layer/L1/security#idempotency)). The seller MAY return this code with top-level `error.retry_after` instead of blocking. Wait and retry with the **same key** — minting a fresh key on this code turns a safe retry into a double-execution race.
 
 For async flows, the replayed response carries the **same `task_id`** so polling continues against the same task instead of forking.
 
-`idempotency_key` is required on: `create_media_buy`, `update_media_buy`, `sync_creatives`, `sync_audiences`, `sync_accounts`, `sync_catalogs`, `sync_event_sources`, `sync_plans`, `sync_governance`, `activate_signal`, `acquire_rights`, `log_event`, `report_usage`, `provide_performance_feedback`, `report_plan_outcome`, `create_property_list`, `update_property_list`, `delete_property_list`, `create_collection_list`, `update_collection_list`, `delete_collection_list`, `create_content_standards`, `update_content_standards`, `calibrate_content`, `si_initiate_session`, `si_send_message`.
+`idempotency_key` is required on: [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy), [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy), [`sync_creatives`](/docs/creative/task-reference/sync_creatives), [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences), [`sync_accounts`](/docs/accounts/tasks/sync_accounts), [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs), [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources), [`sync_plans`](/docs/governance/campaign/tasks/sync_plans), [`sync_governance`](/docs/accounts/tasks/sync_governance), [`activate_signal`](/docs/signals/tasks/activate_signal), [`acquire_rights`](/docs/brand-protocol/tasks/acquire_rights), [`log_event`](/docs/media-buy/task-reference/log_event), [`report_usage`](/docs/accounts/tasks/report_usage), [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback), [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome), [`create_property_list`](/docs/governance/property/tasks/property_lists#create_property_list), [`update_property_list`](/docs/governance/property/tasks/property_lists#update_property_list), [`delete_property_list`](/docs/governance/property/tasks/property_lists#delete_property_list), [`create_collection_list`](/docs/governance/collection/tasks/collection_lists#create_collection_list), [`update_collection_list`](/docs/governance/collection/tasks/collection_lists#update_collection_list), [`delete_collection_list`](/docs/governance/collection/tasks/collection_lists#delete_collection_list), [`create_content_standards`](/docs/governance/content-standards/tasks/create_content_standards), [`update_content_standards`](/docs/governance/content-standards/tasks/update_content_standards), [`calibrate_content`](/docs/governance/content-standards/tasks/calibrate_content), [`si_initiate_session`](/docs/sponsored-intelligence/tasks/si_initiate_session), [`si_send_message`](/docs/sponsored-intelligence/tasks/si_send_message).
 
 Missing the key → `adcp_error.code: 'VALIDATION_ERROR'` with `/idempotency_key` in `issues`.
 
 ## `account` is `oneOf` — pick exactly one variant
 
-`account` is a discriminated union. On `create_media_buy` and `update_media_buy`, two variants:
+`account` is a discriminated union. On [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) and [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy), two variants:
 
 ```json
 // variant 0: by seller-assigned id (from list_accounts or out-of-band onboarding;
@@ -54,7 +54,7 @@ Missing the key → `adcp_error.code: 'VALIDATION_ERROR'` with `/idempotency_key
 
 When a task schema requires `account`, send an explicit `AccountRef` even if the SDK auto-selected the only account available to the authenticated credential. Hidden credential-implied defaulting is not a protocol model. When a task marks `account` optional, omission has only the semantics documented by that task.
 
-Other tools (e.g. `sync_creatives`) may accept a superset — always check the specific tool's schema.
+Other tools (e.g. [`sync_creatives`](/docs/creative/task-reference/sync_creatives)) may accept a superset — always check the specific tool's schema.
 
 ## Async responses: `status: 'submitted'` means queued
 
@@ -73,7 +73,7 @@ A mutating tool can return one of three shapes:
 
 AdCP task state is an **application-layer** contract. MCP and A2A may wrap, stream, or transport an AdCP response, but their native task mechanisms do not replace the AdCP `task_id`, status values, webhook payloads, or polling/reconciliation surfaces. A transport task can complete after delivering an AdCP response whose payload still says `status: 'submitted'`.
 
-When you see `status: 'submitted'`, the work is **not** complete. In 3.x, poll via the legacy AdCP `tasks/get` surface using the returned `task_id`. Sellers MAY also advertise the non-colliding `get_task_status` alias; callers MAY use that alias when it appears in discovery. Both AdCP polling names use the same snake_case payload shape, including the optional `account` scope for multi-account credentials. Do not confuse either AdCP polling shape with transport-native MCP/A2A `tasks/get`, which uses the transport's own task wire shape.
+When you see `status: 'submitted'`, the work is **not** complete. In 3.x, poll via the legacy AdCP `tasks/get` surface using the returned `task_id`. Sellers MAY also advertise the non-colliding [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) alias; callers MAY use that alias when it appears in discovery. Both AdCP polling names use the same snake_case payload shape, including the optional `account` scope for multi-account credentials. Do not confuse either AdCP polling shape with transport-native MCP/A2A `tasks/get`, which uses the transport's own task wire shape.
 
 Pass `include_result: true` when polling so the seller includes the completion payload once status transitions to `completed`:
 
@@ -153,7 +153,7 @@ Every validation failure produces an envelope shaped like:
 | `keyword: 'type'` or `additionalProperties` at `/budget` | Sent `{amount, currency}` | `budget` is a number. Currency is implied by `pricing_option_id`. |
 | `enum` at `/format_kind` | Sent a non-canonical format kind | Choose a registered canonical kind or use a valid `custom` declaration. |
 | `keyword: 'enum'` at `/destinations/*/type` | Made-up destination type | Use `'platform'` (with `platform`) or `'agent'` (with `agent_url`). |
-| Response carries `status: 'submitted'` and `task_id` | Async — work is queued, NOT done | Poll with legacy `tasks/get`, or `get_task_status` when the seller advertises the alias. |
+| Response carries `status: 'submitted'` and `task_id` | Async — work is queued, NOT done | Poll with legacy `tasks/get`, or [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) when the seller advertises the alias. |
 
 ## Transport notes
 

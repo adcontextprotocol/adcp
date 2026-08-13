@@ -29,7 +29,7 @@ export declare const PROBE_TASK_BY_TENANT: Record<string, string>;
  * Thread the test-kit's auth material through to the storyboard runner so
  * kit-gated auth phases execute instead of being skipped by `skip_if`.
  */
-export declare function testKitOptionsFromKit(kit: LoadedTestKit | undefined, tenantPath?: any): StoryboardRunOptions['test_kit'] | undefined;
+export declare function testKitOptionsFromKit(kit: LoadedTestKit | undefined, tenantPath?: string | undefined): StoryboardRunOptions['test_kit'] | undefined;
 /**
  * Pick run-scoped transport auth for the manual storyboard runner.
  *

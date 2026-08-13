@@ -55,6 +55,8 @@ interface MetadataRow {
   agent_url: string;
   lifecycle_stage: string;
   compliance_opt_out: boolean;
+  badge_requalification_required: boolean;
+  badge_requalification_generation: string;
   monitoring_paused: boolean;
   check_interval_hours: number;
   monitoring_paused_at: Date | null;
@@ -236,6 +238,17 @@ async function main(): Promise<void> {
         agent_url: canonical,
         lifecycle_stage: mostRecent.lifecycle_stage,
         compliance_opt_out: rows.some(r => r.compliance_opt_out),
+        badge_requalification_required: rows.some(r => r.badge_requalification_required),
+        // Bump beyond every source row so an in-flight pre-merge full-suite
+        // run cannot clear the merged row's requalification gate.
+        badge_requalification_generation: (
+          rows.reduce(
+            (max, row) => BigInt(row.badge_requalification_generation) > max
+              ? BigInt(row.badge_requalification_generation)
+              : max,
+            0n,
+          ) + 1n
+        ).toString(),
         monitoring_paused: rows.some(r => r.monitoring_paused),
         check_interval_hours: Math.min(...rows.map(r => r.check_interval_hours)),
         monitoring_paused_at: maxNullableDate(rows.map(r => r.monitoring_paused_at)),
@@ -265,13 +278,17 @@ async function main(): Promise<void> {
         );
         await client.query(
           `INSERT INTO agent_registry_metadata
-            (agent_url, lifecycle_stage, compliance_opt_out, monitoring_paused,
-             check_interval_hours, monitoring_paused_at, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            (agent_url, lifecycle_stage, compliance_opt_out,
+             badge_requalification_required, badge_requalification_generation,
+             monitoring_paused, check_interval_hours, monitoring_paused_at,
+             created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
             merged.agent_url,
             merged.lifecycle_stage,
             merged.compliance_opt_out,
+            merged.badge_requalification_required,
+            merged.badge_requalification_generation,
             merged.monitoring_paused,
             merged.check_interval_hours,
             merged.monitoring_paused_at,
