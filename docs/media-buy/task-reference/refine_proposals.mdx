@@ -86,7 +86,7 @@ Pass only a finalized committed proposal to [`accept_proposal`](/docs/media-buy/
 
 ## Relationship to legacy refinement
 
-The deprecated `get_products` `buying_mode: "refine"` surface is the 3.x compatibility façade; `refine_proposals` is the canonical compact-lifecycle negotiation task. The two surfaces share `ask`, product `include`/`omit` verbs, and the same `budget_range` `{min,max,currency}` shape. Compact hard constraints reject unknown range members and require the semantic `min <= max` check; legacy filters remain extension-tolerant. The surfaces do not share response envelopes: legacy calls may return position-matched `refinement_applied[]`, while compact calls return one `results[]` entry per source proposal and prohibit `refinement_applied`.
+The deprecated [`get_products`](/docs/media-buy/task-reference/get_products) `buying_mode: "refine"` surface is the 3.x compatibility façade; `refine_proposals` is the canonical compact-lifecycle negotiation task. The two surfaces share `ask`, product `include`/`omit` verbs, and the same `budget_range` `{min,max,currency}` shape. Compact hard constraints reject unknown range members and require the semantic `min <= max` check; legacy filters remain extension-tolerant. The surfaces do not share response envelopes: legacy calls may return position-matched `refinement_applied[]`, while compact calls return one `results[]` entry per source proposal and prohibit `refinement_applied`.
 
 Adapters may map a single legacy proposal refinement into the compact task, but must not invent support for per-proposal constraints or alternatives that the legacy envelope cannot represent faithfully.
 
