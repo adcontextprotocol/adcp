@@ -728,7 +728,7 @@ Module and exam completion is only available through Addie's tool calls — neve
 
 ### Gemini image generation
 
-**Model**: `gemini-3.1-flash-image-preview` (via `responseModalities: ["TEXT", "IMAGE"]`)
+**Model**: `gemini-3.1-flash-image` (via `responseModalities: ["TEXT", "IMAGE"]`)
 
 **Base style prompt** (include in every image request):
 ```

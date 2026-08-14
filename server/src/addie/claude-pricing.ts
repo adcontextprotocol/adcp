@@ -11,7 +11,7 @@
  *     cap by rewriting pricing).
  *
  * Update these alongside Anthropic's pricing page when model rates
- * change. Last refresh: April 2026.
+ * change. Last refresh: August 2026.
  */
 
 /** Per-million-token prices. Converted to per-token via × 1/1_000_000 downstream. */
@@ -25,22 +25,28 @@ interface ModelRates {
 }
 
 const PRICING_PER_MILLION_TOKENS: Record<string, ModelRates> = {
-  // Claude Opus 4.x — premium tier
-  'claude-opus-4-6': { inputUsd: 15, outputUsd: 75, cacheCreationUsd: 18.75, cacheReadUsd: 1.5 },
-  'claude-opus-4-7': { inputUsd: 15, outputUsd: 75, cacheCreationUsd: 18.75, cacheReadUsd: 1.5 },
-  // Claude Sonnet 4.x — balanced tier (most Addie calls)
+  // Claude Fable — highest-cost generally available tier
+  'claude-fable-5': { inputUsd: 10, outputUsd: 50, cacheCreationUsd: 12.5, cacheReadUsd: 1 },
+  // Claude Opus — premium tier
+  'claude-opus-4-6': { inputUsd: 5, outputUsd: 25, cacheCreationUsd: 6.25, cacheReadUsd: 0.5 },
+  'claude-opus-4-7': { inputUsd: 5, outputUsd: 25, cacheCreationUsd: 6.25, cacheReadUsd: 0.5 },
+  'claude-opus-4-8': { inputUsd: 5, outputUsd: 25, cacheCreationUsd: 6.25, cacheReadUsd: 0.5 },
+  'claude-opus-5': { inputUsd: 5, outputUsd: 25, cacheCreationUsd: 6.25, cacheReadUsd: 0.5 },
+  // Claude Sonnet — balanced tier (most Addie calls). Sonnet 5 is kept at
+  // its standard post-promotion rate so the daily cap remains conservative.
   'claude-sonnet-4-5': { inputUsd: 3, outputUsd: 15, cacheCreationUsd: 3.75, cacheReadUsd: 0.3 },
   'claude-sonnet-4-6': { inputUsd: 3, outputUsd: 15, cacheCreationUsd: 3.75, cacheReadUsd: 0.3 },
+  'claude-sonnet-5': { inputUsd: 3, outputUsd: 15, cacheCreationUsd: 3.75, cacheReadUsd: 0.3 },
   // Claude Haiku 4.x — fast / cheap tier (routing, classification)
   'claude-haiku-4-5': { inputUsd: 1, outputUsd: 5, cacheCreationUsd: 1.25, cacheReadUsd: 0.1 },
 };
 
 /**
  * Fallback rates applied to unknown model IDs (new model ships before
- * this table is updated). Conservatively priced as Opus so the cost
+ * this table is updated). Conservatively priced as Fable so the cost
  * cap won't accidentally give away premium usage while we catch up.
  */
-const UNKNOWN_MODEL_FALLBACK: ModelRates = PRICING_PER_MILLION_TOKENS['claude-opus-4-7'];
+const UNKNOWN_MODEL_FALLBACK: ModelRates = PRICING_PER_MILLION_TOKENS['claude-fable-5'];
 
 export interface ClaudeUsage {
   input_tokens: number;
@@ -54,7 +60,7 @@ export interface ClaudeUsage {
  * (1/1,000,000 of a dollar). Integer math throughout so a day's worth
  * of tiny calls can be summed without floating-point drift.
  *
- * Unknown model IDs fall through to the Opus rate — overestimating
+ * Unknown model IDs fall through to the Fable rate — overestimating
  * cost is safer than underestimating for a security gate.
  */
 export function costUsdMicros(model: string, usage: ClaudeUsage): number {

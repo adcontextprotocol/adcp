@@ -44,10 +44,10 @@ beforeEach(() => {
 
 describe('claude-client entry-gate behavior (#2790)', () => {
   it('processMessage short-circuits with cost_cap_exceeded when the user is over budget', async () => {
-    // Burn the anonymous cap for `user-x`. Opus is $15/M-token input,
-    // so we need >cap × 1M / 15 tokens to exceed the cap with one charge.
-    const tokensToExceedCap = Math.ceil((DAILY_BUDGET_USD.anonymous * 1_000_000) / 15) + 1;
-    await recordCost('user-x', 'claude-opus-4-7', { input_tokens: tokensToExceedCap, output_tokens: 0 });
+    // Burn the anonymous cap for `user-x`. Opus is $5/M-token input,
+    // so we need >cap × 1M / 5 tokens to exceed the cap with one charge.
+    const tokensToExceedCap = Math.ceil((DAILY_BUDGET_USD.anonymous * 1_000_000) / 5) + 1;
+    await recordCost('user-x', 'claude-opus-5', { input_tokens: tokensToExceedCap, output_tokens: 0 });
 
     const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
     const response = await client.processMessage(
@@ -67,8 +67,8 @@ describe('claude-client entry-gate behavior (#2790)', () => {
   });
 
   it('processMessageStream yields a single cost_cap_exceeded done event when over budget', async () => {
-    const tokensToExceedCap = Math.ceil((DAILY_BUDGET_USD.anonymous * 1_000_000) / 15) + 1;
-    await recordCost('user-y', 'claude-opus-4-7', { input_tokens: tokensToExceedCap, output_tokens: 0 });
+    const tokensToExceedCap = Math.ceil((DAILY_BUDGET_USD.anonymous * 1_000_000) / 5) + 1;
+    await recordCost('user-y', 'claude-opus-5', { input_tokens: tokensToExceedCap, output_tokens: 0 });
 
     const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
     const events: Array<{ type: string; response?: { flagged: boolean; flag_reason?: string } }> = [];

@@ -22,6 +22,7 @@ import * as path from "path";
 import { createHash } from "crypto";
 import sharp from "sharp";
 import { signC2PA, isC2PASigningEnabled } from "../server/src/services/c2pa.js";
+import { GeminiModelConfig } from "../server/src/config/models.js";
 
 const STYLES: Record<string, string> = {
   addie: `Flat illustration, blue-led color palette (#1a36b4 primary, #2d4fd6 secondary, #6b8cef light accents) with teal used only as a minor supporting accent. Graphic novel style with clean panel borders. Clean, minimal linework with subtle gradients. Tech-forward but warm. No real brand names or logos. Wide aspect ratio suitable for documentation headers (roughly 16:9). Characters should have simple but expressive faces. Use white/light backgrounds for readability.`,
@@ -48,7 +49,7 @@ async function validateImage(
   imageBuffer: Buffer,
   altText?: string,
 ): Promise<ValidationResult | null> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  const model = genAI.getGenerativeModel({ model: GeminiModelConfig.fast });
 
   let validationPrompt =
     `Analyze this image for quality. List ALL text visible in the image verbatim — every word, label, and caption exactly as rendered. ` +
@@ -107,7 +108,7 @@ async function generateAndSaveImage(
   style: string,
 ): Promise<Buffer | null> {
   const model = genAI.getGenerativeModel({
-    model: "gemini-3.1-flash-image-preview",
+    model: GeminiModelConfig.image,
     generationConfig: {
       // @ts-expect-error - responseModalities not in SDK types yet
       responseModalities: ["TEXT", "IMAGE"],
@@ -162,7 +163,7 @@ async function signStoryboardIfEnabled(
     const signed = signC2PA(pngBuffer, {
       claimGenerator: "AAO Docs Storyboard Generator",
       title: path.basename(outputPath),
-      softwareAgent: { name: "gemini-3.1-flash-image-preview", version: "preview" },
+      softwareAgent: { name: GeminiModelConfig.image, version: GeminiModelConfig.imageVersion },
       attributes: {
         style,
         relative_path: path.relative(process.cwd(), outputPath),

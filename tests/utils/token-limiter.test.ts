@@ -30,20 +30,20 @@ describe('estimateTokens', () => {
   });
 
   it('should estimate tokens for short text', () => {
-    // "Hello world" = 11 chars, ~3 tokens at 3.5 chars/token
+    // Sonnet 5's tokenizer needs a conservative ~2.7 chars/token estimate.
     const result = estimateTokens('Hello world');
-    expect(result).toBe(Math.ceil(11 / 3.5)); // 4
+    expect(result).toBe(Math.ceil(11 / 2.7)); // 5
   });
 
   it('should estimate tokens for longer text', () => {
     const text = 'This is a longer piece of text that should have more tokens.';
     const result = estimateTokens(text);
-    expect(result).toBe(Math.ceil(text.length / 3.5));
+    expect(result).toBe(Math.ceil(text.length / 2.7));
   });
 
   it('should round up token estimates', () => {
-    // 10 chars / 3.5 = 2.857... should round up to 3
-    expect(estimateTokens('1234567890')).toBe(3);
+    // 10 chars / 2.7 = 3.703... should round up to 4
+    expect(estimateTokens('1234567890')).toBe(4);
   });
 });
 
@@ -182,8 +182,8 @@ describe('getConversationTokenLimit', () => {
   });
 
   it('should return model-specific limit minus reserved tokens', () => {
-    const limit = getConversationTokenLimit('claude-sonnet-4-6');
-    expect(limit).toBe(MODEL_CONTEXT_LIMITS['claude-sonnet-4-6'] - RESERVED_TOKENS);
+    const limit = getConversationTokenLimit('claude-sonnet-5');
+    expect(limit).toBe(MODEL_CONTEXT_LIMITS['claude-sonnet-5'] - RESERVED_TOKENS);
   });
 
   it('should use default for unknown models', () => {
@@ -193,28 +193,28 @@ describe('getConversationTokenLimit', () => {
 
   it('should use dynamic calculation when toolCount is provided', () => {
     const toolCount = 50;
-    const limit = getConversationTokenLimit('claude-sonnet-4-6', toolCount);
+    const limit = getConversationTokenLimit('claude-sonnet-5', toolCount);
 
     // Expected: model limit - (system prompt + tool tokens + prepended context + response buffer + safety margin)
     const expectedToolTokens = estimateToolTokens(toolCount);
     const expectedReserved = TOKEN_BUFFERS.systemPrompt + expectedToolTokens +
       TOKEN_BUFFERS.prependedContext + TOKEN_BUFFERS.responseBuffer + TOKEN_BUFFERS.safetyMargin;
-    const expectedLimit = MODEL_CONTEXT_LIMITS['claude-sonnet-4-6'] - expectedReserved;
+    const expectedLimit = MODEL_CONTEXT_LIMITS['claude-sonnet-5'] - expectedReserved;
 
     expect(limit).toBe(expectedLimit);
   });
 
   it('should give more conversation budget with fewer tools', () => {
-    const limitWithFewTools = getConversationTokenLimit('claude-sonnet-4-6', 10);
-    const limitWithManyTools = getConversationTokenLimit('claude-sonnet-4-6', 100);
+    const limitWithFewTools = getConversationTokenLimit('claude-sonnet-5', 10);
+    const limitWithManyTools = getConversationTokenLimit('claude-sonnet-5', 100);
 
     // Fewer tools = more room for conversation
     expect(limitWithFewTools).toBeGreaterThan(limitWithManyTools);
   });
 
   it('should differ from static buffer when toolCount provided', () => {
-    const staticLimit = getConversationTokenLimit('claude-sonnet-4-6');
-    const dynamicLimit = getConversationTokenLimit('claude-sonnet-4-6', 50);
+    const staticLimit = getConversationTokenLimit('claude-sonnet-5');
+    const dynamicLimit = getConversationTokenLimit('claude-sonnet-5', 50);
 
     // Dynamic calculation should differ from static RESERVED_TOKENS buffer
     expect(dynamicLimit).not.toBe(staticLimit);

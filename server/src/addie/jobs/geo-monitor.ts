@@ -9,7 +9,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { logger as baseLogger } from '../../logger.js';
 import { query } from '../../db/client.js';
-import { ModelConfig } from '../../config/models.js';
+import { disableAdaptiveThinking, ModelConfig } from '../../config/models.js';
 import { syncGeoPromptsFromLLMPulse } from '../../services/geo-prompt-sync.js';
 import { submitBatch, extractText } from '../../utils/batch.js';
 import type { BatchRequest } from '../../utils/batch.js';
@@ -170,6 +170,7 @@ export async function runGeoMonitorJob(options: { limit?: number } = {}): Promis
     params: {
       model,
       max_tokens: 1024,
+      ...disableAdaptiveThinking(model),
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: prompt.prompt_text }],
     },

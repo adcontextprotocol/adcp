@@ -426,7 +426,7 @@ describe('Addie response truncation (#4431)', () => {
     expect(mocks.recordCost).toHaveBeenCalledOnce();
     expect(mocks.recordCost).toHaveBeenCalledWith(
       'user-4431',
-      'claude-sonnet-4-6',
+      'claude-sonnet-5',
       expect.objectContaining({ input_tokens: 8, output_tokens: 10 }),
     );
   });

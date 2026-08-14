@@ -15,12 +15,12 @@ describe('costUsdMicros', () => {
 
   it('prices Sonnet at $3/M input, $15/M output', () => {
     // 10k input, 5k output: 10_000*3 + 5_000*15 = 30_000 + 75_000 = 105_000 micros ($0.105)
-    expect(costUsdMicros('claude-sonnet-4-6', { input_tokens: 10_000, output_tokens: 5_000 })).toBe(105_000);
+    expect(costUsdMicros('claude-sonnet-5', { input_tokens: 10_000, output_tokens: 5_000 })).toBe(105_000);
   });
 
-  it('prices Opus at $15/M input, $75/M output', () => {
-    // 1000 input, 500 output: 1000*15 + 500*75 = 15_000 + 37_500 = 52_500 micros
-    expect(costUsdMicros('claude-opus-4-7', { input_tokens: 1000, output_tokens: 500 })).toBe(52_500);
+  it('prices Opus at $5/M input, $25/M output', () => {
+    // 1000 input, 500 output: 1000*5 + 500*25 = 5_000 + 12_500 = 17_500 micros
+    expect(costUsdMicros('claude-opus-5', { input_tokens: 1000, output_tokens: 500 })).toBe(17_500);
   });
 
   it('applies cache-creation and cache-read rates (Sonnet)', () => {
@@ -40,13 +40,13 @@ describe('costUsdMicros', () => {
     );
   });
 
-  it('falls back to Opus pricing for unknown models (overestimate rather than underestimate)', () => {
+  it('falls back to Fable pricing for unknown models (overestimate rather than underestimate)', () => {
     // If Anthropic ships a new model before this table is updated,
-    // the gate still charges conservatively. 1000 input at Opus rate
-    // = 1000 * 15 = 15_000 micros. Matches explicit Opus call.
+    // the gate still charges conservatively. 1000 input at Fable rate
+    // = 1000 * 10 = 10_000 micros. Matches explicit Fable call.
     const unknownCost = costUsdMicros('claude-made-up-9-0', { input_tokens: 1000, output_tokens: 0 });
-    const opusCost = costUsdMicros('claude-opus-4-7', { input_tokens: 1000, output_tokens: 0 });
-    expect(unknownCost).toBe(opusCost);
+    const fableCost = costUsdMicros('claude-fable-5', { input_tokens: 1000, output_tokens: 0 });
+    expect(unknownCost).toBe(fableCost);
   });
 
   it('ceilings fractional results so a sub-micro charge still increments the counter', () => {
@@ -66,9 +66,10 @@ describe('costUsdMicros', () => {
 
 describe('__hasKnownPricing', () => {
   it('returns true for supported models', () => {
-    expect(__hasKnownPricing('claude-sonnet-4-6')).toBe(true);
+    expect(__hasKnownPricing('claude-sonnet-5')).toBe(true);
     expect(__hasKnownPricing('claude-haiku-4-5')).toBe(true);
-    expect(__hasKnownPricing('claude-opus-4-7')).toBe(true);
+    expect(__hasKnownPricing('claude-opus-5')).toBe(true);
+    expect(__hasKnownPricing('claude-fable-5')).toBe(true);
   });
 
   it('returns false for unknown models', () => {

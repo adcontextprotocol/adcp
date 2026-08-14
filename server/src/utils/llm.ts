@@ -6,7 +6,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { ModelConfig } from '../config/models.js';
+import { disableAdaptiveThinking, ModelConfig } from '../config/models.js';
 import { withRetry } from './anthropic-retry.js';
 import { logger } from '../logger.js';
 
@@ -106,6 +106,9 @@ export async function complete(options: CompleteOptions): Promise<LLMResult> {
       return getClient().messages.create({
         model: modelId,
         max_tokens: maxTokens,
+        // This helper serves bounded one-shot completions. Avoid spending a
+        // small response budget on adaptive thinking for Sonnet/Opus tiers.
+        ...(model !== 'fast' && disableAdaptiveThinking(modelId)),
         ...(system && { system }),
         messages: [{ role: 'user', content: prompt }],
       });
@@ -119,9 +122,9 @@ export async function complete(options: CompleteOptions): Promise<LLMResult> {
   if (!response.content || response.content.length === 0) {
     throw new Error('Empty response from LLM');
   }
-  const content = response.content[0];
+  const content = response.content.find((block) => block.type === 'text');
 
-  if (content.type !== 'text') {
+  if (!content || content.type !== 'text') {
     throw new Error('Unexpected response type from LLM');
   }
 

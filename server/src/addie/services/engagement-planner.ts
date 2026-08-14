@@ -8,7 +8,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../../logger.js';
-import { ModelConfig } from '../../config/models.js';
+import { disableAdaptiveThinking, ModelConfig } from '../../config/models.js';
 import { STAGE_ORDER } from '../../db/relationship-db.js';
 import type { PersonRelationship, RelationshipStage } from '../../db/relationship-db.js';
 import type { MemberCapabilities } from '../types.js';
@@ -396,15 +396,15 @@ export async function composeMessage(
     {
       model: ModelConfig.primary,
       max_tokens: 1024,
-      temperature: 0.7,
+      ...disableAdaptiveThinking(ModelConfig.primary),
       system: COMPOSE_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt }],
     },
     { signal: AbortSignal.timeout(30000) }
   );
 
-  const content = response.content[0];
-  if (content.type !== 'text') {
+  const content = response.content.find((block) => block.type === 'text');
+  if (!content || content.type !== 'text') {
     logger.warn('Unexpected response type from model');
     return null;
   }

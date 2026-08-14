@@ -18,7 +18,7 @@ import {
   type ThreadChannel,
 } from "../addie/thread-service.js";
 import Anthropic from "@anthropic-ai/sdk";
-import { ModelConfig } from "../config/models.js";
+import { disableAdaptiveThinking, ModelConfig } from "../config/models.js";
 import { AddieRouter, type RoutingContext } from "../addie/router.js";
 import { sanitizeInput } from "../addie/security.js";
 import { runSlackHistoryBackfill } from "../addie/jobs/slack-history-backfill.js";
@@ -897,10 +897,12 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
       const response = await client.messages.create({
         model: ModelConfig.primary,
         max_tokens: 1500,
+        ...disableAdaptiveThinking(ModelConfig.primary),
         messages: [{ role: 'user', content: diagnosisPrompt }],
       });
 
-      const analysis = response.content[0].type === 'text' ? response.content[0].text : '';
+      const textBlock = response.content.find((block) => block.type === 'text');
+      const analysis = textBlock?.type === 'text' ? textBlock.text : '';
 
       logger.info({ threadId: id }, "Generated Claude diagnosis for thread");
       res.json({

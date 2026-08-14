@@ -13,11 +13,12 @@ import { createLogger } from '../logger.js';
 import { withGeminiRetry } from '../utils/gemini-retry.js';
 import { signC2PA, isC2PASigningEnabled } from './c2pa.js';
 import { notifySystemError } from '../addie/error-notifier.js';
+import { GeminiModelConfig } from '../config/models.js';
 
 const logger = createLogger('portrait-generator');
 
-const GEMINI_IMAGE_MODEL = 'gemini-3.1-flash-image-preview';
-const GEMINI_IMAGE_VERSION = 'preview';
+const GEMINI_IMAGE_MODEL = GeminiModelConfig.image;
+const GEMINI_IMAGE_VERSION = GeminiModelConfig.imageVersion;
 
 const PALETTES: Record<string, string> = {
   amber: `Flat illustration, amber/gold-led color palette (#D4A017 primary, #F4C430 secondary, #FFE066 light accents). Graphic novel style with clean linework and subtle gradients. Circular composition centered on the subject, suitable for avatar/profile use. Warm, approachable tone.`,
@@ -96,7 +97,7 @@ export async function generatePortrait(options: GeneratePortraitOptions): Promis
   const ai = getGenAI();
   const model = ai.getGenerativeModel(
     {
-      model: 'gemini-3.1-flash-image-preview',
+      model: GEMINI_IMAGE_MODEL,
       generationConfig: {
         // @ts-expect-error - responseModalities not in SDK types yet
         responseModalities: ['TEXT', 'IMAGE'],
@@ -244,7 +245,7 @@ export async function validatePortrait(imageBuffer: Buffer): Promise<{
   issues: string[];
 }> {
   const ai = getGenAI();
-  const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' }, { timeout: 30_000 });
+  const model = ai.getGenerativeModel({ model: GeminiModelConfig.fast }, { timeout: 30_000 });
 
   const validationPrompt =
     `Analyze this portrait illustration for quality. Check: ` +

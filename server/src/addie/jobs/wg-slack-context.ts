@@ -12,7 +12,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../../logger.js';
-import { ModelConfig } from '../../config/models.js';
+import { disableAdaptiveThinking, ModelConfig } from '../../config/models.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getChannelHistory, getChannelInfo } from '../../slack/client.js';
 import type { SlackHistoryMessage } from '../../slack/client.js';
@@ -241,9 +241,11 @@ export async function runWgSlackContextJob(
   const response = await client.messages.create({
     model: ModelConfig.primary,
     max_tokens: 3000,
+    ...disableAdaptiveThinking(ModelConfig.primary),
     messages: [{ role: 'user', content: buildDistillerPrompt(threads) }],
   });
-  const raw = response.content[0]?.type === 'text' ? response.content[0].text.trim() : '';
+  const textBlock = response.content.find((block) => block.type === 'text');
+  const raw = textBlock?.type === 'text' ? textBlock.text.trim() : '';
 
   if (!raw || raw.includes(NO_CONTENT_SENTINEL)) {
     result.skipped = 'no-spec-content';

@@ -827,7 +827,7 @@ export class SiAgentService {
     try {
       const response = await this.anthropic.messages.create({
         model: ModelConfig.primary,
-        max_tokens: 1024,
+        max_tokens: 4096,
         system: systemPrompt,
         messages,
       });
@@ -906,7 +906,7 @@ export class SiAgentService {
       // Use streaming API
       const stream = this.anthropic.messages.stream({
         model: ModelConfig.primary,
-        max_tokens: 1024,
+        max_tokens: 4096,
         system: systemPrompt,
         messages,
       });
