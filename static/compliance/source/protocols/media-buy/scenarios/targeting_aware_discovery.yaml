@@ -1,0 +1,1167 @@
+id: media_buy_seller/targeting_aware_discovery
+version: "1.0.0"
+title: "Seller resolves targeting during discovery and persists inventory selection"
+category: media_buy_seller
+summary: "Verifies targeting-scoped discovery forecasts, future overlay support, sparse configured-product modifications, opaque product acceptance, and inventory targeting across create/update/readback."
+track: media_buy
+introduced_in: "3.2"
+
+required_tools:
+  - get_products
+  - create_media_buy
+  - update_media_buy
+  - get_media_buys
+  - comply_test_controller
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  Buyers provide concrete targeting during get_products so returned products,
+  pricing, and forecasts already describe the inventory they can buy. Exact
+  acceptance of a structured overlay produces no targeting echo. Explicit hard
+  targeting in a brief remains binding. When a structured predicate inferred
+  from prose materially affects eligibility, pricing, or forecasting, sellers
+  must confirm it once through response-level
+  targeting_resolution.brief_targeting; otherwise confirmation remains a best
+  practice.
+  A seller may offer a different executable predicate only as a sparse
+  modification on a distinct, expiring configured product; purchasing that
+  product accepts the change.
+
+  required_overlay_support is capability discovery, not a breakout request.
+  It filters to products that permit later package-level selection. Placement,
+  property, and collection selection are inventory targeting. Creative
+  placement_refs remain routing instructions within the purchased set.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - targeting_aware_discovery
+    - placement_targeting
+  examples:
+    - "National video products targetable by DMA and social surface"
+    - "Local inventory products whose inherent scope satisfies geo targeting"
+    - "Products backed by seller-defined demographic intervals"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The controller seeds a non-guaranteed video product with US inventory,
+    Nielsen DMA support, two targetable publisher-scoped placements, list
+    targeting support, and enumerated age intervals. The seller can return
+    request-scoped configured products derived from this catalog product. The
+    expired configured fixture is a retained tombstone issued to this scenario's
+    authenticated account and discovery lineage; inaccessible lineages are not
+    exposed.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "targeting_aware_video_catalog"
+      delivery_type: "non_guaranteed"
+      channels: ["olv"]
+      format_ids:
+        - id: "video_30s"
+      placements:
+        - kind: "publisher_ref"
+          publisher_domain: "pinnacle-media.example"
+          placement_id: "feed"
+          mode: "targetable"
+        - kind: "publisher_ref"
+          publisher_domain: "pinnacle-media.example"
+          placement_id: "short_video"
+          mode: "targetable"
+      property_targeting_allowed: true
+      collection_targeting_allowed: true
+      allowed_actions:
+        - action: "update_targeting"
+          modes: ["self_serve"]
+      overlay_support:
+        geo_metros:
+          systems: ["nielsen_dma"]
+        placement_selection:
+          max_values_per_package: 2
+        property_list: true
+        collection_list: true
+        device_platform_exclude: true
+        keyword_targets: true
+        demographics:
+          age: true
+      demographic_targeting:
+        age:
+          execution_modes: ["enumerated_intervals"]
+          unknown_handling: "always_excluded"
+          intervals:
+            - interval_id: "age_18_24"
+              age: { min: 18, max: 24, include_unknown: false }
+            - interval_id: "age_25_34"
+              age: { min: 25, max: 34, include_unknown: false }
+            - interval_id: "age_35_44"
+              age: { min: 35, max: 44, include_unknown: false }
+    - product_id: "targeting_aware_fixed_placement"
+      delivery_type: "non_guaranteed"
+      channels: ["ctv"]
+      format_ids:
+        - id: "video_30s"
+      placements:
+        - kind: "publisher_ref"
+          publisher_domain: "pinnacle-media.example"
+          placement_id: "feed"
+          mode: "included"
+        - kind: "publisher_ref"
+          publisher_domain: "pinnacle-media.example"
+          placement_id: "short_video"
+          mode: "included"
+      allowed_actions:
+        - action: "update_targeting"
+          modes: ["self_serve"]
+    - product_id: "targeting_aware_expired_configured"
+      is_custom: true
+      expires_at: "2020-01-01T00:00:00Z"
+      delivery_type: "non_guaranteed"
+      channels: ["olv"]
+      format_ids:
+        - id: "video_30s"
+      placements:
+        - kind: "publisher_ref"
+          publisher_domain: "pinnacle-media.example"
+          placement_id: "feed"
+          mode: "targetable"
+  pricing_options:
+    - product_id: "targeting_aware_video_catalog"
+      pricing_option_id: "targeting_aware_video_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 12.0
+    - product_id: "targeting_aware_fixed_placement"
+      pricing_option_id: "targeting_aware_fixed_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 12.0
+    - product_id: "targeting_aware_expired_configured"
+      pricing_option_id: "targeting_aware_expired_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 12.0
+
+phases:
+  - id: compatibility_window
+    title: "Preserve legacy targeting while rejecting ambiguous dual input"
+    steps:
+      - id: accept_equivalent_legacy_and_overlay_targeting
+        title: "Accept equivalent legacy and structured geography"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium outdoor video"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            channels: ["olv"]
+            countries: ["US"]
+          targeting_overlay:
+            geo_countries: ["US"]
+          context:
+            correlation_id: "targeting_aware_discovery--equivalent_legacy"
+        expected: |
+          Accept the request because the deprecated countries filter and the
+          structured overlay express the same delivery constraint. Return a
+          configured product whose forecast is scoped to US inventory.
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_present
+            path: "products[0]"
+            description: "Equivalent legacy and structured targeting remains buyable"
+          - check: field_absent
+            path: "products[0].targeting_resolution"
+            description: "Equivalent dual input does not manufacture a targeting modification"
+
+      - id: reject_conflicting_legacy_and_overlay_targeting
+        title: "Reject conflicting legacy and structured geography"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium outdoor video"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            channels: ["olv"]
+            countries: ["CA"]
+          targeting_overlay:
+            geo_countries: ["US"]
+          context:
+            correlation_id: "targeting_aware_discovery--conflicting_legacy"
+        expected: |
+          Reject with INVALID_REQUEST. The seller must not choose one of two
+          contradictory delivery constraints or silently treat the legacy field
+          as a product-coverage hint.
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Conflicting legacy and structured targeting is ambiguous"
+
+  - id: release_downshift
+    title: "Serve the legacy shape to a 3.1-pinned buyer"
+    optional: true
+    requires_capability:
+      path: "adcp.supported_versions"
+      contains: "3.1"
+    narrative: |
+      This phase applies only when the 3.2 seller also advertises 3.1. It proves
+      that release negotiation shapes the payload, rather than merely echoing a
+      different version label around the latest response.
+    steps:
+      - id: get_products_at_3_1
+        title: "Downshift targeting-aware discovery to the 3.1 contract"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          adcp_version: "3.1"
+          adcp_major_version: 3
+          buying_mode: "brief"
+          brief: "Premium outdoor video in the US"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            channels: ["olv"]
+            countries: ["US"]
+          context:
+            correlation_id: "targeting_aware_discovery--downshift_3_1"
+        expected: |
+          Serve the request as AdCP 3.1, echo adcp_version 3.1, and omit the
+          targeting-aware response fields introduced in 3.2. If the seller did
+          not advertise 3.1 this phase would be not applicable rather than
+          requiring an unsafe downshift.
+        validations:
+          - check: response_schema
+            description: "Response remains valid against the shared result envelope"
+          - check: envelope_field_pattern
+            path: "adcp_version"
+            pattern: "^3\\.1$"
+            description: "Seller echoes the release it actually served"
+          - check: field_present
+            path: "products[0]"
+            description: "Legacy targeting filters remain functional on the 3.1 path"
+          - check: field_absent
+            path: "targeting_resolution"
+            description: "3.1 response omits request-level brief targeting resolution"
+          - check: field_absent
+            path: "products[0].overlay_support"
+            description: "3.1 product omits the 3.2 product support contract"
+          - check: field_absent
+            path: "products[0].targeting_resolution"
+            description: "3.1 product omits sparse 3.2 targeting modifications"
+
+  - id: brief_targeting_confirmation
+    title: "Confirm hard targeting inferred from a brief"
+    steps:
+      - id: get_brief_targeted_product
+        title: "State hard US and age requirements only in prose"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium outdoor video. Hard requirements: deliver only in the US and only to people ages 18 through 44."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            channels: ["olv"]
+            pricing_currencies: ["USD"]
+          context:
+            correlation_id: "targeting_aware_discovery--brief_confirmation"
+        expected: |
+          Treat the explicit geography and age statements as hard requirements,
+          even though the buyer should normally have sent them in
+          targeting_overlay. Return only products whose forecast and pricing
+          reflect those constraints. Because the interpretation materially
+          affects eligibility, pricing, and forecasting, confirm it in
+          targeting_resolution.brief_targeting.
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_present
+            path: "targeting_resolution.brief_targeting"
+            description: "Seller confirms material hard targeting inferred from prose"
+          - check: field_value
+            path: "products[0].is_custom"
+            value: true
+            description: "Hard brief targeting produces a request-specific configured product"
+          - check: field_present
+            path: "products[0].expires_at"
+            description: "Brief-targeted configured product is time-bound"
+          - check: field_value
+            path: "targeting_resolution.brief_targeting.geo_countries[0]"
+            value: "US"
+            description: "Brief confirmation preserves the hard US-only requirement"
+          - check: field_value
+            path: "targeting_resolution.brief_targeting.demographics.age.min"
+            value: 18
+            description: "Brief confirmation preserves the requested minimum age"
+          - check: field_value
+            path: "targeting_resolution.brief_targeting.demographics.age.max"
+            value: 44
+            description: "Brief confirmation preserves the requested maximum age"
+
+  - id: exact_targeting_discovery
+    title: "Discover an exact configured product without targeting echo"
+    steps:
+      - id: get_exact_targeted_product
+        title: "Provide real US and placement targeting plus future DMA support"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium video for outdoor enthusiasts"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            channels: ["olv"]
+            pricing_currencies: ["USD"]
+          targeting_overlay:
+            geo_countries: ["US"]
+            device_platform_exclude: ["fire_os"]
+            property_list:
+              agent_url: "https://governance.pinnacle-agency.example"
+              list_id: "acme_outdoor_allowlist_v1"
+            collection_list:
+              agent_url: "https://governance.pinnacle-agency.example"
+              list_id: "acme_outdoor_collections_v1"
+            placement_selection:
+              mode: "selected"
+              placement_refs:
+                - publisher_domain: "pinnacle-media.example"
+                  placement_id: "feed"
+          required_overlay_support:
+            geo_metros:
+              systems: ["nielsen_dma"]
+            placement_selection: true
+            property_list: true
+            collection_list: true
+            device_platform_exclude: true
+            keyword_targets:
+              supported_match_types: ["exact"]
+          context:
+            correlation_id: "targeting_aware_discovery--exact"
+        expected: |
+          Return one configured product whose price and availability forecast
+          are scoped to US feed inventory, the selected property and collection
+          lists, and the Fire OS exclusion. Exact acceptance omits
+          targeting_resolution. overlay_support confirms later DMA, placement,
+          property-list, collection-list, and device-platform exclusion without
+          returning one product per possible value.
+        context_outputs:
+          - key: "exact_product_id"
+            path: "products[0].product_id"
+          - key: "exact_pricing_option_id"
+            path: "products[0].pricing_options[0].pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_absent
+            path: "products[0].targeting_resolution"
+            description: "Exact targeting acceptance has no echo"
+          - check: field_value
+            path: "products[0].is_custom"
+            value: true
+            description: "Exact request-bound targeting is a configured custom product"
+          - check: field_present
+            path: "products[0].expires_at"
+            description: "Exact configured product is time-bound even without a resolution echo"
+          - check: field_present
+            path: "products[0].forecast"
+            description: "Forecast is present for the effective targeting"
+          - check: field_present
+            path: "products[0].overlay_support.geo_metros"
+            description: "Product supports later Nielsen DMA targeting as requested"
+          - check: field_value
+            path: "products[0].overlay_support.placement_selection.max_values_per_package"
+            value: 2
+            description: "A true requirement matches constrained object support; seller limits are disclosed after matching"
+          - check: field_value
+            path: "products[0].overlay_support.keyword_targets"
+            value: true
+            description: "Unrestricted true support satisfies an object requirement for exact keyword matching"
+          - check: field_value
+            path: "products[0].overlay_support.property_list"
+            value: true
+            description: "Product supports later property-list selection"
+          - check: field_value
+            path: "products[0].overlay_support.device_platform_exclude"
+            value: true
+            description: "Platform exclusion support is declared independently"
+
+      - id: get_unsupported_future_targeting
+        title: "Exclude products that lack a required future dimension"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium video for outdoor enthusiasts"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            channels: ["olv"]
+          required_overlay_support:
+            geo_proximity:
+              travel_time: true
+          context:
+            correlation_id: "targeting_aware_discovery--unsupported_support"
+        expected: |
+          Return no products because the seeded product does not declare
+          selectable travel-time proximity targeting. Missing required support
+          is an exclusion, never a false-positive product match.
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_value
+            path: "products"
+            value: []
+            description: "Unsupported future targeting excludes every product"
+
+  - id: inherent_fixed_placement_lifecycle
+    title: "Restate a fixed placement set exactly without selectable support"
+    steps:
+      - id: exclude_partial_fixed_placement_set
+        title: "Exclude a fixed product for a partial placement request"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          buying_mode: "wholesale"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            channels: ["ctv"]
+          targeting_overlay:
+            placement_selection:
+              mode: "selected"
+              placement_refs:
+                - publisher_domain: "pinnacle-media.example"
+                  placement_id: "feed"
+          context:
+            correlation_id: "targeting_aware_discovery--partial_fixed_placement"
+        expected: |
+          Return no products. One placement is not equal to the fixed product's
+          complete included set, and the product exposes no independently
+          selectable placement support.
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_value
+            path: "products"
+            value: []
+            description: "Partial fixed placement selection is not an inherent match"
+
+      - id: discover_fixed_placement_set
+        title: "Discover a product by its complete included placement set"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        sample_request:
+          buying_mode: "wholesale"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            channels: ["ctv"]
+          targeting_overlay:
+            placement_selection:
+              mode: "selected"
+              placement_refs:
+                - publisher_domain: "pinnacle-media.example"
+                  placement_id: "feed"
+                - publisher_domain: "pinnacle-media.example"
+                  placement_id: "short_video"
+          context:
+            correlation_id: "targeting_aware_discovery--fixed_placement"
+        expected: |
+          Return the fixed CTV product because the requested placement set
+          exactly equals its complete mode: included set. This is inherent
+          equality, not independent placement selection, so the product does
+          not advertise overlay_support.placement_selection.
+        context_outputs:
+          - key: "fixed_product_id"
+            path: "products[0].product_id"
+          - key: "fixed_pricing_option_id"
+            path: "products[0].pricing_options[0].pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "targeting_aware_fixed_placement"
+            description: "The complete fixed placement set matches inherently"
+          - check: field_absent
+            path: "products[0].overlay_support.placement_selection"
+            description: "Exact inherent equality does not manufacture selectable support"
+
+      - id: create_fixed_placement_set
+        title: "Create with the same complete fixed placement set"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          idempotency_key: "$generate:uuid_v4#targeting_aware_fixed_placement_create"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.fixed_product_id"
+              pricing_option_id: "$context.fixed_pricing_option_id"
+              bid_price: 14.0
+              budget: 5000
+              targeting_overlay:
+                placement_selection:
+                  mode: "selected"
+                  placement_refs:
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "feed"
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "short_video"
+        expected: |
+          Accept the exact fixed placement restatement without selectable
+          placement support and echo the complete committed set.
+        context_outputs:
+          - key: "fixed_media_buy_id"
+            path: "media_buy_id"
+          - key: "fixed_package_id"
+            path: "packages[0].package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_contains
+            path: "packages[0].targeting_overlay.placement_selection.placement_refs[*]"
+            value:
+              publisher_domain: "pinnacle-media.example"
+              placement_id: "feed"
+            description: "Create echoes the fixed feed placement without assuming order"
+          - check: field_contains
+            path: "packages[0].targeting_overlay.placement_selection.placement_refs[*]"
+            value:
+              publisher_domain: "pinnacle-media.example"
+              placement_id: "short_video"
+            description: "Create echoes the fixed short-video placement without assuming order"
+          - check: field_absent
+            path: "packages[0].targeting_overlay.placement_selection.placement_refs[2]"
+            description: "Create does not silently widen the complete two-placement set"
+
+      - id: reject_partial_fixed_placement_create
+        title: "Reject partial fixed placement selection on create"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          idempotency_key: "$generate:uuid_v4#targeting_aware_fixed_placement_partial_create"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.fixed_product_id"
+              pricing_option_id: "$context.fixed_pricing_option_id"
+              bid_price: 14.0
+              budget: 5000
+              targeting_overlay:
+                placement_selection:
+                  mode: "selected"
+                  placement_refs:
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "feed"
+        expected: |
+          Reject with UNSUPPORTED_FEATURE. Partial selection requires a
+          separately selectable product; the fixed product cannot silently
+          widen the package to its complete set.
+        validations:
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "Create rejects partial selection on fixed inventory"
+
+      - id: reject_partial_fixed_placement_update
+        title: "Reject partial fixed placement selection on update"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_id: "$context.fixed_media_buy_id"
+          idempotency_key: "$generate:uuid_v4#targeting_aware_fixed_placement_partial_update"
+          packages:
+            - package_id: "$context.fixed_package_id"
+              targeting_overlay:
+                placement_selection:
+                  mode: "selected"
+                  placement_refs:
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "feed"
+        expected: |
+          Reject atomically with UNSUPPORTED_FEATURE and retain the prior
+          complete fixed set. The fixed product has no placement-selection
+          capability.
+        validations:
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "Update rejects partial selection on fixed inventory"
+
+      - id: read_fixed_placement_after_rejected_update
+        title: "Verify rejected partial update was atomic"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids: ["$context.fixed_media_buy_id"]
+        expected: |
+          Return the unchanged complete fixed placement set. The rejected
+          partial update must not remove one placement, append inventory, or
+          require a later successful update to repair state.
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_equals_context
+            path: "media_buys[0].media_buy_id"
+            context_key: "fixed_media_buy_id"
+            description: "Readback is grounded to the fixed media buy"
+          - check: field_equals_context
+            path: "media_buys[0].packages[0].package_id"
+            context_key: "fixed_package_id"
+            description: "Readback is grounded to the fixed package"
+          - check: field_contains
+            path: "media_buys[0].packages[0].targeting_overlay.placement_selection.placement_refs[*]"
+            value:
+              publisher_domain: "pinnacle-media.example"
+              placement_id: "feed"
+            description: "Rejected update retains the feed placement"
+          - check: field_contains
+            path: "media_buys[0].packages[0].targeting_overlay.placement_selection.placement_refs[*]"
+            value:
+              publisher_domain: "pinnacle-media.example"
+              placement_id: "short_video"
+            description: "Rejected update retains the short-video placement"
+          - check: field_absent
+            path: "media_buys[0].packages[0].targeting_overlay.placement_selection.placement_refs[2]"
+            description: "Rejected update does not widen the two-placement set"
+
+      - id: update_fixed_placement_set
+        title: "Restate the same fixed set on update"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_id: "$context.fixed_media_buy_id"
+          idempotency_key: "$generate:uuid_v4#targeting_aware_fixed_placement_update"
+          packages:
+            - package_id: "$context.fixed_package_id"
+              targeting_overlay:
+                placement_selection:
+                  mode: "selected"
+                  placement_refs:
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "feed"
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "short_video"
+        expected: |
+          Accept the same inherent set under update_targeting. Partial selection
+          would require a separately selectable product and be rejected.
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.fixed_package_id"
+              targeting_overlay:
+                placement_selection:
+                  mode: "selected"
+            description: "Update accepts the exact fixed placement restatement"
+          - check: field_contains
+            path: "affected_packages[*].targeting_overlay.placement_selection.placement_refs[*]"
+            value:
+              publisher_domain: "pinnacle-media.example"
+              placement_id: "feed"
+            description: "Update echoes the feed placement without assuming order"
+          - check: field_contains
+            path: "affected_packages[*].targeting_overlay.placement_selection.placement_refs[*]"
+            value:
+              publisher_domain: "pinnacle-media.example"
+              placement_id: "short_video"
+            description: "Update echoes the short-video placement without assuming order"
+          - check: field_absent
+            path: "affected_packages[0].targeting_overlay.placement_selection.placement_refs[2]"
+            description: "Update does not silently widen the complete two-placement set"
+
+  - id: expired_configured_product
+    title: "Reject a recognized expired configured product deterministically"
+    steps:
+      - id: create_expired_configured_product
+        title: "Attempt to buy an already-expired seeded configuration"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          idempotency_key: "$generate:uuid_v4#targeting_aware_expired_create"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "targeting_aware_expired_configured"
+              pricing_option_id: "targeting_aware_expired_cpm"
+              bid_price: 14.0
+              budget: 5000
+        expected: |
+          Reject with PRODUCT_EXPIRED because the controller retains a
+          tombstone for this issued configured ID. The test uses a fixed past
+          timestamp and does not depend on sleeps or wall-clock races.
+        validations:
+          - check: error_code
+            value: "PRODUCT_EXPIRED"
+            description: "A recognized expired configured product uses PRODUCT_EXPIRED"
+
+  - id: modified_targeting_discovery
+    title: "Accept a seller-supported demographic alternative through product selection"
+    steps:
+      - id: get_modified_age_product
+        title: "Request an age range the product cannot execute exactly"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium video for adults"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          targeting_overlay:
+            demographics:
+              age: { min: 21, max: 35, include_unknown: false }
+          context:
+            correlation_id: "targeting_aware_discovery--modified_age"
+        expected: |
+          Return a distinct configured product proposing ages 25–34. The sparse
+          resolution contains only /demographics/age, expires_at bounds the
+          offer, and the forecast reflects ages 25–34 rather than the catalog
+          product or original inexact request.
+        context_outputs:
+          - key: "modified_product_id"
+            path: "products[0].product_id"
+          - key: "modified_pricing_option_id"
+            path: "products[0].pricing_options[0].pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_value
+            path: "products[0].targeting_resolution.modifications[0].operation"
+            value: "replace"
+            description: "Seller returns a sparse replacement"
+          - check: field_value
+            path: "products[0].targeting_resolution.modifications[0].path"
+            value: "/demographics/age"
+            description: "Modification points to the age predicate"
+          - check: field_value
+            path: "products[0].targeting_resolution.modifications[0].applied"
+            value: { min: 25, max: 34, include_unknown: false }
+            description: "Configured age predicate is 25–34 with unknown ages excluded"
+          - check: field_present
+            path: "products[0].expires_at"
+            description: "Modified configured product is time-bound"
+      - id: create_from_modified_product
+        title: "Purchase the configured product without repeating discovery targeting"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          idempotency_key: "$generate:uuid_v4#targeting_aware_discovery_modified_create"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.modified_product_id"
+              pricing_option_id: "$context.modified_pricing_option_id"
+              bid_price: 14.0
+              budget: 5000
+        expected: |
+          Selecting the configured product accepts ages 25–34. The response
+          package echoes complete effective targeting and never stores
+          equivalent false.
+        context_outputs:
+          - key: "modified_media_buy_id"
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_value
+            path: "packages[0].targeting_overlay.demographics.age.min"
+            value: 25
+            description: "Accepted effective lower bound is echoed"
+          - check: field_value
+            path: "packages[0].targeting_overlay.demographics.age.max"
+            value: 34
+            description: "Accepted effective upper bound is echoed"
+          - check: field_value
+            path: "packages[0].targeting_resolution.demographics.equivalent"
+            value: true
+            description: "Booked predicate remains exact"
+
+  - id: inventory_targeting_lifecycle
+    title: "Persist purchased inventory and platform targeting through create and update"
+    steps:
+      - id: create_feed_package
+        title: "Create from exact discovery result"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          idempotency_key: "$generate:uuid_v4#targeting_aware_discovery_placement_create"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.exact_product_id"
+              pricing_option_id: "$context.exact_pricing_option_id"
+              bid_price: 14.0
+              budget: 5000
+        expected: |
+          The configured product retains the US, Fire OS exclusion, property,
+          collection, and feed targeting accepted at discovery even though the
+          buyer does not repeat it.
+        context_outputs:
+          - key: "placement_media_buy_id"
+            path: "media_buy_id"
+          - key: "placement_package_id"
+            path: "packages[0].package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_value
+            path: "packages[0].targeting_overlay.placement_selection.mode"
+            value: "selected"
+            description: "Purchased placement selection is echoed"
+          - check: field_value
+            path: "packages[0].targeting_overlay.placement_selection.placement_refs[0].placement_id"
+            value: "feed"
+            description: "Feed is the purchased placement"
+          - check: field_value
+            path: "packages[0].targeting_overlay.device_platform_exclude[0]"
+            value: "fire_os"
+            description: "Configured-product platform exclusion is booked without repetition"
+          - check: field_value
+            path: "packages[0].targeting_overlay.property_list.list_id"
+            value: "acme_outdoor_allowlist_v1"
+            description: "Configured-product property selection is booked without repetition"
+          - check: field_value
+            path: "packages[0].targeting_overlay.collection_list.list_id"
+            value: "acme_outdoor_collections_v1"
+            description: "Configured-product collection selection is booked without repetition"
+          - check: field_contains
+            path: "available_actions[*]"
+            value:
+              action: "update_targeting"
+              mode: "self_serve"
+            description: "Placement changes use the existing update_targeting authorization"
+
+      - id: update_to_short_video
+        title: "Replace purchased placement targeting"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_id: "$context.placement_media_buy_id"
+          idempotency_key: "$generate:uuid_v4#targeting_aware_discovery_placement_update"
+          packages:
+            - package_id: "$context.placement_package_id"
+              targeting_overlay:
+                geo_countries: ["US"]
+                device_platform_exclude: ["fire_os"]
+                property_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_allowlist_v1"
+                collection_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_collections_v1"
+                placement_selection:
+                  mode: "selected"
+                  placement_refs:
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "short_video"
+        expected: |
+          Apply the full overlay replacement atomically under update_targeting.
+          The response echoes short_video as the committed purchased set. The
+          seller rejects rather than partially applying an invalid selection.
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.placement_package_id"
+              targeting_overlay:
+                geo_countries: ["US"]
+                device_platform_exclude: ["fire_os"]
+                property_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_allowlist_v1"
+                collection_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_collections_v1"
+                placement_selection:
+                  mode: "selected"
+                  placement_refs:
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "short_video"
+            description: "Update response returns complete post-update placement targeting state"
+
+      - id: reject_cross_publisher_placement
+        title: "Reject a placement outside the product publisher scope"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_id: "$context.placement_media_buy_id"
+          idempotency_key: "$generate:uuid_v4#targeting_aware_discovery_cross_publisher_update"
+          packages:
+            - package_id: "$context.placement_package_id"
+              targeting_overlay:
+                geo_countries: ["US"]
+                placement_selection:
+                  mode: "selected"
+                  placement_refs:
+                    - publisher_domain: "unrelated-publisher.example"
+                      placement_id: "feed"
+        expected: |
+          Reject the schema-valid but cross-publisher placement reference with
+          INVALID_REQUEST. The prior short_video selection remains committed.
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST"]
+            description: "Cross-publisher placement identity is rejected"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.placement_selection.placement_refs[0]"
+            description: "Error.field identifies the invalid placement reference"
+
+      - id: reject_duplicate_placement
+        title: "Reject duplicate placement references"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        expect_error: true
+        negative_path: schema_invalid
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_id: "$context.placement_media_buy_id"
+          idempotency_key: "$generate:uuid_v4#targeting_aware_discovery_duplicate_placement_update"
+          packages:
+            - package_id: "$context.placement_package_id"
+              targeting_overlay:
+                geo_countries: ["US"]
+                placement_selection:
+                  mode: "selected"
+                  placement_refs:
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "feed"
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "feed"
+        expected: |
+          Reject with INVALID_REQUEST because placement_selection is a set and
+          duplicate references violate its uniqueItems schema constraint. The
+          prior short_video selection remains committed.
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST"]
+            description: "Duplicate placement references are rejected"
+
+      - id: read_updated_placement
+        title: "Verify purchased placement state"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids: ["$context.placement_media_buy_id"]
+        expected: |
+          Return complete effective targeting with short_video selected. The
+          stored package does not expose a separate effective-placement source
+          of truth. Both rejected updates were atomic and left this state
+          unchanged.
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_equals_context
+            path: "media_buys[0].media_buy_id"
+            context_key: "placement_media_buy_id"
+            description: "Readback returns the media buy created from the configured product"
+          - check: field_equals_context
+            path: "media_buys[0].packages[0].package_id"
+            context_key: "placement_package_id"
+            description: "Readback targeting belongs to the package created earlier"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.placement_selection.mode"
+            value: "selected"
+            description: "Readback uses committed selected mode"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.placement_selection.placement_refs[0].placement_id"
+            value: "short_video"
+            description: "Readback preserves purchased placement identity"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.device_platform_exclude[0]"
+            value: "fire_os"
+            description: "Readback preserves the purchased platform exclusion"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.property_list.list_id"
+            value: "acme_outdoor_allowlist_v1"
+            description: "Readback preserves the purchased property selection"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.collection_list.list_id"
+            value: "acme_outdoor_collections_v1"
+            description: "Readback preserves the purchased collection selection"

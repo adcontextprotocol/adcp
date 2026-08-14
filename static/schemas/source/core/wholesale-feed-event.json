@@ -149,7 +149,7 @@
       ]
     },
     {
-      "description": "product.priced — pricing options changed (new option, removed option, price/floor change). Existing media buys unaffected; composition layer must re-price.",
+      "description": "product.priced — the pricing-option set changed (new option or retirement/replacement of an option). A binding price, floor, currency, model, or priced applicability change MUST use a new pricing_option_id; the event never reinterprets an issued option ID at new terms. Existing media buys are unaffected; composition replaces its cached option set.",
       "properties": {
         "event_type": {
           "const": "product.priced"

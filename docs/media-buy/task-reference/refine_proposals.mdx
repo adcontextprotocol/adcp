@@ -7,12 +7,14 @@ testable: false
 
 `refine_proposals` has two explicit operations over immutable proposal snapshots:
 
-- `action: "revise"` applies `instructions` and returns a new draft proposal.
+- `action: "revise"` applies structured `criteria`, semantic `instructions`, or both and returns a new draft proposal.
 - `action: "finalize"` changes no commercial terms and returns a new committed proposal backed by an inventory hold until `expires_at`.
 
 Revision may target a draft, committed, or accepted proposal; finalization must target a draft. Proposal IDs must be unique within the request, and results preserve request order. Every successful operation returns a new `proposal_id`; that ID is the complete version identity for the immutable commercial snapshot, and the source remains unchanged.
 
-**Request schema:** [`/schemas/v3/media-buy/refine-proposals-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/refine-proposals-request.json)
+{/* Using latest because this schema is not yet released in any version.
+    Update to the correct version alias after the next release. */}
+**Request schema:** [`/schemas/latest/media-buy/refine-proposals-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/refine-proposals-request.json)
 
 ```json
 {
@@ -26,11 +28,19 @@ Revision may target a draft, committed, or accepted proposal; finalization must 
     {
       "proposal_id": "proposal_456",
       "action": "revise",
-      "instructions": "Limit the revision to inventory available in the US and Canada."
+      "criteria": {
+        "targeting_overlay": {
+          "geo_countries": ["US", "CA"]
+        }
+      }
     }
   ]
 }
 ```
+
+Use `criteria` for representable changes and `instructions` for semantic changes without a structured field. Each present criteria field replaces that field from the source proposal; omitted criteria fields remain bound to the revision. A revise entry may include either or both, but must include at least one. This makes a targeting change deterministic and ensures the revised proposal's price and forecast use the new effective overlay.
+
+When hard targeting appears only in `instructions`, the seller confirms any structured interpretation that materially affects the revision in that result's `targeting_resolution.brief_targeting`. Exact structured targeting is not repeated; product-specific alternatives remain sparse modifications on the returned configured products.
 
 The response contains one ordered `results[]` entry per request. `revised` means the requested change produced a new draft, `partial` returns an honest draft plus explanatory notes, `finalized` returns a committed held snapshot, and `unable` returns a reason without minting a misleading result. Every returned proposal carries typed `commercial_terms` and a `terms_digest`. Pass only a finalized committed proposal to [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal), or use [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) when the buyer stops pursuing it. The deprecated [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) proposal mode remains only as the 3.x compatibility adapter.
 

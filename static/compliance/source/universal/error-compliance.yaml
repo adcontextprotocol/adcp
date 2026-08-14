@@ -397,9 +397,9 @@ phases:
           to the primary wire field, the error-path probe must also exercise the
           release-precision shape — otherwise a seller could implement
           integer-only VERSION_UNSUPPORTED validation and pass all storyboards
-          while shipping a broken 3.1 buyer experience. Advisory at 3.1; promotes
-          to required with the rest of the version-negotiation suite at the 3.2
-          storyboard cut.
+          while shipping a broken mixed-version buyer experience. Released 3.1
+          compliance bundles retain the historical advisory; this 3.2 source
+          bundle requires the rejection path.
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
@@ -408,7 +408,6 @@ phases:
         expect_error: true
         negative_path: payload_well_formed
         stateful: false
-        severity: advisory
         expected: |
           Reject with:
           - code: VERSION_UNSUPPORTED

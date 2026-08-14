@@ -154,6 +154,23 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "proposal_status": { "const": "committed" }
+        },
+        "required": ["proposal_status"]
+      },
+      "then": {
+        "properties": {
+          "allocations": {
+            "items": {
+              "required": ["pricing_option_id"]
+            }
+          }
+        }
+      }
     }
   ],
   "additionalProperties": true

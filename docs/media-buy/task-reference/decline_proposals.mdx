@@ -7,7 +7,9 @@ testable: false
 
 `decline_proposals` records that the buyer evaluated one or more proposals and will not pursue them. The operation is terminal: a seller must reject later [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) or new logical [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) attempts for a declined proposal with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state). Exact retries of an earlier successful call still follow the shared idempotency replay contract. A proposal that was already executed cannot subsequently be declined and returns `unable`.
 
-**Request schema:** [`/schemas/v3/media-buy/decline-proposals-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/decline-proposals-request.json)
+{/* Using latest because this schema is not yet released in any version.
+    Update to the correct version alias after the next release. */}
+**Request schema:** [`/schemas/latest/media-buy/decline-proposals-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/decline-proposals-request.json)
 
 ```json
 {
