@@ -252,6 +252,61 @@
       },
       "additionalProperties": false
     },
+    "audience_activation_methods": {
+      "type": "array",
+      "description": "Filter to products whose audience_activation.methods matches at least one requested entry (OR across entries). Within an entry every specified field must match (AND); omitted optional fields are wildcards; directions matches on non-empty intersection; vendor matches on domain, plus brand_id when specified. Sellers MUST exclude products with no audience_activation declaration when this filter is present, reported via filter_diagnostics.excluded_by.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "enum": [
+              "sync_audiences",
+              "tmp_identity_match",
+              "file_transfer",
+              "dataset_query",
+              "clean_room",
+              "platform_distribution"
+            ],
+            "description": "Activation pattern to match."
+          },
+          "vendor": {
+            "$ref": "/schemas/core/brand-ref.json",
+            "description": "Require the method's vendor to match this reference."
+          },
+          "transport": {
+            "$ref": "/schemas/enums/cloud-storage-protocol.json",
+            "description": "Require this storage protocol (file_transfer only)."
+          },
+          "directions": {
+            "type": "array",
+            "description": "Require a non-empty intersection with the method's declared directions (file_transfer only).",
+            "items": {
+              "type": "string",
+              "enum": ["buyer_to_seller", "seller_to_buyer"]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "buyer_agent": {
+            "type": "object",
+            "description": "Require this buyer agent on tmp_identity_match entries. Buyers typically filter on their own agent_url.",
+            "properties": {
+              "agent_url": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "required": ["agent_url"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["pattern"],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "required_features": {
       "$ref": "/schemas/core/media-buy-features.json",
       "description": "Filter to products from sellers supporting specific protocol features. Only features set to true are used for filtering."

@@ -1,0 +1,161 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/audience-activation-method.json",
+  "title": "Audience Activation Method",
+  "description": "One way buyer audience data can reach a seller for targeting. The pattern field discriminates the entry; each pattern carries only its own fields. Two patterns are AdCP-canonical (sync_audiences, tmp_identity_match); the rest describe integration paths that move data outside the protocol while remaining discoverable through it. Vendor identity is a BrandRef domain so new platforms declare a domain rather than waiting on an enum change.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "AdCP audience sync",
+      "description": "The seller accepts audience pushes and external source references via the AdCP sync_audiences task. Any AdCP-speaking buyer can use this path with no additional integration.",
+      "type": "object",
+      "properties": {
+        "pattern": { "const": "sync_audiences" }
+      },
+      "required": ["pattern"],
+      "additionalProperties": false
+    },
+    {
+      "title": "TMP identity match",
+      "description": "The seller has configured Trusted Match Protocol identity-match calls to a specific buyer agent. Declarations are per buyer agent because the integration is not generic. Entries MUST be consistent with trusted_match.providers[] where both are present on the product.",
+      "type": "object",
+      "properties": {
+        "pattern": { "const": "tmp_identity_match" },
+        "buyer_agent": {
+          "type": "object",
+          "properties": {
+            "agent_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Buyer agent's registered agent URL. Canonical identifier, mirroring trusted_match.providers[].agent_url."
+            }
+          },
+          "required": ["agent_url"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["pattern", "buyer_agent"],
+      "additionalProperties": false
+    },
+    {
+      "title": "File transfer",
+      "description": "Bucket-addressed file exchange over a cloud storage protocol. The buyer moves the bytes; direction declares who hosts the bucket.",
+      "type": "object",
+      "properties": {
+        "pattern": { "const": "file_transfer" },
+        "transport": {
+          "$ref": "/schemas/enums/cloud-storage-protocol.json",
+          "description": "Storage protocol for the exchange."
+        },
+        "directions": {
+          "type": "array",
+          "description": "Supported transfer directions. buyer_to_seller: buyer writes to a seller-hosted bucket. seller_to_buyer: seller reads from a buyer-hosted bucket. Absent means unspecified (resolve during account setup), not neither.",
+          "items": {
+            "type": "string",
+            "enum": ["buyer_to_seller", "seller_to_buyer"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "vendor": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Platform providing the storage primitive (e.g., the cloud provider's domain)."
+        }
+      },
+      "required": ["pattern", "transport", "vendor"],
+      "additionalProperties": false
+    },
+    {
+      "title": "Dataset query",
+      "description": "Vendor-mediated query access: the seller reads a dataset the buyer shares through the vendor's grantee-identified sharing mechanism (e.g., Snowflake Secure Data Sharing, Databricks Delta Sharing, BigQuery authorized views). Admissible only when the grant names a principal and no secret is conveyed; token-bearer flows remain out-of-band.",
+      "type": "object",
+      "properties": {
+        "pattern": { "const": "dataset_query" },
+        "vendor": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Data-sharing platform the seller can consume from."
+        },
+        "consumer_identities": {
+          "type": "array",
+          "description": "Principals the buyer grants access to in the vendor's system, qualified by cloud and region. Qualifiers are routing and cost hints (pick the near/cheap identity) — not grant-reachability boundaries and not compliance boundaries; data-transfer assessments key on the recipient entity's jurisdiction, not the grantee account's region. Optional: sellers MAY instead communicate identities during account setup.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "cloud": {
+                "type": "string",
+                "enum": ["aws", "azure", "gcp"],
+                "description": "Cloud family hosting this identity's account."
+              },
+              "region": {
+                "type": "string",
+                "description": "Vendor/cloud region identifier. Format follows the cloud family's region naming; not constrained by this schema."
+              },
+              "identity": {
+                "type": "string",
+                "description": "Principal to grant, interpreted relative to the enclosing entry's vendor.domain. Format is vendor-specific and opaque — Snowflake: orgname.accountname; Databricks: sharing recipient identifier; BigQuery: IAM principal."
+              }
+            },
+            "required": ["cloud", "region", "identity"],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        }
+      },
+      "required": ["pattern", "vendor"],
+      "additionalProperties": false
+    },
+    {
+      "title": "Clean room",
+      "description": "Privacy-preserving match in the named vendor's clean room; neither party sees the other's raw rows. Informational declaration: room setup is bilateral onboarding, and where the room can export output, the output binds through a dataset or platform_segment source on sync_audiences.",
+      "type": "object",
+      "properties": {
+        "pattern": { "const": "clean_room" },
+        "vendor": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Clean-room product's operating domain."
+        }
+      },
+      "required": ["pattern", "vendor"],
+      "additionalProperties": false
+    },
+    {
+      "title": "Platform distribution",
+      "description": "The vendor's rails deliver segments to the seller's declared destination; the buyer initiates distribution in the vendor's system and binds the arriving segment via sync_audiences.",
+      "type": "object",
+      "properties": {
+        "pattern": { "const": "platform_distribution" },
+        "vendor": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Distribution platform's operating domain."
+        },
+        "destination_ref": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Seller's destination identifier in the vendor's system, as the buyer needs it to initiate distribution. A seller-declared configuration reference, not a buyer-invoked key."
+        },
+        "bind_expiry_days": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Window after which the seller MAY expire an unfulfilled segment bind (action: failed). Initial vendor distribution is days-scale; windows shorter than the vendor's documented distribution latency are non-conformant."
+        }
+      },
+      "required": ["pattern", "vendor", "destination_ref"],
+      "additionalProperties": false
+    }
+  ],
+  "examples": [
+    { "pattern": "sync_audiences" },
+    { "pattern": "tmp_identity_match", "buyer_agent": { "agent_url": "https://buyer.example-agent.com" } },
+    { "pattern": "file_transfer", "transport": "s3", "directions": ["buyer_to_seller"], "vendor": { "domain": "amazon.com" } },
+    {
+      "pattern": "dataset_query",
+      "vendor": { "domain": "snowflake.com" },
+      "consumer_identities": [
+        { "cloud": "aws", "region": "us-east-1", "identity": "SELLERORG.ADCP_INGEST" },
+        { "cloud": "aws", "region": "eu-central-1", "identity": "SELLERORG.ADCP_INGEST_EU" }
+      ]
+    },
+    { "pattern": "clean_room", "vendor": { "domain": "liveramp.com" } },
+    { "pattern": "platform_distribution", "vendor": { "domain": "liveramp.com" }, "destination_ref": "dest_12345", "bind_expiry_days": 14 }
+  ]
+}

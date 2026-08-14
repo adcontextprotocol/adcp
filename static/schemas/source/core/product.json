@@ -592,6 +592,30 @@
       "required": ["context_match"],
       "additionalProperties": true
     },
+    "audience_activation": {
+      "type": "object",
+      "description": "How buyer audience data can reach this product's targeting. Absence means undeclared — buyers SHOULD treat it as needs-clarification rather than non-support, except under an audience_activation_methods filter, where sellers MUST exclude undeclared products. Declare when the product accepts buyer audiences.",
+      "properties": {
+        "methods": {
+          "type": "array",
+          "description": "Activation paths available on this product, as an unordered set of independent options.",
+          "items": {
+            "$ref": "/schemas/core/audience-activation-method.json"
+          },
+          "minItems": 1
+        },
+        "preferred_method": {
+          "$ref": "/schemas/core/audience-activation-method.json",
+          "description": "The seller's preferred path when the buyer supports several. MUST also appear in methods."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Free-text caveats (onboarding lead times, data-format constraints, regional restrictions)."
+        }
+      },
+      "required": ["methods"],
+      "additionalProperties": false
+    },
     "material_submission": {
       "type": "object",
       "description": "Instructions for submitting physical creative materials (print, static OOH, cinema). Present only for products requiring physical delivery outside the digital creative assignment flow. Buyer agents MUST validate url and email domains against the seller's known domains (from adagents.json) before submitting materials. Never auto-submit without human confirmation.",

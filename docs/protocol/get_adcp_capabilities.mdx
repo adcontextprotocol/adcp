@@ -696,6 +696,7 @@ Audience targeting capabilities. Presence of this object indicates the seller su
 | `supports_platform_customer_id` | boolean  |              | When `true`, the seller accepts the buyer's CRM/loyalty ID as a matchable identifier. Only applicable when the seller operates a closed ecosystem with a shared ID namespace (e.g., a retailer matching against their loyalty program). Buyers can include `platform_customer_id` values in `AudienceMember.identifiers`. Reporting on matched IDs typically requires a clean room or the seller's own reporting surface. |
 | `supported_uid_types`           | string[] |              | Universal ID types accepted for audience matching (MAIDs, RampID, UID2, etc.). MAID support varies significantly by platform — check this field before sending `uids` with `type: maid`.                                                                                                                                                                                                                                  |
 | `matching_latency_hours`        | object   |              | Expected matching latency range in hours after upload. Use to calibrate polling cadence and set appropriate expectations before configuring `push_notification_config`. Shape: `{ min: integer, max: integer }`.                                                                                                                                                                                                          |
+| `supported_activation_methods`  | object[] |              | Union of per-product [`audience_activation.methods`](/docs/media-buy/product-discovery/media-products#audience-activation) across the seller's catalog. Fast-fail discovery: read this once and skip the catalog walk when nothing overlaps your pipeline. Per-product declarations are the source of truth; sellers MUST keep this consistent with the catalog. Each entry is an [activation method](/docs/media-buy/product-discovery/media-products#activation-method-patterns). |
 
 #### conversion_tracking
 
@@ -1466,7 +1467,23 @@ const buy = await client.createMediaBuy({
       "supports_platform_customer_id": false,
       "supported_uid_types": ["uid2", "rampid"],
       "minimum_audience_size": 500,
-      "matching_latency_hours": { "min": 1, "max": 24 }
+      "matching_latency_hours": { "min": 1, "max": 24 },
+      "supported_activation_methods": [
+        { "pattern": "sync_audiences" },
+        {
+          "pattern": "dataset_query",
+          "vendor": { "domain": "snowflake.com" },
+          "consumer_identities": [
+            { "cloud": "aws", "region": "us-east-1", "identity": "SELLERORG.ADCP_INGEST" }
+          ]
+        },
+        {
+          "pattern": "platform_distribution",
+          "vendor": { "domain": "liveramp.com" },
+          "destination_ref": "dest_12345",
+          "bind_expiry_days": 14
+        }
+      ]
     },
     "conversion_tracking": {
       "multi_source_event_dedup": false,

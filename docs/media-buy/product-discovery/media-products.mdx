@@ -150,6 +150,54 @@ At buy time, a package can repeat `audience_evidence_requirements` and can carry
 
 When an attestation affected either decision, readback preserves the exact reference and its `AttestationEvaluation` as one pair. That pair is valid only when the reference is published on the selected snapshot, its claim and issuer satisfy both buyer and seller policy, `reference_digest` covers that same reference, the outcome is `verified`, and both the subject digest and action-binding digest equal the evidence `content_digest`. An evaluation for one reference cannot verify a different reference. Sellers retain the full immutable snapshot and evaluations for at least as long as the package remains readable. Buyers should cache the evidence returned during discovery; AdCP 3.2 does not introduce a buyer-controlled snapshot fetch URL. Sellers may embed the full snapshot in readback, but need not duplicate it on every product or package.
 
+### Audience activation
+
+The [`audience_targeting`](/docs/protocol/get_adcp_capabilities#audience_targeting) capability describes *what identifiers* a seller matches on; `audience_activation` describes *how the data moves*. Two parties can both support audiences and remain practically incompatible — a buyer built around Snowflake sharing and a seller that only accepts API pushes discover that today at integration time, or worse, at activation time. Products that accept buyer audiences declare their activation paths so that mismatch surfaces during discovery.
+
+```json test=false
+"audience_activation": {
+  "methods": [
+    { "pattern": "sync_audiences" },
+    {
+      "pattern": "dataset_query",
+      "vendor": { "domain": "snowflake.com" },
+      "consumer_identities": [
+        { "cloud": "aws", "region": "us-east-1", "identity": "SELLERORG.ADCP_INGEST" }
+      ]
+    },
+    {
+      "pattern": "platform_distribution",
+      "vendor": { "domain": "liveramp.com" },
+      "destination_ref": "dest_12345",
+      "bind_expiry_days": 14
+    }
+  ],
+  "preferred_method": { "pattern": "sync_audiences" },
+  "notes": "Dataset ingestion runs daily at 06:00 UTC."
+}
+```
+
+`methods` is an unordered set of independent options. `preferred_method` (optional) names the seller's preference and MUST also appear in `methods`. Absence of `audience_activation` means undeclared — treat it as needs-clarification rather than non-support, except under an `audience_activation_methods` filter, where sellers MUST exclude undeclared products.
+
+Schema: [`core/audience-activation-method.json`](https://adcontextprotocol.org/schemas/v3/core/audience-activation-method.json)
+
+#### Activation method patterns
+
+Each entry declares a `pattern` plus pattern-specific fields. Vendor identity is a [BrandRef](/docs/media-buy/product-discovery/media-products) domain — new platforms declare a domain, no enum change required.
+
+| Pattern | Required fields | Meaning |
+|---------|----------------|---------|
+| `sync_audiences` | — | Audience pushes and external source references via the AdCP [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) task. Any AdCP-speaking buyer can use it. |
+| `tmp_identity_match` | `buyer_agent.agent_url` | The seller has wired TMP identity-match calls to this specific buyer agent. Entries MUST be consistent with `trusted_match.providers[]` where both are present. |
+| `file_transfer` | `transport`, `vendor` | Bucket-addressed file exchange (`s3`, `gcs`, `azure_blob`). Optional `directions` (`buyer_to_seller`, `seller_to_buyer`); absent means unspecified, not neither. |
+| `dataset_query` | `vendor` | The seller reads a dataset the buyer shares through the vendor's grantee-identified sharing mechanism (Snowflake Secure Data Sharing, Databricks Delta Sharing, BigQuery authorized views). Optional `consumer_identities[]` lists the principals to grant, qualified by cloud/region — routing and cost hints, not grant-reachability or compliance boundaries. |
+| `clean_room` | `vendor` | Privacy-preserving match in the named vendor's room. Informational: room setup is bilateral onboarding; where the room can export output, the output binds through a `dataset` or `platform_segment` source on `sync_audiences`. |
+| `platform_distribution` | `vendor`, `destination_ref` | The vendor's rails deliver segments to the seller's declared destination. The buyer initiates distribution in the vendor's system, then binds the arriving segment via `sync_audiences`. Optional `bind_expiry_days` declares when an unfulfilled bind may expire. |
+
+A grant-based path is in-protocol only when the vendor flow is **grantee-identified** — the grant names a principal and no secret is conveyed. Token-bearer flows (presigned URLs, bearer-token activation links) remain out-of-band integrations.
+
+Buyers filter discovery with [`filters.audience_activation_methods`](/docs/media-buy/task-reference/get_products): OR across requested entries, AND within an entry, omitted optional fields are wildcards, `directions` matches on non-empty intersection.
+
 ### Pricing Models
 
 Publishers declare which pricing models they support for each product. Buyers select from the available options when creating a media buy. This approach supports:
