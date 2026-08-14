@@ -110,6 +110,7 @@ phases:
         stateful: false
         expected: "Return the seeded USD auction products."
         sample_request:
+          idempotency_key: "$generate:uuid_v4#bidding_policy_placement_setup_get_products_for_bidding"
           buying_mode: "brief"
           brief: "Buy two display packages with one inherited CPM ceiling."
           account:

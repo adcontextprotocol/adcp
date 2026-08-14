@@ -33,10 +33,21 @@ import type {
   ComplyBudgetSimulation,
 } from './types.js';
 import { supportsGetProductsRejected } from './types.js';
-import { getSession, sessionKeyFromArgs } from './state.js';
+import {
+  findSessionMatching,
+  controllerFixturePrincipal,
+  getProductsSessionKeyFromArgs,
+  getSession,
+  sessionKeyFromArgs,
+} from './state.js';
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
-import { getAccountNotificationSubscribers, seedAccountFixture } from './account-handlers.js';
+import {
+  getAccountNotificationSubscribers,
+  sandboxAccountRefForId,
+  seedAccountFixture,
+} from './account-handlers.js';
+import { canonicalizeAccountRef, type CanonicalAccountRef } from './account-scope.js';
 import { verifyGovernanceToken, mintRevokedDemoToken, mintWrongAudDemoToken } from './governance-verify.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
 import { buildCatalog } from './product-factory.js';
@@ -49,6 +60,87 @@ import {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+type NaturalAccountIdentity = Extract<CanonicalAccountRef, { kind: 'natural' }>;
+
+function mediaBuySandboxIdentity(
+  mediaBuy: MediaBuyState,
+  principal: string | undefined,
+): NaturalAccountIdentity | undefined {
+  const ref = mediaBuy.accountRef;
+  if (!ref) return undefined;
+  try {
+    const account = canonicalizeAccountRef(ref);
+    if (account.kind === 'account_id') {
+      const resolved = sandboxAccountRefForId(account.account_id, principal);
+      if (!resolved) return undefined;
+      const identity = canonicalizeAccountRef(resolved);
+      return identity.kind === 'natural' ? identity : undefined;
+    }
+    if (account.sandbox) return account;
+    // Public/static training traffic is already confined to the shared demo
+    // sandbox. Ordinary task calls may omit the controller-only sandbox flag,
+    // but the controller must still be able to mutate resources created by
+    // the same complete natural identity. Authenticated callers remain
+    // fail-closed unless their persisted resource is explicitly sandboxed.
+    return !principal || principal.startsWith('static:')
+      ? { ...account, sandbox: true }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function sameBrandIdentity(a: NaturalAccountIdentity, b: NaturalAccountIdentity): boolean {
+  return a.brand.domain === b.brand.domain
+    && a.brand.brand_id === b.brand.brand_id;
+}
+
+function controllerCanMutateMediaBuy(
+  controller: NaturalAccountIdentity,
+  mediaBuy: MediaBuyState,
+  principal: string | undefined,
+): boolean {
+  const owner = mediaBuySandboxIdentity(mediaBuy, principal);
+  if (!owner || !sameBrandIdentity(controller, owner)) return false;
+  // Public/demo static credentials intentionally address one shared training
+  // sandbox. Real principals must match the complete canonical account,
+  // including operator and optional brand_id.
+  return principal?.startsWith('static:') === true || controller.operator === owner.operator;
+}
+
+function creativeSandboxIdentity(
+  creative: CreativeState,
+  principal: string | undefined,
+): NaturalAccountIdentity | undefined {
+  const ref = creative.accountRef;
+  if (!ref) return undefined;
+  try {
+    const account = canonicalizeAccountRef(ref);
+    if (account.kind === 'account_id') {
+      const resolved = sandboxAccountRefForId(account.account_id, principal);
+      if (!resolved) return undefined;
+      const identity = canonicalizeAccountRef(resolved);
+      return identity.kind === 'natural' ? identity : undefined;
+    }
+    if (account.sandbox) return account;
+    return !principal || principal.startsWith('static:')
+      ? { ...account, sandbox: true }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function controllerCanMutateCreative(
+  controller: NaturalAccountIdentity,
+  creative: CreativeState,
+  principal: string | undefined,
+): boolean {
+  const owner = creativeSandboxIdentity(creative, principal);
+  if (!owner || !sameBrandIdentity(controller, owner)) return false;
+  return principal?.startsWith('static:') === true || controller.operator === owner.operator;
 }
 
 // ── State machine transition tables ───────────────────────────────
@@ -1123,13 +1215,132 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     };
   }
 
-  const sessionKey = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
-  const session = await getSession(sessionKey);
+  const scenario = rawArgs.scenario;
+  const targetsGetProductsState = scenario === 'force_get_products_arm'
+    || (scenario === 'force_upstream_unavailable' && params.tool === 'get_products');
+  const targetsControllerFixtureState = scenario === 'seed_product'
+    || scenario === 'seed_pricing_option'
+    || scenario === 'seed_measurement_catalog';
+  // The frozen 3.0 runner injects a synthetic natural account into controller
+  // and fixture calls, sometimes without copying its brand to the top level.
+  // Platform methods on that compatibility surface historically key by brand.
+  // Preserve opaque account IDs, but project natural refs back to their brand
+  // so directives and fixtures reach the same legacy session.
+  const legacyNaturalBrandDomain = ctx.storyboardCompat?.version === '3.0'
+    && args.account
+    && !args.account.account_id
+    ? args.brand?.domain ?? args.account.brand?.domain
+    : undefined;
+  const opaqueAccountId = typeof args.account?.account_id === 'string'
+    ? args.account.account_id
+    : undefined;
+  let staticFixtureAccount: ToolArgs['account'] | undefined;
+  if (targetsControllerFixtureState && ctx.principal?.startsWith('static:') && args.account) {
+    try {
+      const canonical = canonicalizeAccountRef(args.account);
+      if (canonical.kind === 'natural' && canonical.sandbox) {
+        // Public/demo credentials share one non-production fixture sandbox.
+        // The SDK controller seeds with operator=brand.domain, while authored
+        // task examples may name the buyer operator. Canonicalize only this
+        // fixture projection to the brand-owned sandbox partition; real
+        // principals keep the complete natural account identity.
+        staticFixtureAccount = {
+          brand: canonical.brand,
+          operator: canonical.brand.domain,
+          sandbox: true,
+        };
+      }
+    } catch {
+      staticFixtureAccount = undefined;
+    }
+  }
+  const sessionArgs = legacyNaturalBrandDomain
+    ? { ...args, account: undefined, brand: { domain: legacyNaturalBrandDomain } }
+    : opaqueAccountId
+      // Controller requests carry `sandbox: true` alongside their account
+      // assertion, while canonical opaque AccountRef values contain only the
+      // seller-assigned ID. Strip the assertion before session-key derivation
+      // so controller mutations and ordinary account-scoped calls share the
+      // same `a:<account_id>` partition. A top-level storyboard brand must not
+      // override that opaque identity.
+      ? { ...args, account: { account_id: opaqueAccountId }, brand: undefined }
+      : staticFixtureAccount
+        ? { ...args, account: staticFixtureAccount }
+        : args;
+  let sessionKey = targetsGetProductsState
+    ? getProductsSessionKeyFromArgs(sessionArgs, ctx.mode, ctx.userId, ctx.moduleId)
+    : sessionKeyFromArgs(
+      sessionArgs,
+      ctx.mode,
+      ctx.userId,
+      ctx.moduleId,
+      targetsControllerFixtureState ? controllerFixturePrincipal(ctx.principal) : undefined,
+    );
+  let session = await getSession(sessionKey);
+  if (scenario === 'simulate_delivery') {
+    const mediaBuyId = isRecord(rawArgs.params) && typeof rawArgs.params.media_buy_id === 'string'
+      ? rawArgs.params.media_buy_id
+      : undefined;
+    if (mediaBuyId && !session.mediaBuys.has(mediaBuyId)) {
+      let controllerAccount: NaturalAccountIdentity | undefined;
+      try {
+        const canonical = canonicalizeAccountRef(args.account);
+        if (canonical.kind === 'natural' && canonical.sandbox) {
+          controllerAccount = canonical;
+        }
+      } catch {
+        controllerAccount = undefined;
+      }
+      if (controllerAccount) {
+        session = await findSessionMatching(candidate => {
+          const mediaBuy = candidate.mediaBuys.get(mediaBuyId);
+          return mediaBuy !== undefined
+            && controllerCanMutateMediaBuy(controllerAccount, mediaBuy, ctx.principal);
+        }) ?? session;
+      }
+    }
+  }
+  if (scenario === 'force_creative_status') {
+    const creativeId = typeof params.creative_id === 'string' ? params.creative_id : undefined;
+    if (creativeId && !session.creatives.has(creativeId)) {
+      let controllerAccount: NaturalAccountIdentity | undefined;
+      try {
+        const canonical = canonicalizeAccountRef(args.account);
+        if (canonical.kind === 'natural' && canonical.sandbox) {
+          controllerAccount = canonical;
+        }
+      } catch {
+        controllerAccount = undefined;
+      }
+      if (controllerAccount) {
+        const ownerSession = await findSessionMatching(candidate => {
+          const creative = candidate.creatives.get(creativeId);
+          return creative !== undefined
+            && controllerCanMutateCreative(controllerAccount, creative, ctx.principal);
+        });
+        if (ownerSession) {
+          session = ownerSession;
+          const ownerRef = ownerSession.creatives.get(creativeId)?.accountRef;
+          if (ownerRef) {
+            const ownerSessionArgs = ctx.storyboardCompat?.version === '3.0'
+              && ownerRef.brand?.domain
+              ? { brand: { domain: ownerRef.brand.domain } }
+              : { account: ownerRef };
+            sessionKey = sessionKeyFromArgs(
+              ownerSessionArgs,
+              ctx.mode,
+              ctx.userId,
+              ctx.moduleId,
+            );
+          }
+        }
+      }
+    }
+  }
 
   // Pre-dispatch local scenarios the SDK doesn't know about yet. The SDK's
   // dispatcher would return UNKNOWN_SCENARIO for these, so handle them before
   // we delegate. New scenarios from spec PRs land here until adopted upstream.
-  const scenario = rawArgs.scenario;
   if (scenario === 'force_create_media_buy_arm') {
     return handleForceCreateMediaBuyArm(session, rawArgs);
   }

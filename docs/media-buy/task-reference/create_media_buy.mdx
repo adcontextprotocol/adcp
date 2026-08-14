@@ -8,6 +8,10 @@ testable: true
 
 Create a media buy from selected packages or execute a proposal. Handles validation, approval if needed, and campaign creation.
 
+<Warning>
+`create_media_buy` is the AdCP 3.x compatibility facade as of 3.2. New integrations use [`buy_products`](/docs/media-buy/task-reference/buy_products) for direct purchases or [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) for proposal execution. Existing payloads remain supported throughout 3.x.
+</Warning>
+
 Supports three execution shapes:
 - **Fixed packages**: Provide `packages` with independent package budgets (legacy default)
 - **Seller-optimized packages**: Provide `packages`, `total_budget`, and `budget_allocation.mode: "seller_optimized"` so the seller allocates a shared budget across packages
@@ -141,7 +145,8 @@ npx @adcp/sdk@latest \
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `account` | [account-ref](/docs/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. Required for billing and policy evaluation. |
-| `proposal_id` | string | No* | ID of a committed proposal from [`get_products`](/docs/media-buy/task-reference/get_products) to execute. Alternative to providing packages. Draft proposals must be finalized first; sellers reject draft proposal execution with [`PROPOSAL_NOT_COMMITTED`](/docs/building/verification/compliance-catalog#error-code-proposal-not-committed). |
+| `proposal_id` | string | No* | ID of the exact committed proposal snapshot produced by [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) with `action: "finalize"`, or by the legacy [`get_products`](/docs/media-buy/task-reference/get_products) finalize action. Drafts fail with [`PROPOSAL_NOT_COMMITTED`](/docs/building/verification/compliance-catalog#error-code-proposal-not-committed); declined or already executed proposals fail with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state). Exact retries reuse the original idempotency key and replay success. |
+| `opportunity` | OpportunityContext | No | Proposal-mode planning-cycle closure shared with [`request_proposals`](/docs/media-buy/task-reference/request_proposals) and [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals); requires `proposal_id`. Omitting status is the create-specific signal to infer closed with `accepted_with_seller`; if status is sent, it must explicitly carry that closure. |
 | `total_budget` | TotalBudget | No* | Hard aggregate lifetime budget. Its currency is the single media-buy denomination for package constraints and canonical bidding. Required for proposals and seller-optimized explicit packages. Optional in fixed explicit-package mode; when supplied there, it must equal the sum of package budgets. |
 | `budget_allocation` | BudgetAllocation | No | Cross-package allocation mode. Omit for fixed allocation. Use `seller_optimized` with media-buy optimization goals to delegate allocation to the seller. Must be omitted when executing a proposal because the committed proposal supplies it. |
 | `packages` | Package[] | No* | Array of package configurations (see below). Required when not using proposal_id. |
@@ -159,7 +164,9 @@ npx @adcp/sdk@latest \
 
 \* Either `packages` OR (`proposal_id` + `total_budget`) must be provided.
 
-When executing a proposal, `proposal_status` on the returned proposal determines whether `create_media_buy` is valid. `committed` proposals can be executed before `expires_at`; `draft` proposals require a prior `get_products` refine call with `action: "finalize"`. Finalization is seller commitment to firm terms, not buyer acceptance. This `create_media_buy` call is the acceptance/execution step.
+When executing a proposal through this 3.x compatibility facade, `proposal_status` determines whether `create_media_buy` is valid. The split 3.2 request and revise operations return drafts; `refine_proposals` with `action: "finalize"` returns the `committed` snapshot that can be accepted before `expires_at`. New callers use [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal). Legacy [`get_products`](/docs/media-buy/task-reference/get_products) drafts require its finalize form, which remains supported throughout 3.x.
+
+An unexpired `committed` proposal carries an inventory hold and cannot be rejected merely because the seller sold that reserved inventory elsewhere. After `expires_at`, the hold lapses and the seller returns [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired).
 
 ### TotalBudget Object
 
@@ -269,6 +276,7 @@ A provider portfolio bidding strategy illustrates the current abstraction bounda
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
 | `revision` | Initial media-buy revision. Use this value as the `revision` token on the next [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) call intended to change state. |
 | `packages` | Array of created packages with complete state. Packages MAY include a per-package `creative_deadline` and SHOULD echo canonical selectors supplied on create so read surfaces are lossless. When additional creative coverage is required, each package carries `formats_to_provide[]`: full canonical ProductFormatDeclaration snapshots normalized from the selected product contract. When the request included audience-evidence pins or requirements, each package MUST return matching `audience_evidence_selections` with `decision_use: "package_construction"`. |
+| `warnings` | Structured non-blocking observations. The buy was still created. A continuing condition also appears on [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys); see [Indicators and Warnings](/docs/media-buy/media-buys/indicators). |
 
 Treat `packages[].formats_to_provide[]` as the stable creative checklist established at booking time. Each full declaration can be matched against a creative agent's live `creative.supported_formats[].format`, even when the product option has no `format_option_id`. After uploads or assignments, call [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys): `packages[].formats_pending[]` contains the declarations that still lack creative coverage. The deprecated `format_ids_to_provide` / `format_ids_pending` projections exist only for older 3.x peers.
 
@@ -315,6 +323,8 @@ When `confirmed_at` is `null`, sellers MUST omit `packages[].committed_metrics`.
 | Field | Description |
 |-------|-------------|
 | `errors` | Array of error objects explaining failure |
+
+Terminal and submitted responses never include `warnings`. Each success warning carries typed `affected_resource` identity; codes follow the negotiated AdCP release.
 
 ### Submitted Response
 
@@ -888,7 +898,7 @@ asyncio.run(create_with_reporting())
 
 ### Executing a Proposal
 
-Execute a proposal from [`get_products`](/docs/media-buy/task-reference/get_products) without manually constructing packages:
+Execute a committed proposal finalized through [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) without manually constructing packages:
 
 <CodeGroup>
 
@@ -901,7 +911,7 @@ const endDate = new Date();
 endDate.setDate(endDate.getDate() + 90);
 
 const result = await testAgent.createMediaBuy({
-  proposal_id: 'swiss_balanced_v1',  // From get_products response
+  proposal_id: 'swiss_balanced_v1',  // From refine_proposals action: "finalize"
   total_budget: {
     amount: 50000,
     currency: 'USD'
@@ -940,7 +950,7 @@ async def execute_proposal():
     end_date = datetime.now(timezone.utc) + timedelta(days=90)
 
     result = await test_agent.simple.create_media_buy(
-        proposal_id='swiss_balanced_v1',  # From get_products response
+        proposal_id='swiss_balanced_v1',  # From refine_proposals action: "finalize"
         total_budget={
             'amount': 50000,
             'currency': 'USD'

@@ -2,8 +2,18 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/wholesale-feed-webhook.json",
   "title": "Wholesale Feed Webhook",
-  "description": "Account-level webhook payload fired when a seller's wholesale product feed or wholesale signals feed changes. Registered through sync_accounts.accounts[].notification_configs[] using product.* / signal.* / wholesale_feed.bulk_change event_types. The payload carries the actual change event so receivers can update a local mirror without immediately re-reading the full feed. get_products / get_signals with if_wholesale_feed_version remain the repair and reconciliation path after missed, stale, or distrusted pushes. Capability consistency: product.* webhooks require wholesale get_products support; signal.* webhooks require wholesale get_signals support; wholesale_feed.bulk_change must name only a feed family backed by a declared wholesale repair path.",
+  "description": "Account-level webhook payload fired when a seller's wholesale product feed or wholesale signals feed changes. Registered through sync_accounts.accounts[].notification_configs[] using product.* / signal.* / wholesale_feed.bulk_change event_types. The payload carries the actual change event so receivers can update a local mirror without polling. list_products(if_feed_version) and get_signals(if_wholesale_feed_version) are the canonical repair paths after missed, stale, or distrusted pushes; wholesale get_products remains the 3.x product compatibility path.",
   "type": "object",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "product_payload_negotiation": {
+        "canonical": "product_payload_view_canonical_requires_canonical_product_or_canonical_pricing_options",
+        "legacy_or_omitted": "requires_product_or_pricing_options",
+        "selected_view": "equals_registered_notification_config.product_payload_view",
+        "on_violation": "reject_webhook"
+      }
+    }
+  },
   "properties": {
     "idempotency_key": {
       "type": "string",
@@ -51,7 +61,12 @@
     },
     "wholesale_feed_version": {
       "type": "string",
-      "description": "Opaque version token for the affected wholesale feed after this change. Receivers store it with their mirror and can pass it to get_products / get_signals as if_wholesale_feed_version to verify whether their local state is current."
+      "description": "Opaque post-change version token for the affected wholesale feed. Store it only after applying the event. A stale mirror repairs with its last applied version; uncertain or bulk repair omits the conditional token."
+    },
+    "product_payload_view": {
+      "type": "string",
+      "enum": ["canonical", "legacy"],
+      "description": "Product representation selected by the receiving notification config. Present on product.* fires; canonical uses canonical_product/canonical_pricing_options and legacy uses product/pricing_options."
     },
     "previous_wholesale_feed_version": {
       "type": "string",
@@ -63,11 +78,11 @@
         "public",
         "account"
       ],
-      "description": "Cache layer affected by this change. MUST equal event.payload.applies_to.scope. Mirrors the cache_scope returned by get_products / get_signals for the affected wholesale feed."
+      "description": "Cache layer affected by this change. MUST equal event.payload.applies_to.scope. Mirrors the cache_scope returned by list_products / get_signals for the affected wholesale feed."
     },
     "event": {
       "$ref": "/schemas/core/wholesale-feed-event.json",
-      "description": "The actual product, signal, or bulk-change event. Consumers MAY apply this payload to their local mirror. Before any binding action, or when ordering/gap checks fail, consumers MUST reconcile through get_products / get_signals."
+      "description": "The actual product, signal, or bulk-change event. Consumers MAY apply this payload to their local mirror. Before any binding action, or when ordering/gap checks fail, consumers MUST reconcile through list_products / get_signals."
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
@@ -96,6 +111,7 @@
         "subscriber_id": "wholesale-feed-sync",
         "account_id": "acc_acme_pinnacle",
         "wholesale_feed_version": "v2026-05-18T10:00:00Z-acme-rev413",
+        "product_payload_view": "legacy",
         "previous_wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412",
         "cache_scope": "public",
         "event": {
@@ -126,6 +142,23 @@
     }
   ],
   "allOf": [
+    {
+      "description": "Product events echo the representation negotiated by the subscriber; non-product events do not carry a product view.",
+      "if": {
+        "properties": {
+          "notification_type": {
+            "enum": ["product.created", "product.updated", "product.priced", "product.removed"]
+          }
+        },
+        "required": ["notification_type"]
+      },
+      "then": {
+        "required": ["product_payload_view"]
+      },
+      "else": {
+        "not": { "required": ["product_payload_view"] }
+      }
+    },
     {
       "if": {
         "properties": {

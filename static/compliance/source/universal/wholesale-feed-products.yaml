@@ -55,6 +55,7 @@ phases:
         expected: |
           Return product rows with wholesale feed metadata.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#wholesale_feed_products_conditional_fetch_bootstrap_products"
           buying_mode: "wholesale"
           account:
             brand:
@@ -93,6 +94,7 @@ phases:
         expected: |
           Return unchanged without resending product rows when the feed token matches.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#wholesale_feed_products_conditional_fetch_unchanged_probe"
           buying_mode: "wholesale"
           account:
             brand:
@@ -137,6 +139,7 @@ phases:
         expected: |
           Reject if_pricing_version when if_wholesale_feed_version is absent.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#wholesale_feed_products_conditional_fetch_standalone_pricing_token_rejected"
           buying_mode: "wholesale"
           account:
             brand:

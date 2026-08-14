@@ -26,7 +26,7 @@ import {
   projectV1ProductToV2,
 } from '@adcp/sdk/v2/projection';
 import {
-  handleGetProducts,
+  executeTrainingAgentTool,
   handleCreateMediaBuy,
   handleUpdateMediaBuy,
   handleGetMediaBuys,
@@ -52,6 +52,7 @@ import type { ToolArgs, TrainingContext } from './types.js';
 interface TrainingSalesMeta {
   brand_domain?: string;
   operator?: string;
+  account_ref?: ToolArgs['account'];
   [key: string]: unknown;
 }
 
@@ -123,15 +124,31 @@ function buildTrainingCtx(
     account?: unknown;
     authInfo?: { clientId?: string };
     agent?: { agent_url: string };
+    input?: unknown;
   } | undefined,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): TrainingContext {
   const account = ctx?.account as { authInfo?: { principal?: string } } | undefined;
+  const legacySessionBrandDomain = storyboardCompat?.version === '3.0'
+    ? brandDomainFromCtx(ctx?.account)
+    : undefined;
+  const accountRef = accountRefFromCtx(ctx?.account, storyboardCompat);
+  const resolvedAccount = accountRef && !accountRef.account_id
+    ? {
+      ...accountRef,
+      ...((ctx?.account as { mode?: unknown } | undefined)?.mode === 'sandbox' && { sandbox: true }),
+    }
+    : accountRef;
   return {
     mode: 'open',
     tenantId: 'sales',
     principal: ctx?.authInfo?.clientId ?? account?.authInfo?.principal ?? 'anonymous',
     ...(ctx?.agent?.agent_url && { authenticatedAgentUrl: ctx.agent.agent_url }),
+    ...(ctx?.input && typeof ctx.input === 'object' && !Array.isArray(ctx.input)
+      ? { requestInput: ctx.input as Record<string, unknown> }
+      : {}),
+    ...(resolvedAccount && { resolvedAccount }),
+    ...(legacySessionBrandDomain && { legacySessionBrandDomain }),
     ...(storyboardCompat && { storyboardCompat }),
   };
 }
@@ -146,6 +163,71 @@ function buildTrainingCtx(
  */
 function brandDomainFromCtx(account: unknown): string | undefined {
   return (account as { ctx_metadata?: TrainingSalesMeta } | undefined)?.ctx_metadata?.brand_domain;
+}
+
+function accountRefFromCtx(
+  account: unknown,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): ToolArgs['account'] | undefined {
+  // The v6 framework removes the envelope account before invoking platform
+  // methods. Frozen 3.0 storyboards and their controller steps historically
+  // shared the remaining top-level brand session; re-injecting the resolved
+  // account only on platform methods splits that compatibility-only flow.
+  const acct = account as {
+    id?: unknown;
+    mode?: unknown;
+    operator?: unknown;
+    ctx_metadata?: TrainingSalesMeta;
+  } | undefined;
+  const originalRef = acct?.ctx_metadata?.account_ref;
+  if (storyboardCompat?.version !== '3.0' && originalRef) return originalRef;
+  const brandDomain = acct?.ctx_metadata?.brand_domain;
+  const accountId = typeof acct?.id === 'string' && !acct.id.startsWith('synthetic_') && acct.id !== 'public_sandbox'
+    ? acct.id
+    : undefined;
+  if (accountId) return { account_id: accountId };
+  if (storyboardCompat?.version === '3.0') return undefined;
+  if (!accountId && !brandDomain) return undefined;
+  return {
+    ...(brandDomain && { brand: { domain: brandDomain } }),
+    ...(typeof acct?.ctx_metadata?.operator === 'string'
+      ? { operator: acct.ctx_metadata.operator }
+      : typeof acct?.operator === 'string'
+        ? { operator: acct.operator }
+        : {}),
+    ...(acct?.mode === 'sandbox' && { sandbox: true }),
+  };
+}
+
+function withResolvedAccountScope(
+  input: Record<string, unknown>,
+  account: unknown,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): ToolArgs {
+  const { account: _legacyAccount, ...withoutAccount } = input;
+  const base = storyboardCompat?.version === '3.0' ? withoutAccount : input;
+  const accountRef = accountRefFromCtx(account, storyboardCompat);
+  const brandDomain = brandDomainFromCtx(account);
+  return {
+    ...base,
+    ...(accountRef && { account: accountRef }),
+    ...(brandDomain && { brand: { domain: brandDomain } }),
+  } as ToolArgs;
+}
+
+/** Preserve the SDK-13 natural-account session shape while restoring explicit
+ * account_id references that the platform facade removes from domain args. */
+function withCurrentAccountScope(
+  input: Record<string, unknown>,
+  account: unknown,
+): ToolArgs {
+  const accountRef = accountRefFromCtx(account);
+  const brandDomain = brandDomainFromCtx(account);
+  return {
+    ...input,
+    ...(accountRef && { account: accountRef }),
+    ...(brandDomain && { brand: { domain: brandDomain } }),
+  } as ToolArgs;
 }
 
 /**
@@ -177,6 +259,36 @@ function translateV5Result<T extends object>(result: unknown, options: { allowAd
     });
   }
   return result as T;
+}
+
+function throwGetProductsExecutionError(message: string): never {
+  const validationMatch = message.match(/^Invalid get_products request(?: at ([^:]+))?:/);
+  const invalidRequest = validationMatch !== null
+    || message.includes('idempotency_key')
+    || message.startsWith('brief must be a string');
+  const code = message.includes('IDEMPOTENCY_CONFLICT')
+    ? 'IDEMPOTENCY_CONFLICT'
+    : message.includes('IDEMPOTENCY_EXPIRED')
+      ? 'IDEMPOTENCY_EXPIRED'
+      : message.includes('IDEMPOTENCY_IN_FLIGHT')
+        ? 'IDEMPOTENCY_IN_FLIGHT'
+        : message.includes('RATE_LIMITED')
+          ? 'RATE_LIMITED'
+          : invalidRequest
+            ? 'INVALID_REQUEST'
+            : 'SERVICE_UNAVAILABLE';
+  const field = validationMatch?.[1]
+    ?? (message.startsWith('brief must be a string') ? 'brief' : undefined)
+    ?? (message.includes('idempotency_key') ? 'idempotency_key' : undefined);
+  const retryAfterMatch = message.match(/retry_after=(\d+)/);
+  throw new AdcpError(code, {
+    recovery: code === 'RATE_LIMITED' || code === 'IDEMPOTENCY_IN_FLIGHT' || code === 'SERVICE_UNAVAILABLE'
+      ? 'transient'
+      : 'correctable',
+    message,
+    ...(code === 'INVALID_REQUEST' && field && { field }),
+    ...(retryAfterMatch && { retry_after: Number(retryAfterMatch[1]) }),
+  });
 }
 
 /** The DecisioningPlatform contract is canonical even when the outer SDK
@@ -292,13 +404,61 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
       mode: 'sandbox',
       ...(brandDomain != null && { brand: { domain: brandDomain } }),
       ...(operator && { operator }),
-      ctx_metadata: { brand_domain: brandDomain, ...(operator && { operator }) },
+      ctx_metadata: {
+        account_ref: ref as ToolArgs['account'],
+        brand_domain: brandDomain,
+        ...(operator && { operator }),
+      },
       sandbox: true,
       authInfo: { kind: 'api_key', ...(principal && { principal }) },
     };
   },
   upsert: syncAccountsUpsert,
 };
+
+/**
+ * Resolve the trusted sales account and buyer-agent context for native MCP
+ * dispatchers that sit beside the SDK facade. Keeping this on the platform's
+ * actual resolvers prevents the split 3.2 tools from treating buyer input as
+ * an already-authorized account.
+ */
+export async function resolveTrainingSalesRequestContext(
+  input: Record<string, unknown>,
+  auth: {
+    clientId?: string;
+    scopes?: string[];
+    extra?: Record<string, unknown>;
+  } | undefined,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): Promise<TrainingContext> {
+  const credential = auth?.extra?.credential;
+  const agent = await trainingBuyerAgentRegistry.resolve({
+    ...(credential ? { credential: credential as never } : {}),
+    ...(auth?.extra && { extra: auth.extra }),
+    input,
+  });
+  const account = await trainingSalesAccounts.resolve(
+    input.account as never,
+    {
+      authInfo: {
+        ...(auth?.clientId && { clientId: auth.clientId }),
+        ...(auth?.scopes && { scopes: auth.scopes }),
+        ...(credential ? { credential: credential as never } : {}),
+        ...(auth?.extra && { extra: auth.extra }),
+      },
+      toolName: 'get_products',
+      ...(agent && { agent }),
+      input,
+    },
+  );
+  if (!account) throw new Error('Unable to resolve sales account');
+  return buildTrainingCtx({
+    account,
+    authInfo: { clientId: auth?.clientId },
+    ...(agent && { agent }),
+    input,
+  }, storyboardCompat);
+}
 
 /**
  * Temporary raw-wire compatibility adapters for creative identity surfaces.
@@ -315,12 +475,22 @@ export function legacyGetProductsHandler(
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): NonNullable<LegacyMediaBuyHandlers['getProducts']> {
   return async (req, ctx) => {
-    const versionResolution = resolveServedAdcpVersion(req as unknown as Record<string, unknown>);
+    const normalizedReq = withResolvedAccountScope(
+      req as unknown as Record<string, unknown>,
+      ctx.account,
+      storyboardCompat,
+    );
+    const versionResolution = resolveServedAdcpVersion(normalizedReq as unknown as Record<string, unknown>);
     const trainingCtx = buildTrainingCtx(ctx, storyboardCompat);
     if (versionResolution.ok) trainingCtx.servedAdcpVersion = versionResolution.servedVersion;
-    const response = await handleGetProducts(req as ToolArgs, trainingCtx);
+    const executed = await executeTrainingAgentTool('get_products', normalizedReq, trainingCtx);
+    if (!executed.success) throwGetProductsExecutionError(executed.error ?? 'get_products failed');
+    const response = translateV5Result<{ products?: import('@adcp/sdk').LegacyProduct[] }>(
+      executed.data,
+      { allowAdvisories: true },
+    );
     return projectGetProductsCompatibilityWire(
-      response as { products?: import('@adcp/sdk').LegacyProduct[] },
+      response,
       req as unknown as Record<string, unknown>,
     ) as Awaited<ReturnType<NonNullable<LegacyMediaBuyHandlers['getProducts']>>>;
   };
@@ -366,7 +536,14 @@ export class TrainingSalesPlatform
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sales: SalesPlatform<TrainingSalesMeta> = {
     createMediaBuy: async (req, ctx) => {
-      const v5Result = await handleCreateMediaBuy(req as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
+      const args = this.storyboardCompat?.version === '3.0'
+        ? withResolvedAccountScope(
+          req as unknown as Record<string, unknown>,
+          ctx.account,
+          this.storyboardCompat,
+        )
+        : withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account);
+      const v5Result = await handleCreateMediaBuy(args, buildTrainingCtx(ctx, this.storyboardCompat));
       // Detect the submitted-arm envelope the v5 handler returns when the
       // `force_create_media_buy_arm` test-controller directive is set.
       // The framework's projector rejects hand-rolled
@@ -403,20 +580,28 @@ export class TrainingSalesPlatform
 
     updateMediaBuy: async (buyId, patch, ctx) => {
       const brandDomain = brandDomainFromCtx(ctx.account);
-      // brand placed after patch spread so it takes precedence over any brand
-      // field the SDK might include in patch.
-      const args = brandDomain
+      const currentArgs = brandDomain
         ? { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
         : { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>) };
-      const v5Result = await handleUpdateMediaBuy(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
+      const args = this.storyboardCompat?.version === '3.0'
+        ? withResolvedAccountScope(currentArgs, ctx.account, this.storyboardCompat)
+        : withCurrentAccountScope(currentArgs, ctx.account);
+      const v5Result = await handleUpdateMediaBuy(args, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(canonicalMediaBuyPlatformResult(v5Result));
     },
 
     getMediaBuyDelivery: async (filter, ctx) => {
       const brandDomain = brandDomainFromCtx(ctx.account);
-      const args = brandDomain
+      const currentArgs = brandDomain
         ? { ...(filter as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
         : filter;
+      const args = this.storyboardCompat?.version === '3.0'
+        ? withResolvedAccountScope(
+          filter as unknown as Record<string, unknown>,
+          ctx.account,
+          this.storyboardCompat,
+        )
+        : withCurrentAccountScope(currentArgs as Record<string, unknown>, ctx.account);
       const result = await handleGetMediaBuyDelivery(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
@@ -424,9 +609,16 @@ export class TrainingSalesPlatform
     // Optional read-side methods.
     getMediaBuys: async (req, ctx) => {
       const brandDomain = brandDomainFromCtx(ctx.account);
-      const args = brandDomain
+      const currentArgs = brandDomain
         ? { ...(req as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
         : req;
+      const args = this.storyboardCompat?.version === '3.0'
+        ? withResolvedAccountScope(
+          req as unknown as Record<string, unknown>,
+          ctx.account,
+          this.storyboardCompat,
+        )
+        : withCurrentAccountScope(currentArgs as Record<string, unknown>, ctx.account);
       const result = await handleGetMediaBuys(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(canonicalMediaBuyPlatformResult(result));
     },

@@ -3,7 +3,7 @@ version: "1.0.0"
 introduced_in: "3.1"
 title: "Seller returns and completes async get_products discovery tasks"
 category: media_buy_seller
-summary: "Forces curated get_products discovery into the submitted arm, verifies the task is visible through task APIs, completes it deterministically, and observes the terminal webhook result."
+summary: "Forces curated get_products discovery into the submitted arm, verifies idempotent replay and conflict handling, confirms the task through task APIs, completes it deterministically, and observes the terminal webhook result."
 track: media_buy
 required_tools:
   - get_products
@@ -73,6 +73,8 @@ phases:
         context_outputs:
           - name: forced_products_task_id
             path: "forced.task_id"
+          - name: submitted_products_idempotency_key
+            generate: uuid_v4
         expected: |
           Return a successful directive:
           - success: true
@@ -133,6 +135,7 @@ phases:
           - no products[] or proposals[] on the initial envelope
           - terminal products/proposals are delivered through task completion
         sample_request:
+          idempotency_key: "$context.submitted_products_idempotency_key"
           buying_mode: "brief"
           brief: "Curate display and video inventory for an Acme Outdoor fall trail campaign."
           pagination:
@@ -167,6 +170,81 @@ phases:
           - check: field_absent
             path: "result"
             description: "Terminal result is not returned on the submitted envelope"
+
+      - id: get_products_submitted_replay
+        title: "Replay the submitted discovery request"
+        narrative: |
+          Repeat the byte-equivalent request with the same idempotency key. The
+          seller must return the original submitted envelope and task_id rather
+          than consuming another controller directive or creating another task.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-async-response-submitted.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: get_products_async
+        stateful: true
+        sample_request:
+          idempotency_key: "$context.submitted_products_idempotency_key"
+          buying_mode: "brief"
+          brief: "Curate display and video inventory for an Acme Outdoor fall trail campaign."
+          pagination:
+            max_results: 5
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          push_notification_config:
+            url: "{{runner.webhook_url:get_products_submitted}}"
+            operation_id: "op_get_products_async_terminal"
+          context:
+            correlation_id: "get_products_async--get_products_submitted"
+        validations:
+          - check: response_schema
+            description: "Replay matches get-products-async-response-submitted.json"
+          - check: field_value
+            path: "task_id"
+            value: "$context.products_task_id"
+            description: "Replay returns the original task rather than creating a duplicate"
+          - check: field_value
+            path: "replayed"
+            value: true
+            description: "Replay is identified as an idempotency-cache response"
+
+      - id: get_products_submitted_conflict
+        title: "Reject changed discovery input under the same key"
+        narrative: |
+          Reuse the submitted request's key with a different brief. This is not
+          a retry and must fail before a second task or webhook registration is
+          created.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-async-response-submitted.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: idempotency_conflict
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          idempotency_key: "$context.submitted_products_idempotency_key"
+          buying_mode: "brief"
+          brief: "Curate only connected-TV inventory for a materially different campaign."
+          pagination:
+            max_results: 5
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          push_notification_config:
+            url: "{{runner.webhook_url:get_products_submitted}}"
+            operation_id: "op_get_products_async_terminal"
+          context:
+            correlation_id: "get_products_async--get_products_submitted"
+        validations:
+          - check: error_code
+            allowed_values: ["IDEMPOTENCY_CONFLICT"]
+            description: "Changed payload under the submitted request key is rejected"
 
       - id: list_products_task
         title: "Find submitted discovery task in list_tasks"
@@ -292,6 +370,7 @@ phases:
           params:
             task_id: "$context.products_task_id"
             result:
+              status: "completed"
               products:
                 - product_id: "async_curated_trail_display"
                   name: "Async curated trail display"

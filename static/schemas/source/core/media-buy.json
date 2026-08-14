@@ -10,6 +10,18 @@
       "description": "Seller's unique identifier for the media buy",
       "x-entity": "media_buy"
     },
+    "accepted_proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "proposal",
+      "description": "Current accepted commercial snapshot. Compact-lifecycle buyers pass this ID to refine_proposals after restart or handoff. Updated atomically when an amendment or negotiated cancellation is accepted."
+    },
+    "accepted_proposal_terms_digest": {
+      "type": "string",
+      "pattern": "^sha256:[A-Za-z0-9_-]{43}$",
+      "description": "Digest of the current accepted proposal commercial_terms, allowing buyers and governance agents to verify the recovered snapshot."
+    },
     "account": {
       "$ref": "/schemas/core/account.json",
       "description": "Account billed for this media buy"
@@ -50,7 +62,7 @@
         },
         "canceled_by": {
           "$ref": "/schemas/enums/canceled-by.json",
-          "description": "Which party initiated the cancellation. 'buyer' when canceled via update_media_buy; 'seller' when the seller cancels (e.g., policy violation, inventory withdrawal)."
+          "description": "Which party initiated the cancellation. 'buyer' when canceled through control_media_buy or the 3.x update_media_buy facade; 'seller' when the seller cancels (e.g., policy violation, inventory withdrawal)."
         },
         "reason": {
           "type": "string",
@@ -126,6 +138,10 @@
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
+  },
+  "dependencies": {
+    "accepted_proposal_id": ["accepted_proposal_terms_digest"],
+    "accepted_proposal_terms_digest": ["accepted_proposal_id"]
   },
   "allOf": [
     {

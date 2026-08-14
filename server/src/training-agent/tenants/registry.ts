@@ -36,7 +36,7 @@ import {
   type CreateAdcpServerFromPlatformOptions,
 } from '@adcp/sdk/server';
 import { getPool } from '../../db/client.js';
-import { getIdempotencyStore, scopedPrincipal } from '../idempotency.js';
+import { getSdkIdempotencyStore, scopedPrincipal } from '../idempotency.js';
 import { emitFrameworkTaskWebhook, getWebhookSigningMaterial } from '../webhooks.js';
 import { isWebhookTestOrDevelopment } from '../webhook-fetch.js';
 import { buildSignalsTenantConfig } from './signals.js';
@@ -50,6 +50,7 @@ import { createLogger } from '../../logger.js';
 import type { TrainingContext } from '../types.js';
 import { getCanonicalBase } from '../canonical-base.js';
 import { creativeProjectionAdapters } from '../task-handlers.js';
+import { sharedTrainingTaskStore } from '../mcp-task-store.js';
 
 export { getCanonicalBase } from '../canonical-base.js';
 
@@ -186,7 +187,7 @@ function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboar
     name: 'adcp-training-agent',
     version: '1.0.0',
     ...(storyboardCompat?.version === '3.0' && { adcpVersion: '3.0' }),
-    idempotency: getIdempotencyStore(),
+    idempotency: getSdkIdempotencyStore(),
     webhooks: getWebhookSigningMaterial(),
     taskWebhookEmitter: {
       emit: emitFrameworkTaskWebhook,
@@ -196,6 +197,7 @@ function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboar
     // while its consumers migrate to inline-terminal handling.
     autoEmitCompletionWebhooks: true,
     taskRegistry: pickTaskRegistry(),
+    taskStore: sharedTrainingTaskStore,
     stateStore: pickStateStore(),
     mergeSeam: 'log-once',
     // Keep the SDK facade's legacy and canonical wire projections on the

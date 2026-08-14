@@ -202,6 +202,7 @@ const exampleData = {
   
   // Request/Response examples
   getProductsRequest: {
+    "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
     "buying_mode": "brief",
     "brief": "Nike Air Max 2024 - Premium video inventory for sports fans"
   },

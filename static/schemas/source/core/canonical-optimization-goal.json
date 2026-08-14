@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-optimization-goal.json",
+  "title": "Canonical Optimization Goal",
+  "description": "Canonical 3.2 optimization objective. Monetary execution policy belongs in BiddingPolicy; legacy monetary targets and unbound attention metrics are excluded.",
+  "discriminator": { "propertyName": "kind" },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "type": "string", "const": "metric" },
+        "metric": {
+          "type": "string",
+          "enum": ["clicks", "views", "completed_views", "viewed_seconds", "engagements", "follows", "saves", "profile_visits", "reach"]
+        },
+        "reach_unit": { "$ref": "/schemas/enums/reach-unit.json" },
+        "target_frequency": {
+          "type": "object",
+          "properties": {
+            "min": { "type": "integer", "minimum": 1 },
+            "max": { "type": "integer", "minimum": 1 },
+            "window": { "$ref": "/schemas/core/duration.json" }
+          },
+          "required": ["window"],
+          "anyOf": [{ "required": ["min"] }, { "required": ["max"] }],
+          "additionalProperties": false
+        },
+        "view_duration_seconds": { "type": "number", "exclusiveMinimum": 0 },
+        "target": {
+          "type": "object",
+          "properties": {
+            "kind": { "type": "string", "const": "threshold_rate" },
+            "value": { "type": "number", "exclusiveMinimum": 0 }
+          },
+          "required": ["kind", "value"],
+          "additionalProperties": false
+        },
+        "priority": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["kind", "metric"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "type": "string", "const": "event" },
+        "event_sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "event_source_id": { "type": "string", "minLength": 1, "x-entity": "event_source" },
+              "event_type": { "$ref": "/schemas/enums/event-type.json" },
+              "custom_event_name": { "type": "string", "minLength": 1 },
+              "value_field": { "type": "string", "minLength": 1 },
+              "value_factor": { "type": "number", "default": 1 }
+            },
+            "required": ["event_source_id", "event_type"],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "kind": { "type": "string", "const": "maximize_value" }
+          },
+          "required": ["kind"],
+          "additionalProperties": false
+        },
+        "attribution_window": { "$ref": "/schemas/core/attribution-window.json" },
+        "priority": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["kind", "event_sources"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": { "type": "string", "const": "vendor_metric" },
+        "vendor": { "$ref": "/schemas/core/brand-key.json" },
+        "metric_id": { "$ref": "/schemas/core/vendor-metric-id.json" },
+        "target": {
+          "type": "object",
+          "properties": {
+            "kind": { "type": "string", "const": "threshold_rate" },
+            "value": { "type": "number", "exclusiveMinimum": 0 }
+          },
+          "required": ["kind", "value"],
+          "additionalProperties": false
+        },
+        "priority": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["kind", "vendor", "metric_id"],
+      "additionalProperties": false
+    }
+  ]
+}

@@ -191,6 +191,33 @@ Don't poll for `working` — the server delivers the result on the open connecti
 
 Send `include_result: true` to receive the terminal task payload on the polled response once the task reaches `status: completed`. The `result` object on the response carries the same shape the original task would have returned synchronously — for example, polling a `create_media_buy` task returns `result: { media_buy_id, packages, status }`. For `failed` tasks, read the existing `error` field instead. Webhooks remain the supported delivery mechanism (see [Push Notifications](/docs/building/by-layer/L3/webhooks)); `include_result` is the typed polling alternative for buyers that prefer pull over push.
 
+### Typed task results in SDKs
+
+AdCP 3.2 deliberately keeps the polling envelope's `result` property generic. Draft-07 cannot select a `$ref` dynamically from the sibling `task_type` value without enumerating every task, and embedding that enumeration made `get_task_status` grow whenever any async-capable tool grew. Exact result validation is still required; it is selected through the release manifest instead of duplicated into the polling schema.
+
+The release `manifest.json` artifact therefore publishes `task_result_resolution`. For a terminal result, first check `terminal_schema_overrides[task_type]`; when no override exists, replace `{task_type}` in `/tools/{task_type}/response_schema`. A tool's canonical response schema already contains its task-local terminal branches, including the structured `get_products` rejection. SDK generators SHOULD use that rule to expose a generic relationship equivalent to:
+
+```ts
+type ToolTaskType = Extract<ToolName, TaskType>;
+type TaskHandle<T extends ToolTaskType> = { taskId: string; taskType: T };
+type TaskResult<T extends TaskType> =
+  T extends keyof TaskResultOverrides
+    ? SchemaType<TaskResultOverrides[T]>
+    : T extends ToolName
+      ? ToolResponse<T>
+      : never;
+type TaskStatus<T extends TaskType> = {
+  task_id: string;
+  task_type: T;
+  status: AdcpTaskStatus;
+  result?: TaskResult<T>;
+};
+```
+
+A tool call that returns `submitted` can retain its tool name in `TaskHandle<T>`, so a later `getTaskStatus(handle)` returns the precise result type without importing a global union. SDKs SHOULD keep a string-only overload for recovered or persisted task IDs; that overload returns an unknown result until the response's `task_type` is checked, then resolves and validates the matching manifest schema or override. If a typed handle's expected tool differs from the returned `task_type`, the SDK MUST reject the response as a task-correlation failure.
+
+Webhook envelopes retain their separate async payload schema. For 3.x compatibility, task reconciliation also continues to accept the historically shared event value `media_buy_delivery`; its manifest override selects `media-buy-delivery-webhook-result.json`. AdCP 4.0 can separate event types from tool task types, remove the legacy `tasks/get` alias, and make this generic SDK relationship part of the canonical task model.
+
 ```javascript
 // Polling is only for 'submitted' operations
 async function pollForResult(taskId, pollInterval = 30_000) {

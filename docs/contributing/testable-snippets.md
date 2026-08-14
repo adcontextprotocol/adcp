@@ -44,6 +44,8 @@ Once a page is marked `testable: true`, all code blocks are executed:
 import { testAgent } from '@adcp/sdk/testing';
 
 const products = await testAgent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442068',
+  buying_mode: 'brief',
   brief: 'Premium athletic footwear with innovative cushioning',
   brand: {
     domain: 'nike.com'
@@ -60,7 +62,7 @@ Use snippet metadata for examples that need local preconditions:
 
 ````markdown
 ```bash requires-env=ADCP_AUTH_TOKEN
-uvx adcp https://test-agent.adcontextprotocol.org/sales/mcp get_products '{}' --auth $ADCP_AUTH_TOKEN
+uvx adcp https://test-agent.adcontextprotocol.org/sales/mcp get_products '{"idempotency_key":"550e8400-e29b-41d4-a716-446655442069","buying_mode":"brief","brief":"Premium CTV inventory"}' --auth $ADCP_AUTH_TOKEN
 ```
 
 ```javascript integration=true
@@ -80,11 +82,15 @@ import { testAgent, testAgentNoAuth } from '@adcp/sdk/testing';
 
 // Authenticated access
 const fullCatalog = await testAgent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442056',
+  buying_mode: 'brief',
   brief: 'Premium CTV inventory'
 });
 
 // Unauthenticated access
 const publicCatalog = await testAgentNoAuth.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442057',
+  buying_mode: 'brief',
   brief: 'Premium CTV inventory'
 });
 ```
@@ -97,11 +103,15 @@ from adcp.testing import test_agent, test_agent_no_auth
 async def example():
     # Authenticated access
     full_catalog = await test_agent.simple.get_products(
+        idempotency_key='550e8400-e29b-41d4-a716-446655442058',
+        buying_mode='brief',
         brief='Premium CTV inventory'
     )
 
     # Unauthenticated access
     public_catalog = await test_agent_no_auth.simple.get_products(
+        idempotency_key='550e8400-e29b-41d4-a716-446655442059',
+        buying_mode='brief',
         brief='Premium CTV inventory'
     )
 
@@ -138,6 +148,8 @@ const client = new AdcpClient({
 });
 
 const products = await client.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442060',
+  buying_mode: 'brief',
   brief: 'Nike Air Max 2024'
 });
 

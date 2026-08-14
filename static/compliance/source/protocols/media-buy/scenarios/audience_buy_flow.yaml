@@ -150,6 +150,7 @@ phases:
           Return at least one product whose audience_targeting capabilities
           indicate audience_include / audience_exclude overlays are accepted.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_audience_buy_flow_setup_get_products_for_audience"
           buying_mode: "brief"
           brief: "Display inventory, US adults 25-54, restricted to a first-party CRM audience. Q2 flight, ~$15K budget."
           required_capabilities:

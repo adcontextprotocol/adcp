@@ -151,6 +151,7 @@ phases:
           Return at least one product whose conversion_tracking capabilities
           include multi_source_event_dedup.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_event_dedup_flow_setup_get_products_for_dedup"
           buying_mode: "brief"
           brief: "Performance display, US, adults 25-54. Target CPA $40 with pixel + CAPI conversion sources; same event_id from both must dedup."
           required_capabilities:

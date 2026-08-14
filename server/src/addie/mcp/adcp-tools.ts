@@ -165,7 +165,11 @@ export function validateAccountRefParam(account: unknown): string | null {
 
 export const ADCP_TASK_REGISTRY: Record<string, AdcpTaskMeta> = {
   // Media Buy
-  get_products: { area: 'media-buy', description: 'Discover advertising products from a sales agent using natural language briefs' },
+  get_products: {
+    area: 'media-buy',
+    description: 'Discover advertising products from a sales agent using natural language briefs',
+    validate: validateIdempotencyKey,
+  },
   create_media_buy: {
     area: 'media-buy',
     description: 'Create an advertising campaign from selected products',
@@ -707,7 +711,7 @@ const callAdcpTaskTool: AddieTool = {
         type: 'object',
         description: [
           'Task-specific parameters. Quick reference for common tasks:',
-          '• get_products: { brief, brand: { domain }, buying_mode?: "brief"|"wholesale"|"refine", filters?: { channels, budget_range } }',
+          '• get_products: { idempotency_key, brief, brand: { domain }, buying_mode?: "brief"|"wholesale"|"refine", filters?: { channels, budget_range } }',
           '• create_media_buy: { idempotency_key, account: { account_id } OR { brand:{domain}, operator: "operator.example" }, brand: { domain }, packages: [...] OR proposal_id + total_budget, start_time: "asap" | "2024-06-01T00:00:00Z", end_time: "2024-06-30T23:59:59Z" }',
           '• update_media_buy: { idempotency_key, account: { account_id } OR { brand:{domain}, operator }, media_buy_id, paused?, canceled?, packages?: [{ package_id, budget? }] }',
           '• sync_creatives: { idempotency_key, creatives: [{ creative_id, format_kind, format_option_ref?, assets }], assignments? }',
@@ -885,6 +889,11 @@ export function createAdcpToolHandlers(
       return `**Error:** ${validationError}`;
     }
 
+    // Keep the caller-supplied key visible and stable through the training
+    // shortcut, network execution, and any OAuth continuation. Hidden key
+    // generation would make an ambiguous timeout impossible to retry safely.
+    const requestParams = params;
+
     // In-process shortcut for training agent (avoids HTTP round-trip and localhost restrictions)
     try {
       const parsedUrl = new URL(agentUrl);
@@ -899,7 +908,7 @@ export function createAdcpToolHandlers(
           userId,
           moduleId: trainingModuleContext?.moduleId ?? memberModuleId,
         };
-        const result = await executeTrainingAgentTool(task, params, ctx);
+        const result = await executeTrainingAgentTool(task, requestParams, ctx);
         if (!result.success) {
           return [
             `**Task failed:** \`${task}\`\n`,
@@ -968,10 +977,10 @@ export function createAdcpToolHandlers(
 
       const executionMode = adcpExecutionMode(task);
       const result = isCanonicalAdcpTask(task)
-        ? await executeCanonicalAdcpTask(client, task, params, debug)
+        ? await executeCanonicalAdcpTask(client, task, requestParams, debug)
         : executionMode === 'legacy'
-          ? await client.executeTaskLegacy(task, params, undefined, { debug })
-          : await client.executeCustomTask(task, params, undefined, { debug });
+          ? await client.executeTaskLegacy(task, requestParams, undefined, { debug })
+          : await client.executeCustomTask(task, requestParams, undefined, { debug });
 
       if (!result.success) {
         let output = `**Task failed:** \`${task}\`\n\n**Error:**\n\`\`\`json\n${JSON.stringify(result.error, null, 2)}\n\`\`\``;
@@ -1006,7 +1015,7 @@ export function createAdcpToolHandlers(
             agentUrl,
             organizationId,
             agentContextDb,
-            { pendingTask: task, pendingParams: params },
+            { pendingTask: task, pendingParams: requestParams },
           );
           if (authUrl) {
             return (

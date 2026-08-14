@@ -430,6 +430,7 @@ phases:
         stateful: false
         contributes: true
         sample_request:
+          idempotency_key: "$generate:uuid_v4#webhook_emission_synchronous_completion_success_path_sync_get_products_with_webhook_config_success"
           buying_mode: "wholesale"
           account:
             brand:
@@ -486,6 +487,7 @@ phases:
         stateful: false
         contributes: true
         sample_request:
+          idempotency_key: "$generate:uuid_v4#webhook_emission_synchronous_completion_rejection_path_sync_get_products_with_webhook_config_reject"
           buying_mode: "wholesale"
           account:
             brand:

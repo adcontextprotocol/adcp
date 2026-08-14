@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/control-media-buy-response.json",
+  "title": "Control Media Buy Response",
+  "description": "Result of applying operational controls without embedding the package or creative object graphs.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "status"
+  },
+  "oneOf": [
+    {
+      "title": "Control Applied",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "const": "completed" },
+        "media_buy_id": { "type": "string", "minLength": 1, "x-entity": "media_buy" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "media_buy_status": { "$ref": "/schemas/enums/media-buy-status.json" },
+        "implementation_date": { "type": ["string", "null"], "format": "date-time" },
+        "affected_package_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "x-entity": "package" },
+          "uniqueItems": true
+        },
+        "available_actions": {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/canonical-media-buy-action.json" },
+          "uniqueItems": true
+        },
+        "warnings": {
+          "type": "array",
+          "description": "Non-blocking observations about this completed control. The control was still applied exactly as represented. Continuing conditions also appear as indicators on get_media_buys.",
+          "items": {
+            "allOf": [
+              { "$ref": "/schemas/core/warning.json" },
+              {
+                "properties": {
+                  "code": { "const": "inventory_shortfall_forecast" }
+                }
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "context": { "$ref": "/schemas/core/context.json" },
+        "ext": { "$ref": "/schemas/core/ext.json" },
+        "replayed": { "type": "boolean", "const": true }
+      },
+      "required": ["status", "media_buy_id", "revision"],
+      "additionalProperties": false,
+      "not": { "required": ["errors"] }
+    },
+    {
+      "title": "Control Error",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "const": "failed" },
+        "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 },
+        "context": { "$ref": "/schemas/core/context.json" },
+        "ext": { "$ref": "/schemas/core/ext.json" },
+        "replayed": { "type": "boolean", "const": true }
+      },
+      "required": ["status", "errors"],
+      "additionalProperties": false,
+      "not": { "required": ["media_buy_id"] }
+    },
+    {
+      "title": "Control Submitted",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "const": "submitted" },
+        "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
+        "message": { "type": "string", "maxLength": 2000 },
+        "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
+        "context": { "$ref": "/schemas/core/context.json" },
+        "ext": { "$ref": "/schemas/core/ext.json" },
+        "replayed": { "type": "boolean", "const": true }
+      },
+      "required": ["status", "task_id"],
+      "additionalProperties": false,
+      "not": { "required": ["media_buy_id"] }
+    }
+  ]
+}

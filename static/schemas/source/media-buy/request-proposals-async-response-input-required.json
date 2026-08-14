@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/request-proposals-async-response-input-required.json",
+  "title": "Request Proposals - Input Required",
+  "description": "Bounded input-required payload for request_proposals.",
+  "allOf": [
+    { "$ref": "/schemas/core/compact-task-input-required.json" }
+  ]
+}

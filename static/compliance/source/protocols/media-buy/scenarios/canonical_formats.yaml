@@ -350,6 +350,7 @@ phases:
           - params.width = 300 and params.height = 250
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_canonical_formats_canonical_product_discovery_get_seeded_canonical_product"
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
@@ -450,6 +451,7 @@ phases:
           v1 fallback format_id. No producer-side `format_options[]` projection
           is required for v1-only products.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_canonical_formats_canonical_product_discovery_get_seeded_v1_only_product"
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
@@ -498,6 +500,7 @@ phases:
           Return the seeded canonical_formats_options_only_display product with
           an image canonical declaration and no format_ids fallback.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_canonical_formats_canonical_product_discovery_get_seeded_v2_only_product"
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
@@ -555,6 +558,7 @@ phases:
           Return the seeded canonical_formats_custom_takeover product with a
           custom v2-only declaration and digest-pinned format_schema reference.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_canonical_formats_canonical_product_discovery_get_seeded_custom_v2_only_product"
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
@@ -620,6 +624,7 @@ phases:
           Return the seeded canonical_formats_experimental_display product with
           both v1 and v2 declarations and an experimental v2 marker.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_canonical_formats_canonical_product_discovery_get_seeded_experimental_product"
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
@@ -687,6 +692,7 @@ phases:
           flag the divergent declarations with a non-fatal
           FORMAT_DECLARATION_DIVERGENT advisory in `errors[]`.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_canonical_formats_canonical_product_discovery_get_seeded_divergent_product"
           buying_mode: "wholesale"
           filters:
             channels: ["display"]
@@ -744,6 +750,7 @@ phases:
           validations can compare package format selectors against the product's
           canonical format_options[] declaration.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_canonical_formats_canonical_create_satisfaction_get_canonical_product_for_create_satisfaction"
           buying_mode: "wholesale"
           filters:
             channels: ["display"]

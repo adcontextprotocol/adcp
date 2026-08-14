@@ -350,6 +350,7 @@ describe('tenant routing smoke', () => {
       await initializeTenant(url);
       const body = await callTenantTool(url, 2, 'get_products', {
         adcp_version: '3.1',
+        idempotency_key: 'dual-product-shape-default-0001',
         buying_mode: 'wholesale',
         account: {
           brand: { domain: 'legacy-product-facade.example' },
@@ -385,6 +386,7 @@ describe('tenant routing smoke', () => {
 
       const legacy = await callTenantTool(url, 3, 'get_products', {
         adcp_version: '3.1',
+        idempotency_key: 'dual-product-shape-legacy-0001',
         buying_mode: 'wholesale',
         account: {
           brand: { domain: 'legacy-product-wire.example' },
@@ -402,6 +404,7 @@ describe('tenant routing smoke', () => {
 
       const canonical = await callTenantTool(url, 4, 'get_products', {
         adcp_version: '3.1',
+        idempotency_key: 'dual-product-shape-canonical-0001',
         buying_mode: 'wholesale',
         account: {
           brand: { domain: 'canonical-product-wire.example' },
@@ -1030,7 +1033,11 @@ describe('tenant routing smoke', () => {
           params: {
             name: 'comply_test_controller',
             arguments: {
-              account: { sandbox: true },
+              account: {
+                brand: { domain: 'tenant-seed.example' },
+                operator: 'pinnacle-agency.example',
+                sandbox: true,
+              },
               adcp_version: '3.1',
               adcp_major_version: 3,
               scenario: 'list_scenarios',
@@ -1057,7 +1064,11 @@ describe('tenant routing smoke', () => {
           params: {
             name: 'comply_test_controller',
             arguments: {
-              account: { sandbox: true, brand: { domain: 'tenant-seed.example' } },
+              account: {
+                brand: { domain: 'tenant-seed.example' },
+                operator: 'pinnacle-agency.example',
+                sandbox: true,
+              },
               adcp_version: '3.1',
               adcp_major_version: 3,
               brand: { domain: 'tenant-seed.example' },
@@ -1091,7 +1102,11 @@ describe('tenant routing smoke', () => {
           params: {
             name: 'comply_test_controller',
             arguments: {
-              account: { sandbox: true },
+              account: {
+                brand: { domain: 'tenant-seed.example' },
+                operator: 'pinnacle-agency.example',
+                sandbox: true,
+              },
               adcp_version: '4.0',
               scenario: 'list_scenarios',
               context: { correlation_id: 'tenant-local-version-unsupported' },
@@ -1476,4 +1491,448 @@ describe('tenant routing smoke', () => {
       await close();
     }
   }, 20000);
+  it('keeps get_products compatible while exposing independent AdCP 3.2 split tasks', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'tenant-products-idempotency.example' },
+        operator: 'tenant-products-idempotency.example',
+      };
+      const payload = {
+        idempotency_key: 'tenant-products-idempotency-0001',
+        adcp_version: '3.2-beta.0',
+        buying_mode: 'wholesale',
+        account,
+      };
+
+      const listResponse = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+          authorization: 'Bearer test-token',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+      });
+      const listBody = await listResponse.json() as {
+        result?: {
+          tools?: Array<{
+            name?: string;
+            inputSchema?: {
+              properties?: Record<string, Record<string, unknown>>;
+              required?: string[];
+              $defs?: Record<string, Record<string, unknown>>;
+            };
+            annotations?: Record<string, unknown>;
+            execution?: { taskSupport?: string };
+          }>;
+        };
+      };
+      const discovered = listBody.result?.tools?.find(tool => tool.name === 'get_products');
+      expect(discovered?.inputSchema?.required).not.toContain('idempotency_key');
+      expect(discovered?.inputSchema?.properties?.idempotency_key).toMatchObject({
+        type: 'string',
+        minLength: 16,
+        maxLength: 255,
+        pattern: '^[A-Za-z0-9_.:-]{16,255}$',
+      });
+      expect(discovered?.annotations).toMatchObject({ readOnlyHint: false, idempotentHint: true });
+
+      expect(listBody.result?.tools?.map(tool => tool.name)).toEqual(expect.arrayContaining([
+        'list_products',
+        'request_proposals',
+        'refine_proposals',
+        'decline_proposals',
+      ]));
+      const listAlias = listBody.result?.tools?.find(tool => tool.name === 'list_products');
+      const recommendAlias = listBody.result?.tools?.find(tool => tool.name === 'request_proposals');
+      expect(listAlias?.execution).toEqual({ taskSupport: 'forbidden' });
+      expect(listAlias?.inputSchema).toMatchObject({ dependencies: { if_pricing_version: ['if_feed_version'] } });
+      expect(recommendAlias?.execution).toEqual({ taskSupport: 'optional' });
+      expect(recommendAlias?.inputSchema).toMatchObject({
+        properties: { brief: { type: 'string', minLength: 1 } },
+      });
+      const refineAlias = listBody.result?.tools?.find(tool => tool.name === 'refine_proposals');
+      expect(refineAlias?.inputSchema?.properties?.refinements).toMatchObject({
+        type: 'array',
+        minItems: 1,
+        items: { $ref: '#/$defs/media-buy~1proposal-refinement.json' },
+      });
+      expect(refineAlias?.inputSchema?.$defs?.['media-buy/proposal-refinement.json'])
+        .toMatchObject({
+          type: 'object',
+          required: ['proposal_id'],
+          properties: { action: { enum: ['revise', 'finalize'] } },
+          oneOf: expect.any(Array),
+        });
+
+      const keylessLegacy = await callTenantTool(url, 3, 'get_products', {
+        buying_mode: 'wholesale',
+        account,
+      }) as { result?: { structuredContent?: { products?: unknown[] } } };
+      expect(keylessLegacy.result?.structuredContent?.products?.length).toBeGreaterThan(0);
+
+      const invalidKeylessLegacy = await callTenantTool(url, 31, 'get_products', {
+        buying_mode: 'not-a-mode',
+        account,
+      }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string } } } };
+      expect(invalidKeylessLegacy.result?.structuredContent?.adcp_error).toMatchObject({
+        code: 'INVALID_REQUEST',
+        field: 'buying_mode',
+      });
+
+      const invalidKeylessList = await callTenantTool(url, 32, 'list_products', {
+        brand: account.brand,
+        max_results: 0,
+      }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string } } } };
+      expect(invalidKeylessList.result?.structuredContent?.adcp_error).toMatchObject({
+        code: 'INVALID_REQUEST',
+        field: 'max_results',
+      });
+
+      const malformedAccount = await callTenantTool(url, 33, 'list_products', {
+        account: 'not-an-account',
+      }) as { error?: { code?: number; data?: { field?: string } } };
+      expect(malformedAccount.error).toMatchObject({
+        code: -32602,
+        data: { field: 'account' },
+      });
+
+      const unsupportedAliasVersion = await callTenantTool(url, 34, 'list_products', {
+        brand: account.brand,
+        adcp_version: '99.0',
+      }) as {
+        result?: {
+          structuredContent?: {
+            adcp_error?: { code?: string; field?: string; details?: { supported_versions?: string[] } };
+          };
+        };
+      };
+      expect(unsupportedAliasVersion.result?.structuredContent?.adcp_error).toMatchObject({
+        code: 'VERSION_UNSUPPORTED',
+        field: 'adcp_version',
+        details: { supported_versions: expect.any(Array) },
+      });
+
+      const first = await callTenantTool(url, 4, 'get_products', payload) as {
+        result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
+      };
+      const replay = await callTenantTool(url, 5, 'get_products', payload) as {
+        result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
+      };
+      expect(first.result?.structuredContent?.products?.length).toBeGreaterThan(0);
+      expect(first.result?.structuredContent?.replayed).toBeUndefined();
+      expect(replay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);
+      expect(replay.result?.structuredContent?.replayed).toBe(true);
+
+      const aliasReplay = await callTenantTool(url, 6, 'list_products', {
+        adcp_version: payload.adcp_version,
+        brand: account.brand,
+      }) as { result?: { structuredContent?: { adcp_version?: string; products?: unknown[]; replayed?: boolean } } };
+      expect(aliasReplay.result?.structuredContent).not.toHaveProperty('adcp_error');
+      expect(aliasReplay.result?.structuredContent?.adcp_version).toBe('3.2-beta.0');
+      expect(aliasReplay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);
+      expect(aliasReplay.result?.structuredContent?.replayed).toBeUndefined();
+
+      const taskKey = 'tenant-products-task-receipt-0001';
+      const taskCall = async (id: number): Promise<Record<string, unknown>> => {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json',
+            authorization: 'Bearer test-token',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id,
+            method: 'tools/call',
+            params: {
+              name: 'request_proposals',
+              arguments: {
+                idempotency_key: taskKey,
+                brand: account.brand,
+                brief: 'Reach sports fans',
+              },
+              task: { ttl: 120000 },
+            },
+          }),
+        });
+        return response.json() as Promise<Record<string, unknown>>;
+      };
+      const taskFirst = await taskCall(62) as { result?: { task?: { taskId?: string; status?: string } } };
+      const taskReplay = await taskCall(63) as { result?: { task?: { taskId?: string; status?: string } } };
+      expect(taskFirst.result?.task).toMatchObject({ status: 'completed', taskId: expect.any(String) });
+      expect(taskReplay.result?.task?.taskId).toBe(taskFirst.result?.task?.taskId);
+
+      const taskGetResponse = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+          authorization: 'Bearer test-token',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 64,
+          method: 'tasks/get',
+          params: { taskId: taskFirst.result?.task?.taskId, adcp_version: '3.2-beta.0' },
+        }),
+      });
+      const taskGet = await taskGetResponse.json() as { result?: { taskId?: string; status?: string } };
+      expect(taskGet.result).toMatchObject({ taskId: taskFirst.result?.task?.taskId, status: 'completed' });
+
+      const taskListResponse = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+          authorization: 'Bearer test-token',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 641,
+          method: 'tasks/list',
+          params: { adcp_version: '3.2-beta.0' },
+        }),
+      });
+      const taskList = await taskListResponse.json() as { result?: { tasks?: Array<{ taskId?: string }> } };
+      expect(taskList.result?.tasks).toEqual(expect.arrayContaining([
+        expect.objectContaining({ taskId: taskFirst.result?.task?.taskId }),
+      ]));
+
+      const forbiddenListTask = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+          authorization: 'Bearer test-token',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 65,
+          method: 'tools/call',
+          params: {
+            name: 'list_products',
+            arguments: { brand: account.brand },
+            task: { ttl: 120000 },
+          },
+        }),
+      });
+      const forbiddenListTaskBody = await forbiddenListTask.json() as { error?: { code?: number; message?: string } };
+      expect(forbiddenListTaskBody.error?.message).toContain('does not support task augmentation');
+
+      const missingAliasKey = await callTenantTool(url, 61, 'request_proposals', {
+        brand: account.brand,
+        brief: 'Reach sports fans',
+      }) as { error?: { code?: number; data?: { field?: string } } };
+      expect(missingAliasKey.error).toMatchObject({
+        code: -32602,
+        data: { field: 'idempotency_key' },
+      });
+
+      const invalid = await callTenantTool(url, 7, 'get_products', {
+        ...payload,
+        buying_mode: 'not-a-mode',
+      }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string } } } };
+      expect(invalid.result?.structuredContent?.adcp_error).toMatchObject({
+        code: 'INVALID_REQUEST',
+        field: 'buying_mode',
+      });
+
+      const mixedFinalize = await callTenantTool(url, 8, 'get_products', {
+        ...payload,
+        buying_mode: 'refine',
+        refine: [
+          { scope: 'proposal', action: 'finalize', proposal_id: 'pinnacle_cross_channel' },
+          { scope: 'proposal', action: 'include', proposal_id: 'pinnacle_cross_channel' },
+        ],
+      }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string } } } };
+      expect(mixedFinalize.result?.structuredContent?.adcp_error).toMatchObject({
+        code: 'INVALID_REQUEST',
+        field: 'refine[1]',
+      });
+
+      const conflict = await callTenantTool(url, 9, 'get_products', {
+        ...payload,
+        buying_mode: 'brief',
+        brief: 'different logical request',
+      }) as { result?: { structuredContent?: { adcp_error?: Record<string, unknown> } } };
+      const conflictEnvelope = conflict.result?.structuredContent?.adcp_error;
+      expect(conflictEnvelope?.code).toBe('IDEMPOTENCY_CONFLICT');
+      expect(conflictEnvelope).not.toHaveProperty('recovery');
+      expect(Object.keys(conflictEnvelope ?? {}).every(key => [
+        'code', 'message', 'status', 'retry_after', 'correlation_id', 'request_id', 'operation_id',
+      ].includes(key))).toBe(true);
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('adapts omitted get_products keys only on the frozen 3.0 compatibility route', async () => {
+    const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const listResponse = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+          authorization: 'Bearer test-token',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+      });
+      const listBody = await listResponse.json() as {
+        result?: {
+          tools?: Array<{
+            name?: string;
+            inputSchema?: {
+              properties?: Record<string, unknown>;
+              required?: string[];
+            };
+            annotations?: Record<string, unknown>;
+          }>;
+        };
+      };
+      const discovered = listBody.result?.tools?.find(tool => tool.name === 'get_products');
+      expect(discovered?.inputSchema?.properties).not.toHaveProperty('idempotency_key');
+      expect(discovered?.inputSchema?.required).not.toContain('idempotency_key');
+      expect(discovered?.annotations).toMatchObject({ readOnlyHint: true, idempotentHint: true });
+
+      const account = {
+        brand: { domain: 'tenant-products-legacy.example' },
+        operator: 'tenant-products-legacy.example',
+      };
+      const payload = { buying_mode: 'wholesale', account };
+      const first = await callTenantTool(url, 3, 'get_products', payload) as {
+        result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
+      };
+      const replay = await callTenantTool(url, 4, 'get_products', payload) as {
+        result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
+      };
+      expect(first.result?.structuredContent?.products?.length).toBeGreaterThan(0);
+      expect(first.result?.structuredContent?.replayed).toBeUndefined();
+      expect(replay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);
+      expect(replay.result?.structuredContent?.replayed).toBe(true);
+
+      const changed = await callTenantTool(url, 5, 'get_products', {
+        buying_mode: 'brief',
+        brief: 'A different frozen 3.0 request',
+        account,
+      }) as { result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } } };
+      expect(changed.result?.structuredContent?.products).toBeDefined();
+      expect(changed.result?.structuredContent?.replayed).toBeUndefined();
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('replays v6 get_products advisory-success responses', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'tenant-products-advisory.example' },
+        operator: 'tenant-products-advisory.example',
+        sandbox: true,
+      };
+      const directive = await callTenantTool(url, 2, 'comply_test_controller', {
+        account,
+        scenario: 'force_upstream_unavailable',
+        params: { tool: 'get_products', upstream_name: 'catalog-test' },
+      }) as { result?: { structuredContent?: { success?: boolean } } };
+      expect(directive.result?.structuredContent?.success).toBe(true);
+
+      const key = 'tenant-products-advisory-replay-0001';
+      const first = await callTenantTool(url, 3, 'get_products', {
+        idempotency_key: key,
+        buying_mode: 'wholesale',
+        account,
+        context: { correlation_id: 'tenant-advisory-first' },
+      }) as {
+        result?: { structuredContent?: { products?: unknown[]; errors?: Array<{ code?: string }>; context?: { correlation_id?: string } } };
+      };
+      const replay = await callTenantTool(url, 4, 'get_products', {
+        idempotency_key: key,
+        buying_mode: 'wholesale',
+        account,
+        context: { correlation_id: 'tenant-advisory-retry' },
+      }) as {
+        result?: { structuredContent?: { products?: unknown[]; errors?: Array<{ code?: string }>; replayed?: boolean; context?: { correlation_id?: string } } };
+      };
+      expect(first.result?.structuredContent?.products?.length).toBeGreaterThan(0);
+      expect(first.result?.structuredContent?.errors?.[0]?.code).toBe('STALE_RESPONSE');
+      expect(first.result?.structuredContent?.context?.correlation_id).toBe('tenant-advisory-first');
+      expect(replay.result?.structuredContent?.replayed).toBe(true);
+      expect(replay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);
+      expect(replay.result?.structuredContent?.errors).toEqual(first.result?.structuredContent?.errors);
+      expect(replay.result?.structuredContent?.context?.correlation_id).toBe('tenant-advisory-retry');
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('persists v6 proposal finalization before publishing its replay', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'tenant-products-finalize.example' },
+        operator: 'tenant-products-finalize.example',
+      };
+      const brief = await callTenantTool(url, 2, 'get_products', {
+        idempotency_key: 'tenant-products-brief-finalize-0001',
+        buying_mode: 'brief',
+        brief: 'cross-channel news video and display',
+        account,
+      }) as {
+        result?: { structuredContent?: { proposals?: Array<Record<string, unknown>> } };
+      };
+      const draft = brief.result?.structuredContent?.proposals
+        ?.find(proposal => proposal.proposal_status === 'draft');
+      expect(draft?.proposal_id).toBeTruthy();
+
+      const finalizePayload = {
+        idempotency_key: 'tenant-products-finalize-replay-0001',
+        buying_mode: 'refine',
+        account,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draft!.proposal_id }],
+      };
+      const finalized = await callTenantTool(url, 3, 'get_products', finalizePayload) as {
+        result?: { structuredContent?: { proposals?: Array<Record<string, unknown>>; replayed?: boolean } };
+      };
+      const committed = finalized.result?.structuredContent?.proposals
+        ?.find(proposal => proposal.proposal_id === draft!.proposal_id);
+      expect(committed).toMatchObject({ proposal_status: 'committed' });
+      expect(committed?.expires_at).toBeTruthy();
+      expect((committed?.insertion_order as Record<string, unknown> | undefined)?.io_id).toBeTruthy();
+
+      // A fresh logical request must reload the committed proposal from the
+      // durable session rather than allocating a new hold/insertion order.
+      const reloaded = await callTenantTool(url, 4, 'get_products', {
+        ...finalizePayload,
+        idempotency_key: 'tenant-products-finalize-reload-0001',
+      }) as {
+        result?: { structuredContent?: { proposals?: Array<Record<string, unknown>> } };
+      };
+      const reloadedProposal = reloaded.result?.structuredContent?.proposals
+        ?.find(proposal => proposal.proposal_id === draft!.proposal_id);
+      expect(reloadedProposal).toEqual(committed);
+
+      const replay = await callTenantTool(url, 5, 'get_products', finalizePayload) as {
+        result?: { structuredContent?: { proposals?: Array<Record<string, unknown>>; replayed?: boolean } };
+      };
+      const replayedProposal = replay.result?.structuredContent?.proposals
+        ?.find(proposal => proposal.proposal_id === draft!.proposal_id);
+      expect(replay.result?.structuredContent?.replayed).toBe(true);
+      expect(replayedProposal).toEqual(committed);
+    } finally {
+      await close();
+    }
+  }, 15000);
 });

@@ -147,6 +147,7 @@ phases:
           Return the seeded affiliate product and only its revenue_share option.
           The option exposes its event source, rate, currency, and commission basis.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#revenue_share_pricing_discovery_get_revenue_share_products"
           buying_mode: "wholesale"
           account:
             brand:

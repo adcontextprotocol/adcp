@@ -161,6 +161,7 @@ phases:
           Return at least one display product compatible with package-level
           frequency_cap targeting overlays.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_frequency_cap_enforcement_setup_get_products_for_frequency_cap"
           buying_mode: "brief"
           brief: "Display inventory, US adults 25-54, Q2 flight, ~$15K budget. Frequency-capped at 3 impressions per individual per day."
           account:

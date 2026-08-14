@@ -65,6 +65,7 @@ phases:
         expected: |
           Return at least one product with canonical format_options and pricing options.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_pending_creatives_to_start_setup_get_products_brief"
           buying_mode: "brief"
           brief: "Display inventory on outdoor lifestyle content. Q3 flight."
           filters:

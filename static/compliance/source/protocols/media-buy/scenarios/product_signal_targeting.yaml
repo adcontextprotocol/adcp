@@ -111,6 +111,7 @@ phases:
           signal_targeting_rules. Inline signal_targeting_options may be omitted
           because this scenario uses get_signals as the selectable signal feed.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_product_signal_targeting_discover_wholesale_product_get_products_wholesale"
           buying_mode: "wholesale"
           filters:
             channels: ["display"]

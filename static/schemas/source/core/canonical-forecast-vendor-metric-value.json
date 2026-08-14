@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-forecast-vendor-metric-value.json",
+  "title": "Canonical Forecast Vendor Metric Value",
+  "description": "Compact forecasted vendor metric with a BrandKey vendor pointer and no embedded brand assets.",
+  "type": "object",
+  "properties": {
+    "vendor": { "$ref": "/schemas/core/brand-key.json" },
+    "metric_id": { "$ref": "/schemas/core/vendor-metric-id.json" },
+    "value": { "$ref": "/schemas/core/forecast-range.json" },
+    "unit": { "type": "string" },
+    "measurable_impressions": { "$ref": "/schemas/core/forecast-range.json" },
+    "breakdown": { "type": "object", "additionalProperties": true }
+  },
+  "required": ["vendor", "metric_id", "value"],
+  "additionalProperties": false
+}

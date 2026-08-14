@@ -7,6 +7,30 @@
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "delete_missing": { "const": true }
+        },
+        "required": ["delete_missing"]
+      },
+      "then": {
+        "required": ["creatives"]
+      }
+    },
+    {
+      "not": {
+        "required": ["assignments", "assignment_operations"]
+      }
+    },
+    {
+      "if": { "required": ["assignment_operations"] },
+      "then": {
+        "properties": {
+          "validation_mode": { "type": "string", "const": "strict" }
+        }
+      }
     }
   ],
   "x-mutates-state": true,
@@ -74,7 +98,8 @@
     },
     "assignments": {
       "type": "array",
-      "description": "Optional bulk assignment of creatives to packages. Each entry maps one creative to one package with optional weight and placement targeting. Standalone creative agents that do not manage media buys ignore this field.",
+      "deprecated": true,
+      "description": "Deprecated additive assignment shorthand. Each entry upserts one creative-to-package assignment. Use assignment_operations for explicit assign, unassign, and replace semantics. Standalone creative agents that do not manage media buys ignore this field.",
       "items": {
         "type": "object",
         "properties": {
@@ -125,6 +150,93 @@
       },
       "minItems": 1
     },
+    "assignment_operations": {
+      "type": "array",
+      "description": "Explicit, ordered assignment mutations. These operations may be sent without creatives to traffic existing creative IDs independently from MediaBuy commercial control. The entire request is atomic under idempotency_key and therefore requires strict validation; lenient partial processing is not permitted.",
+      "minItems": 1,
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "operation"
+        },
+        "oneOf": [
+          {
+            "title": "Assign or update",
+            "properties": {
+              "operation": { "const": "assign" },
+              "creative_id": { "type": "string", "minLength": 1, "x-entity": "creative" },
+              "package_id": { "type": "string", "minLength": 1, "x-entity": "package" },
+              "weight": { "type": "number", "minimum": 0, "maximum": 100 },
+              "placement_ids": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            },
+            "required": ["operation", "creative_id", "package_id"],
+            "additionalProperties": false,
+            "x-adcp-validation": {
+              "verifier_constraints": {
+                "product_format_locale_policy": {
+                  "scope": "every_effective_product_and_placement_format_option_where_assignment_may_serve",
+                  "range_matching": "rfc4647_basic_filtering",
+                  "eligible_variant_set": "filter_before_buyer_lookup_fallback_or_default",
+                  "minimum_eligible_variants_per_scope": 1,
+                  "serve_default": "default_locale_variant_id_must_be_eligible",
+                  "policy_lifecycle": "snapshot_effective_policy_at_assignment_acceptance",
+                  "on_violation": "CREATIVE_LOCALE_NOT_ACCEPTED"
+                }
+              },
+              "spec": "docs/creative/task-reference/sync_creatives.mdx#native-localization"
+            }
+          },
+          {
+            "title": "Unassign",
+            "properties": {
+              "operation": { "const": "unassign" },
+              "creative_id": { "type": "string", "minLength": 1, "x-entity": "creative" },
+              "package_id": { "type": "string", "minLength": 1, "x-entity": "package" }
+            },
+            "required": ["operation", "creative_id", "package_id"],
+            "additionalProperties": false
+          },
+          {
+            "title": "Replace assignment",
+            "properties": {
+              "operation": { "const": "replace" },
+              "creative_id": { "type": "string", "minLength": 1, "description": "Replacement creative ID.", "x-entity": "creative" },
+              "replaces_creative_id": { "type": "string", "minLength": 1, "description": "Currently assigned creative ID to remove atomically.", "x-entity": "creative" },
+              "package_id": { "type": "string", "minLength": 1, "x-entity": "package" },
+              "weight": { "type": "number", "minimum": 0, "maximum": 100 },
+              "placement_ids": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            },
+            "required": ["operation", "creative_id", "replaces_creative_id", "package_id"],
+            "additionalProperties": false,
+            "x-adcp-validation": {
+              "verifier_constraints": {
+                "product_format_locale_policy": {
+                  "scope": "every_effective_product_and_placement_format_option_where_assignment_may_serve",
+                  "range_matching": "rfc4647_basic_filtering",
+                  "eligible_variant_set": "filter_before_buyer_lookup_fallback_or_default",
+                  "minimum_eligible_variants_per_scope": 1,
+                  "serve_default": "default_locale_variant_id_must_be_eligible",
+                  "policy_lifecycle": "snapshot_effective_policy_at_assignment_acceptance",
+                  "on_violation": "CREATIVE_LOCALE_NOT_ACCEPTED"
+                }
+              },
+              "spec": "docs/creative/task-reference/sync_creatives.mdx#native-localization"
+            }
+          }
+        ]
+      }
+    },
     "idempotency_key": {
       "type": "string",
       "description": "Client-generated idempotency key for safe retries. If a sync fails without a response, resending with the same idempotency_key guarantees at-most-once execution. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
@@ -160,8 +272,12 @@
   },
   "required": [
     "idempotency_key",
-    "account",
-    "creatives"
+    "account"
+  ],
+  "anyOf": [
+    { "required": ["creatives"] },
+    { "required": ["assignments"] },
+    { "required": ["assignment_operations"] }
   ],
   "additionalProperties": true,
   "examples": [

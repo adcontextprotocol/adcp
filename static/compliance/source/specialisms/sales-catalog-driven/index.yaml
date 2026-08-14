@@ -487,6 +487,7 @@ phases:
           catalog compatibility in their format requirements.
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#sales_catalog_driven_create_buy_get_products"
           buying_mode: "brief"
           brief: "Dynamic product ads for a high-end steakhouse. Geo-targeted to 10 miles around Amsterdam location. Drive reservations and foot traffic."
           account:

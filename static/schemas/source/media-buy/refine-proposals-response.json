@@ -1,0 +1,142 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/refine-proposals-response.json",
+  "title": "Refine Proposals Response",
+  "description": "One ordered immutable revision or finalization result per requested source proposal, plus compact canonical products needed to evaluate the resulting terms. Products always carry product_id and name and never carry legacy named-format identifiers.",
+  "type": "object",
+  "anyOf": [
+    {
+      "properties": { "status": { "type": "string", "const": "completed" } },
+      "required": ["results", "products"],
+      "not": {
+        "required": ["task_id"]
+      }
+    },
+    {
+      "$ref": "/schemas/core/compact-task-submitted.json"
+    }
+  ],
+  "properties": {
+    "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
+    "results": {
+      "type": "array",
+      "description": "Ordered results. If any result is finalized, every result MUST be finalized; a finalize batch either creates every requested hold or none.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "outcome"
+        },
+        "properties": {
+          "source_proposal_id": {
+            "type": "string",
+            "minLength": 1,
+            "x-entity": "proposal"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": ["revised", "partial", "finalized", "unable"]
+          },
+          "proposal": { "$ref": "/schemas/core/canonical-proposal.json" },
+          "reason": { "type": "string", "minLength": 1 },
+          "notes": { "type": "string", "minLength": 1 },
+          "suggestions": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "minItems": 1
+          }
+        },
+        "required": ["source_proposal_id", "outcome"],
+        "oneOf": [
+          {
+            "properties": {
+              "outcome": { "type": "string", "const": "revised" },
+              "proposal": {
+                "properties": { "proposal_status": { "type": "string", "const": "draft" } },
+                "required": ["proposal_status"]
+              }
+            },
+            "required": ["outcome", "proposal"],
+            "not": {
+              "anyOf": [
+                { "required": ["reason"] },
+                { "required": ["notes"] }
+              ]
+            }
+          },
+          {
+            "properties": {
+              "outcome": { "type": "string", "const": "partial" },
+              "proposal": {
+                "properties": { "proposal_status": { "type": "string", "const": "draft" } },
+                "required": ["proposal_status"]
+              }
+            },
+            "required": ["outcome", "proposal", "notes"],
+            "not": { "required": ["reason"] }
+          },
+          {
+            "properties": {
+              "outcome": { "type": "string", "const": "finalized" },
+              "proposal": {
+                "properties": {
+                  "proposal_status": { "type": "string", "const": "committed" },
+                  "expires_at": { "type": "string", "format": "date-time" }
+                },
+                "required": ["proposal_status", "expires_at"]
+              }
+            },
+            "required": ["outcome", "proposal"],
+            "not": {
+              "anyOf": [
+                { "required": ["reason"] },
+                { "required": ["notes"] }
+              ]
+            }
+          },
+          {
+            "properties": { "outcome": { "type": "string", "const": "unable" } },
+            "required": ["outcome", "reason"],
+            "not": { "required": ["proposal"] }
+          }
+        ],
+        "additionalProperties": false
+      },
+      "allOf": [
+        {
+          "if": {
+            "contains": {
+              "properties": { "outcome": { "type": "string", "const": "finalized" } },
+              "required": ["outcome"]
+            }
+          },
+          "then": {
+            "items": {
+              "properties": { "outcome": { "type": "string", "const": "finalized" } },
+              "required": ["outcome"]
+            }
+          }
+        }
+      ]
+    },
+    "products": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/canonical-product.json" }
+    },
+    "status": { "type": "string", "enum": ["completed", "submitted"] },
+    "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
+    "message": { "type": "string", "maxLength": 2000 },
+    "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
+    "context": { "$ref": "/schemas/core/context.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" },
+    "replayed": { "type": "boolean", "const": true }
+  },
+  "not": {
+    "anyOf": [
+      { "required": ["proposals"] },
+      { "required": ["refinement_applied"] },
+      { "required": ["pagination"] }
+    ]
+  },
+  "additionalProperties": false
+}

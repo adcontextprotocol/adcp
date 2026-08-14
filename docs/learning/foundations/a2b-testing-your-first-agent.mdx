@@ -81,6 +81,7 @@ curl -X POST https://test-agent.adcontextprotocol.org/sales/mcp \
     "params": {
       "name": "get_products",
       "arguments": {
+        "idempotency_key": "550e8400-e29b-41d4-a716-446655442055",
         "adcp_major_version": 3,
         "account": {
           "brand": { "domain": "nova-motors.com" },

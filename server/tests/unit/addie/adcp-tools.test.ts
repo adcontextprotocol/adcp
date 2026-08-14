@@ -303,6 +303,17 @@ describe('call_adcp_task handler validation boundary', () => {
     })).resolves.toContain('idempotency_key is required');
   });
 
+  it('rejects get_products before URL validation when idempotency_key is missing', async () => {
+    await expect(callAdcpTask?.({
+      agent_url: 'http://example.com',
+      task: 'get_products',
+      params: {
+        buying_mode: 'wholesale',
+        account: { account_id: 'acct_123' },
+      },
+    })).resolves.toContain('idempotency_key is required');
+  });
+
   it('rejects update_media_buy before URL validation when idempotency_key is missing', async () => {
     await expect(callAdcpTask?.({
       agent_url: 'http://example.com',
@@ -331,7 +342,34 @@ describe('call_adcp_task handler validation boundary', () => {
 });
 
 describe('call_adcp_task training module isolation', () => {
+  it('forwards the exact caller-owned get_products idempotency key', async () => {
+    executeTrainingAgentTool.mockReset();
+    executeTrainingAgentTool.mockResolvedValue({ success: true, data: { products: [] } });
+    const handlers = createAdcpToolHandlers({
+      workos_user: { workos_user_id: 'user_training' },
+    } as any, { moduleId: 'S2' });
+    const callAdcpTask = handlers.get('call_adcp_task');
+    const params = {
+      idempotency_key: 'caller-owned-products-key',
+      buying_mode: 'wholesale',
+      account: { account_id: 'acct_123' },
+    };
+
+    await callAdcpTask?.({
+      agent_url: 'https://test-agent.adcontextprotocol.org/sales/mcp',
+      task: 'get_products',
+      params,
+    });
+
+    expect(executeTrainingAgentTool).toHaveBeenCalledWith(
+      'get_products',
+      params,
+      expect.objectContaining({ mode: 'training', userId: 'user_training', moduleId: 'S2' }),
+    );
+  });
+
   it('passes the shared current module to the embedded training agent', async () => {
+    executeTrainingAgentTool.mockReset();
     executeTrainingAgentTool.mockResolvedValue({ success: true, data: { formats: [] } });
     const trainingModuleContext = { moduleId: 'S1' };
     const handlers = createAdcpToolHandlers({

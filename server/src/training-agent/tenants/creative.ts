@@ -50,7 +50,7 @@ export function buildCreativeTenantConfig(host: string, options: { storyboardCom
             list_transformers: listTransformersTool(),
           }),
         },
-        complyTest: buildCreativeComplyConfig(),
+        complyTest: buildCreativeComplyConfig(options.storyboardCompat),
       },
     },
   };

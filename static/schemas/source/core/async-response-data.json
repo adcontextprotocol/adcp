@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/async-response-data.json",
   "title": "AdCP Async Response Data",
-  "description": "Union of all possible data payloads for async task webhook responses. For completed/failed statuses, use the main task response schema. For rejected get_products outcomes and working/input-required/submitted statuses, use the status-specific schemas. Because this shared union is not tagged with the originating task type, callers MUST also validate a terminal result against that task's response schema.",
+  "description": "Validation union of supported async webhook payloads. For completed/failed statuses, use the main task response schema. For rejected get_products outcomes and working/input-required/submitted statuses, use the status-specific schemas. Because this shared webhook union is not tagged with the originating task type, callers MUST also validate a terminal result against that task or event's specific schema. Polling responses use a generic result selected through manifest.task_result_resolution instead of embedding this union.",
   "anyOf": [
     {
       "title": "GetProductsResponse",
@@ -28,6 +28,56 @@
       "title": "GetProductsAsyncSubmitted",
       "description": "Acknowledgment for submitted get_products (custom curation)",
       "$ref": "/schemas/media-buy/get-products-async-response-submitted.json"
+    },
+    {
+      "title": "RequestProposalsResponse",
+      "description": "Terminal response for request_proposals",
+      "$ref": "/schemas/media-buy/request-proposals-response.json"
+    },
+    {
+      "title": "RequestProposalsAsyncSubmitted",
+      "description": "Acknowledgment for submitted request_proposals (consultative planning requiring upstream queries or human review)",
+      "$ref": "/schemas/media-buy/request-proposals-async-response-submitted.json"
+    },
+    {
+      "title": "RefineProposalsResponse",
+      "description": "Terminal response for refine_proposals",
+      "$ref": "/schemas/media-buy/refine-proposals-response.json"
+    },
+    {
+      "title": "RefineProposalsAsyncSubmitted",
+      "description": "Acknowledgment for submitted refine_proposals (complex revision requiring re-underwriting or upstream pricing queries)",
+      "$ref": "/schemas/media-buy/refine-proposals-async-response-submitted.json"
+    },
+    {
+      "title": "DeclineProposalsResponse",
+      "description": "Terminal response for decline_proposals",
+      "$ref": "/schemas/media-buy/decline-proposals-response.json"
+    },
+    {
+      "title": "MediaBuyCommitmentResponse",
+      "description": "Shared terminal response for buy_products and accept_proposal; originating task identity is carried by the task envelope and manifest resolver.",
+      "$ref": "/schemas/media-buy/media-buy-commitment-response.json"
+    },
+    {
+      "title": "ControlMediaBuyResponse",
+      "description": "Terminal response for control_media_buy",
+      "$ref": "/schemas/media-buy/control-media-buy-response.json"
+    },
+    {
+      "title": "CompactTaskSubmitted",
+      "description": "Submitted envelope for any compact lifecycle task; the originating tool is resolved from the task envelope.",
+      "$ref": "/schemas/core/compact-task-submitted.json"
+    },
+    {
+      "title": "CompactTaskWorking",
+      "description": "Working progress for any compact lifecycle task.",
+      "$ref": "/schemas/core/compact-task-working.json"
+    },
+    {
+      "title": "CompactTaskInputRequired",
+      "description": "Input-required payload for any compact lifecycle task.",
+      "$ref": "/schemas/core/compact-task-input-required.json"
     },
     {
       "title": "GetSignalsResponse",

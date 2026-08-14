@@ -2,11 +2,18 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/create-media-buy-request.json",
   "title": "Create Media Buy Request",
-  "description": "Request parameters for creating a media buy. Supports explicit packages with fixed or seller-optimized budget allocation, or execution of a committed proposal with proposal_id and total_budget. Exactly one of packages or proposal_id must be provided.",
+  "description": "Deprecated AdCP 3.x compatibility request for creating a MediaBuy. New 3.2 callers use buy_products for direct published-offer purchases or accept_proposal for proposal execution. Existing package and proposal payloads remain valid throughout 3.x.",
   "type": "object",
+  "deprecated": true,
+  "x-deprecated-in": "3.2.0",
+  "x-superseded-by": ["buy_products", "accept_proposal"],
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "if": { "required": ["opportunity"] },
+      "then": { "required": ["proposal_id"] }
     },
     {
       "if": { "required": ["bidding"] },
@@ -72,7 +79,24 @@
     },
     "proposal_id": {
       "type": "string",
-      "description": "ID of a committed proposal from get_products to execute. With total_budget, the publisher creates packages using the proposal's fixed percentages or seller-optimized constraints. Alternative to providing packages. If the referenced proposal has proposal_status: 'draft', the seller MUST reject with PROPOSAL_NOT_COMMITTED; the buyer finalizes first via get_products refine action 'finalize'."
+      "x-entity": "proposal",
+      "description": "ID of the exact committed proposal snapshot to execute. With total_budget, the publisher creates packages using the proposal's fixed percentages or seller-optimized constraints. Alternative to providing packages. AdCP 3.2 request_proposals and ordinary refine_proposals revisions issue drafts; refine_proposals action finalize creates the executable committed hold. Sellers reject draft, declined, or previously executed snapshots, while exact retries with the original idempotency key replay historical success. Changed commercial terms are issued under a new proposal_id, so no separate proposal version is required."
+    },
+    "opportunity": {
+      "allOf": [
+        { "$ref": "/schemas/core/opportunity-context.json" },
+        {
+          "properties": { "status": { "const": "closed" } },
+          "if": {
+            "properties": { "status": { "const": "closed" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": { "close_reason": { "const": "accepted_with_seller" } }
+          }
+        }
+      ],
+      "description": "Optional planning-cycle closure. Sellers infer successful proposal execution as closed with close_reason accepted_with_seller when status is omitted; when status is present it MUST be closed with that reason. If the proposal was issued under an opportunity_id, a supplied ID MUST match it."
     },
     "total_budget": {
       "type": "object",

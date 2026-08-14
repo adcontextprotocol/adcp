@@ -86,6 +86,7 @@ phases:
           delivery_type, pricing_models, and forecast.
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_refine_products_brief_get_products_brief"
           buying_mode: "brief"
           brief: "Premium video and display on sports and outdoor lifestyle. Q2 flight, $50K budget. Adults 25-54, US and Canada."
           account:
@@ -128,6 +129,7 @@ phases:
           - Update pricing and forecasts to reflect the changes
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_refine_products_refine_get_products_refine"
           buying_mode: "refine"
           refine:
             - scope: "request"

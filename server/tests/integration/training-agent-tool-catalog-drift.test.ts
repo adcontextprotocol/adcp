@@ -140,4 +140,19 @@ describe('tool-catalog drift detection', () => {
       }
     }
   });
+
+  it('keeps AdCP 3.2 product-discovery tools out of the 3.0 compatibility catalog', () => {
+    const compatibilityCatalog = toolsForTenant('sales', {
+      storyboardCompat: { version: '3.0' },
+    });
+    const splitTools = [
+      'list_products',
+      'request_proposals',
+      'refine_proposals',
+      'decline_proposals',
+    ];
+    for (const tool of splitTools) {
+      expect(compatibilityCatalog).not.toContain(tool);
+    }
+  });
 });

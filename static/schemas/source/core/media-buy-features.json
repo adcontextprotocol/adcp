@@ -7,7 +7,8 @@
   "properties": {
     "inline_creative_management": {
       "type": "boolean",
-      "description": "Supports creatives provided inline in create_media_buy and update_media_buy package payloads. This flag does not imply a creative library: an inline-only seller can accept packages[].creatives without advertising sync_creatives, list_creatives, or reusable creative IDs."
+      "deprecated": true,
+      "description": "Deprecated 3.x compatibility capability for creatives provided inline in create_media_buy and update_media_buy package payloads. buy_products, accept_proposal, and control_media_buy never accept inline creatives. New integrations use the dedicated creative lifecycle. Removed in 4.0."
     },
     "property_list_filtering": {
       "type": "boolean",

@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-key.json",
+  "title": "Brand Key",
+  "description": "Stable brand identity used to resolve the canonical brand manifest. The manifest URL is derived from domain; callers do not send brand assets or per-call brand overrides.",
+  "type": "object",
+  "properties": {
+    "domain": {
+      "type": "string",
+      "description": "Domain that hosts /.well-known/brand.json or is registered for the brand.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "brand_id": {
+      "$ref": "/schemas/core/brand-id.json",
+      "description": "Brand within a house-of-brands manifest. Omit for a single-brand domain."
+    }
+  },
+  "required": ["domain"],
+  "additionalProperties": false
+}

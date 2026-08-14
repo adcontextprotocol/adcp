@@ -154,6 +154,7 @@ phases:
           Return at least one product whose conversion_tracking capabilities
           indicate event-kind goals are accepted.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_performance_buy_flow_setup_get_products_for_performance"
           buying_mode: "brief"
           brief: "Performance native + display, US, adults 25-54. Target CPA $35 on purchase events from acmeoutdoor.example."
           required_capabilities:

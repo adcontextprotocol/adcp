@@ -339,6 +339,7 @@ for (const seller of sellers) {
   }
 
   const products = await seller.getProducts({
+    idempotency_key: "550e8400-e29b-41d4-a716-446655442041",
     account: seller.account,
     buying_mode: "brief",
     brief: campaign.brief,

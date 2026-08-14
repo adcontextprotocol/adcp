@@ -2,6 +2,7 @@ import { describe, it, expect, afterAll, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 import { AddressInfo } from 'node:net';
+import { randomUUID } from 'node:crypto';
 
 vi.hoisted(() => {
   process.env.PUBLIC_TEST_AGENT_TOKEN = 'compat-tools-token';
@@ -201,6 +202,158 @@ describe('training-agent 3.0 compat tool visibility', () => {
         message: 'Unknown tool: validate_input',
       });
       expect(pinnedThreeZero.adcp_version).toBe('3.0');
+    } finally {
+      await close();
+    }
+  });
+
+  it('keeps frozen 3.0 controller directives in the media buy brand session', async () => {
+    const { baseUrl, close } = await bootCompatRouter();
+    const domain = `compat-controller-${randomUUID()}.example`;
+    const account = { brand: { domain }, operator: 'pinnacle-agency.example' };
+    try {
+      const created = await callTenantTool(baseUrl, 'sales', 'create_media_buy', {
+        account,
+        brand: { domain },
+        start_time: '2099-04-01T00:00:00Z',
+        end_time: '2099-06-30T23:59:59Z',
+        packages: [{ product_id: 'test-product', pricing_option_id: 'test-pricing', budget: 5000 }],
+        idempotency_key: randomUUID(),
+      });
+      expect(created.adcp_error, JSON.stringify(created)).toBeUndefined();
+      expect(created.media_buy_id).toEqual(expect.any(String));
+
+      const completed = await callTenantTool(baseUrl, 'sales', 'comply_test_controller', {
+        brand: { domain },
+        scenario: 'force_media_buy_status',
+        params: { media_buy_id: created.media_buy_id, status: 'completed' },
+      });
+      expect(completed).toMatchObject({ success: true, current_state: 'completed' });
+
+      const rejected = await callTenantTool(baseUrl, 'sales', 'comply_test_controller', {
+        brand: { domain },
+        scenario: 'force_media_buy_status',
+        params: { media_buy_id: created.media_buy_id, status: 'active' },
+      });
+      expect(rejected).toMatchObject({ success: false, error: 'INVALID_TRANSITION' });
+    } finally {
+      await close();
+    }
+  });
+
+  it('builds a frozen 3.0 creative from the natural-account library session', async () => {
+    const { baseUrl, close } = await bootCompatRouter();
+    const domain = `compat-creative-${randomUUID()}.example`;
+    const account = { brand: { domain }, operator: 'pinnacle-agency.example' };
+    const creativeId = `compat_video_${randomUUID()}`;
+    try {
+      const synced = await callTenantTool(baseUrl, 'creative', 'sync_creatives', {
+        account,
+        creatives: [{
+          creative_id: creativeId,
+          name: 'Compatibility video',
+          format_id: { agent_url: 'https://creative-platform.example', id: 'video_30s' },
+          assets: {
+            video: {
+              asset_type: 'video',
+              url: 'https://cdn.pinnacle-agency.example/compat-video.mp4',
+              width: 1920,
+              height: 1080,
+              duration_ms: 30000,
+              mime_type: 'video/mp4',
+            },
+          },
+        }],
+        idempotency_key: randomUUID(),
+      });
+      expect(synced.adcp_error, JSON.stringify(synced)).toBeUndefined();
+
+      const built = await callTenantTool(baseUrl, 'creative', 'build_creative', {
+        account,
+        creative_id: creativeId,
+        target_format_id: { agent_url: 'https://creative-platform.example', id: 'vast_30s' },
+        idempotency_key: randomUUID(),
+      });
+      expect(built.adcp_error, JSON.stringify(built)).toBeUndefined();
+      expect(built.status).toBe('completed');
+      expect(built.creative_manifest).toEqual(expect.any(Object));
+    } finally {
+      await close();
+    }
+  });
+
+  it('keeps opaque account IDs isolated on the frozen 3.0 sales surface', async () => {
+    const { baseUrl, close } = await bootCompatRouter();
+    const suffix = randomUUID();
+    const accountA = { account_id: `compat_opaque_a_${suffix}` };
+    const accountB = { account_id: `compat_opaque_b_${suffix}` };
+    try {
+      const created = await callTenantTool(baseUrl, 'sales', 'create_media_buy', {
+        account: accountA,
+        start_time: '2099-04-01T00:00:00Z',
+        end_time: '2099-06-30T23:59:59Z',
+        packages: [{ product_id: 'test-product', pricing_option_id: 'test-pricing', budget: 5000 }],
+        idempotency_key: randomUUID(),
+      });
+      expect(created.adcp_error, JSON.stringify(created)).toBeUndefined();
+
+      const crossAccount = await callTenantTool(baseUrl, 'sales', 'comply_test_controller', {
+        account: accountB,
+        scenario: 'force_media_buy_status',
+        params: { media_buy_id: created.media_buy_id, status: 'active' },
+      });
+      expect(crossAccount).toMatchObject({ success: false, error: 'NOT_FOUND' });
+
+      const owningAccount = await callTenantTool(baseUrl, 'sales', 'comply_test_controller', {
+        account: accountA,
+        scenario: 'force_media_buy_status',
+        params: { media_buy_id: created.media_buy_id, status: 'active' },
+      });
+      expect(owningAccount).toMatchObject({ success: true, current_state: 'active' });
+    } finally {
+      await close();
+    }
+  });
+
+  it('projects frozen 3.0 natural-account fixtures into the legacy brand session', async () => {
+    const { baseUrl, close } = await bootCompatRouter();
+    const domain = `compat-fixture-${randomUUID()}.example`;
+    const seedAccount = { brand: { domain }, operator: domain, sandbox: true };
+    const buyerAccount = { brand: { domain }, operator: 'pinnacle-agency.example', sandbox: true };
+    const productId = `compat_product_${randomUUID()}`;
+    const pricingOptionId = `compat_price_${randomUUID()}`;
+    try {
+      const seededProduct = await callTenantTool(baseUrl, 'sales', 'comply_test_controller', {
+        account: seedAccount,
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: { delivery_type: 'non_guaranteed', channels: ['display'] },
+        },
+      });
+      expect(seededProduct.success, JSON.stringify(seededProduct)).toBe(true);
+
+      const seededPricing = await callTenantTool(baseUrl, 'sales', 'comply_test_controller', {
+        account: seedAccount,
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 5 },
+        },
+      });
+      expect(seededPricing.success, JSON.stringify(seededPricing)).toBe(true);
+
+      const created = await callTenantTool(baseUrl, 'sales', 'create_media_buy', {
+        account: buyerAccount,
+        brand: { domain },
+        start_time: '2099-04-01T00:00:00Z',
+        end_time: '2099-06-30T23:59:59Z',
+        packages: [{ product_id: productId, pricing_option_id: pricingOptionId, bid_price: 8, budget: 5000 }],
+        idempotency_key: randomUUID(),
+      });
+      expect(created.adcp_error, JSON.stringify(created)).toBeUndefined();
+      expect(created.media_buy_id).toEqual(expect.any(String));
     } finally {
       await close();
     }

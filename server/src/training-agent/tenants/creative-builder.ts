@@ -49,7 +49,7 @@ export function buildCreativeBuilderTenantConfig(host: string, options: { storyb
             list_transformers: listTransformersTool(),
           }),
         },
-        complyTest: buildCreativeComplyConfig(),
+        complyTest: buildCreativeComplyConfig(options.storyboardCompat),
       },
     },
   };

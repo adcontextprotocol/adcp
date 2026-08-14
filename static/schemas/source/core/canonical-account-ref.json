@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-account-ref.json",
+  "title": "Canonical Account Reference",
+  "description": "Compact account identity for canonical 3.2 tools. Uses either a seller-assigned account_id or the buyer-declared natural key without BrandRef inline overrides.",
+  "type": "object",
+  "anyOf": [
+    {
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "account"
+        }
+      },
+      "required": ["account_id"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "brand": {
+          "$ref": "/schemas/core/brand-key.json"
+        },
+        "operator": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "x-entity": "operator"
+        },
+        "sandbox": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": ["brand", "operator"],
+      "additionalProperties": false
+    }
+  ]
+}

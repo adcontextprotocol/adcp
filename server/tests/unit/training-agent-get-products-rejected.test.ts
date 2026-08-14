@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { clearSessions, flushDirtySessions, runWithSessionContext } from '../../src/training-agent/state.js';
 import { executeTrainingAgentTool } from '../../src/training-agent/task-handlers.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
 const account = (accountId: string) => ({
   account_id: accountId,
-  brand: { domain: `${accountId}.example` },
-  operator: 'test-operator',
+});
+
+const controllerAccount = (accountId: string) => ({
+  ...account(accountId),
   sandbox: true,
 });
 
@@ -32,7 +35,7 @@ describe('get_products rejected compliance arm', () => {
   it('gates the directive on the negotiated 3.2 release', async () => {
     const result = await call('comply_test_controller', {
       adcp_version: '3.1-rc.15',
-      account: account('version-gate'),
+      account: controllerAccount('version-gate'),
       scenario: 'force_get_products_arm',
       params: { arm: 'rejected', reason: 'This brief is outside our commercial policy.' },
     });
@@ -52,7 +55,7 @@ describe('get_products rejected compliance arm', () => {
 
     const forced = await call('comply_test_controller', {
       adcp_version: '3.2-beta.0',
-      account: primaryAccount,
+      account: controllerAccount('primary-account'),
       scenario: 'force_get_products_arm',
       params: {
         arm: 'rejected',
@@ -71,6 +74,7 @@ describe('get_products rejected compliance arm', () => {
 
     const otherAccountResult = await call('get_products', {
       adcp_version: '3.2-beta.0',
+      idempotency_key: 'rejected-other-account-0001',
       account: otherAccount,
       buying_mode: 'brief',
       brief: 'Premium video',
@@ -79,6 +83,7 @@ describe('get_products rejected compliance arm', () => {
 
     const otherPrincipalResult = await call('get_products', {
       adcp_version: '3.2-beta.0',
+      idempotency_key: 'rejected-other-principal-0001',
       account: primaryAccount,
       buying_mode: 'brief',
       brief: 'Premium video',
@@ -87,6 +92,7 @@ describe('get_products rejected compliance arm', () => {
 
     const wholesaleResult = await call('get_products', {
       adcp_version: '3.2-beta.0',
+      idempotency_key: 'rejected-wholesale-0001',
       account: primaryAccount,
       buying_mode: 'wholesale',
     });
@@ -94,6 +100,7 @@ describe('get_products rejected compliance arm', () => {
 
     const rejected = await call('get_products', {
       adcp_version: '3.2-beta.0',
+      idempotency_key: 'rejected-primary-0001',
       account: primaryAccount,
       buying_mode: 'brief',
       brief: 'Premium video',
@@ -112,6 +119,7 @@ describe('get_products rejected compliance arm', () => {
 
     const consumed = await call('get_products', {
       adcp_version: '3.2-beta.0',
+      idempotency_key: 'rejected-consumed-0001',
       account: primaryAccount,
       buying_mode: 'brief',
       brief: 'Premium video',
@@ -119,10 +127,38 @@ describe('get_products rejected compliance arm', () => {
     expect(consumed.data).not.toMatchObject({ status: 'rejected' });
   });
 
+  it('atomically consumes a one-shot rejection across parallel brief reads', async () => {
+    const primaryAccount = account('parallel-rejection-account');
+    const reason = 'Only one concurrent request may consume this rejection.';
+    const forced = await call('comply_test_controller', {
+      adcp_version: '3.2-beta.0',
+      account: controllerAccount('parallel-rejection-account'),
+      scenario: 'force_get_products_arm',
+      params: { arm: 'rejected', reason },
+    });
+    expect(forced.success).toBe(true);
+
+    const replayScope = randomUUID();
+    const outcomes = await Promise.all([0, 1].map(index => call('get_products', {
+      adcp_version: '3.2-beta.0',
+      idempotency_key: `parallel-rejection-${replayScope}-${index}`,
+      account: primaryAccount,
+      buying_mode: 'brief',
+      brief: 'Premium video',
+    })));
+    expect(outcomes.every(outcome => outcome.success)).toBe(true);
+    expect(outcomes.filter(outcome => (
+      outcome.data as { status?: string; reason?: string }
+    ).status === 'rejected')).toHaveLength(1);
+    expect(outcomes.find(outcome => (
+      outcome.data as { status?: string }
+    ).status === 'rejected')?.data).toMatchObject({ reason });
+  });
+
   it('rejects empty suggestion arrays instead of emitting a schema-invalid response', async () => {
     const result = await call('comply_test_controller', {
       adcp_version: '3.2-beta.0',
-      account: account('invalid-suggestions'),
+      account: controllerAccount('invalid-suggestions'),
       scenario: 'force_get_products_arm',
       params: { arm: 'rejected', reason: 'Declined.', suggestions: [] },
     });

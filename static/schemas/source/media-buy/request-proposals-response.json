@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/request-proposals-response.json",
+  "title": "Request Proposals Response",
+  "description": "One or more immutable draft media-plan proposals and compact canonical products referenced by their purchases. Products always carry product_id and name and never carry legacy named-format identifiers. Returning only products does not satisfy request_proposals.",
+  "type": "object",
+  "properties": {
+    "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
+    "outcome": { "type": "string", "enum": ["proposed", "rejected"] },
+    "reason": { "type": "string", "minLength": 1 },
+    "suggestions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "proposals": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/core/canonical-proposal.json" },
+          {
+            "properties": {
+              "proposal_status": { "type": "string", "const": "draft" },
+              "expires_at": { "type": "string", "format": "date-time" }
+            },
+            "required": ["proposal_status", "expires_at", "proposal_kind", "commercial_terms", "terms_digest"]
+          }
+        ]
+      }
+    },
+    "products": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "/schemas/core/canonical-product.json" }
+    },
+    "status": { "type": "string", "enum": ["completed", "submitted"] },
+    "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
+    "message": { "type": "string", "maxLength": 2000 },
+    "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
+    "context": { "$ref": "/schemas/core/context.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" },
+    "replayed": { "type": "boolean", "const": true }
+  },
+  "anyOf": [
+    {
+      "properties": {
+        "outcome": { "type": "string", "const": "proposed" },
+        "status": { "type": "string", "const": "completed" }
+      },
+      "required": ["outcome", "proposals", "products"],
+      "not": {
+        "anyOf": [
+          { "required": ["reason"] },
+          { "required": ["suggestions"] },
+          { "required": ["task_id"] }
+        ]
+      }
+    },
+    {
+      "properties": {
+        "outcome": { "type": "string", "const": "rejected" },
+        "status": { "type": "string", "const": "completed" }
+      },
+      "required": ["outcome", "reason"],
+      "not": {
+        "anyOf": [
+          { "required": ["proposals"] },
+          { "required": ["products"] },
+          { "required": ["task_id"] }
+        ]
+      }
+    },
+    {
+      "$ref": "/schemas/core/compact-task-submitted.json"
+    }
+  ],
+  "not": {
+    "anyOf": [
+      { "required": ["refinement_applied"] },
+      { "required": ["pagination"] },
+      { "required": ["unchanged"] },
+      { "required": ["wholesale_feed_version"] }
+    ]
+  },
+  "additionalProperties": false
+}

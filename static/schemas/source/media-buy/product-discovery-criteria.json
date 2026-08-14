@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/product-discovery-criteria.json",
+  "title": "Product Discovery Criteria",
+  "description": "Structured criteria shared by product listing and proposal requests.",
+  "type": "object",
+  "properties": {
+    "product_ids": {
+      "type": "array",
+      "description": "Exact seller-issued products to retrieve or use as proposal candidates.",
+      "items": { "type": "string", "minLength": 1, "x-entity": "product" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "offer_filters": { "$ref": "/schemas/core/product-offer-filters.json" },
+    "catalog": { "$ref": "/schemas/core/catalog-selection.json" },
+    "policy_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ext": { "type": "object", "additionalProperties": true }
+  },
+  "minProperties": 1,
+  "additionalProperties": false
+}

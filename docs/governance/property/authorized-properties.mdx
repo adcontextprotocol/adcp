@@ -183,7 +183,11 @@ for (const domain of publisherDomains) {
 ### 2. Product Validation
 ```javascript
 // When evaluating a product
-const result = await salesAgent.call('get_products', {brief: "Chicago radio ads"});
+const result = await salesAgent.call('get_products', {
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442070",
+  buying_mode: "brief",
+  brief: "Chicago radio ads",
+});
 const product = result.products[0];
 
 // Validate authorization for each publisher in publisher_properties

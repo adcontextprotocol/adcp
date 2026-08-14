@@ -72,6 +72,7 @@ describe('idempotency facade', () => {
     it('covers specific mutating tools explicitly', () => {
       for (const name of [
         'create_media_buy', 'update_media_buy', 'sync_audiences',
+        'request_proposals', 'refine_proposals', 'decline_proposals',
         'si_initiate_session', 'si_send_message',
         'acquire_rights', 'update_rights', 'creative_approval',
       ]) {
@@ -81,8 +82,8 @@ describe('idempotency facade', () => {
 
     it('excludes read-only and discovery tools', () => {
       for (const name of [
-        'get_products',
         'get_media_buys',
+        'get_products', 'list_products',
         'get_adcp_capabilities',
         'check_governance',
         'si_terminate_session',
@@ -158,6 +159,7 @@ describe('idempotency facade', () => {
           key: 'shared-key-uuuuu01',
           payloadHash: firstCheck.payloadHash,
           response: { id: 'acme' },
+          claimToken: firstCheck.claimToken,
         });
       }
 
@@ -165,7 +167,11 @@ describe('idempotency facade', () => {
       const otherAccount = await store.check({ principal: b, key: 'shared-key-uuuuu01', payload });
       expect(otherAccount.kind).toBe('miss');
       if (otherAccount.kind === 'miss') {
-        await store.release({ principal: b, key: 'shared-key-uuuuu01' });
+        await store.release({
+          principal: b,
+          key: 'shared-key-uuuuu01',
+          claimToken: otherAccount.claimToken,
+        });
       }
 
       // Same key under account A replays.

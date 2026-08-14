@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/proposal-decline-reason.json",
+  "title": "Proposal Decline Reason",
+  "description": "Machine-readable reason a buyer is no longer pursuing a proposal. Sellers use this only for aggregate feedback; buyers MUST NOT disclose competitor identity or confidential terms.",
+  "type": "string",
+  "enum": [
+    "price",
+    "inventory_fit",
+    "audience_fit",
+    "creative_unsupported",
+    "measurement_unsupported",
+    "policy",
+    "timing",
+    "budget_changed",
+    "selected_alternative",
+    "other"
+  ],
+  "enumDescriptions": {
+    "price": "Price, rate, or cost efficiency did not meet the buyer's requirement.",
+    "inventory_fit": "Inventory, placements, format mix, availability, or forecast did not fit the brief.",
+    "audience_fit": "The proposal did not sufficiently match the required audience or targeting.",
+    "creative_unsupported": "The seller could not support the required creative format, asset, or production workflow.",
+    "measurement_unsupported": "The seller could not support required measurement, reporting, attribution, or verification.",
+    "policy": "The proposal was incompatible with buyer, seller, governance, legal, or brand-suitability policy.",
+    "timing": "The schedule, expiry, approval timing, or delivery window did not fit.",
+    "budget_changed": "The buyer's budget, scope, or campaign plan changed after evaluation.",
+    "selected_alternative": "The buyer selected another approach or supply source.",
+    "other": "Another reason; detail is required."
+  }
+}

@@ -42,6 +42,7 @@ The `brief` field describes **what is being promoted** and **campaign requiremen
 
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442020",
   "buying_mode": "brief",
   "brief": "Nova Run shoes feature plant-based materials and target recreational runners"
 }
@@ -57,6 +58,7 @@ When the buyer will apply their own audience targeting and does not want publish
 
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442021",
   "brand": {
     "domain": "acmecorp.com"
   },
@@ -212,6 +214,7 @@ Publishers should handle briefs at different completeness levels:
 ### Wholesale Product Feed
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442022",
   "brand": {"domain": "acmecorp.com"},
   "buying_mode": "wholesale",
   "filters": {
@@ -225,6 +228,7 @@ Publishers should handle briefs at different completeness levels:
 ### Minimal Brief
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442023",
   "brand": {"domain": "acmecorp.com"},
   "buying_mode": "brief",
   "brief": "Reach business decision makers"
@@ -235,6 +239,7 @@ Publishers should handle briefs at different completeness levels:
 ### Standard Brief
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442024",
   "brand": {"domain": "acmecorp.com"},
   "buying_mode": "brief",
   "brief": "Acme Corp project management software - cloud-based solution for remote teams. Reach IT decision makers in tech companies with 50-500 employees, $25K budget for Q1, focusing on driving free trial signups"
@@ -245,6 +250,7 @@ Publishers should handle briefs at different completeness levels:
 ### Comprehensive Brief
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442025",
   "brand": {"domain": "acmecorp.com"},
   "buying_mode": "brief",
   "brief": "Acme Corp project management software - cloud-based solution for remote teams with AI-powered automation. Drive 500 free trial signups from IT decision makers and project managers at tech companies (50-500 employees) in SF Bay Area and NYC. $25K budget for March 1-31, measured by $50 CPA. We have video and display creatives. Avoid competitor content and news sites."
@@ -258,6 +264,7 @@ Buyers can signal delivery type preference without excluding inventory. `preferr
 
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442026",
   "buying_mode": "brief",
   "brief": "Exclusive podcast sponsorship for a fintech brand — we want guaranteed placement on business shows",
   "preferred_delivery_types": ["guaranteed"]
@@ -368,6 +375,7 @@ Publishers should implement NLP to extract:
 ### Wholesale buying
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442027",
   "brand": {"domain": "acmecorp.com"},
   "buying_mode": "wholesale",
   "filters": {

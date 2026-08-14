@@ -82,12 +82,16 @@ MCP requires explicit context management to maintain state:
 ```javascript
 // First call - no context
 const result1 = await mcp.call('get_products', {
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442076",
+  buying_mode: "brief",
   brief: "Video ads"
 });
 const contextId = result1.context_id;  // Save this!
 
 // Follow-up - must include context_id
 const result2 = await mcp.call('get_products', {
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442077",
+  buying_mode: "brief",
   context_id: contextId,  // Required for continuity
   brief: "Focus on premium inventory"
 });

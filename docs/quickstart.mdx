@@ -44,6 +44,8 @@ curl -X POST $AGENT_URL \
     "params": {
       "name": "get_products",
       "arguments": {
+        "idempotency_key": "550e8400-e29b-41d4-a716-446655442067",
+        "buying_mode": "brief",
         "brief": "Video ads for pet food brand",
         "brand": { "domain": "premiumpetfoods.com" }
       }
@@ -287,6 +289,8 @@ const client = new ADCPMultiAgentClient([{
 }]);
 
 const result = await client.agent('test').getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442043',
+  buying_mode: 'brief',
   brief: 'Video ads for pet food brand',
   brand: { domain: 'premiumpetfoods.com' },
 });

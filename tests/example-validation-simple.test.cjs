@@ -396,6 +396,7 @@ async function runTests() {
   // Test request/response examples
   await validateExample(
     {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655440001",
       "buying_mode": "brief",
       "account": { "brand": { "domain": "nikeinc.com", "brand_id": "nike" }, "operator": "nikeinc.com" },
       "brand": {
@@ -1518,6 +1519,7 @@ async function runTests() {
   // proves the schema rejects it with a migration-diagnosable error.
   await expectInvalid(
     {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655440002",
       "buying_mode": "refine",
       "refine": [{ "scope": "product", "id": "prod_video_premium", "action": "include" }]
     },
@@ -1528,6 +1530,7 @@ async function runTests() {
 
   await expectInvalid(
     {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655440003",
       "buying_mode": "refine",
       "refine": [{ "scope": "proposal", "id": "prop_balanced_v1", "action": "finalize" }]
     },
@@ -1539,6 +1542,7 @@ async function runTests() {
   // Happy path — optional `action` defaults to include server-side; schema must accept the minimal shape.
   await validateExample(
     {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655440004",
       "buying_mode": "refine",
       "refine": [
         { "scope": "product",  "product_id":  "prod_video_premium" },

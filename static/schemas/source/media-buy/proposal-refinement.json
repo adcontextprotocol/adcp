@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/proposal-refinement.json",
+  "title": "Proposal Refinement",
+  "description": "Fork an immutable proposal or finalize a draft into a held committed snapshot. Refining an accepted proposal creates a draft amendment or cancellation proposal against its MediaBuy; the source remains accepted and unchanged.",
+  "type": "object",
+  "properties": {
+    "proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "proposal"
+    },
+    "action": {
+      "type": "string",
+      "enum": ["revise", "finalize"],
+      "description": "revise creates a new draft snapshot with changed commercial terms. finalize MUST target a draft; it creates a new committed snapshot without changing terms and reserves inventory until its expires_at."
+    },
+    "change_kind": {
+      "type": "string",
+      "enum": ["amendment", "cancellation"],
+      "default": "amendment",
+      "description": "Desired successor proposal. cancellation is valid only when the source proposal is accepted and attached to a non-terminal MediaBuy."
+    },
+    "instructions": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Requested commercial changes or cancellation reason for action revise. The seller returns a new draft proposal snapshot; this text never directly mutates the source proposal or MediaBuy."
+    }
+  },
+  "required": ["proposal_id"],
+  "oneOf": [
+    {
+      "properties": { "action": { "type": "string", "const": "finalize" } },
+      "required": ["action"],
+      "not": {
+        "anyOf": [
+          { "required": ["change_kind"] },
+          { "required": ["instructions"] }
+        ]
+      }
+    },
+    {
+      "properties": { "action": { "type": "string", "const": "revise" } },
+      "required": ["action", "instructions"]
+    }
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/request-proposals-async-response-submitted.json",
+  "title": "Request Proposals - Submitted",
+  "description": "Bounded submitted task envelope for request_proposals when consultative planning requires upstream queries or human review.",
+  "allOf": [
+    { "$ref": "/schemas/core/compact-task-submitted.json" }
+  ]
+}

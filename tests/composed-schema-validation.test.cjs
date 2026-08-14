@@ -2823,6 +2823,14 @@ async function runTests() {
       date_range_support: 'date_range'
     }
   };
+  const canonicalProductBase = structuredClone(productBase);
+  delete canonicalProductBase.format_ids;
+  delete canonicalProductBase.delivery_measurement;
+  canonicalProductBase.pricing_options = [{ pricing_option_id: 'cpm', pricing_model: 'cpm', fixed_price: 10, currency: 'USD' }];
+  canonicalProductBase.format_options = [{
+    format_kind: 'image',
+    params: { width: 300, height: 250 }
+  }];
   const productSignalOption = {
     signal_ref: { scope: 'product', signal_id: 'high_intent_shoppers' },
     name: 'High intent shoppers',
@@ -3015,6 +3023,673 @@ async function runTests() {
   );
   log('');
 
+  log('AdCP 3.2 split product-discovery request contracts:', 'info');
+  await testSchemaValidation(
+    '/schemas/media-buy/get-products-request.json',
+    { buying_mode: 'wholesale' },
+    'Legacy get_products remains valid without an idempotency key throughout 3.x'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/list-products-request.json',
+    { fields: ['product_id', 'pricing_options'] },
+    'list_products is a key-optional synchronous read'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-products-request.json',
+    { fields: ['product_id', 'format_ids'] },
+    'list_products does not expose the legacy named-format field selector'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/list-products-request.json',
+    {
+      push_notification_config: {
+        url: 'https://buyer.example.com/adcp-events'
+      }
+    },
+    'list_products tolerates uniform callback envelope configuration even though the read is synchronous'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/list-products-request.json',
+    { criteria: { catalog: { catalog_id: 'catalog-1', type: 'product' } } },
+    'list_products requires brand when catalog is present'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/request-proposals-request.json',
+    {
+      idempotency_key: 'request-proposals-0001',
+      brand: { domain: 'acmeoutdoor.example' },
+      brief: 'Reach streaming audio listeners in Rome'
+    },
+    'request_proposals requires a brief and accepts a replay key'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/request-proposals-request.json',
+    {
+      idempotency_key: 'request-proposals-natural-account-0001',
+      account: {
+        brand: { domain: 'acmeoutdoor.example' },
+        operator: 'buyer.example',
+        sandbox: true
+      },
+      brief: 'Reach streaming audio listeners in Rome'
+    },
+    'request_proposals accepts a natural-key account as the single brand source'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-request.json',
+    {
+      idempotency_key: 'request-proposals-confused-brand-0001',
+      account: {
+        brand: { domain: 'tenant-a.example' },
+        operator: 'buyer.example'
+      },
+      brand: { domain: 'tenant-b.example' },
+      brief: 'This must be rejected before account lookup'
+    },
+    'request_proposals rejects duplicate natural-account and top-level brand identity'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-request.json',
+    { brief: 'Reach streaming audio listeners in Rome' },
+    'request_proposals rejects a missing replay key'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-request.json',
+    {
+      idempotency_key: 'request-proposals-0002',
+      account_id: 'seller-account-1',
+      brief: 'Reach streaming audio listeners in Rome'
+    },
+    'request_proposals requires a stable BrandKey even when account_id is supplied'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-0001',
+      refinements: [
+        { proposal_id: 'proposal-1', action: 'revise', instructions: 'Prefer video and move budget toward it' },
+        { proposal_id: 'proposal-2', action: 'revise', instructions: 'Use only the premium video product' }
+      ]
+    },
+    'refine_proposals accepts plural proposal-scoped immutable refinements'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-missing-action-0001',
+      refinements: [
+        { proposal_id: 'proposal-1', instructions: 'Prefer video and move budget toward it' }
+      ]
+    },
+    'refine_proposals requires an explicit action discriminator'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-accepted-cancel-0001',
+      refinements: [{
+        proposal_id: 'accepted-proposal-1',
+        action: 'revise',
+        change_kind: 'cancellation',
+        instructions: 'Cancel at the earliest date permitted by the accepted terms.'
+      }]
+    },
+    'refine_proposals forks an accepted proposal into a cancellation proposal'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-0002',
+      refinements: [{ proposal_id: 'proposal-1', action: 'finalize' }]
+    },
+    'refine_proposals accepts explicit finalization without fake revision instructions'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-mixed-finalize-0001',
+      refinements: [
+        { proposal_id: 'proposal-1', action: 'finalize' },
+        { proposal_id: 'proposal-2', action: 'revise', instructions: 'Change the budget.' }
+      ]
+    },
+    'refine_proposals keeps finalize batches exclusive and atomic'
+  );
+  const cleanPurchase = {
+    idempotency_key: 'buy-products-clean-0001',
+    account: { account_id: 'account-clean-1' },
+    brand: { domain: 'buyer.example' },
+    feed_version: 'feed-version-1',
+    pricing_version: 'pricing-version-1',
+    purchases: [{
+      product_id: 'display-standard',
+      pricing_option_id: 'fixed-cpm',
+      budget: 50000
+    }],
+    start_time: 'asap',
+    end_time: '2027-07-01T00:00:00Z'
+  };
+  await testSchemaValidation(
+    '/schemas/media-buy/buy-products-request.json',
+    cleanPurchase,
+    'buy_products creates directly from canonical product selections'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/buy-products-request.json',
+    {
+      ...cleanPurchase,
+      purchases: [{
+        product_id: 'display-standard',
+        pricing_option_id: 'fixed-cpm',
+        creatives: [{ creative_id: 'legacy-inline' }]
+      }]
+    },
+    'buy_products rejects inline creatives'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/accept-proposal-request.json',
+    {
+      idempotency_key: 'accept-proposal-0001',
+      account: { account_id: 'account-clean-1' },
+      proposal_id: 'proposal-committed-1',
+      proposal_terms_digest: `sha256:${'A'.repeat(43)}`
+    },
+    'accept_proposal needs only the committed proposal and execution identity'
+  );
+  const cleanControl = {
+    idempotency_key: 'control-media-buy-0001',
+    account: { account_id: 'account-clean-1' },
+    media_buy_id: 'media-buy-1',
+    revision: 4,
+    pacing: 'even',
+    packages: [{ package_id: 'package-1', paused: true }]
+  };
+  await testSchemaValidation(
+    '/schemas/media-buy/control-media-buy-request.json',
+    cleanControl,
+    'control_media_buy accepts operational controls inside accepted terms'
+  );
+  await testSchemaValidation(
+    '/schemas/creative/sync-creatives-request.json',
+    {
+      idempotency_key: 'assignment-operations-0001',
+      account: { account_id: 'account-clean-1' },
+      assignment_operations: [
+        { operation: 'replace', package_id: 'package-1', replaces_creative_id: 'creative-old', creative_id: 'creative-new' },
+        { operation: 'unassign', package_id: 'package-2', creative_id: 'creative-retired' }
+      ]
+    },
+    'sync_creatives supports assignment-only replace and unassign operations'
+  );
+  await testSchemaRejection(
+    '/schemas/creative/sync-creatives-request.json',
+    {
+      idempotency_key: 'assignment-operations-lenient-0001',
+      account: { account_id: 'account-clean-1' },
+      validation_mode: 'lenient',
+      assignment_operations: [
+        { operation: 'assign', package_id: 'package-1', creative_id: 'creative-new' }
+      ]
+    },
+    'sync_creatives forbids partial lenient assignment operations'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/control-media-buy-request.json',
+    { ...cleanControl, end_time: '2027-08-01T00:00:00Z' },
+    'control_media_buy routes flight changes through proposal refinement'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/control-media-buy-request.json',
+    { ...cleanControl, creatives: [{ creative_id: 'legacy-inline' }] },
+    'control_media_buy rejects creative mutation'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/buy-products-response.json',
+    {
+      status: 'completed',
+      media_buy_id: 'media-buy-1',
+      revision: 1,
+      accepted_proposal: {
+        proposal_id: 'accepted-proposal-1',
+        name: 'Accepted direct purchase',
+        proposal_kind: 'new_media_buy',
+        proposal_status: 'accepted',
+        media_buy_id: 'media-buy-1',
+        accepted_at: '2027-06-01T12:00:00Z',
+        commercial_terms: {
+          source_feed_version: 'feed-version-1',
+          source_pricing_version: 'pricing-version-1',
+          brand: { domain: 'buyer.example' },
+          purchases: [{
+            product_id: 'display-standard',
+            pricing_option_id: 'fixed-cpm',
+            pricing: { pricing_option_id: 'fixed-cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 12 },
+            budget: 50000,
+            start_time: '2027-06-01T12:00:00Z',
+            end_time: '2027-07-01T00:00:00Z'
+          }],
+          start_time: 'asap',
+          end_time: '2027-07-01T00:00:00Z'
+        },
+        terms_digest: `sha256:${'A'.repeat(43)}`
+      },
+      purchase_bindings: [{ purchase_index: 0, product_id: 'display-standard', package_id: 'package-1' }],
+      available_actions: [{ task: 'control_media_buy', action: 'update_catalog_assignments', mode: 'self_serve' }]
+    },
+    'buy_products returns an accepted immutable proposal snapshot'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/get-media-buys-response.json',
+    {
+      status: 'completed',
+      media_buys: [{
+        media_buy_id: 'media-buy-1',
+        accepted_proposal_id: 'accepted-proposal-1',
+        accepted_proposal_terms_digest: `sha256:${'A'.repeat(43)}`,
+        accepted_proposal: {
+          proposal_id: 'accepted-proposal-1',
+          name: 'Recovered accepted terms',
+          proposal_kind: 'new_media_buy',
+          proposal_status: 'accepted',
+          media_buy_id: 'media-buy-1',
+          accepted_at: '2027-06-01T12:00:00Z',
+          commercial_terms: {
+            brand: { domain: 'buyer.example' },
+            purchases: [{
+              product_id: 'display-standard',
+              pricing_option_id: 'fixed-cpm',
+              pricing: { pricing_option_id: 'fixed-cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 12 },
+              start_time: '2027-06-01T12:00:00Z',
+              end_time: '2027-07-01T00:00:00Z'
+            }],
+            start_time: 'asap',
+            end_time: '2027-07-01T00:00:00Z'
+          },
+          terms_digest: `sha256:${'A'.repeat(43)}`
+        },
+        status: 'active',
+        currency: 'USD',
+        total_budget: 50000,
+        confirmed_at: '2027-06-01T12:00:00Z',
+        revision: 2,
+        packages: [],
+        available_actions: [{ task: 'control_media_buy', action: 'update_catalog_assignments', mode: 'self_serve' }]
+      }]
+    },
+    'get_media_buys recovers accepted compact terms and routed actions after restart'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/request-proposals-request.json',
+    {
+      idempotency_key: 'request-proposals-opp-0001',
+      brand: { domain: 'buyer.example' },
+      brief: 'Reach streaming audio listeners in Rome',
+      opportunity: {
+        opportunity_id: 'opp-rome-audio-2027',
+        phase: 'active_sourcing',
+        intent: 'live_rfp',
+        response_deadline: '2027-01-15T17:00:00Z'
+      }
+    },
+    'request_proposals accepts reusable opportunity context'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-request.json',
+    {
+      idempotency_key: 'request-proposals-opp-0002',
+      brand: { domain: 'buyer.example' },
+      brief: 'Reach streaming audio listeners in Rome',
+      opportunity: {
+        opportunity_id: 'opp-rome-audio-closed',
+        status: 'closed',
+        close_reason: 'not_pursued'
+      }
+    },
+    'request_proposals rejects a closed opportunity'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/decline-proposals-request.json',
+    {
+      idempotency_key: 'decline-proposals-0001',
+      declines: [{ proposal_id: 'proposal-1', reason: 'inventory_fit' }],
+      opportunity: {
+        opportunity_id: 'opp-rome-audio-2027',
+        status: 'closed',
+        close_reason: 'not_pursued'
+      }
+    },
+    'decline_proposals accepts terminal proposal and opportunity feedback'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/decline-proposals-request.json',
+    {
+      idempotency_key: 'decline-proposals-0002',
+      declines: [{ proposal_id: 'proposal-1', reason: 'other' }]
+    },
+    'decline_proposals requires detail for an other reason'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/decline-proposals-request.json',
+    {
+      idempotency_key: 'decline-proposals-0003',
+      declines: [{ proposal_id: 'proposal-1', reason: 'price' }],
+      opportunity: {
+        opportunity_id: 'opp-rome-audio-2027',
+        close_reason: 'not_pursued'
+      }
+    },
+    'opportunity close fields require closed status'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/decline-proposals-response.json',
+    {
+      results: [
+        { proposal_id: 'proposal-1', outcome: 'declined' },
+        { proposal_id: 'proposal-2', outcome: 'unable', reason: 'Proposal not found.' }
+      ]
+    },
+    'decline_proposals returns one explicit outcome per proposal'
+  );
+  const proposalExecution = {
+    idempotency_key: 'create-proposal-opportunity-0001',
+    account: { account_id: 'account-opportunity-test' },
+    brand: { domain: 'buyer.example' },
+    proposal_id: 'proposal-1',
+    total_budget: { amount: 50000, currency: 'USD' },
+    start_time: 'asap',
+    end_time: '2027-07-01T00:00:00Z'
+  };
+  await testSchemaValidation(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      ...proposalExecution,
+      opportunity: { opportunity_id: 'opp-rome-audio-2027' }
+    },
+    'create_media_buy permits status omission for inferred close-won'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      ...proposalExecution,
+      opportunity: {
+        opportunity_id: 'opp-rome-audio-2027',
+        status: 'closed',
+        close_reason: 'accepted_with_seller'
+      }
+    },
+    'create_media_buy accepts explicit accepted-with-seller closure'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      ...proposalExecution,
+      opportunity: {
+        opportunity_id: 'opp-rome-audio-2027',
+        status: 'closed',
+        close_reason: 'not_pursued'
+      }
+    },
+    'create_media_buy rejects non-winning explicit opportunity closure'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'create-package-opportunity-0001',
+      account: { account_id: 'account-opportunity-test' },
+      brand: { domain: 'buyer.example' },
+      packages: [{
+        product_id: 'display-standard',
+        pricing_option_id: 'fixed-cpm',
+        budget: 50000
+      }],
+      start_time: 'asap',
+      end_time: '2027-07-01T00:00:00Z',
+      opportunity: { opportunity_id: 'opp-package-mode' }
+    },
+    'create_media_buy restricts opportunity closure to proposal mode'
+  );
+  const splitCapabilityBase = {
+    status: 'completed',
+    adcp: {
+      major_versions: [3],
+      idempotency: { supported: true, replay_ttl_seconds: 86400 }
+    },
+    supported_protocols: ['media_buy']
+  };
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...splitCapabilityBase,
+      media_buy: {
+        lifecycle_tools: ['request_proposals', 'refine_proposals']
+      }
+    },
+    'compact proposal capability advertises supported split tools'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/list-products-response.json',
+    { outcome: 'listed', products: [], feed_version: 'feed-empty-1', cache_scope: 'public' },
+    'list_products treats no matches as an empty successful product page'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-response.json',
+    { status: 'submitted', task_id: 'task-refinement-approval-1' },
+    'refine_proposals can enter an async approval workflow'
+  );
+  await testSchemaValidation(
+    '/schemas/core/canonical-product.json',
+    canonicalProductBase,
+    'split product tools accept canonical format options'
+  );
+  await testSchemaRejection(
+    '/schemas/core/canonical-product.json',
+    {
+      ...canonicalProductBase,
+      allowed_actions: [{ action: 'update_packages', modes: ['self_serve'] }]
+    },
+    'split product tools reject deprecated coarse MediaBuy actions'
+  );
+  await testSchemaRejection(
+    '/schemas/core/canonical-product.json',
+    productBase,
+    'split product tools reject legacy-only product format IDs'
+  );
+  await testSchemaRejection(
+    '/schemas/core/canonical-product.json',
+    { ...canonicalProductBase, format_ids: productBase.format_ids },
+    'split product tools reject dual-emitted legacy product format IDs'
+  );
+  await testSchemaRejection(
+    '/schemas/core/canonical-product.json',
+    {
+      ...canonicalProductBase,
+      format_options: [{
+        ...canonicalProductBase.format_options[0],
+        v1_format_ref: productBase.format_ids
+      }]
+    },
+    'split product tools reject legacy named-format links inside canonical options'
+  );
+  await testSchemaRejection(
+    '/schemas/core/canonical-product.json',
+    {
+      ...canonicalProductBase,
+      placements: [{
+        kind: 'seller_inline',
+        placement_id: 'homepage',
+        name: 'Homepage',
+        mode: 'targetable',
+        format_ids: productBase.format_ids
+      }]
+    },
+    'split product tools reject legacy placement format IDs'
+  );
+  await testSchemaRejection(
+    '/schemas/core/canonical-product.json',
+    {
+      ...canonicalProductBase,
+      placements: [{
+        kind: 'seller_inline',
+        placement_id: 'homepage',
+        name: 'Homepage',
+        mode: 'targetable',
+        format_options: [{
+          ...canonicalProductBase.format_options[0],
+          v1_format_ref: productBase.format_ids
+        }]
+      }]
+    },
+    'split product tools reject legacy named-format links inside placement options'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/list-products-response.json',
+    { outcome: 'unchanged', feed_version: 'feed-v2', cache_scope: 'public' },
+    'list_products explicitly discriminates an unchanged feed response'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/request-proposals-response.json',
+    {
+      outcome: 'proposed',
+      proposals: [{
+        proposal_id: 'proposal-1',
+        name: 'Draft premium video plan',
+        proposal_kind: 'new_media_buy',
+        proposal_status: 'draft',
+        expires_at: '2027-06-30T23:59:59Z',
+        commercial_terms: {
+          brand: { domain: 'buyer.example' },
+          purchases: [{
+            product_id: 'premium-video',
+            pricing_option_id: 'fixed-cpm',
+            pricing: { pricing_option_id: 'fixed-cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 28 },
+            start_time: '2027-06-01T12:00:00Z',
+            end_time: '2027-07-01T00:00:00Z'
+          }],
+          start_time: 'asap',
+          end_time: '2027-07-01T00:00:00Z'
+        },
+        terms_digest: `sha256:${'A'.repeat(43)}`
+      }],
+      products: [{ ...canonicalProductBase, product_id: 'premium-video' }]
+    },
+    'request_proposals explicitly discriminates a successful proposal response'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/request-proposals-response.json',
+    {
+      outcome: 'rejected',
+      reason: 'No available offer satisfies the campaign constraints.',
+      suggestions: ['Broaden the flight dates.']
+    },
+    'request_proposals has an explicit business-rejection outcome'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-response.json',
+    { products: [] },
+    'request_proposals cannot return products without a proposal'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-response.json',
+    {
+      proposals: [{
+        proposal_id: 'proposal-1',
+        name: 'Draft premium video plan',
+        allocations: [{ product_id: 'premium-video', allocation_percentage: 100 }],
+        proposal_status: 'draft',
+        expires_at: '2027-06-30T23:59:59Z'
+      }],
+      outcome: 'proposed',
+      products: [{ ...canonicalProductBase, product_id: 'premium-video' }],
+      reason: 'This must not appear on the success arm.'
+    },
+    'request_proposals success cannot carry rejection fields'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'partial',
+        proposal: {
+          proposal_id: 'proposal-2',
+          name: 'Partially revised premium video plan',
+          allocations: [{ product_id: 'premium-video', allocation_percentage: 100 }],
+          proposal_status: 'committed',
+          expires_at: '2027-06-30T23:59:59Z'
+        }
+      }],
+      products: []
+    },
+    'refine_proposals partial results require explanatory notes'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-draft-1',
+        outcome: 'finalized',
+        proposal: {
+          proposal_id: 'proposal-committed-1',
+          proposal_kind: 'new_media_buy',
+          proposal_status: 'committed',
+          expires_at: '2027-06-30T23:59:59Z',
+          name: 'Held premium video plan',
+          commercial_terms: {
+            brand: { domain: 'buyer.example' },
+            purchases: [{
+              product_id: 'premium-video',
+              pricing_option_id: 'fixed-cpm',
+              pricing: { pricing_option_id: 'fixed-cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 28 },
+              start_time: '2027-06-01T12:00:00Z',
+              end_time: '2027-07-01T00:00:00Z'
+            }],
+            start_time: 'asap',
+            end_time: '2027-07-01T00:00:00Z'
+          },
+          terms_digest: `sha256:${'A'.repeat(43)}`
+        }
+      }],
+      products: []
+    },
+    'refine_proposals finalization returns a committed proposal with a hold deadline'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-draft-1',
+        outcome: 'finalized',
+        proposal: {
+          proposal_id: 'proposal-committed-1',
+          proposal_kind: 'new_media_buy',
+          proposal_status: 'committed',
+          expires_at: '2027-06-30T23:59:59Z',
+          name: 'Held premium video plan',
+          commercial_terms: {
+            brand: { domain: 'buyer.example' },
+            purchases: [{
+              product_id: 'premium-video',
+              pricing_option_id: 'fixed-cpm',
+              pricing: { pricing_option_id: 'fixed-cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 28 },
+              start_time: '2027-06-01T12:00:00Z',
+              end_time: '2027-07-01T00:00:00Z'
+            }],
+            start_time: '2027-06-01T12:00:00Z',
+            end_time: '2027-07-01T00:00:00Z'
+          },
+          terms_digest: `sha256:${'A'.repeat(43)}`
+        }
+      }, {
+        source_proposal_id: 'proposal-draft-2',
+        outcome: 'unable',
+        reason: 'Inventory could not be held.'
+      }],
+      products: []
+    },
+    'refine_proposals forbids partially successful atomic finalization batches'
+  );
+  log('');
+
   log('SignalId compatibility during SignalRef migration:', 'info');
   await testSchemaValidation(
     '/schemas/signals/get-signals-response.json',
@@ -3056,6 +3731,7 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/media-buy/get-products-request.json',
     {
+      idempotency_key: '550e8400-e29b-41d4-a716-446655440005',
       buying_mode: 'wholesale',
       filters: {
         signal_targeting: [
@@ -3089,6 +3765,81 @@ async function runTests() {
       }
     },
     'Wholesale signal event accepts deprecated signal_id, optional legacy coverage_percentage, relaxed data_provider/pricing_options, and coverage_forecast'
+  );
+  await testSchemaValidation(
+    '/schemas/core/wholesale-feed-event.json',
+    {
+      event_id: '018f1f5d-7b6a-7cc2-8a1f-1234567890ab',
+      event_type: 'product.updated',
+      entity_type: 'product',
+      entity_id: 'canonical-product-1',
+      created_at: '2027-06-01T12:00:00Z',
+      payload: {
+        product_id: 'canonical-product-1',
+        canonical_product: { product_id: 'canonical-product-1', name: 'Canonical product' },
+        changed_fields: ['name'],
+        applies_to: { scope: 'public' }
+      }
+    },
+    'Wholesale product event updates a list_products canonical mirror without legacy Product'
+  );
+  await testSchemaValidation(
+    '/schemas/core/wholesale-feed-webhook.json',
+    {
+      idempotency_key: 'canonical-product-webhook-0001',
+      notification_id: '018f1f5d-7b6a-7cc2-8a1f-1234567890ab',
+      notification_type: 'product.updated',
+      fired_at: '2027-06-01T12:00:01Z',
+      subscriber_id: 'canonical-product-mirror',
+      account_id: 'account-1',
+      wholesale_feed_version: 'feed-version-2',
+      product_payload_view: 'canonical',
+      cache_scope: 'public',
+      event: {
+        event_id: '018f1f5d-7b6a-7cc2-8a1f-1234567890ab',
+        event_type: 'product.updated',
+        entity_type: 'product',
+        entity_id: 'canonical-product-1',
+        created_at: '2027-06-01T12:00:00Z',
+        payload: {
+          product_id: 'canonical-product-1',
+          canonical_product: { product_id: 'canonical-product-1', name: 'Canonical product' },
+          applies_to: { scope: 'public' }
+        }
+      }
+    },
+    'Wholesale product webhook requires and echoes the canonical product view'
+  );
+  await testSchemaRejection(
+    '/schemas/core/wholesale-feed-webhook.json',
+    {
+      idempotency_key: 'signal-webhook-view-0001',
+      notification_id: '018f4f28-6b5d-7f50-9d57-111111111111',
+      notification_type: 'signal.created',
+      fired_at: '2027-06-01T12:00:01Z',
+      subscriber_id: 'signal-mirror',
+      account_id: 'account-1',
+      wholesale_feed_version: 'signal-version-2',
+      product_payload_view: 'canonical',
+      cache_scope: 'public',
+      event: {
+        event_id: '018f4f28-6b5d-7f50-9d57-111111111111',
+        event_type: 'signal.created',
+        entity_type: 'signal',
+        entity_id: 'sig_auto_intenders',
+        created_at: '2027-06-01T12:00:00Z',
+        payload: {
+          signal_agent_segment_id: 'sig_auto_intenders',
+          applies_to: { scope: 'public' },
+          signal: {
+            signal_id: legacySignalId,
+            ...signalListingCoreWithoutLegacyCoverage,
+            coverage_forecast: signalCoverageForecast
+          }
+        }
+      }
+    },
+    'Wholesale signal webhook rejects product view negotiation'
   );
 
   log('Registry change feed schemas:', 'info');
