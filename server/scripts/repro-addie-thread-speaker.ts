@@ -116,8 +116,8 @@ const TOOLS = [
 async function callClaude(label: string, turns: { role: 'user' | 'assistant'; content: string }[]) {
   console.log(`\n--- LIVE: ${label} ---`);
   const resp = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
+    model: 'claude-sonnet-5',
+    max_tokens: 4096,
     system: SYSTEM,
     tools: TOOLS,
     messages: turns,

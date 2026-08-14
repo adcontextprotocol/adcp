@@ -955,7 +955,9 @@ export class AddieClaudeClient {
         response = await withRetry(
           () => this.client.beta.messages.create({
             model: effectiveModel,
-            max_tokens: 4096,
+            // Sonnet 5 uses adaptive thinking by default; leave room for its
+            // thinking summary plus the user-visible answer/tool calls.
+            max_tokens: 8192,
             system: systemBlocks,
             tools: retriedEmptyPostToolResponse ? [] : [
               ...customTools,
@@ -1705,7 +1707,9 @@ export class AddieClaudeClient {
           try {
             const stream = this.client.beta.messages.stream({
               model: effectiveModel,
-              max_tokens: 4096,
+              // Sonnet 5 uses adaptive thinking by default; leave room for its
+              // thinking summary plus the user-visible answer/tool calls.
+              max_tokens: 8192,
               system: systemBlocks,
               tools: retriedEmptyPostToolResponse ? [] : customTools,
               messages,

@@ -20,7 +20,7 @@ import { createLogger } from '../../logger.js';
 import { query } from '../../db/client.js';
 import { getThreadReplies } from '../../slack/client.js';
 import { getThreadService } from '../thread-service.js';
-import { ModelConfig, AddieModelConfig } from '../../config/models.js';
+import { disableAdaptiveThinking, ModelConfig, AddieModelConfig } from '../../config/models.js';
 import { loadRules, loadResponseStyle } from '../rules/index.js';
 import { ADDIE_TOOL_REFERENCE } from '../prompts.js';
 import { gradeShape, type ShapeReport } from '../testing/shape-grader.js';
@@ -164,6 +164,7 @@ export async function compareResponses(
   const response = await client.messages.create({
     model: judgeModel,
     max_tokens: 300,
+    ...disableAdaptiveThinking(judgeModel),
     // System prompt gives the judge a stable refusal anchor independent
     // of the user-message content. The fence already strips closing tags,
     // but the system prompt is defense in depth — even if a future change
@@ -205,7 +206,8 @@ Respond with ONLY a JSON object:
     }],
   });
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const textBlock = response.content.find((block) => block.type === 'text');
+  const text = textBlock?.type === 'text' ? textBlock.text : '';
   try {
     let jsonStr = text.trim();
     if (jsonStr.startsWith('```')) {
@@ -341,11 +343,12 @@ export async function runShadowEvaluatorJob(
       const shadowModel = resolveShadowModel();
       const shadowResult = await client.messages.create({
         model: shadowModel,
-        max_tokens: 1000,
+        max_tokens: 4096,
         system: systemPrompt,
         messages: [{ role: 'user', content: ctx.shadow_eval_question }],
       });
-      const shadowResponse = shadowResult.content[0].type === 'text' ? shadowResult.content[0].text : '';
+      const shadowTextBlock = shadowResult.content.find((block) => block.type === 'text');
+      const shadowResponse = shadowTextBlock?.type === 'text' ? shadowTextBlock.text : '';
 
       if (!shadowResponse) {
         await threadService.patchThreadContext(thread.thread_id, { shadow_eval_status: 'error' });

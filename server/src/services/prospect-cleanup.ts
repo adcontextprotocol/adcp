@@ -8,7 +8,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getPool } from "../db/client.js";
 import { createLogger } from "../logger.js";
-import { ModelConfig } from "../config/models.js";
+import { disableAdaptiveThinking, ModelConfig } from "../config/models.js";
 import {
   getLushaClient,
   isLushaConfigured,
@@ -751,6 +751,7 @@ export class ProspectCleanupService {
           const response = await this.client.messages.create({
             model: this.model,
             max_tokens: 2048,
+            ...disableAdaptiveThinking(this.model),
             tools: [
               {
                 type: "web_search_20250305",
@@ -815,7 +816,9 @@ Be thorough but concise. Focus on actionable improvements.`,
 
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 4096,
+        // Preserve adaptive thinking for this agentic tool loop, with enough
+        // room for thinking plus tool calls and the final analysis.
+        max_tokens: 8192,
         system: CLEANUP_SYSTEM_PROMPT,
         tools: CLEANUP_TOOLS,
         messages,
@@ -895,7 +898,34 @@ Be thorough but concise. Focus on actionable improvements.`,
           content: response.content as Anthropic.ContentBlock[],
         });
         messages.push({ role: "user", content: toolResults });
+        continue;
       }
+
+      // The stable SDK union does not yet expose `compaction`, though the API
+      // can return it as a resumable stop reason.
+      const resumableStopReason = response.stop_reason as string | null;
+      if (resumableStopReason === "pause_turn" || resumableStopReason === "compaction") {
+        messages.push({
+          role: "assistant",
+          content: response.content as Anthropic.ContentBlock[],
+        });
+        continue;
+      }
+
+      // Do not resubmit an unchanged prompt after truncation, refusal, or
+      // another terminal stop reason; doing so can repeat the same costly
+      // response until the iteration limit.
+      const textBlock = response.content.find((c) => c.type === "text");
+      const partialAnalysis = textBlock?.type === "text" ? textBlock.text : "";
+      logger.warn(
+        { orgId, stopReason: response.stop_reason },
+        "Prospect cleanup stopped before completing its tool loop",
+      );
+      return {
+        analysis: partialAnalysis || `Analysis stopped: ${response.stop_reason ?? "unknown reason"}`,
+        suggested_actions: suggestedActions,
+        tool_calls: toolCalls,
+      };
     }
 
     return {

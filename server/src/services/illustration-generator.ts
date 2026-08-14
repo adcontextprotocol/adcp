@@ -15,10 +15,10 @@ import { getAllNewsletters } from '../newsletters/registry.js';
 import type { NewsletterConfig } from '../newsletters/config.js';
 import { signC2PA, isC2PASigningEnabled } from './c2pa.js';
 import { notifySystemError } from '../addie/error-notifier.js';
+import { GeminiModelConfig } from '../config/models.js';
 
-const GEMINI_IMAGE_MODEL = 'gemini-3.1-flash-image-preview';
-// Matches the -preview suffix above; bump together when promoting to a stable Gemini release.
-const GEMINI_IMAGE_VERSION = 'preview';
+const GEMINI_IMAGE_MODEL = GeminiModelConfig.image;
+const GEMINI_IMAGE_VERSION = GeminiModelConfig.imageVersion;
 
 function findNewsletterByCategory(category: string): NewsletterConfig | null {
   return getAllNewsletters().find((n) => n.perspectiveCategory === category) || null;

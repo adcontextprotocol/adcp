@@ -310,8 +310,8 @@ async function generateResponse(message: string, confidence: ConfidenceTier): Pr
   const systemPrompt = [basePrompt, calibration].filter(Boolean).join('\n\n');
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-6', // Use the same model Addie uses in prod for chat
-    max_tokens: 500,
+    model: 'claude-sonnet-5', // Use the same model Addie uses in prod for chat
+    max_tokens: 4096,
     system: systemPrompt,
     messages: [{ role: 'user', content: message }],
   });
@@ -357,8 +357,8 @@ function getRfcVariantSuffix(): { name: string; suffix: string } {
  * tool call so the grader can score whether search_docs / get_schema were
  * invoked before any draft was emitted.
  *
- * Temperature pinned to 0 to reduce run-to-run variance — variants need a
- * clean signal, and this isn't a creativity benchmark.
+ * Sonnet 5 no longer accepts sampling parameters, so variants rely on the
+ * same default sampling behavior used by production Addie.
  */
 async function generateRfcResponse(
   message: string,
@@ -380,9 +380,8 @@ async function generateRfcResponse(
   const MAX_TURNS = 6;
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
-      temperature: 0,
+      model: 'claude-sonnet-5',
+      max_tokens: 4096,
       system: systemPrompt,
       tools: RFC_STUB_TOOLS as unknown as Anthropic.Tool[],
       messages,

@@ -183,9 +183,9 @@ async function reviewSnapshot(
   verbose: boolean,
 ): Promise<ReviewResult> {
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-5',
     max_tokens: 512,
-    temperature: 0,
+    thinking: { type: 'disabled' },
     system: REVIEW_RUBRIC,
     messages: [{
       role: 'user',

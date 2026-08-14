@@ -19,7 +19,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../logger.js';
-import { ModelConfig } from '../config/models.js';
+import { disableAdaptiveThinking, ModelConfig } from '../config/models.js';
 import type { KellerType } from '../types.js';
 import type { BrandfetchEnrichmentResult } from './brandfetch.js';
 import { canonicalizeBrandDomain } from './identifier-normalization.js';
@@ -95,6 +95,7 @@ export async function classifyBrand(
     const response = await getClient().messages.create({
       model: ModelConfig.primary,
       max_tokens: 300,
+      ...disableAdaptiveThinking(ModelConfig.primary),
       tools: [
         {
           name: 'classify_brand',

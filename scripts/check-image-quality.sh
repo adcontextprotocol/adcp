@@ -104,7 +104,7 @@ if [ -n "$STAGED_IMAGES" ] && [ -n "${GEMINI_API_KEY:-}" ]; then
       rm -f "$IMG_B64_FILE"
 
       RESPONSE=$(curl -s --max-time 30 \
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent" \
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent" \
         -H 'Content-Type: application/json' \
         -H "x-goog-api-key: ${GEMINI_API_KEY}" \
         -d @"$PAYLOAD_FILE" 2>/dev/null)

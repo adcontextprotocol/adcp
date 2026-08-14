@@ -17,7 +17,7 @@ import { brandDb } from '../db/brand-db.js';
 import { registryRequestsDb } from '../db/registry-requests-db.js';
 import { query } from '../db/client.js';
 import { getPool } from '../db/client.js';
-import { ModelConfig } from '../config/models.js';
+import { disableAdaptiveThinking, ModelConfig } from '../config/models.js';
 import { enrichOrganization } from './enrichment.js';
 import { isLushaConfigured } from './lusha.js';
 import type { UpsertDiscoveredBrandInput } from '../db/brand-db.js';
@@ -543,6 +543,7 @@ export async function expandHouse(houseDomain: string, options: {
   const response = await anthropic.messages.create({
     model: ModelConfig.primary,
     max_tokens: 4096,
+    ...disableAdaptiveThinking(ModelConfig.primary),
     tools: [
       {
         name: 'discover_sub_brands',

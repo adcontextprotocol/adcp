@@ -113,7 +113,7 @@ Respond with ONLY the JSON object, no other text.`;
  */
 async function runNewRouter(message: string): Promise<{ tool_sets: string[]; reason: string }> {
   const response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20250514',
+    model: 'claude-haiku-4-5',
     max_tokens: 200,
     messages: [{ role: 'user', content: buildToolSetRouterPrompt(message) }],
   });

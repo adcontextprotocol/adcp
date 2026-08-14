@@ -16,8 +16,13 @@ import { logger } from '../logger.js';
  * Reserve buffer space for system prompt, tools, and response generation.
  */
 export const MODEL_CONTEXT_LIMITS: Record<string, number> = {
+  'claude-fable-5': 1000000,
   'claude-opus-4-6': 1000000,
+  'claude-opus-4-7': 1000000,
+  'claude-opus-4-8': 1000000,
+  'claude-opus-5': 1000000,
   'claude-sonnet-4-6': 1000000,
+  'claude-sonnet-5': 1000000,
   'claude-haiku-4-5': 200000,
   // Default for unknown models
   default: 200000,
@@ -54,7 +59,7 @@ export const TOKEN_BUFFERS = {
    */
   prependedContext: 10000,
   /** Reserve space for response generation */
-  responseBuffer: 5000,
+  responseBuffer: 10000,
   /** Safety margin for any miscalculation */
   safetyMargin: 10000,
 };
@@ -112,18 +117,18 @@ export function getConversationTokenLimit(model?: string, toolCount?: number): n
  * Estimate token count from text using a character-based heuristic.
  *
  * Claude uses a BPE tokenizer where:
- * - English text averages ~4 characters per token
- * - Code and structured data can be 3-5 chars per token
- * - We use 3.5 to be conservative (overestimate slightly)
+ * - English text historically averaged ~4 characters per token
+ * - Sonnet 5's tokenizer produces roughly 30% more tokens than Sonnet 4.6
+ * - We use 2.7 to stay conservative across current Claude models
  *
  * This is NOT exact but is fast for local estimation.
  * Use Anthropic's API for precise counts when needed.
  */
 export function estimateTokens(text: string): number {
   if (!text) return 0;
-  // Conservative estimate: ~3.5 characters per token
+  // Conservative estimate: ~2.7 characters per token
   // This slightly overestimates which is safer than underestimating
-  return Math.ceil(text.length / 3.5);
+  return Math.ceil(text.length / 2.7);
 }
 
 /**

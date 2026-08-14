@@ -113,7 +113,7 @@ Flow:
 1. Validate membership (paid tier required)
 2. Accept uploaded photo into memory (not disk)
 3. Assemble prompt with amber palette + vibe + photo reference
-4. Call Gemini `gemini-3.1-flash-image-preview` with photo as reference image
+4. Call Gemini `gemini-3.1-flash-image` with photo as reference image
 5. Store generated PNG in `member_portraits` (BYTEA)
 6. Delete uploaded photo from memory
 7. Set status = `generated`, return preview URL

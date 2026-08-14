@@ -31,6 +31,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 
 vi.mock('../../src/config/models.js', () => ({
   ModelConfig: { primary: 'test-model', fast: 'test-model' },
+  disableAdaptiveThinking: () => ({}),
 }));
 
 function wg(name: string, channelId: string) {
