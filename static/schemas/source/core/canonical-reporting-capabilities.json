@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-reporting-capabilities.json",
+  "title": "Canonical Reporting Capabilities",
+  "description": "Compact product reporting contract. Vendor metrics use identity-only BrandKey references and do not inline brand or creative assets.",
+  "type": "object",
+  "properties": {
+    "available_reporting_frequencies": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-frequency.json" }, "minItems": 1, "uniqueItems": true },
+    "expected_delay_minutes": { "type": "integer", "minimum": 0 },
+    "timezone": { "type": "string" },
+    "supports_webhooks": { "type": "boolean" },
+    "available_metrics": { "type": "array", "items": { "$ref": "/schemas/enums/available-metric.json" }, "uniqueItems": true },
+    "vendor_metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "vendor": { "$ref": "/schemas/core/brand-key.json" },
+          "metric_id": { "$ref": "/schemas/core/vendor-metric-id.json" }
+        },
+        "required": ["vendor", "metric_id"],
+        "additionalProperties": false
+      }
+    },
+    "supports_creative_breakdown": { "type": "boolean" },
+    "supports_keyword_breakdown": { "type": "boolean" },
+    "supports_geo_breakdown": { "$ref": "/schemas/core/geo-breakdown-support.json" },
+    "supports_device_type_breakdown": { "type": "boolean" },
+    "supports_device_platform_breakdown": { "type": "boolean" },
+    "supports_audience_breakdown": { "type": "boolean" },
+    "supports_placement_breakdown": { "type": "boolean" },
+    "date_range_support": { "type": "string", "enum": ["date_range", "lifetime_only"] },
+    "windowed_pull_granularities": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-frequency.json" }, "uniqueItems": true },
+    "measurement_windows": { "type": "array", "items": { "$ref": "/schemas/core/measurement-window.json" }, "minItems": 1, "uniqueItems": true }
+  },
+  "required": ["available_reporting_frequencies", "expected_delay_minutes", "timezone", "supports_webhooks", "available_metrics", "date_range_support"],
+  "additionalProperties": false
+}

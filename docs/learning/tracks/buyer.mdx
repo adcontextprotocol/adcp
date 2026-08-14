@@ -263,7 +263,7 @@ To see the seller responses your agent must handle, you can inspect the test sel
 
 ```bash
 # Inspects the test SELLER's get_products response — the shape your buyer agent must parse.
-npx @adcp/sdk@latest test-mcp get_products '{"brief":"your campaign brief"}'
+npx @adcp/sdk@latest test-mcp get_products '{"idempotency_key":"550e8400-e29b-41d4-a716-446655442065","buying_mode":"brief","brief":"your campaign brief"}'
 ```
 
 See [Build a caller](/docs/building/by-layer/L4/build-a-caller) for client setup and [Validate Your Agent](/docs/building/verification/validate-your-agent) for the storyboard workflow.

@@ -3,6 +3,7 @@
   "$id": "/schemas/creative/list-creative-formats-request.json",
   "title": "List Creative Formats Request (Creative Agent)",
   "deprecated": true,
+  "x-deprecated-in": "3.2.0",
   "description": "**DEPRECATED in 3.2.** Compatibility request for legacy named-format discovery. Creative agents advertise canonical operation capabilities on get_adcp_capabilities `creative.supported_formats[]`.",
   "type": "object",
   "allOf": [

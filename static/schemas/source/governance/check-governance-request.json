@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/governance/check-governance-request.json",
   "title": "Check Governance Request",
-  "description": "Universal governance check for campaign actions. The governance agent infers the check type from the fields present: tool+payload = intent check (proposed, orchestrator-side); planned_delivery or delivery_metrics with governance_context = execution or lifecycle check (committed, service-side). For update_media_buy, the buyer supplies a proposed positive-delta ceiling and the seller supplies its independently computed execution delta. The first check is addressed by plan_id. Subsequent service-side checks use the opaque governance_context as the authoritative plan binding and do not require the service to receive or interpret plan_id. To check budget availability without a specific action, send plan_id and omit tool and payload.",
+  "description": "Universal governance check for campaign actions. The governance agent infers the check type from the fields present: tool+payload = intent check (proposed, orchestrator-side); planned_delivery or delivery_metrics with governance_context = execution or lifecycle check (committed, service-side). Proposal acceptance supplies the immutable proposal separately so governance can inspect its typed commercial terms while payload remains the exact downstream arguments. MediaBuy controls use buyer-proposed and seller-computed positive-delta ceilings. The first check is addressed by plan_id. Subsequent service-side checks use the opaque governance_context as the authoritative plan binding.",
   "type": "object",
   "allOf": [
     {
@@ -65,6 +65,13 @@
       }
     },
     {
+      "if": { "required": ["proposal"] },
+      "then": {
+        "required": ["plan_id", "tool", "payload", "target_agent"],
+        "properties": { "tool": { "const": "accept_proposal" } }
+      }
+    },
+    {
       "if": { "required": ["execution_commitment"] },
       "then": {
         "required": ["governance_context", "planned_delivery"],
@@ -80,11 +87,18 @@
     {
       "if": {
         "properties": {
-          "tool": { "enum": ["update_media_buy", "acquire_rights", "update_rights", "activate_signal", "build_creative"] }
+          "tool": { "enum": ["update_media_buy", "buy_products", "accept_proposal", "control_media_buy", "acquire_rights", "update_rights", "activate_signal", "build_creative"] }
         },
         "required": ["tool", "payload"]
       },
       "then": { "required": ["proposed_commitment"] }
+    },
+    {
+      "if": {
+        "properties": { "tool": { "const": "accept_proposal" } },
+        "required": ["tool", "payload"]
+      },
+      "then": { "required": ["proposal"] }
     },
     {
       "if": {
@@ -213,7 +227,7 @@
     },
     "proposed_commitment": {
       "type": "object",
-      "description": "Task-neutral monetary amount the intent would authorize. For update_media_buy this is the buyer-computed positive incremental commitment, not the post-update total. It is also required for acquire_rights, commitment-increasing update_rights, activate_signal, and build_creative because those task payloads identify pricing indirectly; amount 0 explicitly represents a verified no-cost action. The governance agent persists this value as authoritative check state; report_plan_outcome cannot increase it or restore headroom by reporting less.",
+      "description": "Task-neutral monetary amount the intent would authorize. For update_media_buy and control_media_buy this is the buyer-computed positive incremental commitment, not the post-update total. For accept_proposal it is derived from the supplied proposal commercial_terms; for buy_products it is derived from the purchase payload. Amount 0 explicitly represents a verified no-cost action. The governance agent persists this value as authoritative check state.",
       "properties": {
         "amount": { "type": "number", "minimum": 0 },
         "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
@@ -223,7 +237,7 @@
     },
     "execution_commitment": {
       "type": "object",
-      "description": "Seller-computed positive incremental commitment for an update_media_buy execution check. The seller MUST derive this atomically from its authoritative current revision and the requested update, and the governance agent MUST reject it when it exceeds the prior intent ceiling or uses another currency.",
+      "description": "Seller-computed positive incremental commitment for a MediaBuy execution check. The seller MUST derive this atomically from its authoritative proposal or current revision and the requested operation, and the governance agent MUST reject it when it exceeds the prior intent ceiling or uses another currency.",
       "properties": {
         "amount": { "type": "number", "minimum": 0 },
         "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
@@ -240,6 +254,10 @@
       "description": "The full downstream tool arguments exactly as they will be sent to target_agent. Present on intent checks. Governance routing metadata is carried by target_agent, never injected into this object. The governance agent can inspect any field to validate against the plan.",
       "x-adcp-open-payload": true,
       "additionalProperties": true
+    },
+    "proposal": {
+      "$ref": "/schemas/core/canonical-proposal.json",
+      "description": "Exact committed proposal being authorized for accept_proposal. The governance agent verifies proposal.terms_digest against commercial_terms and binds that digest into its decision state; the downstream payload carries the same digest without repeating the terms."
     },
     "governance_context": {
       "type": "string",

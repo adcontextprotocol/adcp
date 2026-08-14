@@ -123,6 +123,7 @@ phases:
           Return the seeded product with allowed_actions[] entries for
           increase_budget, extend_flight, and cancel.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_available_actions_discover_product_action_template_get_product_allowed_actions"
           buying_mode: brief
           brief: "available actions display package"
           filters:

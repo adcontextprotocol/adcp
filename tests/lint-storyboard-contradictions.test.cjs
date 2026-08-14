@@ -68,6 +68,7 @@ test('schema-derived set covers known mutating tasks', () => {
     'sync_audiences',
     'comply_test_controller',
     'si_terminate_session',
+    'get_products',
   ]) {
     assert.ok(derived.has(task), `expected ${task} in schema-derived mutating set`);
   }
@@ -81,7 +82,6 @@ test('schema-derived set does not over-match read-only tasks', () => {
   // in a false-positive at build time.
   const derived = loadMutatingTasksFromSchemas(SCHEMAS_DIR);
   for (const task of [
-    'get_products',
     'get_signals',
     'list_creative_formats',
     'get_adcp_capabilities',

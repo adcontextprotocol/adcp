@@ -170,8 +170,9 @@
       }
     },
     "result": {
-      "$ref": "/schemas/core/async-response-data.json",
-      "description": "Task-specific completion payload. Present when status is 'completed' and include_result was true in the request; absent otherwise. For failed tasks, use the error field instead. Uses the same anyOf union as the push-notification webhook result field."
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Task-specific terminal payload. Present when include_result was true and the task has a result; absent otherwise. For failed tasks, use the error field instead. Consumers and sellers MUST resolve and validate the exact schema through manifest.task_result_resolution: use terminal_schema_overrides[task_type] when present, otherwise tools[task_type].response_schema. The polling envelope keeps this field generic so get_task_status does not embed every task response schema."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

@@ -136,6 +136,7 @@ phases:
         expected: |
           Return at least one product with a pricing option and one canonical format option.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_dependency_impairment_setup_get_products_brief"
           buying_mode: "brief"
           brief: "Display inventory on outdoor lifestyle content for dependency-impairment testing."
           filters:

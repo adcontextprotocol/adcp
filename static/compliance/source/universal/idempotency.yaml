@@ -729,10 +729,11 @@ phases:
       Runners without `rate_limit_trip_runner` skip this phase with a
       stable `not_applicable` marker. Runners with the contract that
       exhaust `max_attempts` without observing `RATE_LIMITED` also grade
-      `not_applicable` (reason: `rate_limit_not_triggered`) — a sandbox
-      limiter sitting above the contract's burst ceiling is not a seller
-      conformance fault, only a configuration choice that prevents the
-      invariant from being verified end-to-end.
+      with `skip_result.reason: not_applicable` and
+      `skip_result.detail: rate_limit_not_triggered` — a sandbox limiter
+      sitting above the contract's burst ceiling is not a seller conformance
+      fault, only a configuration choice that prevents the invariant from
+      being verified end-to-end.
 
       The 60/300 req/sec ceiling itself is NOT attested here. Burst-volume
       measurement is structurally non-deterministic in CI environments and
@@ -799,9 +800,10 @@ phases:
             `replay_not_cached_rate_limit` check passes.
 
           - All `max_attempts` requests complete without producing
-            `RATE_LIMITED`. The step grades `not_applicable` with reason
-            `rate_limit_not_triggered`. The rest of the storyboard is
-            unaffected.
+            `RATE_LIMITED`. The step grades with
+            `skip_result.reason: not_applicable` and
+            `skip_result.detail: rate_limit_not_triggered`. The rest of the
+            storyboard is unaffected.
 
         validations:
           - check: replay_not_cached_rate_limit

@@ -58,6 +58,7 @@ phases:
         expected: |
           Return products the seller carries.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_inventory_list_no_match_discover_get_products_brief"
           buying_mode: "brief"
           brief: "Outdoor lifestyle programming. Q3 flight."
           filters:

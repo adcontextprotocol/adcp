@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/compact-task-working.json",
+  "title": "Compact Task Working",
+  "description": "Bounded progress payload shared by the compact lifecycle tools.",
+  "type": "object",
+  "properties": {
+    "percentage": { "type": "number", "minimum": 0, "maximum": 100 },
+    "current_step": { "type": "string", "maxLength": 500 },
+    "total_steps": { "type": "integer", "minimum": 1 },
+    "step_number": { "type": "integer", "minimum": 1 },
+    "context": { "$ref": "/schemas/core/context.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "additionalProperties": true
+}

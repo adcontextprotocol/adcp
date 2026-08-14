@@ -50,6 +50,17 @@ export interface TrainingContext {
    * mapping. Never populate this from request arguments or principal text.
    */
   authenticatedAgentUrl?: string;
+  /** Validated wire input before SDK account extraction; used only to verify
+   * governance payload bindings against the exact buyer-authorized request. */
+  requestInput?: Record<string, unknown>;
+  /** Trusted account reference reconstructed from the SDK-resolved platform
+   * context. Used to authorize principal-bound sandbox fixture projection
+   * after the SDK removes the envelope account from domain-level arguments. */
+  resolvedAccount?: AccountRef;
+  /** Frozen 3.0 creative-library session scope. Legacy requests historically
+   * shared creative state by brand even when the SDK retained a natural
+   * account envelope on some creative operations. */
+  legacySessionBrandDomain?: string;
   /** Release selected by protocol negotiation for this request. */
   servedAdcpVersion?: string;
   /** Route is the grader-targeted `/mcp-strict` endpoint. Advertises
@@ -343,6 +354,15 @@ export interface SessionState {
   negotiatedPricingOptions: Map<string, {
     productId: string;
     option: Product['pricing_options'][number];
+  }>;
+  /** Durable proposal-successor receipts kept outside immutable proposal
+   * snapshots. Finalization uses this to recover an exact idempotent retry
+   * after domain state was flushed but before the idempotency receipt was
+   * published. */
+  proposalLifecycleLinks: Map<string, {
+    operation: 'finalize';
+    idempotencyKey: string;
+    successorProposalId: string;
   }>;
   usageRecords: UsageRecord[];
   /** Maps build_variant_id → the FormatID target used to produce it.

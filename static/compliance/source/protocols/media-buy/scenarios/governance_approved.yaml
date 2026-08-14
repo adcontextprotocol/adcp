@@ -200,6 +200,7 @@ phases:
         expected: |
           Return products matching the brief.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_approved_buy_approved_get_products_brief"
           buying_mode: "brief"
           brief: "Display and video inventory on outdoor lifestyle content. Q2 flight, $25K budget. Adults 25-54, US."
           account:

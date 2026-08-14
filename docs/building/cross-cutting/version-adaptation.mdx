@@ -39,7 +39,11 @@ const client = ADCPMultiAgentClient.simple(
 );
 
 const agent = client.agent('default-agent');
-const result = await agent.getProducts({ brief: 'CTV inventory' });
+const result = await agent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442052',
+  buying_mode: 'brief',
+  brief: 'CTV inventory',
+});
 ```
 
 Python and Go SDKs expose the same mechanism under their idiomatic call sites — see each SDK's repo. The shape is consistent: per-agent or per-call version pin, validated at construction time, with adapter modules translating to/from the canonical shape transparently.
@@ -55,6 +59,26 @@ To see what your installed SDK actually has bundled, query the SDK's compatibili
 Each SDK ships per-tool adapter modules — pure shape translations (field renames, default population, structural reshaping). The SDK applies them transparently when the version pin is set; your handler sees the current shape regardless of which version the peer speaks.
 
 When AdCP 3.1 ships and you bump the SDK, a new adapter folder appears for the now-legacy 3.0. Your handlers don't move.
+
+### Same-major tool replacements
+
+AdCP 3.2's compact lifecycle replaces the broad `get_products`, `create_media_buy`, and `update_media_buy` facades with narrower tool names. This is not ordinary version-shape adaptation: some current operations need more than one legacy call, and one has no faithful legacy equivalent. The release manifest makes that distinction machine-readable through `legacy_fallback` on each replacement and `superseded_by` on each compatibility facade.
+
+| Current SDK method | Legacy peer tool | Fallback mode | Required behavior |
+|---|---|---|---|
+| `listProducts` | `get_products` wholesale | `orchestrated` | Translate the common case directly; when exact `product_ids` are requested, page and filter until every requested ID is found or the feed is exhausted |
+| `requestProposals` | `get_products` brief | `orchestrated` | Return immutable draft snapshots with source IDs preserved |
+| `refineProposals` | `get_products` refine or proposal finalize | `orchestrated` | Mint draft revisions or committed held snapshots with source-result correspondence and atomic finalize batches |
+| `declineProposals` | none | `none` | Throw a typed capability error before sending a call; never silently discard terminal feedback |
+| `buyProducts` | `create_media_buy` explicit packages | `orchestrated` | Translate product purchases to packages without adding creatives, then materialize the accepted proposal snapshot expected by the current result |
+| `acceptProposal` | `create_media_buy` proposal mode | `orchestrated` | Execute a new-buy proposal directly; amendment/cancellation proposals require an SDK-managed compatibility workflow or a typed capability error when the legacy seller cannot preserve it |
+| `controlMediaBuy` | `update_media_buy` | `orchestrated` | Map only canonical operational fields and never route creative, flight, package-addition, or billing-term mutations through this adapter |
+
+Client SDKs SHOULD expose the current methods as their primary API and choose the peer path from `media_buy.lifecycle_tools`. A directly advertised current tool always wins. A `direct` fallback may run transparently. An `orchestrated` fallback may run transparently only when the SDK ships a handwritten adapter that preserves the current tool's result completeness, terminal state, atomicity, and idempotency semantics; the manifest classification does not synthesize that state machine. In particular, SDKs adapting a direct 3.x creation MUST retain the accepted commercial snapshot locally when the legacy seller cannot return it, and MUST not pretend a legacy seller supports proposal-based amendments. Each underlying legacy mutation needs its own deterministic replay identity, and retrying the current SDK call must resume rather than restart the sequence. Otherwise the SDK MUST throw a typed `CapabilityUnsupportedError` carrying `requested_tool`, the peer's advertised tools, and `fallback_mode`.
+
+For proposal finalization, the adapter MUST retain a durable mapping from the current successor `proposal_id` to the legacy source ID that `get_products` finalized. A later `acceptProposal` sends the mapped legacy ID to `create_media_buy` while returning and retaining the current immutable successor snapshot. The mapping is part of the adapter's replay state: losing it, reusing the source ID as the current ID, or minting a second successor on retry violates the 3.2 contract.
+
+These tools deliberately retain distinct `operation_family` values. Fallback metadata describes SDK adaptation, not cross-name authorization, idempotency equivalence, task recovery, or webhook identity. A client adapter MUST be authorized for the actual legacy call; a grant for a split tool does not transfer across names. Server SDKs may implement the current lifecycle once and derive the deprecated facades for 3.x callers, but may advertise only behavior the adapter actually preserves.
 
 ## Mechanism 2 — Migrate SDK majors via co-existence
 
@@ -136,7 +160,11 @@ There are two places version mismatch can surface on the client, and they fire i
 import { VersionUnsupportedError } from '@adcp/sdk';
 
 try {
-  const result = await agent.getProducts({ brief: '…' });
+  const result = await agent.getProducts({
+    idempotency_key: '550e8400-e29b-41d4-a716-446655442053',
+    buying_mode: 'brief',
+    brief: '…',
+  });
 } catch (err) {
   if (err instanceof VersionUnsupportedError) {
     // peer doesn't support this call at the pinned version —
@@ -149,7 +177,11 @@ try {
 **2. `VERSION_UNSUPPORTED` envelope from the wire.** When the mismatch is only detected on the server side (e.g., the buyer's `adcp_major_version` parses different than the buyer's `adcp_version` string), the response carries a typed `VERSION_UNSUPPORTED` error envelope that echoes the seller's `supported_versions`:
 
 ```ts
-const result = await agent.getProducts({ brief: '…' });
+const result = await agent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442054',
+  buying_mode: 'brief',
+  brief: '…',
+});
 
 if (!result.success && result.adcpError?.code === 'VERSION_UNSUPPORTED') {
   const supported = result.adcpError.details?.supported_versions ?? [];

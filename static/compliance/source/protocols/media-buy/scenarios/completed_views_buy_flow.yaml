@@ -144,6 +144,7 @@ phases:
           declare supported_view_durations. The buyer selects a duration
           from that list for the create_media_buy call below.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_completed_views_buy_flow_setup_get_products_for_cpcv"
           buying_mode: "brief"
           brief: "Online video / CTV, US adults 25-54. Q2 flight ~$30K, optimizing for completed views at a 6-second threshold with target CPCV."
           account:

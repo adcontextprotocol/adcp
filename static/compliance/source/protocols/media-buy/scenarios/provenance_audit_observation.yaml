@@ -87,6 +87,7 @@ phases:
           populated. Buyer reads the agent_url for use on its verify_agent
           reference in the next phase.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_provenance_audit_observation_discover_verifier_get_products_with_accepted_verifiers"
           buying_mode: "brief"
           # Brief intentionally surfaces "Provenance Audit Observation" so
           # brief-mode keyword scoring places the seeded fixture product at

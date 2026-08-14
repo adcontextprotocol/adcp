@@ -199,6 +199,7 @@ phases:
             - forecast: aggregate impressions, reach, frequency
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#sales_proposal_mode_brief_with_proposals_get_products_brief"
           buying_mode: "brief"
           brief: "Premium video and display across outdoor lifestyle and sports. Q2 flight, $50K total budget. Adults 25-54, US and Canada. Looking for a balanced plan across CTV, online video, and display."
           account:
@@ -266,6 +267,7 @@ phases:
           - products: updated product set if products were swapped
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#sales_proposal_mode_review_refine_get_products_refine"
           buying_mode: "refine"
           refine:
             - scope: "proposal"
@@ -332,6 +334,7 @@ phases:
           - The proposal is ready to execute via create_media_buy
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#sales_proposal_mode_finalize_proposal_get_products_finalize"
           buying_mode: "refine"
           refine:
             - scope: "proposal"

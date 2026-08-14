@@ -13,6 +13,25 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 **Status:** In development — minor release targeting the 3.2.0 milestone. Stable wire shapes remain backward compatible; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
 
+### Compact product and MediaBuy lifecycle (#6115)
+
+AdCP 3.2 adds `list_products`, `request_proposals`, `refine_proposals`, `decline_proposals`, `buy_products`, `accept_proposal`, and `control_media_buy` as compact, task-specific contracts. The broad `get_products`, `create_media_buy`, and `update_media_buy` facades remain functional throughout 3.x but are deprecated for new integrations.
+
+- `list_products` is a synchronous, naturally idempotent product-offer read.
+- `request_proposals` creates immutable draft proposals from a brief and optional listed product IDs.
+- `refine_proposals` creates draft revisions or atomically finalizes drafts into committed inventory holds; `decline_proposals` records terminal buyer feedback and prevents later execution.
+- `buy_products` accepts published product offers directly; `accept_proposal` applies new-buy, amendment, or negotiated-cancellation proposals; `control_media_buy` handles revision-checked operational controls inside accepted terms.
+- Canonical proposals carry typed `commercial_terms` plus an RFC 8785 SHA-256 `terms_digest`. Changed terms mint a new `proposal_id`; accepted MediaBuys expose the current proposal pointer for restart-safe refinement.
+- New purchase and control tools never accept inline creatives. Creative bodies and assignments use the dedicated creative lifecycle.
+- Optional shared `opportunity` context connects proposal request, refinement, decline, and purchase; proposal snapshots retain the association without making it proposal identity.
+- Each stateful task requires an idempotency key and retains its own replay identity. Retries use the same tool name.
+- Brand input is an identity-only key, catalogs are compact selections, and offer filters are separated from exact targeting and future targeting support.
+- `media_buy.lifecycle_tools` advertises the compact product and MediaBuy lifecycle. Its absence means callers use the 3.x compatibility facades.
+- The release manifest labels each legacy fallback as `direct`, `orchestrated`, or `none`, so SDKs can expose the split API without claiming lossy calls are aliases.
+- `task_result_resolution` maps each tracked `task_type` to its tool `response_schema` or a retained 3.x event override, letting SDKs generate `TaskStatus<Result>` without embedding the global async-result union in `getTaskStatus`.
+
+New integrations SHOULD use the compact tools. Existing integrations do not need an immediate migration: the three compatibility facades retain their 3.x contracts, and sellers MUST honor replay protection whenever a key is supplied.
+
 ### Inline asset-access credentials deprecated (#5698)
 
 `service_account.credentials` in secured content-artifact access is deprecated. New producers must omit it. For one-off delivery, use an asset-scoped, short-lived signed URL; established integrations may use the fetching component's pre-authorized workload identity, and origins that require an Authorization header may use a short-lived, asset-scoped bearer token.
@@ -76,7 +95,7 @@ Additive over 3.0 — every existing brand.json publisher continues to validate 
 - **Signals and wholesale feeds:** enriched signal definitions, `SignalRef`, wholesale signal enumeration, product-scoped signal targeting, conditional fetch, `cache_scope`, and feed webhooks.
 - **Creative formats and generation:** canonical `format_kind`, publisher catalogs, hosted audio/video `duration_ms_range`, published-post references, `list_transformers`, fan-out, evaluator ranking over creative features, spend controls, and per-output pricing receipts.
 - **Media-buy operations:** dependency impairments, buyer-visible webhook activity, action discovery, proposal cleanup, currency-scoped discovery, sponsored/social placement fields, and SI availability status.
-- **Measurement, billing, and runtime hardening:** vendor-attested goals, reach-window semantics, delivery/usage finality, idempotency on every task, open error-code decoding, auth tightening, webhook operation-id echo, and flat MCP envelope tolerance.
+- **Measurement, billing, and runtime hardening:** vendor-attested goals, reach-window semantics, delivery/usage finality, idempotency on state-changing and explicitly keyed task calls, open error-code decoding, auth tightening, webhook operation-id echo, and flat MCP envelope tolerance.
 - **SDK and compliance readiness:** named codegen schemas, async-response refs, open-payload markers, capability-gated storyboards, packaged compliance closure, and release-artifact drift checks.
 
 <Info>
@@ -182,12 +201,9 @@ Existing exact durations and closed ranges remain valid. PR [#5323](https://gith
 
 ### Wire conformance — idempotency & envelope tolerance (#4399 / #4399b, #2911, #4227, #4371, #4418, #4107, #4196, #4043)
 
-A bundle of normative clarifications that codify deployed behavior and close ambiguities that surfaced from real adopter integrations. None require code changes for SDK-using integrators; hand-rolled MCP clients should review the universal-idempotency staged enforcement curve before the 3.2 cut.
+A bundle of normative clarifications that codify deployed behavior and close ambiguities that surfaced from real adopter integrations.
 
-**`idempotency_key` is required on every AdCP task request — read and mutating alike (#4399b).** The 3.0 contract framed it as mutating-only, but `get_products` is polymorphic (`brief`/`wholesale` may return `Submitted`; `refine`+`finalize` is a commit) and buyers can't classify at call time. Enforcement is **staged**:
-
-- **3.1.0** — sellers MUST accept reads that carry `idempotency_key`; SHOULD reject reads that omit it (MAY accept the omission during the 3.1.x maintenance window).
-- **3.2.0** — sellers MUST reject reads that omit it.
+**`get_products` accepts keyed replay (#4399b).** Sellers MUST accept `idempotency_key` on product discovery and apply the normal replay contract. AdCP 3.2 subsequently adds explicit read, recommendation, refinement, and finalization tools while preserving the optional-key legacy facade throughout 3.x.
 
 The cache holds read responses too from 3.1 onward — sellers MUST encrypt the cache tier at rest with the same controls applied to the underlying resource store. Operators with read-heavy buyer mixes SHOULD raise the rule-8 insert ceiling (sized originally against write-heavy traffic). See [security.mdx § Idempotency](/docs/building/by-layer/L1/security#idempotency) for the full contract.
 
@@ -212,7 +228,7 @@ The cache holds read responses too from 3.1 onward — sellers MUST encrypt the 
 | If you are… | What you need to do |
 |---|---|
 | A buyer using `@adcp/client` or `adcp-py` | Nothing. Both SDKs already send `idempotency_key` uniformly on every call. |
-| A buyer with hand-rolled MCP clients (curl, thin clients, raw OpenAPI codegen) | Add `idempotency_key` to read tools (`get_products`, `list_creative_formats`, `list_accounts`, etc.) before the 3.2 cut. 3.1.0 sellers MAY accept omission during the grace window; 3.2.0 sellers MUST reject. |
+| A buyer with hand-rolled MCP clients (curl, thin clients, raw OpenAPI codegen) | Prefer the AdCP 3.2 split product-discovery tools and include `idempotency_key` on recommendations, refinements, and finalization. Existing `get_products` calls remain valid throughout 3.x. |
 | A seller on FastMCP/Pydantic, Zod `.strict()`, or OpenAPI codegen | Audit input models — they MUST accept envelope fields (`idempotency_key`, `context_id`, `context`, `governance_context`, `push_notification_config`) on every tool. Use `extra='allow'` (Pydantic), drop `.strict()` (Zod), or fix codegen config (OpenAPI). |
 | A seller emitting `create_media_buy` synchronous-success responses with embedded `status` | Nothing changes. Existing byte-stable replay already conforms; the rule was silent on this case before, now it's explicit. |
 | A buyer agent reading `status` from a mutation response | Add a `replayed: true` guard: if set, call the resource's read endpoint (`get_media_buys`, `list_accounts`, etc.) before any state-dependent action. Without the guard, you'll hit `NOT_CANCELLABLE` and similar state-machine bugs against replayed responses. |
@@ -220,7 +236,7 @@ The cache holds read responses too from 3.1 onward — sellers MUST encrypt the 
 | A seller currently emitting unknown error codes (platform-specific or pre-3.1 additions) | Add `error.recovery` to every error envelope before bumping advertised `adcp_version` to 3.1. Receivers default to `transient` when absent, which is safe but suboptimal — populating the field correctly is the spec-compliant path. |
 | An adopter with strict-validator test fixtures or codegen against `core/protocol-envelope.json` | Refresh fixtures and decoders. The schema drops `required: [status, payload]` (#2911) — strict validators that asserted "envelope MUST reject responses missing `payload`" will start accepting envelopes they used to reject. SDK consumers using OpenAPI / quicktype / Pydantic codegen against the envelope will see `status` and `payload` flip from required to optional in generated types; audit downstream decoders that depended on those being present at the schema level. A2A consumers carry `status` via `task.status.state`; MCP/REST consumers reading the envelope as a pure JSON Schema decoder are the affected set. The new normative serialization rules in the envelope's `notes` describe what wire shape to expect per transport. |
 
-Additive over 3.0 — the entire bundle preserves wire compatibility for 3.0-conformant agents; the changes formalize behavior shipping SDKs already implement.
+The 3.1 posture is additive over 3.0 and formalizes behavior shipping SDKs already implement. AdCP 3.2 resolves the overloaded product-discovery surface additively.
 
 ### Optimization goals — `kind: "vendor_metric"` (#4668, closes #4644)
 

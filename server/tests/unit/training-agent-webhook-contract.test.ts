@@ -18,11 +18,17 @@ describe('training-agent completion webhook contract', () => {
     expect(Object.values(TOOL_TO_TASK_TYPE).every(taskType => schema.enum.includes(taskType))).toBe(true);
     expect(TOOL_TO_TASK_TYPE).toMatchObject({
       get_products: 'get_products',
+      request_proposals: 'request_proposals',
+      refine_proposals: 'refine_proposals',
+      decline_proposals: 'decline_proposals',
       build_creative: 'build_creative',
       update_rights: 'update_rights',
     });
     expect(TOOL_TO_PROTOCOL).toMatchObject({
       get_products: 'media-buy',
+      request_proposals: 'media-buy',
+      refine_proposals: 'media-buy',
+      decline_proposals: 'media-buy',
       build_creative: 'creative',
       update_rights: 'brand',
     });

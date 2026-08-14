@@ -15,7 +15,9 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash } from 'node:crypto';
 import type { SessionState, AccountRef, BrandRef, CreativeState, MediaBuyState, PackageState } from './types.js';
+import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
 import { cleanupExpiredTasks } from '@adcp/sdk';
 import {
   InMemoryStateStore,
@@ -66,6 +68,26 @@ export {
 // ── Store factory ────────────────────────────────────────────────
 
 let storeInstance: AdcpStateStore | null = null;
+const knownSessionKeys = new Set<string>();
+const MAX_KNOWN_IN_MEMORY_SESSION_KEYS = 10_000;
+const projectedFixtureMaps = new WeakMap<SessionState, {
+  seededProducts: SessionState['complyExtensions']['seededProducts'];
+  seededPricingOptions: SessionState['complyExtensions']['seededPricingOptions'];
+  seededMeasurementCatalogs: SessionState['complyExtensions']['seededMeasurementCatalogs'];
+}>();
+
+function trackInMemorySessionKey(key: string): void {
+  if (isDatabaseInitialized()) return;
+  // Refresh insertion order so the bounded index behaves as an LRU. The
+  // backing in-memory/custom store remains authoritative; this index only
+  // supports keyed cross-session scans where the SDK list API omits IDs.
+  knownSessionKeys.delete(key);
+  knownSessionKeys.add(key);
+  if (knownSessionKeys.size > MAX_KNOWN_IN_MEMORY_SESSION_KEYS) {
+    const oldest = knownSessionKeys.values().next().value as string | undefined;
+    if (oldest) knownSessionKeys.delete(oldest);
+  }
+}
 
 function getStore(): AdcpStateStore {
   if (storeInstance) return storeInstance;
@@ -81,6 +103,7 @@ export function setStateStore(store: AdcpStateStore | null): void {
     throw new Error('setStateStore is not allowed in production');
   }
   storeInstance = store;
+  knownSessionKeys.clear();
 }
 
 // ── Per-request cache via AsyncLocalStorage ──────────────────────
@@ -99,6 +122,16 @@ export function runWithSessionContext<T>(fn: () => Promise<T>): Promise<T> {
   return requestCtx.run(ctx, fn);
 }
 
+/** Force the next getSession() in this request to read durable state again.
+ * Lifecycle handlers call this after acquiring their shared mutex because
+ * account-scope derivation may have populated the request cache before a
+ * competing writer finished. */
+export function evictSessionFromRequestCache(key: string): void {
+  const ctx = requestCtx.getStore();
+  ctx?.sessions.delete(key);
+  ctx?.snapshots.delete(key);
+}
+
 /**
  * Persist sessions that were actually mutated during the current request.
  *
@@ -111,10 +144,11 @@ export function runWithSessionContext<T>(fn: () => Promise<T>): Promise<T> {
  * `StateError('INVALID_ID')` automatically. Failures bubble to the MCP
  * transport layer so operators notice in alert pipelines.
  *
- * Known limitation: concurrent requests against the same session key use
- * last-writer-wins semantics. Acceptable for the sandbox training agent where
- * storyboards are sequential. Production sellers should use per-entity
- * collections via @adcp/sdk's createAdcpServer instead.
+ * Concurrent requests merge disjoint top-level session fields. Requests that
+ * mutate the same top-level field still use last-writer-wins semantics, which
+ * is acceptable for the sandbox training agent where storyboards are
+ * sequential. Production sellers should use per-entity collections via
+ * @adcp/sdk's createAdcpServer instead.
  */
 export async function flushDirtySessions(): Promise<void> {
   const ctx = requestCtx.getStore();
@@ -127,8 +161,17 @@ export async function flushDirtySessions(): Promise<void> {
     const snapshotJson = ctx.snapshots.get(key);
     if (snapshotJson === currentJson) continue;
     try {
-      await store.put(SESSIONS_COLLECTION, key, current);
-      ctx.snapshots.set(key, currentJson);
+      // Merge top-level fields against the newest durable document. This
+      // prevents a get_products proposal write from erasing an unrelated
+      // media-buy/creative mutation (and vice versa) when both requests
+      // loaded the same older snapshot. Same-field conflicts remain
+      // last-writer-wins, which is sufficient for this sandbox store.
+      const snapshot = snapshotJson
+        ? JSON.parse(snapshotJson) as Record<string, unknown>
+        : {};
+      const merged = await persistMergedSession(store, key, snapshot, current);
+      ctx.snapshots.set(key, stableStringify(merged));
+      ctx.sessions.set(key, deserializeSession(merged));
     } catch (err) {
       // The response has already been sent, so we can't surface to the
       // caller. Collect for an aggregate throw so the MCP transport
@@ -142,6 +185,51 @@ export async function flushDirtySessions(): Promise<void> {
       `Failed to flush ${errors.length} session(s): ${errors.map(e => e.key).join(', ')}`,
     );
   }
+}
+
+async function persistMergedSession(
+  store: AdcpStateStore,
+  key: string,
+  snapshot: Record<string, unknown>,
+  current: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  if (!store.getWithVersion || !store.putIfMatch) {
+    const latest = await store.get<Record<string, unknown>>(SESSIONS_COLLECTION, key);
+    const merged = latest ? mergeTopLevelSessionChanges(snapshot, current, latest) : current;
+    await store.put(SESSIONS_COLLECTION, key, merged);
+    return merged;
+  }
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const latest = await store.getWithVersion<Record<string, unknown>>(SESSIONS_COLLECTION, key);
+    const merged = latest
+      ? mergeTopLevelSessionChanges(snapshot, current, latest.data)
+      : current;
+    const result = await store.putIfMatch(
+      SESSIONS_COLLECTION,
+      key,
+      merged,
+      latest?.version ?? null,
+    );
+    if (result.ok) return merged;
+  }
+  throw new Error(`Concurrent session update did not converge after 5 attempts: ${key}`);
+}
+
+function mergeTopLevelSessionChanges(
+  snapshot: Record<string, unknown>,
+  current: Record<string, unknown>,
+  latest: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = {};
+  const keys = new Set([...Object.keys(snapshot), ...Object.keys(current), ...Object.keys(latest)]);
+  for (const key of keys) {
+    const changedLocally = stableStringify({ value: current[key] })
+      !== stableStringify({ value: snapshot[key] });
+    const value = changedLocally ? current[key] : latest[key];
+    if (value !== undefined) merged[key] = value;
+  }
+  return merged;
 }
 
 /**
@@ -181,6 +269,7 @@ function createSession(): SessionState {
     contentStandards: new Map(),
     rightsGrants: new Map(),
     negotiatedPricingOptions: new Map(),
+    proposalLifecycleLinks: new Map(),
     creatives: new Map(),
     signalActivations: new Map(),
     buildVariantTargets: new Map(),
@@ -350,8 +439,15 @@ export function getComplianceMediaBuy(id: string): MediaBuyState | undefined {
  * envelopes for Map/Date). Returns a JSON-safe Record.
  */
 function serializeSession(session: SessionState): Record<string, unknown> {
+  const localFixtures = projectedFixtureMaps.get(session);
   const persisted = {
     ...session,
+    ...(localFixtures && {
+      complyExtensions: {
+        ...session.complyExtensions,
+        ...localFixtures,
+      },
+    }),
     // `products` is deterministic from the catalog — dropped from persistence
     // so callers re-derive on the next request. Only `proposals` (session-
     // specific drafts from refine workflows) ride along.
@@ -399,6 +495,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
     contentStandards: asMap(hydrated.contentStandards, fresh.contentStandards),
     rightsGrants: asMap(hydrated.rightsGrants, fresh.rightsGrants),
     negotiatedPricingOptions: asMap(hydrated.negotiatedPricingOptions, fresh.negotiatedPricingOptions),
+    proposalLifecycleLinks: asMap(hydrated.proposalLifecycleLinks, fresh.proposalLifecycleLinks),
     buildVariantTargets: asMap(hydrated.buildVariantTargets, fresh.buildVariantTargets),
     usageRecords: Array.isArray(hydrated.usageRecords) ? hydrated.usageRecords : [],
     complyExtensions: {
@@ -433,7 +530,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
  * Between requests, a fresh read from the store happens, so different Fly
  * machines see each other's writes.
  */
-export async function getSession(key: string): Promise<SessionState> {
+export async function getSession(key: string, controllerFixtureSessionKey?: string): Promise<SessionState> {
   const ctx = requestCtx.getStore();
   if (ctx) {
     const cached = ctx.sessions.get(key);
@@ -441,8 +538,24 @@ export async function getSession(key: string): Promise<SessionState> {
   }
 
   let storedShape: Record<string, unknown> | null;
+  let sharedFixtureShape: Record<string, unknown> | null = null;
   try {
-    storedShape = await getStore().get<Record<string, unknown>>(SESSIONS_COLLECTION, key);
+    const store = getStore();
+    storedShape = await store.get<Record<string, unknown>>(SESSIONS_COLLECTION, key);
+
+    // Callers may opt into one exact, principal-bound controller fixture
+    // session after validating the target is an authorized sandbox account.
+    // Only the explicitly tagged fixture maps are projected; no account state,
+    // proposals, media buys, or force directives cross the boundary.
+    if (controllerFixtureSessionKey && controllerFixtureSessionKey !== key) {
+      const cached = ctx?.sessions.get(controllerFixtureSessionKey);
+      sharedFixtureShape = cached
+        ? serializeSession(cached)
+        : await store.get<Record<string, unknown>>(
+          SESSIONS_COLLECTION,
+          controllerFixtureSessionKey,
+        );
+    }
   } catch (err) {
     // Never turn an unavailable durable store into an apparent cache miss.
     // Creating and later flushing a fresh session here could overwrite the
@@ -453,7 +566,26 @@ export async function getSession(key: string): Promise<SessionState> {
 
   // Only an authoritative missing-row result creates a fresh session.
   const session = storedShape ? deserializeSession(storedShape) : createSession();
+  if (sharedFixtureShape) {
+    const shared = deserializeSession(sharedFixtureShape).complyExtensions;
+    const local = session.complyExtensions;
+    projectedFixtureMaps.set(session, {
+      seededProducts: local.seededProducts,
+      seededPricingOptions: local.seededPricingOptions,
+      seededMeasurementCatalogs: local.seededMeasurementCatalogs,
+    });
+    local.seededProducts = new Map([...shared.seededProducts, ...local.seededProducts]);
+    local.seededPricingOptions = new Map([
+      ...shared.seededPricingOptions,
+      ...local.seededPricingOptions,
+    ]);
+    local.seededMeasurementCatalogs = new Map([
+      ...shared.seededMeasurementCatalogs,
+      ...local.seededMeasurementCatalogs,
+    ]);
+  }
   session.lastAccessedAt = new Date();
+  trackInMemorySessionKey(key);
 
   if (ctx) {
     ctx.sessions.set(key, session);
@@ -475,6 +607,31 @@ function safeKey(value: string | undefined, max: number, pattern: RegExp): strin
   if (!value || value.length === 0 || value.length > max) return null;
   if (!pattern.test(value)) return null;
   return value;
+}
+
+function principalDigest(principal: string): string {
+  return createHash('sha256').update(principal).digest('hex');
+}
+
+/** Public/demo static keys all address the same non-production sandbox. */
+export function controllerFixturePrincipal(principal: string | undefined): string | undefined {
+  return principal?.startsWith('static:') ? 'static:sandbox-fixtures' : principal;
+}
+
+function principalScopedOpenKey(principal: string, scope: string): string {
+  const prefix = `open:p:${principalDigest(principal)}:`;
+  const candidate = `${prefix}${scope}`;
+  // The SDK state store caps IDs at 256 characters. Preserve readable scopes
+  // when possible and hash only the canonical scope when a maximal pair of
+  // domains (or an opaque seller account id) would exceed that limit.
+  if (candidate.length <= 256 && /^[A-Za-z0-9_.\-:]+$/.test(candidate)) return candidate;
+  return `${prefix}h:${createHash('sha256').update(scope).digest('hex')}`;
+}
+
+function canonicalOpenKey(scope: string, preferred?: string): string {
+  const candidate = preferred ?? `open:${scope}`;
+  if (candidate.length <= 256 && /^[A-Za-z0-9_.\-:]+$/.test(candidate)) return candidate;
+  return `open:h:${createHash('sha256').update(scope).digest('hex')}`;
 }
 
 /** Derive a session key from the request context.
@@ -508,6 +665,7 @@ export function sessionKeyFromArgs(
   mode: 'open' | 'training',
   userId?: string,
   moduleId?: string,
+  principal?: string,
 ): string {
   if (mode === 'training' && userId) {
     const safeUser = safeKey(userId, 128, SAFE_ACCOUNT_ID_RE) ?? 'default';
@@ -515,6 +673,49 @@ export function sessionKeyFromArgs(
     return `training:${safeUser}:${safeModule}`;
   }
   const account = args.account;
+  if (account !== undefined) {
+    try {
+      const canonical = canonicalizeAccountRef(account);
+      const scope = accountScopeFromRef(account);
+      if (principal) return principalScopedOpenKey(principal, scope);
+      if (canonical.kind === 'account_id') {
+        return canonicalOpenKey(scope);
+      }
+      if (
+        canonical.brand.brand_id === undefined
+        && canonical.operator === canonical.brand.domain
+        && canonical.sandbox === false
+      ) {
+        return canonicalOpenKey(scope, `open:${canonical.brand.domain}`);
+      }
+      return canonicalOpenKey(scope);
+    } catch (error) {
+      if (principal) throw error;
+      // Legacy training fixtures predate AccountRef and may carry only a
+      // brand, or combine account_id with the storyboard brand invariant.
+      // Production dispatch validates get_products before reaching here.
+    }
+  }
+  // Dispatcher paths that opt into authenticated scoping also partition
+  // brand/plans fallbacks. Callers without a principal retain legacy keys.
+  if (principal) {
+    const fallbackDomain = args.brand?.domain
+      ?? (Array.isArray(args.plans) && args.plans.length > 0
+        ? (args.plans[0] as { brand?: BrandRef } | undefined)?.brand?.domain
+        : undefined)
+      ?? (Array.isArray(args.accounts) && args.accounts.length > 0
+        ? ((args.accounts[0] as { brand?: BrandRef; account?: AccountRef } | undefined)?.brand?.domain
+          ?? (args.accounts[0] as { account?: AccountRef } | undefined)?.account?.brand?.domain)
+        : undefined);
+    const safeFallback = safeKey(fallbackDomain, MAX_DOMAIN_LEN, SAFE_DOMAIN_RE);
+    if (safeFallback) {
+      return principalScopedOpenKey(principal, `b:${safeFallback.toLowerCase()}`);
+    }
+    if (fallbackDomain) {
+      logger.debug({ domain: fallbackDomain }, 'Rejected fallback brand.domain as session key; falling back');
+    }
+    return principalScopedOpenKey(principal, 'default');
+  }
   const domain = account?.brand?.domain ?? args.brand?.domain;
   const safeDomain = safeKey(domain, MAX_DOMAIN_LEN, SAFE_DOMAIN_RE);
   if (safeDomain) {
@@ -547,6 +748,16 @@ export function sessionKeyFromArgs(
     }
   }
   return 'open:default';
+}
+
+/** Canonical account partition for get_products proposal and replay state. */
+export function getProductsSessionKeyFromArgs(
+  args: { account?: AccountRef; brand?: BrandRef },
+  mode: 'open' | 'training',
+  userId?: string,
+  moduleId?: string,
+): string {
+  return sessionKeyFromArgs(args, mode, userId, moduleId);
 }
 
 // ── TTL cleanup ──────────────────────────────────────────────────
@@ -613,16 +824,40 @@ export async function findSessionMatching(predicate: (s: SessionState) => boolea
       if (predicate(session)) return session;
     }
   }
-  const store = storeInstance;
-  if (!store) return null;
   try {
-    const page = await store.list<Record<string, unknown>>(SESSIONS_COLLECTION, { limit: 100 });
-    for (const row of page.items ?? []) {
-      const session = deserializeSession(row);
+    if (isDatabaseInitialized()) {
+      // The generic SDK list API intentionally omits document IDs. Query the
+      // training store directly so legacy/pre-deploy rows remain attachable
+      // to RequestSessionCtx and mutations are durably flushed. Keyset paging
+      // avoids the old first-100-sessions blind spot.
+      let afterId = '';
+      for (;;) {
+        const { rows } = await getPool().query<{ id: string; data: Record<string, unknown> }>(
+          `SELECT id, data
+             FROM adcp_state
+            WHERE collection = $1 AND id > $2
+            ORDER BY id
+            LIMIT 100`,
+          [SESSIONS_COLLECTION, afterId],
+        );
+        for (const row of rows) {
+          if (predicate(deserializeSession(row.data))) return getSession(row.id);
+        }
+        if (rows.length < 100) break;
+        afterId = rows[rows.length - 1].id;
+      }
+      return null;
+    }
+
+    // In-memory/custom stores are process-local in the training agent. Track
+    // every key opened through getSession so lookups keep the real key and are
+    // never performed on a detached deserialized copy.
+    for (const key of [...knownSessionKeys]) {
+      const session = await getSession(key);
       if (predicate(session)) return session;
     }
   } catch (err) {
-    logger.warn({ err }, 'findSessionMatching: store list failed');
+    logger.warn({ err }, 'findSessionMatching: keyed session scan failed');
   }
   return null;
 }
@@ -643,6 +878,7 @@ export async function clearSessions(): Promise<void> {
     ctx.sessions.clear();
     ctx.snapshots.clear();
   }
+  knownSessionKeys.clear();
   const store = storeInstance;
   if (!store) return;
   if (store instanceof InMemoryStateStore) {

@@ -11,12 +11,14 @@ import {
   stopSessionCleanup,
   runWithSessionContext,
   flushDirtySessions,
+  findMediaBuyAcrossSessions,
   MAX_MEDIA_BUYS_PER_SESSION,
   MAX_CREATIVES_PER_SESSION,
   SESSION_RETENTION_MS,
   SESSION_STORE_UNAVAILABLE_MESSAGE,
   sessionRetentionCutoff,
   setStateStore,
+  controllerFixturePrincipal,
 } from '../../src/training-agent/state.js';
 import {
   createTrainingAgentServer,
@@ -47,6 +49,7 @@ import { TrainingSalesPlatform } from '../../src/training-agent/v6-sales-platfor
 import { TrainingCreativePlatform } from '../../src/training-agent/v6-creative-platform.js';
 import { TrainingCreativeBuilderPlatform } from '../../src/training-agent/v6-creative-builder-platform.js';
 import { clearAudienceStore } from '../../src/training-agent/audience-handlers.js';
+import { validateProductDiscoverySourceResponse } from '../../src/training-agent/source-schema.js';
 import {
   projectCreativeForDelivery,
   projectMediaBuyCreativesForDelivery,
@@ -882,6 +885,13 @@ describe('session state', () => {
   });
 
   describe('getSession', () => {
+    it('shares fixture identity only across explicit static sandbox principals', () => {
+      expect(controllerFixturePrincipal('static:public')).toBe('static:sandbox-fixtures');
+      expect(controllerFixturePrincipal('static:demo:one')).toBe('static:sandbox-fixtures');
+      expect(controllerFixturePrincipal('workos:org-one')).toBe('workos:org-one');
+      expect(controllerFixturePrincipal('workos:org-two')).toBe('workos:org-two');
+    });
+
     it('retains resources beyond the complete idempotency replay window', () => {
       const replayTtlMs = REPLAY_TTL_SECONDS * 1000;
       const cleanupAndSkewMarginMs = 60 * 60 * 1000;
@@ -929,6 +939,39 @@ describe('session state', () => {
       });
     });
 
+    it('preserves disjoint mutations from overlapping requests', async () => {
+      const { InMemoryStateStore } = await import('@adcp/sdk/server');
+      const store = new InMemoryStateStore();
+      setStateStore(store);
+      const key = 'overlapping-disjoint-writes';
+      try {
+        let loaded = 0;
+        let releaseBoth!: () => void;
+        const bothLoaded = new Promise<void>(resolve => { releaseBoth = resolve; });
+        const mutate = (field: 'mediaBuys' | 'creatives') => runWithSessionContext(async () => {
+          const session = await getSession(key);
+          if (field === 'mediaBuys') {
+            session.mediaBuys.set('mb1', { mediaBuyId: 'mb1', status: 'active' } as any);
+          } else {
+            session.creatives.set('creative1', { creativeId: 'creative1', status: 'approved' } as any);
+          }
+          loaded++;
+          if (loaded === 2) releaseBoth();
+          await bothLoaded;
+          await flushDirtySessions();
+        });
+        await Promise.all([mutate('mediaBuys'), mutate('creatives')]);
+
+        await runWithSessionContext(async () => {
+          const persisted = await getSession(key);
+          expect(persisted.mediaBuys.has('mb1')).toBe(true);
+          expect(persisted.creatives.has('creative1')).toBe(true);
+        });
+      } finally {
+        setStateStore(null);
+      }
+    });
+
     it('returns different sessions for different keys', async () => {
       await runWithSessionContext(async () => {
         const s1 = await getSession('key-a');
@@ -936,6 +979,112 @@ describe('session state', () => {
         s1.mediaBuys.set('mb1', {} as any);
         expect(s2.mediaBuys.has('mb1')).toBe(false);
       });
+    });
+
+    it('shares only controller fixture maps with account-scoped sandbox sessions', async () => {
+      const { InMemoryStateStore } = await import('@adcp/sdk/server');
+      const store = new InMemoryStateStore();
+      setStateStore(store);
+      try {
+        const fixtureKey = sessionKeyFromArgs({
+          account: {
+            brand: { domain: 'brand.example' },
+            operator: 'brand.example',
+            sandbox: true,
+          },
+        }, 'open', undefined, undefined, 'principal-one');
+        await runWithSessionContext(async () => {
+          const controller = await getSession(fixtureKey);
+          controller.complyExtensions.seededProducts.set('seeded-product', {
+            product_id: 'seeded-product',
+          });
+          controller.complyExtensions.seededPricingOptions.set('seeded-product:cpm', {
+            product_id: 'seeded-product',
+            pricing_option_id: 'cpm',
+          });
+          controller.mediaBuys.set('private-buy', { mediaBuyId: 'private-buy' } as any);
+          controller.complyExtensions.forcedUpstreamUnavailable = {
+            tool: 'get_products',
+            createdAt: new Date().toISOString(),
+          };
+          await flushDirtySessions();
+        });
+
+        await runWithSessionContext(async () => {
+          const account = await getSession('open:a:account-one', fixtureKey);
+          expect(account.complyExtensions.seededProducts.has('seeded-product')).toBe(true);
+          expect(account.complyExtensions.seededPricingOptions.has('seeded-product:cpm')).toBe(true);
+          expect(account.mediaBuys.has('private-buy')).toBe(false);
+          expect(account.complyExtensions.forcedUpstreamUnavailable).toBeUndefined();
+          await flushDirtySessions();
+        });
+
+        // Inherited fixtures are a read-through view and do not create an
+        // account row until that account makes a real mutation.
+        expect(await store.get('training_sessions', 'open:a:account-one')).toBeNull();
+
+        await runWithSessionContext(async () => {
+          const account = await getSession('open:a:account-one', fixtureKey);
+          account.mediaBuys.set('account-buy', { mediaBuyId: 'account-buy' } as any);
+          await flushDirtySessions();
+        });
+        await runWithSessionContext(async () => {
+          const reloaded = await getSession('open:a:account-one');
+          expect(reloaded.mediaBuys.has('account-buy')).toBe(true);
+          expect(reloaded.complyExtensions.seededProducts.size).toBe(0);
+          expect(reloaded.complyExtensions.seededPricingOptions.size).toBe(0);
+        });
+      } finally {
+        setStateStore(null);
+      }
+    });
+
+    it('persists mutations made through a cross-session media-buy lookup', async () => {
+      const { InMemoryStateStore } = await import('@adcp/sdk/server');
+      const store = new InMemoryStateStore();
+      setStateStore(store);
+      try {
+        await runWithSessionContext(async () => {
+          const owner = await getSession('open:a:media-buy-owner');
+          owner.mediaBuys.set('indexed-buy', {
+            mediaBuyId: 'indexed-buy',
+            status: 'active',
+          } as any);
+          await flushDirtySessions();
+        });
+
+        await runWithSessionContext(async () => {
+          const found = await findMediaBuyAcrossSessions('indexed-buy');
+          expect(found).not.toBeNull();
+          found!.mediaBuys.get('indexed-buy')!.status = 'paused';
+          await flushDirtySessions();
+        });
+
+        await runWithSessionContext(async () => {
+          const owner = await getSession('open:a:media-buy-owner');
+          expect(owner.mediaBuys.get('indexed-buy')?.status).toBe('paused');
+        });
+      } finally {
+        setStateStore(null);
+      }
+    });
+
+    it('terminates an in-memory cross-session lookup miss', async () => {
+      const { InMemoryStateStore } = await import('@adcp/sdk/server');
+      const store = new InMemoryStateStore();
+      setStateStore(store);
+      try {
+        await runWithSessionContext(async () => {
+          const session = await getSession('open:a:known-session');
+          session.mediaBuys.set('known-buy', { mediaBuyId: 'known-buy' } as any);
+          await flushDirtySessions();
+        });
+        await runWithSessionContext(async () => {
+          await expect(findMediaBuyAcrossSessions('missing-buy')).resolves.toBeNull();
+        });
+      } finally {
+        setStateStore(null);
+      }
     });
 
     it('updates lastAccessedAt on every access', async () => {
@@ -1130,7 +1279,7 @@ describe('session state', () => {
         { account: { account_id: 'acc_acme_001' } },
         'open',
       );
-      expect(key).toBe('open:acc_acme_001');
+      expect(key).toBe('open:a:acc_acme_001');
     });
 
     it('uses top-level brand domain when account is absent', () => {
@@ -1231,6 +1380,10 @@ describe('createTrainingAgentServer', () => {
     const toolNames = tools.map(t => t.name);
 
     expect(toolNames).toContain('get_products');
+    expect(toolNames).toContain('list_products');
+    expect(toolNames).toContain('request_proposals');
+    expect(toolNames).toContain('refine_proposals');
+    expect(toolNames).toContain('decline_proposals');
     expect(toolNames).toContain('list_creative_formats');
     expect(toolNames).toContain('create_media_buy');
     expect(toolNames).toContain('get_media_buys');
@@ -1281,7 +1434,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('update_collection_list');
     expect(toolNames).toContain('list_collection_lists');
     expect(toolNames).toContain('delete_collection_list');
-    expect(toolNames).toHaveLength(51);
+    expect(toolNames).toHaveLength(55);
 
     const validateInput = tools.find(t => t.name === 'validate_input');
     expect(validateInput?.inputSchema?.properties?.targets?.maxItems).toBe(50);
@@ -2602,6 +2755,169 @@ describe('validate_input handler', () => {
       expect.objectContaining({
         rule: 'required_slot',
         field: 'assets.creative_brief',
+      }),
+    ]);
+  });
+
+  it('projects static storyboard fixtures across buyer operators', async () => {
+    const server = createTrainingAgentServer({ mode: 'open', principal: 'static:demo:storyboard' });
+    const brand = { domain: 'static-fixture-projection.example' };
+    const controllerAccount = { brand, operator: brand.domain };
+    const buyerAccount = { brand, operator: 'pinnacle-agency.example' };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account: controllerAccount,
+      brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'static_fixture_projection_product',
+        fixture: {
+          channels: ['olv'],
+          delivery_type: 'guaranteed',
+          format_options: [{
+            format_kind: 'video_hosted',
+            format_option_id: 'static_fixture_projection_brief',
+            params: {
+              synthesis_nondeterministic: true,
+              slots: [{ asset_group_id: 'creative_brief', asset_type: 'brief', required: true }],
+            },
+          }],
+        },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account: buyerAccount,
+      manifest: {
+        format_kind: 'video_hosted',
+        format_option_ref: { scope: 'product', format_option_id: 'static_fixture_projection_brief' },
+        assets: {},
+      },
+      targets: [{ kind: 'product', id: 'static_fixture_projection_product' }],
+    });
+
+    expect(result.results).toEqual([
+      expect.objectContaining({
+        result_kind: 'validated_fail',
+        violations: [expect.objectContaining({ rule: 'required_slot', field: 'assets.creative_brief' })],
+      }),
+    ]);
+  });
+
+  it('keeps projected fixtures isolated between real same-brand operators', async () => {
+    const server = createTrainingAgentServer({ mode: 'open', principal: 'workos:fixture-operator-isolation' });
+    const brand = { domain: 'fixture-operator-isolation.example' };
+    const ownerAccount = { brand, operator: 'owner-agency.example', sandbox: true };
+    const otherAccount = { brand, operator: 'other-agency.example', sandbox: true };
+    const productId = 'operator_isolated_fixture_product';
+    const formatOptionId = 'operator_isolated_fixture_brief';
+    await simulateCallTool(server, 'comply_test_controller', {
+      account: ownerAccount,
+      brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          channels: ['olv'],
+          delivery_type: 'guaranteed',
+          format_options: [{
+            format_kind: 'video_hosted',
+            format_option_id: formatOptionId,
+            params: {
+              slots: [{ asset_group_id: 'creative_brief', asset_type: 'brief', required: true }],
+            },
+          }],
+        },
+      },
+    });
+
+    const validateFor = (account: typeof ownerAccount) => simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        format_kind: 'video_hosted',
+        format_option_ref: { scope: 'product', format_option_id: formatOptionId },
+        assets: {},
+      },
+      targets: [{ kind: 'product', id: productId }],
+    });
+    const ownerResult = (await validateFor(ownerAccount)).result;
+    const otherResult = (await validateFor(otherAccount)).result;
+
+    expect(ownerResult.results).toEqual([
+      expect.objectContaining({
+        violations: [expect.objectContaining({ rule: 'required_slot' })],
+      }),
+    ]);
+    expect(otherResult.results).toEqual([
+      expect.objectContaining({
+        violations: [expect.objectContaining({ rule: 'product_target_found' })],
+      }),
+    ]);
+  });
+
+  it('keeps projected fixtures isolated between opaque accounts', async () => {
+    const server = createTrainingAgentServer({ mode: 'open', principal: 'workos:fixture-account-isolation' });
+    const ownerAccountId = 'acct_fixture_owner';
+    const otherAccountId = 'acct_fixture_other';
+    for (const [accountId, operator] of [
+      [ownerAccountId, 'owner-agency.example'],
+      [otherAccountId, 'other-agency.example'],
+    ]) {
+      await simulateCallTool(server, 'comply_test_controller', {
+        account: { account_id: accountId },
+        scenario: 'seed_account',
+        params: {
+          account_id: accountId,
+          fixture: {
+            brand: { domain: 'opaque-fixture-isolation.example' },
+            operator,
+            billing: 'operator',
+            sandbox: true,
+            status: 'active',
+          },
+        },
+      });
+    }
+    const productId = 'opaque_isolated_fixture_product';
+    const formatOptionId = 'opaque_isolated_fixture_brief';
+    await simulateCallTool(server, 'comply_test_controller', {
+      account: { account_id: ownerAccountId },
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          channels: ['olv'],
+          delivery_type: 'guaranteed',
+          format_options: [{
+            format_kind: 'video_hosted',
+            format_option_id: formatOptionId,
+            params: {
+              slots: [{ asset_group_id: 'creative_brief', asset_type: 'brief', required: true }],
+            },
+          }],
+        },
+      },
+    });
+
+    const validateFor = (accountId: string) => simulateCallTool(server, 'validate_input', {
+      account: { account_id: accountId },
+      manifest: {
+        format_kind: 'video_hosted',
+        format_option_ref: { scope: 'product', format_option_id: formatOptionId },
+        assets: {},
+      },
+      targets: [{ kind: 'product', id: productId }],
+    });
+    const ownerResult = (await validateFor(ownerAccountId)).result;
+    const otherResult = (await validateFor(otherAccountId)).result;
+
+    expect(ownerResult.results).toEqual([
+      expect.objectContaining({
+        violations: [expect.objectContaining({ rule: 'required_slot' })],
+      }),
+    ]);
+    expect(otherResult.results).toEqual([
+      expect.objectContaining({
+        violations: [expect.objectContaining({ rule: 'product_target_found' })],
       }),
     ]);
   });
@@ -7194,17 +7510,21 @@ describe('report_usage handler', () => {
   const account = { brand: { domain: 'usage.example' }, operator: 'usage.example' };
   const period = { start: '2026-03-01T00:00:00Z', end: '2026-03-31T23:59:59Z' };
 
-  async function setupCreativeWithPricing(server: ReturnType<typeof createTrainingAgentServer>) {
+  async function setupCreativeWithPricing(
+    server: ReturnType<typeof createTrainingAgentServer>,
+    usageAccount = account,
+    creativeId = 'cr_usage',
+  ) {
     await simulateCallTool(server, 'sync_creatives', {
-      account,
+      account: usageAccount,
       creatives: [
-        { creative_id: 'cr_usage', format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' }, name: 'Usage Test' },
+        { creative_id: creativeId, format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' }, name: 'Usage Test' },
       ],
     });
     // Build to set pricingOptionId on the creative
     await simulateCallTool(server, 'build_creative', {
-      account,
-      creative_id: 'cr_usage',
+      account: usageAccount,
+      creative_id: creativeId,
     });
   }
 
@@ -7284,6 +7604,38 @@ describe('report_usage handler', () => {
     });
 
     expect(result.accepted).toBe(1);
+    expect(result.rejected).toBeUndefined();
+  });
+
+  it('resolves each record against its own account in a multi-account batch', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const otherAccount = { brand: { domain: 'usage-other.example' }, operator: 'usage-other.example' };
+    await setupCreativeWithPricing(server, account, 'cr_usage_a');
+    await setupCreativeWithPricing(server, otherAccount, 'cr_usage_b');
+
+    const { result } = await simulateCallTool(server, 'report_usage', {
+      reporting_period: period,
+      usage: [
+        {
+          account,
+          creative_id: 'cr_usage_a',
+          pricing_option_id: 'po_display_300x250_cpm',
+          impressions: 1000,
+          vendor_cost: 1,
+          currency: 'USD',
+        },
+        {
+          account: otherAccount,
+          creative_id: 'cr_usage_b',
+          pricing_option_id: 'po_display_300x250_cpm',
+          impressions: 1000,
+          vendor_cost: 1,
+          currency: 'USD',
+        },
+      ],
+    });
+
+    expect(result.accepted).toBe(2);
     expect(result.rejected).toBeUndefined();
   });
 
@@ -12260,6 +12612,7 @@ describe('MCP Tasks protocol', () => {
     const response = await simulateCallToolAsTask(server, 'get_products', {
       adcp_version: '3.1',
       adcp_major_version: 3,
+      idempotency_key: 'task-products-receipt-0001',
       buying_mode: 'wholesale',
     });
 
@@ -12271,18 +12624,21 @@ describe('MCP Tasks protocol', () => {
     expect(task.status).toBe('completed');
     expect(task.createdAt).toBeDefined();
     expect(task.lastUpdatedAt).toBeDefined();
-    // Defaults to 15 minutes when no TTL requested (clamped by server)
-    expect(task.ttl).toBe(900_000);
+    // Successful idempotency-protected tasks are crash-recovery receipts.
+    // MCP permits the server to override the requested TTL, so their reported
+    // lifetime covers the full replay window plus clock-skew allowance.
+    expect(task.ttl).toBe((REPLAY_TTL_SECONDS + 60) * 1000);
   });
 
-  it('respects requested TTL', async () => {
+  it('overrides requested TTL for successful idempotency recovery receipts', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const response = await simulateCallToolAsTask(server, 'get_products', {
+      idempotency_key: 'task-products-receipt-0002',
       buying_mode: 'wholesale',
     }, { ttl: 120000 });
 
     const task = response.task as Record<string, unknown>;
-    expect(task.ttl).toBe(120000);
+    expect(task.ttl).toBe((REPLAY_TTL_SECONDS + 60) * 1000);
   });
 
   it('retrieves task status via tasks/get', async () => {
@@ -12441,21 +12797,28 @@ describe('MCP Tasks protocol', () => {
     ).rejects.toThrow(/terminal status/);
   });
 
-  it('expires tasks after TTL', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    const response = await simulateCallToolAsTask(server, 'get_products', {
-      buying_mode: 'wholesale',
-    }, { ttl: 1 }); // 1ms TTL
+  it('retains successful idempotency receipts beyond the requested TTL', async () => {
+    vi.useFakeTimers();
+    try {
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const response = await simulateCallToolAsTask(server, 'get_products', {
+        idempotency_key: 'task-products-receipt-0003',
+        buying_mode: 'wholesale',
+      }, { ttl: 1 }); // caller suggests a 1ms TTL
 
-    const taskId = (response.task as Record<string, unknown>).taskId as string;
+      const task = response.task as Record<string, unknown>;
+      const taskId = task.taskId as string;
+      expect(task.ttl).toBe((REPLAY_TTL_SECONDS + 60) * 1000);
 
-    // Wait just enough for TTL to expire
-    await new Promise(r => setTimeout(r, 10));
-
-    // tasks/get triggers cleanup — expired task should be gone
-    await expect(
-      simulateGetTask(server, taskId),
-    ).rejects.toThrow('Task not found');
+      // Advance well past the caller's suggestion but remain inside the
+      // idempotency replay window. The recovery receipt must still be visible.
+      await vi.advanceTimersByTimeAsync(10);
+      const retained = await simulateGetTask(server, taskId);
+      expect(retained.taskId).toBe(taskId);
+      expect(retained.status).toBe('completed');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('non-task-augmented calls still return direct results', async () => {
@@ -12483,6 +12846,685 @@ describe('proposal lifecycle', () => {
   });
 
   const account = { brand: { domain: 'proposal-test.example' }, operator: 'proposal-test.example' };
+
+  async function finalizeCompactProposal(
+    server: ReturnType<typeof createTrainingAgentServer>,
+    draft: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const { result, isError } = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{ proposal_id: draft.proposal_id, action: 'finalize' }],
+    });
+    expect(isError, JSON.stringify(result)).toBeFalsy();
+    const finalized = (result.results as Array<Record<string, unknown>>)[0];
+    expect(finalized).toMatchObject({
+      source_proposal_id: draft.proposal_id,
+      outcome: 'finalized',
+      proposal: { proposal_status: 'committed', expires_at: expect.any(String) },
+    });
+    expect(
+      validateProductDiscoverySourceResponse('refine-proposals-response', result),
+      JSON.stringify(result),
+    ).toBeUndefined();
+    return finalized.proposal as Record<string, unknown>;
+  }
+
+  it('serializes concurrent proposal requests without losing returned snapshots', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const requests = await Promise.all([
+      simulateCallTool(server, 'request_proposals', {
+        idempotency_key: `test-${randomUUID()}`,
+        brand: account.brand,
+        brief: 'social engagement display',
+      }),
+      simulateCallTool(server, 'request_proposals', {
+        idempotency_key: `test-${randomUUID()}`,
+        brand: account.brand,
+        brief: 'social engagement display',
+      }),
+    ]);
+    expect(requests.every(request => !request.isError)).toBe(true);
+    const returnedIds = requests.flatMap(request => (
+      request.result.proposals as Array<Record<string, unknown>>
+    ).map(proposal => proposal.proposal_id as string));
+
+    await runWithSessionContext(async () => {
+      const session = await getSession(
+        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+      );
+      const storedIds = new Set(
+        (session.lastGetProductsContext?.proposals ?? []).map(proposal => proposal.proposal_id),
+      );
+      expect(returnedIds.every(proposalId => storedIds.has(proposalId))).toBe(true);
+    });
+  });
+
+  it('finalizes drafts into new held snapshots atomically without mutating their sources', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const requested = await Promise.all([
+      simulateCallTool(server, 'request_proposals', {
+        idempotency_key: 'compact-finalize-source-0001',
+        brand: account.brand,
+        brief: 'social engagement display',
+      }),
+      simulateCallTool(server, 'request_proposals', {
+        idempotency_key: 'compact-finalize-source-0002',
+        brand: account.brand,
+        brief: 'social engagement display',
+      }),
+    ]);
+    const drafts = requested.map(response => (
+      response.result.proposals as Array<Record<string, unknown>>
+    )[0]);
+    expect(drafts).toHaveLength(2);
+    expect(drafts.every(draft => draft.proposal_status === 'draft')).toBe(true);
+
+    const rejectedBatch = await simulateCallTool(server, 'refine_proposals', {
+      idempotency_key: 'compact-finalize-atomic-failure-0001',
+      refinements: [
+        { proposal_id: drafts[0]!.proposal_id, action: 'finalize' },
+        { proposal_id: 'proposal-not-visible-to-caller', action: 'finalize' },
+      ],
+    });
+    expect(rejectedBatch.isError).toBe(true);
+    expect(rejectedBatch.result).toMatchObject({ code: 'PROPOSAL_NOT_FOUND' });
+
+    const storedDraftsBeforeFinalize = await runWithSessionContext(async () => {
+      const session = await getSession(
+        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+      );
+      return structuredClone(session.lastGetProductsContext?.proposals?.filter(
+        proposal => drafts.some(draft => draft.proposal_id === proposal.proposal_id),
+      ) ?? []);
+    });
+
+    const finalizedBatch = await simulateCallTool(server, 'refine_proposals', {
+      idempotency_key: 'compact-finalize-atomic-success-0001',
+      refinements: drafts.map(draft => ({ proposal_id: draft.proposal_id, action: 'finalize' })),
+    });
+    expect(finalizedBatch.isError, JSON.stringify(finalizedBatch.result)).toBeFalsy();
+    const results = finalizedBatch.result.results as Array<Record<string, unknown>>;
+    expect(results).toHaveLength(2);
+    expect(results).toEqual(expect.arrayContaining(drafts.map(draft => expect.objectContaining({
+      source_proposal_id: draft.proposal_id,
+      outcome: 'finalized',
+      proposal: expect.objectContaining({ proposal_status: 'committed', expires_at: expect.any(String) }),
+    }))));
+
+    await runWithSessionContext(async () => {
+      const session = await getSession(
+        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+      );
+      for (const [index, draft] of drafts.entries()) {
+        const storedSource = session.lastGetProductsContext?.proposals?.find(
+          proposal => proposal.proposal_id === draft.proposal_id,
+        );
+        expect(storedSource).toMatchObject({ proposal_status: 'draft' });
+        expect(storedSource).toEqual(storedDraftsBeforeFinalize[index]);
+      }
+    });
+  });
+
+  it('connects the compact request, refine, and purchase lifecycle', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const lifecycleOpportunity = {
+      opportunity_id: 'opp-compact-purchase-2027',
+      status: 'open',
+    };
+    const { result: requested, isError: requestError } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+      opportunity: lifecycleOpportunity,
+    });
+    expect(requestError).toBeFalsy();
+    expect(requested.outcome).toBe('proposed');
+    expect(requested).not.toHaveProperty('pagination');
+    expect(requested).not.toHaveProperty('refinement_applied');
+    const source = (requested.proposals as Array<Record<string, unknown>>)[0];
+    expect(source).toMatchObject({
+      proposal_kind: 'new_media_buy',
+      proposal_status: 'draft',
+      commercial_terms: expect.any(Object),
+      terms_digest: expect.stringMatching(/^sha256:[A-Za-z0-9_-]{43}$/),
+    });
+    expect(source).not.toHaveProperty('allocations');
+    expect(
+      validateProductDiscoverySourceResponse('request-proposals-response', requested),
+      JSON.stringify(requested),
+    ).toBeUndefined();
+
+    const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: source.proposal_id,
+        action: 'revise',
+        change_kind: 'amendment',
+        instructions: 'Prefer the social inventory while preserving the total budget.',
+      }, {
+        proposal_id: 'proposal-not-visible-to-caller',
+        action: 'revise',
+        instructions: 'Use a proposal that is not available in this principal scope.',
+      }],
+    });
+    expect(refineError).toBeFalsy();
+    const refinement = (refined.results as Array<Record<string, unknown>>)[0];
+    expect(refinement).toMatchObject({
+      source_proposal_id: source.proposal_id,
+      outcome: 'partial',
+      proposal: { proposal_status: 'draft' },
+    });
+    const revision = refinement.proposal as Record<string, unknown>;
+    expect(revision.proposal_id).not.toBe(source.proposal_id);
+    expect((refined.results as Array<Record<string, unknown>>)[1]).toMatchObject({
+      source_proposal_id: 'proposal-not-visible-to-caller',
+      outcome: 'unable',
+    });
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', refined)).toBeUndefined();
+
+    const committed = await finalizeCompactProposal(server, revision);
+    expect(committed).toMatchObject({
+      proposal_status: 'committed',
+    });
+    expect(committed.proposal_id).not.toBe(revision.proposal_id);
+    expect(committed.commercial_terms).toEqual(revision.commercial_terms);
+    expect(committed.terms_digest).toBe(revision.terms_digest);
+
+    const createArgs = {
+      idempotency_key: 'compact-purchase-once-0001',
+      account,
+      brand: account.brand,
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      proposal_id: committed.proposal_id,
+      total_budget: { amount: 50000, currency: 'USD' },
+      ...(committed.insertion_order && {
+        io_acceptance: {
+          io_id: (committed.insertion_order as Record<string, unknown>).io_id,
+          accepted_at: new Date().toISOString(),
+          signatory: 'compact-lifecycle-test',
+        },
+      }),
+    };
+    for (const [suffix, opportunity] of [
+      ['missing-id', { status: 'closed', close_reason: 'accepted_with_seller' }],
+      ['wrong-close', {
+        opportunity_id: 'opp-create-validation',
+        status: 'closed',
+        close_reason: 'not_pursued',
+      }],
+      ['extra-field', { opportunity_id: 'opp-create-validation', unexpected: true }],
+    ] as const) {
+      const malformed = await simulateCallTool(server, 'create_media_buy', {
+        ...createArgs,
+        idempotency_key: `compact-create-${suffix}-0001`,
+        opportunity,
+      });
+      expect(malformed.isError).toBe(true);
+      expect(malformed.result).toMatchObject({ code: 'INVALID_REQUEST' });
+    }
+    const { result: purchased, isError: purchaseError } = await simulateCallTool(server, 'create_media_buy', createArgs);
+    expect(purchaseError, JSON.stringify(purchased)).toBeFalsy();
+    expect(purchased.media_buy_id).toEqual(expect.any(String));
+    expect(purchased.proposal_id).toBe(committed.proposal_id);
+    expect(purchased).not.toHaveProperty('__executed');
+    expect(purchased).not.toHaveProperty('__opportunity_update');
+
+    await runWithSessionContext(async () => {
+      const session = await getSession(
+        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+      );
+      const stored = session.lastGetProductsContext?.proposals?.find(
+        proposal => proposal.proposal_id === committed.proposal_id,
+      ) as (Record<string, unknown> | undefined);
+      expect(stored).toMatchObject({
+        __executed: true,
+        __opportunity_update: {
+          opportunity_id: lifecycleOpportunity.opportunity_id,
+          status: 'closed',
+          close_reason: 'accepted_with_seller',
+        },
+      });
+    });
+
+    const exactRetry = await simulateCallTool(server, 'create_media_buy', createArgs);
+    expect(exactRetry.isError).toBeFalsy();
+    expect(exactRetry.result).toMatchObject({
+      media_buy_id: purchased.media_buy_id,
+      proposal_id: committed.proposal_id,
+      replayed: true,
+    });
+
+    const refineAfterExecution = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: committed.proposal_id,
+        action: 'revise',
+        change_kind: 'amendment',
+        instructions: 'Reduce the budget while preserving the accepted flight.',
+      }],
+    });
+    expect(refineAfterExecution.isError).toBeFalsy();
+    expect(refineAfterExecution.result).toMatchObject({
+      results: [{
+        source_proposal_id: committed.proposal_id,
+        outcome: expect.stringMatching(/^(revised|partial)$/),
+        proposal: {
+          proposal_kind: 'media_buy_update',
+          proposal_status: 'draft',
+          parent_proposal_id: committed.proposal_id,
+          media_buy_id: purchased.media_buy_id,
+          base_media_buy_revision: 1,
+        },
+      }],
+    });
+
+    const cancellationAfterExecution = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: committed.proposal_id,
+        action: 'revise',
+        change_kind: 'cancellation',
+        instructions: 'Cancel by mutual agreement before the next billing period.',
+      }],
+    });
+    expect(cancellationAfterExecution.isError).toBeFalsy();
+    expect(cancellationAfterExecution.result).toMatchObject({
+      results: [{
+        source_proposal_id: committed.proposal_id,
+        proposal: {
+          proposal_kind: 'media_buy_cancellation',
+          proposal_status: 'draft',
+          commercial_terms: {
+            cancellation_terms: {
+              effective_at: expect.any(String),
+              reason: 'Cancel by mutual agreement before the next billing period.',
+            },
+          },
+        },
+      }],
+    });
+    expect(
+      validateProductDiscoverySourceResponse('refine-proposals-response', cancellationAfterExecution.result),
+      JSON.stringify(cancellationAfterExecution.result),
+    ).toBeUndefined();
+
+    const secondExecution = await simulateCallTool(server, 'create_media_buy', {
+      ...createArgs,
+      idempotency_key: 'compact-purchase-once-0002',
+    });
+    expect(secondExecution.isError).toBe(true);
+    expect(secondExecution.result).toMatchObject({ code: 'INVALID_STATE' });
+
+    const declineAfterExecution = await simulateCallTool(server, 'decline_proposals', {
+      declines: [{ proposal_id: committed.proposal_id, reason: 'selected_alternative' }],
+    });
+    expect(declineAfterExecution.isError).toBeFalsy();
+    expect(declineAfterExecution.result).toMatchObject({
+      results: [{ proposal_id: committed.proposal_id, outcome: 'unable' }],
+    });
+  });
+
+  it('serializes competing executions of one compact proposal', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: requested } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+    });
+    const draft = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const committed = await finalizeCompactProposal(server, draft);
+    const base = {
+      account,
+      brand: account.brand,
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      proposal_id: committed.proposal_id,
+      total_budget: { amount: 50000, currency: 'USD' },
+      ...(committed.insertion_order && {
+        io_acceptance: {
+          io_id: (committed.insertion_order as Record<string, unknown>).io_id,
+          accepted_at: new Date().toISOString(),
+          signatory: 'concurrent-execution-test',
+        },
+      }),
+    };
+    const attempts = await Promise.all([
+      simulateCallTool(server, 'create_media_buy', {
+        ...base,
+        idempotency_key: `test-${randomUUID()}`,
+      }),
+      simulateCallTool(server, 'create_media_buy', {
+        ...base,
+        idempotency_key: `test-${randomUUID()}`,
+      }),
+    ]);
+    expect(attempts.filter(attempt => !attempt.isError)).toHaveLength(1);
+    expect(attempts.filter(attempt => attempt.isError)).toHaveLength(1);
+    expect(attempts.find(attempt => attempt.isError)?.result).toMatchObject({ code: 'INVALID_STATE' });
+  });
+
+  it('serializes execution against terminal decline', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: requested } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+    });
+    const draft = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const committed = await finalizeCompactProposal(server, draft);
+    const [create, decline] = await Promise.all([
+      simulateCallTool(server, 'create_media_buy', {
+        idempotency_key: `test-${randomUUID()}`,
+        account,
+        brand: account.brand,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        proposal_id: committed.proposal_id,
+        total_budget: { amount: 50000, currency: 'USD' },
+        ...(committed.insertion_order && {
+          io_acceptance: {
+            io_id: (committed.insertion_order as Record<string, unknown>).io_id,
+            accepted_at: new Date().toISOString(),
+            signatory: 'create-decline-race-test',
+          },
+        }),
+      }),
+      simulateCallTool(server, 'decline_proposals', {
+        idempotency_key: `test-${randomUUID()}`,
+        declines: [{ proposal_id: committed.proposal_id, reason: 'timing' }],
+      }),
+    ]);
+    const declineOutcome = ((decline.result.results as Array<Record<string, unknown>> | undefined)?.[0]?.outcome);
+    const terminalSuccesses = Number(!create.isError) + Number(declineOutcome === 'declined');
+    expect(terminalSuccesses).toBe(1);
+    if (create.isError) expect(create.result).toMatchObject({ code: 'INVALID_STATE' });
+    else if (decline.isError) expect(decline.result).toMatchObject({ code: 'CONFLICT' });
+    else expect(declineOutcome).toBe('unable');
+  });
+
+  it('makes proposal decline terminal, semantically idempotent, and opportunity-aware', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const opportunity = {
+      opportunity_id: 'opp-proposal-decline-2027',
+      phase: 'active_sourcing',
+      intent: 'live_rfp',
+    };
+    const { result: requested, isError: requestError } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+      opportunity,
+    });
+    expect(requestError).toBeFalsy();
+    const source = (requested.proposals as Array<Record<string, unknown>>)[0];
+
+    const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: source.proposal_id,
+        action: 'revise',
+        instructions: 'Prefer social inventory without changing the planning cycle.',
+      }],
+    });
+    expect(refineError).toBeFalsy();
+    const revision = ((refined.results as Array<Record<string, unknown>>)[0].proposal) as Record<string, unknown>;
+    const compactSessionKey = sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous');
+    await runWithSessionContext(async () => {
+      const session = await getSession(compactSessionKey);
+      const storedRevision = session.lastGetProductsContext?.proposals?.find(
+        proposal => proposal.proposal_id === revision.proposal_id,
+      ) as (Record<string, unknown> | undefined);
+      expect(storedRevision?.__opportunity_id).toBe(opportunity.opportunity_id);
+    });
+
+    const committed = revision;
+
+    const mismatchedOpportunity = await simulateCallTool(server, 'decline_proposals', {
+      declines: [{ proposal_id: committed.proposal_id, reason: 'inventory_fit' }],
+      opportunity: {
+        opportunity_id: 'opp-some-other-cycle',
+        status: 'closed',
+        close_reason: 'not_pursued',
+      },
+    });
+    expect(mismatchedOpportunity.isError).toBe(true);
+    expect(mismatchedOpportunity.result).toMatchObject({
+      code: 'INVALID_REQUEST',
+      field: 'opportunity.opportunity_id',
+    });
+
+    const declineArgs = {
+      declines: [{
+        proposal_id: committed.proposal_id,
+        reason: 'inventory_fit',
+        detail: 'The original inventory feedback.',
+      }],
+      opportunity: {
+        opportunity_id: opportunity.opportunity_id,
+        status: 'closed',
+        close_reason: 'not_pursued',
+      },
+    };
+    const firstDecline = await simulateCallTool(server, 'decline_proposals', declineArgs);
+    expect(firstDecline.isError).toBeFalsy();
+    expect(firstDecline.result).toMatchObject({
+      results: [{ proposal_id: committed.proposal_id, outcome: 'declined' }],
+    });
+
+    const repeatedDecline = await simulateCallTool(server, 'decline_proposals', {
+      ...declineArgs,
+      declines: [{
+        proposal_id: committed.proposal_id,
+        reason: 'price',
+        detail: 'This later feedback must not overwrite the first record.',
+      }],
+      opportunity: { opportunity_id: opportunity.opportunity_id },
+    });
+    expect(repeatedDecline.isError).toBeFalsy();
+    expect(repeatedDecline.result).toMatchObject({
+      results: [{ proposal_id: committed.proposal_id, outcome: 'declined' }],
+    });
+
+    await runWithSessionContext(async () => {
+      const session = await getSession(compactSessionKey);
+      const stored = session.lastGetProductsContext?.proposals?.find(
+        proposal => proposal.proposal_id === committed.proposal_id,
+      ) as (Record<string, unknown> | undefined);
+      expect(stored).toMatchObject({
+        __declined: true,
+        __decline_reason: 'inventory_fit',
+        __decline_detail: 'The original inventory feedback.',
+        __opportunity_update: {
+          opportunity_id: opportunity.opportunity_id,
+          status: 'closed',
+          close_reason: 'not_pursued',
+        },
+      });
+    });
+
+    const explicitReopen = await simulateCallTool(server, 'decline_proposals', {
+      declines: [{ proposal_id: committed.proposal_id, reason: 'price' }],
+      opportunity: { opportunity_id: opportunity.opportunity_id, status: 'open' },
+    });
+    expect(explicitReopen.isError).toBeFalsy();
+    await runWithSessionContext(async () => {
+      const session = await getSession(compactSessionKey);
+      const stored = session.lastGetProductsContext?.proposals?.find(
+        proposal => proposal.proposal_id === committed.proposal_id,
+      ) as (Record<string, unknown> | undefined);
+      expect(stored?.__opportunity_update).toEqual({
+        opportunity_id: opportunity.opportunity_id,
+        status: 'open',
+      });
+    });
+
+    const refineAfterDecline = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: committed.proposal_id,
+        action: 'revise',
+        instructions: 'Try a different allocation after terminal decline.',
+      }],
+    });
+    expect(refineAfterDecline.isError).toBeFalsy();
+    expect(refineAfterDecline.result).toMatchObject({
+      results: [{ source_proposal_id: committed.proposal_id, outcome: 'unable' }],
+    });
+
+    const purchase = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      proposal_id: committed.proposal_id,
+      total_budget: { amount: 50000, currency: 'USD' },
+      opportunity: {
+        opportunity_id: opportunity.opportunity_id,
+        status: 'closed',
+        close_reason: 'accepted_with_seller',
+      },
+    });
+    expect(purchase.isError).toBe(true);
+    expect(purchase.result).toMatchObject({ code: 'INVALID_STATE' });
+  });
+
+  it('keeps opportunity updates atomic across partial decline outcomes', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const opportunity = { opportunity_id: 'opp-partial-decline-2027', status: 'open' };
+    const { result: requested } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+      opportunity,
+    });
+    const proposal = (requested.proposals as Array<Record<string, unknown>>)[0];
+
+    const decline = await simulateCallTool(server, 'decline_proposals', {
+      declines: [
+        { proposal_id: proposal.proposal_id, reason: 'timing' },
+        { proposal_id: 'proposal-not-visible-to-caller', reason: 'timing' },
+      ],
+      opportunity: {
+        opportunity_id: opportunity.opportunity_id,
+        status: 'closed',
+        close_reason: 'timing_changed',
+      },
+    });
+    expect(decline.isError).toBeFalsy();
+    expect(decline.result).toMatchObject({
+      results: [
+        { proposal_id: proposal.proposal_id, outcome: 'declined' },
+        { proposal_id: 'proposal-not-visible-to-caller', outcome: 'unable' },
+      ],
+    });
+
+    await runWithSessionContext(async () => {
+      const session = await getSession(
+        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+      );
+      const stored = session.lastGetProductsContext?.proposals?.find(
+        candidate => candidate.proposal_id === proposal.proposal_id,
+      ) as (Record<string, unknown> | undefined);
+      expect(stored?.__declined).toBe(true);
+      expect(stored).not.toHaveProperty('__opportunity_update');
+    });
+  });
+
+  it('rejects duplicate decline proposal IDs and cannot decline registry proposals', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const duplicate = await simulateCallTool(server, 'decline_proposals', {
+      declines: [
+        { proposal_id: 'proposal-1', reason: 'price' },
+        { proposal_id: 'proposal-1', reason: 'timing' },
+      ],
+    });
+    expect(duplicate.isError).toBe(true);
+    expect(duplicate.result).toMatchObject({ code: 'INVALID_REQUEST' });
+
+    const registry = await simulateCallTool(server, 'decline_proposals', {
+      declines: [{ proposal_id: 'proposal_1', reason: 'price' }],
+    });
+    expect(registry.isError).toBeFalsy();
+    expect(registry.result).toMatchObject({
+      results: [{ proposal_id: 'proposal_1', outcome: 'unable' }],
+    });
+  });
+
+  it('omits partial-only notes from a fully revised proposal result', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: requested, isError: requestError } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+    });
+    expect(requestError).toBeFalsy();
+    const source = (requested.proposals as Array<Record<string, unknown>>)[0];
+
+    const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: source.proposal_id,
+        action: 'revise',
+        instructions: 'Provide concrete fixed CPM pricing in USD.',
+      }],
+    });
+    expect(refineError).toBeFalsy();
+    const revision = (refined.results as Array<Record<string, unknown>>)[0];
+    expect(revision).toMatchObject({
+      source_proposal_id: source.proposal_id,
+      outcome: 'revised',
+      proposal: { proposal_status: 'draft' },
+    });
+    expect(revision).not.toHaveProperty('notes');
+  });
+
+  it('binds compact proposals to both the seller account and full BrandKey', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const originalBrand = { domain: 'proposal-house.example', brand_id: 'alpha' };
+    const siblingBrand = { domain: 'proposal-house.example', brand_id: 'beta' };
+    const { result: requested, isError: requestError } = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: 'compact-brand-binding-request-1',
+      account: { account_id: 'proposal-account-alpha' },
+      brand: originalBrand,
+      brief: 'social engagement display',
+    });
+    expect(requestError).toBeFalsy();
+    const draft = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const committed = await finalizeCompactProposal(server, draft);
+
+    const purchase = (billingAccount: string, brand: typeof originalBrand) => simulateCallTool(
+      server,
+      'create_media_buy',
+      {
+        account: { account_id: billingAccount },
+        brand,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        proposal_id: committed.proposal_id,
+        total_budget: { amount: 50000, currency: 'USD' },
+        ...(committed.insertion_order && {
+          io_acceptance: {
+            io_id: (committed.insertion_order as Record<string, unknown>).io_id,
+            accepted_at: new Date().toISOString(),
+            signatory: 'compact-owner-binding-test',
+          },
+        }),
+      },
+    );
+
+    const wrongBrand = await purchase('proposal-account-alpha', siblingBrand);
+    expect(wrongBrand).toMatchObject({ isError: true, result: { code: 'PROPOSAL_NOT_FOUND' } });
+
+    const wrongAccount = await purchase('proposal-account-beta', originalBrand);
+    expect(wrongAccount).toMatchObject({ isError: true, result: { code: 'PROPOSAL_NOT_FOUND' } });
+
+    const accepted = await purchase('proposal-account-alpha', originalBrand);
+    expect(accepted.isError).toBeFalsy();
+    expect(accepted.result.media_buy_id).toEqual(expect.any(String));
+  });
+
+  it('accepts a natural-key account as the sole request_proposals brand source', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const naturalAccount = {
+      brand: { domain: 'natural-proposal-brand.example', brand_id: 'primary' },
+      operator: 'proposal-operator.example',
+    };
+    const { result, isError } = await simulateCallTool(server, 'request_proposals', {
+      account: naturalAccount,
+      brief: 'social engagement display',
+    });
+
+    expect(isError).toBeFalsy();
+    expect(result).toMatchObject({ outcome: 'proposed', proposals: expect.any(Array) });
+  });
 
   async function getProductsWithProposals() {
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -14042,7 +15084,9 @@ describe('context echo', () => {
     // except as the echoed context field
     const { parsed } = await simulateCallToolRaw(server, 'get_products', {
       context: TEST_CONTEXT,
-      account: { brand: { domain: 'acmeoutdoor.com' } },
+      idempotency_key: 'context-echo-products-0001',
+      buying_mode: 'wholesale',
+      account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'test-operator.example' },
     });
     expect(parsed.context).toEqual(TEST_CONTEXT);
     // The products field should exist (handler ran successfully)

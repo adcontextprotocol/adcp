@@ -135,6 +135,7 @@ phases:
           Return at least one product whose metric_optimization capabilities
           include clicks as an optimization metric.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_clicks_buy_flow_setup_get_products_for_clicks"
           buying_mode: "brief"
           brief: "Display performance, US adults 25-54. Q2 flight ~$15K, optimizing for clicks with a target CPC."
           account:

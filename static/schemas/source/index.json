@@ -45,6 +45,66 @@
           "$ref": "/schemas/core/product.json",
           "description": "Represents available advertising inventory"
         },
+        "canonical-product": {
+          "$ref": "/schemas/core/canonical-product.json",
+          "description": "Canonical-only product view for the AdCP 3.2 split product and proposal tools"
+        },
+        "canonical-format-option": {
+          "$ref": "/schemas/core/canonical-format-option.json",
+          "description": "Compact canonical format declaration without legacy named-format links"
+        },
+        "canonical-placement": {
+          "$ref": "/schemas/core/canonical-placement.json",
+          "description": "Compact canonical product placement"
+        },
+        "canonical-product-action": {
+          "$ref": "/schemas/core/canonical-product-action.json",
+          "description": "Fine-grained action template for compact products"
+        },
+        "canonical-proposal": {
+          "$ref": "/schemas/core/canonical-proposal.json",
+          "description": "Compact immutable proposal with a typed commercial envelope"
+        },
+        "canonical-account-ref": {
+          "$ref": "/schemas/core/canonical-account-ref.json",
+          "description": "Compact account identity without inline brand documents"
+        },
+        "canonical-budget-allocation": {
+          "$ref": "/schemas/core/canonical-budget-allocation.json",
+          "description": "Compact budget allocation for canonical MediaBuy tools"
+        },
+        "canonical-optimization-goal": {
+          "$ref": "/schemas/core/canonical-optimization-goal.json",
+          "description": "Compact optimization goal without legacy targets or inline vendor brands"
+        },
+        "canonical-metric-qualifier": {
+          "$ref": "/schemas/core/canonical-metric-qualifier.json",
+          "description": "Compact reporting metric qualifier"
+        },
+        "canonical-reporting-commitment": {
+          "$ref": "/schemas/core/canonical-reporting-commitment.json",
+          "description": "Compact standard or vendor reporting commitment"
+        },
+        "canonical-media-buy-action": {
+          "$ref": "/schemas/core/canonical-media-buy-action.json",
+          "description": "Available MediaBuy action routed to its compact-lifecycle task"
+        },
+        "keyword-target": {
+          "$ref": "/schemas/core/keyword-target.json",
+          "description": "Compact keyword targeting mutation"
+        },
+        "compact-task-submitted": {
+          "$ref": "/schemas/core/compact-task-submitted.json",
+          "description": "Shared submitted envelope for compact lifecycle tools"
+        },
+        "compact-task-working": {
+          "$ref": "/schemas/core/compact-task-working.json",
+          "description": "Shared progress payload for compact lifecycle tools"
+        },
+        "compact-task-input-required": {
+          "$ref": "/schemas/core/compact-task-input-required.json",
+          "description": "Shared input-required payload for compact lifecycle tools"
+        },
         "media-buy": {
           "$ref": "/schemas/core/media-buy.json",
           "description": "Represents a purchased advertising campaign"
@@ -253,6 +313,10 @@
         "date-range": {
           "$ref": "/schemas/core/date-range.json",
           "description": "Date range with inclusive start and end calendar dates"
+        },
+        "opportunity-context": {
+          "$ref": "/schemas/core/opportunity-context.json",
+          "description": "Buyer planning-cycle context shared across proposal request, decline, and purchase"
         },
         "datetime-range": {
           "$ref": "/schemas/core/datetime-range.json",
@@ -518,6 +582,34 @@
           "$ref": "/schemas/core/account-status-changed-webhook.json",
           "description": "Account-level webhook payload that invalidates a list_accounts account status snapshot"
         },
+        "indicator": {
+          "$ref": "/schemas/core/indicator.json",
+          "description": "Compact durable seller interpretation attached to an authoritative resource snapshot"
+        },
+        "creative-approval-scope": {
+          "$ref": "/schemas/core/creative-approval-scope.json",
+          "description": "Publisher- or placement-scoped creative approval outcome within an assignment"
+        },
+        "indicator-bearing": {
+          "$ref": "/schemas/core/indicator-bearing.json",
+          "description": "Reusable indicator snapshot fields, exact evaluated-type coverage, freshness, and optional scope coverage"
+        },
+        "indicator-scope": {
+          "$ref": "/schemas/core/indicator-scope.json",
+          "description": "Publisher and placement scope for an indicator assertion or evaluation"
+        },
+        "indicators-changed-webhook": {
+          "$ref": "/schemas/core/indicators-changed-webhook.json",
+          "description": "Account-level invalidation payload for a semantic indicator snapshot change"
+        },
+        "warning": {
+          "$ref": "/schemas/core/warning.json",
+          "description": "Structured non-blocking receipt returned only on synchronous mutation success"
+        },
+        "warning-resource": {
+          "$ref": "/schemas/core/warning-resource.json",
+          "description": "Typed identity of the resource affected by an operation warning"
+        },
         "destination": {
           "$ref": "/schemas/core/destination.json",
           "description": "A destination platform where signals can be activated (DSP, sales agent, etc.)"
@@ -533,6 +625,14 @@
         "product-filters": {
           "$ref": "/schemas/core/product-filters.json",
           "description": "Structured filters for product discovery"
+        },
+        "product-offer-filters": {
+          "$ref": "/schemas/core/product-offer-filters.json",
+          "description": "Offer-only product filters used by the compact product-discovery tools"
+        },
+        "product-audience-evidence-requirements": {
+          "$ref": "/schemas/core/product-audience-evidence-requirements.json",
+          "description": "Reference-only audience evidence policy used by compact product discovery"
         },
         "creative-filters": {
           "$ref": "/schemas/core/creative-filters.json",
@@ -602,6 +702,14 @@
         "brand-ref": {
           "$ref": "/schemas/core/brand-ref.json",
           "description": "Reference to a brand via house domain + brand_id (like publisher + property_id)"
+        },
+        "brand-key": {
+          "$ref": "/schemas/core/brand-key.json",
+          "description": "Identity-only brand key for resolving a canonical brand manifest"
+        },
+        "catalog-selection": {
+          "$ref": "/schemas/core/catalog-selection.json",
+          "description": "Catalog reference and item selectors without ingestion configuration"
         },
         "seller-agent-ref": {
           "$ref": "/schemas/core/seller-agent-ref.json",
@@ -813,9 +921,21 @@
           "$ref": "/schemas/enums/proposal-status.json",
           "description": "Lifecycle status of a proposal (draft or committed)"
         },
+        "proposal-decline-reason": {
+          "$ref": "/schemas/enums/proposal-decline-reason.json",
+          "description": "Machine-readable terminal proposal feedback"
+        },
         "media-buy-status": {
           "$ref": "/schemas/enums/media-buy-status.json",
           "description": "Status of a media buy"
+        },
+        "canonical-media-buy-action": {
+          "$ref": "/schemas/enums/canonical-media-buy-action.json",
+          "description": "Fine-grained action vocabulary for compact MediaBuy tools"
+        },
+        "canonical-media-buy-action-mode": {
+          "$ref": "/schemas/enums/canonical-media-buy-action-mode.json",
+          "description": "Execution mode for routed compact-lifecycle actions"
         },
         "creative-status": {
           "$ref": "/schemas/enums/creative-status.json",
@@ -1016,6 +1136,14 @@
         "notification-type": {
           "$ref": "/schemas/enums/notification-type.json",
           "description": "Shared notification registry for delivery, impairment, lifecycle, wholesale-feed, and capability-change events"
+        },
+        "indicator-type": {
+          "$ref": "/schemas/enums/indicator-type.json",
+          "description": "Closed AdCP 3.2 vocabulary for durable media-buy and creative-assignment indicators"
+        },
+        "warning-code": {
+          "$ref": "/schemas/enums/warning-code.json",
+          "description": "Closed AdCP 3.2 vocabulary for synchronous operation warnings"
         },
         "reporting-frequency": {
           "$ref": "/schemas/enums/reporting-frequency.json",
@@ -1295,6 +1423,34 @@
     "media-buy": {
       "description": "Media buy task request/response schemas",
       "supporting-schemas": {
+        "product-discovery-criteria": {
+          "$ref": "/schemas/media-buy/product-discovery-criteria.json",
+          "description": "Structured offer, catalog, and policy criteria shared by compact discovery tools"
+        },
+        "proposal-refinement": {
+          "$ref": "/schemas/media-buy/proposal-refinement.json",
+          "description": "One immutable proposal revision request"
+        },
+        "proposal-decline": {
+          "$ref": "/schemas/media-buy/proposal-decline.json",
+          "description": "One terminal decline of an immutable proposal"
+        },
+        "product-purchase": {
+          "$ref": "/schemas/media-buy/product-purchase.json",
+          "description": "Canonical direct product selection without creatives or negotiated term overrides"
+        },
+        "commercial-terms": {
+          "$ref": "/schemas/media-buy/commercial-terms.json",
+          "description": "Typed immutable commercial envelope shared by direct purchases and proposals"
+        },
+        "package-control": {
+          "$ref": "/schemas/media-buy/package-control.json",
+          "description": "Operational package controls bounded by accepted commercial terms"
+        },
+        "media-buy-commitment-response": {
+          "$ref": "/schemas/media-buy/media-buy-commitment-response.json",
+          "description": "Compact shared result for direct purchase and proposal acceptance"
+        },
         "get-products-rejected": {
           "$ref": "/schemas/media-buy/get-products-rejected.json",
           "description": "Terminal business rejection arm for a well-formed get_products brief or refinement"
@@ -1312,11 +1468,83 @@
         "get-products": {
           "request": {
             "$ref": "/schemas/media-buy/get-products-request.json",
-            "description": "Request parameters for discovering available advertising products"
+            "deprecated": true,
+            "description": "AdCP 3.x compatibility request. New 3.2 callers use list_products, request_proposals, refine_proposals, or decline_proposals."
           },
           "response": {
             "$ref": "/schemas/media-buy/get-products-response.json",
-            "description": "Response payload for get_products task"
+            "deprecated": true,
+            "description": "AdCP 3.x compatibility response for get_products"
+          }
+        },
+        "list-products": {
+          "request": {
+            "$ref": "/schemas/media-buy/list-products-request.json",
+            "description": "Request parameters for synchronous product-offer reads"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/list-products-response.json",
+            "description": "Response payload for list_products"
+          }
+        },
+        "request-proposals": {
+          "request": {
+            "$ref": "/schemas/media-buy/request-proposals-request.json",
+            "description": "Request parameters for creating actionable seller proposals"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/request-proposals-response.json",
+            "description": "Response payload for request_proposals"
+          }
+        },
+        "refine-proposals": {
+          "request": {
+            "$ref": "/schemas/media-buy/refine-proposals-request.json",
+            "description": "Request parameters for creating one or more proposal revisions"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/refine-proposals-response.json",
+            "description": "Response payload for refine_proposals"
+          }
+        },
+        "decline-proposals": {
+          "request": {
+            "$ref": "/schemas/media-buy/decline-proposals-request.json",
+            "description": "Request parameters for terminally declining one or more proposals"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/decline-proposals-response.json",
+            "description": "Ordered decline results for decline_proposals"
+          }
+        },
+        "buy-products": {
+          "request": {
+            "$ref": "/schemas/media-buy/buy-products-request.json",
+            "description": "Create a MediaBuy directly from canonical published product offers"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/buy-products-response.json",
+            "description": "Compact MediaBuy commitment and accepted commercial snapshot"
+          }
+        },
+        "accept-proposal": {
+          "request": {
+            "$ref": "/schemas/media-buy/accept-proposal-request.json",
+            "description": "Accept a committed new-buy, amendment, or cancellation proposal"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/accept-proposal-response.json",
+            "description": "Compact MediaBuy commitment and accepted commercial snapshot"
+          }
+        },
+        "control-media-buy": {
+          "request": {
+            "$ref": "/schemas/media-buy/control-media-buy-request.json",
+            "description": "Apply operational controls inside accepted commercial terms"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/control-media-buy-response.json",
+            "description": "Compact operational-control result"
           }
         },
         "list-creative-formats": {
@@ -1334,21 +1562,25 @@
         "create-media-buy": {
           "request": {
             "$ref": "/schemas/media-buy/create-media-buy-request.json",
-            "description": "Request parameters for creating a media buy"
+            "deprecated": true,
+            "description": "AdCP 3.x compatibility request. New 3.2 callers use buy_products or accept_proposal."
           },
           "response": {
             "$ref": "/schemas/media-buy/create-media-buy-response.json",
-            "description": "Response payload for create_media_buy task"
+            "deprecated": true,
+            "description": "AdCP 3.x compatibility response for create_media_buy"
           }
         },
         "update-media-buy": {
           "request": {
             "$ref": "/schemas/media-buy/update-media-buy-request.json",
-            "description": "Request parameters for updating campaign and package settings"
+            "deprecated": true,
+            "description": "AdCP 3.x compatibility request. New 3.2 callers use control_media_buy or refine_proposals."
           },
           "response": {
             "$ref": "/schemas/media-buy/update-media-buy-response.json",
-            "description": "Response payload for update_media_buy task"
+            "deprecated": true,
+            "description": "AdCP 3.x compatibility response for update_media_buy"
           }
         },
         "get-media-buys": {
@@ -1507,6 +1739,12 @@
             "$ref": "/schemas/creative/validate-input-response.json",
             "description": "Response payload for validate_input task with per-target validation results"
           }
+        }
+      },
+      "webhooks": {
+        "creative-assignment-changed": {
+          "$ref": "/schemas/creative/creative-assignment-changed-webhook.json",
+          "description": "Account-level invalidation payload for creative assignment membership or approval changes"
         }
       },
       "asset_types": {
@@ -2136,6 +2374,12 @@
     },
     "compliance": {
       "description": "Compliance testing tool schemas. The test controller is an optional sandbox-only tool that lets comply walk full lifecycle state machines by triggering seller-side transitions deterministically.",
+      "supporting-schemas": {
+        "task-completion-data": {
+          "$ref": "/schemas/compliance/task-completion-data.json",
+          "description": "Bounded force_task_completion result union for supported legacy async scenarios"
+        }
+      },
       "tasks": {
         "comply-test-controller": {
           "request": {

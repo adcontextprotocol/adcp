@@ -33,6 +33,7 @@ Use `buying_mode: "brief"` with a tight `pagination.max_results` to get curated 
 
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442001",
   "buying_mode": "brief",
   "brief": "Premium video placements for a CPG brand targeting US adults 25-54",
   "pagination": { "max_results": 5 }
@@ -51,6 +52,7 @@ When you only need a subset of product data, pass `fields` to restrict the respo
 
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442002",
   "buying_mode": "brief",
   "brief": "Sports streaming inventory for Q4",
   "fields": ["product_id", "name", "pricing_options"]

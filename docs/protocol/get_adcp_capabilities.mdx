@@ -111,7 +111,7 @@ Core AdCP protocol information:
 
 #### idempotency
 
-Declares whether this seller honors `idempotency_key` replay protection. From 3.1 onward `idempotency_key` is required on every AdCP task request (read and mutating alike — staged enforcement for reads: SHOULD-reject in 3.1, MUST-reject in 3.2; see [security.mdx § Idempotency](/docs/building/by-layer/L1/security#idempotency)). Mirrors the `request_signing.supported` pattern — a single positive declaration, decoupled from the window detail. Clients MUST NOT assume a default; a seller without this block is non-compliant and should be treated as unsafe for retry-sensitive operations across all call modes.
+Declares whether this seller honors `idempotency_key` replay protection. AdCP requires keys on mutating requests. In the compact AdCP 3.2 product lifecycle, [`request_proposals`](/docs/media-buy/task-reference/request_proposals), [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), and [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) require keys; [`list_products`](/docs/media-buy/task-reference/list_products) and the legacy 3.x [`get_products`](/docs/media-buy/task-reference/get_products) facade leave the key optional. See [security.mdx § Idempotency](/docs/building/by-layer/L1/security#idempotency). Clients MUST NOT assume a default; a seller without this block is non-compliant and should be treated as unsafe for retry-sensitive operations.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -205,7 +205,7 @@ Declares cross-role enforcement of buyer governance for consequential tasks. Thi
 }
 ```
 
-The declaration is part of the experimental `governance.campaign` surface, so an implementing service also lists `governance.campaign` in top-level `experimental_features`. `signed_context` is defined for every governed role. `online_execution_check` is currently available only for [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) and [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy), where `planned_delivery` provides a standardized prepared-result shape; it always implies `signed_context`. The state transition follows prepare → check → commit and commits atomically only when the response is `approved`. Execution checks are binary (`approved` or `denied`).
+The declaration is part of the experimental `governance.campaign` surface, so an implementing service also lists `governance.campaign` in top-level `experimental_features`. `signed_context` is defined for every governed role. `online_execution_check` is available for the legacy [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) / [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) facades and the compact [`buy_products`](/docs/media-buy/task-reference/buy_products), [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal), and [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) lifecycle, where `planned_delivery` provides a standardized prepared-result shape. Proposal acceptance binds both `proposal_id` and `proposal_terms_digest`. Online checking always implies `signed_context`; the state transition follows prepare → check → commit and commits atomically only when the response is `approved`.
 
 Advertising a task also commits the service to deterministic applicability. It resolves the commercial account from the request or existing resource before the side effect; when it cannot do so, it returns [`ACCOUNT_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-account-required). It never treats a missing token as evidence that the buyer is ungoverned. Conditional task annotations use `trigger_overrides_exemption`: any commitment-increasing part of a mixed atomic update requires governance.
 
@@ -388,6 +388,10 @@ See [Accounts and Agents](/docs/building/by-layer/L2/accounts-and-agents#what-se
 
 Media-buy protocol capabilities. Only present if `media_buy` is in `supported_protocols`. Sellers declaring `media_buy` should also include `account` (with `supported_billing`) and `media_buy.portfolio` — buyers need both to establish billing and understand inventory coverage. Compliance testing validates their presence.
 
+#### lifecycle_tools
+
+AdCP 3.2 sellers use `lifecycle_tools` to advertise any supported subset of `get_products`, `list_products`, `request_proposals`, `refine_proposals`, `decline_proposals`, `buy_products`, `accept_proposal`, and `control_media_buy`. When absent, buyers use the legacy `get_products`, `create_media_buy`, and `update_media_buy` facades. The compact tools share the authorization framework with their legacy peers, but grants remain task-specific and each stateful tool has its own idempotency identity: retry with the same tool name and payload. SDKs use the release manifest's `legacy_fallback` metadata to distinguish a direct one-call translation from a stateful orchestration or an unsupported fallback; see [Same-major tool replacements](/docs/building/cross-cutting/version-adaptation#same-major-tool-replacements).
+
 :::note 3.0 breaking changes
 The following fields have been removed from the capabilities response:
 
@@ -439,13 +443,55 @@ Declares the seller's tenant-wide creative approval posture after creatives are 
 
 Sellers with mixed approval policies SHOULD declare `require_human` unless every product/account that can be reached by the advertised agent supports automatic eligibility after automated validation. When the field is absent, approval behavior is legacy-unspecified; runners SHOULD NOT treat omission as an affirmative `auto_approve` claim. `ai_assisted` is intentionally not a value until the protocol defines what assistance changes in observable behavior.
 
+#### supported_indicator_types and relationship_notifications
+
+Lists the seller interpretations available on media-buy resource relationships.
+
+```json
+{
+  "media_buy": {
+    "supported_indicator_types": [
+      "creative_fatigue",
+      "creative_quality_opportunity",
+      "creative_diversity_low",
+      "audience_saturation",
+      "inventory_shortfall_forecast",
+      "pacing_risk",
+      "budget_constrained"
+    ],
+    "relationship_notifications": {
+      "supported": true,
+      "registration_task": "sync_accounts",
+      "event_types": ["indicators.changed", "creative.assignment_changed"],
+      "repair_tasks": ["get_media_buys"],
+      "projection_tasks": ["list_creatives"],
+      "supports_webhook_activity": true
+    }
+  },
+  "webhook_signing": {
+    "supported": true,
+    "profile": "adcp/webhook-signing/v1",
+    "algorithms": ["ed25519"],
+    "legacy_hmac_fallback": false
+  }
+}
+```
+
+Indicator meaning follows the negotiated AdCP release rather than an independent version. This capability does not promise complete upstream coverage. Each present array names exact type coverage in `indicator_types_evaluated`.
+
+`supported_indicator_types` declares polling readback and does not require webhook infrastructure. A poll-only seller exposes those types through `get_media_buys` and omits `relationship_notifications`. When a seller does declare `relationship_notifications`, `indicators.changed` requires `supported_indicator_types`; a seller without an indicator catalog may instead declare `creative.assignment_changed` alone for assignment and approval changes, including when it is inline-only. Every notification declaration names `get_media_buys` as the complete authoritative repair read. A creative-library seller may include [`list_creatives`](/docs/creative/task-reference/list_creatives) as a bounded reverse projection; it mirrors relationship identity and scoped approval, while evaluated indicator snapshots reconcile toward the strictly newer `indicators_as_of`. Because this optional block advertises outbound invalidations, `webhook_signing` MUST include `supported: true`, `profile`, `algorithms`, and `legacy_hmac_fallback`.
+
+Subscriptions, when supported, are prospective: activation does not replay current conditions. Buyers establish a complete `get_media_buys` baseline by enumerating known IDs or requesting all seven statuses and following pagination to exhaustion, without `indicator_types`. Sellers then fire the applicable invalidation after observing a semantic change. Poll-only buyers simply repeat direct reads. See [Indicators and Warnings](/docs/media-buy/media-buys/indicators).
+
+An inline-only declaration is therefore valid with `event_types: ["indicators.changed", "creative.assignment_changed"]` and `repair_tasks: ["get_media_buys"]`. Conversely, a creative-library seller may advertise `projection_tasks: ["list_creatives"]` without the assignment event when it cannot detect those changes; that declaration also requires `supported_protocols` to contain `creative`. Both additions are independent of each other, and `repair_tasks` remains the complete repair contract.
+
 #### features
 
 Optional media-buy features. Boolean declarations are commitments when true. Structured declarations commit only to the explicitly advertised sub-capabilities.
 
 | Feature | Description |
 |---------|-------------|
-| `inline_creative_management` | Accepts creatives inline in `create_media_buy` and `update_media_buy` package payloads |
+| `inline_creative_management` | Deprecated 3.x compatibility capability for inline creatives in `create_media_buy` and `update_media_buy`; compact lifecycle tools never accept them |
 | `property_list_filtering` | Honors `property_list` parameter in `get_products` |
 | `catalog_management` | Supports [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) for catalog feed management |
 | `seller_optimized_budget` | Supports shared media-buy budgets and cross-package allocation goals |
@@ -940,7 +986,7 @@ Compliance testing is sandbox-only at the deployment level — production deploy
 
 ### webhook_signing
 
-Declares a seller's webhook-signing posture. Any seller whose capability surface advertises mutating-webhook emission — including but not limited to `media_buy.reporting_delivery_methods` containing `webhook`, `media_buy.content_standards.supports_webhook_delivery: true`, `wholesale_feed_webhooks.supported: true`, `adcp.capability_changes.notifications.supported: true`, or `account.notifications.supported: true` — MUST include this block with `supported: true`. A seller that emits no webhooks at all MAY omit the block entirely; the absence of both mutating-webhook emission in other capabilities and this block is an unambiguous "does not emit webhooks" posture. Buyers read the block at onboarding to determine which algorithms to expect per the [AdCP webhook-signing profile](/docs/building/by-layer/L1/security#webhook-callbacks). Buyers integrating with a seller that advertises mutating-webhook emission while advertising `supported: false` or omitting this block MUST fail onboarding with a user-actionable error; silent integration with a non-signing-but-webhook-emitting seller is unsafe for any mutating-webhook use case.
+Declares a seller's webhook-signing posture. Any seller whose capability surface advertises mutating-webhook emission — including but not limited to `media_buy.reporting_delivery_methods` containing `webhook`, `media_buy.content_standards.supports_webhook_delivery: true`, `media_buy.relationship_notifications.supported: true`, `wholesale_feed_webhooks.supported: true`, `adcp.capability_changes.notifications.supported: true`, or `account.notifications.supported: true` — MUST include this block with `supported: true`. A seller that emits no webhooks at all MAY omit the block entirely; the absence of both mutating-webhook emission in other capabilities and this block is an unambiguous "does not emit webhooks" posture. Buyers read the block at onboarding to determine which algorithms to expect per the [AdCP webhook-signing profile](/docs/building/by-layer/L1/security#webhook-callbacks). Buyers integrating with a seller that advertises mutating-webhook emission while advertising `supported: false` or omitting this block MUST fail onboarding with a user-actionable error; silent integration with a non-signing-but-webhook-emitting seller is unsafe for any mutating-webhook use case.
 
 | Field                  | Type     | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -1239,6 +1285,8 @@ const postalSupport = mediaBuy.execution?.targeting?.geo_postal_areas;
 
 // Filter products to sellers with specific geo targeting capabilities
 const products = await client.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442047',
+  buying_mode: 'brief',
   brief: "Premium video inventory in US for ZIP-targeted campaign",
   filters: {
     channels: ["olv", "ctv"],
@@ -1301,6 +1349,8 @@ For locally-bound inventory, products ARE geographically specific. A radio stati
 ```javascript
 // Find radio products in specific DMAs
 const radioProducts = await client.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442048',
+  buying_mode: 'brief',
   brief: "Radio inventory in NYC and LA markets",
   filters: {
     channels: ["radio"],

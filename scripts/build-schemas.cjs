@@ -31,6 +31,8 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const semver = require('semver');
+const Ajv = require('ajv');
+const addFormats = require('ajv-formats');
 const {
   MCP_PROTOCOL_VERSION,
   generateMcpSchemaProjection,
@@ -41,6 +43,64 @@ const DIST_DIR = path.join(__dirname, '../dist/schemas');
 const PACKAGE_JSON = path.join(__dirname, '../package.json');
 const SKILLS_DIR = path.join(__dirname, '../skills');
 const SCHEMA_ORIGIN = 'https://adcontextprotocol.org';
+
+// Active MCP role catalogs intentionally use explicit tool sets. Protocol
+// tags alone are not sufficient: creative construction is historically tagged
+// media-buy, while a seller-hosted media-buy role also needs account, task,
+// governance, reporting, and separately-synced creative operations.
+const MCP_ROLE_PROFILE_TOOLS = {
+  'media-buy': [
+    'accept_proposal',
+    'buy_products',
+    'control_media_buy',
+    'decline_proposals',
+    'get_account_financials',
+    'get_adcp_capabilities',
+    'get_media_buy_delivery',
+    'get_media_buys',
+    'get_task_status',
+    'list_accounts',
+    'list_creatives',
+    'list_products',
+    'list_tasks',
+    'log_event',
+    'provide_performance_feedback',
+    'refine_proposals',
+    'report_usage',
+    'request_proposals',
+    'sync_accounts',
+    'sync_agent_notification_configs',
+    'sync_audiences',
+    'sync_catalogs',
+    'sync_creatives',
+    'sync_event_sources',
+    'sync_governance',
+  ],
+  creative: [
+    'build_creative',
+    'get_account_financials',
+    'get_adcp_capabilities',
+    'get_creative_delivery',
+    'get_creative_features',
+    'get_task_status',
+    'list_accounts',
+    'list_creatives',
+    'list_tasks',
+    'list_transformers',
+    'preview_creative',
+    'report_usage',
+    'sync_accounts',
+    'sync_agent_notification_configs',
+    'sync_catalogs',
+    'sync_creatives',
+    'sync_governance',
+    'validate_input',
+  ],
+};
+const MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES = {
+  'media-buy': ['media_buy_delivery'],
+  creative: [],
+};
 
 /**
  * Turn a source-form schema URI into its canonical published identity.
@@ -317,7 +377,8 @@ function ensureDir(dir) {
 // required it, the storyboard lint sees the task as non-mutating and
 // passes).
 //
-// A request schema is considered non-mutating if:
+// A request schema is considered non-mutating if it does not explicitly
+// declare `x-mutates-state: true` and:
 //   1. Its basename matches a read-only verb pattern
 //      (`get-`, `list-`, `check-`, `validate-`, `preview-`, optionally
 //      prefixed by a domain like `si-get-*`), OR
@@ -370,6 +431,13 @@ function hasNaturallyIdempotentMarker(schema) {
   return /naturally idempotent/i.test(haystack);
 }
 
+function isDeprecatedGetProductsCompatibilityFacade(schema) {
+  return schema.$id === '/schemas/media-buy/get-products-request.json'
+    && schema['x-operation-family'] === 'get_products'
+    && schema['x-deprecated-in'] === '3.2.0'
+    && schema['x-idempotency-key-required'] === false;
+}
+
 // Classify a request schema as mutating or non-mutating using the same rules
 // the lint enforces. Returns true if the operation mutates state.
 //
@@ -383,6 +451,8 @@ function hasNaturallyIdempotentMarker(schema) {
 // Used by both lintMutatingRequestsRequireIdempotencyKey and the manifest
 // generator — single source of truth for "is this a mutating tool?".
 function classifyRequestMutating(filePath) {
+  const schema = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  if (schema['x-mutates-state'] === true) return true;
   return !isNonMutatingRequestBasename(path.basename(filePath));
 }
 
@@ -400,13 +470,18 @@ function lintMutatingRequestsRequireIdempotencyKey(sourceDir) {
         continue;
       }
       if (!entry.name.endsWith('-request.json')) continue;
-      if (isNonMutatingRequestBasename(entry.name)) continue;
       let schema;
       try { schema = JSON.parse(fs.readFileSync(p, 'utf8')); }
       catch { continue; }
+      if (schema['x-mutates-state'] !== true && isNonMutatingRequestBasename(entry.name)) continue;
       const required = Array.isArray(schema.required) ? schema.required : [];
       if (required.includes('idempotency_key')) continue;
       if (hasNaturallyIdempotentMarker(schema)) continue;
+      // A stable 3.x compatibility facade may remain polymorphic while newer,
+      // narrow replacement tools carry the required-key contract. This marker
+      // is deliberately explicit so a newly added mutator cannot become
+      // key-optional by accident.
+      if (isDeprecatedGetProductsCompatibilityFacade(schema)) continue;
       violations.push(path.relative(sourceDir, p));
     }
   }
@@ -1001,6 +1076,87 @@ function loadSpecialisms(repoRoot) {
   return out;
 }
 
+function assertAcyclicToolEdges(tools, edgeFor, label) {
+  const visiting = new Set();
+  const visited = new Set();
+  const visit = name => {
+    if (visiting.has(name)) throw new Error(`Manifest generation: ${label} cycle includes ${name}`);
+    if (visited.has(name)) return;
+    visiting.add(name);
+    for (const target of edgeFor(tools.get(name)) || []) visit(target);
+    visiting.delete(name);
+    visited.add(name);
+  };
+  for (const name of tools.keys()) visit(name);
+}
+
+function validateManifestToolRelationships(toolList) {
+  const tools = new Map(toolList.map(tool => [tool.name, tool]));
+  for (const tool of toolList) {
+    const fallback = tool.legacy_fallback;
+    if (fallback?.tool) {
+      const target = tools.get(fallback.tool);
+      if (!target) throw new Error(`Manifest generation: ${tool.name} falls back to unknown tool ${fallback.tool}`);
+      if (fallback.tool === tool.name) throw new Error(`Manifest generation: ${tool.name} cannot fall back to itself`);
+      if (!target.deprecated_in) {
+        throw new Error(`Manifest generation: ${tool.name} fallback target ${fallback.tool} is not deprecated`);
+      }
+    }
+    for (const replacement of tool.superseded_by || []) {
+      const target = tools.get(replacement);
+      if (!target) throw new Error(`Manifest generation: ${tool.name} is superseded by unknown tool ${replacement}`);
+      if (replacement === tool.name) throw new Error(`Manifest generation: ${tool.name} cannot supersede itself`);
+      if (!tool.deprecated_in) {
+        throw new Error(`Manifest generation: active tool ${tool.name} cannot declare superseded_by`);
+      }
+      if (target.deprecated_in) {
+        throw new Error(`Manifest generation: ${tool.name} replacement ${replacement} is also deprecated`);
+      }
+    }
+  }
+  assertAcyclicToolEdges(tools, tool => tool.legacy_fallback?.tool ? [tool.legacy_fallback.tool] : [], 'legacy fallback');
+  assertAcyclicToolEdges(tools, tool => tool.superseded_by || [], 'supersession');
+}
+
+function buildTaskResultResolution(sourceDir, toolsObj) {
+  const taskTypeSchema = JSON.parse(
+    fs.readFileSync(path.join(sourceDir, 'enums', 'task-type.json'), 'utf8')
+  );
+  const terminalSchemaOverrides = taskTypeSchema['x-task-result-schema-overrides'] || {};
+  for (const [taskType, schemaPath] of Object.entries(terminalSchemaOverrides)) {
+    if (!taskTypeSchema.enum.includes(taskType)) {
+      throw new Error(`Manifest generation: task result override names unknown task_type ${taskType}`);
+    }
+    if (toolsObj[taskType]) {
+      throw new Error(`Manifest generation: task result override ${taskType} also names a manifest tool`);
+    }
+    if (typeof schemaPath !== 'string' || !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\.json$/.test(schemaPath)) {
+      throw new Error(`Manifest generation: task result override for ${taskType} has invalid schema path`);
+    }
+    const schemaFile = path.join(sourceDir, ...schemaPath.split('/'));
+    let schemaContents;
+    try {
+      schemaContents = fs.readFileSync(schemaFile, 'utf8');
+    } catch (error) {
+      throw new Error(`Manifest generation: task result override for ${taskType} cannot be read`, { cause: error });
+    }
+    const schema = JSON.parse(schemaContents);
+    if (schema.$id !== `/schemas/${schemaPath}`) {
+      throw new Error(`Manifest generation: task result override for ${taskType} has mismatched schema identity`);
+    }
+  }
+  for (const taskType of taskTypeSchema.enum) {
+    if (!toolsObj[taskType] && !terminalSchemaOverrides[taskType]) {
+      throw new Error(`Manifest generation: task_type ${taskType} has no tool or terminal schema override`);
+    }
+  }
+  return {
+    discriminator_field: 'task_type',
+    terminal_schema_pointer_template: '/tools/{task_type}/response_schema',
+    terminal_schema_overrides: terminalSchemaOverrides
+  };
+}
+
 function discoverTools(sourceDir) {
   const tools = [];
   const entries = fs.readdirSync(sourceDir, { withFileTypes: true });
@@ -1021,7 +1177,33 @@ function discoverTools(sourceDir) {
       const toolBase = f.name.replace(/-request\.json$/, '');
       const toolName = toolBase.replace(/-/g, '_');
       const requestPath = path.join(protoDir, f.name);
+      const requestSchema = JSON.parse(fs.readFileSync(requestPath, 'utf8'));
       const responseName = `${toolBase}-response.json`;
+      const responseSchema = `${protocol}/${responseName}`;
+      const legacyFallback = requestSchema['x-legacy-fallback'];
+      if (legacyFallback !== undefined) {
+        const keys = legacyFallback && typeof legacyFallback === 'object' && !Array.isArray(legacyFallback)
+          ? Object.keys(legacyFallback).sort()
+          : [];
+        const mode = legacyFallback?.mode;
+        const expectedKeys = mode === 'none' ? 'mode' : 'mode,tool';
+        if (
+          keys.join(',') !== expectedKeys
+          || !['direct', 'orchestrated', 'none'].includes(mode)
+          || (mode !== 'none' && !/^[a-z][a-z0-9_]*$/.test(legacyFallback.tool))
+        ) {
+          throw new Error(`Manifest generation: ${protocol}/${f.name} has invalid x-legacy-fallback metadata`);
+        }
+      }
+      const supersededBy = requestSchema['x-superseded-by'];
+      if (supersededBy !== undefined && (
+        !Array.isArray(supersededBy)
+        || supersededBy.length === 0
+        || supersededBy.some(name => typeof name !== 'string' || !/^[a-z][a-z0-9_]*$/.test(name))
+        || new Set(supersededBy).size !== supersededBy.length
+      )) {
+        throw new Error(`Manifest generation: ${protocol}/${f.name} has invalid x-superseded-by metadata`);
+      }
       const responsePath = path.join(protoDir, responseName);
       if (!fs.existsSync(responsePath)) {
         // A request with no matching response is a bug, not a tool — surface it.
@@ -1041,14 +1223,25 @@ function discoverTools(sourceDir) {
         name: toolName,
         protocol,
         mutating,
+        operation_family: requestSchema['x-operation-family'] || toolName,
+        idempotency_requirement: Array.isArray(requestSchema.required) && requestSchema.required.includes('idempotency_key')
+          ? 'required'
+          : requestSchema.properties?.idempotency_key
+            ? 'optional'
+            : 'none',
+        ...(requestSchema['x-added-in'] ? { added_in: requestSchema['x-added-in'] } : {}),
+        ...(requestSchema['x-deprecated-in'] ? { deprecated_in: requestSchema['x-deprecated-in'] } : {}),
+        ...(legacyFallback ? { legacy_fallback: legacyFallback } : {}),
+        ...(supersededBy ? { superseded_by: supersededBy } : {}),
         request_schema: `${protocol}/${f.name}`,
-        response_schema: `${protocol}/${responseName}`,
+        response_schema: responseSchema,
         async_response_schemas: asyncVariants
       });
     }
   }
   // Sort tools alphabetically by name for stable output.
   tools.sort((a, b) => a.name.localeCompare(b.name));
+  validateManifestToolRelationships(tools);
   return tools;
 }
 
@@ -1112,10 +1305,16 @@ function buildManifest(sourceDir, urlVersion, semverVersion, repoRoot) {
     toolsObj[t.name] = {
       protocol: t.protocol,
       mutating: t.mutating,
+      operation_family: t.operation_family,
+      idempotency_requirement: t.idempotency_requirement,
       request_schema: t.request_schema,
       response_schema: t.response_schema,
       async_response_schemas: t.async_response_schemas,
-      ...(t.specialisms ? { specialisms: t.specialisms } : {})
+      ...(t.specialisms ? { specialisms: t.specialisms } : {}),
+      ...(t.added_in ? { added_in: t.added_in } : {}),
+      ...(t.deprecated_in ? { deprecated_in: t.deprecated_in } : {}),
+      ...(t.legacy_fallback ? { legacy_fallback: t.legacy_fallback } : {}),
+      ...(t.superseded_by ? { superseded_by: t.superseded_by } : {})
     };
   }
 
@@ -1124,6 +1323,7 @@ function buildManifest(sourceDir, urlVersion, semverVersion, repoRoot) {
     adcp_version: semverVersion,
     generated_at: new Date().toISOString(),
     tools: toolsObj,
+    task_result_resolution: buildTaskResultResolution(sourceDir, toolsObj),
     error_code_policy: {
       default_unknown_recovery: 'transient',
       note: "Sellers MAY return platform-specific codes that are not listed in error_codes. Agents MUST classify unknown codes as default_unknown_recovery and SHOULD retry with backoff before surfacing to the operator. Throwing on an unknown code is non-conformant client behavior."
@@ -1135,6 +1335,14 @@ function buildManifest(sourceDir, urlVersion, semverVersion, repoRoot) {
 
 function writeManifest(sourceDir, targetDir, urlVersion, semverVersion, repoRoot) {
   const manifest = buildManifest(sourceDir, urlVersion, semverVersion, repoRoot);
+  const ajv = new Ajv({ allErrors: true, strict: false });
+  addFormats(ajv);
+  const validateManifest = ajv.compile(
+    JSON.parse(fs.readFileSync(path.join(sourceDir, 'manifest.schema.json'), 'utf8'))
+  );
+  if (!validateManifest(manifest)) {
+    throw new Error(`Generated manifest is invalid: ${ajv.errorsText(validateManifest.errors)}`);
+  }
   fs.writeFileSync(
     path.join(targetDir, 'manifest.json'),
     JSON.stringify(manifest, null, 2) + '\n',
@@ -1298,20 +1506,38 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set()) {
   for (const [key, value] of Object.entries(schema)) {
     if (key === '$ref' && typeof value === 'string' && value.startsWith('/schemas/')) {
       // Resolve the reference
-      const refPath = path.join(sourceDir, value.replace('/schemas/', ''));
+      const externalRef = value.replace('/schemas/', '');
+      const hashIndex = externalRef.indexOf('#');
+      const relativePath = hashIndex === -1 ? externalRef : externalRef.slice(0, hashIndex);
+      const fragment = hashIndex === -1 ? '' : externalRef.slice(hashIndex + 1);
+      const refPath = path.join(sourceDir, relativePath);
+      const ancestorKey = `${refPath}${fragment ? `#${fragment}` : ''}`;
 
       // Prevent infinite recursion for true circular refs (A → B → A)
       // But allow the same schema to be referenced from different locations
-      if (ancestorRefs.has(refPath)) {
+      if (ancestorRefs.has(ancestorKey)) {
         result[key] = value;  // Keep as-is for circular refs
         continue;
       }
 
       try {
-        const refContent = JSON.parse(fs.readFileSync(refPath, 'utf8'));
+        let refContent = JSON.parse(fs.readFileSync(refPath, 'utf8'));
+        if (fragment) {
+          if (!fragment.startsWith('/')) throw new Error(`Unsupported schema fragment: ${value}`);
+          refContent = fragment
+            .slice(1)
+            .split('/')
+            .map(segment => segment.replace(/~1/g, '/').replace(/~0/g, '~'))
+            .reduce((current, segment) => {
+              if (!current || typeof current !== 'object' || !(segment in current)) {
+                throw new Error(`Schema pointer not found: ${value}`);
+              }
+              return current[segment];
+            }, refContent);
+        }
         // Create a new set including this ref for the recursive call
         const newAncestors = new Set(ancestorRefs);
-        newAncestors.add(refPath);
+        newAncestors.add(ancestorKey);
         // Recursively resolve refs in the referenced schema
         const resolvedRef = resolveRefs(refContent, sourceDir, newAncestors);
         // Merge the resolved content. Drop `$schema` (only meaningful at
@@ -1983,10 +2209,11 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
 
 function generateMcpProjectionForVersion(versionDir, urlVersion) {
   const targetDir = path.join(versionDir, 'mcp', MCP_PROTOCOL_VERSION);
+  const manifestPath = path.join(versionDir, 'manifest.json');
   const stats = generateMcpSchemaProjection({
     sourceDir: SOURCE_DIR,
     targetDir,
-    manifestPath: path.join(versionDir, 'manifest.json'),
+    manifestPath,
     urlVersion,
   });
   console.log(
@@ -1994,6 +2221,118 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
       + `${(stats.totalBytes / (1024 * 1024)).toFixed(2)} MiB total, `
       + `${Math.ceil(stats.largestSchemaBytes / 1024)} KiB largest`
   );
+
+  const canonicalManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const surfaceVersion = [
+    canonicalManifest.adcp_version,
+    ...Object.values(canonicalManifest.tools || {}).map(tool => tool.added_in).filter(Boolean),
+  ].filter(version => semver.valid(version)).sort(semver.rcompare)[0];
+  const isActiveProductionTool = tool => (
+    tool.protocol !== 'compliance'
+    && (!tool.added_in || semver.lte(tool.added_in, surfaceVersion))
+    && (!tool.deprecated_in || semver.gt(tool.deprecated_in, surfaceVersion))
+  );
+  const productionTargetDir = path.join(targetDir, 'profiles', 'production');
+  const productionStats = generateMcpSchemaProjection({
+    sourceDir: SOURCE_DIR,
+    targetDir: productionTargetDir,
+    manifestPath,
+    urlVersion,
+    schemaUrlPrefix: `${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}/profiles/production`,
+    annotationMode: 'structural',
+    toolFilter: (_toolName, tool) => isActiveProductionTool(tool),
+    manifestMetadata: {
+      profile: 'production',
+      surface_version: surfaceVersion,
+      filters: {
+        exclude_protocols: ['compliance'],
+        exclude_deprecated: true,
+      },
+      canonical_projection: '../../manifest.json',
+    },
+  });
+  console.log(
+    `   ✓ Production ${surfaceVersion} profile: ${productionStats.toolCount} tools, `
+      + `${productionStats.schemaCount} schemas, `
+      + `${(productionStats.totalBytes / (1024 * 1024)).toFixed(2)} MiB structural projection`
+  );
+
+  for (const [profileName, toolNames] of Object.entries(MCP_ROLE_PROFILE_TOOLS)) {
+    const missingTools = toolNames.filter(toolName => !canonicalManifest.tools?.[toolName]);
+    if (missingTools.length > 0) {
+      throw new Error(`${profileName} MCP profile names unknown tools: ${missingTools.join(', ')}`);
+    }
+    const inactiveTools = toolNames.filter(toolName => (
+      !isActiveProductionTool(canonicalManifest.tools[toolName])
+    ));
+    if (inactiveTools.length > 0) {
+      throw new Error(`${profileName} MCP profile names inactive tools: ${inactiveTools.join(', ')}`);
+    }
+
+    const selectedTools = new Set(toolNames);
+    const selectedTaskResultOverrides = new Set(
+      MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES[profileName] || []
+    );
+    const profileTargetDir = path.join(targetDir, 'profiles', profileName);
+    const profileStats = generateMcpSchemaProjection({
+      sourceDir: SOURCE_DIR,
+      targetDir: profileTargetDir,
+      manifestPath,
+      urlVersion,
+      schemaUrlPrefix: `${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}/profiles/${profileName}`,
+      annotationMode: 'structural',
+      toolFilter: (toolName, tool) => selectedTools.has(toolName) && isActiveProductionTool(tool),
+      taskResultOverrideFilter: taskType => selectedTaskResultOverrides.has(taskType),
+      manifestMetadata: {
+        profile: profileName,
+        profile_kind: 'active-role-catalog',
+        surface_version: surfaceVersion,
+        compatibility_scope: 'active-3.2-only',
+        filters: {
+          include_tools: toolNames,
+          exclude_deprecated: true,
+        },
+        delivery: 'active 3.2 role-filtered validation artifacts; not a complete 3.x tools/list registration',
+        canonical_projection: '../../manifest.json',
+      },
+    });
+    if (profileStats.toolCount !== toolNames.length) {
+      throw new Error(
+        `${profileName} MCP profile generated ${profileStats.toolCount} tools; expected ${toolNames.length}`
+      );
+    }
+
+    const modelContextTargetDir = path.join(profileTargetDir, 'model-context');
+    const modelContextStats = generateMcpSchemaProjection({
+      sourceDir: SOURCE_DIR,
+      targetDir: modelContextTargetDir,
+      manifestPath,
+      urlVersion,
+      schemaUrlPrefix: `${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}/profiles/${profileName}/model-context`,
+      annotationMode: 'structural',
+      schemaFields: ['inputSchema'],
+      toolFilter: (toolName, tool) => selectedTools.has(toolName) && isActiveProductionTool(tool),
+      manifestMetadata: {
+        profile: profileName,
+        profile_kind: 'active-role-catalog',
+        view: 'client-prompt-inputs',
+        surface_version: surfaceVersion,
+        compatibility_scope: 'active-3.2-only',
+        filters: {
+          include_tools: toolNames,
+          exclude_deprecated: true,
+        },
+        delivery: 'client-side prompt input projection; servers continue to advertise outputSchema and clients validate with the parent profile',
+        validation_profile: '../manifest.json',
+        canonical_projection: '../../../manifest.json',
+      },
+    });
+    console.log(
+      `   ✓ ${profileName} ${surfaceVersion} profile: ${profileStats.toolCount} tools, `
+        + `${(profileStats.totalBytes / (1024 * 1024)).toFixed(2)} MiB validation, `
+        + `${(modelContextStats.totalBytes / 1024).toFixed(0)} KiB model context`
+    );
+  }
   return stats;
 }
 
@@ -2277,6 +2616,8 @@ async function main() {
 }
 
 module.exports = {
+  MCP_ROLE_PROFILE_TOOLS,
+  MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES,
   canonicalPublishedSchemaUri,
   canonicalizePublishedSchemaUris,
   generateExtensionRegistry,
@@ -2291,6 +2632,8 @@ module.exports = {
   buildRootSchemaDiscovery,
   isSelectableRelease,
   discoverTools,
+  buildTaskResultResolution,
+  validateManifestToolRelationships,
 };
 
 if (require.main === module) {

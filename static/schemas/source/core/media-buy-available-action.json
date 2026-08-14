@@ -13,6 +13,11 @@
       "$ref": "/schemas/enums/media-buy-action-mode.json",
       "description": "The single mode that applies right now on this buy for this action. Singular because the buy has a concrete state, exactly one mode applies. Buyer SDKs branch on this to decide whether to expect a synchronous response, conditional handling, or an asynchronous approval callback."
     },
+    "task": {
+      "type": "string",
+      "enum": ["control_media_buy", "refine_proposals", "sync_creatives"],
+      "description": "Compact-lifecycle task for this resolved action: operational control, commercial refinement, or creative lifecycle mutation."
+    },
     "sla": {
       "$ref": "/schemas/core/sla-window.json",
       "description": "Optional SLA commitment for this action on this buy. Absence means no commitment, not zero commitment."

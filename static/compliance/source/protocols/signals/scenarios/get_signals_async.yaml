@@ -288,10 +288,12 @@ phases:
           params:
             task_id: "$context.signals_task_id"
             result:
+              status: "completed"
               signals:
-                - signal_id:
-                    source: "agent_native"
-                    id: "likely_ev_buyers"
+                - signal_ref:
+                    scope: "signal_source"
+                    signal_source_url: "https://signals.example/.well-known/adcp/signals"
+                    signal_id: "likely_ev_buyers"
                   signal_agent_segment_id: "seg_async_likely_ev_buyers"
                   name: "Likely EV buyers"
                   description: "Modeled audience of consumers likely to consider an electric vehicle in the next 90 days."

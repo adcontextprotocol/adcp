@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-forecast-point.json",
+  "title": "Canonical Forecast Point",
+  "description": "Compact forecast row with numeric ranges and identity-only measurement-vendor references.",
+  "type": "object",
+  "properties": {
+    "label": { "type": "string", "maxLength": 128 },
+    "budget": { "type": "number", "minimum": 0 },
+    "product_id": { "type": "string", "x-entity": "product" },
+    "dimensions": { "$ref": "/schemas/core/forecast-point-dimensions.json" },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": { "$ref": "/schemas/core/forecast-range.json" }
+    },
+    "viewability": {
+      "type": "object",
+      "properties": {
+        "vendor": { "$ref": "/schemas/core/brand-key.json" },
+        "measurable_impressions": { "$ref": "/schemas/core/forecast-range.json" },
+        "viewable_impressions": { "$ref": "/schemas/core/forecast-range.json" },
+        "viewable_rate": { "$ref": "/schemas/core/forecast-range.json" },
+        "viewed_seconds": { "$ref": "/schemas/core/forecast-range.json" },
+        "standard": { "$ref": "/schemas/enums/viewability-standard.json" }
+      },
+      "additionalProperties": false
+    },
+    "vendor_metric_values": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/canonical-forecast-vendor-metric-value.json" }
+    }
+  },
+  "required": ["metrics"],
+  "additionalProperties": false
+}

@@ -34,6 +34,10 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   // sales
   sync_catalogs: ['sales', 'si'],
   get_products: ['sales'],
+  list_products: ['sales'],
+  request_proposals: ['sales'],
+  refine_proposals: ['sales'],
+  decline_proposals: ['sales'],
   create_media_buy: ['sales'],
   update_media_buy: ['sales'],
   get_media_buys: ['sales'],
@@ -126,10 +130,17 @@ export function toolsForTenant(
       const is30 = options.storyboardCompat?.version === '3.0'
         || options.adcpVersion?.startsWith('3.0');
       if (!is30) return true;
-      // 3.0-compat exclusions. validate_input / list_transformers are gated off
-      // on every tenant that serves them. sync_governance is a 3.1+ account task
-      // gated off /sales under 3.0 (the released 3.0.x sales scenarios skip it),
-      // but /signals keeps it across versions.
+      // 3.0-compat exclusions. The split product-discovery tools are introduced
+      // in 3.2, while validate_input / list_transformers are gated off on every
+      // tenant that serves them. sync_governance is a 3.1+ account task gated
+      // off /sales under 3.0 (the released 3.0.x sales scenarios skip it), but
+      // /signals keeps it across versions.
+      if (
+        tool === 'list_products'
+        || tool === 'request_proposals'
+        || tool === 'refine_proposals'
+        || tool === 'decline_proposals'
+      ) return false;
       if (tool === 'validate_input' || tool === 'list_transformers') return false;
       if (tool === 'sync_governance' && tenantId === 'sales') return false;
       return true;

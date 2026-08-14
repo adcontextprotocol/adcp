@@ -118,6 +118,7 @@ phases:
         stateful: false
         expected: "Return the seeded products with compatible USD pricing and click optimization."
         sample_request:
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_setup_get_products_for_shared_budget"
           buying_mode: "brief"
           brief: "Allocate a $100,000 performance budget across prospecting and retargeting display packages, optimizing for clicks."
           account:
@@ -533,6 +534,7 @@ phases:
           Return a seller-optimized proposal with aggregate even pacing and a
           subordinate front-loaded pacing term on the second allocation.
         sample_request:
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_execute_seller_optimized_proposal_get_seller_optimized_proposal"
           buying_mode: "brief"
           brief: "Propose a $100,000 shared display budget across prospecting and retargeting, optimize allocation for clicks, pace the buy evenly, and front-load retargeting."
           account:
@@ -569,6 +571,7 @@ phases:
         stateful: true
         expected: "Return the same seller-optimized proposal as committed firm terms."
         sample_request:
+          idempotency_key: "$generate:uuid_v4#seller_optimized_budget_execute_seller_optimized_proposal_finalize_seller_optimized_proposal"
           buying_mode: "refine"
           refine:
             - scope: "proposal"

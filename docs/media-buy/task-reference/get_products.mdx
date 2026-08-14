@@ -7,6 +7,10 @@ testable: true
 
 Discover available advertising products based on campaign requirements using natural language briefs or structured filters.
 
+<Warning>
+`get_products` is deprecated for new integrations in AdCP 3.2, but remains fully supported throughout 3.x. Use [`list_products`](/docs/media-buy/task-reference/list_products), [`request_proposals`](/docs/media-buy/task-reference/request_proposals), [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), or [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals). Its `idempotency_key` remains optional. Split-task retries keep the same tool name; they are not cross-name replays of this compatibility facade.
+</Warning>
+
 <Info>
 **Why this shape.** Targeting, pricing, and curation are folded into one round-trip — the brief drives discovery, the publisher curates against it, and `pricing_options` carry firm prices the buyer commits against via `pricing_option_id`. We rejected a separate `get_price_quote` step between products and buy creation: it splits one expert decision into two underspecified ones and breaks the brief→curation contract. Iteration is `buying_mode: "refine"` with a typed change array — not a new task. → [Design principle: the brief drives discovery](/docs/protocol/design-principles#3-the-brief-drives-discovery-targeting-is-an-input-not-a-step).
 </Info>
@@ -29,6 +33,7 @@ import { testAgent } from '@adcp/sdk/testing';
 import { GetProductsResponseSchema } from '@adcp/sdk';
 
 const result = await testAgent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655441000',
   buying_mode: 'brief',
   brief: 'Premium athletic footwear with innovative cushioning',
   brand: {
@@ -64,6 +69,7 @@ from adcp.testing import test_agent
 
 async def discover_products():
     result = await test_agent.simple.get_products(
+        idempotency_key='550e8400-e29b-41d4-a716-446655441001',
         buying_mode='brief',
         brief='Premium athletic footwear with innovative cushioning',
         brand={
@@ -84,7 +90,7 @@ asyncio.run(discover_products())
 uvx adcp \
   https://test-agent.adcontextprotocol.org/sales/mcp \
   get_products \
-  '{"buying_mode":"brief","brief":"Premium athletic footwear with innovative cushioning","brand":{"domain":"acmecorp.com"}}' \
+  '{"idempotency_key":"550e8400-e29b-41d4-a716-446655441002","buying_mode":"brief","brief":"Premium athletic footwear with innovative cushioning","brand":{"domain":"acmecorp.com"}}' \
   --auth $ADCP_AUTH_TOKEN
 ```
 
@@ -100,6 +106,7 @@ You can also use structured filters instead of (or in addition to) a brief. In `
 import { testAgent } from '@adcp/sdk/testing';
 
 const result = await testAgent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655441003',
   buying_mode: 'wholesale',
   brand: {
     domain: 'acmecorp.com'
@@ -122,6 +129,7 @@ from adcp.testing import test_agent
 
 async def discover_with_filters():
     result = await test_agent.simple.get_products(
+        idempotency_key='550e8400-e29b-41d4-a716-446655441004',
         buying_mode='wholesale',
         brand={
             'domain': 'acmecorp.com'
@@ -143,6 +151,7 @@ asyncio.run(discover_with_filters())
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `idempotency_key` | string | No | Optional key for retry-safe use of the 3.x compatibility facade (16–255 characters; letters, digits, `_`, `.`, `:`, and `-`). When supplied, reuse the same key only when retrying the exact initial request. Poll the resulting task through [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) or MCP task APIs; each new polling request carries its own fresh key. Use a new key whenever any request parameter changes. |
 | `buying_mode` | string | Yes | `"brief"`, `"wholesale"`, or `"refine"`. `"brief"`: publisher curates products from the brief. `"wholesale"`: raw product feed access for buyer-directed targeting, `brief` must not be provided. `"refine"`: iterate on products and proposals from a previous response using the `refine` array of change requests. v3 clients MUST include `buying_mode`. Sellers receiving requests from pre-v3 clients without `buying_mode` SHOULD default to `"brief"`. **Timing semantics:** `"wholesale"` is a wholesale product feed read — sellers SHOULD return a synchronous response and MUST NOT route a `"wholesale"` request through the async/Submitted arm. Partial completion is signalled via [`incomplete[]`](#incomplete-array), not a task handoff. `"brief"` and `"refine"` MAY complete synchronously OR MAY return a `Submitted` envelope when curation requires upstream-system queries or HITL review the seller cannot complete inside `time_budget`. Buyers needing predictable fast wholesale product feed access MUST use `"wholesale"`. |
 | `brief` | string | Conditional | Natural language description of campaign requirements. Required when `buying_mode` is `"brief"`. Must not be provided when `buying_mode` is `"wholesale"` or `"refine"`. |
 | `refine` | [Refine[]](#refine-array) | Conditional | Array of change requests for iterating on products and proposals. Required when `buying_mode` is `"refine"`. Must not be provided when `buying_mode` is `"brief"` or `"wholesale"`. See [Refine array](#refine-array) below. |
@@ -263,6 +272,7 @@ Signal-targeting filter example:
 ```json
 {
   "$schema": "/schemas/media-buy/get-products-request.json",
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441005",
   "buying_mode": "wholesale",
   "filters": {
     "signal_targeting": [
@@ -303,6 +313,7 @@ Currency-only filter example:
 ```json
 {
   "$schema": "/schemas/media-buy/get-products-request.json",
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441006",
   "buying_mode": "wholesale",
   "filters": {
     "pricing_currencies": ["USD"]
@@ -560,6 +571,7 @@ Request:
 ```json
 {
   "$schema": "/schemas/media-buy/get-products-request.json",
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441007",
   "buying_mode": "wholesale",
   "if_wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412"
 }
@@ -664,6 +676,7 @@ Declare a time budget when you need fast results and can accept partial data. Th
 import { testAgent } from '@adcp/sdk/testing';
 
 const result = await testAgent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655441008',
   buying_mode: 'brief',
   brief: 'CTV and display for brand awareness',
   brand: {
@@ -695,6 +708,7 @@ from adcp.testing import test_agent
 
 async def discover_with_time_budget():
     result = await test_agent.simple.get_products(
+        idempotency_key='550e8400-e29b-41d4-a716-446655441009',
         buying_mode='brief',
         brief='CTV and display for brand awareness',
         brand={
@@ -754,6 +768,7 @@ import { testAgent } from '@adcp/sdk/testing';
 
 // wholesale mode: buyer applies their own audiences, no publisher curation
 const result = await testAgent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655441010',
   buying_mode: 'wholesale',
   brand: {
     domain: 'acmecorp.com'
@@ -775,6 +790,7 @@ from adcp.testing import test_agent
 async def discover_standard_wholesale_products():
     # wholesale mode: buyer applies their own audiences, no publisher curation
     result = await test_agent.simple.get_products(
+        idempotency_key='550e8400-e29b-41d4-a716-446655441011',
         buying_mode='wholesale',
         brand={
             'domain': 'acmecorp.com'
@@ -799,6 +815,7 @@ import { testAgent } from '@adcp/sdk/testing';
 
 // Find products supporting both video and display
 const result = await testAgent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655441012',
   buying_mode: 'brief',
   brief: 'Brand awareness campaign with video and display',
   brand: {
@@ -821,6 +838,7 @@ from adcp.testing import test_agent
 async def discover_multi_format():
     # Find products supporting both video and display
     result = await test_agent.simple.get_products(
+        idempotency_key='550e8400-e29b-41d4-a716-446655441013',
         buying_mode='brief',
         brief='Brand awareness campaign with video and display',
         brand={
@@ -846,6 +864,7 @@ import { testAgent } from '@adcp/sdk/testing';
 
 // Find products within budget and date range for specific countries and channels
 const result = await testAgent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655441014',
   buying_mode: 'brief',
   brief: 'Q2 campaign for athletic footwear in North America',
   brand: {
@@ -877,6 +896,7 @@ from adcp.testing import test_agent
 async def discover_with_budget_and_dates():
     # Find products within budget and date range for specific countries and channels
     result = await test_agent.simple.get_products(
+        idempotency_key='550e8400-e29b-41d4-a716-446655441015',
         buying_mode='brief',
         brief='Q2 campaign for athletic footwear in North America',
         brand={
@@ -911,6 +931,7 @@ import { testAgent } from '@adcp/sdk/testing';
 
 // Get products with property tags
 const result = await testAgent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655441016',
   buying_mode: 'brief',
   brief: 'Sports content',
   brand: {
@@ -935,6 +956,7 @@ from adcp.testing import test_agent
 async def discover_property_tags():
     # Get products with property tags
     result = await test_agent.simple.get_products(
+        idempotency_key='550e8400-e29b-41d4-a716-446655441017',
         buying_mode='brief',
         brief='Sports content',
         brand={
@@ -962,6 +984,7 @@ import { testAgent } from '@adcp/sdk/testing';
 
 // Find guaranteed delivery products for measurement
 const result = await testAgent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655441018',
   buying_mode: 'brief',
   brief: 'Guaranteed delivery for lift study',
   brand: {
@@ -985,6 +1008,7 @@ from adcp.testing import test_agent
 async def discover_guaranteed():
     # Find guaranteed delivery products for measurement
     result = await test_agent.simple.get_products(
+        idempotency_key='550e8400-e29b-41d4-a716-446655441019',
         buying_mode='brief',
         brief='Guaranteed delivery for lift study',
         brand={
@@ -1011,6 +1035,7 @@ import { testAgent } from '@adcp/sdk/testing';
 
 // Find products that only accept IAB standard formats
 const result = await testAgent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655441020',
   buying_mode: 'wholesale',
   brand: {
     domain: 'acmecorp.com'
@@ -1032,6 +1057,7 @@ from adcp.testing import test_agent
 async def discover_standard_formats():
     # Find products that only accept IAB standard formats
     result = await test_agent.simple.get_products(
+        idempotency_key='550e8400-e29b-41d4-a716-446655441021',
         buying_mode='wholesale',
         brand={
             'domain': 'acmecorp.com'
@@ -1058,6 +1084,7 @@ import { testAgent } from '@adcp/sdk/testing';
 
 // Discover retail media products for specific catalog items
 const result = await testAgent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655441022',
   buying_mode: 'wholesale',
   brand: {
     domain: 'acmecorp.com'
@@ -1088,6 +1115,7 @@ from adcp.testing import test_agent
 async def discover_commerce_products():
     # Discover retail media products for specific catalog items
     result = await test_agent.simple.get_products(
+        idempotency_key='550e8400-e29b-41d4-a716-446655441023',
         buying_mode='wholesale',
         brand={
             'domain': 'acmecorp.com'
@@ -1113,7 +1141,7 @@ asyncio.run(discover_commerce_products())
 uvx adcp \
   https://test-agent.adcontextprotocol.org/sales/mcp \
   get_products \
-  '{"buying_mode":"wholesale","brand":{"domain":"acmecorp.com"},"catalog":{"type":"product","tags":["ketchup","organic"],"category":"food/condiments"},"filters":{"channels":["retail_media"]}}' \
+  '{"idempotency_key":"550e8400-e29b-41d4-a716-446655441024","buying_mode":"wholesale","brand":{"domain":"acmecorp.com"},"catalog":{"type":"product","tags":["ketchup","organic"],"category":"food/condiments"},"filters":{"channels":["retail_media"]}}' \
   --auth $ADCP_AUTH_TOKEN
 ```
 
@@ -1163,6 +1191,7 @@ import { testAgent } from '@adcp/sdk/testing';
 
 // Filter products by property list from governance agent
 const result = await testAgent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655441025',
   buying_mode: 'brief',
   brief: 'Brand-safe inventory for family brand',
   brand: {
@@ -1192,6 +1221,7 @@ from adcp.testing import test_agent
 async def discover_with_property_list():
     # Filter products by property list from governance agent
     result = await test_agent.simple.get_products(
+        idempotency_key='550e8400-e29b-41d4-a716-446655441026',
         buying_mode='brief',
         brief='Brand-safe inventory for family brand',
         brand={
@@ -1241,6 +1271,7 @@ Minimal example:
 
 ```json test=false
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441027",
   "buying_mode": "refine",
   "refine": [
     { "scope": "request",                                             "ask": "more video, less display" },
@@ -1322,7 +1353,7 @@ The rejection arm carries no `products`, `proposals`, `incomplete`, `filter_diag
 | [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | Brief too long or malformed filters | Check request parameters |
 | [`PRODUCT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-product-not-found) | One or more referenced product IDs are unknown or expired | Remove invalid IDs and retry, or re-discover with a `brief` request |
 | [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired) | A referenced proposal ID has passed its `expires_at` timestamp | Re-discover with a new `brief` or `wholesale` request |
-| [`PROPOSAL_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-proposal-not-found) | The referenced `proposal_id` is unknown to the seller (never finalized, wrong tenant, or evicted from cache) | Re-issue `get_products` in `refine` mode with `action: 'finalize'` to obtain a current proposal_id |
+| [`PROPOSAL_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-proposal-not-found) | The referenced `proposal_id` is unknown to the seller (never issued, wrong tenant, or evicted from cache) | Re-issue `get_products` in `brief` or `wholesale` mode to obtain a fresh draft; finalize that recognized proposal before creating the media buy |
 | [`MULTI_FINALIZE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-multi-finalize-unsupported) | `refine[]` carried multiple `action: 'finalize'` entries but the seller cannot guarantee atomic multi-proposal commit | Sequence single-proposal finalize calls — one finalize entry per `get_products` call |
 | [`POLICY_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-policy-violation) | The request itself violates an applicable policy and must be corrected | Review the structured policy details and revise the request. A seller making a deliberate business decision to decline an otherwise well-formed brief uses `status: "rejected"` instead. |
 
@@ -1337,6 +1368,7 @@ import { testAgent, testAgentNoAuth } from '@adcp/sdk/testing';
 
 // WITH authentication - full product results with pricing
 const fullProducts = await testAgent.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655441028',
   buying_mode: 'brief',
   brief: 'Premium CTV inventory for brand awareness',
   brand: {
@@ -1353,6 +1385,7 @@ console.log(`First product pricing: ${fullProducts.data.products[0].pricing_opti
 
 // WITHOUT authentication - limited public product results
 const publicProducts = await testAgentNoAuth.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655441029',
   buying_mode: 'brief',
   brief: 'Premium CTV inventory for brand awareness',
   brand: {
@@ -1375,6 +1408,7 @@ from adcp.testing import test_agent, test_agent_no_auth
 async def compare_auth():
     # WITH authentication - full product results with pricing
     full_products = await test_agent.simple.get_products(
+        idempotency_key='550e8400-e29b-41d4-a716-446655441030',
         buying_mode='brief',
         brief='Premium CTV inventory for brand awareness',
         brand={
@@ -1387,6 +1421,7 @@ async def compare_auth():
 
     # WITHOUT authentication - limited public product results
     public_products = await test_agent_no_auth.simple.get_products(
+        idempotency_key='550e8400-e29b-41d4-a716-446655441031',
         buying_mode='brief',
         brief='Premium CTV inventory for brand awareness',
         brand={
@@ -1422,6 +1457,14 @@ Most product searches complete immediately, but some scenarios require asynchron
 #### SDK Status Handling
 
 ```typescript
+import { randomUUID } from 'node:crypto';
+
+const params = {
+  idempotency_key: randomUUID(),
+  buying_mode: 'brief',
+  brief: 'Premium CTV inventory for brand awareness',
+};
+
 const initial = await agent.getProducts(params);
 const final =
   initial.status === 'submitted'
@@ -1463,6 +1506,7 @@ POST /api/mcp/call_tool
 {
   "name": "get_products",
   "arguments": {
+    "idempotency_key": "550e8400-e29b-41d4-a716-446655441032",
     "buying_mode": "brief",
     "brief": "CTV inventory for sports audience",
     "brand": { "domain": "acmecorp.com" }
@@ -1522,6 +1566,7 @@ POST /api/mcp/call_tool
 {
   "name": "get_products",
   "arguments": {
+    "idempotency_key": "550e8400-e29b-41d4-a716-446655441033",
     "buying_mode": "brief",
     "brief": "Premium inventory across all formats for luxury automotive brand",
     "brand": { "domain": "acmecorp.com" },
@@ -1573,6 +1618,7 @@ POST /api/a2a
       "data": {
         "skill": "get_products",
         "parameters": {
+          "idempotency_key": "550e8400-e29b-41d4-a716-446655441034",
           "buying_mode": "brief",
           "brief": "CTV inventory for sports audience",
           "brand": { "domain": "acmecorp.com" }
@@ -1672,6 +1718,7 @@ POST /api/a2a
       "data": {
         "skill": "get_products",
         "parameters": {
+          "idempotency_key": "550e8400-e29b-41d4-a716-446655441035",
           "buying_mode": "brief",
           "brief": "Premium inventory across all formats for luxury automotive brand",
           "brand": { "domain": "acmecorp.com" }

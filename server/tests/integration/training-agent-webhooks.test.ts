@@ -31,7 +31,12 @@ vi.mock('../../src/logger.js', () => ({
 const { createTrainingAgentRouter } = await import('../../src/training-agent/index.js');
 const { stopSessionCleanup, clearSessions, getSession, runWithSessionContext, sessionKeyFromArgs } = await import('../../src/training-agent/state.js');
 const { clearAccountStore } = await import('../../src/training-agent/account-handlers.js');
-const { resetWebhookSigning, getPublicJwks, emitFrameworkTaskWebhook } = await import('../../src/training-agent/webhooks.js');
+const {
+  resetWebhookSigning,
+  getPublicJwks,
+  emitFrameworkTaskWebhook,
+  maybeEmitCompletionWebhook,
+} = await import('../../src/training-agent/webhooks.js');
 const { handleCreatePropertyList, handleUpdatePropertyList } = await import('../../src/training-agent/property-handlers.js');
 
 const AUTH = 'Bearer test-token-webhook';
@@ -176,6 +181,153 @@ describe('Training Agent webhook emission', () => {
       if (srv) {
         srv.closeAllConnections?.();
         await new Promise<void>(r => srv!.close(() => r()));
+      }
+    }
+  }, 20000);
+
+  it('emits token-correlated callbacks across the split proposal lifecycle', async () => {
+    const deliveries: CapturedDelivery[] = [];
+    let srv: http.Server | undefined;
+    try {
+      let resolveDeliveries: (() => void) | undefined;
+      const delivered = new Promise<void>(resolve => { resolveDeliveries = resolve; });
+      srv = await startReceiver((delivery, res) => {
+        deliveries.push(delivery);
+        res.writeHead(200);
+        res.end();
+        if (deliveries.length === 2) resolveDeliveries?.();
+      });
+      const addr = srv.address() as AddressInfo;
+      const webhookUrl = `http://127.0.0.1:${addr.port}/hook/split-proposals`;
+      const call = (name: string, args: Record<string, unknown>) => request(app)
+        .post('/api/training-agent/sales/mcp')
+        .set('Authorization', AUTH)
+        .set('Content-Type', 'application/json')
+        .set('Accept', 'application/json, text/event-stream')
+        .send({
+          jsonrpc: '2.0',
+          id: randomUUID(),
+          method: 'tools/call',
+          params: { name, arguments: args },
+        });
+
+      const callback = (operationId: string) => ({
+        url: webhookUrl,
+        operation_id: operationId,
+        token: 'split-callback-token-1234',
+      });
+      const requestedResponse = await call('request_proposals', {
+        idempotency_key: `split-request-${randomUUID()}`,
+        brand: { domain: 'split-webhook.example' },
+        brief: 'Reach sports fans with social display',
+        push_notification_config: callback('op_request_proposals'),
+      });
+      const requested = structuredToolResult(requestedResponse);
+      expect(requested).not.toHaveProperty('adcp_error');
+      expect(requested.outcome).toBe('proposed');
+      const source = (requested.proposals as Array<Record<string, unknown>>)[0];
+
+      const refinedResponse = await call('refine_proposals', {
+        idempotency_key: `split-refine-${randomUUID()}`,
+        refinements: [{
+          proposal_id: source.proposal_id,
+          action: 'revise',
+          instructions: 'Prefer social inventory while preserving the total budget.',
+        }],
+        push_notification_config: callback('op_refine_proposals'),
+      });
+      const refined = structuredToolResult(refinedResponse);
+      expect(refined).not.toHaveProperty('adcp_error');
+      await Promise.race([
+        delivered,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('split lifecycle webhooks never arrived')), 10_000)),
+      ]);
+
+      expect(deliveries).toHaveLength(2);
+      const bodies = deliveries.map(delivery => JSON.parse(delivery.body) as Record<string, unknown>);
+      expect(bodies.map(body => body.task_type)).toEqual([
+        'request_proposals',
+        'refine_proposals',
+      ]);
+      expect(bodies.map(body => body.operation_id)).toEqual([
+        'op_request_proposals',
+        'op_refine_proposals',
+      ]);
+      expect(bodies.every(body => body.token === 'split-callback-token-1234')).toBe(true);
+      const results = bodies.map(body => body.result as Record<string, unknown>);
+      expect(results[0]).toMatchObject({ proposals: expect.any(Array), products: expect.any(Array) });
+      expect(results[0]).not.toHaveProperty('refinement_applied');
+      expect(results[1]).toMatchObject({ results: expect.any(Array), products: expect.any(Array) });
+      expect(results[1]).not.toHaveProperty('proposals');
+      expect(results[1]).not.toHaveProperty('refinement_applied');
+    } finally {
+      if (srv) {
+        srv.closeAllConnections?.();
+        await new Promise<void>(resolve => srv!.close(() => resolve()));
+      }
+    }
+  }, 20000);
+
+  it('honors legacy callback authentication when emitting split-tool webhooks', async () => {
+    const deliveries: CapturedDelivery[] = [];
+    let srv: http.Server | undefined;
+    try {
+      let resolveDeliveries: (() => void) | undefined;
+      const delivered = new Promise<void>(resolve => { resolveDeliveries = resolve; });
+      srv = await startReceiver((delivery, res) => {
+        deliveries.push(delivery);
+        res.writeHead(200);
+        res.end();
+        if (deliveries.length === 2) resolveDeliveries?.();
+      });
+      const addr = srv.address() as AddressInfo;
+      maybeEmitCompletionWebhook({
+        toolName: 'request_proposals',
+        args: {
+          push_notification_config: {
+            url: `http://127.0.0.1:${addr.port}/hook/bearer`,
+            operation_id: 'op_split_bearer',
+            authentication: {
+              schemes: ['Bearer'],
+              credentials: 'legacy-bearer-credential-1234567890',
+            },
+          },
+        },
+        response: { proposals: [], products: [] },
+        principal: 'webhook-test-principal',
+      });
+      maybeEmitCompletionWebhook({
+        toolName: 'refine_proposals',
+        args: {
+          push_notification_config: {
+            url: `http://127.0.0.1:${addr.port}/hook/hmac`,
+            operation_id: 'op_split_hmac',
+            authentication: {
+              schemes: ['HMAC-SHA256'],
+              credentials: 'legacy-hmac-credential-123456789012',
+            },
+          },
+        },
+        response: { results: [], products: [] },
+        principal: 'webhook-test-principal',
+      });
+      await Promise.race([
+        delivered,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('authenticated webhook never arrived')), 10_000)),
+      ]);
+
+      expect(deliveries).toHaveLength(2);
+      const bearer = deliveries.find(delivery => delivery.url.endsWith('/hook/bearer'))!;
+      const hmac = deliveries.find(delivery => delivery.url.endsWith('/hook/hmac'))!;
+      expect(bearer.headers.authorization).toBe('Bearer legacy-bearer-credential-1234567890');
+      expect(bearer.headers['signature-input']).toBeUndefined();
+      expect(hmac.headers['x-adcp-timestamp']).toMatch(/^\d+$/);
+      expect(hmac.headers['x-adcp-signature']).toMatch(/^sha256=[a-f0-9]{64}$/);
+      expect(hmac.headers['signature-input']).toBeUndefined();
+    } finally {
+      if (srv) {
+        srv.closeAllConnections?.();
+        await new Promise<void>(resolve => srv!.close(() => resolve()));
       }
     }
   }, 20000);
@@ -646,7 +798,7 @@ describe('Training Agent webhook emission', () => {
       });
 
       await callTool(12, 'comply_test_controller', {
-        account: { sandbox: true },
+        account: { ...account, sandbox: true },
         brand: account.brand,
         scenario: 'force_creative_status',
         params: {
@@ -788,7 +940,7 @@ describe('Training Agent webhook emission', () => {
       });
 
       await callTool(22, 'comply_test_controller', {
-        account: { sandbox: true },
+        account: { brand, operator: 'agency-one.example', sandbox: true },
         brand,
         scenario: 'force_creative_status',
         params: {

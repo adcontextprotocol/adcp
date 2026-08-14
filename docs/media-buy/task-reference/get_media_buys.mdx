@@ -28,6 +28,7 @@ Sellers that need to partition inventory away from a caller MUST do so at the **
 | `account` | [account-ref](/docs/building/by-layer/L2/accounts-and-agents#account-references) | No | Account reference. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }` if the seller supports implicit resolution. When omitted, returns data across all accessible accounts. |
 | `media_buy_ids` | string[] | No* | Array of media buy IDs to retrieve |
 | `status_filter` | string \| string[] | No | Status filter: `"pending_creatives"`, `"pending_start"`, `"active"`, `"paused"`, `"completed"`, `"rejected"`, `"canceled"`. Defaults to `["active"]` only when `media_buy_ids` is omitted. |
+| `indicator_types` | string[] | No | Return buys with at least one requested current indicator on the buy, a package, or a package–creative assignment. Buyers MUST request only advertised types; sellers MAY reject unsupported filtering with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). |
 | `include_snapshot` | boolean | No | When true, include near-real-time delivery snapshots for each package. Defaults to `false`. |
 | `include_history` | integer | No | Include the last N revision history entries per media buy (returns min(N, available)). 0 or omit to exclude. Max 1000. |
 | `include_webhook_activity` | boolean | No | When true, each media buy includes a `webhook_activity` array with recent delivery-report webhook fires for the calling principal. Defaults to `false`. See [Webhook activity](#webhook-activity). |
@@ -57,6 +58,9 @@ Returns an array of media buys with current status, creative approval state, and
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Seller's media buy identifier |
+| `accepted_proposal_id` | Current immutable commercial snapshot used to begin [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals); present for compact-lifecycle buys. |
+| `accepted_proposal_terms_digest` | Digest binding the current accepted proposal terms for recovery and governance verification. |
+| `accepted_proposal` | Complete accepted canonical proposal for compact-lifecycle buys. Together with the ID and digest, this lets a restarted client refine the current commercial envelope without reconstructing historical offers. |
 | `invoice_recipient` | Per-buy invoice recipient when provided at creation. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
 | `status` | Current status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`). Maps to `media_buy_status` on `create_media_buy` / `update_media_buy` success responses (3.1 vocabulary note above). |
 | `status_as_of` | ISO 8601 timestamp when the seller last refreshed the returned media-buy-level `status` from its source of truth. For rolled-up statuses, this MUST NOT be later than the oldest upstream status observation that could affect the returned roll-up. Optional; omitted or `null` makes no freshness assertion, and buyers MUST NOT infer live status from absence. Use this to interpret cached or rolled-up statuses separately from `updated_at`, which means the media buy's last modification time. |
@@ -68,10 +72,12 @@ Returns an array of media buys with current status, creative approval state, and
 | `creative_deadline` | Creative upload deadline (ISO 8601) |
 | `confirmed_at` | ISO 8601 timestamp when the seller committed to this media buy. May be `null` until seller commitment occurs in deferred/manual approval flows; stable after it is set. |
 | `cancellation` | Cancellation metadata (present only when `status` is `canceled`). Object with `canceled_at` (ISO 8601), `canceled_by` (`"buyer"` or `"seller"`), and optional `reason`. |
-| `revision` | Current revision number. Pass in `update_media_buy` for optimistic concurrency. |
+| `revision` | Current revision number. Pass in [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) or the 3.x `update_media_buy` facade for optimistic concurrency. |
 | `valid_actions` | Actions the buyer can perform in the current state (e.g., `["pause", "cancel", "update_budget"]`). See [valid actions mapping](#valid-actions-mapping). |
+| `available_actions` | Canonical routed actions for compact-lifecycle buys, including whether each action uses [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy), proposal refinement, or another task. Required whenever `accepted_proposal` is present. |
+| `indicators` | Current buy-level seller indicators. In 3.2, `budget_constrained` is valid here. Sibling evaluation fields define exact type coverage and freshness. |
 | `history` | Revision history entries, most recent first. Only present when `include_history > 0`. Append-only — entries are never modified or deleted. |
-| `webhook_activity` | Recent reporting and health webhook fires for the calling principal, most-recent first. Only present when `include_webhook_activity` is true AND the seller surfaces fire history for this buy. See [Webhook activity](#webhook-activity) for three-state presence semantics. |
+| `webhook_activity` | Recent delivery, health, `indicators.changed`, and `creative.assignment_changed` attempts relevant to this buy. Only present when requested and supported. |
 | `context` | Opaque media-buy-level correlation data echoed unchanged from `create_media_buy`. Sellers MUST include persisted context when the media buy was created through AdCP with context, and MAY omit it for media buys created outside AdCP or without context. Use it to reconcile `media_buy_id` with buyer tracking state. |
 | `packages` | Array of packages with creative status and optional snapshots |
 
@@ -102,6 +108,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `creative_deadline` | Per-package creative deadline (ISO 8601). When absent, the media buy's `creative_deadline` applies. |
 | `context` | Opaque package-level correlation data echoed unchanged from the `create_media_buy` package request. Sellers MUST include persisted context when the package was created through AdCP with context, and MAY omit it for packages created outside AdCP or without context. Buyers targeting mixed seller populations can use the per-package correlation value they included on create, commonly `context.buyer_ref`, to map `package_id` back to their line items when a legacy create response did not echo `product_id`. |
 | `creative_approvals` | Array of creative approval states (see below) |
+| `indicators` | Current package-level seller indicators such as diversity, audience saturation, inventory forecast, pacing, or budget constraint |
 | `formats_pending` | Canonical package-time format declarations from `formats_to_provide` that do not yet have creative coverage. Full declarations let buyers select a compatible creative agent even when no option ID exists. |
 | `format_ids_pending` | **Deprecated in 3.2.** Legacy named-format projection of `formats_pending` for older 3.x peers. |
 | `snapshot_unavailable_reason` | Reason code when `include_snapshot: true` but no snapshot is returned for this package |
@@ -112,10 +119,34 @@ Returns an array of media buys with current status, creative approval state, and
 | Field | Description |
 |-------|-------------|
 | `creative_id` | Creative identifier |
-| `approval_status` | `pending_review`, `approved`, or `rejected` |
+| `approval_status` | `pending_review`, `approved`, `partially_approved`, or `rejected` |
 | `rejection_reason` | Explanation of rejection (when `approval_status` is `rejected`) |
+| `approval_scopes` | Complete publisher/placement outcomes when `approval_status` is `partially_approved` |
+| `indicators` | Current seller indicators scoped to this package–creative relationship |
+| `indicator_types_evaluated` | Exact indicator types covered by this snapshot; omitted types remain unknown |
+| `indicators_as_of` | When the seller completed the evaluation represented by `indicators` |
+| `indicators_evaluated_scope` | Optional publisher or placement coverage; omission means the whole assignment was evaluated |
 
-For sellers that advertise `inline_creative_management` without a creative library, `creative_approvals` is the only standardized approval-state readback surface for the package's currently assigned inline creatives. It reports `creative_id`, `approval_status`, and optional `rejection_reason`, but it does not include the full `CreativeAsset` payload, placement routing, weights, or prior revisions submitted on `create_media_buy` or `update_media_buy`. Buyers should retain their own submitted creative bodies when integrating with inline-only sellers.
+Indicators are deliberately attached here rather than to the creative globally. A creative may be fatigued in one package or publisher context while remaining effective elsewhere.
+
+```json
+{
+  "creative_id": "acme_summer_video",
+  "approval_status": "approved",
+  "indicator_types_evaluated": ["creative_fatigue"],
+  "indicators_as_of": "2026-08-04T12:00:00Z",
+  "indicators": [
+    {
+      "type": "creative_fatigue",
+      "detected_at": "2026-08-03T09:00:00Z"
+    }
+  ]
+}
+```
+
+The media buy itself may also carry `budget_constrained`; packages may carry `creative_diversity_low`, `audience_saturation`, `inventory_shortfall_forecast`, `pacing_risk`, or `budget_constrained`. Assignment types remain nested under `creative_approvals[]`. Omitted `indicators` is unknown; empty is evaluated-clear only for `indicator_types_evaluated` and declared coverage. See [Indicators and Warnings](/docs/media-buy/media-buys/indicators).
+
+For sellers that advertise `inline_creative_management` without a creative library, `creative_approvals` is the only standardized approval-state readback surface for the package's currently assigned inline creatives. It reports `creative_id`, aggregate `approval_status`, optional `rejection_reason`, and `approval_scopes` for mixed publisher outcomes, but it does not include the full `CreativeAsset` payload, placement routing, weights, or prior revisions submitted on `create_media_buy` or `update_media_buy`. Buyers should retain their own submitted creative bodies when integrating with inline-only sellers.
 
 Creative revisions are represented as `approval_status: "rejected"` with a specific `rejection_reason`. There is no package-level `input-required` status for creative edits; upload corrected library assets via [`sync_creatives`](/docs/creative/task-reference/sync_creatives), or corrected inline-only package assets via `packages[].creatives` on [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy).
 
@@ -156,20 +187,20 @@ For AdCP-authored buys, budget constraints and canonical bidding always use `med
 
 ### Webhook Activity
 
-When `include_webhook_activity: true`, each returned media buy MAY carry a `webhook_activity` array describing recent reporting and health webhook fires from the seller to the buyer's registered endpoint. This is the buyer-side debug surface for the [persistent-channel webhook contract](/docs/building/by-layer/L3/webhooks#persistent-channel-contract) — buyers use it to verify that the publisher fired, what the buyer's gateway returned, and whether retries are still in flight, without needing an operator-level query against the seller's logs.
+When `include_webhook_activity: true`, each returned media buy MAY carry a `webhook_activity` array describing recent webhook fires relevant to that buy. It covers both per-buy reporting/health events and account-level `indicators.changed` or `creative.assignment_changed` invalidations whose payload names the buy. This is the buyer-side debug surface for the [persistent-channel webhook contract](/docs/building/by-layer/L3/webhooks#persistent-channel-contract).
 
 The record shape, request-field names, scoping, retention floor, three-state presence, and cardinality rules are uniform across AdCP resources that adopt this surface. See [Webhook activity log pattern](/docs/protocol/snapshot-and-log#webhook-activity-log-pattern) on the snapshot/log contract page for the cross-resource normative section — the rules below restate it for the media-buy call site and add the media-buy-specific capability gate.
 
-The surface covers both delivery-report notification types (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`) and health notification types (`impairment`). All share the same webhook delivery contract and the same buyer-side debug need.
+Per-buy delivery events (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`) and health events (`impairment`) use the buy's `push_notification_config`; their `subscriber_id` may be absent in a single-subscriber setup. Indicator and assignment invalidations use account `notification_configs[]`; their `subscriber_id` is required. Support for the latter is declared by `media_buy.relationship_notifications`, including whether this activity log is available. All share the same webhook delivery contract and buyer-side debug need.
 
 | Field | Description |
 |-------|-------------|
 | `idempotency_key` | Equals the `idempotency_key` carried in the webhook payload itself ([§ Dedup by `idempotency_key`](/docs/building/by-layer/L3/webhooks#dedup-by-idempotency_key)). Stable across retries of the same logical fire — buyers correlate this surface with their own endpoint logs via this exact field. Reference it when filing support tickets. |
 | `notification_id` | Optional event-layer id copied from the webhook payload when the notification type defines one. Sellers SHOULD populate it on newly recorded attempts and MUST preserve the payload value when they do. It may be absent on retained records created before 3.2; point-in-time delivery-report fires do not define it. |
-| `subscriber_id` | Identifies which registered webhook subscriber received this fire. Absent in single-subscriber configurations; populated under multi-subscriber buys (4.0+, see [#3009](https://github.com/adcontextprotocol/adcp/issues/3009)). |
+| `subscriber_id` | Identifies which registered webhook subscriber received this fire. Required for account-level indicator/assignment invalidations; may be absent for a single per-buy subscriber. Per-buy channels populate it once they support multiple subscribers (4.0+, see [#3009](https://github.com/adcontextprotocol/adcp/issues/3009)). |
 | `fired_at` | ISO 8601 timestamp when the seller initiated this attempt. |
 | `completed_at` | ISO 8601 timestamp when the response was observed (or terminal failure). Null while `status` is `pending`. |
-| `notification_type` | Verbatim from the webhook payload: `scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`. |
+| `notification_type` | Verbatim from the webhook payload: `scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`, `indicators.changed`, or `creative.assignment_changed`. |
 | `sequence_number` | Sequence number from the webhook payload — useful for spotting stale-sequence drops or gaps. Absent when the notification type does not carry one. |
 | `attempt` | 1-indexed retry counter for this logical fire. Initial fire is `attempt: 1`. |
 | `status` | `success`, `failed`, `timeout`, `connection_error`, or `pending`. See semantics below. |
@@ -199,13 +230,13 @@ The surface covers both delivery-report notification types (`scheduled`, `final`
 
 | State | Meaning |
 |-------|---------|
-| Field **omitted** | Seller does not surface webhook activity for this buy. Either the seller does not persist fire history, the seller's declared [`propagation_surfaces`](/docs/media-buy/media-buys/lifecycle) excludes `webhook`, or the buy has no registered webhook endpoint for the calling principal. |
+| Field **omitted** | Seller does not surface an applicable activity log for this buy. Neither a declared per-buy webhook surface nor `media_buy.relationship_notifications.supports_webhook_activity` provides one, no relevant subscriber is registered, or the seller does not persist fire history. |
 | Empty array `[]` | Seller persists fire history but has fired nothing recent for this principal. |
 | Non-empty array | Actual fire records, most-recent first. |
 
-Sellers whose declared `propagation_surfaces` does not include `webhook` MUST omit the field; opting in via `include_webhook_activity: true` does not override that.
+For per-buy events, sellers whose declared `propagation_surfaces` excludes `webhook` omit those records. That does not suppress account-level indicator/assignment records when `media_buy.relationship_notifications.supports_webhook_activity` is true.
 
-**Diagnosing an unexpected omission.** When you expected fires but got an omitted field, two observables let you discriminate the cause without filing a ticket: (1) check your own `push_notification_config` registration state for this buy — if not registered, that's the cause; (2) check the seller's `capabilities.media_buy.propagation_surfaces` via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) — if `webhook` is absent, that's the cause. When both check out, "seller does not persist fire history" is the remaining cause; that's a seller-side gap and warrants an operator ticket.
+**Diagnosing an unexpected omission.** For a per-buy event, check the buy's `push_notification_config` and the seller's `capabilities.media_buy.propagation_surfaces` via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). For an indicator or assignment event, check the account's `notification_configs[]` and `media_buy.relationship_notifications.supports_webhook_activity`. If the relevant registration and capability both check out, omission is a seller-side persistence gap and warrants an operator ticket.
 
 **Privacy:**
 
@@ -383,6 +414,8 @@ for (const mediaBuy of validated.media_buys) {
     for (const approval of pkg.creative_approvals ?? []) {
       if (approval.approval_status === 'rejected') {
         console.log(`Creative ${approval.creative_id} rejected: ${approval.rejection_reason}`);
+      } else if (approval.approval_status === 'partially_approved') {
+        console.log(`Creative ${approval.creative_id} has mixed publisher approval`, approval.approval_scopes);
       } else if (approval.approval_status === 'pending_review') {
         console.log(`Creative ${approval.creative_id} pending review`);
       }
@@ -415,6 +448,8 @@ async def main():
             for approval in pkg.creative_approvals or []:
                 if approval.approval_status == 'rejected':
                     print(f"Creative {approval.creative_id} rejected: {approval.rejection_reason}")
+                elif approval.approval_status == 'partially_approved':
+                    print(f"Creative {approval.creative_id} has mixed publisher approval: {approval.approval_scopes}")
                 elif approval.approval_status == 'pending_review':
                     print(f"Creative {approval.creative_id} pending review")
 

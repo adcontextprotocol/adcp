@@ -26,7 +26,7 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "2.9.0"
+version: "2.9.1"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
@@ -855,7 +855,8 @@ skip_result:
     not `skipped`. A `skip_result` is emitted only after an item was selected
     for this run and the runner could not execute it because an applicability
     gate, required tool, test controller, prerequisite, or harness contract
-    was unavailable.
+    was unavailable, or because a bounded observation contract exhausted its
+    attempts without observing the condition it was designed to test.
   required_fields:
     - reason                  # not_applicable | no_phases |
                               # prerequisite_failed | missing_tool |
@@ -864,18 +865,38 @@ skip_result:
                               # peer_branch_taken |
                               # peer_substituted | requirement_unmet |
                               # fixture_unsatisfied
-    - detail                  # human-readable explanation citing the
-                              # declared supported_protocols / specialisms
-                              # and, if relevant, the missing tool,
-                              # prerequisite step id, or contract key.
+    - detail                  # explanation citing the declared
+                              # supported_protocols / specialisms and, if
+                              # relevant, the missing tool, prerequisite step
+                              # id, or contract key. Some reasons define an
+                              # exact machine-readable detail registered in
+                              # canonical_detail_sub_reasons below.
+  canonical_detail_sub_reasons:
+    not_applicable:
+      rate_limit_not_triggered:
+        spec_source: test-kits/rate-limit-trip-runner.yaml
+        description: |
+          The rate-limit trip runner exhausted max_attempts without observing
+          RATE_LIMITED. This is a coverage gap caused by the seller's permitted
+          limiter configuration, not a seller conformance failure.
   reasons:
     not_applicable: |
-      The item was selected for this run, but an applicability gate evaluated
-      false. Examples: the agent did not declare the protocol or specialism
-      this storyboard targets, or a scenario's requires_capability check found
-      an optional capability set to false. detail MUST cite the failed gate
-      and the agent's relevant declared supported_protocols, specialisms, or
-      capability value.
+      The item was selected for this run, but either an applicability gate
+      evaluated false or a bounded observation contract exhausted without
+      observing its trigger. Applicability-gate examples include the agent not
+      declaring the protocol or specialism this storyboard targets, or a
+      scenario's requires_capability check finding an optional capability set
+      to false. For this form, detail MUST cite the failed gate and the agent's
+      relevant declared supported_protocols, specialisms, or capability value.
+
+      Observation exhaustion is distinct from an applicability-gate failure.
+      When rate_limit_trip_runner reaches max_attempts without observing
+      RATE_LIMITED, the runner MUST emit reason: not_applicable with detail
+      exactly `rate_limit_not_triggered`. It MUST do so before dispatching the
+      step's validations, MUST emit an empty validations array, and MUST count
+      the step in steps_skipped and, when emitted, skipped_by_reason.not_applicable.
+      It MUST NOT increment steps_passed, steps_failed, any validation counter,
+      or validations_not_applicable.
 
       When the runner excludes an item before execution because it is outside
       the caller's requested suite, run mode, AdCP version, or verification
@@ -1232,14 +1253,13 @@ notice:
         receivers SHOULD migrate to RFC 9421 signatures only.
     input_schema_field_stripped:
       severity: info
-      spec_source: creative/list-creative-formats-request.json
       message_template: |
-        Runner stripped spec-defined request field(s) {stripped_fields}
-        from {task} because the agent's MCP inputSchema does not declare
-        them. The step's validations may pass vacuously if the stripped
-        field was material to the scenario's intent. Agents should
-        declare all spec-defined fields they support in their
-        inputSchema.
+        Runner stripped request field(s) {stripped_fields} from {task}
+        because neither the agent's MCP inputSchema nor the canonical
+        AdCP request schema for the negotiated version declares them.
+        The step's validations may pass vacuously if a stripped field was
+        material to the scenario's intent. Check the caller or runner
+        payload and version adaptation before changing the agent schema.
     capabilities_response_schema_invalid:
       severity: info
       spec_source: protocol/get-adcp-capabilities-response.json
@@ -1324,16 +1344,16 @@ cascade_rules:
 
     Note on `not_applicable`: unlike `missing_tool` and
     `missing_test_controller` (where the agent declared the specialism but
-    lacks the tool/controller), `not_applicable` means the agent did not
-    declare the specialism at all. The cascade exemption still applies because
-    the structural condition — no peer available to establish substitute state —
-    is identical. A sole-stateful-step `not_applicable` that cascades to all
-    downstream phases would collapse coverage for agents that legitimately omit
-    a pathway; the exemption prevents this collapse regardless of the specific
-    skip reason. Dashboard consumers that need to distinguish "agent does not
-    support the specialism" from "agent supports it via an alternate tool"
-    should read the step's `reason` field rather than inferring from whether
-    downstream phases ran.
+    lacks the tool/controller), `not_applicable` is an explicit coverage-gap
+    signal. It most commonly means the agent did not declare the specialism,
+    but a canonical detail may identify another non-fault gap such as a bounded
+    observation contract exhausting without its trigger. The cascade exemption
+    still applies because the structural condition — no peer available to
+    establish substitute state — is identical. A sole-stateful-step
+    `not_applicable` that cascades to all downstream phases would collapse
+    useful coverage; the exemption prevents this regardless of the specific
+    skip detail. Dashboard consumers should read both `reason` and `detail`
+    rather than inferring the cause from whether downstream phases ran.
 
     References: adcp-client#1146 (original `not_applicable` exemption);
     adcp-client#1545 (extension to `missing_tool` / `missing_test_controller`);

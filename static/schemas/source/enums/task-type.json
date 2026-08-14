@@ -7,12 +7,18 @@
   "enum": [
     "create_media_buy",
     "update_media_buy",
+    "buy_products",
+    "accept_proposal",
+    "control_media_buy",
     "media_buy_delivery",
     "sync_creatives",
     "build_creative",
     "preview_creative",
     "activate_signal",
     "get_products",
+    "request_proposals",
+    "refine_proposals",
+    "decline_proposals",
     "get_signals",
     "create_property_list",
     "update_property_list",
@@ -36,12 +42,18 @@
   "enumDescriptions": {
     "create_media_buy": "Media-buy domain: Create a new advertising campaign with one or more packages",
     "update_media_buy": "Media-buy domain: Update campaign settings, package configuration, or delivery parameters",
+    "buy_products": "Media-buy domain: Create a MediaBuy directly from published product offers without inline creatives",
+    "accept_proposal": "Media-buy domain: Accept a committed proposal to create, amend, or cancel a MediaBuy",
+    "control_media_buy": "Media-buy domain: Apply operational delivery controls inside accepted commercial terms",
     "media_buy_delivery": "Media-buy domain: Persistent delivery-report webhook event emitted for a configured reporting_webhook. The inner result uses media-buy-delivery-webhook-result.json.",
     "sync_creatives": "Media-buy domain: Sync creative assets to publisher's library with upsert semantics",
     "build_creative": "Creative domain: Generate, transform, refine, or retrieve a creative manifest",
     "preview_creative": "Creative domain: Render a read-only preview of an existing creative manifest or library creative",
     "activate_signal": "Signals domain: Activate an audience signal on a specific platform or account",
     "get_products": "Media-buy domain: Discover or refine advertising products and proposals",
+    "request_proposals": "Media-buy domain: Request seller-authored proposals from a campaign brief",
+    "refine_proposals": "Media-buy domain: Create draft revisions or finalize drafts into held committed proposals",
+    "decline_proposals": "Media-buy domain: Terminally decline immutable proposals and prevent later execution",
     "get_signals": "Signals domain: Discover available audience signals based on natural language description",
     "create_property_list": "Property domain: Create a new property list with filters and brand reference",
     "update_property_list": "Property domain: Update an existing property list",
@@ -61,6 +73,9 @@
     "acquire_rights": "Brand domain: Acquire rights from a brand agent with contractual clearance and generation credentials",
     "update_rights": "Brand domain: Update an existing rights grant, including its term, impression cap, pricing option, or pause state",
     "sync_agent_notification_configs": "Protocol domain: Register agent-level webhook subscribers such as capabilities.changed cache-invalidation notifications"
+  },
+  "x-task-result-schema-overrides": {
+    "media_buy_delivery": "media-buy/media-buy-delivery-webhook-result.json"
   },
   "notes": [
     "Task types map to specific AdCP task operations",

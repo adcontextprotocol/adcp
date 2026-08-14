@@ -23,6 +23,26 @@ function withVerifyVector(markdown) {
   return `${markdown}${VERIFY_VECTOR_BLOCK}`;
 }
 
+function isCatalogQualifiedRequirement(clause) {
+  return /\bcatalog[- ]bearing\b/i.test(clause) ||
+    /\b(?:when|if|unless)\b[^.\n;]*\bcatalog\b/i.test(clause) ||
+    /\bcatalog\b[^.\n;]*\b(?:when|if|unless)\b/i.test(clause) ||
+    /\b(?:get_products|product discovery)\b[^.\n;]*\b(?:with|including|that includes?|containing)\b[^.\n;]*\bcatalog\b/i.test(clause) ||
+    /\bcatalog\b[^.\n;]*\b(?:get_products|product discovery)\b/i.test(clause);
+}
+
+function findUnqualifiedBrandRequirement(markdown) {
+  return markdown
+    .replaceAll('`', '')
+    .split(/[.\n;]|,\s+(?:and|but)\s+/i)
+    .map(clause => clause.trim())
+    .find(clause =>
+      /\b(?:get_products|product discovery)\b/i.test(clause) &&
+      /\bbrand\b/i.test(clause) &&
+      /\b(?:must|shall|mandatory|require(?:d|s)?|needs?)\b/i.test(clause) &&
+      !isCatalogQualifiedRequirement(clause));
+}
+
 function makeFixture({ code = 'request_signature_required' } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lint-doc-compliance-drift-'));
   const contractRoot = path.join(
@@ -146,6 +166,72 @@ test('headings inside fenced examples do not terminate the guarded section', () 
   const result = lint(fixture);
   assert.equal(result.errors.length, 1);
   assert.match(result.errors[0], /missing_signature/);
+});
+
+test('media-buy brand guidance matches request schema requirements', () => {
+  const getProducts = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '../static/schemas/source/media-buy/get-products-request.json'),
+    'utf8',
+  ));
+  const createMediaBuy = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '../static/schemas/source/media-buy/create-media-buy-request.json'),
+    'utf8',
+  ));
+
+  assert.ok(getProducts.required.includes('buying_mode'));
+  assert.ok(!getProducts.required.includes('brand'));
+  assert.deepEqual(getProducts.dependencies.catalog, ['brand']);
+  assert.ok(createMediaBuy.required.includes('brand'));
+
+  for (const relativePath of [
+    '../docs/media-buy/product-discovery/brief-expectations.mdx',
+    '../docs/media-buy/media-buys/policy-compliance.mdx',
+  ]) {
+    const doc = fs.readFileSync(path.join(__dirname, relativePath), 'utf8');
+    assert.match(doc, /`brand` (?:field )?is optional for `get_products` unless the request includes `catalog`/);
+    assert.match(doc, /`create_media_buy` request (?:always )?(?:must include|requires) `brand`/);
+    assert.match(doc, /general policy rules or limit (?:the products it returns|discovery)/);
+    assert.equal(findUnqualifiedBrandRequirement(doc), undefined);
+  }
+
+  const briefGuide = fs.readFileSync(
+    path.join(__dirname, '../docs/media-buy/product-discovery/brief-expectations.mdx'),
+    'utf8',
+  );
+  assert.match(briefGuide, /For `buying_mode: "brief"`, `brief` is required/);
+  assert.match(briefGuide, /For `buying_mode: "wholesale"`, omit `brief`/);
+  assert.match(briefGuide, /For `buying_mode: "refine"`, omit `brief` and use the `refine` array instead/);
+
+  const policyGuide = fs.readFileSync(
+    path.join(__dirname, '../docs/media-buy/media-buys/policy-compliance.mdx'),
+    'utf8',
+  );
+  assert.doesNotMatch(policyGuide, /policy_compliance/);
+  assert.doesNotMatch(policyGuide, /three compliance statuses/i);
+  assert.doesNotMatch(policyGuide, /"status": "(?:allowed|restricted|blocked)"/);
+  assert.match(policyGuide, /"code": "POLICY_VIOLATION"/);
+  assert.match(policyGuide, /"status": "input-required"[\s\S]{0,160}"task_id"[\s\S]{0,160}"context_id"/);
+  assert.match(policyGuide, /Seller-internal review does not require buyer input/);
+  assert.match(policyGuide, /return `submitted` with a `task_id`; use `working` for subsequent progress/);
+});
+
+test('brand guidance lint rejects unqualified requirements and allows catalog conditions', () => {
+  for (const claim of [
+    '`get_products` requires `brand`.',
+    '`brand` must be provided to `get_products`.',
+    '`brand` is required for product discovery.',
+    'Every product discovery request needs a brand.',
+  ]) {
+    assert.equal(findUnqualifiedBrandRequirement(claim), claim.replaceAll('`', '').slice(0, -1));
+  }
+
+  for (const claim of [
+    'Every catalog-bearing `get_products` request must include `brand`.',
+    '`get_products` requires `brand` when `catalog` is present.',
+    '`brand` is required for product discovery requests that include a catalog.',
+  ]) {
+    assert.equal(findUnqualifiedBrandRequirement(claim), undefined);
+  }
 });
 
 test('removing the guarded section fails instead of silently disabling the lint', () => {

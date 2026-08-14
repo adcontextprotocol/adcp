@@ -64,7 +64,12 @@ function normalizeControllerErrorCode(code: unknown): ControllerErrorCode {
  * Generic v5 → v6 comply-adapter shim. Builds the `ToolArgs` for the v5
  * handler, dispatches, throws `TestControllerError` on `success: false`.
  */
-async function dispatchV5(scenario: string, params: Record<string, unknown>, input: Record<string, unknown>): Promise<V5Response> {
+async function dispatchV5(
+  scenario: string,
+  params: Record<string, unknown>,
+  input: Record<string, unknown>,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): Promise<V5Response> {
   // v5 handler reads brand/account from the wire-shaped args to derive
   // the session key. `ctx.input` is the full raw input (including
   // brand/account/sandbox/etc.), so spread it and stamp scenario+params.
@@ -73,8 +78,23 @@ async function dispatchV5(scenario: string, params: Record<string, unknown>, inp
     : 'anonymous';
   const cleanInput = { ...input };
   delete cleanInput[TRAINING_PRINCIPAL_FIELD];
+  // The frozen 3.0 facade is itself a sandbox-only surface, but its released
+  // AccountRef allowed opaque `{ account_id }` values without the later
+  // explicit `sandbox: true` assertion. Restore that trusted adapter context
+  // before entering the current fail-closed controller handler. Current
+  // callers still have to provide the assertion on the wire.
+  if (storyboardCompat?.version === '3.0') {
+    const compatAccount = cleanInput.account;
+    cleanInput.account = compatAccount && typeof compatAccount === 'object' && !Array.isArray(compatAccount)
+      ? { ...compatAccount, sandbox: true }
+      : { sandbox: true };
+  }
   const args = { ...cleanInput, scenario, params } as ToolArgs;
-  return await handleComplyTestController(args, { mode: 'open', principal } satisfies TrainingContext) as V5Response;
+  return await handleComplyTestController(args, {
+    mode: 'open',
+    principal,
+    ...(storyboardCompat && { storyboardCompat }),
+  } satisfies TrainingContext) as V5Response;
 }
 
 function throwOnFailure(result: V5Response): void {
@@ -94,26 +114,26 @@ function throwOnFailure(result: V5Response): void {
 // site narrow back to the typed adapter shape.
 type AdapterShim = (params: unknown, ctx: ComplyControllerContext) => Promise<unknown>;
 
-function seedAdapter(scenario: string): AdapterShim {
+function seedAdapter(scenario: string, storyboardCompat?: TrainingContext['storyboardCompat']): AdapterShim {
   return async (params, ctx) => {
-    const result = await dispatchV5(scenario, params as Record<string, unknown>, ctx.input);
+    const result = await dispatchV5(scenario, params as Record<string, unknown>, ctx.input, storyboardCompat);
     throwOnFailure(result);
     // Seed adapters return void — framework builds SeedSuccess envelope
     // from its own idempotency cache.
   };
 }
 
-function forceAdapter(scenario: string): AdapterShim {
+function forceAdapter(scenario: string, storyboardCompat?: TrainingContext['storyboardCompat']): AdapterShim {
   return async (params, ctx) => {
-    const result = await dispatchV5(scenario, params as Record<string, unknown>, ctx.input);
+    const result = await dispatchV5(scenario, params as Record<string, unknown>, ctx.input, storyboardCompat);
     throwOnFailure(result);
     return result;
   };
 }
 
-function simulateAdapter(scenario: string): AdapterShim {
+function simulateAdapter(scenario: string, storyboardCompat?: TrainingContext['storyboardCompat']): AdapterShim {
   return async (params, ctx) => {
-    const result = await dispatchV5(scenario, params as Record<string, unknown>, ctx.input);
+    const result = await dispatchV5(scenario, params as Record<string, unknown>, ctx.input, storyboardCompat);
     throwOnFailure(result);
     return result;
   };
@@ -182,63 +202,67 @@ export function buildGovernanceComplyConfig(): ComplyControllerConfig {
  * ad-server, plus sales seeds for storyboards that set up a sales
  * context before exercising creative flows (creative_generative/seller).
  */
-export function buildCreativeComplyConfig(): ComplyControllerConfig {
+export function buildCreativeComplyConfig(
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): ComplyControllerConfig {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cast = (a: AdapterShim) => a as any;
   return {
     inputSchema: SALES_COMPLY_INPUT_SCHEMA,
     seed: {
-      creative: cast(seedAdapter('seed_creative')),
+      creative: cast(seedAdapter('seed_creative', storyboardCompat)),
       // F14 (`bd0d4028`) added the `creative_format` slot — needed for
       // `pagination_integrity_creative_formats` storyboard which seeds
       // multiple format fixtures and walks list_creative_formats pagination.
-      creative_format: cast(seedAdapter('seed_creative_format')),
-      product: cast(seedAdapter('seed_product')),
-      pricing_option: cast(seedAdapter('seed_pricing_option')),
-      media_buy: cast(seedAdapter('seed_media_buy')),
+      creative_format: cast(seedAdapter('seed_creative_format', storyboardCompat)),
+      product: cast(seedAdapter('seed_product', storyboardCompat)),
+      pricing_option: cast(seedAdapter('seed_pricing_option', storyboardCompat)),
+      media_buy: cast(seedAdapter('seed_media_buy', storyboardCompat)),
     },
     force: {
-      creative_status: cast(forceAdapter('force_creative_status')),
-      media_buy_status: cast(forceAdapter('force_media_buy_status')),
+      creative_status: cast(forceAdapter('force_creative_status', storyboardCompat)),
+      media_buy_status: cast(forceAdapter('force_media_buy_status', storyboardCompat)),
     },
   };
 }
 
-export function buildSalesComplyConfig(): ComplyControllerConfig {
+export function buildSalesComplyConfig(
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): ComplyControllerConfig {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cast = (a: AdapterShim) => a as any;
   return {
     inputSchema: SALES_COMPLY_INPUT_SCHEMA,
     seed: {
-      product: cast(seedAdapter('seed_product')),
-      pricing_option: cast(seedAdapter('seed_pricing_option')),
-      media_buy: cast(seedAdapter('seed_media_buy')),
-      creative: cast(seedAdapter('seed_creative')),
+      product: cast(seedAdapter('seed_product', storyboardCompat)),
+      pricing_option: cast(seedAdapter('seed_pricing_option', storyboardCompat)),
+      media_buy: cast(seedAdapter('seed_media_buy', storyboardCompat)),
+      creative: cast(seedAdapter('seed_creative', storyboardCompat)),
       // /sales advertises list_creative_formats (the SDK auto-registers it for
       // any tenant claiming a creative archetype) so the universal
       // pagination_integrity_creative_formats storyboard fires here too. The
       // seed adapter routes through the v5 handler's LOCAL_SCENARIOS path,
       // populating the process-global seeded format pool that
       // list_creative_formats reads.
-      creative_format: cast(seedAdapter('seed_creative_format')),
+      creative_format: cast(seedAdapter('seed_creative_format', storyboardCompat)),
     },
     force: {
-      media_buy_status: cast(forceAdapter('force_media_buy_status')),
-      create_media_buy_arm: cast(forceAdapter('force_create_media_buy_arm')),
-      get_products_arm: cast(forceAdapter('force_get_products_arm')),
-      task_completion: cast(forceAdapter('force_task_completion')),
+      media_buy_status: cast(forceAdapter('force_media_buy_status', storyboardCompat)),
+      create_media_buy_arm: cast(forceAdapter('force_create_media_buy_arm', storyboardCompat)),
+      get_products_arm: cast(forceAdapter('force_get_products_arm', storyboardCompat)),
+      task_completion: cast(forceAdapter('force_task_completion', storyboardCompat)),
       // force_creative_status drives dependency_impairment storyboards —
       // toggles creative.status and propagates to dependent media buys'
       // impairments[] via the v5 store's propagateCreativeImpairment.
-      creative_status: cast(forceAdapter('force_creative_status')),
+      creative_status: cast(forceAdapter('force_creative_status', storyboardCompat)),
       // Audience sibling: suspends a synced audience and propagates the
       // resulting impairment to packages that target it.
-      audience_status: cast(forceAdapter('force_audience_status')),
-      upstream_unavailable: cast(forceAdapter('force_upstream_unavailable')),
+      audience_status: cast(forceAdapter('force_audience_status', storyboardCompat)),
+      upstream_unavailable: cast(forceAdapter('force_upstream_unavailable', storyboardCompat)),
     },
     simulate: {
-      delivery: cast(simulateAdapter('simulate_delivery')),
-      budget_spend: cast(simulateAdapter('simulate_budget_spend')),
+      delivery: cast(simulateAdapter('simulate_delivery', storyboardCompat)),
+      budget_spend: cast(simulateAdapter('simulate_budget_spend', storyboardCompat)),
     },
   };
 }

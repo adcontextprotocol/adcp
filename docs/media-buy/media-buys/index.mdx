@@ -398,7 +398,7 @@ Cancel a single package within an active media buy:
 - Cancellation is **irreversible** — canceled media buys and packages cannot be reactivated
 - Sellers MAY reject cancellation with error code `NOT_CANCELLABLE` (e.g., contractual obligations, in-production print orders)
 - A canceled package does not affect other packages in the same media buy. When all packages are canceled, sellers that support `add_packages` allow the buyer to add new packages via `new_packages` in `update_media_buy`. Otherwise, the buyer SHOULD explicitly cancel the media buy.
-- Sellers MAY cancel media buys or packages (e.g., policy violation, inventory withdrawal). Seller-initiated cancellations set `cancellation.canceled_by: "seller"` and MUST trigger a webhook notification to the orchestrator.
+- Sellers MAY cancel media buys or packages (e.g., policy violation, inventory withdrawal). Seller-initiated cancellations set `cancellation.canceled_by: "seller"` and MUST be recoverable through `get_media_buys`. AdCP 3.x does not define a durable resource-scoped status webhook; sellers may expose an implementation extension until the 4.0 notification contract lands.
 
 ### Package Lifecycle
 
@@ -610,4 +610,5 @@ Data-driven campaign improvement leveraging comprehensive analytics:
 - **[Product Discovery](/docs/media-buy/product-discovery/)** - Finding inventory for media buys
 - **[Task Reference](/docs/media-buy/task-reference/)** - Complete API documentation
 - **[Creatives](/docs/media-buy/creatives/)** - Creative asset management
+- **[Indicators and Warnings](/docs/media-buy/media-buys/indicators)** - Immediate success warnings, durable seller indicators, and change invalidations
 - **[Orchestrator Design Guide](/docs/building/operating/orchestrator-design)** - Implementation best practices

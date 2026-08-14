@@ -8,6 +8,23 @@
  * - Auth-required tools reject anonymous callers
  */
 import { afterEach, describe, it, expect, vi } from 'vitest';
+
+const executeTask = vi.hoisted(() => vi.fn());
+
+vi.mock('@adcp/sdk', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@adcp/sdk')>();
+  return {
+    ...actual,
+    AdCPClient: class MockAdCPClient {
+      agent() {
+        return {
+          executeTask,
+          getProducts: (params: unknown) => executeTask('get_products', params),
+        };
+      }
+    },
+  };
+});
 import * as hostnameVerification from '../../src/services/agent-hostname-verification.js';
 import { AgentContextDatabase } from '../../src/db/agent-context-db.js';
 import { MemberDatabase } from '../../src/db/member-db.js';
@@ -23,10 +40,13 @@ import {
   createMemberToolHandler,
   createStatelessToolHandlers,
 } from '../../src/mcp/exposed-tools.js';
-import { createMemberToolHandlers } from '../../src/addie/mcp/member-tools.js';
+import { MEMBER_TOOLS, createMemberToolHandlers } from '../../src/addie/mcp/member-tools.js';
 import type { MemberContext } from '../../src/addie/member-context.js';
 
 afterEach(() => {
+  executeTask.mockReset();
+  vi.clearAllTimers();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -104,19 +124,104 @@ describe('EVAL_TOOL_DEFINITIONS', () => {
   it('test_rfp_response requires rfp parameter', () => {
     const tool = EVAL_TOOL_DEFINITIONS.find((t) => t.name === 'test_rfp_response');
     expect(tool!.inputSchema.required).toContain('rfp');
+    expect(tool!.inputSchema.required).toContain('idempotency_key');
   });
 
   it('test_io_execution requires line_items parameter', () => {
     const tool = EVAL_TOOL_DEFINITIONS.find((t) => t.name === 'test_io_execution');
     expect(tool!.inputSchema.required).toContain('line_items');
+    expect(tool!.inputSchema.required).toContain('idempotency_key');
+    expect(tool!.inputSchema.required).toContain('create_media_buy_idempotency_key');
     expect(tool!.inputSchema.properties).toHaveProperty('advertiser_domain');
     expect(tool!.inputSchema.properties).toHaveProperty('account_id');
+  });
+
+  it('compare_media_kit requires a caller-owned idempotency key prefix', () => {
+    const tool = MEMBER_TOOLS.find((t) => t.name === 'compare_media_kit');
+    expect(tool!.input_schema.required).toContain('idempotency_key_prefix');
   });
 
   it('evaluate_agent_quality has tracks param', () => {
     const tool = EVAL_TOOL_DEFINITIONS.find((t) => t.name === 'evaluate_agent_quality');
     expect(tool!.inputSchema.properties).toHaveProperty('tracks');
     expect(tool!.inputSchema.additionalProperties).toBe(false);
+  });
+});
+
+describe('evaluation tool idempotency forwarding', () => {
+  const agentUrl = 'https://test-agent.adcontextprotocol.org/sales/mcp';
+
+  it('forwards the exact get_products key from test_rfp_response', async () => {
+    vi.useFakeTimers();
+    executeTask.mockResolvedValue({ success: true, data: { products: [], proposals: [] } });
+    const handler = createMemberToolHandlers(null).get('test_rfp_response');
+
+    await handler?.({
+      agent_url: agentUrl,
+      idempotency_key: 'rfp-caller-owned-key',
+      rfp: { brief: 'Reach news readers with display inventory.' },
+    });
+
+    expect(executeTask).toHaveBeenCalledWith('get_products', expect.objectContaining({
+      idempotency_key: 'rfp-caller-owned-key',
+    }));
+  });
+
+  it('reuses caller-owned catalog and create-media-buy keys in test_io_execution', async () => {
+    vi.useFakeTimers();
+    executeTask.mockResolvedValueOnce({
+      success: true,
+      data: {
+        products: [{
+          product_id: 'display-product',
+          name: 'Display inventory',
+          channels: ['display'],
+          pricing_options: [{ pricing_option_id: 'display-cpm', pricing_model: 'cpm', price: 10 }],
+        }],
+        proposals: [],
+      },
+    }).mockResolvedValueOnce({
+      success: true,
+      data: { media_buy_id: 'mb_123', status: 'active', packages: [{}] },
+    });
+    const handler = createMemberToolHandlers(null).get('test_io_execution');
+
+    await handler?.({
+      agent_url: agentUrl,
+      idempotency_key: 'io-catalog-caller-key',
+      create_media_buy_idempotency_key: 'io-create-caller-key',
+      advertiser_domain: 'example.com',
+      account_id: 'account-123',
+      execute: true,
+      line_items: [{ description: 'Display inventory', channel: 'display', budget: 1000 }],
+    });
+
+    expect(executeTask).toHaveBeenNthCalledWith(1, 'get_products', expect.objectContaining({
+      idempotency_key: 'io-catalog-caller-key',
+    }));
+    expect(executeTask).toHaveBeenNthCalledWith(2, 'create_media_buy', expect.objectContaining({
+      idempotency_key: 'io-create-caller-key',
+    }));
+  });
+
+  it('derives stable per-brief keys from compare_media_kit prefix', async () => {
+    executeTask.mockResolvedValue({ success: true, data: { products: [] } });
+    const handler = createMemberToolHandlers(null).get('compare_media_kit');
+
+    await handler?.({
+      agent_url: agentUrl,
+      idempotency_key_prefix: 'media-kit-caller-prefix',
+      media_kit_summary: 'Display and video inventory.',
+      verticals: ['automotive', 'healthcare'],
+    });
+
+    expect(executeTask).toHaveBeenCalledTimes(2);
+    expect(executeTask).toHaveBeenNthCalledWith(1, 'get_products', expect.objectContaining({
+      idempotency_key: 'media-kit-caller-prefix:0',
+    }));
+    expect(executeTask).toHaveBeenNthCalledWith(2, 'get_products', expect.objectContaining({
+      idempotency_key: 'media-kit-caller-prefix:1',
+    }));
   });
 });
 

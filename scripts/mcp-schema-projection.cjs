@@ -12,6 +12,13 @@ const SCHEMA_ORIGIN = 'https://adcontextprotocol.org';
 const MAX_SCHEMA_DEPTH = 64;
 const MAX_SCHEMA_OBJECTS = 10_000;
 const MAX_SCHEMA_BYTES = 4 * 1024 * 1024;
+const PRESENTATION_ANNOTATIONS = new Set([
+  '$comment',
+  'description',
+  'enumDescriptions',
+  'examples',
+  'title',
+]);
 
 const POST_DRAFT_07_KEYWORDS = new Set([
   '$anchor',
@@ -509,6 +516,20 @@ function measureSchema(schema) {
   };
 }
 
+/**
+ * Remove presentation-only annotations without changing validation semantics.
+ * Walk only schema-bearing keywords so payloads in const/default/enum values
+ * are never rewritten merely because they contain a key named "description".
+ */
+function stripPresentationAnnotations(schema) {
+  const stripped = clone(schema);
+  walkSchema(stripped, node => {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+    for (const annotation of PRESENTATION_ANNOTATIONS) delete node[annotation];
+  });
+  return stripped;
+}
+
 function enforceSchemaBounds(schema, label) {
   const metrics = measureSchema(schema);
   if (metrics.depth > MAX_SCHEMA_DEPTH) {
@@ -523,11 +544,21 @@ function enforceSchemaBounds(schema, label) {
   return metrics;
 }
 
-function projectSourceSchema(schema, rootFile, sourceDir, urlVersion, relativePath) {
+function projectSourceSchema(
+  schema,
+  rootFile,
+  sourceDir,
+  urlVersion,
+  relativePath,
+  annotationMode = 'full',
+  schemaUrlPrefix = `${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}`,
+) {
   const compact = compactDraft07Schema(schema, rootFile, sourceDir);
-  const projected = projectDraft07Node(compact);
+  let projected = projectDraft07Node(compact);
+  if (annotationMode === 'structural') projected = stripPresentationAnnotations(projected);
+  else if (annotationMode !== 'full') throw new Error(`Unknown annotation mode ${JSON.stringify(annotationMode)}`);
   projected.$schema = JSON_SCHEMA_2020_12;
-  projected.$id = `${SCHEMA_ORIGIN}/schemas/${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}/${relativePath}`;
+  projected.$id = `${SCHEMA_ORIGIN}/schemas/${schemaUrlPrefix}/${relativePath}`;
   delete projected._bundled;
 
   const externalRefs = collectExternalRefs(projected);
@@ -544,7 +575,27 @@ function writeJson(filename, value) {
   fs.writeFileSync(filename, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
-function generateMcpSchemaProjection({ sourceDir, targetDir, manifestPath, urlVersion }) {
+function generateMcpSchemaProjection({
+  sourceDir,
+  targetDir,
+  manifestPath,
+  urlVersion,
+  annotationMode = 'full',
+  toolFilter = () => true,
+  schemaFields = ['inputSchema', 'outputSchema'],
+  taskResultOverrideFilter = () => true,
+  manifestMetadata = {},
+  schemaUrlPrefix = `${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}`,
+}) {
+  const supportedSchemaFields = new Set(['inputSchema', 'outputSchema']);
+  if (
+    !Array.isArray(schemaFields)
+    || schemaFields.length === 0
+    || new Set(schemaFields).size !== schemaFields.length
+    || schemaFields.some(field => !supportedSchemaFields.has(field))
+  ) {
+    throw new Error('schemaFields must be a non-empty unique subset of inputSchema and outputSchema');
+  }
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   const projectedTools = {};
   const generated = new Set();
@@ -555,34 +606,64 @@ function generateMcpSchemaProjection({ sourceDir, targetDir, manifestPath, urlVe
   fs.rmSync(targetDir, { recursive: true, force: true });
   fs.mkdirSync(targetDir, { recursive: true });
 
+  function projectSchema(relativePath, label = relativePath) {
+    const sourcePath = path.join(sourceDir, relativePath);
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error(`Missing source schema for ${label}: ${relativePath}`);
+    }
+    if (generated.has(relativePath)) return;
+
+    const sourceSchema = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
+    let projectedSchema;
+    try {
+      projectedSchema = projectSourceSchema(
+        sourceSchema,
+        sourcePath,
+        sourceDir,
+        urlVersion,
+        relativePath,
+        annotationMode,
+        schemaUrlPrefix,
+      );
+    } catch (error) {
+      throw new Error(`${relativePath}: ${error.message}`);
+    }
+    writeJson(path.join(targetDir, relativePath), projectedSchema);
+    const bytes = Buffer.byteLength(JSON.stringify(projectedSchema));
+    totalBytes += bytes;
+    largestSchemaBytes = Math.max(largestSchemaBytes, bytes);
+    schemaCount++;
+    generated.add(relativePath);
+  }
+
   for (const [toolName, tool] of Object.entries(manifest.tools || {})) {
-    const projectedTool = {};
+    if (!toolFilter(toolName, tool)) continue;
+    const projectedTool = { protocol: tool.protocol };
     for (const [field, relativePath] of [
       ['inputSchema', tool.request_schema],
       ['outputSchema', tool.response_schema],
-    ]) {
-      const sourcePath = path.join(sourceDir, relativePath);
-      if (!fs.existsSync(sourcePath)) {
-        throw new Error(`Missing source ${field} for ${toolName}: ${relativePath}`);
-      }
-      if (!generated.has(relativePath)) {
-        const sourceSchema = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
-        let projectedSchema;
-        try {
-          projectedSchema = projectSourceSchema(sourceSchema, sourcePath, sourceDir, urlVersion, relativePath);
-        } catch (error) {
-          throw new Error(`${relativePath}: ${error.message}`);
-        }
-        writeJson(path.join(targetDir, relativePath), projectedSchema);
-        const bytes = Buffer.byteLength(JSON.stringify(projectedSchema));
-        totalBytes += bytes;
-        largestSchemaBytes = Math.max(largestSchemaBytes, bytes);
-        schemaCount++;
-        generated.add(relativePath);
-      }
+    ].filter(([field]) => schemaFields.includes(field))) {
+      projectSchema(relativePath, `${toolName}.${field}`);
       projectedTool[field] = relativePath;
     }
     projectedTools[toolName] = projectedTool;
+  }
+
+  let taskResultResolution;
+  if (schemaFields.includes('outputSchema') && manifest.task_result_resolution) {
+    const terminalSchemaOverrides = {};
+    for (const [taskType, relativePath] of Object.entries(
+      manifest.task_result_resolution.terminal_schema_overrides || {}
+    )) {
+      if (!taskResultOverrideFilter(taskType, relativePath)) continue;
+      projectSchema(relativePath, `task result override ${taskType}`);
+      terminalSchemaOverrides[taskType] = relativePath;
+    }
+    taskResultResolution = {
+      discriminator_field: manifest.task_result_resolution.discriminator_field,
+      terminal_schema_pointer_template: '/tools/{task_type}/outputSchema',
+      terminal_schema_overrides: terminalSchemaOverrides,
+    };
   }
 
   const projectionManifest = {
@@ -591,6 +672,10 @@ function generateMcpSchemaProjection({ sourceDir, targetDir, manifestPath, urlVe
     source_schema_dialect: JSON_SCHEMA_DRAFT_07,
     compatibility: 'semantics-preserving projection; no 4.0 strictness rules applied',
     delivery: 'downloadable schema artifacts; servers choose which schemas to embed in tools/list',
+    annotation_mode: annotationMode,
+    schema_fields: schemaFields,
+    ...(taskResultResolution ? { task_result_resolution: taskResultResolution } : {}),
+    ...manifestMetadata,
     tools: projectedTools,
   };
   writeJson(path.join(targetDir, 'manifest.json'), projectionManifest);
@@ -619,4 +704,5 @@ module.exports = {
   measureSchema,
   projectDraft07Node,
   projectSourceSchema,
+  stripPresentationAnnotations,
 };

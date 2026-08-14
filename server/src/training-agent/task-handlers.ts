@@ -16,8 +16,7 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
-import { PostgresTaskStore } from '@adcp/sdk';
+import { canonicalize, PostgresTaskStore } from '@adcp/sdk';
 import {
   canonicalFormatLegacyResolverFromCatalogSnapshots,
   canonicalFormatLegacyResolverFromRoutes,
@@ -34,10 +33,14 @@ import {
   type V2ProductFormatDeclaration,
 } from '@adcp/sdk/v2/projection';
 import { mergeSeedProductLegacy as mergeSeedProduct } from '@adcp/sdk/testing';
-import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetchAxiosLike } from '../utils/url-security.js';
 import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type SessionState } from './types.js';
+import {
+  AccountRefValidationError,
+  accountScopeFromRef,
+  canonicalizeAccountRef,
+} from './account-scope.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import type {
   LegacyProduct as Product,
@@ -61,7 +64,7 @@ import type {
   LegacyBuildCreativeResponse as BuildCreativeResponse,
   LegacyCreativeManifest as AdcpCreativeManifest,
 } from '@adcp/sdk';
-import { CreativeAssetSchema, CreativeManifestSchema } from '@adcp/sdk/schemas';
+import { CreativeAssetSchema, CreativeManifestSchema, GetProductsRequestSchema } from '@adcp/sdk/schemas';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getCanonicalBase } from './canonical-base.js';
 
@@ -72,7 +75,7 @@ function escapeHtmlAttr(s: string): string {
 }
 
 /** Build a structured MCP error response for tool calls (L3 error compliance). */
-export function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string; field?: string }, context?: unknown, adcpVersion?: string) {
+export function adcpError(code: string, opts: { message: string; details?: unknown; recovery?: string; field?: string; retry_after?: number }, context?: unknown, adcpVersion?: string) {
   const errorObj = { code, ...opts };
   const body = context !== undefined
     ? { adcp_error: errorObj, context }
@@ -121,6 +124,10 @@ type GetProductsRejectedResponse = {
   reason: string;
   suggestions?: string[];
   context?: Record<string, unknown>;
+};
+type GetProductsReadDirectives = {
+  rejection?: { reason: string; suggestions?: string[] };
+  staleDirective?: { tool: string; upstreamName?: string; createdAt: string };
 };
 type PricingOption = Product['pricing_options'][number];
 type PricingStructure = 'fixed' | 'auction' | 'contingent';
@@ -1405,11 +1412,61 @@ function signalPricingSatisfiedInCurrencies(signalOption: { pricing_options?: un
 
 // Proposal lifecycle fields not yet in @adcp/sdk — remove after client update
 interface ProposalLifecycle {
-  proposal_status?: 'draft' | 'committed';
+  proposal_status?: 'draft' | 'committed' | 'accepted';
   insertion_order?: { io_id: string; requires_signature: boolean; terms?: Record<string, unknown> };
 }
 function proposalLifecycle(proposal: Proposal): ProposalLifecycle {
+  const internal = proposal as unknown as Record<string, unknown>;
+  if (internal.__executed === true) return { ...proposal as unknown as ProposalLifecycle, proposal_status: 'accepted' };
   return proposal as unknown as ProposalLifecycle;
+}
+
+/** Return an exact proposal snapshot backed by a 24-hour inventory hold. */
+function executableProposalSnapshot(proposal: Proposal, brandDomain?: string): Proposal {
+  const executable = { ...proposal } as Record<string, unknown> & ProposalLifecycle;
+  executable.proposal_status = 'committed';
+  executable.expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+  const hasGuaranteed = proposal.allocations.some(allocation => {
+    const catalogProduct = getCatalog().find(entry => entry.product.product_id === allocation.product_id);
+    return catalogProduct?.product.delivery_type === 'guaranteed';
+  });
+  if (hasGuaranteed) {
+    const publisherProduct = getCatalog().find(
+      entry => entry.product.product_id === proposal.allocations[0].product_id,
+    );
+    const ioDigest = createHash('sha256')
+      .update(`${proposal.proposal_id}:${brandDomain ?? 'advertiser.example'}`)
+      .digest('hex')
+      .slice(0, 24);
+    executable.insertion_order = {
+      io_id: `io_${ioDigest}`,
+      terms: {
+        advertiser: brandDomain ?? 'advertiser.example',
+        publisher: publisherProduct?.publisherId || 'unknown',
+        total_budget: {
+          amount: proposal.total_budget_guidance?.recommended ?? 0,
+          currency: proposal.total_budget_guidance?.currency ?? 'USD',
+        },
+        flight_start: new Date().toISOString(),
+        flight_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        payment_terms: 'net_30',
+      },
+      requires_signature: true,
+    };
+  }
+
+  return executable as unknown as Proposal;
+}
+
+/** Return an immutable indicative proposal. Its expiry is a terms-freshness
+ * deadline, not an inventory hold; only finalize creates a committed hold. */
+function draftProposalSnapshot(proposal: Proposal): Proposal {
+  const draft = { ...proposal } as Record<string, unknown> & ProposalLifecycle;
+  draft.proposal_status = 'draft';
+  draft.expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  delete draft.insertion_order;
+  return draft as unknown as Proposal;
 }
 
 type ConcreteCpmAsk = {
@@ -1625,9 +1682,9 @@ import { buildCatalog, buildShowsForProducts, buildProposals } from './product-f
 import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import {
-  getSession, sessionKeyFromArgs,
+  controllerFixturePrincipal, getSession, getProductsSessionKeyFromArgs, sessionKeyFromArgs,
   findSessionMatching,
-  runWithSessionContext, flushDirtySessions,
+  runWithSessionContext, flushDirtySessions, evictSessionFromRequestCache,
   getComplianceCreatives, getComplianceCreative,
   getComplianceMediaBuys, getComplianceMediaBuy,
   MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
@@ -1670,6 +1727,7 @@ import {
   ACCOUNT_TOOLS,
   SUPPORTED_BILLINGS,
   handleListAccounts,
+  sandboxAccountRefForId,
   resolveAccountIdForRef,
   resolveGovernanceAgentsForAccount,
   handleSyncAccounts,
@@ -1709,9 +1767,20 @@ import {
   validateKeyFormat,
   scopedPrincipal,
   getIdempotencyStore,
+  payloadHash,
+  REPLAY_TTL_SECONDS,
 } from './idempotency.js';
 import { maybeEmitCompletionWebhook } from './webhooks.js';
 import { selectSigningCapability } from './request-signing.js';
+import {
+  getTrainingTaskStore,
+  resetTrainingTaskStore,
+  type TrainingTaskStore,
+} from './mcp-task-store.js';
+import {
+  loadProductDiscoveryInputSchema,
+  validateProductDiscoverySourceInput,
+} from './source-schema.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
 const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', GET_PRODUCTS_REJECTED_ADCP_VERSION] as const;
@@ -1895,12 +1964,16 @@ export function resolveServedAdcpVersion(args: Record<string, unknown>): Version
 }
 
 export function resolveServedAdcpVersionForTool(toolName: string, args: Record<string, unknown>): VersionResolution {
+  const splitProductTool = isProductDiscoveryTool(toolName) && toolName !== 'get_products';
   if (
-    toolName === 'validate_input'
+    (toolName === 'validate_input' || splitProductTool)
     && args.adcp_version === undefined
     && args.adcp_major_version === undefined
   ) {
-    return resolveServedAdcpVersion({ ...args, adcp_version: CURRENT_ADCP_VERSION });
+    return resolveServedAdcpVersion({
+      ...args,
+      adcp_version: splitProductTool ? GET_PRODUCTS_REJECTED_ADCP_VERSION : CURRENT_ADCP_VERSION,
+    });
   }
   return resolveServedAdcpVersion(args);
 }
@@ -2117,15 +2190,111 @@ function installTaskProtocolVersionNegotiation(server: Server): void {
  * another. This is intentional for the training agent where all sessions
  * are sandboxed. Production servers should scope tasks by sessionId.
  */
-let sdkTaskStore: InMemoryTaskStore | PostgresTaskStore | null = null;
+const inMemoryTaskIdsByNaturalKey = new Map<string, string>();
+const IDEMPOTENT_TASK_MAX_GENERATIONS = 64;
 
-function getTaskStore(): InMemoryTaskStore | PostgresTaskStore {
-  if (!sdkTaskStore) {
-    sdkTaskStore = isDatabaseInitialized()
-      ? new PostgresTaskStore(getPool())
-      : new InMemoryTaskStore();
+function idempotentTaskNaturalKey(
+  principal: string,
+  toolName: string,
+  idempotencyKey: string,
+  payloadHash: string,
+): string {
+  return [principal, toolName, `success:${idempotencyKey}:${payloadHash}`].join('\0');
+}
+
+export function idempotentTaskId(naturalKey: string, generation: number): string {
+  const generationKey = generation === 0 ? naturalKey : `${naturalKey}\0replacement:${generation}`;
+  return createHash('sha256').update(generationKey).digest('hex');
+}
+
+function taskReceiptCanBeReused(task: { status: string }): boolean {
+  return task.status !== 'cancelled' && task.status !== 'failed';
+}
+
+function isTaskIdCollision(error: unknown, taskId: string): boolean {
+  return error instanceof Error
+    && error.message === `Task with ID ${taskId} already exists. Use a different taskId or retrieve the existing task via getTask().`;
+}
+
+export async function createOrReuseIdempotentTask(
+  taskStore: TrainingTaskStore,
+  naturalKey: string,
+  ttl: number,
+  request: { method: string; params?: { _meta?: Record<string, unknown> } },
+) {
+  if (taskStore instanceof PostgresTaskStore) {
+    const taskIds = Array.from(
+      { length: IDEMPOTENT_TASK_MAX_GENERATIONS },
+      (_, generation) => idempotentTaskId(naturalKey, generation),
+    );
+    const existingTasks = await Promise.all(taskIds.map(taskId => taskStore.getTask(taskId)));
+    // Prefer the newest live generation. Missing entries may be expired rows
+    // hidden by PostgresTaskStore, so the complete scan must happen before an
+    // insertion attempt; an older hole cannot prove that later generations
+    // do not exist.
+    for (let generation = existingTasks.length - 1; generation >= 0; generation -= 1) {
+      const existing = existingTasks[generation];
+      if (existing && taskReceiptCanBeReused(existing)) return existing;
+    }
+
+    for (let generation = 0; generation < taskIds.length; generation += 1) {
+      if (existingTasks[generation]) continue;
+      const deterministicTaskId = taskIds[generation]!;
+      try {
+        return await taskStore.createTask({ ttl, taskId: deterministicTaskId }, 0, request);
+      } catch (error) {
+        // A sibling process may have inserted the same naturally keyed task
+        // between getTask() and createTask(). Re-read instead of allocating a
+        // second task or surfacing a false failure.
+        const raced = await taskStore.getTask(deterministicTaskId);
+        if (raced) {
+          if (taskReceiptCanBeReused(raced)) return raced;
+          continue;
+        }
+        // getTask() filters expired rows, but their primary keys remain until
+        // cleanup. A confirmed SDK duplicate for an invisible row occupies
+        // this generation; advance instead of failing or recreating gen0.
+        if (isTaskIdCollision(error, deterministicTaskId)) continue;
+        throw error;
+      }
+    }
+    throw new Error('Too many cancelled or failed idempotent task receipt generations');
   }
-  return sdkTaskStore;
+
+  const priorId = inMemoryTaskIdsByNaturalKey.get(naturalKey);
+  if (priorId) {
+    const existing = await taskStore.getTask(priorId);
+    if (existing && taskReceiptCanBeReused(existing)) return existing;
+    inMemoryTaskIdsByNaturalKey.delete(naturalKey);
+  }
+  const created = await taskStore.createTask({ ttl }, 0, request);
+  inMemoryTaskIdsByNaturalKey.set(naturalKey, created.taskId);
+  return created;
+}
+
+export async function getIdempotentTask(
+  taskStore: TrainingTaskStore,
+  naturalKey: string,
+) {
+  if (taskStore instanceof PostgresTaskStore) {
+    const tasks = await Promise.all(Array.from(
+      { length: IDEMPOTENT_TASK_MAX_GENERATIONS },
+      (_, generation) => taskStore.getTask(idempotentTaskId(naturalKey, generation)),
+    ));
+    let latestTerminalTask: Awaited<ReturnType<typeof taskStore.getTask>> = null;
+    for (let generation = tasks.length - 1; generation >= 0; generation -= 1) {
+      const task = tasks[generation];
+      if (!task) continue;
+      if (taskReceiptCanBeReused(task)) return task;
+      if (!latestTerminalTask) latestTerminalTask = task;
+    }
+    return latestTerminalTask;
+  }
+  const taskId = inMemoryTaskIdsByNaturalKey.get(naturalKey);
+  if (!taskId) return null;
+  const task = await taskStore.getTask(taskId);
+  if (!task) inMemoryTaskIdsByNaturalKey.delete(naturalKey);
+  return task;
 }
 
 /** Look up which tools allow task augmentation. */
@@ -2144,37 +2313,160 @@ function toolSupportsTask(toolName: string): boolean {
  * its only job is to keep two different buyers on the same shared token
  * from seeing each other's idempotency outcomes.
  */
-function deriveAccountScope(args: Record<string, unknown>): string | undefined {
+function deriveAccountScope(args: Record<string, unknown>, strictAccountRef = true): string | undefined {
   const usageAccount = Array.isArray(args.usage)
     ? (args.usage[0] as { account?: unknown } | undefined)?.account
     : undefined;
-  const account = (args.account ?? usageAccount) as { account_id?: string; brand?: { domain?: string } } | undefined;
-  if (account?.account_id && typeof account.account_id === 'string') {
-    return `a:${account.account_id}`;
+  const account = Object.prototype.hasOwnProperty.call(args, 'account')
+    ? args.account
+    : usageAccount;
+  if (account !== undefined) {
+    try {
+      return accountScopeFromRef(account);
+    } catch (error) {
+      if (strictAccountRef || !(error instanceof AccountRefValidationError)) throw error;
+      const legacy = account as { account_id?: unknown; brand?: { domain?: unknown } };
+      if (typeof legacy.account_id === 'string' && legacy.account_id.length > 0) {
+        return `a:${legacy.account_id}`;
+      }
+      if (typeof legacy.brand?.domain === 'string' && legacy.brand.domain.length > 0) {
+        return `b:${legacy.brand.domain.toLowerCase()}`;
+      }
+      return undefined;
+    }
   }
-  const domain = account?.brand?.domain
-    ?? (args.brand as { domain?: string } | undefined)?.domain;
-  if (typeof domain === 'string' && domain.length > 0) {
-    return `b:${domain.toLowerCase()}`;
+  if (typeof args.account_id === 'string' && args.account_id.length > 0) {
+    return `a:${args.account_id}`;
   }
-  return undefined;
+  return compactBrandScope(args.brand);
 }
 
-function withUsageAccountScope<T extends Record<string, unknown>>(req: T): T {
-  if (req.account !== undefined) return req;
-  const usageAccount = Array.isArray(req.usage)
-    ? (req.usage[0] as { account?: unknown } | undefined)?.account
-    : undefined;
-  if (usageAccount && typeof usageAccount === 'object') {
-    return { ...req, account: usageAccount };
+async function deriveProductDiscoveryAccountScope(
+  toolName: string,
+  originalArgs: Record<string, unknown>,
+  normalizedArgs: Record<string, unknown>,
+  ctx: TrainingContext,
+): Promise<string | undefined> {
+  const directScope = deriveAccountScope(normalizedArgs, isProductDiscoveryTool(toolName));
+  if (
+    directScope
+    || (toolName !== 'refine_proposals' && toolName !== 'decline_proposals')
+  ) {
+    return directScope;
   }
-  return req;
+
+  const proposalIds = toolName === 'refine_proposals' && Array.isArray(originalArgs.refinements)
+    ? originalArgs.refinements
+        .filter(isRecord)
+        .map(refinement => refinement.proposal_id)
+        .filter((id): id is string => typeof id === 'string')
+    : toolName === 'decline_proposals' && Array.isArray(originalArgs.declines)
+      ? originalArgs.declines
+          .filter(isRecord)
+          .map(decline => decline.proposal_id)
+          .filter((id): id is string => typeof id === 'string')
+      : [];
+  const proposalSession = await getSession(
+    sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal ?? 'anonymous'),
+  );
+  const proposalsById = new Map(
+    (proposalSession.lastGetProductsContext?.proposals ?? []).map(proposal => [proposal.proposal_id, proposal]),
+  );
+  const scopes = new Set<string>();
+  for (const proposalId of proposalIds) {
+    const internal = proposalsById.get(proposalId) as unknown as Record<string, unknown> | undefined;
+    if (typeof internal?.__account_id === 'string') scopes.add(`a:${internal.__account_id}`);
+    else if (typeof internal?.__brand_domain === 'string') {
+      scopes.add(compactBrandScope({
+        domain: internal.__brand_domain,
+        ...(typeof internal.__brand_id === 'string' && { brand_id: internal.__brand_id }),
+      })!);
+    }
+  }
+  if (scopes.size > 1) {
+    throw new AccountRefValidationError('All proposal IDs in one lifecycle request must resolve to the same account.');
+  }
+  return scopes.values().next().value ?? 'proposal-lookup:unresolved';
+}
+
+/**
+ * Resolve the one principal-bound controller fixture session that an
+ * authenticated sandbox request may read. Account-id requests must prove the
+ * id was synced for the same principal and brand before a fixture key is
+ * returned; production/nonsandbox and malformed refs never bridge.
+ */
+function controllerFixtureSessionKey(
+  args: ToolArgs,
+  ctx: TrainingContext,
+): string | undefined {
+  if (!args.account) {
+    // Frozen 3.0 natural-account adapters intentionally project the SDK's
+    // synthetic account back to its legacy brand session. Permit that one
+    // static sandbox surface to read the principal-bound fixture projection;
+    // real principals and ordinary brand-only requests remain ineligible.
+    const compatBrandDomain = ctx.storyboardCompat?.version === '3.0'
+      && ctx.principal?.startsWith('static:')
+      && typeof args.brand?.domain === 'string'
+      ? args.brand.domain
+      : undefined;
+    if (compatBrandDomain) {
+      return sessionKeyFromArgs(
+        { brand: { domain: compatBrandDomain } },
+        ctx.mode,
+        ctx.userId,
+        ctx.moduleId,
+        controllerFixturePrincipal(ctx.principal),
+      );
+    }
+  }
+  const requestedAccount = args.account ?? ctx.resolvedAccount ?? (
+    ctx.requestInput?.account && typeof ctx.requestInput.account === 'object'
+      ? ctx.requestInput.account as ToolArgs['account']
+      : undefined
+  );
+  if (!requestedAccount) return undefined;
+  let fixtureAccount: ToolArgs['account'];
+  try {
+    const account = canonicalizeAccountRef(requestedAccount);
+    if (account.kind === 'natural') {
+      // Public/static training-agent traffic is itself a sandbox boundary, so
+      // ordinary task calls may omit the controller-only `sandbox: true`
+      // assertion while still reading fixtures seeded for the same complete
+      // natural identity. Authenticated non-static callers must resolve to an
+      // explicitly sandboxed account before any fixture projection occurs.
+      if (!account.sandbox && ctx.principal && !ctx.principal.startsWith('static:')) return undefined;
+      fixtureAccount = {
+        brand: account.brand,
+        // SDK controller seeding uses the brand domain as operator. Public
+        // static credentials intentionally share one demo fixture sandbox,
+        // so task examples using a buyer operator resolve the same brand-owned
+        // fixtures. Authenticated principals retain full operator isolation.
+        operator: ctx.principal?.startsWith('static:')
+          ? account.brand.domain
+          : account.operator,
+        sandbox: true,
+      };
+    } else {
+      // Resolve first so an opaque ID is usable only by the principal that
+      // owns that sandbox account. Keep the opaque identity for projection:
+      // controller fixture writes are keyed by account_id, and resolving it
+      // to a natural ref here would fork reads into a different partition.
+      if (!sandboxAccountRefForId(account.account_id, ctx.principal)) return undefined;
+      fixtureAccount = { account_id: account.account_id };
+    }
+  } catch {
+    return undefined;
+  }
+
+  return sessionKeyFromArgs({
+    account: fixtureAccount,
+  }, ctx.mode, ctx.userId, ctx.moduleId, controllerFixturePrincipal(ctx.principal));
 }
 
 /** Clear the task store (for tests). Calls cleanup() to cancel TTL timers. */
 export function clearTaskStore(): void {
-  sdkTaskStore?.cleanup();
-  sdkTaskStore = null;
+  resetTrainingTaskStore();
+  inMemoryTaskIdsByNaturalKey.clear();
 }
 
 /** Translate the agent's internal governance check shape into the wire-format
@@ -2226,6 +2518,13 @@ async function governedCommitmentError(
     code: 'PERMISSION_DENIED',
     message: result.message ?? 'The signed governance authorization is invalid.',
   };
+}
+
+function governedRequestPayload(
+  ctx: TrainingContext,
+  fallback: Record<string, unknown>,
+): Record<string, unknown> {
+  return ctx.requestInput ?? fallback;
 }
 
 function projectedPackageBudgetTotal(mb: MediaBuyState, req: UpdateMediaBuyArgs): number {
@@ -2350,7 +2649,7 @@ export function hasAdcpSuccessPayload(resultObj: Record<string, unknown> | undef
 }
 
 function permitsAdvisoryErrors(toolName: string, resultObj: Record<string, unknown> | undefined): boolean {
-  if (toolName === 'get_products') return hasAdcpSuccessPayload(resultObj);
+  if (isProductDiscoveryTool(toolName)) return hasAdcpSuccessPayload(resultObj);
   if (toolName === 'create_media_buy') {
     return resultObj?.status === 'submitted' && typeof resultObj.task_id === 'string';
   }
@@ -3894,15 +4193,713 @@ function signalMatchesRef(
 
 // ── Tool definitions ──────────────────────────────────────────────
 
+const PRODUCT_DISCOVERY_TOOLS = new Set([
+  'get_products',
+  'list_products',
+  'request_proposals',
+  'refine_proposals',
+  'decline_proposals',
+]);
+
+function isProductDiscoveryTool(toolName: string): boolean {
+  return PRODUCT_DISCOVERY_TOOLS.has(toolName);
+}
+
+function compactBrandScope(brand: unknown): string | undefined {
+  if (!isRecord(brand) || typeof brand.domain !== 'string' || brand.domain.length === 0) return undefined;
+  const brandId = typeof brand.brand_id === 'string' ? brand.brand_id : '';
+  return `b:${brand.domain.toLowerCase()}#${brandId}`;
+}
+
+function productDiscoverySourceSchemaName(toolName: string): string | undefined {
+  switch (toolName) {
+    case 'list_products': return 'list-products-request';
+    case 'request_proposals': return 'request-proposals-request';
+    case 'refine_proposals': return 'refine-proposals-request';
+    case 'decline_proposals': return 'decline-proposals-request';
+    default: return undefined;
+  }
+}
+
+export function canonicalProductDiscoveryTool(toolName: string): string {
+  return isProductDiscoveryTool(toolName) ? 'get_products' : toolName;
+}
+
+function expandProductDiscoveryCriteria(criteria: unknown): Record<string, unknown> {
+  if (!isRecord(criteria)) return {};
+  const {
+    offer_filters: filters,
+    policy_ids: requiredPolicies,
+    ...rest
+  } = criteria;
+  return {
+    ...rest,
+    ...(filters !== undefined && { filters }),
+    ...(requiredPolicies !== undefined && { required_policies: requiredPolicies }),
+  };
+}
+
+function expandProductDiscoveryIdentity(args: Record<string, unknown>): Record<string, unknown> {
+  const { account_id: accountId, ...rest } = args;
+  return {
+    ...rest,
+    ...(typeof accountId === 'string' && { account: { account_id: accountId } }),
+  };
+}
+
+/** Envelope fields are accepted uniformly on every AdCP call but are not part
+ * of the legacy get_products domain payload. Dispatch retains the original
+ * wire args for source validation and idempotency equivalence. */
+function stripProductDiscoveryEnvelope(args: Record<string, unknown>): Record<string, unknown> {
+  const {
+    context: _context,
+    context_id: _contextId,
+    governance_context: _governanceContext,
+    push_notification_config: _pushNotificationConfig,
+    ...domainArgs
+  } = args;
+  return domainArgs;
+}
+
+/** Normalize the compact 3.2 tools into the legacy get_products handler shape.
+ * The split operations retain distinct idempotency identities and project
+ * task-specific responses; this adapter exists only for 3.x implementation
+ * reuse. */
+export function normalizeProductDiscoveryArgs(
+  toolName: string,
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  const domainArgs = isProductDiscoveryTool(toolName)
+    ? stripProductDiscoveryEnvelope(args)
+    : args;
+  if (toolName === 'list_products') {
+    const {
+      criteria,
+      cursor,
+      max_results: maxResults,
+      if_feed_version: ifFeedVersion,
+      ...rest
+    } = expandProductDiscoveryIdentity(domainArgs);
+    return {
+      ...rest,
+      ...expandProductDiscoveryCriteria(criteria),
+      ...(cursor !== undefined || maxResults !== undefined
+        ? { pagination: { ...(cursor !== undefined && { cursor }), ...(maxResults !== undefined && { max_results: maxResults }) } }
+        : {}),
+      ...(ifFeedVersion !== undefined && { if_wholesale_feed_version: ifFeedVersion }),
+      buying_mode: 'wholesale',
+    };
+  }
+  if (toolName === 'request_proposals') {
+    const { criteria, ...rest } = expandProductDiscoveryIdentity(domainArgs);
+    return {
+      ...rest,
+      ...expandProductDiscoveryCriteria(criteria),
+      buying_mode: 'brief',
+      __compact_proposal_lifecycle: true,
+      __require_proposals: true,
+    };
+  }
+  if (toolName === 'refine_proposals') {
+    const { refinements, ...rest } = domainArgs;
+    return {
+      ...rest,
+      buying_mode: 'refine',
+      __compact_proposal_lifecycle: true,
+      __immutable_refine: true,
+      refine: Array.isArray(refinements)
+        ? refinements.map(entry => {
+            if (!isRecord(entry)) return entry;
+            return {
+              scope: 'proposal',
+              proposal_id: entry.proposal_id,
+              action: entry.action === 'finalize' ? 'finalize' : 'include',
+              ...(entry.action !== 'finalize'
+                && typeof entry.instructions === 'string'
+                && { ask: entry.instructions }),
+              ...(entry.action !== 'finalize'
+                && (entry.change_kind === 'amendment' || entry.change_kind === 'cancellation')
+                && { change_kind: entry.change_kind }),
+            };
+          })
+        : [],
+    };
+  }
+  if (toolName === 'decline_proposals') {
+    const { declines, ...rest } = domainArgs;
+    return {
+      ...rest,
+      buying_mode: 'refine',
+      __compact_proposal_lifecycle: true,
+      __decline_proposals: true,
+      refine: Array.isArray(declines)
+        ? declines.map(entry => {
+            if (!isRecord(entry)) return entry;
+            return {
+              scope: 'proposal',
+              proposal_id: entry.proposal_id,
+              action: 'decline',
+              reason: entry.reason,
+              ...(typeof entry.detail === 'string' && { detail: entry.detail }),
+            };
+          })
+        : [],
+    };
+  }
+  return args;
+}
+
+function supportingProductsForProposals(
+  proposals: Array<Record<string, unknown>>,
+  products: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  const referenced = new Set<string>();
+  for (const proposal of proposals) {
+    const commercialTerms = isRecord(proposal.commercial_terms) ? proposal.commercial_terms : undefined;
+    const selections = Array.isArray(commercialTerms?.purchases)
+      ? commercialTerms.purchases
+      : Array.isArray(proposal.allocations) ? proposal.allocations : [];
+    for (const allocation of selections) {
+      if (isRecord(allocation) && typeof allocation.product_id === 'string') {
+        referenced.add(allocation.product_id);
+      }
+    }
+  }
+  return products.filter(product => typeof product.product_id === 'string' && referenced.has(product.product_id));
+}
+
+const CANONICAL_PRICING_FIELDS = [
+  'pricing_option_id', 'pricing_model', 'currency', 'price_guidance',
+  'min_spend_per_package', 'price_breakdown', 'eligible_adjustments',
+  'parameters', 'event_type', 'custom_event_name', 'event_source_id',
+  'commission_rate', 'commission_basis_description',
+] as const;
+
+function canonicalPricingSnapshot(raw: unknown, pricingOptionId: string): Record<string, unknown> {
+  const source = isRecord(raw) ? raw : {};
+  const snapshot: Record<string, unknown> = {};
+  for (const field of CANONICAL_PRICING_FIELDS) {
+    if (source[field] !== undefined) snapshot[field] = structuredClone(source[field]);
+  }
+  snapshot.pricing_option_id = pricingOptionId;
+  if (typeof snapshot.pricing_model !== 'string') snapshot.pricing_model = 'cpm';
+  if (typeof snapshot.currency !== 'string') snapshot.currency = 'USD';
+  // A selected fixed price supersedes an auction floor in the canonical
+  // snapshot; the schema intentionally forbids carrying both.
+  if (typeof source.fixed_price === 'number') snapshot.fixed_price = source.fixed_price;
+  else if (typeof source.floor_price === 'number') snapshot.floor_price = source.floor_price;
+  return snapshot;
+}
+
+function proposalTermsDigest(commercialTerms: Record<string, unknown>): string {
+  return `sha256:${createHash('sha256').update(canonicalize(commercialTerms), 'utf8').digest('base64url')}`;
+}
+
+function buildCanonicalCommercialTerms(
+  proposal: Proposal,
+  products: Map<string, Product>,
+  brand: { domain: string; brand_id?: string },
+): Record<string, unknown> {
+  const internal = proposal as unknown as Record<string, unknown>;
+  if (isRecord(internal.__canonical_commercial_terms)) {
+    return structuredClone(internal.__canonical_commercial_terms);
+  }
+  const startTime = typeof internal.__commercial_start_time === 'string'
+    ? internal.__commercial_start_time
+    : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const endTime = typeof internal.__commercial_end_time === 'string'
+    ? internal.__commercial_end_time
+    : new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString();
+  const recommendedBudget = proposal.total_budget_guidance?.recommended;
+  const currency = proposal.total_budget_guidance?.currency ?? 'USD';
+  const purchases = proposal.allocations.map(allocation => {
+    const product = products.get(allocation.product_id)
+      ?? getCatalog().find(entry => entry.product.product_id === allocation.product_id)?.product;
+    const pricingOptionId = allocation.pricing_option_id
+      ?? product?.pricing_options?.[0]?.pricing_option_id
+      ?? `${allocation.product_id}_pricing`;
+    const pricing = product?.pricing_options?.find(option => option.pricing_option_id === pricingOptionId)
+      ?? product?.pricing_options?.[0];
+    return {
+      product_id: allocation.product_id,
+      pricing_option_id: pricingOptionId,
+      pricing: canonicalPricingSnapshot(pricing, pricingOptionId),
+      start_time: startTime,
+      end_time: endTime,
+      ...(typeof recommendedBudget === 'number' && {
+        budget: recommendedBudget * allocation.allocation_percentage / 100,
+      }),
+      ...(isRecord((product as unknown as Record<string, unknown> | undefined)?.measurement_terms)
+        && { measurement_terms: structuredClone((product as unknown as Record<string, unknown>).measurement_terms) }),
+      ...(Array.isArray((product as unknown as Record<string, unknown> | undefined)?.performance_standards)
+        && { performance_standards: structuredClone((product as unknown as Record<string, unknown>).performance_standards) }),
+    };
+  });
+  return {
+    brand,
+    purchases,
+    start_time: startTime,
+    end_time: endTime,
+    ...(typeof recommendedBudget === 'number' && {
+      total_budget: { amount: recommendedBudget, currency },
+    }),
+  };
+}
+
+function withCanonicalProposalEnvelope(
+  proposal: Proposal,
+  products: Map<string, Product>,
+  brand: { domain: string; brand_id?: string },
+  options: { rebuild?: boolean } = {},
+): Proposal {
+  const internal = { ...proposal } as unknown as Record<string, unknown>;
+  if (options.rebuild) {
+    delete internal.__canonical_commercial_terms;
+    delete internal.__canonical_terms_digest;
+  }
+  internal.__commercial_start_time ??= new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  internal.__commercial_end_time ??= new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString();
+  internal.__proposal_kind ??= 'new_media_buy';
+  const commercialTerms = buildCanonicalCommercialTerms(internal as unknown as Proposal, products, brand);
+  internal.__canonical_commercial_terms = commercialTerms;
+  internal.__canonical_terms_digest = proposalTermsDigest(commercialTerms);
+  return internal as unknown as Proposal;
+}
+
+function compactCanonicalProduct(product: Record<string, unknown>): Record<string, unknown> {
+  return {
+    product_id: product.product_id,
+    name: product.name,
+  };
+}
+
+function outwardProposal(proposal: Record<string, unknown>, products: Map<string, Product>): Record<string, unknown> {
+  const brand = {
+    domain: typeof proposal.__brand_domain === 'string' ? proposal.__brand_domain : 'advertiser.example',
+    ...(typeof proposal.__brand_id === 'string' && { brand_id: proposal.__brand_id }),
+  };
+  const terms = isRecord(proposal.__canonical_commercial_terms)
+    ? structuredClone(proposal.__canonical_commercial_terms)
+    : buildCanonicalCommercialTerms(proposal as unknown as Proposal, products, brand);
+  const status = proposalLifecycle(proposal as unknown as Proposal).proposal_status ?? 'draft';
+  return {
+    proposal_id: proposal.proposal_id,
+    proposal_kind: typeof proposal.__proposal_kind === 'string' ? proposal.__proposal_kind : 'new_media_buy',
+    ...(typeof proposal.__parent_proposal_id === 'string' && { parent_proposal_id: proposal.__parent_proposal_id }),
+    ...(typeof proposal.__media_buy_id === 'string' && { media_buy_id: proposal.__media_buy_id }),
+    ...(typeof proposal.__base_media_buy_revision === 'number' && { base_media_buy_revision: proposal.__base_media_buy_revision }),
+    ...(typeof proposal.__opportunity_id === 'string' && { opportunity_id: proposal.__opportunity_id }),
+    proposal_status: status,
+    ...(status === 'accepted' && typeof proposal.__accepted_at === 'string' && { accepted_at: proposal.__accepted_at }),
+    ...(typeof proposal.expires_at === 'string' && { expires_at: proposal.expires_at }),
+    name: proposal.name,
+    ...(typeof proposal.description === 'string' && { description: proposal.description }),
+    ...(typeof proposal.brief_alignment === 'string' && { brief_alignment: proposal.brief_alignment }),
+    commercial_terms: terms,
+    terms_digest: typeof proposal.__canonical_terms_digest === 'string'
+      ? proposal.__canonical_terms_digest
+      : proposalTermsDigest(terms),
+    ...(isRecord(proposal.insertion_order) && { insertion_order: proposal.insertion_order }),
+  };
+}
+
+/** Project the broad 3.x handler result into the compact split-tool domain
+ * response. The idempotency store keeps the canonical result; projection is
+ * applied after replay lookup so each tool retains its own wire contract. */
+export function projectProductDiscoveryResult(
+  toolName: string,
+  result: Record<string, unknown>,
+  originalArgs: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!isProductDiscoveryTool(toolName) || toolName === 'get_products') return result;
+  if (Array.isArray(result.errors) && result.errors.length > 0 && !Array.isArray(result.products)) return result;
+  if (toolName === 'request_proposals' && result.status === 'rejected') {
+    return {
+      outcome: 'rejected',
+      ...(typeof result.reason === 'string' && { reason: result.reason }),
+      ...(Array.isArray(result.suggestions) && { suggestions: result.suggestions }),
+    };
+  }
+
+  let products = Array.isArray(result.products)
+    ? result.products.filter(isRecord)
+    : [];
+  const proposalProducts = new Map(products
+    .filter((product): product is Record<string, unknown> & { product_id: string } => typeof product.product_id === 'string')
+    .map(product => [product.product_id, product as unknown as Product]));
+  let proposals = Array.isArray(result.proposals)
+    ? result.proposals.filter(isRecord)
+    : [];
+  const criteria = isRecord(originalArgs.criteria) ? originalArgs.criteria : undefined;
+  const requestedProductIds = criteria && Array.isArray(criteria.product_ids)
+    ? new Set(criteria.product_ids.filter((id): id is string => typeof id === 'string'))
+    : undefined;
+  if (requestedProductIds) {
+    products = products.filter(product => (
+      typeof product.product_id === 'string' && requestedProductIds.has(product.product_id)
+    ));
+    if (toolName === 'request_proposals') {
+      proposals = proposals.filter(proposal => (
+        Array.isArray(proposal.allocations)
+        && proposal.allocations.every(allocation => (
+          isRecord(allocation)
+          && typeof allocation.product_id === 'string'
+          && requestedProductIds.has(allocation.product_id)
+        ))
+      ));
+    }
+  }
+
+  if (toolName === 'list_products') {
+    if (result.unchanged === true) {
+      return {
+        outcome: 'unchanged',
+        ...(typeof result.wholesale_feed_version === 'string' && { feed_version: result.wholesale_feed_version }),
+        ...(typeof result.pricing_version === 'string' && { pricing_version: result.pricing_version }),
+        ...(typeof result.cache_scope === 'string' && { cache_scope: result.cache_scope }),
+      };
+    }
+    const pagination = isRecord(result.pagination) ? result.pagination : undefined;
+    return {
+      outcome: 'listed',
+      products,
+      ...(pagination && typeof pagination.cursor === 'string' && { next_cursor: pagination.cursor }),
+      ...(typeof result.wholesale_feed_version === 'string' && { feed_version: result.wholesale_feed_version }),
+      ...(typeof result.pricing_version === 'string' && { pricing_version: result.pricing_version }),
+      ...(typeof result.cache_scope === 'string' && { cache_scope: result.cache_scope }),
+      ...(Array.isArray(result.incomplete) && { incomplete: result.incomplete }),
+    };
+  }
+
+  if (toolName === 'request_proposals') {
+    const outwardProposals = proposals.map(proposal => outwardProposal(proposal, proposalProducts));
+    const supportingProducts = supportingProductsForProposals(outwardProposals, products).map(compactCanonicalProduct);
+    return {
+      outcome: 'proposed',
+      proposals: outwardProposals,
+      products: supportingProducts,
+      ...(isRecord(result.targeting_resolution) && { targeting_resolution: result.targeting_resolution }),
+    };
+  }
+
+  if (toolName === 'refine_proposals') {
+    const requestedRefinements = Array.isArray(originalArgs.refinements)
+      ? originalArgs.refinements.filter(isRecord)
+      : [];
+    const sourceIds = requestedRefinements
+      .map(entry => entry.proposal_id)
+      .filter((id): id is string => typeof id === 'string');
+    const actionBySource = new Map(requestedRefinements
+      .filter((entry): entry is Record<string, unknown> & { proposal_id: string } => typeof entry.proposal_id === 'string')
+      .map(entry => [entry.proposal_id, entry.action === 'finalize' ? 'finalize' : 'revise'] as const));
+    const proposalsBySource = new Map(proposals.map(proposal => [
+      proposal.__source_proposal_id,
+      proposal,
+    ]));
+    const outwardProposals = Array.from(proposalsBySource.values())
+      .map(proposal => outwardProposal(proposal, proposalProducts));
+    return {
+      results: sourceIds.map(sourceProposalId => {
+        const internalProposal = proposalsBySource.get(sourceProposalId);
+        const proposal = internalProposal && outwardProposal(internalProposal, proposalProducts);
+        const outcome = actionBySource.get(sourceProposalId) === 'finalize'
+          ? 'finalized'
+          : internalProposal?.__refinement_outcome === 'partial' ? 'partial' : 'revised';
+        return proposal
+          ? {
+              source_proposal_id: sourceProposalId,
+              outcome,
+              proposal,
+              ...(outcome === 'partial' && typeof internalProposal?.__refinement_notes === 'string'
+                && { notes: internalProposal.__refinement_notes }),
+            }
+          : {
+              source_proposal_id: sourceProposalId,
+              outcome: 'unable',
+              reason: 'The source proposal was not found or could not be revised under the requested terms.',
+            };
+      }),
+      products: supportingProductsForProposals(outwardProposals, products).map(compactCanonicalProduct),
+    };
+  }
+  if (toolName === 'decline_proposals') {
+    const requestedDeclines = Array.isArray(originalArgs.declines)
+      ? originalArgs.declines.filter(isRecord)
+      : [];
+    const proposalsById = new Map(proposals.map(proposal => [proposal.proposal_id, proposal]));
+    return {
+      results: requestedDeclines.map(decline => {
+        const proposalId = typeof decline.proposal_id === 'string' ? decline.proposal_id : '';
+        const proposal = proposalsById.get(proposalId);
+        return proposal?.__declined === true
+          ? { proposal_id: proposalId, outcome: 'declined' }
+          : {
+              proposal_id: proposalId,
+              outcome: 'unable',
+              reason: 'The proposal was not found or could not be declined by this authenticated principal.',
+            };
+      }),
+    };
+  }
+  return result;
+}
+
+/** Compact proposal operations address proposals by opaque ID under the
+ * authenticated principal. They deliberately do not repeat account or brand
+ * on every lifecycle call. The legacy facade retains its account-derived
+ * session partition for 3.x compatibility. */
+function productDiscoverySessionKey(args: ToolArgs, ctx: TrainingContext): string {
+  const compactLifecycle = (args as unknown as Record<string, unknown>).__compact_proposal_lifecycle === true;
+  if (compactLifecycle) {
+    return sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal ?? 'anonymous');
+  }
+  return getProductsSessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
+}
+
+function idempotencyPayloadForServedVersion(
+  toolName: string,
+  args: Record<string, unknown>,
+  servedAdcpVersion: string,
+): Record<string, unknown> {
+  if (
+    isProductDiscoveryTool(toolName)
+    && args.adcp_version === undefined
+    && args.adcp_major_version === undefined
+  ) {
+    // The legacy facade defaults to 3.0 while split names default to 3.2.
+    // Bind an omitted caller pin to the effective release so those distinct
+    // wire contracts conflict instead of replaying a response across versions.
+    return {
+      ...args,
+      adcp_version: servedAdcpVersion,
+      ...(toolName !== 'get_products' && { __adcp_operation: toolName }),
+    };
+  }
+  return toolName === 'get_products' ? args : { ...args, __adcp_operation: toolName };
+}
+
+export function validateProductDiscoveryAliasInput(
+  toolName: string,
+  args: Record<string, unknown>,
+): { message: string; field?: string } | undefined {
+  if (args.account !== undefined && !isRecord(args.account)) {
+    return { message: 'account must be an object', field: 'account' };
+  }
+  const account = isRecord(args.account) ? args.account : undefined;
+  const hasNaturalAccountBrand = isRecord(account?.brand)
+    && typeof account.operator === 'string'
+    && account.operator.length > 0;
+  const allowedFields: Record<string, ReadonlySet<string>> = {
+    list_products: new Set([
+      'adcp_version', 'adcp_major_version', 'idempotency_key', 'context_id',
+      'context', 'governance_context', 'push_notification_config', 'account', 'brand', 'criteria',
+      'fields', 'cursor', 'max_results', 'if_feed_version', 'if_pricing_version',
+    ]),
+    request_proposals: new Set([
+      'adcp_version', 'adcp_major_version', 'idempotency_key', 'account',
+      'context_id', 'context', 'governance_context', 'push_notification_config',
+      'brand', 'brief', 'criteria', 'opportunity',
+    ]),
+    refine_proposals: new Set([
+      'adcp_version', 'adcp_major_version', 'idempotency_key', 'refinements',
+      'context_id', 'context', 'governance_context', 'push_notification_config',
+    ]),
+    decline_proposals: new Set([
+      'adcp_version', 'adcp_major_version', 'idempotency_key', 'declines', 'opportunity',
+      'context_id', 'context', 'governance_context', 'push_notification_config',
+    ]),
+  };
+  const allowed = allowedFields[toolName];
+  if (allowed) {
+    const unknown = Object.keys(args).find(field => !allowed.has(field));
+    if (unknown) return { message: `${unknown} is not supported by ${toolName}`, field: unknown };
+  }
+  if (
+    (
+      toolName === 'request_proposals'
+      || toolName === 'refine_proposals'
+      || toolName === 'decline_proposals'
+    )
+    && args.idempotency_key == null
+  ) {
+    return { message: `idempotency_key is required for ${toolName}`, field: 'idempotency_key' };
+  }
+  if (toolName === 'list_products') {
+    if (args.if_pricing_version !== undefined && args.if_feed_version === undefined) {
+      return { message: 'if_pricing_version requires if_feed_version', field: 'if_feed_version' };
+    }
+    const criteria = isRecord(args.criteria) ? args.criteria : undefined;
+    if (isRecord(criteria?.catalog) && args.brand === undefined && !hasNaturalAccountBrand) {
+      return { message: 'brand is required when catalog criteria are present', field: 'brand' };
+    }
+    if (isRecord(criteria?.catalog) && typeof criteria.catalog.catalog_id !== 'string') {
+      return { message: 'criteria.catalog.catalog_id is required', field: 'criteria.catalog.catalog_id' };
+    }
+  }
+  if (toolName === 'request_proposals') {
+    if (typeof args.brief !== 'string' || args.brief.length === 0) {
+      return { message: 'brief is required for request_proposals', field: 'brief' };
+    }
+    if (args.brand === undefined && !hasNaturalAccountBrand) {
+      return { message: 'brand is required for request_proposals', field: 'brand' };
+    }
+    const criteria = isRecord(args.criteria) ? args.criteria : undefined;
+    if (isRecord(criteria?.catalog) && args.brand === undefined && !hasNaturalAccountBrand) {
+      return { message: 'brand is required when catalog criteria are present', field: 'brand' };
+    }
+    if (isRecord(criteria?.catalog) && typeof criteria.catalog.catalog_id !== 'string') {
+      return { message: 'criteria.catalog.catalog_id is required', field: 'criteria.catalog.catalog_id' };
+    }
+  }
+  if (toolName === 'refine_proposals') {
+    if (!Array.isArray(args.refinements) || args.refinements.length === 0) {
+      return { message: 'refinements must contain at least one proposal change', field: 'refinements' };
+    }
+    const proposalIds = new Set<string>();
+    for (let index = 0; index < args.refinements.length; index += 1) {
+      const entry = args.refinements[index];
+      if (!isRecord(entry)) {
+        return { message: 'refinement entries must be objects', field: `refinements[${index}]` };
+      }
+      if (typeof entry.proposal_id !== 'string' || entry.proposal_id.length === 0) {
+        return { message: 'proposal_id is required for every refinement', field: `refinements[${index}].proposal_id` };
+      }
+      if (proposalIds.has(entry.proposal_id)) {
+        return { message: 'proposal_id values in refinements must be unique', field: `refinements[${index}].proposal_id` };
+      }
+      proposalIds.add(entry.proposal_id);
+      if (!(typeof entry.instructions === 'string' && entry.instructions.length > 0)) {
+        if (entry.action !== 'finalize') {
+          return { message: 'each revision requires instructions', field: `refinements[${index}].instructions` };
+        }
+      }
+      if (entry.action !== 'revise' && entry.action !== 'finalize') {
+        return {
+          message: 'action is required and must be revise or finalize',
+          field: `refinements[${index}].action`,
+        };
+      }
+      if (entry.action === 'finalize' && (entry.instructions !== undefined || entry.change_kind !== undefined)) {
+        return {
+          message: 'finalize cannot be combined with instructions or change_kind',
+          field: `refinements[${index}].action`,
+        };
+      }
+      if (
+        entry.change_kind !== undefined
+        && entry.change_kind !== 'amendment'
+        && entry.change_kind !== 'cancellation'
+      ) {
+        return {
+          message: 'change_kind must be amendment or cancellation',
+          field: `refinements[${index}].change_kind`,
+        };
+      }
+      const unknown = Object.keys(entry).find(
+        field => !['proposal_id', 'action', 'change_kind', 'instructions'].includes(field),
+      );
+      if (unknown) {
+        return { message: `${unknown} is not supported on proposal refinements`, field: `refinements[${index}].${unknown}` };
+      }
+    }
+    const hasFinalize = args.refinements.some(entry => isRecord(entry) && entry.action === 'finalize');
+    if (hasFinalize && args.refinements.some(entry => !isRecord(entry) || entry.action !== 'finalize')) {
+      return {
+        message: 'finalize entries cannot be mixed with proposal revisions',
+        field: 'refinements',
+      };
+    }
+  }
+  if (toolName === 'decline_proposals') {
+    if (!Array.isArray(args.declines) || args.declines.length === 0) {
+      return { message: 'declines must contain at least one proposal decline', field: 'declines' };
+    }
+    if (args.declines.length > 25) {
+      return { message: 'declines exceeds the maximum batch size (25)', field: 'declines' };
+    }
+    const proposalIds = new Set<string>();
+    const reasons = new Set([
+      'price', 'inventory_fit', 'audience_fit', 'creative_unsupported', 'measurement_unsupported',
+      'policy', 'timing', 'budget_changed', 'selected_alternative', 'other',
+    ]);
+    for (let index = 0; index < args.declines.length; index += 1) {
+      const entry = args.declines[index];
+      if (!isRecord(entry)) {
+        return { message: 'decline entries must be objects', field: `declines[${index}]` };
+      }
+      if (typeof entry.proposal_id !== 'string' || entry.proposal_id.length === 0) {
+        return { message: 'proposal_id is required for every decline', field: `declines[${index}].proposal_id` };
+      }
+      if (proposalIds.has(entry.proposal_id)) {
+        return { message: 'proposal_id values in declines must be unique', field: `declines[${index}].proposal_id` };
+      }
+      proposalIds.add(entry.proposal_id);
+      if (typeof entry.reason !== 'string' || !reasons.has(entry.reason)) {
+        return { message: 'a supported reason is required for every decline', field: `declines[${index}].reason` };
+      }
+      if (entry.reason === 'other' && !(typeof entry.detail === 'string' && entry.detail.length > 0)) {
+        return { message: 'detail is required when decline reason is other', field: `declines[${index}].detail` };
+      }
+      const unknown = Object.keys(entry).find(field => !['proposal_id', 'reason', 'detail'].includes(field));
+      if (unknown) {
+        return { message: `${unknown} is not supported on proposal declines`, field: `declines[${index}].${unknown}` };
+      }
+    }
+  }
+  return undefined;
+}
+
+const LIST_PRODUCTS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('list-products-request');
+const REQUEST_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('request-proposals-request');
+const REFINE_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('refine-proposals-request');
+const DECLINE_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('decline-proposals-request');
+const CREATE_MEDIA_BUY_OPPORTUNITY_INPUT_SCHEMA = {
+  type: 'object',
+  description: 'Planning-cycle closure for proposal execution. Omit status to infer accepted closure, or send closed with accepted_with_seller.',
+  properties: {
+    opportunity_id: { type: 'string', minLength: 1, maxLength: 255, pattern: '^[A-Za-z0-9_.:-]{1,255}$' },
+    phase: { type: 'string', enum: ['exploratory', 'planning', 'active_sourcing'] },
+    intent: { type: 'string', enum: ['test', 'speculative', 'planning', 'live_rfp'] },
+    planning_horizon: {
+      type: 'object',
+      properties: {
+        start: { type: 'string', format: 'date' },
+        end: { type: 'string', format: 'date' },
+      },
+      required: ['start', 'end'],
+      additionalProperties: true,
+    },
+    response_deadline: { type: 'string', format: 'date-time' },
+    status: { type: 'string', const: 'closed' },
+    close_reason: { type: 'string', const: 'accepted_with_seller' },
+    close_detail: { type: 'string', minLength: 1, maxLength: 500 },
+  },
+  required: ['opportunity_id'],
+  allOf: [{
+    if: { required: ['status'] },
+    then: { required: ['close_reason'] },
+    else: { not: { anyOf: [{ required: ['close_reason'] }, { required: ['close_detail'] }] } },
+  }],
+  additionalProperties: false,
+};
+
 const TOOLS = [
   {
     name: 'get_products',
-    description: 'Discover available advertising products. Supports brief (curated discovery), wholesale (raw catalog), and refine (iterate on previous results) buying modes. Use this before create_media_buy to find valid product_id and pricing_option_id values. Not for checking delivery or managing existing buys. Returns sandbox catalog data.',
-    annotations: { readOnlyHint: true, idempotentHint: true },
+    description: 'DEPRECATED in AdCP 3.2. Compatibility facade for brief, wholesale, refine, and finalize product flows. New callers use the dedicated product-discovery lifecycle tools.',
+    // Polymorphic: brief/wholesale can be reads, but Submitted responses
+    // allocate a task and refine+finalize commits an inventory hold.
+    annotations: { readOnlyHint: false, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
       type: 'object' as const,
       properties: {
+        idempotency_key: {
+          type: 'string',
+          minLength: 16,
+          maxLength: 255,
+          pattern: '^[A-Za-z0-9_.:-]{16,255}$',
+        },
         buying_mode: { type: 'string', enum: ['brief', 'wholesale', 'refine'] },
         brief: { type: 'string' },
         refine: { type: 'array' },
@@ -3922,6 +4919,34 @@ const TOOLS = [
       },
       required: ['buying_mode'],
     },
+  },
+  {
+    name: 'list_products',
+    description: 'List product offers with structured commercial criteria. Returns products only; use request_proposals for seller-authored plans.',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'forbidden' as const },
+    inputSchema: LIST_PRODUCTS_INPUT_SCHEMA,
+  },
+  {
+    name: 'request_proposals',
+    description: 'Request immutable draft media-plan proposals from a brief and optional listed product IDs. Drafts can be revised, finalized into inventory holds, or declined.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: REQUEST_PROPOSALS_INPUT_SCHEMA,
+  },
+  {
+    name: 'refine_proposals',
+    description: 'Create draft revisions or finalize drafts into committed inventory holds. Every result receives a new proposal_id; source snapshots remain immutable.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: REFINE_PROPOSALS_INPUT_SCHEMA,
+  },
+  {
+    name: 'decline_proposals',
+    description: 'Terminally decline one or more immutable proposals. Repeated declines are semantically idempotent and declined proposals cannot be purchased.',
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: DECLINE_PROPOSALS_INPUT_SCHEMA,
   },
   {
     name: 'list_creative_formats',
@@ -3977,7 +5002,7 @@ const TOOLS = [
   },
   {
     name: 'create_media_buy',
-    description: 'Create a media buy with one or more packages targeting specific products. Requires valid product_id and pricing_option_id from get_products. Not for updating existing buys (use update_media_buy). Cannot add packages to an existing buy after creation.',
+    description: 'Create a media buy either from explicit product packages or by executing one committed proposal_id with total_budget. Package mode uses product_id and pricing_option_id from product discovery. Use update_media_buy for an existing buy.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
     execution: { taskSupport: 'optional' as const },
     inputSchema: {
@@ -4008,6 +5033,7 @@ const TOOLS = [
           },
         },
         proposal_id: { type: 'string' },
+        opportunity: CREATE_MEDIA_BUY_OPPORTUNITY_INPUT_SCHEMA,
         total_budget: { type: 'object', properties: { amount: { type: 'number' }, currency: { type: 'string' } } },
         start_time: { type: 'string', description: 'ISO 8601 date-time or "asap"' },
         end_time: { type: 'string' },
@@ -4032,6 +5058,7 @@ const TOOLS = [
         },
       },
       required: ['account', 'brand', 'start_time', 'end_time'],
+      dependencies: { opportunity: ['proposal_id'] },
     },
   },
   {
@@ -4355,12 +5382,46 @@ const TOOLS = [
   },
 ];
 
+/**
+ * Return the exact split product-discovery definitions used by the native
+ * training server. Tenant discovery projects these same objects so the two
+ * MCP entry points cannot advertise different request contracts.
+ */
+export function productDiscoveryAliasToolDefinitions(): Array<(typeof TOOLS)[number]> {
+  return structuredClone(TOOLS.filter(tool => (
+    tool.name === 'list_products'
+    || tool.name === 'request_proposals'
+    || tool.name === 'refine_proposals'
+    || tool.name === 'decline_proposals'
+  )));
+}
+
 function visibleToolsForContext(ctx: TrainingContext): typeof TOOLS {
-  return TOOLS.filter(tool => {
-    if (tool.name !== 'validate_input') return true;
-    if (isThreeZeroStoryboardCompat(ctx)) return false;
-    return true;
-  }) as typeof TOOLS;
+  const threeZero = isThreeZeroStoryboardCompat(ctx);
+  return TOOLS
+    .filter(tool => !threeZero || (
+      tool.name !== 'validate_input'
+      && (tool.name === 'get_products' || !isProductDiscoveryTool(tool.name))
+    ))
+    .map(tool => {
+      if (!threeZero || tool.name !== 'get_products') return tool;
+      const inputSchema = tool.inputSchema as {
+        properties?: Record<string, unknown>;
+        required?: unknown[];
+        [key: string]: unknown;
+      };
+      const properties = { ...(inputSchema.properties ?? {}) };
+      delete properties.idempotency_key;
+      return {
+        ...tool,
+        annotations: { ...tool.annotations, readOnlyHint: true, idempotentHint: true },
+        inputSchema: {
+          ...inputSchema,
+          properties,
+          required: inputSchema.required?.filter(field => field !== 'idempotency_key'),
+        },
+      };
+    }) as typeof TOOLS;
 }
 
 export function visibleTrainingToolNamesForContext(ctx: TrainingContext): string[] {
@@ -4368,12 +5429,110 @@ export function visibleTrainingToolNamesForContext(ctx: TrainingContext): string
 }
 
 function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: string): boolean {
-  return !(toolName === 'validate_input' && servedAdcpVersion.startsWith('3.0'));
+  if (toolName === 'validate_input') return !servedAdcpVersion.startsWith('3.0');
+  if (isProductDiscoveryTool(toolName) && toolName !== 'get_products') {
+    return supportsGetProductsRejected(servedAdcpVersion);
+  }
+  return true;
 }
 
 // ── Task handler implementations ──────────────────────────────────
 
 export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
+  const req = args as unknown as GetProductsRequest & ToolArgs;
+  const paginationOffset = req.pagination
+    ? decodeOffsetCursor('products', req.pagination.cursor)
+    : undefined;
+  if (paginationOffset === null) {
+    return {
+      errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] as TaskError[],
+    };
+  }
+
+  const buyingMode = req.buying_mode ?? 'brief';
+  const proposalLifecycleWrite = buyingMode === 'refine'
+    || (req as unknown as Record<string, unknown>).__require_proposals === true;
+  const compactLifecycleWrite = proposalLifecycleWrite
+    && (req as unknown as Record<string, unknown>).__compact_proposal_lifecycle === true;
+  const sessionScope = productDiscoverySessionKey(args, ctx);
+  const sessionHash = createHash('sha256').update(sessionScope).digest('hex');
+  const principal = 'get-products-session-mutex';
+  const key = `get-products-session:${sessionHash}`;
+  const store = getIdempotencyStore();
+  let claim = await store.check({ principal, key, payload: { session: sessionHash } });
+
+  // Read discovery and the idempotent split lifecycle queue briefly behind an
+  // active writer. Legacy get_products refine retains its non-blocking CONFLICT
+  // behavior for 3.x compatibility.
+  const readLockDeadline = Date.now() + 1_000;
+  let readLockBackoffMs = 5;
+  while ((!proposalLifecycleWrite || compactLifecycleWrite) && claim.kind !== 'miss') {
+    const remainingMs = readLockDeadline - Date.now();
+    if (remainingMs <= 0) break;
+    const jitterMs = Math.floor(Math.random() * Math.max(1, readLockBackoffMs / 2));
+    await new Promise(resolve => setTimeout(
+      resolve,
+      Math.min(readLockBackoffMs + jitterMs, remainingMs),
+    ));
+    claim = await store.check({ principal, key, payload: { session: sessionHash } });
+    readLockBackoffMs = Math.min(readLockBackoffMs * 2, 100);
+  }
+  if (claim.kind !== 'miss') {
+    return {
+      errors: [{
+        code: 'CONFLICT',
+        message: 'Another get_products request is already updating this session. Retry after a short delay.',
+        recovery: 'transient',
+      }],
+    };
+  }
+
+  if (!proposalLifecycleWrite) {
+    let directives: GetProductsReadDirectives = {};
+    try {
+      const session = await getSession(
+        sessionScope,
+        controllerFixtureSessionKey(req, ctx),
+      );
+      const directivePrincipal = ctx.principal ?? 'anonymous';
+      const rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
+        ? session.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
+        : undefined;
+      const staleDirective = session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
+        ? session.complyExtensions.forcedUpstreamUnavailable
+        : undefined;
+      if (rejection) {
+        session.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
+      }
+      if (staleDirective) {
+        session.complyExtensions.forcedUpstreamUnavailable = undefined;
+      }
+      directives = { rejection, staleDirective };
+      if (rejection || staleDirective) await flushDirtySessions();
+    } finally {
+      await store.release({ principal, key, claimToken: claim.claimToken });
+    }
+    return handleGetProductsUnlocked(args, ctx, paginationOffset, directives);
+  }
+
+  try {
+    if (compactLifecycleWrite) evictSessionFromRequestCache(sessionScope);
+    const result = await handleGetProductsUnlocked(args, ctx, paginationOffset);
+    // Keep the mutex until every refine mutation is durable, not just proposal
+    // holds, so a following refine request observes the committed context.
+    await flushDirtySessions();
+    return result;
+  } finally {
+    await store.release({ principal, key, claimToken: claim.claimToken });
+  }
+}
+
+async function handleGetProductsUnlocked(
+  args: ToolArgs,
+  ctx: TrainingContext,
+  paginationOffset?: number,
+  readDirectives?: GetProductsReadDirectives,
+): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
   const brief = (req as Record<string, unknown>).brief;
@@ -4419,18 +5578,30 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
       };
     }
   }
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(
+    productDiscoverySessionKey(req, ctx),
+    controllerFixtureSessionKey(req, ctx),
+  );
+  const committedProposals = new Map(
+    (session.lastGetProductsContext?.proposals ?? [])
+      .filter(proposal => proposalLifecycle(proposal).proposal_status === 'committed')
+      .map(proposal => [proposal.proposal_id, proposal]),
+  );
   const wholesaleMeta = buyingMode === 'wholesale'
     ? productWholesaleFeedMeta(req as WholesaleFeedRequest, session)
     : undefined;
   const contextEcho = req.context ? { context: req.context } : {};
 
   const directivePrincipal = ctx.principal ?? 'anonymous';
-  const rejection = buyingMode === 'brief' || buyingMode === 'refine'
-    ? session.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
-    : undefined;
+  const rejection = readDirectives
+    ? readDirectives.rejection
+    : buyingMode === 'brief' || buyingMode === 'refine'
+      ? session.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
+      : undefined;
   if (rejection && supportsGetProductsRejected(ctx.servedAdcpVersion)) {
-    session.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
+    if (!readDirectives) {
+      session.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
+    }
     return {
       status: 'rejected',
       adcp_version: ctx.servedAdcpVersion!,
@@ -4571,29 +5742,57 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     }
   }
 
-  // Refine mode: apply include/omit/more_like_this/finalize
+  // Refine mode: apply include/omit/more_like_this/finalize. The dedicated
+  // decline_proposals task uses the same internal transaction machinery but
+  // is intentionally not part of the deprecated get_products wire schema.
   type RefineEntry =
     | { scope: 'request'; ask?: string }
     | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string }
-    | { scope: 'proposal'; proposal_id: string; action?: 'include' | 'omit' | 'finalize'; ask?: string };
+    | {
+        scope: 'proposal';
+        proposal_id: string;
+        action?: 'include' | 'omit' | 'finalize' | 'decline';
+        ask?: string;
+        change_kind?: 'amendment' | 'cancellation';
+        reason?: string;
+        detail?: string;
+      };
 
   type RefinementAppliedEntry =
     | { scope: 'request'; status: 'applied' | 'partial' | 'unable'; notes?: string }
     | { scope: 'product'; product_id: string; status: 'applied' | 'partial' | 'unable'; notes?: string }
     | { scope: 'proposal'; proposal_id: string; status: 'applied' | 'partial' | 'unable'; notes?: string };
 
+  const immutableRefine = buyingMode === 'refine'
+    && (req as unknown as Record<string, unknown>).__immutable_refine === true;
+  const compactLifecycle = buyingMode === 'refine'
+    && (req as unknown as Record<string, unknown>).__compact_proposal_lifecycle === true;
+  const declineProposals = buyingMode === 'refine'
+    && (req as unknown as Record<string, unknown>).__decline_proposals === true;
+  const compactFinalizeSourceIds = new Set(
+    immutableRefine && Array.isArray(req.refine)
+      ? (req.refine as unknown as RefineEntry[])
+          .filter(entry => entry.scope === 'proposal' && entry.action === 'finalize')
+          .map(entry => (entry as Extract<RefineEntry, { scope: 'proposal' }>).proposal_id)
+      : [],
+  );
   const refinementApplied: RefinementAppliedEntry[] = [];
   const proposalOmitIds = new Set<string>();
   const refinedProposalOverrides = new Map<string, Proposal>();
   const explicitlySelectedProposals = new Map<string, Proposal>();
+  const stagedProposalCommits = new Map<string, Proposal>();
+  const stagedProposalDeclines = new Map<string, Proposal>();
   let guaranteedOnlyRequested = false;
   if (buyingMode === 'refine' && req.refine) {
     const refineOps = req.refine as unknown as RefineEntry[];
-    const previousProposals = session.lastGetProductsContext?.proposals || getProposals();
+    const previousProposals = session.lastGetProductsContext?.proposals
+      ?? (compactLifecycle ? [] : getProposals());
     const registryProposals = getProposals();
     const resolveProposal = (proposalId: string): Proposal | undefined => {
       const proposal = previousProposals.find(candidate => candidate.proposal_id === proposalId)
-        ?? registryProposals.find(candidate => candidate.proposal_id === proposalId);
+        ?? (compactLifecycle
+          ? undefined
+          : registryProposals.find(candidate => candidate.proposal_id === proposalId));
       if (proposal) return proposal;
       if (isThreeZeroStoryboardCompat(ctx) && proposalId === THREE_ZERO_LEGACY_PROPOSAL_ID) {
         return resolveThreeZeroProposalAlias([...previousProposals, ...registryProposals]);
@@ -4610,6 +5809,11 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
 
     const askAckNotes = (ask?: string) =>
       ask ? { notes: `Ask acknowledged but not applied by training agent: ${ask}` } : {};
+    const declineOpportunity = declineProposals
+      && isRecord((req as unknown as Record<string, unknown>).opportunity)
+      ? (req as unknown as Record<string, unknown>).opportunity as Record<string, unknown>
+      : undefined;
+    let everyDeclineApplicable = true;
 
     // Validate entity references before applying any refinements. This keeps
     // failed multi-entry refine calls from partially finalizing earlier entries.
@@ -4631,6 +5835,18 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
       if (op.scope !== 'proposal') continue;
       const proposal = resolveProposal(op.proposal_id);
       if (!proposal) {
+        if (declineProposals) everyDeclineApplicable = false;
+        if (immutableRefine && op.action === 'finalize') {
+          return {
+            errors: [{
+              code: 'PROPOSAL_NOT_FOUND',
+              message: `Proposal not found: ${op.proposal_id}`,
+              field: `refine[${opIndex}].proposal_id`,
+              recovery: 'correctable',
+            }] as TaskError[],
+          };
+        }
+        if (immutableRefine || declineProposals) continue;
         return {
           errors: [{
             code: 'PROPOSAL_NOT_FOUND',
@@ -4639,6 +5855,90 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
             recovery: 'correctable',
           }] as TaskError[],
         };
+      }
+      if (op.action === 'decline') {
+        const internal = proposal as unknown as Record<string, unknown>;
+        if (internal.__executed === true) everyDeclineApplicable = false;
+        if (
+          typeof declineOpportunity?.opportunity_id === 'string'
+          && internal.__opportunity_id !== declineOpportunity.opportunity_id
+        ) {
+          return {
+            errors: [{
+              code: 'INVALID_REQUEST',
+              message: 'Every proposal in decline_proposals must belong to the supplied opportunity_id.',
+              field: 'opportunity.opportunity_id',
+              recovery: 'correctable',
+            }] as TaskError[],
+          };
+        }
+      }
+      if (op.action === 'finalize') {
+        const internal = proposal as unknown as Record<string, unknown>;
+        const lifecycleLink = session.proposalLifecycleLinks.get(op.proposal_id);
+        if (lifecycleLink) {
+          if (
+            lifecycleLink.operation === 'finalize'
+            && lifecycleLink.idempotencyKey === req.idempotency_key
+            && previousProposals.some(candidate => candidate.proposal_id === lifecycleLink.successorProposalId)
+          ) {
+            continue;
+          }
+          return {
+            errors: [{
+              code: 'INVALID_STATE',
+              message: `Proposal was already finalized: ${op.proposal_id}`,
+              field: `refine[${opIndex}].proposal_id`,
+              recovery: 'correctable',
+            }] as TaskError[],
+          };
+        }
+        if (
+          internal.__declined === true
+          || internal.__executed === true
+        ) {
+          return {
+            errors: [{
+              code: 'INVALID_STATE',
+              message: `Proposal is terminal and cannot be finalized: ${op.proposal_id}`,
+              field: `refine[${opIndex}].proposal_id`,
+              recovery: 'correctable',
+            }] as TaskError[],
+          };
+        }
+        if (immutableRefine && proposalLifecycle(proposal).proposal_status !== 'draft') {
+          return {
+            errors: [{
+              code: 'INVALID_STATE',
+              message: `Only a draft proposal can be finalized: ${op.proposal_id}`,
+              field: `refine[${opIndex}].proposal_id`,
+              recovery: 'correctable',
+            }] as TaskError[],
+          };
+        }
+        if (proposal.expires_at && new Date(proposal.expires_at) < new Date()) {
+          return {
+            errors: [{
+              code: 'PROPOSAL_EXPIRED',
+              message: `Proposal expired at ${proposal.expires_at}: ${op.proposal_id}`,
+              field: `refine[${opIndex}].proposal_id`,
+              recovery: 'correctable',
+            }] as TaskError[],
+          };
+        }
+        const unavailableAllocation = proposal.allocations.find(
+          allocation => !knownProductIds.has(allocation.product_id),
+        );
+        if (unavailableAllocation) {
+          return {
+            errors: [{
+              code: 'PRODUCT_UNAVAILABLE',
+              message: `Proposal ${op.proposal_id} references unavailable product ${unavailableAllocation.product_id}`,
+              field: `refine[${opIndex}].proposal_id`,
+              recovery: 'correctable',
+            }] as TaskError[],
+          };
+        }
       }
     }
 
@@ -4721,8 +6021,29 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
           proposalOmitIds.add(proposal.proposal_id);
           refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied' });
         } else if (action === 'include') {
+          if (immutableRefine && (proposal as unknown as Record<string, unknown>).__declined === true) {
+            refinementApplied.push({
+              scope: 'proposal',
+              proposal_id: op.proposal_id,
+              status: 'unable',
+              notes: 'Proposal was declined terminally and cannot be refined',
+            });
+            continue;
+          }
+          // An executed compact proposal is the accepted immutable snapshot.
+          // Refining it forks an amendment/cancellation draft; the accepted
+          // source remains the historical terms attached to the MediaBuy.
           explicitlySelectedProposals.set(proposal.proposal_id, proposal);
           for (const allocation of proposal.allocations) includeIds.add(allocation.product_id);
+          if (!immutableRefine && proposalLifecycle(proposal).proposal_status === 'committed' && op.ask) {
+            refinementApplied.push({
+              scope: 'proposal',
+              proposal_id: op.proposal_id,
+              status: 'unable',
+              notes: 'Proposal is already committed and cannot be refined. Discover or select a draft proposal instead.',
+            });
+            continue;
+          }
           const concreteCpmAsk = parseConcreteCpmAsk(op.ask);
           if (concreteCpmAsk) {
             const stagedProducts = new Map<string, ReturnType<typeof concreteCpmPricing>>();
@@ -4775,55 +6096,74 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
           }
         } else if (action === 'finalize') {
           const status = proposalLifecycle(proposal).proposal_status;
-          if (status === 'committed') {
-            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal already committed' });
-          } else if (status === 'draft') {
-            const committed = { ...proposal } as Record<string, unknown> & ProposalLifecycle;
-            committed.proposal_status = 'committed';
-            (committed as Record<string, unknown>).expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
-            const hasGuaranteed = proposal.allocations.some(alloc => {
-              const cp = getCatalog().find(c => c.product.product_id === alloc.product_id);
-              return cp?.product.delivery_type === 'guaranteed';
+          if (immutableRefine) {
+            explicitlySelectedProposals.set(proposal.proposal_id, proposal);
+            for (const allocation of proposal.allocations) includeIds.add(allocation.product_id);
+            refinementApplied.push({
+              scope: 'proposal',
+              proposal_id: op.proposal_id,
+              status: 'applied',
+              notes: 'Proposal finalized — pricing committed and inventory held for 24 hours',
             });
-            if (hasGuaranteed) {
-              const publisherCp = getCatalog().find(c => c.product.product_id === proposal.allocations[0].product_id);
-              const accountBrand = (req as unknown as Record<string, unknown>).account as Record<string, unknown> | undefined;
-              const brandDomain = ((accountBrand?.brand as Record<string, unknown>)?.domain as string) || 'advertiser.example';
-              committed.insertion_order = {
-                io_id: `io_${randomUUID().replace(/-/g, '')}`,
-                terms: {
-                  advertiser: brandDomain,
-                  publisher: publisherCp?.publisherId || 'unknown',
-                  total_budget: {
-                    amount: proposal.total_budget_guidance?.recommended ?? 0,
-                    currency: proposal.total_budget_guidance?.currency ?? 'USD',
-                  },
-                  flight_start: new Date().toISOString(),
-                  flight_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-                  payment_terms: 'net_30',
-                },
-                requires_signature: true,
-              };
-            }
-
-            if (!session.lastGetProductsContext) {
-              session.lastGetProductsContext = { products: [...products], proposals: [] };
-            }
-            const sessionProposals = session.lastGetProductsContext.proposals || [];
-            const idx = sessionProposals.findIndex(p => p.proposal_id === op.proposal_id);
-            const updatedProposal = committed as unknown as import('@adcp/sdk').Proposal;
-            if (idx >= 0) {
-              sessionProposals[idx] = updatedProposal;
-            } else {
-              sessionProposals.push(updatedProposal);
-            }
-            session.lastGetProductsContext.proposals = sessionProposals;
+          } else if (status === 'committed') {
+            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal already committed' });
+          } else {
+            const accountBrand = (req as unknown as Record<string, unknown>).account as Record<string, unknown> | undefined;
+            const boundBrandDomain = (proposal as unknown as Record<string, unknown>).__brand_domain;
+            const brandDomain = ((accountBrand?.brand as Record<string, unknown>)?.domain as string)
+              || (typeof boundBrandDomain === 'string' ? boundBrandDomain : undefined);
+            const updatedProposal = executableProposalSnapshot(proposal, brandDomain);
+            stagedProposalCommits.set(op.proposal_id, updatedProposal);
 
             refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal finalized — pricing committed, inventory held for 24 hours' });
-          } else {
-            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal is already ready to buy (no finalization needed)' });
           }
+        } else if (action === 'decline') {
+          const internal = proposal as unknown as Record<string, unknown>;
+          if (internal.__executed === true) {
+            refinementApplied.push({
+              scope: 'proposal',
+              proposal_id: op.proposal_id,
+              status: 'unable',
+              notes: 'Proposal was already executed and cannot be declined',
+            });
+            continue;
+          }
+          const opportunityUpdate = everyDeclineApplicable && declineOpportunity
+            ? {
+                ...(isRecord(internal.__opportunity_update)
+                  ? structuredClone(internal.__opportunity_update)
+                  : {}),
+                ...structuredClone(declineOpportunity),
+              }
+            : undefined;
+          if (opportunityUpdate?.status === 'open') {
+            delete opportunityUpdate.close_reason;
+            delete opportunityUpdate.close_detail;
+          }
+          const declined = {
+            ...proposal,
+            ...(
+              internal.__declined === true
+                ? {}
+                : {
+                    __declined: true,
+                    ...(typeof op.reason === 'string' && { __decline_reason: op.reason }),
+                    ...(typeof op.detail === 'string' && { __decline_detail: op.detail }),
+                  }
+            ),
+            ...(opportunityUpdate && { __opportunity_update: opportunityUpdate }),
+          } as unknown as Proposal;
+          stagedProposalDeclines.set(op.proposal_id, declined);
+          refinedProposalOverrides.set(op.proposal_id, declined);
+          explicitlySelectedProposals.set(op.proposal_id, declined);
+          refinementApplied.push({
+            scope: 'proposal',
+            proposal_id: op.proposal_id,
+            status: 'applied',
+            notes: (proposal as unknown as Record<string, unknown>).__declined === true
+              ? 'Proposal was already declined'
+              : 'Proposal declined terminally',
+          });
         }
       } else if (op.scope === 'request') {
         if (requestsGuaranteedOnlyProducts(op.ask)) {
@@ -4861,6 +6201,20 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     if (guaranteedOnlyRequested) {
       products = products.filter(product => product.delivery_type === 'guaranteed');
     }
+    if (stagedProposalCommits.size > 0 || stagedProposalDeclines.size > 0) {
+      // Publish the complete batch with one assignment only after every
+      // proposal has been resolved and every lifecycle update constructed.
+      const prior = session.lastGetProductsContext?.proposals ?? [];
+      const stagedUpdates = new Map([...stagedProposalCommits, ...stagedProposalDeclines]);
+      const next = prior.map(proposal => stagedUpdates.get(proposal.proposal_id) ?? proposal);
+      for (const [proposalId, proposal] of stagedUpdates) {
+        if (!prior.some(existing => existing.proposal_id === proposalId)) next.push(proposal);
+      }
+      session.lastGetProductsContext = {
+        products: session.lastGetProductsContext?.products ?? [...products],
+        proposals: next,
+      };
+    }
   }
 
   // Brief mode only: complete proposals by pulling in missing allocated products.
@@ -4883,10 +6237,12 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     }
   }
 
-  // In refine mode, use session proposals (which may include finalized versions)
+  // In refine mode, use session proposals (which may include finalized
+  // versions). In other discovery modes, replace registry drafts with the
+  // exact committed object already held by this session.
   const contextualProposals = (buyingMode === 'refine' && session.lastGetProductsContext?.proposals)
     ? session.lastGetProductsContext.proposals
-    : getProposals();
+    : getProposals().map(proposal => committedProposals.get(proposal.proposal_id) ?? proposal);
   const sourceProposals = [
     ...contextualProposals,
     ...Array.from(explicitlySelectedProposals.values()).filter(selected =>
@@ -4895,29 +6251,190 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   ];
 
   const productsById = new Map(products.map(p => [p.product_id, p]));
-  const proposals = sourceProposals
+  let proposals = sourceProposals
     .map(proposal => refinedProposalOverrides.get(proposal.proposal_id) ?? proposal)
     .filter(proposal =>
       proposal.allocations.every(a => productIds.has(a.product_id)) &&
       !proposalOmitIds.has(proposal.proposal_id),
     )
-    .map(proposal => ({
-      ...proposal,
-      allocations: proposal.allocations.map(alloc => {
-        const pricingOptions = productsById.get(alloc.product_id)?.pricing_options;
-        const selectedPricing = pricingOptions?.find(
-          option => option.pricing_option_id === alloc.pricing_option_id,
-        ) ?? pricingOptions?.[0];
-        return selectedPricing
-          ? { ...alloc, pricing_option_id: selectedPricing.pricing_option_id }
-          : alloc;
-      }),
-    }));
+    .map(proposal => {
+      // A committed proposal is a receipt for a specific inventory hold.
+      // Later catalog/pricing discovery must not rewrite any part of it.
+      if (
+        proposalLifecycle(proposal).proposal_status === 'committed'
+        || compactFinalizeSourceIds.has(proposal.proposal_id)
+      ) return proposal;
+      return {
+        ...proposal,
+        allocations: proposal.allocations.map(alloc => {
+          const pricingOptions = productsById.get(alloc.product_id)?.pricing_options;
+          const selectedPricing = pricingOptions?.find(
+            option => option.pricing_option_id === alloc.pricing_option_id,
+          ) ?? pricingOptions?.[0];
+          return selectedPricing
+            ? { ...alloc, pricing_option_id: selectedPricing.pricing_option_id }
+            : alloc;
+        }),
+      };
+    });
+  const requireProposals = buyingMode === 'brief'
+    && (req as unknown as Record<string, unknown>).__require_proposals === true;
+  if (requireProposals) {
+    const exactProductIds = Array.isArray((req as unknown as Record<string, unknown>).product_ids)
+      ? new Set(((req as unknown as Record<string, unknown>).product_ids as unknown[])
+          .filter((id): id is string => typeof id === 'string'))
+      : undefined;
+    if (exactProductIds) {
+      proposals = proposals.filter(proposal => proposal.allocations.every(allocation => (
+        exactProductIds.has(allocation.product_id)
+      )));
+    }
+    const key = typeof (req as unknown as Record<string, unknown>).idempotency_key === 'string'
+      ? (req as unknown as Record<string, unknown>).idempotency_key as string
+      : 'unkeyed';
+    const existingById = new Map(
+      (session.lastGetProductsContext?.proposals ?? []).map(proposal => [proposal.proposal_id, proposal]),
+    );
+    const requestRecord = req as unknown as Record<string, unknown>;
+    const requestAccount = isRecord(requestRecord.account) ? requestRecord.account : undefined;
+    const requestBrand = isRecord(requestRecord.brand) ? requestRecord.brand : undefined;
+    const requestOpportunity = isRecord(requestRecord.opportunity) ? requestRecord.opportunity : undefined;
+    const proposalOwner = JSON.stringify({
+      ...(typeof requestAccount?.account_id === 'string' && { account_id: requestAccount.account_id }),
+      brand: {
+        domain: typeof requestBrand?.domain === 'string' ? requestBrand.domain.toLowerCase() : '',
+        ...(typeof requestBrand?.brand_id === 'string' && { brand_id: requestBrand.brand_id }),
+      },
+    });
+    proposals = proposals.map((proposal, index) => {
+      const digest = createHash('sha256')
+        .update(`${proposalOwner}:${key}:${proposal.proposal_id}:${index}`)
+        .digest('hex')
+        .slice(0, 24);
+      const proposalId = `proposal_request_${digest}`;
+      const snapshot = {
+        ...proposal,
+        proposal_id: proposalId,
+        ...(typeof requestBrand?.domain === 'string' && { __brand_domain: requestBrand.domain.toLowerCase() }),
+        ...(typeof requestBrand?.brand_id === 'string' && { __brand_id: requestBrand.brand_id }),
+        ...(typeof requestAccount?.account_id === 'string' && { __account_id: requestAccount.account_id }),
+        ...(typeof requestOpportunity?.opportunity_id === 'string'
+          && { __opportunity_id: requestOpportunity.opportunity_id }),
+      } as unknown as Proposal;
+      return existingById.get(proposalId)
+        ?? withCanonicalProposalEnvelope(
+          draftProposalSnapshot(snapshot),
+          productsById,
+          {
+            domain: typeof requestBrand?.domain === 'string'
+              ? requestBrand.domain.toLowerCase()
+              : 'advertiser.example',
+            ...(typeof requestBrand?.brand_id === 'string' && { brand_id: requestBrand.brand_id }),
+          },
+        );
+    });
+    if (proposals.length === 0) {
+      return {
+        status: 'rejected',
+        reason: 'The seller could not construct a proposal satisfying the supplied product and campaign criteria.',
+        suggestions: ['Broaden the product selection or campaign constraints and retry with a new idempotency key.'],
+      } as GetProductsRejectedResponse;
+    }
+  }
+  const sourceProposalOrder = immutableRefine && Array.isArray(req.refine)
+    ? (req.refine as unknown as RefineEntry[])
+        .filter((entry): entry is Extract<RefineEntry, { scope: 'proposal' }> => entry.scope === 'proposal')
+        .map(entry => entry.proposal_id)
+    : [];
+  if (immutableRefine) {
+    const key = typeof (req as unknown as Record<string, unknown>).idempotency_key === 'string'
+      ? (req as unknown as Record<string, unknown>).idempotency_key as string
+      : 'unkeyed';
+    const proposalsById = new Map(proposals.map(proposal => [proposal.proposal_id, proposal]));
+    const outcomesBySource = new Map(
+      refinementApplied
+        .filter((entry): entry is Extract<RefinementAppliedEntry, { scope: 'proposal' }> => entry.scope === 'proposal')
+        .map(entry => [entry.proposal_id, entry]),
+    );
+    const actionBySource = new Map(
+      (req.refine as unknown as RefineEntry[])
+        .filter((entry): entry is Extract<RefineEntry, { scope: 'proposal' }> => entry.scope === 'proposal')
+        .map(entry => [entry.proposal_id, {
+          action: entry.action === 'finalize' ? 'finalize' as const : 'revise' as const,
+          changeKind: entry.change_kind,
+          instructions: entry.ask,
+        }]),
+    );
+    proposals = sourceProposalOrder.flatMap((sourceId, index) => {
+      const proposal = proposalsById.get(sourceId);
+      const outcome = outcomesBySource.get(sourceId);
+      if (!proposal || outcome?.status === 'unable') return [];
+      const digest = createHash('sha256').update(`${key}:${sourceId}:${index}`).digest('hex').slice(0, 24);
+      const sourceInternal = proposal as unknown as Record<string, unknown>;
+      const refinement = actionBySource.get(sourceId);
+      const isAcceptedSource = sourceInternal.__executed === true;
+      const revision = {
+        ...proposal,
+        proposal_id: `proposal_revision_${digest}`,
+        __source_proposal_id: sourceId,
+        __refinement_outcome: outcome?.status === 'partial' ? 'partial' : 'revised',
+        ...(outcome?.notes && { __refinement_notes: outcome.notes }),
+        ...(isAcceptedSource && {
+          __proposal_kind: refinement?.changeKind === 'cancellation'
+            ? 'media_buy_cancellation'
+            : 'media_buy_update',
+          __parent_proposal_id: sourceId,
+          __media_buy_id: sourceInternal.__media_buy_id,
+          __base_media_buy_revision: sourceInternal.__media_buy_revision,
+        }),
+      } as unknown as Proposal;
+      if (isAcceptedSource) {
+        const revisionInternal = revision as unknown as Record<string, unknown>;
+        delete revisionInternal.__executed;
+        delete revisionInternal.__accepted_at;
+        delete revisionInternal.__opportunity_update;
+      }
+      const existingSuccessor = session.lastGetProductsContext?.proposals?.find(
+        candidate => candidate.proposal_id === revision.proposal_id,
+      );
+      if (existingSuccessor) return [existingSuccessor];
+      const brandDomain = (proposal as unknown as Record<string, unknown>).__brand_domain;
+      const brandId = (proposal as unknown as Record<string, unknown>).__brand_id;
+      let successor = refinement?.action === 'finalize'
+        ? executableProposalSnapshot(
+          revision,
+          typeof brandDomain === 'string' ? brandDomain : undefined,
+        )
+        : withCanonicalProposalEnvelope(
+          draftProposalSnapshot(revision),
+          productsById,
+          {
+            domain: typeof brandDomain === 'string' ? brandDomain : 'advertiser.example',
+            ...(typeof brandId === 'string' && { brand_id: brandId }),
+          },
+          { rebuild: true },
+        );
+      if (refinement?.changeKind === 'cancellation') {
+        const successorInternal = successor as unknown as Record<string, unknown>;
+        const commercialTerms = structuredClone(successorInternal.__canonical_commercial_terms) as Record<string, unknown>;
+        commercialTerms.cancellation_terms = {
+          effective_at: new Date().toISOString(),
+          ...(typeof refinement.instructions === 'string' && { reason: refinement.instructions.slice(0, 500) }),
+        };
+        successorInternal.__canonical_commercial_terms = commercialTerms;
+        successorInternal.__canonical_terms_digest = proposalTermsDigest(commercialTerms);
+        successor = successorInternal as unknown as Proposal;
+      }
+      return [successor];
+    });
+  }
   const canonicalFormatAdvisories = collectCanonicalFormatAdvisories(products);
-  const staleDirective = session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
-    ? session.complyExtensions.forcedUpstreamUnavailable
-    : undefined;
-  if (staleDirective) {
+  const staleDirective = readDirectives
+    ? readDirectives.staleDirective
+    : session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
+      ? session.complyExtensions.forcedUpstreamUnavailable
+      : undefined;
+  if (staleDirective && !readDirectives) {
     session.complyExtensions.forcedUpstreamUnavailable = undefined;
   }
 
@@ -4925,19 +6442,63 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   const responseProducts = isThreeZeroStoryboardCompat(ctx)
     ? products.map(productForThreeZeroStoryboardCompat)
     : products;
-  session.lastGetProductsContext = {
-    products: responseProducts,
-    proposals: buyingMode === 'wholesale' ? [] : proposals,
-  };
+  const retainedCommittedProposals = new Map(
+    (session.lastGetProductsContext?.proposals ?? [])
+      .filter(proposal => proposalLifecycle(proposal).proposal_status === 'committed')
+      .map(proposal => [proposal.proposal_id, proposal]),
+  );
+  const finalizedBySource = new Map(
+    proposals
+      .map(proposal => proposal as unknown as Record<string, unknown>)
+      .filter(proposal => (
+        typeof proposal.__source_proposal_id === 'string'
+        && proposal.proposal_status === 'committed'
+        && typeof proposal.proposal_id === 'string'
+      ))
+      .map(proposal => [proposal.__source_proposal_id as string, proposal.proposal_id as string]),
+  );
+  const priorProposals = session.lastGetProductsContext?.proposals ?? [];
+  const refinementIdempotencyKey = typeof (req as unknown as Record<string, unknown>).idempotency_key === 'string'
+    ? (req as unknown as Record<string, unknown>).idempotency_key as string
+    : undefined;
+  if (refinementIdempotencyKey) {
+    for (const [sourceProposalId, successorProposalId] of finalizedBySource) {
+      session.proposalLifecycleLinks.set(sourceProposalId, {
+        operation: 'finalize',
+        idempotencyKey: refinementIdempotencyKey,
+        successorProposalId,
+      });
+    }
+  }
+  const persistedProposals = buyingMode === 'wholesale'
+    ? []
+    : immutableRefine
+      ? [...new Map([...priorProposals, ...proposals].map(proposal => [proposal.proposal_id, proposal])).values()]
+      : requireProposals
+        ? [
+            ...priorProposals.filter(prior => !proposals.some(proposal => proposal.proposal_id === prior.proposal_id)),
+            ...proposals,
+          ]
+        : [...proposals];
+  const persistedProposalIds = new Set(persistedProposals.map(proposal => proposal.proposal_id));
+  for (const proposal of retainedCommittedProposals.values()) {
+    if (!persistedProposalIds.has(proposal.proposal_id)) persistedProposals.push(proposal);
+  }
+  // Only refine requests establish durable context for later refinements.
+  // Brief/wholesale discovery must remain read-only so concurrent reads cannot
+  // overwrite a proposal committed by a serialized refine request.
+  if (buyingMode === 'refine' || requireProposals) {
+    session.lastGetProductsContext = {
+      products: responseProducts,
+      proposals: persistedProposals,
+    };
+  }
   let pageProducts = responseProducts;
   let pagination: { has_more: boolean; total_count: number; cursor?: string } | undefined;
   if (req.pagination) {
-    const offset = decodeOffsetCursor('products', req.pagination.cursor);
-    if (offset === null) {
-      return {
-        errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] as TaskError[],
-      };
-    }
+    // The exported handler validates this before acquiring the mutex or
+    // loading session state.
+    const offset = paginationOffset ?? 0;
     const maxResults = Math.min(
       typeof req.pagination.max_results === 'number' && req.pagination.max_results >= 1
         ? req.pagination.max_results
@@ -5871,7 +7432,10 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
   const productTargets = targets.filter(target => target.kind === 'product');
   const productsById = new Map<string, Product>();
   if (productTargets.length > 0) {
-    const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+    const session = await getSession(
+      sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+      controllerFixtureSessionKey(req as unknown as ToolArgs, ctx),
+    );
     for (const catalogProduct of getCatalog()) {
       productsById.set(catalogProduct.product.product_id, { ...catalogProduct.product });
     }
@@ -5895,8 +7459,59 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
 }
 
 export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
+  const proposalId = (args as unknown as Record<string, unknown>).proposal_id;
+  if (typeof proposalId !== 'string') return handleCreateMediaBuyUnlocked(args, ctx);
+
+  // Proposal execution, legacy get_products finalization, and decline all
+  // transition the same principal-owned snapshot. Serialize them on the
+  // compact lifecycle session and persist before releasing so different
+  // idempotency keys cannot both execute one proposal.
+  const sessionScope = sessionKeyFromArgs(
+    {},
+    ctx.mode,
+    ctx.userId,
+    ctx.moduleId,
+    ctx.principal ?? 'anonymous',
+  );
+  const sessionHash = createHash('sha256').update(sessionScope).digest('hex');
+  const principal = 'get-products-session-mutex';
+  const key = `get-products-session:${sessionHash}`;
+  const store = getIdempotencyStore();
+  let claim = await store.check({ principal, key, payload: { session: sessionHash } });
+  const deadline = Date.now() + 2_000;
+  let backoffMs = 5;
+  while (claim.kind !== 'miss' && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, backoffMs));
+    claim = await store.check({ principal, key, payload: { session: sessionHash } });
+    backoffMs = Math.min(backoffMs * 2, 100);
+  }
+  if (claim.kind !== 'miss') {
+    return {
+      errors: [{
+        code: 'CONFLICT',
+        message: 'Another proposal lifecycle request is already updating this session. Retry after a short delay.',
+        recovery: 'transient',
+      }] as TaskError[],
+    };
+  }
+
+  try {
+    evictSessionFromRequestCache(sessionScope);
+    const result = await handleCreateMediaBuyUnlocked(args, ctx);
+    await flushDirtySessions();
+    return result;
+  } finally {
+    await store.release({ principal, key, claimToken: claim.claimToken });
+  }
+}
+
+async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as CreateMediaBuyRequest & ToolArgs & { paused?: boolean };
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(
+    sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+    controllerFixtureSessionKey(req, ctx),
+  );
+  let executedCompactProposal: Proposal | undefined;
 
   // Consume any single-shot directive registered by
   // comply_test_controller.force_create_media_buy_arm. Runs before all other
@@ -5963,7 +7578,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       ctx.authenticatedAgentUrl,
       'create_media_buy',
       `${getCanonicalBase()}/sales`,
-      req as unknown as Record<string, unknown>,
+      governedRequestPayload(ctx, req as unknown as Record<string, unknown>),
       buyBudget ?? 0,
       req.total_budget?.currency ?? 'USD',
     );
@@ -6255,6 +7870,40 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     // Check session proposals first (may have finalized versions), then global catalog
     let proposal = session.lastGetProductsContext?.proposals?.find(p => p.proposal_id === req.proposal_id)
       || getProposals().find(p => p.proposal_id === req.proposal_id);
+    if (!proposal) {
+      // Compact proposal lifecycle calls intentionally address opaque IDs
+      // under the authenticated principal instead of repeating account data.
+      // Resolve that principal-owned proposal here, then verify its internal
+      // account/brand binding against the billed account without exposing
+      // whether a cross-account proposal exists.
+      const proposalSession = await getSession(
+        sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal ?? 'anonymous'),
+      );
+      const candidate = proposalSession.lastGetProductsContext?.proposals?.find(
+        p => p.proposal_id === req.proposal_id,
+      );
+      if (candidate) proposal = candidate;
+    }
+    if (proposal) {
+      const internal = proposal as unknown as Record<string, unknown>;
+      const accountRef = req.account as unknown as { account_id?: string };
+      const requestBrand = req.brand as unknown as { domain?: string; brand_id?: string };
+      const boundAccountId = internal.__account_id;
+      const boundBrandDomain = internal.__brand_domain;
+      const boundBrandId = internal.__brand_id;
+      const hasCompactOwnerBinding = typeof boundAccountId === 'string'
+        || typeof boundBrandDomain === 'string'
+        || typeof boundBrandId === 'string';
+      const accountMatches = typeof boundAccountId !== 'string'
+        || accountRef?.account_id === boundAccountId;
+      const brandMatches = typeof boundBrandDomain !== 'string'
+        || (
+          requestBrand?.domain?.toLowerCase() === boundBrandDomain
+          && (typeof requestBrand.brand_id === 'string' ? requestBrand.brand_id : undefined)
+            === (typeof boundBrandId === 'string' ? boundBrandId : undefined)
+        );
+      if (hasCompactOwnerBinding && (!accountMatches || !brandMatches)) proposal = undefined;
+    }
     if (!proposal && isThreeZeroStoryboardCompat(ctx) && req.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID) {
       proposal = resolveThreeZeroProposalAlias([...(session.lastGetProductsContext?.proposals ?? []), ...getProposals()]);
     }
@@ -6269,18 +7918,60 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       };
     }
 
+    const internalProposal = proposal as unknown as Record<string, unknown>;
+    const compactProposal = typeof internalProposal.__brand_domain === 'string'
+      || typeof internalProposal.__brand_id === 'string'
+      || typeof internalProposal.__account_id === 'string';
+    if (internalProposal.__declined === true) {
+      return {
+        errors: [{
+          code: 'INVALID_STATE',
+          message: `Proposal "${req.proposal_id}" has been declined and cannot be executed. Request a new proposal before retrying.`,
+          field: 'proposal_id',
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+    if (compactProposal && internalProposal.__executed === true) {
+      return {
+        errors: [{
+          code: 'INVALID_STATE',
+          message: `Proposal "${req.proposal_id}" was already executed. Exact retries must reuse the original idempotency key.`,
+          field: 'proposal_id',
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+    const createOpportunity = isRecord((req as unknown as Record<string, unknown>).opportunity)
+      ? (req as unknown as Record<string, unknown>).opportunity as Record<string, unknown>
+      : undefined;
+    if (
+      typeof internalProposal.__opportunity_id === 'string'
+      && typeof createOpportunity?.opportunity_id === 'string'
+      && createOpportunity.opportunity_id !== internalProposal.__opportunity_id
+    ) {
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'opportunity.opportunity_id does not match the opportunity associated with this proposal.',
+          field: 'opportunity.opportunity_id',
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+
     // Enforce proposal lifecycle: draft proposals cannot be purchased directly
     const proposalStatus = proposalLifecycle(proposal).proposal_status;
     if (proposalStatus === 'draft' && !(isThreeZeroStoryboardCompat(ctx) && req.proposal_id === THREE_ZERO_LEGACY_PROPOSAL_ID)) {
       return {
-        errors: [{ code: 'PROPOSAL_NOT_COMMITTED', message: `Proposal "${req.proposal_id}" has draft status — finalize it first using get_products with buying_mode "refine" and action "finalize".` }] as TaskError[],
+        errors: [{ code: 'PROPOSAL_NOT_COMMITTED', message: `Proposal "${req.proposal_id}" is a draft — finalize it through refine_proposals before retrying.` }] as TaskError[],
       };
     }
 
     // Enforce proposal expiry
     if (proposal.expires_at && new Date(proposal.expires_at) < new Date()) {
       return {
-        errors: [{ code: 'PROPOSAL_EXPIRED', message: `Proposal "${req.proposal_id}" expired at ${proposal.expires_at}. Re-discover with get_products to get a fresh proposal.` }] as TaskError[],
+        errors: [{ code: 'PROPOSAL_EXPIRED', message: `Proposal "${req.proposal_id}" expired at ${proposal.expires_at}. Request and finalize a fresh proposal before retrying.` }] as TaskError[],
       };
     }
 
@@ -6328,6 +8019,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         ...(bidPrice !== undefined && { bid_price: bidPrice }),
       };
     });
+    if (compactProposal) executedCompactProposal = proposal;
   }
 
   if (!req.packages?.length) {
@@ -6398,7 +8090,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
     // Enforce product expiry
     if (product.expires_at && new Date(product.expires_at) < new Date()) {
-      errors.push({ code: 'PRODUCT_EXPIRED', message: `${pkgLabel}: Product "${pkg.product_id}" expired at ${product.expires_at}. Re-discover with get_products.` });
+      errors.push({ code: 'PRODUCT_EXPIRED', message: `${pkgLabel}: Product "${pkg.product_id}" expired at ${product.expires_at}. Re-discover with list_products.` });
       continue;
     }
 
@@ -6611,10 +8303,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     : `mb_${randomUUID().slice(0, 8)}`;
   const now = confirmedAt;
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
+  const persistedAccountRef = ctx.resolvedAccount ?? req.account;
   persistInlineCreatives(
     session,
     inlineCreativesToPersist,
-    req.account as AccountRef | undefined,
+    persistedAccountRef as AccountRef | undefined,
     resolveAccountIdForRef(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId), ctx.principal, req.account),
     now,
   );
@@ -6625,7 +8318,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
   const mediaBuy: MediaBuyState = {
     mediaBuyId,
-    accountRef: req.account,
+    accountRef: persistedAccountRef,
     brandRef: req.brand,
     status: req.paused === true ? 'paused' : 'active',
     currency: req.total_budget?.currency ?? 'USD',
@@ -6661,6 +8354,29 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     }],
   };
 
+  if (executedCompactProposal) {
+    const internal = executedCompactProposal as unknown as Record<string, unknown>;
+    internal.__executed = true;
+    internal.__accepted_at = now;
+    internal.__media_buy_id = mediaBuyId;
+    internal.__media_buy_revision = mediaBuy.revision;
+    const suppliedOpportunity = isRecord((req as unknown as Record<string, unknown>).opportunity)
+      ? (req as unknown as Record<string, unknown>).opportunity as Record<string, unknown>
+      : undefined;
+    const opportunityId = typeof suppliedOpportunity?.opportunity_id === 'string'
+      ? suppliedOpportunity.opportunity_id
+      : typeof internal.__opportunity_id === 'string'
+        ? internal.__opportunity_id
+        : undefined;
+    if (opportunityId) {
+      internal.__opportunity_update = {
+        ...structuredClone(suppliedOpportunity ?? {}),
+        opportunity_id: opportunityId,
+        status: 'closed',
+        close_reason: 'accepted_with_seller',
+      };
+    }
+  }
   session.mediaBuys.set(mediaBuyId, mediaBuy);
 
   const status = deriveStatus(mediaBuy, session);
@@ -6673,6 +8389,7 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // against the per-task response schema.
   return {
     media_buy_id: mediaBuyId,
+    ...(req.proposal_id && { proposal_id: req.proposal_id }),
     ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
     media_buy_status: status,
     revision: mediaBuy.revision,
@@ -6866,7 +8583,10 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
 
 export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & { media_buy_id?: string };
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(
+    sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+    controllerFixtureSessionKey(req, ctx),
+  );
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, { ...cp.product }]));
   overlaySeededProducts(session, productMap);
@@ -7278,9 +8998,23 @@ function derivePricing(pkg: PackageState, productMap: Map<string, import('@adcp/
   };
 }
 
+function creativeSessionKey(args: ToolArgs, ctx: TrainingContext): string {
+  const legacyDomain = ctx.storyboardCompat?.version === '3.0'
+    ? ctx.legacySessionBrandDomain
+      ?? args.account?.brand?.domain
+      ?? args.brand?.domain
+    : undefined;
+  return sessionKeyFromArgs(
+    legacyDomain ? { brand: { domain: legacyDomain } } : args,
+    ctx.mode,
+    ctx.userId,
+    ctx.moduleId,
+  );
+}
+
 export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncCreativesRequest & ToolArgs & { dry_run?: boolean };
-  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const sessionKey = creativeSessionKey(req, ctx);
   const session = await getSession(sessionKey);
   const isDryRun = req.dry_run === true;
   const accountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
@@ -7373,7 +9107,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       session.creatives.set(creativeId, {
         creativeId,
         accountId: accountId ?? existingCreative?.accountId,
-        accountRef: req.account ?? existingCreative?.accountRef,
+        accountRef: ctx.resolvedAccount ?? req.account ?? existingCreative?.accountRef,
         ...(identity.kind === 'legacy'
           ? {
             formatId: identity.formatId,
@@ -7547,7 +9281,7 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     fields?: string[];
   };
   const filters = (req.filters ?? {}) as CreativeListFilters;
-  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const sessionKey = creativeSessionKey(req, ctx);
   const session = await getSession(sessionKey);
   const filterIds = req.creative_ids || filters.creative_ids;
   const requestedAccountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
@@ -7720,7 +9454,10 @@ function getCreativePricing(account: { account_id?: string }, creative: import('
 
 export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
   const req = args as unknown as UpdateMediaBuyArgs;
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(
+    sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+    controllerFixtureSessionKey(req as unknown as ToolArgs, ctx),
+  );
   const mediaBuyId = req.media_buy_id || '';
   const mb = session.mediaBuys.get(mediaBuyId);
 
@@ -7823,7 +9560,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       ctx.authenticatedAgentUrl,
       'update_media_buy',
       `${getCanonicalBase()}/sales`,
-      req as unknown as Record<string, unknown>,
+      governedRequestPayload(ctx, req as unknown as Record<string, unknown>),
       updateDelta,
       mb.currency,
     );
@@ -8292,6 +10029,9 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     }),
     media_buy: {
       buying_modes: wholesaleProfile.productWholesale ? ['brief', 'wholesale', 'refine'] : ['brief', 'refine'],
+      ...(supportsGetProductsRejected(servedAdcpVersion) && {
+        lifecycle_tools: [...PRODUCT_DISCOVERY_TOOLS],
+      }),
       supports_proposals: true,
       performance_feedback: {
         reports_application_status: true,
@@ -8721,7 +10461,7 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
       ctx.authenticatedAgentUrl,
       'activate_signal',
       `${getCanonicalBase()}/signals`,
-      req as unknown as Record<string, unknown>,
+      governedRequestPayload(ctx, req as unknown as Record<string, unknown>),
       signalCommitment,
       signalCurrency,
     );
@@ -8809,7 +10549,7 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
 
 export async function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetCreativeDeliveryRequest & ToolArgs;
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(creativeSessionKey(req, ctx));
   const agentUrl = getAgentUrl();
 
   // Resolve media buy IDs from multiple input formats
@@ -9012,7 +10752,7 @@ function buildCanonicalAudioAssets(): AdcpCreativeManifest['assets'] {
 
 export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext): Promise<BuildCreativeResponse & { pricing_option_id?: string; vendor_cost?: number; currency?: string; consumption?: Record<string, unknown>; governance_context?: string }> {
   const req = args as unknown as BuildCreativeArgs;
-  const session = await getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(creativeSessionKey(req as unknown as ToolArgs, ctx));
   const agentUrl = getAgentUrl();
   const formats = getFormats();
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
@@ -9023,7 +10763,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
       ctx.authenticatedAgentUrl,
       'build_creative',
       `${getCanonicalBase()}/${ctx.tenantId === 'creative-builder' ? 'creative-builder' : 'creative'}`,
-      req as unknown as Record<string, unknown>,
+      governedRequestPayload(ctx, req as unknown as Record<string, unknown>),
       0,
       'USD',
     );
@@ -9433,7 +11173,7 @@ interface PreviewCreativeArgs {
 
 export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as PreviewCreativeArgs;
-  const session = await getSession(sessionKeyFromArgs(req as unknown as ToolArgs, ctx.mode, ctx.userId, ctx.moduleId));
+  const session = await getSession(creativeSessionKey(req as unknown as ToolArgs, ctx));
   const agentUrl = getAgentUrl();
   const formats = getFormats();
   const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
@@ -9961,8 +11701,6 @@ function pickBuyerNominatedVerifierUrl(provenance: Record<string, unknown> | und
 
 export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as ReportUsageArgs;
-  const sessionScopeReq = withUsageAccountScope(req as unknown as Record<string, unknown>) as unknown as ToolArgs;
-  const session = await getSession(sessionKeyFromArgs(sessionScopeReq, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (!req.reporting_period) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'reporting_period is required.', field: 'reporting_period' }] };
@@ -9972,8 +11710,32 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'At least one usage record is required.', field: 'usage' }] };
   }
 
-  if (session.usageRecords.length + req.usage.length > MAX_USAGE_RECORDS_PER_SESSION) {
-    return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Usage record limit (${MAX_USAGE_RECORDS_PER_SESSION}) would be exceeded.` }] };
+  // Each record is self-contained and a report may span accounts. Resolve
+  // state (including the exact principal-bound controller fixture projection)
+  // from the record's own account instead of letting usage[0] lend its media
+  // buys, creatives, signals, or seeded pricing to the rest of the batch.
+  const sessionPromises = new Map<string, Promise<import('./types.js').SessionState>>();
+  const usageSessions = await Promise.all(req.usage.map(record => {
+    const sessionArgs = { account: record.account } as unknown as ToolArgs;
+    const sessionKey = sessionKeyFromArgs(sessionArgs, ctx.mode, ctx.userId, ctx.moduleId);
+    let sessionPromise = sessionPromises.get(sessionKey);
+    if (!sessionPromise) {
+      sessionPromise = getSession(
+        sessionKey,
+        controllerFixtureSessionKey(sessionArgs, ctx),
+      );
+      sessionPromises.set(sessionKey, sessionPromise);
+    }
+    return sessionPromise;
+  }));
+  const incomingBySession = new Map<import('./types.js').SessionState, number>();
+  for (const session of usageSessions) {
+    incomingBySession.set(session, (incomingBySession.get(session) ?? 0) + 1);
+  }
+  if ([...incomingBySession].some(([session, incoming]) => (
+    session.usageRecords.length + incoming > MAX_USAGE_RECORDS_PER_SESSION
+  ))) {
+    return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Usage record limit (${MAX_USAGE_RECORDS_PER_SESSION}) would be exceeded for at least one account.` }] };
   }
 
   let accepted = 0;
@@ -9981,6 +11743,7 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
 
   for (let i = 0; i < req.usage.length; i++) {
     const record = req.usage[i];
+    const session = usageSessions[i];
 
     // Validate required fields
     if (record.vendor_cost === undefined || record.vendor_cost === null) {
@@ -10162,6 +11925,10 @@ type ToolHandler = (args: ToolArgs, ctx: TrainingContext) => object | Promise<ob
 
 const HANDLER_MAP: Record<string, ToolHandler> = {
   get_products: handleGetProducts,
+  list_products: handleGetProducts,
+  request_proposals: handleGetProducts,
+  refine_proposals: handleGetProducts,
+  decline_proposals: handleGetProducts,
   list_creative_formats: handleListCreativeFormats,
   validate_input: handleValidateInput,
   create_media_buy: handleCreateMediaBuy,
@@ -10214,6 +11981,127 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   comply_test_controller: handleComplyTestController,
 };
 
+function validateIdempotencyProtectedInput(
+  toolName: string,
+  args: Record<string, unknown>,
+): { message: string; field?: string } | undefined {
+  if (toolName !== 'get_products') return undefined;
+  if (args.brief !== undefined && typeof args.brief !== 'string') {
+    return { message: 'brief must be a string when provided', field: 'brief' };
+  }
+  const hasDecline = Array.isArray(args.refine) && args.refine.some(entry => (
+    isRecord(entry) && entry.scope === 'proposal' && entry.action === 'decline'
+  ));
+  const compactDecline = args.__decline_proposals === true;
+  if (hasDecline) {
+    if (!compactDecline) {
+      return {
+        message: 'Proposal decline is available through the dedicated decline_proposals task.',
+        field: 'refine',
+      };
+    }
+    const reasons = new Set([
+      'price', 'inventory_fit', 'audience_fit', 'creative_unsupported', 'measurement_unsupported',
+      'policy', 'timing', 'budget_changed', 'selected_alternative', 'other',
+    ]);
+    const invalidIndex = (args.refine as unknown[]).findIndex(entry => (
+      isRecord(entry)
+      && entry.scope === 'proposal'
+      && entry.action === 'decline'
+      && (
+        typeof entry.proposal_id !== 'string'
+        || typeof entry.reason !== 'string'
+        || !reasons.has(entry.reason)
+        || (entry.reason === 'other' && !(typeof entry.detail === 'string' && entry.detail.length > 0))
+      )
+    ));
+    if (invalidIndex >= 0) {
+      return {
+        message: `Invalid get_products request at refine[${invalidIndex}]: decline requires proposal_id, a supported reason, and detail when reason is other.`,
+        field: `refine[${invalidIndex}]`,
+      };
+    }
+  }
+  // A dedicated decline request was validated against its public source schema
+  // before normalization. All public get_products shapes continue through the
+  // SDK parser, whose schema intentionally does not expose the internal action.
+  if (!compactDecline) {
+    const parsed = GetProductsRequestSchema.safeParse(args);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const field = issue?.path.map(segment => String(segment)).join('.');
+      return {
+        message: `Invalid get_products request${field ? ` at ${field}` : ''}: ${issue?.message ?? 'schema validation failed'}`,
+        ...(field && { field }),
+      };
+    }
+    if (parsed.data.pagination && decodeOffsetCursor('products', parsed.data.pagination.cursor) === null) {
+      return { message: 'pagination.cursor is malformed', field: 'pagination.cursor' };
+    }
+  }
+
+  // Finalization is a commit boundary, not another refinement. Reject mixed
+  // arrays before the idempotency store is consulted so an invalid request
+  // cannot reserve a key or partially mutate an earlier proposal entry.
+  if (Array.isArray(args.refine)) {
+    const hasFinalize = args.refine.some(entry => (
+      isRecord(entry)
+      && entry.scope === 'proposal'
+      && entry.action === 'finalize'
+    ));
+    if (hasFinalize) {
+      const mixedIndex = args.refine.findIndex(entry => !(
+        isRecord(entry)
+        && entry.scope === 'proposal'
+        && entry.action === 'finalize'
+      ));
+      if (mixedIndex >= 0) {
+        return {
+          message: `Invalid get_products request at refine[${mixedIndex}]: proposal finalization cannot be mixed with request, product, include, or omit refinements. Send finalization as a separate request.`,
+          field: `refine[${mixedIndex}]`,
+        };
+      }
+    }
+  }
+  return undefined;
+}
+
+function applyThreeZeroGetProductsIdempotencyCompatibility(
+  toolName: string,
+  args: Record<string, unknown>,
+  scopedCallerPrincipal: string,
+  compatibilityEnabled: boolean,
+): Record<string, unknown> {
+  if (
+    toolName !== 'get_products'
+    || !compatibilityEnabled
+    || args.idempotency_key !== undefined
+  ) {
+    return args;
+  }
+
+  // Frozen 3.0 get_products examples predate the shared replay contract. Give only
+  // that legacy wire shape a deterministic internal key so exact retries still
+  // converge through the normal schema/cache/task/finalize path. Context and
+  // version negotiation are envelope concerns, not logical request identity.
+  const {
+    context: _context,
+    context_id: _contextId,
+    adcp_version: _adcpVersion,
+    adcp_major_version: _adcpMajorVersion,
+    ...canonicalRequest
+  } = args;
+  const fingerprint = createHash('sha256')
+    .update(scopedCallerPrincipal)
+    .update('\0')
+    .update(payloadHash(canonicalRequest))
+    .digest('hex');
+  return {
+    ...canonicalRequest,
+    idempotency_key: `compat30:${fingerprint}`,
+  };
+}
+
 /**
  * Execute a training agent tool in-process (no HTTP round-trip).
  * Used by Addie's adcp-tools during certification demos.
@@ -10223,7 +12111,25 @@ export async function executeTrainingAgentTool(
   args: ToolArgs,
   ctx: TrainingContext,
 ): Promise<{ success: boolean; data?: object; error?: string }> {
-  const versionResolution = resolveServedAdcpVersionForTool(toolName, args as unknown as Record<string, unknown>);
+  return runWithSessionContext(async () => {
+    const result = await executeTrainingAgentToolInContext(toolName, args, ctx);
+    if (result.success) await flushDirtySessions();
+    return result;
+  });
+}
+
+async function executeTrainingAgentToolInContext(
+  toolName: string,
+  args: ToolArgs,
+  ctx: TrainingContext,
+): Promise<{ success: boolean; data?: object; error?: string }> {
+  // Context is an envelope field: it is excluded from request equivalence,
+  // never passed into domain handlers, and echoed from the current attempt.
+  // Keeping it out of the cached inner response prevents a replay from
+  // returning the original caller's correlation data.
+  const rawArgs = args as unknown as Record<string, unknown>;
+  const { context: callerContext, ...initialHandlerArgs } = rawArgs;
+  const versionResolution = resolveServedAdcpVersionForTool(toolName, initialHandlerArgs);
   if (!versionResolution.ok) {
     return { success: false, error: versionResolution.message };
   }
@@ -10237,10 +12143,147 @@ export async function executeTrainingAgentTool(
   if (!handler) {
     return { success: false, error: `Unknown tool: ${toolName}` };
   }
+  if (isMutatingTool(toolName) && initialHandlerArgs.idempotency_key == null) {
+    return { success: false, error: `idempotency_key is required for ${toolName}` };
+  }
+  const sourceSchemaName = productDiscoverySourceSchemaName(toolName);
+  const strictSourceSchemaName = sourceSchemaName
+    ?? (toolName === 'create_media_buy' && rawArgs.opportunity !== undefined
+      ? 'create-media-buy-request'
+      : undefined);
+  const sourceValidationError = strictSourceSchemaName
+    ? validateProductDiscoverySourceInput(strictSourceSchemaName, rawArgs)
+    : undefined;
+  if (sourceValidationError) {
+    return { success: false, error: sourceValidationError.message };
+  }
+  const aliasValidationError = validateProductDiscoveryAliasInput(toolName, initialHandlerArgs);
+  if (aliasValidationError) {
+    return { success: false, error: aliasValidationError.message };
+  }
+  const normalizedHandlerArgs = normalizeProductDiscoveryArgs(toolName, initialHandlerArgs);
+  const authPrincipal = ctx.principal ?? ctx.userId ?? 'anonymous';
+  let accountScope: string | undefined;
   try {
-    const result = await Promise.resolve(handler(args, { ...ctx, servedAdcpVersion: versionResolution.servedVersion }));
-    return { success: true, data: addServedAdcpVersion(result, versionResolution.servedVersion) as object };
+    accountScope = toolName === 'comply_test_controller'
+      ? undefined
+      : await deriveProductDiscoveryAccountScope(toolName, initialHandlerArgs, normalizedHandlerArgs, ctx);
   } catch (error) {
+    if (!(error instanceof AccountRefValidationError)) throw error;
+    return { success: false, error: `Invalid ${toolName} request at account: ${error.message}` };
+  }
+  const principal = scopedPrincipal(authPrincipal, accountScope);
+  const handlerArgs = applyThreeZeroGetProductsIdempotencyCompatibility(
+    toolName,
+    normalizedHandlerArgs,
+    principal,
+    ctx.storyboardCompat?.version === '3.0' || initialHandlerArgs.adcp_version === '3.0',
+  );
+  const idempotencyKey = handlerArgs.idempotency_key;
+  let claim: { payloadHash: string; claimToken: string } | undefined;
+
+  // The read-only legacy/list surfaces permit keyless calls, but they still
+  // share the canonical get_products request contract. Validate the logical
+  // request before deciding whether this attempt participates in replay.
+  const productValidationError = validateIdempotencyProtectedInput(
+    canonicalProductDiscoveryTool(toolName),
+    handlerArgs,
+  );
+  if (productValidationError) {
+    return { success: false, error: productValidationError.message };
+  }
+
+  if (isMutatingTool(toolName) || idempotencyKey !== undefined) {
+    if (isMutatingTool(toolName) && (idempotencyKey === undefined || idempotencyKey === null)) {
+      return { success: false, error: `idempotency_key is required for ${toolName}` };
+    }
+    if (!validateKeyFormat(idempotencyKey)) {
+      return { success: false, error: 'idempotency_key has an invalid format' };
+    }
+    const outcome = await getIdempotencyStore().check({
+      principal,
+      key: idempotencyKey,
+      payload: idempotencyPayloadForServedVersion(
+        toolName,
+        sourceSchemaName ? initialHandlerArgs : handlerArgs,
+        versionResolution.servedVersion,
+      ),
+    });
+    if (outcome.kind === 'replay') {
+      const replayed = projectProductDiscoveryResult(
+        toolName,
+        outcome.response as Record<string, unknown>,
+        initialHandlerArgs,
+      );
+      return {
+        success: true,
+        data: {
+          ...replayed,
+          adcp_version: versionResolution.servedVersion,
+          replayed: true,
+          ...(callerContext !== undefined && { context: callerContext }),
+        },
+      };
+    }
+    if (outcome.kind === 'expired') {
+      return { success: false, error: 'IDEMPOTENCY_EXPIRED' };
+    }
+    if (outcome.kind === 'conflict') {
+      return { success: false, error: 'IDEMPOTENCY_CONFLICT' };
+    }
+    if (outcome.kind === 'in-flight') {
+      return {
+        success: false,
+        error: `IDEMPOTENCY_IN_FLIGHT: matching request is already in progress; retry_after=${outcome.retryAfterSeconds}`,
+      };
+    }
+    claim = { payloadHash: outcome.payloadHash, claimToken: outcome.claimToken };
+  }
+  try {
+    const result = await Promise.resolve(handler(
+      handlerArgs as ToolArgs,
+      { ...ctx, servedAdcpVersion: versionResolution.servedVersion },
+    ));
+    const cacheResponse = addServedAdcpVersion(result, versionResolution.servedVersion) as Record<string, unknown>;
+    const projectedResponse = projectProductDiscoveryResult(
+      toolName,
+      result as Record<string, unknown>,
+      initialHandlerArgs,
+    );
+    const response = addServedAdcpVersion(projectedResponse, versionResolution.servedVersion, callerContext) as Record<string, unknown>;
+    if (claim && typeof idempotencyKey === 'string') {
+      const hasErrors = Array.isArray(cacheResponse.errors) && cacheResponse.errors.length > 0;
+      const hasAdvisorySuccessPayload = permitsAdvisoryErrors(toolName, cacheResponse);
+      if (hasErrors && !hasAdvisorySuccessPayload) {
+        await getIdempotencyStore().release({
+          principal,
+          key: idempotencyKey,
+          claimToken: claim.claimToken,
+        });
+      } else {
+        // get_products finalization state must be durable before its replay is
+        // published. Other tools retain the historical save-then-flush order;
+        // moving every synchronous mutation to flush-first creates a new
+        // duplicate-execution window if cache publication fails.
+        if (isProductDiscoveryTool(toolName)) await flushDirtySessions();
+        await getIdempotencyStore().save({
+          principal,
+          key: idempotencyKey,
+          payloadHash: claim.payloadHash,
+          response: cacheResponse,
+          claimToken: claim.claimToken,
+        });
+      }
+    }
+    return { success: true, data: response };
+  } catch (error) {
+    if (claim && typeof idempotencyKey === 'string') {
+      await getIdempotencyStore().release({
+        principal,
+        key: idempotencyKey,
+        claimToken: claim.claimToken,
+      });
+    }
     logger.error({ error, tool: toolName }, 'Training agent in-process tool error');
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
@@ -10252,7 +12295,7 @@ export async function executeTrainingAgentTool(
  * Create a per-request MCP Server with training agent tools.
  */
 export function createTrainingAgentServer(ctx: TrainingContext): Server {
-  const taskStore = getTaskStore();
+  const taskStore = getTrainingTaskStore();
   const server = new Server(
     { name: 'adcp-training-agent', version: '1.0.0' },
     {
@@ -10295,8 +12338,8 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // Extract and strip context before passing args to handlers (AdCP requirement:
     // echo caller's context object back unchanged in every response).
     const rawArgs = (args as Record<string, unknown> | undefined) ?? {};
-    const { context: callerContext, ...handlerArgs } = rawArgs;
-    const versionResolution = resolveServedAdcpVersionForTool(name, handlerArgs);
+    const { context: callerContext, ...initialHandlerArgs } = rawArgs;
+    const versionResolution = resolveServedAdcpVersionForTool(name, initialHandlerArgs);
 
     const handler = HANDLER_MAP[name];
 
@@ -10323,6 +12366,49 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       return { result: adcpError('INVALID_REQUEST', { message: `Unknown tool: ${name}` }, callerContext, servedAdcpVersion), flushable: true };
     }
 
+    if (isMutatingTool(name) && initialHandlerArgs.idempotency_key == null) {
+      return {
+        result: adcpError('INVALID_REQUEST', {
+          message: `idempotency_key is required for ${name}. Generate a UUID v4 and reuse it unchanged for retries.`,
+          field: 'idempotency_key',
+          recovery: 'correctable',
+        }, callerContext, servedAdcpVersion),
+        flushable: true,
+      };
+    }
+
+    const sourceSchemaName = productDiscoverySourceSchemaName(name);
+    const strictSourceSchemaName = sourceSchemaName
+      ?? (name === 'create_media_buy' && rawArgs.opportunity !== undefined
+        ? 'create-media-buy-request'
+        : undefined);
+    const sourceValidationError = strictSourceSchemaName
+      ? validateProductDiscoverySourceInput(strictSourceSchemaName, rawArgs)
+      : undefined;
+    if (sourceValidationError) {
+      return {
+        result: adcpError('INVALID_REQUEST', {
+          message: sourceValidationError.message,
+          ...(sourceValidationError.field && { field: sourceValidationError.field }),
+          recovery: 'correctable',
+        }, callerContext, servedAdcpVersion),
+        flushable: true,
+      };
+    }
+
+    const aliasValidationError = validateProductDiscoveryAliasInput(name, initialHandlerArgs);
+    if (aliasValidationError) {
+      return {
+        result: adcpError('INVALID_REQUEST', {
+          message: aliasValidationError.message,
+          ...(aliasValidationError.field && { field: aliasValidationError.field }),
+          recovery: 'correctable',
+        }, callerContext, servedAdcpVersion),
+        flushable: true,
+      };
+    }
+    const normalizedHandlerArgs = normalizeProductDiscoveryArgs(name, initialHandlerArgs);
+
     // Check for task-augmented request (explicit `task` field in params).
     // Dry-run requests always return synchronously — there's no reason to
     // async a dry-run operation, and clients expect immediate results.
@@ -10345,8 +12431,29 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // callers can already enumerate their own account's keys — so the
     // scoping adds no useful probing surface while closing the cross-caller
     // leak.
-    const accountScope = deriveAccountScope(handlerArgs);
+    let accountScope: string | undefined;
+    try {
+      accountScope = name === 'comply_test_controller'
+        ? undefined
+        : await deriveProductDiscoveryAccountScope(name, initialHandlerArgs, normalizedHandlerArgs, ctx);
+    } catch (error) {
+      if (!(error instanceof AccountRefValidationError)) throw error;
+      return {
+        result: adcpError('INVALID_REQUEST', {
+          message: error.message,
+          field: error.field,
+          recovery: 'correctable',
+        }, callerContext, servedAdcpVersion),
+        flushable: true,
+      };
+    }
     const idempotencyPrincipal = scopedPrincipal(authPrincipal, accountScope);
+    const handlerArgs = applyThreeZeroGetProductsIdempotencyCompatibility(
+      name,
+      normalizedHandlerArgs,
+      idempotencyPrincipal,
+      ctx.storyboardCompat?.version === '3.0' || initialHandlerArgs.adcp_version === '3.0',
+    );
     const idempotencyKey = (handlerArgs as { idempotency_key?: unknown }).idempotency_key;
     let toolResult: CallToolResult | null = null;
     let taskFailed = false;
@@ -10355,9 +12462,29 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     let skipHandler = false;
     let idempotencyPayloadHash: string | undefined;
     let idempotencyClaimed = false;
+    let idempotencyClaimToken: string | undefined;
+    let idempotencyReplayed = false;
 
-    if (isMutatingTool(name)) {
-      if (idempotencyKey === undefined || idempotencyKey === null) {
+    // Product reads may omit an idempotency key, but keylessness must never
+    // weaken their request validation. The split names normalize to the same
+    // canonical get_products contract before this check.
+    const productValidationError = validateIdempotencyProtectedInput(
+      canonicalProductDiscoveryTool(name),
+      handlerArgs,
+    );
+    if (productValidationError) {
+      return {
+        result: adcpError('INVALID_REQUEST', {
+          message: productValidationError.message,
+          ...(productValidationError.field && { field: productValidationError.field }),
+          recovery: 'correctable',
+        }, callerContext, servedAdcpVersion),
+        flushable: true,
+      };
+    }
+
+    if (isMutatingTool(name) || idempotencyKey !== undefined) {
+      if (isMutatingTool(name) && (idempotencyKey === undefined || idempotencyKey === null)) {
         return {
           result: adcpError('INVALID_REQUEST', {
             message: `idempotency_key is required for ${name}. Generate a UUID v4 and include it on every mutating request; reuse the same key for network retries.`,
@@ -10378,10 +12505,15 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         };
       }
       const store = getIdempotencyStore();
+      const idempotencyPayload = idempotencyPayloadForServedVersion(
+        name,
+        sourceSchemaName ? initialHandlerArgs : handlerArgs,
+        servedAdcpVersion,
+      );
       const outcome = await store.check({
         principal: idempotencyPrincipal,
         key: idempotencyKey,
-        payload: handlerArgs,
+        payload: idempotencyPayload,
       });
       if (outcome.kind === 'expired') {
         return {
@@ -10407,13 +12539,11 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         };
       }
       if (outcome.kind === 'in-flight') {
-        // A parallel request with the same key is executing. Retries should
-        // back off and see 'replay' once the in-flight handler saves. Return
-        // a transient error so the caller retries after a brief delay.
         return {
-          result: adcpError('RATE_LIMITED', {
+          result: adcpError('IDEMPOTENCY_IN_FLIGHT', {
             message: 'A concurrent request with this idempotency_key is already in progress. Retry after a short delay.',
             recovery: 'transient',
+            retry_after: outcome.retryAfterSeconds,
           }, callerContext, servedAdcpVersion),
           flushable: true,
         };
@@ -10427,21 +12557,123 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // before the envelope-fold landed, or handlers that emitted bodies
         // without status). Per #4878, every per-task response schema now
         // requires envelope `status`.
-        const body: Record<string, unknown> = { ...(outcome.response as Record<string, unknown>), replayed: true };
-        if (body.status === undefined) body.status = 'completed';
+        const replayBody = projectProductDiscoveryResult(
+          name,
+          outcome.response as Record<string, unknown>,
+          initialHandlerArgs,
+        );
+        const body: Record<string, unknown> = { ...replayBody, replayed: true };
+        if (!isTaskRequest && body.status === undefined) body.status = 'completed';
         body.adcp_version = servedAdcpVersion;
         if (callerContext !== undefined) body.context = callerContext;
         toolResult = {
           content: [{ type: 'text', text: JSON.stringify(body) }],
           structuredContent: body,
         };
+        cachableResponse = { ...(outcome.response as Record<string, unknown>) };
+        idempotencyPayloadHash = payloadHash(idempotencyPayload);
         skipHandler = true;
+        idempotencyReplayed = true;
       } else {
         // 'miss' → the store reserved the claim via putIfAbsent. We must
         // call save() on success or release() on any other path so the
         // placeholder doesn't leak.
         idempotencyPayloadHash = outcome.payloadHash;
+        idempotencyClaimToken = outcome.claimToken;
         idempotencyClaimed = true;
+
+        // A previous task execution may have durably stored both its domain
+        // state and terminal task result, then failed while publishing the
+        // idempotency-cache entry. Recover that successful task before the
+        // domain handler runs: looking it up afterward can hide a duplicated
+        // media buy (or other side effect) behind the original task envelope.
+        if (isTaskRequest) {
+          const naturalKey = idempotentTaskNaturalKey(
+            idempotencyPrincipal,
+            name,
+            idempotencyKey,
+            idempotencyPayloadHash,
+          );
+          try {
+            const recoveredTask = await getIdempotentTask(taskStore, naturalKey);
+            if (recoveredTask) {
+              if (recoveredTask.status === 'cancelled' || recoveredTask.status === 'failed') {
+                // Cancellation is terminal buyer intent, and failed task
+                // results are deliberately not cached. Never rerun either
+                // receipt as crash recovery: doing so could publish a success
+                // cache/webhook that the returned terminal task cannot expose.
+                await store.release({
+                  principal: idempotencyPrincipal,
+                  key: idempotencyKey,
+                  claimToken: idempotencyClaimToken,
+                });
+                return {
+                  result: {
+                    task: recoveredTask,
+                    adcp_version: servedAdcpVersion,
+                    replayed: true,
+                    ...(callerContext !== undefined && { context: callerContext }),
+                  },
+                  flushable: false,
+                };
+              }
+              if (recoveredTask.status !== 'completed') {
+                // get_products commits converge on the exact stored proposal
+                // (including IO and expiry), so it is safe to repair an
+                // orphaned deterministic task by rerunning the handler and
+                // storing the result into the same task below. Other mutators
+                // may have non-reconstructable random IDs and must fail closed.
+                if (!isProductDiscoveryTool(name)) {
+                  throw new Error(`Prior idempotent task ${recoveredTask.taskId} is not recoverable in status ${recoveredTask.status}`);
+                }
+              } else {
+                const recoveredResult = await taskStore.getTaskResult(recoveredTask.taskId) as CallToolResult;
+                const recoveredBody = isRecord(recoveredResult.structuredContent)
+                  ? recoveredResult.structuredContent
+                  : undefined;
+                if (recoveredResult.isError || !recoveredBody) {
+                  throw new Error(`Prior idempotent task ${recoveredTask.taskId} has no successful structured result`);
+                }
+
+                const {
+                  context: _cachedContext,
+                  replayed: _cachedReplayMarker,
+                  ...notificationResponse
+                } = recoveredBody;
+                const taskResponse = { task: recoveredTask, adcp_version: servedAdcpVersion };
+                await store.save({
+                  principal: idempotencyPrincipal,
+                  key: idempotencyKey,
+                  payloadHash: idempotencyPayloadHash,
+                  response: notificationResponse,
+                  claimToken: idempotencyClaimToken,
+                });
+                maybeEmitCompletionWebhook({
+                  toolName: name,
+                  args: initialHandlerArgs,
+                  response: notificationResponse,
+                  requestIdempotencyKey: idempotencyKey,
+                  principal: idempotencyPrincipal,
+                });
+                return {
+                  result: {
+                    ...taskResponse,
+                    replayed: true,
+                    ...(callerContext !== undefined && { context: callerContext }),
+                  },
+                  flushable: false,
+                };
+              }
+            }
+          } catch (error) {
+            await store.release({
+              principal: idempotencyPrincipal,
+              key: idempotencyKey,
+              claimToken: idempotencyClaimToken,
+            });
+            throw error;
+          }
+        }
       }
     }
 
@@ -10509,7 +12741,8 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         // `completed` on synchronous success — handlers that emit a different
         // TaskStatus (e.g., `submitted` for async-task envelopes) set it on
         // `inner` and we honor that value.
-        const response: Record<string, unknown> = { ...inner };
+        const outwardInner = projectProductDiscoveryResult(name, inner, initialHandlerArgs);
+        const response: Record<string, unknown> = { ...outwardInner };
         if (response.status === undefined) response.status = 'completed';
         response.adcp_version = servedAdcpVersion;
         if (name === 'create_media_buy') response.replayed = false;
@@ -10540,61 +12773,97 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       throw new Error('Internal error: toolResult missing after dispatch');
     }
 
-    // Resolve the in-flight claim from check(). Cache only successful inner
-    // responses (security.mdx rule 2+3); errors, structured error-only
-    // bodies, and exceptions all release the claim so a retry re-executes.
-    if (idempotencyClaimed && typeof idempotencyKey === 'string') {
+    // Resolve an in-flight idempotency claim only after the complete outward
+    // response is known. Task-augmented requests must cache their task
+    // envelope, not the handler's inner body, or a replay would allocate a
+    // second task. Successful state is flushed before the immutable replay is
+    // published so the cache cannot claim a finalize committed when its
+    // session mutation was not durable.
+    const resolveIdempotencyClaim = async (
+      responseToCache: Record<string, unknown> | null,
+    ): Promise<boolean> => {
+      if (
+        !idempotencyClaimed
+        || typeof idempotencyKey !== 'string'
+        || typeof idempotencyClaimToken !== 'string'
+      ) return false;
       const store = getIdempotencyStore();
-      const shouldSave =
-        cachableResponse !== null
-        && !toolResult.isError
-        && !handlerThrew;
-      if (shouldSave && idempotencyPayloadHash) {
+      const shouldSave = responseToCache !== null && !toolResult!.isError && !handlerThrew;
+      if (!shouldSave || !idempotencyPayloadHash) {
+        await store.release({
+          principal: idempotencyPrincipal,
+          key: idempotencyKey,
+          claimToken: idempotencyClaimToken,
+        });
+        return false;
+      }
+      try {
+        const flushedBeforeSave = isProductDiscoveryTool(name);
+        if (flushedBeforeSave) await flushDirtySessions();
         await store.save({
           principal: idempotencyPrincipal,
           key: idempotencyKey,
           payloadHash: idempotencyPayloadHash,
-          response: cachableResponse,
+          response: responseToCache,
+          claimToken: idempotencyClaimToken,
         });
-      } else {
+        return flushedBeforeSave;
+      } catch (error) {
         await store.release({
           principal: idempotencyPrincipal,
           key: idempotencyKey,
+          claimToken: idempotencyClaimToken,
         });
+        throw error;
       }
-    }
+    };
 
-    // Fire completion webhook if the buyer supplied a push URL and the tool
-    // mapped to a TaskType. Emission is fire-and-forget so the sync response
-    // doesn't wait on the receiver; retries/backoff live inside the emitter.
-    if (
-      cachableResponse !== null
-      && !toolResult.isError
-      && !handlerThrew
-    ) {
+    const emitCompletionWebhook = (): void => {
+      if (
+        name === 'list_products'
+        || idempotencyReplayed
+        || cachableResponse === null
+        || toolResult!.isError
+        || handlerThrew
+      ) return;
+      const webhookResponse = projectProductDiscoveryResult(
+        name,
+        cachableResponse,
+        initialHandlerArgs,
+      );
       maybeEmitCompletionWebhook({
         toolName: name,
-        args: handlerArgs,
-        response: cachableResponse,
+        args: initialHandlerArgs,
+        response: webhookResponse,
         requestIdempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey : undefined,
         principal: idempotencyPrincipal,
       });
-    }
+    };
 
     // If not task-augmented, return result directly.
     // flushable=!handlerThrew: if the handler threw, discard in-progress session
     // state. Structured { errors: [...] } responses still flush — they are
     // well-formed outcomes that legitimately mutate state.
     if (!isTaskRequest) {
-      return { result: toolResult, flushable: !handlerThrew };
+      const flushed = await resolveIdempotencyClaim(cachableResponse);
+      // Success notifications must never outrun durable session state or the
+      // replay record. resolveIdempotencyClaim flushes then saves for every
+      // mutation-capable task; only after both succeed may delivery begin.
+      emitCompletionWebhook();
+      return { result: toolResult, flushable: !handlerThrew && !flushed };
     }
 
-    // Training agent tasks resolve immediately, so moderate TTLs suffice.
-    // 15 minutes gives developers time to inspect tasks while debugging.
-    // With the rate limiter (300 req/min) this caps live tasks at ~4,500.
+    // Ordinary/error tasks honor the requested TTL up to the training-agent
+    // cap. A successful idempotency-protected task is different: its terminal
+    // record is the crash-recovery receipt if cache publication fails. MCP
+    // explicitly permits the server to override the requested TTL, so retain
+    // that receipt for the complete replay window plus the same one-minute
+    // clock-skew allowance used by the idempotency contract. The returned Task
+    // reports this actual TTL; callers must not assume their suggestion won.
     const MAX_TASK_TTL = 15 * 60 * 1000;      // 15 minutes
     const DEFAULT_TASK_TTL = 15 * 60 * 1000;  // 15 minutes
     const clampedTtl = Math.min(taskField?.ttl ?? DEFAULT_TASK_TTL, MAX_TASK_TTL);
+    const IDEMPOTENT_TASK_RECEIPT_TTL = (REPLAY_TTL_SECONDS + 60) * 1000;
 
     // Task-augmented: use the raw module-level task store directly.
     // The SDK's extra.taskStore wrapper sends notifications/tasks/status
@@ -10602,15 +12871,53 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // request uses a fresh transport). Using the raw store avoids this
     // while keeping tasks visible to subsequent tasks/get requests.
     const terminalStatus: 'completed' | 'failed' = taskFailed ? 'failed' : 'completed';
-    const created = await taskStore.createTask(
-      { ttl: clampedTtl },
-      0,
-      request as unknown as { method: string; params?: { _meta?: Record<string, unknown> } },
-    );
-    await taskStore.storeTaskResult(created.taskId, terminalStatus, toolResult);
-    const task = await taskStore.getTask(created.taskId);
-    if (!task) {
-      throw new Error(`Task disappeared after creation for tool "${name}"`);
+    let task: Awaited<ReturnType<typeof taskStore.getTask>>;
+    try {
+      // Commit handler state before exposing a task that contains the result.
+      // If task/cache persistence fails afterward, a retry observes the
+      // committed proposal and converges on the same IO/expiry.
+      await flushDirtySessions();
+      const canReuseNaturalTask = (
+        typeof idempotencyKey === 'string'
+        && typeof idempotencyPayloadHash === 'string'
+        && cachableResponse !== null
+        && !toolResult.isError
+        && !handlerThrew
+      );
+      const rawTaskRequest = request as unknown as { method: string; params?: Record<string, unknown> };
+      const taskRequest = isProductDiscoveryTool(name)
+        ? {
+            ...rawTaskRequest,
+            params: {
+              ...rawTaskRequest.params,
+              name,
+              arguments: initialHandlerArgs,
+            },
+          }
+        : rawTaskRequest;
+      const created = canReuseNaturalTask
+        ? await createOrReuseIdempotentTask(
+            taskStore,
+            idempotentTaskNaturalKey(
+              idempotencyPrincipal,
+              name,
+              idempotencyKey!,
+              idempotencyPayloadHash!,
+            ),
+            IDEMPOTENT_TASK_RECEIPT_TTL,
+            taskRequest,
+          )
+        : await taskStore.createTask({ ttl: clampedTtl }, 0, taskRequest);
+      if (!['completed', 'failed', 'cancelled'].includes(created.status)) {
+        await taskStore.storeTaskResult(created.taskId, terminalStatus, toolResult);
+      }
+      task = await taskStore.getTask(created.taskId);
+      if (!task) {
+        throw new Error(`Task disappeared after creation for tool "${name}"`);
+      }
+    } catch (error) {
+      await resolveIdempotencyClaim(null);
+      throw error;
     }
     const errorCode = toolResult.isError
       ? (toolResult.structuredContent as { adcp_error?: { code?: string } } | undefined)?.adcp_error?.code
@@ -10620,7 +12927,15 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       'Created MCP task',
     );
 
-    return { result: { task, adcp_version: servedAdcpVersion } as object, flushable: !handlerThrew };
+    const taskResponse = {
+      task,
+      adcp_version: servedAdcpVersion,
+      ...(idempotencyReplayed && { replayed: true }),
+      ...(callerContext !== undefined && { context: callerContext }),
+    } as Record<string, unknown>;
+    const flushed = await resolveIdempotencyClaim(cachableResponse);
+    emitCompletionWebhook();
+    return { result: taskResponse, flushable: !handlerThrew && !flushed };
   }
 
   // tasks/get, tasks/result, tasks/list, tasks/cancel are auto-registered

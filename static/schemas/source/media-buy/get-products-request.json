@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/get-products-request.json",
   "title": "Get Products Request",
-  "description": "Request parameters for discovering or refining advertising products. buying_mode declares the buyer's intent: 'brief' for curated discovery, 'wholesale' for raw wholesale product feed access, or 'refine' to iterate on known products and proposals.",
+  "description": "AdCP 3.x compatibility request for discovering and changing advertising products and proposals. AdCP 3.2 introduces the narrower list_products, request_proposals, refine_proposals, and decline_proposals tasks; new callers SHOULD use those tasks. Existing get_products payloads remain valid throughout 3.x.",
   "type": "object",
   "allOf": [
     {
@@ -36,7 +36,19 @@
       }
     }
   ],
+  "x-mutates-state": true,
+  "x-idempotency-key-required": false,
+  "x-operation-family": "get_products",
+  "x-deprecated-in": "3.2.0",
+  "x-superseded-by": ["list_products", "request_proposals", "refine_proposals", "decline_proposals"],
   "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Optional client-generated key for retry-safe use of the AdCP 3.x compatibility facade. New callers SHOULD use the compact 3.2 tasks; each stateful split task has its own idempotency identity, so callers MUST retry with the same tool name. Keys MUST be unique per seller and logical request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
     "buying_mode": {
       "type": "string",
       "enum": [
@@ -133,12 +145,12 @@
                   "finalize"
                 ],
                 "default": "include",
-                "description": "'include' (default): return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response. 'finalize': request firm pricing and inventory hold — transitions a draft proposal to committed with an expires_at hold window. May trigger seller-side approval (HITL). The buyer should not set a time_budget for finalize requests — they represent a commitment to wait for the result. Optional — when omitted, the seller treats the entry as action: 'include'.\n\nFinalize is exclusive within the parent `refine[]` array: see the array-level description for the finalize-exclusivity rule (mixing finalize with non-finalize entries is rejected) and multi-finalize atomicity contract."
+                "description": "'include' (default): return this proposal with updated allocations and pricing. 'omit': exclude this proposal from the response. 'finalize': request firm pricing and inventory hold. New callers use refine_proposals with action revise for a draft successor or action finalize for a committed held successor; terminal feedback is available through decline_proposals.\n\nLegacy finalize is exclusive within the parent `refine[]` array: see the array-level description for the finalize-exclusivity rule (mixing finalize with non-finalize entries is rejected) and multi-finalize atomicity contract."
               },
               "ask": {
                 "type": "string",
                 "minLength": 1,
-                "description": "What the buyer is asking for on this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%'). Ignored when action is 'omit'."
+                "description": "What the buyer is asking for on this proposal (e.g., 'shift more budget toward video', 'reduce total by 10%'). Ignored when action is omit."
               }
             },
             "required": [

@@ -1,0 +1,94 @@
+---
+title: list_products
+description: "Read seller product offers with structured discovery criteria."
+"og:title": "AdCP list_products Task"
+testable: false
+---
+
+`list_products` is the side-effect-free entry point to the compact product lifecycle. Each invocation completes synchronously, while account-level wholesale feed webhooks keep long-lived buyer mirrors current without polling. It returns products only—never proposals. Buyers can purchase listed products through [`buy_products`](/docs/media-buy/task-reference/buy_products) or pass returned `product_id` values to [`request_proposals`](/docs/media-buy/task-reference/request_proposals) for seller planning.
+
+**Request schema:** [`/schemas/v3/media-buy/list-products-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-products-request.json)
+
+```json
+{
+  "brand": { "domain": "acmeoutdoor.example" },
+  "criteria": {
+    "offer_filters": {
+      "channels": ["olv"],
+      "pricing_currencies": ["USD"]
+    }
+  },
+  "max_results": 25
+}
+```
+
+`brand` is an identity-only key. Sellers resolve its canonical manifest from the domain; callers do not send logos, colors, or governance overrides in this request. Catalog ingestion belongs to [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs); discovery accepts only a compact catalog selection under `criteria.catalog`.
+
+The compact criteria deliberately contain only offer characteristics, catalog selection, and policy requirements. The targeting-aware discovery contract is being developed separately in [PR #6203](https://github.com/adcontextprotocol/adcp/pull/6203), so this task does not advertise targeting fields before sellers can enforce them.
+
+## Response
+
+Every response has an explicit `outcome`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `outcome` | string | `listed` when the response contains a product page; `unchanged` when a conditional request matches the current feed. |
+| `products` | Product[] | Product offers for this page. Required for `listed`, even when the array is empty; omitted for `unchanged`. |
+| `next_cursor` | string | Cursor for the next page. Omitted on the final page. Pass it as `cursor` in the next request. |
+| `feed_version` | string | Opaque version of the selected offer feed. Pass it as `if_feed_version` on a later request to avoid downloading an unchanged feed. |
+| `pricing_version` | string | Opaque version of the selected pricing layer. Pass it as `if_pricing_version` together with `if_feed_version` when checking both versions. |
+| `cache_scope` | string | Whether the version applies to the seller's `public` feed or an `account`-specific overlay. |
+| `incomplete` | object[] | Optional details about portions of the response the seller could not complete. |
+
+A product page can include continuation and cache state:
+
+```json
+{
+  "outcome": "listed",
+  "products": [],
+  "next_cursor": "page_2",
+  "feed_version": "feed_2026_08_10_1",
+  "pricing_version": "pricing_42",
+  "cache_scope": "account"
+}
+```
+
+To check whether the same selection has changed, repeat the request with `if_feed_version`. Include `if_pricing_version` only when `if_feed_version` is also present:
+
+```json
+{
+  "brand": { "domain": "acmeoutdoor.example" },
+  "criteria": {
+    "offer_filters": {
+      "channels": ["olv"],
+      "pricing_currencies": ["USD"]
+    }
+  },
+  "if_feed_version": "feed_2026_08_10_1",
+  "if_pricing_version": "pricing_42"
+}
+```
+
+If the selected feed and pricing layer still match, the seller can omit `products`:
+
+```json
+{
+  "outcome": "unchanged",
+  "feed_version": "feed_2026_08_10_1",
+  "pricing_version": "pricing_42",
+  "cache_scope": "account"
+}
+```
+
+## Wholesale feed webhooks
+
+Buyers maintaining a wholesale product mirror register `product.*` and `wholesale_feed.bulk_change` subscribers through `sync_accounts.accounts[].notification_configs[]`. Registration is account-level and durable; `push_notification_config` on an individual `list_products` request does not create that subscription.
+
+The normal mirror flow is:
+
+1. Call `list_products` to bootstrap the mirror and store `feed_version` plus `cache_scope`.
+2. Register the durable account subscriber through [`sync_accounts`](/docs/accounts/tasks/sync_accounts).
+3. Apply the webhook's `canonical_product` or `canonical_pricing_options` replacement payload directly.
+4. On a gap, call `list_products` with the mirror's last successfully applied `feed_version`. On an uncertain or bulk-change repair, omit the conditional token and replace the mirror from a complete read.
+
+The webhook version describes post-change state; it is not the conditional token for a stale mirror. Conditional reads are a repair path, not a requirement to poll while webhooks are healthy.

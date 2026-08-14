@@ -14,6 +14,12 @@ const {
   normalizeSubstitutions,
 } = require('../scripts/lint-storyboard-sample-request-schema.cjs');
 const {
+  MCP_ROLE_PROFILE_TOOLS,
+  MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES,
+  buildTaskResultResolution,
+  validateManifestToolRelationships,
+} = require('../scripts/build-schemas.cjs');
+const {
   JSON_SCHEMA_2020_12,
   MAX_SCHEMA_BYTES,
   MAX_SCHEMA_DEPTH,
@@ -24,6 +30,7 @@ const {
   compactDraft07Schema,
   measureSchema,
   projectDraft07Node,
+  stripPresentationAnnotations,
 } = require('../scripts/mcp-schema-projection.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -31,11 +38,43 @@ const SOURCE_DIR = path.join(REPO_ROOT, 'static', 'schemas', 'source');
 const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
+const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
 const PARITY_COMPILE_LIMIT = 1_000_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
 }
+
+test('manifest tool relationships reject unknown, self-referential, and cyclic adapters', () => {
+  const legacy = { name: 'legacy_tool', deprecated_in: '3.2.0' };
+  const current = {
+    name: 'current_tool',
+    legacy_fallback: { tool: 'legacy_tool', mode: 'orchestrated' },
+  };
+  assert.doesNotThrow(() => validateManifestToolRelationships([legacy, current]));
+  assert.throws(
+    () => validateManifestToolRelationships([legacy, { ...current, legacy_fallback: { tool: 'missing_tool', mode: 'direct' } }]),
+    /unknown tool/
+  );
+  assert.throws(
+    () => validateManifestToolRelationships([{ ...legacy, legacy_fallback: { tool: 'legacy_tool', mode: 'direct' } }]),
+    /itself/
+  );
+  assert.throws(
+    () => validateManifestToolRelationships([
+      { name: 'legacy_a', deprecated_in: '3.2.0', legacy_fallback: { tool: 'legacy_b', mode: 'direct' } },
+      { name: 'legacy_b', deprecated_in: '3.2.0', legacy_fallback: { tool: 'legacy_a', mode: 'direct' } },
+    ]),
+    /cycle/
+  );
+});
+
+test('task result overrides cannot replace a manifest tool response schema', () => {
+  assert.throws(
+    () => buildTaskResultResolution(SOURCE_DIR, { media_buy_delivery: { response_schema: 'wrong.json' } }),
+    /also names a manifest tool/
+  );
+});
 
 function createValidator(AjvClass) {
   const ajv = new AjvClass({
@@ -96,6 +135,33 @@ test('schema bounds include the complete JSON document', () => {
     bytes: Buffer.byteLength(JSON.stringify(schema)),
     depth: 6,
     objectCount: 3,
+  });
+});
+
+test('structural presentation mode removes only schema annotations', () => {
+  const source = {
+    title: 'Request title',
+    description: 'Request description',
+    enumDescriptions: { value: 'Display label' },
+    type: 'object',
+    properties: {
+      payload: {
+        description: 'Field description',
+        const: { description: 'validated payload data' },
+        default: { description: 'default payload data' },
+      },
+    },
+    examples: [{ description: 'example payload data' }],
+  };
+
+  assert.deepEqual(stripPresentationAnnotations(source), {
+    type: 'object',
+    properties: {
+      payload: {
+        const: { description: 'validated payload data' },
+        default: { description: 'default payload data' },
+      },
+    },
   });
 });
 
@@ -304,6 +370,65 @@ test('compact bundling reuses external schemas and keeps local refs resolvable',
   assert.ok(assertLocalRefsResolve(projectDraft07Node(compact)) > 0);
 });
 
+test('compact lifecycle routes every operational control and declares cross-item invariants', () => {
+  const routedActions = readJson(path.join(SOURCE_DIR, 'core', 'canonical-media-buy-action.json'));
+  const controlActions = new Set(routedActions.oneOf
+    .find(branch => branch.properties.task.const === 'control_media_buy')
+    .properties.action.enum);
+  const controlRequest = readJson(path.join(SOURCE_DIR, 'media-buy', 'control-media-buy-request.json'));
+  const packageControl = readJson(path.join(SOURCE_DIR, 'media-buy', 'package-control.json'));
+  const fieldRoutes = {
+    paused: ['pause', 'resume'],
+    canceled: ['cancel'],
+    total_budget: ['increase_budget', 'decrease_budget'],
+    budget_allocation: ['update_budget_allocation'],
+    pacing: ['update_pacing'],
+    bidding: ['update_bidding'],
+    reporting_webhook: ['update_reporting_webhook'],
+    budget: ['increase_budget', 'decrease_budget'],
+    min_spend_target: ['update_spend_target'],
+    impressions: ['update_impression_goal'],
+    targeting_overlay: ['update_targeting'],
+    catalog_ids: ['update_catalog_assignments'],
+    keyword_targets_add: ['update_keywords'],
+    keyword_targets_remove: ['update_keywords'],
+    negative_keywords_add: ['update_keywords'],
+    negative_keywords_remove: ['update_keywords'],
+    optimization_goals: ['update_optimization_goals'],
+  };
+  for (const [field, actions] of Object.entries(fieldRoutes)) {
+    assert.ok(controlRequest.properties[field] || packageControl.properties[field], `${field} is not a control field`);
+    for (const action of actions) assert.ok(controlActions.has(action), `${field} lacks routed action ${action}`);
+  }
+  assert.equal(
+    controlRequest.properties.packages['x-adcp-validation'].verifier_constraints.unique_package_ids.key,
+    'package_id'
+  );
+  assert.equal(
+    packageControl['x-adcp-validation'].verifier_constraints.keyword_identity_sets.positive_add_remove,
+    'disjoint_by_normalized_keyword_and_match_type'
+  );
+  const commitment = readJson(path.join(SOURCE_DIR, 'media-buy', 'media-buy-commitment-response.json'));
+  const bindingRule = commitment.oneOf[0].properties.purchase_bindings['x-adcp-validation']
+    .verifier_constraints.complete_purchase_bijection;
+  assert.equal(bindingRule.purchase_indexes, 'unique_contiguous_zero_based_range');
+  assert.equal(bindingRule.product_id, 'equals_indexed_purchase.product_id');
+  const productPurchase = readJson(path.join(SOURCE_DIR, 'media-buy', 'product-purchase.json'));
+  assert.equal(
+    productPurchase['x-adcp-validation'].verifier_constraints.pricing_identity.pricing_option_id,
+    'equals_pricing.pricing_option_id_when_pricing_present'
+  );
+  const commercialTerms = readJson(path.join(SOURCE_DIR, 'media-buy', 'commercial-terms.json'));
+  const pricingIntegrity = commercialTerms['x-adcp-validation'].verifier_constraints.pricing_integrity;
+  assert.equal(pricingIntegrity.purchase_currencies, 'all_purchase.pricing.currency_equal');
+  assert.equal(pricingIntegrity.total_budget_currency, 'when_total_budget_present_equals_purchase_pricing_currency');
+  const asyncUnion = readJson(path.join(SOURCE_DIR, 'core', 'async-response-data.json'));
+  const asyncRefs = new Set(asyncUnion.anyOf.map(branch => branch.$ref));
+  for (const variant of ['submitted', 'working', 'input-required']) {
+    assert.ok(asyncRefs.has(`/schemas/core/compact-task-${variant}.json`));
+  }
+});
+
 test('generated MCP projection covers every tool within AdCP safety bounds', () => {
   assert.ok(
     fs.existsSync(PROJECTION_DIR),
@@ -313,13 +438,176 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
   const projectionManifest = readJson(path.join(PROJECTION_DIR, 'manifest.json'));
   const storyboardFixtures = collectStoryboardRequestFixtures();
+  const validateCanonicalManifest = createValidator(AjvDraft07).compile(
+    readJson(path.join(SOURCE_DIR, 'manifest.schema.json'))
+  );
+  assert.equal(
+    validateCanonicalManifest(canonicalManifest),
+    true,
+    JSON.stringify(validateCanonicalManifest.errors)
+  );
   assert.equal(projectionManifest.mcp_protocol_version, MCP_PROTOCOL_VERSION);
   assert.equal(projectionManifest.schema_dialect, JSON_SCHEMA_2020_12);
+  assert.equal(projectionManifest.annotation_mode, 'full');
+  assert.deepEqual(projectionManifest.schema_fields, ['inputSchema', 'outputSchema']);
   assert.match(projectionManifest.delivery, /downloadable schema artifacts/);
+  assert.deepEqual(canonicalManifest.task_result_resolution, {
+    discriminator_field: 'task_type',
+    terminal_schema_pointer_template: '/tools/{task_type}/response_schema',
+    terminal_schema_overrides: {
+      media_buy_delivery: 'media-buy/media-buy-delivery-webhook-result.json',
+    },
+  });
+  assert.deepEqual(projectionManifest.task_result_resolution, {
+    discriminator_field: 'task_type',
+    terminal_schema_pointer_template: '/tools/{task_type}/outputSchema',
+    terminal_schema_overrides: {
+      media_buy_delivery: 'media-buy/media-buy-delivery-webhook-result.json',
+    },
+  });
+  assert.ok(fs.existsSync(path.join(
+    PROJECTION_DIR,
+    projectionManifest.task_result_resolution.terminal_schema_overrides.media_buy_delivery
+  )));
+  const taskTypes = readJson(path.join(SOURCE_DIR, 'enums', 'task-type.json')).enum;
+  for (const taskType of taskTypes) {
+    const selectedSchema = canonicalManifest.task_result_resolution.terminal_schema_overrides[taskType]
+      || canonicalManifest.tools[taskType]?.response_schema;
+    assert.equal(typeof selectedSchema, 'string', `${taskType} must resolve to a terminal schema`);
+    assert.ok(fs.existsSync(path.join(LATEST_DIR, selectedSchema)), `${taskType} result schema must exist`);
+  }
+  assert.deepEqual(canonicalManifest.tools.get_products.superseded_by, [
+    'list_products',
+    'request_proposals',
+    'refine_proposals',
+    'decline_proposals',
+  ]);
+  assert.deepEqual(canonicalManifest.tools.list_products.legacy_fallback, {
+    tool: 'get_products',
+    mode: 'orchestrated',
+  });
+  assert.equal(canonicalManifest.tools.request_proposals.legacy_fallback.mode, 'orchestrated');
+  assert.equal(canonicalManifest.tools.refine_proposals.legacy_fallback.mode, 'orchestrated');
+  assert.deepEqual(canonicalManifest.tools.decline_proposals.legacy_fallback, { mode: 'none' });
+  assert.deepEqual(canonicalManifest.tools.buy_products.legacy_fallback, {
+    tool: 'create_media_buy',
+    mode: 'orchestrated',
+  });
+  assert.equal(canonicalManifest.tools.accept_proposal.legacy_fallback.tool, 'create_media_buy');
+  assert.equal(canonicalManifest.tools.control_media_buy.legacy_fallback.tool, 'update_media_buy');
+  assert.deepEqual(canonicalManifest.tools.create_media_buy.superseded_by, [
+    'buy_products',
+    'accept_proposal',
+  ]);
+  assert.deepEqual(canonicalManifest.tools.update_media_buy.superseded_by, [
+    'control_media_buy',
+    'refine_proposals',
+  ]);
+  for (const toolName of [
+    'request_proposals',
+    'refine_proposals',
+    'decline_proposals',
+    'buy_products',
+    'accept_proposal',
+    'control_media_buy',
+  ]) {
+    assert.deepEqual(canonicalManifest.tools[toolName].async_response_schemas, [
+      `media-buy/${toolName.replaceAll('_', '-')}-async-response-input-required.json`,
+      `media-buy/${toolName.replaceAll('_', '-')}-async-response-submitted.json`,
+      `media-buy/${toolName.replaceAll('_', '-')}-async-response-working.json`,
+    ]);
+  }
   assert.deepEqual(
     Object.keys(projectionManifest.tools).sort(),
     Object.keys(canonicalManifest.tools).sort()
   );
+  const projectedTaskStatus = readJson(
+    path.join(PROJECTION_DIR, projectionManifest.tools.get_task_status.outputSchema)
+  );
+  assert.ok(
+    measureSchema(projectedTaskStatus).bytes < 100_000,
+    'generic get_task_status output should not embed the global task-result union'
+  );
+
+  for (const toolName of [
+    'list_products',
+    'request_proposals',
+    'refine_proposals',
+    'decline_proposals',
+    'buy_products',
+    'accept_proposal',
+    'control_media_buy',
+  ]) {
+    const tool = projectionManifest.tools[toolName];
+    const input = JSON.stringify(readJson(path.join(PROJECTION_DIR, tool.inputSchema)));
+    const output = JSON.stringify(readJson(path.join(PROJECTION_DIR, tool.outputSchema)));
+    assert.doesNotMatch(input, /(?:Provenance|provenance\.json|AssetVariant|asset-variant\.json)/,
+      `${toolName} input must not depend on the creative provenance graph`);
+    assert.doesNotMatch(input, /format_ids|format-id\.json|v1_format_ref/,
+      `${toolName} input must not expose legacy named-format creatives`);
+    assert.doesNotMatch(output, /(?:AssetVariant|asset-variant\.json)/,
+      `${toolName} output must not depend on creative asset variants`);
+    if (['list_products', 'request_proposals', 'refine_proposals'].includes(toolName)) {
+      assert.match(output, /Canonical Product/,
+        `${toolName} output must use the canonical-only Product view`);
+      assert.doesNotMatch(output, /format_ids|format-id\.json|v1_format_ref|update_packages|update_media_buy/,
+        `${toolName} output must not expose the legacy Product graph`);
+    }
+  }
+
+  const productionManifest = readJson(path.join(PRODUCTION_PROFILE_DIR, 'manifest.json'));
+  for (const compatibilityTool of ['get_products', 'create_media_buy', 'update_media_buy']) {
+    assert.equal(
+      productionManifest.tools[compatibilityTool],
+      undefined,
+      `${compatibilityTool} must be absent from the clean 3.2 production profile`
+    );
+  }
+
+  const projectedListProductsOutput = readJson(path.join(
+    PROJECTION_DIR,
+    projectionManifest.tools.list_products.outputSchema
+  ));
+  const validateProjectedListProducts = createValidator(Ajv2020).compile(projectedListProductsOutput);
+  const projectedProductBase = {
+    product_id: 'canonical-product-1',
+    name: 'Canonical product',
+    description: 'Projection boundary fixture',
+    publisher_properties: [{ publisher_domain: 'publisher.example', selection_type: 'all' }],
+    delivery_type: 'guaranteed',
+    pricing_options: [{
+      pricing_option_id: 'cpm',
+      pricing_model: 'cpm',
+      fixed_price: 10,
+      currency: 'USD',
+    }],
+    reporting_capabilities: {
+      available_reporting_frequencies: ['daily'],
+      expected_delay_minutes: 240,
+      timezone: 'UTC',
+      supports_webhooks: false,
+      available_metrics: ['impressions'],
+      date_range_support: 'date_range',
+    },
+  };
+  assert.equal(validateProjectedListProducts({
+    outcome: 'listed',
+    feed_version: 'feed-1',
+    cache_scope: 'public',
+    products: [{
+      ...projectedProductBase,
+      format_options: [{ format_kind: 'image', params: { width: 300, height: 250 } }],
+    }],
+  }), true, JSON.stringify(validateProjectedListProducts.errors));
+  assert.equal(validateProjectedListProducts({
+    outcome: 'listed',
+    feed_version: 'feed-1',
+    cache_scope: 'public',
+    products: [{
+      ...projectedProductBase,
+      format_ids: [{ agent_url: 'https://legacy-creative.example', id: 'display_300x250' }],
+    }],
+  }), false, 'projected list_products output accepted a legacy-only creative declaration');
 
   const seen = new Set();
   const paritySchemas = new Map();
@@ -434,4 +722,141 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     invalidParityCaseCount >= paritySchemas.size,
     `expected an invalid mutation for every parity schema, saw ${invalidParityCaseCount}`
   );
+});
+
+test('generated production profile exposes the active 3.2 surface without compliance annotations', () => {
+  assert.ok(fs.existsSync(PRODUCTION_PROFILE_DIR), 'production profile is missing');
+  const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
+  const profile = readJson(path.join(PRODUCTION_PROFILE_DIR, 'manifest.json'));
+
+  assert.equal(profile.profile, 'production');
+  assert.equal(profile.surface_version, '3.2.0');
+  assert.equal(profile.annotation_mode, 'structural');
+  assert.deepEqual(profile.filters, {
+    exclude_protocols: ['compliance'],
+    exclude_deprecated: true,
+  });
+
+  const expectedTools = Object.entries(canonicalManifest.tools)
+    .filter(([, tool]) => tool.protocol !== 'compliance')
+    .filter(([, tool]) => !tool.added_in || tool.added_in <= profile.surface_version)
+    .filter(([, tool]) => !tool.deprecated_in || tool.deprecated_in > profile.surface_version)
+    .map(([toolName]) => toolName)
+    .sort();
+  assert.deepEqual(Object.keys(profile.tools).sort(), expectedTools);
+  assert.ok(!profile.tools.comply_test_controller);
+  assert.ok(!profile.tools.get_products);
+  assert.ok(!profile.tools.list_creative_formats);
+  for (const [toolName, tool] of Object.entries(profile.tools)) {
+    assert.equal(tool.protocol, canonicalManifest.tools[toolName].protocol);
+    assert.notEqual(tool.protocol, 'compliance');
+  }
+
+  let profileBytes = 0;
+  let canonicalBytes = 0;
+  const seen = new Set();
+  for (const tool of Object.values(profile.tools)) {
+    for (const field of ['inputSchema', 'outputSchema']) {
+      if (seen.has(tool[field])) continue;
+      seen.add(tool[field]);
+      profileBytes += fs.statSync(path.join(PRODUCTION_PROFILE_DIR, tool[field])).size;
+      canonicalBytes += fs.statSync(path.join(PROJECTION_DIR, tool[field])).size;
+    }
+  }
+  assert.ok(profileBytes < canonicalBytes * 0.65, `${profileBytes} should be materially smaller than ${canonicalBytes}`);
+});
+
+test('generated role profiles are active validation catalogs with bounded model-context views', () => {
+  const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
+
+  for (const [profileName, expectedTools] of Object.entries(MCP_ROLE_PROFILE_TOOLS)) {
+    const profileDir = path.join(PROJECTION_DIR, 'profiles', profileName);
+    const modelContextDir = path.join(profileDir, 'model-context');
+    const profile = readJson(path.join(profileDir, 'manifest.json'));
+    const modelContext = readJson(path.join(modelContextDir, 'manifest.json'));
+
+    assert.equal(profile.profile, profileName);
+    assert.equal(profile.profile_kind, 'active-role-catalog');
+    assert.equal(profile.surface_version, '3.2.0');
+    assert.equal(profile.compatibility_scope, 'active-3.2-only');
+    assert.equal(profile.annotation_mode, 'structural');
+    assert.deepEqual(profile.schema_fields, ['inputSchema', 'outputSchema']);
+    assert.deepEqual(profile.filters, {
+      include_tools: expectedTools,
+      exclude_deprecated: true,
+    });
+    assert.deepEqual(Object.keys(profile.tools).sort(), [...expectedTools].sort());
+
+    assert.equal(modelContext.profile, profileName);
+    assert.equal(modelContext.view, 'client-prompt-inputs');
+    assert.equal(modelContext.validation_profile, '../manifest.json');
+    assert.equal(
+      path.resolve(modelContextDir, modelContext.validation_profile),
+      path.join(profileDir, 'manifest.json')
+    );
+    assert.deepEqual(modelContext.schema_fields, ['inputSchema']);
+    assert.deepEqual(Object.keys(modelContext.tools).sort(), [...expectedTools].sort());
+
+    const expectedOverrides = Object.fromEntries(
+      MCP_ROLE_PROFILE_TASK_RESULT_OVERRIDES[profileName].map(taskType => [
+        taskType,
+        canonicalManifest.task_result_resolution.terminal_schema_overrides[taskType],
+      ])
+    );
+    assert.deepEqual(profile.task_result_resolution, {
+      discriminator_field: 'task_type',
+      terminal_schema_pointer_template: '/tools/{task_type}/outputSchema',
+      terminal_schema_overrides: expectedOverrides,
+    });
+    for (const relativePath of Object.values(expectedOverrides)) {
+      assert.ok(fs.existsSync(path.join(profileDir, relativePath)));
+    }
+    assert.equal(modelContext.task_result_resolution, undefined);
+
+    let modelContextBytes = 0;
+    for (const toolName of expectedTools) {
+      const fullTool = profile.tools[toolName];
+      const modelTool = modelContext.tools[toolName];
+      assert.equal(fullTool.protocol, canonicalManifest.tools[toolName].protocol);
+      assert.equal(modelTool.protocol, fullTool.protocol);
+      assert.equal(modelTool.inputSchema, fullTool.inputSchema);
+      assert.equal(modelTool.outputSchema, undefined);
+      assert.ok(fs.existsSync(path.join(profileDir, fullTool.inputSchema)));
+      assert.ok(fs.existsSync(path.join(profileDir, fullTool.outputSchema)));
+      const modelInputPath = path.join(modelContextDir, modelTool.inputSchema);
+      assert.ok(fs.existsSync(modelInputPath));
+      modelContextBytes += Buffer.byteLength(JSON.stringify(readJson(modelInputPath)));
+    }
+    assert.ok(
+      modelContextBytes < 384 * 1024,
+      `${profileName} model-context inputs exceed 384 KiB: ${modelContextBytes}`
+    );
+  }
+
+  const mediaBuyTools = new Set(MCP_ROLE_PROFILE_TOOLS['media-buy']);
+  const activeMediaBuyTools = Object.entries(canonicalManifest.tools)
+    .filter(([, tool]) => tool.protocol === 'media-buy')
+    .filter(([, tool]) => !tool.deprecated_in || tool.deprecated_in > '3.2.0')
+    .map(([toolName]) => toolName)
+    .filter(toolName => toolName !== 'build_creative');
+  for (const toolName of activeMediaBuyTools) assert.ok(mediaBuyTools.has(toolName), toolName);
+  assert.ok(mediaBuyTools.has('sync_creatives'));
+  assert.ok(mediaBuyTools.has('sync_governance'));
+  assert.ok(mediaBuyTools.has('provide_performance_feedback'));
+  assert.ok(!mediaBuyTools.has('build_creative'));
+  for (const compatibilityFacade of ['get_products', 'create_media_buy', 'update_media_buy']) {
+    assert.ok(!mediaBuyTools.has(compatibilityFacade));
+    assert.ok(canonicalManifest.tools[compatibilityFacade].deprecated_in);
+  }
+
+  const creativeTools = new Set(MCP_ROLE_PROFILE_TOOLS.creative);
+  const activeCreativeTools = Object.entries(canonicalManifest.tools)
+    .filter(([, tool]) => tool.protocol === 'creative')
+    .filter(([, tool]) => !tool.deprecated_in || tool.deprecated_in > '3.2.0')
+    .map(([toolName]) => toolName);
+  for (const toolName of activeCreativeTools) assert.ok(creativeTools.has(toolName), toolName);
+  assert.ok(creativeTools.has('build_creative'));
+  assert.ok(creativeTools.has('sync_catalogs'));
+  assert.ok(creativeTools.has('sync_creatives'));
+  assert.ok(!creativeTools.has('list_products'));
 });

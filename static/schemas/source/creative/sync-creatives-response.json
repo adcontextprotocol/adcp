@@ -192,6 +192,11 @@
             ]
           },
           {
+            "required": [
+              "warnings"
+            ]
+          },
+          {
             "properties": {
               "status": {
                 "const": "submitted"
@@ -251,6 +256,11 @@
             ]
           },
           {
+            "required": [
+              "warnings"
+            ]
+          },
+          {
             "properties": {
               "status": {
                 "const": "submitted"
@@ -303,8 +313,13 @@
       ],
       "additionalProperties": true,
       "not": {
-        "required": [
-          "creatives"
+        "anyOf": [
+          {
+            "required": ["creatives"]
+          },
+          {
+            "required": ["warnings"]
+          }
         ]
       }
     }

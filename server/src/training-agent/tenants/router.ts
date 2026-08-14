@@ -16,15 +16,81 @@ import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
 import { createRegistryHolder, getCanonicalBase, resolveTenantHost, type RegistryHolder } from './registry.js';
 import { buildSignedRevocationList } from '../governance-revocations.js';
-import { salesCapabilityProjection } from '../v6-sales-platform.js';
+import {
+  resolveTrainingSalesRequestContext,
+  salesCapabilityProjection,
+} from '../v6-sales-platform.js';
 import { handleComplyTestController } from '../comply-test-controller.js';
-import { adcpError, resolveServedAdcpVersion, supportedCanonicalFormatsCapability } from '../task-handlers.js';
-import { GET_PRODUCTS_REJECTED_ADCP_VERSION, type TrainingContext } from '../types.js';
+import {
+  adcpError,
+  createTrainingAgentServer,
+  productDiscoveryAliasToolDefinitions,
+  resolveServedAdcpVersion,
+  resolveServedAdcpVersionForTool,
+  supportedCanonicalFormatsCapability,
+  validateProductDiscoveryAliasInput,
+} from '../task-handlers.js';
+import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
+import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
+import { canonicalizeAccountRef } from '../account-scope.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
 const SIGNAL_WHOLESALE_EVENTS = ['signal.created', 'signal.updated', 'signal.priced', 'signal.removed'] as const;
+
+function installConflictEnvelopeRedaction(res: Response): void {
+  const originalWriteHead = res.writeHead.bind(res);
+  const originalWrite = res.write.bind(res);
+  const originalEnd = res.end.bind(res);
+  let bufferedHead: unknown[] | undefined;
+  const chunks: Buffer[] = [];
+  const toBuffer = (chunk: unknown, encoding?: BufferEncoding): Buffer => {
+    if (Buffer.isBuffer(chunk)) return chunk;
+    if (typeof chunk === 'string') return Buffer.from(chunk, encoding);
+    if (chunk instanceof Uint8Array) return Buffer.from(chunk);
+    return Buffer.from(String(chunk), encoding);
+  };
+
+  res.writeHead = ((...args: unknown[]) => {
+    const headers = (typeof args[1] === 'string' ? args[2] : args[1]) as Record<string, unknown> | undefined;
+    const contentType = Object.entries(headers ?? {}).find(([key]) => key.toLowerCase() === 'content-type')?.[1];
+    if (typeof contentType === 'string' && contentType.includes('application/json')) {
+      const clonedHeaders = { ...headers };
+      bufferedHead = typeof args[1] === 'string'
+        ? [args[0], args[1], clonedHeaders]
+        : [args[0], clonedHeaders];
+      return res;
+    }
+    return Reflect.apply(originalWriteHead, res, args);
+  }) as typeof res.writeHead;
+
+  res.write = ((chunk: unknown, ...args: unknown[]) => {
+    if (!bufferedHead) return Reflect.apply(originalWrite, res, [chunk, ...args]);
+    const encoding = typeof args[0] === 'string' ? args[0] as BufferEncoding : undefined;
+    chunks.push(toBuffer(chunk, encoding));
+    const callback = args.find(value => typeof value === 'function') as (() => void) | undefined;
+    callback?.();
+    return true;
+  }) as typeof res.write;
+
+  res.end = ((chunk?: unknown, ...args: unknown[]) => {
+    if (!bufferedHead) return Reflect.apply(originalEnd, res, [chunk, ...args]);
+    if (chunk !== undefined && chunk !== null) {
+      const encoding = typeof args[0] === 'string' ? args[0] as BufferEncoding : undefined;
+      chunks.push(toBuffer(chunk, encoding));
+    }
+    const rewritten = redactConflictEnvelopeInBody(Buffer.concat(chunks).toString('utf8'));
+    const headersIndex = typeof bufferedHead[1] === 'string' ? 2 : 1;
+    const headers = bufferedHead[headersIndex] as Record<string, unknown>;
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === 'content-length') delete headers[key];
+    }
+    headers['content-length'] = Buffer.byteLength(rewritten);
+    Reflect.apply(originalWriteHead, res, bufferedHead);
+    return Reflect.apply(originalEnd, res, [rewritten, ...args]);
+  }) as typeof res.end;
+}
 
 const SALES_LEGACY_CAPABILITY_SCENARIOS = [
   'force_creative_status',
@@ -64,6 +130,13 @@ const SALES_CURRENT_SCENARIOS = [
 
 const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', GET_PRODUCTS_REJECTED_ADCP_VERSION] as const;
 const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
+const PRODUCT_DISCOVERY_TOOL_NAMES = [
+  'get_products',
+  'list_products',
+  'request_proposals',
+  'refine_proposals',
+  'decline_proposals',
+] as const;
 
 function bearerToken(req: Request): string | undefined {
   const auth = req.headers.authorization;
@@ -176,7 +249,7 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCo
   return async (req: Request, res: Response): Promise<void> => {
     setCORSHeaders(res);
 
-    wrapTenantToolDiscoveryProjection(req, res, storyboardCompat);
+    wrapTenantToolDiscoveryProjection(req, res, tenantId, storyboardCompat);
     wrapSalesCapabilitiesProjection(req, res, tenantId, storyboardCompat);
 
     // Bridge `res.locals.trainingPrincipal` (set by the upstream
@@ -302,6 +375,9 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCo
       if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat)) {
         return;
       }
+      if (await tryHandleProductDiscoveryRequest(req, res, resolved.tenantId, principal, storyboardCompat)) {
+        return;
+      }
 
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
@@ -311,6 +387,7 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCo
       try {
         await resolved.server.connect(transport);
         logger.debug({ tenantId: resolved.tenantId, method: req.body?.method }, 'tenant MCP request');
+        installConflictEnvelopeRedaction(res);
         await runWithSessionContext(async () => {
           await transport.handleRequest(req, res, req.body);
           await flushDirtySessions();
@@ -331,6 +408,114 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCo
       }
     });
   };
+}
+
+async function tryHandleProductDiscoveryRequest(
+  req: Request,
+  res: Response,
+  tenantId: string,
+  principal: string | undefined,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+): Promise<boolean> {
+  if (tenantId !== 'sales') return false;
+  if (storyboardCompat?.version === '3.0') return false;
+
+  const method = req.body?.method;
+  const toolName = req.body?.params?.name;
+  const rawArgs = (req.body?.params?.arguments ?? {}) as Record<string, unknown>;
+  const requestedProductVersion = method === 'tools/call' && PRODUCT_DISCOVERY_TOOL_NAMES.includes(toolName)
+    ? resolveServedAdcpVersionForTool(toolName, rawArgs)
+    : undefined;
+  const isProductCall = (
+    method === 'tools/call'
+    && PRODUCT_DISCOVERY_TOOL_NAMES.includes(toolName)
+    && (
+      toolName !== 'get_products'
+      || (requestedProductVersion?.ok === true && supportsGetProductsRejected(requestedProductVersion.servedVersion))
+    )
+  );
+  const isTaskLifecycleCall = (
+    method === 'tasks/get'
+    || method === 'tasks/result'
+    || method === 'tasks/list'
+    || method === 'tasks/cancel'
+  );
+  if (!isProductCall && !isTaskLifecycleCall) return false;
+
+  if (isProductCall && toolName !== 'get_products') {
+    const validationError = validateProductDiscoveryAliasInput(toolName, rawArgs);
+    if (validationError) {
+      res.json({
+        jsonrpc: '2.0',
+        id: req.body.id ?? null,
+        error: {
+          code: -32602,
+          message: validationError.message,
+          data: validationError.field ? { field: validationError.field } : undefined,
+        },
+      });
+      return true;
+    }
+
+  }
+
+  if (isProductCall && rawArgs.account !== undefined) {
+    try {
+      canonicalizeAccountRef(rawArgs.account as never);
+    } catch (error) {
+      res.json({
+        jsonrpc: '2.0',
+        id: req.body.id ?? null,
+        result: adcpError('INVALID_REQUEST', {
+          message: error instanceof Error ? error.message : 'account is malformed',
+          field: 'account',
+          recovery: 'correctable',
+        }, rawArgs.context, requestedProductVersion?.ok ? requestedProductVersion.servedVersion : undefined),
+      });
+      return true;
+    }
+  }
+
+  let nativeContext: TrainingContext;
+  try {
+    nativeContext = isProductCall
+      ? await resolveTrainingSalesRequestContext(
+        req.body.params.arguments as Record<string, unknown>,
+        (req as unknown as {
+          auth?: { clientId?: string; scopes?: string[]; extra?: Record<string, unknown> };
+        }).auth,
+        storyboardCompat,
+      )
+      : {
+        mode: 'open' as const,
+        tenantId: 'sales' as const,
+        principal: principal ?? 'anonymous',
+      };
+  } catch (error) {
+    logger.error({ error, toolName }, 'Native sales request context resolution failed');
+    res.json({
+      jsonrpc: '2.0',
+      id: req.body.id ?? null,
+      result: adcpError('SERVICE_UNAVAILABLE', {
+        message: 'Unable to resolve the sales request context',
+        recovery: 'transient',
+      }, rawArgs.context, requestedProductVersion?.ok ? requestedProductVersion.servedVersion : undefined),
+    });
+    return true;
+  }
+  const nativeServer = createTrainingAgentServer(nativeContext);
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+    enableJsonResponse: true,
+  });
+  try {
+    await nativeServer.connect(transport);
+    installConflictEnvelopeRedaction(res);
+    await transport.handleRequest(req, res, req.body);
+  } finally {
+    await nativeServer.close().catch(() => {});
+  }
+  return true;
 }
 
 async function tryHandleLocalComplyScenario(
@@ -447,6 +632,7 @@ function wrapSalesCapabilitiesProjection(
 function wrapTenantToolDiscoveryProjection(
   req: Request,
   res: Response,
+  tenantId: string,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): void {
   if (req.body?.method !== 'tools/list') return;
@@ -465,7 +651,7 @@ function wrapTenantToolDiscoveryProjection(
   (res as unknown as { end: (...args: unknown[]) => Response }).end = (chunk?: unknown, ...rest: unknown[]) => {
     if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
     const body = Buffer.concat(chunks);
-    const patched = projectTenantToolDiscovery(body, storyboardCompat);
+    const patched = projectTenantToolDiscovery(body, tenantId, storyboardCompat);
     if (patched !== body && !res.headersSent) {
       res.setHeader('content-length', String(patched.length));
     }
@@ -475,18 +661,68 @@ function wrapTenantToolDiscoveryProjection(
 
 function projectTenantToolDiscovery(
   body: Buffer,
+  tenantId: string,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): Buffer {
   try {
     const parsed = JSON.parse(body.toString('utf8')) as {
       result?: {
-        tools?: Array<{ name?: string }>;
+        tools?: Array<{
+          name?: string;
+          inputSchema?: {
+            properties?: Record<string, unknown>;
+            required?: unknown;
+            [key: string]: unknown;
+          };
+          annotations?: Record<string, unknown>;
+          execution?: { taskSupport?: string };
+        }>;
       };
     };
     const tools = parsed.result?.tools;
     if (!Array.isArray(tools)) return body;
-    if (storyboardCompat?.version !== '3.0') return body;
-    parsed.result!.tools = tools.filter(tool => tool.name !== 'validate_input');
+    if (tenantId === 'sales') {
+      const getProducts = tools.find(tool => tool.name === 'get_products');
+      if (getProducts) {
+        const inputSchema = getProducts.inputSchema ?? {};
+        const required = Array.isArray(inputSchema.required)
+          ? inputSchema.required.filter((value): value is string => typeof value === 'string')
+          : [];
+        const properties = { ...(inputSchema.properties ?? {}) };
+        const isThreeZeroCompat = storyboardCompat?.version === '3.0';
+        if (isThreeZeroCompat) {
+          delete properties.idempotency_key;
+        } else {
+          properties.idempotency_key = {
+            type: 'string',
+            minLength: 16,
+            maxLength: 255,
+            pattern: '^[A-Za-z0-9_.:-]{16,255}$',
+            description: 'Client-generated key for this logical request. Reuse it unchanged for retries.',
+          };
+        }
+        getProducts.inputSchema = {
+          ...inputSchema,
+          properties,
+          required: required.filter(field => field !== 'idempotency_key'),
+        };
+        getProducts.annotations = {
+          ...(getProducts.annotations ?? {}),
+          readOnlyHint: isThreeZeroCompat,
+          idempotentHint: true,
+        };
+
+        if (!isThreeZeroCompat) {
+          const splitTools = productDiscoveryAliasToolDefinitions();
+          for (const splitTool of splitTools) {
+            if (!tools.some(tool => tool.name === splitTool.name)) tools.push(splitTool);
+          }
+        }
+      }
+    }
+    if (storyboardCompat?.version === '3.0') {
+      parsed.result!.tools = tools.filter(tool => tool.name !== 'validate_input');
+    }
     return Buffer.from(JSON.stringify(parsed), 'utf8');
   } catch {
     return body;
@@ -599,6 +835,9 @@ function projectSalesCapabilities(
       structured.media_buy = {
         ...mediaBuy,
         ...salesProjection,
+        ...(supportsGetProductsRejected(servedVersion) && {
+          lifecycle_tools: [...PRODUCT_DISCOVERY_TOOL_NAMES],
+        }),
         features: {
           ...(
             mediaBuy.features && typeof mediaBuy.features === 'object'

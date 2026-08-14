@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/wholesale-feed-event.json",
   "title": "Wholesale Feed Event",
-  "description": "A single change event emitted by an AdCP agent's wholesale product feed or wholesale signals feed and delivered inside wholesale-feed-webhook payloads. Events are denormalized — the payload carries the post-change state of a buyable product or signal so consumers can update local state without a follow-up get_products / get_signals call. This is distinct from buyer-provided feeds managed by sync_catalogs. The discriminator is `event_type`; each branch defines the payload shape. See specs/wholesale-feed-webhooks.md for webhook delivery and reconciliation semantics.",
+  "description": "A single change event emitted by an AdCP agent's wholesale product feed or wholesale signals feed and delivered inside wholesale-feed-webhook payloads. Events are denormalized so consumers can update local state without polling list_products / get_signals. This is distinct from buyer-provided feeds managed by sync_catalogs. The discriminator is event_type; each branch defines the payload shape.",
   "type": "object",
   "discriminator": {
     "propertyName": "event_type"
@@ -19,7 +19,7 @@
     "event_id": {
       "type": "string",
       "format": "uuid",
-      "description": "Stable logical event identifier for this wholesale feed change. MUST equal the enclosing webhook `notification_id`. UUID v7 is RECOMMENDED so receivers can detect obvious out-of-order delivery, but there is no durable cursor or event-polling API; missed or distrusted pushes are repaired through get_products / get_signals."
+      "description": "Stable logical event identifier for this wholesale feed change. MUST equal the enclosing webhook notification_id. UUID v7 is RECOMMENDED so receivers can detect obvious out-of-order delivery; missed or distrusted pushes are repaired through list_products / get_signals."
     },
     "event_type": {
       "type": "string",
@@ -71,24 +71,29 @@
         },
         "payload": {
           "type": "object",
-          "required": [
-            "product_id",
-            "product",
-            "applies_to"
-          ],
+          "required": ["product_id", "applies_to"],
           "properties": {
             "product_id": {
               "type": "string"
             },
             "product": {
               "$ref": "/schemas/core/product.json",
-              "description": "Full post-change Product object."
+              "description": "Legacy 3.x post-change Product. Subscribers using get_products consume this form."
+            },
+            "canonical_product": {
+              "$ref": "/schemas/core/canonical-product.json",
+              "description": "Canonical post-change Product for subscribers that negotiated lifecycle_tools.list_products. Consumers replace the matching canonical mirror entry directly."
             },
             "applies_to": {
               "$ref": "#/$defs/appliesTo",
               "description": "REQUIRED. Sellers MUST declare the cache layer explicitly on every *.created event. When introducing an entity that exists only in an account overlay (e.g., a custom product for a single account), the seller MUST emit { scope: 'account', account_ids: [...] } to prevent the entity from leaking into every consumer's public-layer cache. For public-layer additions, declare { scope: 'public' } explicitly rather than relying on a default — schema-required declaration prevents the quiet-failure path where a forgotten applies_to leaks an account-only entity to all consumers."
             }
           },
+          "anyOf": [
+            { "required": ["product"] },
+            { "required": ["canonical_product"] }
+          ],
+          "not": { "required": ["product", "canonical_product"] },
           "additionalProperties": true
         }
       },
@@ -107,18 +112,18 @@
         },
         "payload": {
           "type": "object",
-          "required": [
-            "product_id",
-            "product",
-            "applies_to"
-          ],
+          "required": ["product_id", "applies_to"],
           "properties": {
             "product_id": {
               "type": "string"
             },
             "product": {
               "$ref": "/schemas/core/product.json",
-              "description": "Full post-change Product object. Consumers replace the prior product mirror entry with this object."
+              "description": "Legacy 3.x post-change Product for get_products mirrors."
+            },
+            "canonical_product": {
+              "$ref": "/schemas/core/canonical-product.json",
+              "description": "Canonical post-change Product for list_products mirrors."
             },
             "changed_fields": {
               "type": "array",
@@ -131,6 +136,11 @@
               "$ref": "#/$defs/appliesTo"
             }
           },
+          "anyOf": [
+            { "required": ["product"] },
+            { "required": ["canonical_product"] }
+          ],
+          "not": { "required": ["product", "canonical_product"] },
           "additionalProperties": true
         }
       },
@@ -149,11 +159,7 @@
         },
         "payload": {
           "type": "object",
-          "required": [
-            "product_id",
-            "pricing_options",
-            "applies_to"
-          ],
+          "required": ["product_id", "applies_to"],
           "properties": {
             "product_id": {
               "type": "string"
@@ -165,6 +171,12 @@
                 "$ref": "/schemas/core/pricing-option.json"
               },
               "description": "Full post-change pricing_options array. NOT a delta — consumers replace the prior options with this list."
+            },
+            "canonical_pricing_options": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "/schemas/core/canonical-pricing-option.json" },
+              "description": "Full post-change canonical pricing array for list_products mirrors."
             },
             "previous_pricing_option_ids": {
               "type": "array",
@@ -187,6 +199,11 @@
               "$ref": "#/$defs/appliesTo"
             }
           },
+          "anyOf": [
+            { "required": ["pricing_options"] },
+            { "required": ["canonical_pricing_options"] }
+          ],
+          "not": { "required": ["pricing_options", "canonical_pricing_options"] },
           "additionalProperties": true
         }
       },
@@ -406,7 +423,7 @@
       ]
     },
     {
-      "description": "wholesale_feed.bulk_change — fast-forward event emitted when a single operation affects many entities in one feed. Consumers SHOULD repair by re-reading the affected wholesale feed named by affected_entity_type via get_products or get_signals.",
+      "description": "wholesale_feed.bulk_change — fast-forward event emitted when a single operation affects many entities in one feed. Consumers SHOULD repair products through list_products and signals through get_signals.",
       "properties": {
         "event_type": {
           "const": "wholesale_feed.bulk_change"

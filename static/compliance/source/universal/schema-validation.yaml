@@ -131,6 +131,7 @@ phases:
           what other fields are present.
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#schema_validation_schema_compliance_get_products_schema"
           buying_mode: "brief"
           brief: "Return a small representative sample of available advertising products"
           pagination:
@@ -180,6 +181,7 @@ phases:
           - pricing_model: CPM, CPC, flat_rate, etc.
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#schema_validation_schema_compliance_pricing_options_present"
           buying_mode: "brief"
           brief: "Premium display inventory with pricing details"
           pagination:
@@ -250,6 +252,7 @@ phases:
           These canonical selectors must be accepted unchanged in subsequent requests.
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#schema_validation_format_id_reconciliation_get_products_for_formats"
           buying_mode: "brief"
           brief: "Return one representative product with creative format requirements"
           pagination:

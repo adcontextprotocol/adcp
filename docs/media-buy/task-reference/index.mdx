@@ -13,8 +13,15 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 | Task | Purpose | Response Time | Phase |
 |------|---------|---------------|-------|
 | [`get_products`](/docs/media-buy/task-reference/get_products) | Discover inventory and refine products | ~60s | Discovery |
-| [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) | Create campaigns from selected products | Minutes-Days | Media Buys |
-| [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) | Modify campaign settings and budgets | Minutes-Days | Media Buys |
+| [`list_products`](/docs/media-buy/task-reference/list_products) | Enumerate structured product offers | ~1s | Discovery |
+| [`request_proposals`](/docs/media-buy/task-reference/request_proposals) | Request seller-authored plans | ~60s | Planning |
+| [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) | Revise proposals or finalize inventory holds | ~60s | Planning |
+| [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) | Record terminal proposal feedback | ~1s | Planning |
+| [`buy_products`](/docs/media-buy/task-reference/buy_products) | Buy published offers directly | Minutes-Days | Media Buys |
+| [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) | Accept new-buy, amendment, or cancellation terms | Minutes-Days | Media Buys |
+| [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) | Apply operational delivery controls | Minutes-Days | Media Buys |
+| [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) | 3.x compatibility creation facade | Minutes-Days | Compatibility |
+| [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) | 3.x compatibility update facade | Minutes-Days | Compatibility |
 | [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) | View endpoint capabilities, including creative operations | ~1s | Capability |
 | [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) | Sync catalog feeds (products, stores, inventory) | Minutes-Days | Catalogs |
 | [`sync_creatives`](/docs/creative/task-reference/sync_creatives) | Upload and manage creative assets | Minutes-Days | Creatives |
@@ -65,13 +72,17 @@ Start here to understand what's available and plan your campaign.
 
 - **[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)** - Discover agent capabilities, portfolio, and supported features (protocol-level task)
 - **[`get_products`](/docs/media-buy/task-reference/get_products)** - The core discovery task using natural language briefs
+- **[`list_products`](/docs/media-buy/task-reference/list_products)** - Compact structured product-offer reads
+- **[`request_proposals`](/docs/media-buy/task-reference/request_proposals)**, **[`refine_proposals`](/docs/media-buy/task-reference/refine_proposals)**, and **[`decline_proposals`](/docs/media-buy/task-reference/decline_proposals)** - Explicit proposal lifecycle operations; request and revision produce drafts, while finalization creates a committed inventory hold
 - **[Canonical formats](/docs/creative/canonical-formats)** - Understand creative requirements and authority
 
 ### Media Buy Management  
 Create and manage your advertising campaigns.
 
-- **[`create_media_buy`](/docs/media-buy/task-reference/create_media_buy)** - Create campaigns from discovered products
-- **[`update_media_buy`](/docs/media-buy/task-reference/update_media_buy)** - Modify budgets, targeting, and settings
+- **[`buy_products`](/docs/media-buy/task-reference/buy_products)** - Directly buy published product offers
+- **[`accept_proposal`](/docs/media-buy/task-reference/accept_proposal)** - Apply negotiated new-buy, amendment, or cancellation terms
+- **[`control_media_buy`](/docs/media-buy/task-reference/control_media_buy)** - Modify delivery controls inside accepted terms
+- **[`create_media_buy`](/docs/media-buy/task-reference/create_media_buy)** and **[`update_media_buy`](/docs/media-buy/task-reference/update_media_buy)** - Deprecated 3.x compatibility facades
 
 ### Catalog Management
 Sync product feeds, inventory, and store data to seller accounts.
@@ -83,7 +94,7 @@ Handle creative assets throughout their lifecycle.
 
 - **[`sync_creatives`](/docs/creative/task-reference/sync_creatives)** - Upload assets to an agent-hosted creative library
 - **[`list_creatives`](/docs/creative/task-reference/list_creatives)** - Search and manage your creative library (creative protocol)
-- **Inline `packages[].creatives`** - Attach or replace package-scoped creative bodies when the seller advertises `inline_creative_management` without a creative library
+- **Inline `packages[].creatives`** - Deprecated 3.x compatibility path available only through legacy create/update facades; absent from the compact lifecycle
 
 ### Performance & Optimization
 Monitor and optimize campaign performance.
@@ -120,6 +131,7 @@ Schemas are accessible at runtime via the documentation server for validation an
 Task names use snake_case and follow verb-first semantics consistently across Media Buy:
 - `get_*`: Retrieve current state or scoped datasets (for example [`get_products`](/docs/media-buy/task-reference/get_products), [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery))
 - `list_*`: Enumerate collections with optional filtering (for example [`list_creatives`](/docs/creative/task-reference/list_creatives))
+- `request_*`, `refine_*`, and `decline_*`: Explicit lifecycle transitions over immutable resources; finalized proposals flow into [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal)
 - `create_*`: Create new resources ([`create_media_buy`](/docs/media-buy/task-reference/create_media_buy))
 - `update_*`: Apply partial updates to existing resources ([`update_media_buy`](/docs/media-buy/task-reference/update_media_buy))
 - `sync_*`: Reconcile external state into seller systems with upsert-like behavior ([`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs), [`sync_creatives`](/docs/creative/task-reference/sync_creatives), [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources))

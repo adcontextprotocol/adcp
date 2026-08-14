@@ -208,6 +208,7 @@ phases:
           structured error requesting the missing brief. Both are valid.
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#error_compliance_error_responses_missing_fields"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -360,6 +361,7 @@ phases:
           - message referencing the buyer's requested version and the seller's supported set
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#error_compliance_version_negotiation_unsupported_major_version"
           adcp_major_version: 99
           buying_mode: "brief"
           brief: "Version negotiation probe"
@@ -414,6 +416,7 @@ phases:
           - message referencing the buyer's requested release and the seller's supported set
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#error_compliance_version_negotiation_unsupported_release_version"
           adcp_version: "99.0"
           buying_mode: "brief"
           brief: "Release-precision version negotiation probe"
@@ -452,6 +455,7 @@ phases:
           Return products normally — adcp_major_version: 3 is a supported version.
 
         sample_request:
+          idempotency_key: "$generate:uuid_v4#error_compliance_version_negotiation_supported_major_version"
           adcp_major_version: 3
           buying_mode: "brief"
           brief: "Display advertising for outdoor lifestyle campaign"

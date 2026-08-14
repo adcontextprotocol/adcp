@@ -11,13 +11,15 @@ Common questions from teams building AdCP sales agents and integrations, with di
 
 ### Q: Does `get_products` require specific parameters like budget, dates, and objectives?
 
-**A:** Currently, `get_products` only has three parameters: `brief` (natural language string), `brand`, and `filters` (structured filters). Campaign details like budget, dates, and objectives should be included in the natural language `brief`.
+**A:** Every request requires `idempotency_key` and `buying_mode`. In `buying_mode: "brief"`, the natural-language `brief` carries campaign requirements; `brand` and structured `filters` provide identity and discovery constraints. Campaign details like budget, dates, and objectives should be included in the natural-language brief when no dedicated filter exists.
 
 **Future:** Structured parameters for budget, dates, objectives, and targeting are being considered to reduce conversational back-and-forth. Track the roadmap for updates.
 
 **Current Workaround:** Include these details in your brief:
 ```json
 {
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442078",
+  "buying_mode": "brief",
   "brand": {
     "domain": "acmecorp.com"
   },
@@ -227,6 +229,8 @@ Buyers can discover the agent's portfolio via [`get_adcp_capabilities`](/docs/pr
 ```javascript
 // Test blocked category
 const response = await get_products({
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442051",
+  buying_mode: "brief",
   brand: {
     domain: "test-alcohol.example.com"
   },

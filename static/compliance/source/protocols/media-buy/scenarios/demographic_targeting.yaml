@@ -136,6 +136,7 @@ phases:
         doc_ref: "/media-buy/task-reference/get_products"
         stateful: true
         sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_demographic_targeting_discover_product_execution_get_demographic_products"
           buying_mode: "wholesale"
           fields: ["product_id", "pricing_options", "demographic_targeting", "signal_targeting_options"]
           account:

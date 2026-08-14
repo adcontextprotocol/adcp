@@ -105,6 +105,7 @@ Priya discovers what NovaMind offers — same `get_products` she'd use for CTV o
 
 ```javascript
 const products = await novamind.getProducts({
+  idempotency_key: "550e8400-e29b-41d4-a716-446655442042",
   buying_mode: "brief",
   brief: "Outdoor gear brand. Want to reach people asking about hiking, camping, and trail running. Budget $15K/month.",
   brand: { domain: "ridgelinegear.com" },

@@ -118,6 +118,8 @@ Typed methods on the client correspond to AdCP tools. The SDK validates your req
 
 ```typescript
 const products = await client.getProducts({
+  idempotency_key: '550e8400-e29b-41d4-a716-446655442046',
+  buying_mode: 'brief',
   brief: 'Video campaign for pet owners, 18–34, US, $50K monthly',
 });
 
