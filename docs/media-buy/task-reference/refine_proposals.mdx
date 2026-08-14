@@ -7,7 +7,7 @@ testable: false
 
 `refine_proposals` has two explicit operations over immutable proposal snapshots:
 
-- `action: "revise"` applies `instructions` and returns a new draft proposal.
+- `action: "revise"` applies the buyer's `ask` and returns a new draft proposal.
 - `action: "finalize"` changes no commercial terms and returns a new committed proposal backed by an inventory hold until `expires_at`.
 
 Revision may target a draft, committed, or accepted proposal; finalization must target a draft. Proposal IDs must be unique within the request, and results preserve request order. Every successful operation returns a new `proposal_id`; that ID is the complete version identity for the immutable commercial snapshot, and the source remains unchanged.
@@ -21,12 +21,12 @@ Revision may target a draft, committed, or accepted proposal; finalization must 
     {
       "proposal_id": "proposal_123",
       "action": "revise",
-      "instructions": "Shift more budget toward video."
+      "ask": "Shift more budget toward video."
     },
     {
       "proposal_id": "proposal_456",
       "action": "revise",
-      "instructions": "Limit the revision to inventory available in the US and Canada."
+      "ask": "Limit the revision to inventory available in the US and Canada."
     }
   ]
 }
@@ -66,7 +66,7 @@ An accepted proposal is the immutable commercial envelope attached to its MediaB
       "proposal_id": "proposal_accepted_123",
       "action": "revise",
       "change_kind": "amendment",
-      "instructions": "Extend the flight by two weeks and add the premium video product."
+      "ask": "Extend the flight by two weeks and add the premium video product."
     }
   ]
 }

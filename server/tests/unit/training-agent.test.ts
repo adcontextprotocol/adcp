@@ -13031,11 +13031,11 @@ describe('proposal lifecycle', () => {
         proposal_id: source.proposal_id,
         action: 'revise',
         change_kind: 'amendment',
-        instructions: 'Prefer the social inventory while preserving the total budget.',
+        ask: 'Prefer the social inventory while preserving the total budget.',
       }, {
         proposal_id: 'proposal-not-visible-to-caller',
         action: 'revise',
-        instructions: 'Use a proposal that is not available in this principal scope.',
+        ask: 'Use a proposal that is not available in this principal scope.',
       }],
     });
     expect(refineError).toBeFalsy();
@@ -13131,7 +13131,7 @@ describe('proposal lifecycle', () => {
         proposal_id: committed.proposal_id,
         action: 'revise',
         change_kind: 'amendment',
-        instructions: 'Reduce the budget while preserving the accepted flight.',
+        ask: 'Reduce the budget while preserving the accepted flight.',
       }],
     });
     expect(refineAfterExecution.isError).toBeFalsy();
@@ -13154,7 +13154,7 @@ describe('proposal lifecycle', () => {
         proposal_id: committed.proposal_id,
         action: 'revise',
         change_kind: 'cancellation',
-        instructions: 'Cancel by mutual agreement before the next billing period.',
+        ask: 'Cancel by mutual agreement before the next billing period.',
       }],
     });
     expect(cancellationAfterExecution.isError).toBeFalsy();
@@ -13289,7 +13289,7 @@ describe('proposal lifecycle', () => {
       refinements: [{
         proposal_id: source.proposal_id,
         action: 'revise',
-        instructions: 'Prefer social inventory without changing the planning cycle.',
+        ask: 'Prefer social inventory without changing the planning cycle.',
       }],
     });
     expect(refineError).toBeFalsy();
@@ -13388,7 +13388,7 @@ describe('proposal lifecycle', () => {
       refinements: [{
         proposal_id: committed.proposal_id,
         action: 'revise',
-        instructions: 'Try a different allocation after terminal decline.',
+        ask: 'Try a different allocation after terminal decline.',
       }],
     });
     expect(refineAfterDecline.isError).toBeFalsy();
@@ -13487,7 +13487,7 @@ describe('proposal lifecycle', () => {
       refinements: [{
         proposal_id: source.proposal_id,
         action: 'revise',
-        instructions: 'Provide concrete fixed CPM pricing in USD.',
+        ask: 'Provide concrete fixed CPM pricing in USD.',
       }],
     });
     expect(refineError).toBeFalsy();

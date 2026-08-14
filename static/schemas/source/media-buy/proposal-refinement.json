@@ -21,10 +21,10 @@
       "default": "amendment",
       "description": "Desired successor proposal. cancellation is valid only when the source proposal is accepted and attached to a non-terminal MediaBuy."
     },
-    "instructions": {
+    "ask": {
       "type": "string",
       "minLength": 1,
-      "description": "Requested commercial changes or cancellation reason for action revise. The seller returns a new draft proposal snapshot; this text never directly mutates the source proposal or MediaBuy."
+      "description": "What the buyer is asking for on this proposal, or the cancellation reason for action revise. The seller returns a new draft proposal snapshot; this text never directly mutates the source proposal or MediaBuy."
     }
   },
   "required": ["proposal_id"],
@@ -35,13 +35,13 @@
       "not": {
         "anyOf": [
           { "required": ["change_kind"] },
-          { "required": ["instructions"] }
+          { "required": ["ask"] }
         ]
       }
     },
     {
       "properties": { "action": { "type": "string", "const": "revise" } },
-      "required": ["action", "instructions"]
+      "required": ["action", "ask"]
     }
   ],
   "additionalProperties": false

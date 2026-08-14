@@ -232,7 +232,7 @@ describe('Training Agent webhook emission', () => {
         refinements: [{
           proposal_id: source.proposal_id,
           action: 'revise',
-          instructions: 'Prefer social inventory while preserving the total budget.',
+          ask: 'Prefer social inventory while preserving the total budget.',
         }],
         push_notification_config: callback('op_refine_proposals'),
       });

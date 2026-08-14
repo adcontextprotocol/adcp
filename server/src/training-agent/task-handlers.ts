@@ -4307,8 +4307,8 @@ export function normalizeProductDiscoveryArgs(
               proposal_id: entry.proposal_id,
               action: entry.action === 'finalize' ? 'finalize' : 'include',
               ...(entry.action !== 'finalize'
-                && typeof entry.instructions === 'string'
-                && { ask: entry.instructions }),
+                && typeof entry.ask === 'string'
+                && { ask: entry.ask }),
               ...(entry.action !== 'finalize'
                 && (entry.change_kind === 'amendment' || entry.change_kind === 'cancellation')
                 && { change_kind: entry.change_kind }),
@@ -4761,9 +4761,9 @@ export function validateProductDiscoveryAliasInput(
         return { message: 'proposal_id values in refinements must be unique', field: `refinements[${index}].proposal_id` };
       }
       proposalIds.add(entry.proposal_id);
-      if (!(typeof entry.instructions === 'string' && entry.instructions.length > 0)) {
+      if (!(typeof entry.ask === 'string' && entry.ask.length > 0)) {
         if (entry.action !== 'finalize') {
-          return { message: 'each revision requires instructions', field: `refinements[${index}].instructions` };
+          return { message: 'each revision requires an ask', field: `refinements[${index}].ask` };
         }
       }
       if (entry.action !== 'revise' && entry.action !== 'finalize') {
@@ -4772,9 +4772,9 @@ export function validateProductDiscoveryAliasInput(
           field: `refinements[${index}].action`,
         };
       }
-      if (entry.action === 'finalize' && (entry.instructions !== undefined || entry.change_kind !== undefined)) {
+      if (entry.action === 'finalize' && (entry.ask !== undefined || entry.change_kind !== undefined)) {
         return {
-          message: 'finalize cannot be combined with instructions or change_kind',
+          message: 'finalize cannot be combined with ask or change_kind',
           field: `refinements[${index}].action`,
         };
       }
@@ -4789,7 +4789,7 @@ export function validateProductDiscoveryAliasInput(
         };
       }
       const unknown = Object.keys(entry).find(
-        field => !['proposal_id', 'action', 'change_kind', 'instructions'].includes(field),
+        field => !['proposal_id', 'action', 'change_kind', 'ask'].includes(field),
       );
       if (unknown) {
         return { message: `${unknown} is not supported on proposal refinements`, field: `refinements[${index}].${unknown}` };
@@ -6372,7 +6372,7 @@ async function handleGetProductsUnlocked(
         .map(entry => [entry.proposal_id, {
           action: entry.action === 'finalize' ? 'finalize' as const : 'revise' as const,
           changeKind: entry.change_kind,
-          instructions: entry.ask,
+          ask: entry.ask,
         }]),
     );
     proposals = sourceProposalOrder.flatMap((sourceId, index) => {
@@ -6431,7 +6431,7 @@ async function handleGetProductsUnlocked(
         const commercialTerms = structuredClone(successorInternal.__canonical_commercial_terms) as Record<string, unknown>;
         commercialTerms.cancellation_terms = {
           effective_at: new Date().toISOString(),
-          ...(typeof refinement.instructions === 'string' && { reason: refinement.instructions.slice(0, 500) }),
+          ...(typeof refinement.ask === 'string' && { reason: refinement.ask.slice(0, 500) }),
         };
         successorInternal.__canonical_commercial_terms = commercialTerms;
         successorInternal.__canonical_terms_digest = proposalTermsDigest(commercialTerms);

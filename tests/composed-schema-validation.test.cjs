@@ -3170,8 +3170,8 @@ async function runTests() {
     {
       idempotency_key: 'refine-proposals-0001',
       refinements: [
-        { proposal_id: 'proposal-1', action: 'revise', instructions: 'Prefer video and move budget toward it' },
-        { proposal_id: 'proposal-2', action: 'revise', instructions: 'Use only the premium video product' }
+        { proposal_id: 'proposal-1', action: 'revise', ask: 'Prefer video and move budget toward it' },
+        { proposal_id: 'proposal-2', action: 'revise', ask: 'Use only the premium video product' }
       ]
     },
     'refine_proposals accepts plural proposal-scoped immutable refinements'
@@ -3181,7 +3181,7 @@ async function runTests() {
     {
       idempotency_key: 'refine-proposals-missing-action-0001',
       refinements: [
-        { proposal_id: 'proposal-1', instructions: 'Prefer video and move budget toward it' }
+        { proposal_id: 'proposal-1', ask: 'Prefer video and move budget toward it' }
       ]
     },
     'refine_proposals requires an explicit action discriminator'
@@ -3194,7 +3194,7 @@ async function runTests() {
         proposal_id: 'accepted-proposal-1',
         action: 'revise',
         change_kind: 'cancellation',
-        instructions: 'Cancel at the earliest date permitted by the accepted terms.'
+        ask: 'Cancel at the earliest date permitted by the accepted terms.'
       }]
     },
     'refine_proposals forks an accepted proposal into a cancellation proposal'
@@ -3205,7 +3205,7 @@ async function runTests() {
       idempotency_key: 'refine-proposals-0002',
       refinements: [{ proposal_id: 'proposal-1', action: 'finalize' }]
     },
-    'refine_proposals accepts explicit finalization without fake revision instructions'
+    'refine_proposals accepts explicit finalization without a fake revision ask'
   );
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-request.json',
@@ -3213,7 +3213,7 @@ async function runTests() {
       idempotency_key: 'refine-proposals-mixed-finalize-0001',
       refinements: [
         { proposal_id: 'proposal-1', action: 'finalize' },
-        { proposal_id: 'proposal-2', action: 'revise', instructions: 'Change the budget.' }
+        { proposal_id: 'proposal-2', action: 'revise', ask: 'Change the budget.' }
       ]
     },
     'refine_proposals keeps finalize batches exclusive and atomic'
