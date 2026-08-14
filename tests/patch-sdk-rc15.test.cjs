@@ -52,7 +52,7 @@ class SingleAgentClient {
 module.exports = { SingleAgentClient };
 `;
 
-function writeFixture(version = '13.0.0-rc.18') {
+function writeFixture(version = '13.0.0-rc.20') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk-rc15-patch-'));
   const sdkRoot = path.join(root, 'node_modules', '@adcp', 'sdk');
   fs.mkdirSync(sdkRoot, { recursive: true });
@@ -155,7 +155,7 @@ test('hosted SDK patch rejects an unexpected task-map source shape', (t) => {
 
   const result = runPatcher(root);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.18 SDK shape/);
+  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.20 SDK shape/);
 });
 
 test('hosted SDK patch rejects mixed original and patched call sites before writing either format', (t) => {
@@ -170,7 +170,7 @@ test('hosted SDK patch rejects mixed original and patched call sites before writ
 
   const result = runPatcher(root);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.18 SDK shape/);
+  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.20 SDK shape/);
   assert.equal(fs.readFileSync(cjsFile, 'utf8'), cjsBefore);
 });
 
@@ -185,7 +185,7 @@ test('hosted SDK patch rejects duplicate original call sites before writing eith
 
   const result = runPatcher(root);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.18 SDK shape/);
+  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.20 SDK shape/);
   assert.equal(fs.readFileSync(cjsFile, 'utf8'), cjsBefore);
 });
 
@@ -205,7 +205,7 @@ test('hosted SDK patch preflights both module formats before writing either one'
 
   const result = runPatcher(root);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.18 SDK shape/);
+  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.20 SDK shape/);
   assert.equal(fs.readFileSync(cjsFile, 'utf8'), cjsBefore);
 });
 
@@ -225,7 +225,7 @@ test('hosted SDK patch preflights core clients before writing any artifact', (t)
 
   const result = runPatcher(root);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.18 SDK shape/);
+  assert.match(result.stderr, /Unexpected 13\.0\.0-rc\.20 SDK shape/);
   assert.equal(fs.readFileSync(taskMapFile, 'utf8'), taskMapBefore);
 });
 

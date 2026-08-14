@@ -2310,6 +2310,20 @@
 #   on), duplicate_webhook_on_replay (when
 #   expect_max_deliveries_per_logical_event exceeded).
 #
+# task: expect_no_webhook
+#   Observe the receiver associated with `triggered_by` for the full bounded
+#   window and pass only when zero deliveries match `filter`. The default
+#   `timeout_seconds` is 5. The assertion fails immediately on the first match
+#   with `unexpected_webhook_received`; it does not validate a payload schema or
+#   require an idempotency_key on the passing path because no payload exists.
+#
+#   Fields:
+#     triggered_by: <step_id>
+#     filter: { ... }             # same shape as expect_webhook
+#     timeout_seconds: 5          # optional; default 5
+#
+#   Error modes: unexpected_webhook_received.
+#
 # task: expect_webhook_retry_keys_stable
 #   The runner's webhook receiver deterministically returns 5xx for the first
 #   `retry_trigger.count` deliveries of the matching webhook, then 2xx. The
