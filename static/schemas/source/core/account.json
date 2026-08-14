@@ -36,12 +36,14 @@
       "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
       "x-entity": "operator"
     },
-    "operator_region": {
+    "operator_unit": {
+      "$ref": "/schemas/core/operator-unit.json",
+      "description": "Operator-owned business unit, agency seat, or platform account associated with this advertiser account. The id round-trips from the natural key; name is mutable display metadata. This is distinct from account_id, which belongs to the seller/storefront namespace."
+    },
+    "currency": {
       "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[a-z0-9][a-z0-9_-]*$",
-      "description": "Operator-defined business region that qualifies this account's operator identity. Omit when the operator does not split accounts regionally."
+      "pattern": "^[A-Z]{3}$",
+      "description": "Immutable transaction currency when the seller's advertiser object is currency-bound. Media buys on this account MUST use this currency. Omit when the account selects currency independently per media buy."
     },
     "billing": {
       "$ref": "/schemas/enums/billing-party.json",

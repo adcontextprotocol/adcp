@@ -5,7 +5,7 @@ description: "sync_accounts provisions buyer-declared accounts or updates settin
 testable: false
 ---
 
-Sync advertiser accounts with a seller for one or more brand/operator relationships, or update settings on existing accounts when the seller exposes that mode. Brands use `domain` plus optional `brand_id` and ISO country `market`; `operator_region` can independently identify the operator's business region.
+Sync advertiser accounts with a seller for one or more advertiser/operator relationships, or update settings on existing accounts when the seller exposes that mode. A buyer-declared account's natural key describes the advertiser object the seller should provision: a brand, the countries where that advertiser identity applies, the operator, an optional operator-owned unit, an optional fixed currency, and whether the account is a sandbox.
 
 `sync_accounts` is used across all seller protocols: media buy agents, signals agents, governance agents, and creative agents. In provisioning mode it declares the buyer's intent — the seller provisions or links accounts internally. Use provisioning mode for buyer-declared accounts (`require_operator_auth: false`) and use natural keys (`brand` + `operator`) on subsequent requests. Sellers MAY echo an `account_id` as an internal handle, but they MUST continue accepting the natural-key `AccountRef` for accounts provisioned this way. For account-id namespaces, discover seller-assigned account IDs via [`list_accounts`](/docs/accounts/tasks/list_accounts) or out-of-band onboarding; `sync_accounts` provisioning for account-id namespaces is out of scope unless a future explicit capability declares that mode. If such a seller exposes `sync_accounts` today, use only settings-update mode keyed by `account_id`.
 
@@ -95,16 +95,36 @@ asyncio.run(main())
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `brand` | object | Yes | Brand reference identifying the advertiser. Contains `domain`, optional `brand_id`, and optional ISO country `market`. See [brand-ref](/docs/brand-protocol/brand-json). |
+| `brand` | object | Yes | Brand reference identifying the advertiser. Contains `domain`, optional `brand_id`, and optional ISO 3166-1 alpha-2 `countries[]`. Countries qualify the commercial advertiser identity; they do not target delivery. See [brand-ref](/docs/brand-protocol/brand-json). |
 | `operator` | string | Yes | Domain of the entity operating on the brand's behalf (e.g. `pinnacle-media.com`). When the brand operates directly, set to the brand's domain. Verified against the brand's `authorized_operators` in brand.json. |
-| `operator_region` | string | No | Stable operator-defined business region such as `emea`. Part of the natural key; not delivery targeting. |
+| `operator_unit` | object | No | Operator-owned business unit, agency seat, or buying-platform account. `id` is the stable operator-assigned identifier and participates in the natural key; optional `name` is mutable display metadata and does not. This is not the seller's `account_id`. |
+| `currency` | string | No | Immutable ISO 4217 transaction currency when the seller's advertiser object is currency-bound. It participates in the natural key and every media buy on the account must use it. Omit it when the seller supports choosing currency per media buy. |
 | `billing` | string | Yes | Who should be invoiced: `operator`, `agent`, or `advertiser`. Check [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) for `supported_billing` to see what the seller accepts at the capability level. The seller must either accept this billing model or reject the request. Sellers MAY additionally reject a value the seller-wide capability accepts when the calling buyer agent's commercial relationship does not permit it — e.g., a buyer agent onboarded as passthrough-only (no payments relationship — only the operator can be invoiced). The two gates use distinct error codes — [`BILLING_NOT_SUPPORTED`](/docs/building/verification/compliance-catalog#error-code-billing-not-supported) for the seller-wide capability gate, [`BILLING_NOT_PERMITTED_FOR_AGENT`](/docs/building/verification/compliance-catalog#error-code-billing-not-permitted-for-agent) for the per-buyer-agent gate — so agents can dispatch on autonomous-retry vs human-onboarding without parsing prose. See [Buyer-agent identity](/docs/building/by-layer/L2/accounts-and-agents#buyer-agent-identity) and [Billing and Account Setup](/docs/building/by-layer/L3/error-handling#billing-and-account-setup). |
 | `billing_entity` | object | No | Structured business entity details for the party responsible for payment. Contains `legal_name` (required), plus optional `vat_id`, `tax_id`, `registration_number`, `address`, `contacts`, and `bank`. Bank details are write-only — included in requests but never echoed in responses. See [billing entity and invoice recipient](/docs/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient). |
 | `payment_terms` | string | No | Payment terms for this account: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. The seller must either accept these terms or reject the account — terms are never silently remapped. When omitted, the seller applies its default terms. |
 | `sandbox` | boolean | No | When true, set up a sandbox account with no real platform calls or billing. Only applicable to buyer-declared accounts (`require_operator_auth: false`). For account-id namespaces, sandbox accounts are pre-existing test accounts discovered via [`list_accounts`](/docs/accounts/tasks/list_accounts) or supplied out-of-band. |
 | `notification_configs` | array | No | Account-level webhook subscribers for events that outlive any single media buy: creative lifecycle notifications, account status changes, and wholesale feed change webhooks. Omit to leave existing subscribers unchanged; send `[]` to remove all subscribers; send a full array to replace. Entries are keyed by account-scoped `subscriber_id`; an existing `subscriber_id` is upserted, and persisted IDs absent from the sent array are removed. |
 
-**Natural key**: The tuple `(brand, operator, operator_region, sandbox)` uniquely identifies an account relationship; `brand.market` is nested within the brand portion. `{brand: {domain: "nova-athletics.example", market: "NL"}, operator: "nova-athletics.example", operator_region: "emea"}` identifies the NL brand market managed by the EMEA operator unit. Adding `sandbox: true` provisions its separate sandbox account — no real platform calls or billing.
+**Natural key**: The tuple `(brand, operator, operator_unit.id, currency, sandbox)` identifies the advertiser object in the seller system. The nested brand contains `domain`, optional `brand_id`, and optional `countries[]`. Country order has no semantic meaning; send unique uppercase codes in lexical order for stable keys and signatures. `operator_unit.name` is not identity, so renaming a seat does not create a new account.
+
+For example, the following key identifies Nova's NL/DE advertiser object, operated through Pinnacle's EMEA seat and fixed to EUR. Adding `sandbox: true` identifies a separate test account.
+
+```json
+{
+  "brand": {
+    "domain": "nova-athletics.example",
+    "countries": ["DE", "NL"]
+  },
+  "operator": "pinnacle-media.example",
+  "operator_unit": {
+    "id": "seat_emea_01",
+    "name": "EMEA"
+  },
+  "currency": "EUR"
+}
+```
+
+The natural key is the buyer-declared account reference. A numeric or opaque `account_id` is instead a seller/storefront identifier: discover it with `list_accounts` (or receive it out of band) and do not substitute an operator's buying-platform account ID into that field.
 
 ## Response
 
@@ -122,9 +142,10 @@ Returns an `accounts` array with per-account results. Individual accounts may be
 
 | Field | Description |
 |-------|-------------|
-| `brand` | Echoed from request. Object with `domain` and optional `brand_id`/`market`. |
+| `brand` | Echoed from request. Object with `domain`, optional `brand_id`, and optional `countries[]`. |
 | `operator` | Echoed from request. |
-| `operator_region` | Echoed when supplied. |
+| `operator_unit` | Echoed when supplied. `id` is stable identity; `name` is display metadata. |
+| `currency` | Fixed account currency, echoed when supplied. |
 | `name` | Seller's display name for the account. |
 | `action` | What happened: `created`, `updated`, `unchanged`, or `failed`. |
 | `status` | Current state of the account (see [Account status](#account-status)). |

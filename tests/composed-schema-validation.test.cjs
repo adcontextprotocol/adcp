@@ -3067,40 +3067,43 @@ async function runTests() {
     {
       idempotency_key: 'request-proposals-natural-account-0001',
       account: {
-        brand: { domain: 'acmeoutdoor.example', market: 'NL' },
+        brand: { domain: 'acmeoutdoor.example', countries: ['NL'] },
         operator: 'buyer.example',
-        operator_region: 'emea',
+        operator_unit: { id: '234284238', name: 'Acme EMEA' },
+        currency: 'EUR',
         sandbox: true
       },
       brief: 'Reach streaming audio listeners in Rome'
     },
-    'request_proposals accepts market and operator-region qualifiers in its natural account key'
+    'request_proposals accepts country, operator-unit, and currency qualifiers in its natural account key'
   );
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-request.json',
     {
-      idempotency_key: 'request-proposals-invalid-market-0001',
+      idempotency_key: 'request-proposals-invalid-account-key-0001',
       account: {
-        brand: { domain: 'acmeoutdoor.example', market: 'nl' },
+        brand: { domain: 'acmeoutdoor.example', countries: ['nl'] },
         operator: 'buyer.example',
-        operator_region: 'EMEA'
+        operator_unit: { id: '234284238', name: 'Acme EMEA' },
+        currency: 'eur'
       },
       brief: 'Reach streaming audio listeners in Rome'
     },
-    'request_proposals rejects non-canonical market and operator-region identifiers'
+    'request_proposals rejects non-canonical country and currency identifiers'
   );
   await testSchemaValidation(
     '/schemas/account/sync-accounts-request.json',
     {
-      idempotency_key: 'sync-accounts-regional-0001',
+      idempotency_key: 'sync-accounts-operator-unit-0001',
       accounts: [{
-        brand: { domain: 'nova-athletics.example', market: 'NL' },
+        brand: { domain: 'nova-athletics.example', countries: ['NL'] },
         operator: 'nova-athletics.example',
-        operator_region: 'emea',
+        operator_unit: { id: '234284238', name: 'Nova EMEA' },
+        currency: 'EUR',
         billing: 'operator'
       }]
     },
-    'sync_accounts provisions the same market and operator-region natural key used by compact tools'
+    'sync_accounts provisions the same advertiser natural key used by compact tools'
   );
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-request.json',

@@ -14,10 +14,15 @@
       "$ref": "/schemas/core/brand-id.json",
       "description": "Brand identifier within the house portfolio. Optional for single-brand domains."
     },
-    "market": {
-      "type": "string",
-      "pattern": "^[A-Z]{2}$",
-      "description": "ISO 3166-1 alpha-2 country market for this brand identity. Omit for a global/default identity. This qualifies account identity and is not a delivery-targeting instruction."
+    "countries": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Canonical set of ISO 3166-1 alpha-2 countries for this advertiser identity. Omit for a global/default identity. Array order is not meaningful; producers MUST sort codes lexicographically before computing keys or signatures. This qualifies account identity and is not delivery targeting."
     },
     "industries": {
       "type": "array",
@@ -84,7 +89,7 @@
     },
     {
       "domain": "nova-athletics.example",
-      "market": "NL"
+      "countries": ["NL"]
     }
   ]
 }

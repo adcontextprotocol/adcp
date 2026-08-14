@@ -15,7 +15,7 @@
   "properties": {
     "accounts": {
       "type": "array",
-      "description": "Array of accounts accessible to the authenticated agent. Each entry is the full Account object plus an optional `authorization` object describing what the calling agent is permitted to do on that account.",
+      "description": "Array of accounts accessible to the authenticated agent. Each entry is the full Account object plus optional authorization. Buyer-declared entries include brand, operator, and any operator_unit, fixed currency, and sandbox qualifiers so the natural AccountRef round-trips after a cold start.",
       "items": {
         "$ref": "/schemas/core/account-with-authorization.json"
       }
@@ -52,10 +52,16 @@
             "name": "Acme c/o Pinnacle",
             "advertiser": "Acme Corp",
             "billing_proxy": "Pinnacle Media",
-            "brand": {
-              "domain": "acme-corp.com"
-            },
-            "operator": "pinnacle-media.com",
+          "brand": {
+            "domain": "acme-corp.com",
+            "countries": ["CA", "US"]
+          },
+          "operator": "pinnacle-media.com",
+          "operator_unit": {
+            "id": "seat_north_america_01",
+            "name": "North America"
+          },
+          "currency": "USD",
             "billing": "operator",
             "account_scope": "operator_brand",
             "status": "active"

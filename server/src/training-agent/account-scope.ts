@@ -1,21 +1,32 @@
-import type { AccountRef } from './types.js';
+import type { AccountRef, OperatorUnit } from './types.js';
 
 const ACCOUNT_ID_KEYS = new Set(['account_id']);
-const NATURAL_ACCOUNT_KEYS = new Set(['brand', 'operator', 'operator_region', 'sandbox']);
+const NATURAL_ACCOUNT_KEYS = new Set(['brand', 'operator', 'operator_unit', 'currency', 'sandbox']);
+const BRAND_REF_KEYS = new Set([
+  'domain',
+  'brand_id',
+  'countries',
+  'industries',
+  'data_subject_contestation',
+  'brand_kit_override',
+]);
 const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i;
 const BRAND_ID_RE = /^[a-z0-9_]+$/;
-const MARKET_RE = /^[A-Z]{2}$/;
-const OPERATOR_REGION_RE = /^[a-z0-9][a-z0-9_-]*$/;
+const COUNTRY_RE = /^[A-Z]{2}$/;
+const CURRENCY_RE = /^[A-Z]{3}$/;
+const OPERATOR_UNIT_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 const MAX_DOMAIN_LENGTH = 253;
-const MAX_OPERATOR_REGION_LENGTH = 64;
+const MAX_OPERATOR_UNIT_ID_LENGTH = 255;
+const MAX_OPERATOR_UNIT_NAME_LENGTH = 200;
 
 export type CanonicalAccountRef =
   | { kind: 'account_id'; account_id: string }
   | {
       kind: 'natural';
-      brand: { domain: string; brand_id?: string; market?: string };
+      brand: { domain: string; brand_id?: string; countries?: string[] };
       operator: string;
-      operator_region?: string;
+      operator_unit?: OperatorUnit;
+      currency?: string;
       sandbox: boolean;
     };
 
@@ -52,7 +63,8 @@ function normalizedDomain(value: unknown, field: string): string {
  * Validate AccountRef's exact-oneOf identity and return only canonical fields.
  *
  * AccountRef is a closed union: either the sole `account_id` field, or the
- * natural `brand` + `operator` identity with optional `sandbox`. Checking
+ * natural advertiser identity with optional operator unit, fixed currency,
+ * and sandbox disposition. Checking
  * property presence (rather than truthiness) ensures mixed, incomplete, and
  * unknown shapes cannot be silently interpreted as a different account.
  */
@@ -87,6 +99,8 @@ export function canonicalizeAccountRef(value: unknown): CanonicalAccountRef {
     invalid('account must use exactly one identity: account_id or brand + operator.');
   }
   if (!isRecord(value.brand)) invalid('account.brand must be an object.');
+  const unknownBrandKey = Object.keys(value.brand).find(key => !BRAND_REF_KEYS.has(key));
+  if (unknownBrandKey) invalid(`account.brand does not allow field '${unknownBrandKey}'.`);
 
   const domain = normalizedDomain(value.brand.domain, 'account.brand.domain');
   const operator = normalizedDomain(value.operator, 'account.operator');
@@ -97,23 +111,52 @@ export function canonicalizeAccountRef(value: unknown): CanonicalAccountRef {
     }
     brandId = value.brand.brand_id;
   }
-  let market: string | undefined;
-  if (Object.prototype.hasOwnProperty.call(value.brand, 'market')) {
-    if (typeof value.brand.market !== 'string' || !MARKET_RE.test(value.brand.market)) {
-      invalid('account.brand.market must be an ISO 3166-1 alpha-2 country code.');
-    }
-    market = value.brand.market;
-  }
-  let operatorRegion: string | undefined;
-  if (Object.prototype.hasOwnProperty.call(value, 'operator_region')) {
+  let countries: string[] | undefined;
+  if (Object.prototype.hasOwnProperty.call(value.brand, 'countries')) {
     if (
-      typeof value.operator_region !== 'string'
-      || value.operator_region.length > MAX_OPERATOR_REGION_LENGTH
-      || !OPERATOR_REGION_RE.test(value.operator_region)
+      !Array.isArray(value.brand.countries)
+      || value.brand.countries.length === 0
+      || value.brand.countries.some(country => typeof country !== 'string' || !COUNTRY_RE.test(country))
+      || new Set(value.brand.countries).size !== value.brand.countries.length
     ) {
-      invalid('account.operator_region must be a lowercase operator-defined region identifier.');
+      invalid('account.brand.countries must be a non-empty unique array of ISO 3166-1 alpha-2 country codes.');
     }
-    operatorRegion = value.operator_region;
+    countries = [...value.brand.countries].sort();
+  }
+  let operatorUnit: OperatorUnit | undefined;
+  if (Object.prototype.hasOwnProperty.call(value, 'operator_unit')) {
+    if (!isRecord(value.operator_unit)) invalid('account.operator_unit must be an object.');
+    const unitKeys = Object.keys(value.operator_unit);
+    const unknownUnitKey = unitKeys.find(key => key !== 'id' && key !== 'name');
+    if (unknownUnitKey) invalid(`account.operator_unit does not allow field '${unknownUnitKey}'.`);
+    if (
+      typeof value.operator_unit.id !== 'string'
+      || value.operator_unit.id.length > MAX_OPERATOR_UNIT_ID_LENGTH
+      || !OPERATOR_UNIT_ID_RE.test(value.operator_unit.id)
+    ) {
+      invalid('account.operator_unit.id must be a stable operator-defined identifier.');
+    }
+    if (
+      value.operator_unit.name !== undefined
+      && (
+        typeof value.operator_unit.name !== 'string'
+        || value.operator_unit.name.length === 0
+        || value.operator_unit.name.length > MAX_OPERATOR_UNIT_NAME_LENGTH
+      )
+    ) {
+      invalid('account.operator_unit.name must be a non-empty string of at most 200 characters.');
+    }
+    operatorUnit = {
+      id: value.operator_unit.id,
+      ...(typeof value.operator_unit.name === 'string' && { name: value.operator_unit.name }),
+    };
+  }
+  let currency: string | undefined;
+  if (Object.prototype.hasOwnProperty.call(value, 'currency')) {
+    if (typeof value.currency !== 'string' || !CURRENCY_RE.test(value.currency)) {
+      invalid('account.currency must be an ISO 4217 currency code.');
+    }
+    currency = value.currency;
   }
   if (value.sandbox !== undefined && typeof value.sandbox !== 'boolean') {
     invalid('account.sandbox must be a boolean when provided.');
@@ -124,10 +167,11 @@ export function canonicalizeAccountRef(value: unknown): CanonicalAccountRef {
     brand: {
       domain,
       ...(brandId !== undefined && { brand_id: brandId }),
-      ...(market !== undefined && { market }),
+      ...(countries !== undefined && { countries }),
     },
     operator,
-    ...(operatorRegion !== undefined && { operator_region: operatorRegion }),
+    ...(operatorUnit !== undefined && { operator_unit: operatorUnit }),
+    ...(currency !== undefined && { currency }),
     sandbox: value.sandbox ?? false,
   };
 }
@@ -136,19 +180,11 @@ export function canonicalizeAccountRef(value: unknown): CanonicalAccountRef {
 export function accountScopeFromRef(value: AccountRef | unknown): string {
   const account = canonicalizeAccountRef(value);
   if (account.kind === 'account_id') return `a:${account.account_id}`;
-  const base = [
-    'n',
-    account.brand.domain,
-    account.brand.brand_id ?? '-',
-    account.operator,
-    account.sandbox ? '1' : '0',
-  ].join(':');
-  if (account.brand.market === undefined && account.operator_region === undefined) return base;
-  return [
-    base,
-    'm',
-    account.brand.market ?? '-',
-    'r',
-    account.operator_region ?? '-',
-  ].join(':');
+  return `n:${JSON.stringify({
+    brand: account.brand,
+    operator: account.operator,
+    operator_unit_id: account.operator_unit?.id ?? null,
+    currency: account.currency ?? null,
+    sandbox: account.sandbox,
+  })}`;
 }

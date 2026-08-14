@@ -102,6 +102,11 @@ describe('product discovery MCP schema parity', () => {
 
   it('keeps the compact lifecycle within its tools/list context budget', () => {
     const tools = productDiscoveryAliasToolDefinitions();
+    for (const tool of tools) {
+      expect(tool.inputSchema).not.toHaveProperty('$id');
+      expect(tool.inputSchema).not.toHaveProperty('title');
+      expect(tool.inputSchema).not.toHaveProperty('description');
+    }
     const totalBytes = tools.reduce(
       (sum, tool) => sum + Buffer.byteLength(JSON.stringify(tool.inputSchema)),
       0,

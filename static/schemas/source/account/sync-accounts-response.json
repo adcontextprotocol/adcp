@@ -41,6 +41,15 @@
                 "type": "string",
                 "description": "Operator domain, echoed from request"
               },
+              "operator_unit": {
+                "$ref": "/schemas/core/operator-unit.json",
+                "description": "Operator-owned business unit, agency seat, or platform account, echoed when supplied. The stable id participates in the natural key; name is mutable display metadata. This is distinct from the seller/storefront account_id."
+              },
+              "currency": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$",
+                "description": "Immutable account currency, echoed when the advertiser object is currency-bound."
+              },
               "name": {
                 "type": "string",
                 "description": "Human-readable account name assigned by the seller"
@@ -234,10 +243,16 @@
             "account_id": "acc_spark_001",
             "brand": {
               "domain": "nova-brands.com",
-              "brand_id": "spark"
+              "brand_id": "spark",
+              "countries": ["DE", "NL"]
             },
             "operator": "pinnacle-media.com",
-            "name": "Spark (via Pinnacle)",
+            "operator_unit": {
+              "id": "seat_emea_01",
+              "name": "EMEA"
+            },
+            "currency": "EUR",
+            "name": "Spark (via EMEA)",
             "action": "created",
             "status": "active",
             "billing": "operator",

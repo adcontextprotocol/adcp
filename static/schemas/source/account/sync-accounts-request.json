@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/sync-accounts-request.json",
   "title": "Sync Accounts Request",
-  "description": "Sync advertiser account state with a seller. Two modes, distinguished by the key on each per-account entry:\n\n- **Provisioning mode** (`brand` + `operator` + `billing` at the entry root): the agent declares which brands it represents, who operates on each brand's behalf, and the billing model. Optional `brand.market` and `operator_region` qualify those identities. The seller provisions or links accounts via upsert. Used when brand + operator + optional operator_region (+ sandbox) is the durable protocol key for buyer-declared accounts (`require_operator_auth: false`). Sellers MAY echo a seller-assigned account_id, but they MUST continue accepting the complete natural-key AccountRef for every account provisioned this way.\n\n- **Settings-update mode** (`account` field carrying an [`AccountRef`](/schemas/core/account-ref.json)): targets an existing account by `account_id` (or by natural key for buyer-declared accounts). The seller updates the account's settable state (notification subscriptions, payment terms, billing entity refinements) — no provisioning side effects. Used for account_id namespaces only when the seller exposes this task for account settings; the account_id itself is discovered via `list_accounts` for upstream-managed namespaces or supplied out-of-band for seller-defined namespaces. Buyer-declared account sellers MAY also accept this mode for settings updates against accounts they previously provisioned.\n\nExactly one of the two key shapes is allowed per entry. Sellers that do not implement settings-update mode MUST return `UNSUPPORTED_PROVISIONING` on entries keyed by `account.account_id`; sellers that do not provision through sync_accounts MUST return `UNSUPPORTED_PROVISIONING` on entries keyed by the natural-key fields. Account-id namespace provisioning is out of scope unless a future explicit capability declares it.",
+  "description": "Sync advertiser account state with a seller. Two modes, distinguished by the key on each per-account entry:\n\n- **Provisioning mode** (`brand` + `operator` + `billing` at the entry root): the agent declares the advertiser identity, operator, optional operator-owned buying unit, optional fixed account currency, sandbox disposition, and billing model. The seller provisions or links the corresponding advertiser object via upsert. `brand.countries`, `operator_unit.id`, `currency`, and `sandbox` participate in the buyer-declared natural key when present; `operator_unit.name` is display metadata only. The seller MAY echo a seller-assigned account_id but MUST continue accepting the complete natural-key AccountRef.\n\n- **Settings-update mode** (`account` field carrying an [`AccountRef`](/schemas/core/account-ref.json)): targets an existing account by seller/storefront `account_id` or buyer-declared natural key. The seller updates settable state without provisioning side effects.\n\nExactly one key shape is allowed per entry. Sellers that do not implement one mode return `UNSUPPORTED_PROVISIONING` for that mode.",
   "type": "object",
   "allOf": [
     {
@@ -13,7 +13,7 @@
   "properties": {
     "idempotency_key": {
       "type": "string",
-      "description": "Client-generated unique key for at-most-once execution. Natural per-account upsert keys (brand, operator, optional operator_region, sandbox) handle resource-level dedup, but the envelope triggers onboarding webhooks, billing setup, and audit events — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
+      "description": "Client-generated unique key for at-most-once execution. Natural per-account upsert keys handle resource-level dedup, but the envelope triggers onboarding webhooks, billing setup, and audit events — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
       "minLength": 16,
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
@@ -38,12 +38,14 @@
             "description": "Domain of the entity operating on the brand's behalf (e.g., 'pinnacle-media.com'). When the brand operates directly, this is the brand's domain. Verified against the brand's authorized_operators in brand.json. Required for **provisioning mode**; MUST be absent in settings-update mode.",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
           },
-          "operator_region": {
+          "operator_unit": {
+            "$ref": "/schemas/core/operator-unit.json",
+            "description": "Optional operator-owned business unit, agency seat, or platform account for provisioning mode. operator_unit.id participates in the natural key; name is mapping/display metadata. MUST be absent in settings-update mode."
+          },
+          "currency": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 64,
-            "pattern": "^[a-z0-9][a-z0-9_-]*$",
-            "description": "Optional operator-defined business region for provisioning mode. It becomes part of the natural account key. MUST be absent in settings-update mode."
+            "pattern": "^[A-Z]{3}$",
+            "description": "Optional immutable ISO 4217 transaction currency for a currency-bound advertiser object. When supplied, it participates in the natural key and all media buys on the account use it. Omit for per-media-buy currency selection. MUST be absent in settings-update mode."
           },
           "billing": {
             "$ref": "/schemas/enums/billing-party.json",
@@ -133,7 +135,14 @@
               {
                 "not": {
                   "required": [
-                    "operator_region"
+                    "operator_unit"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "currency"
                   ]
                 }
               },
@@ -182,15 +191,21 @@
       "description": "Agency syncing multiple advertisers with different billing",
       "data": {
         "idempotency_key": "a7f9c2e4-1234-4567-89ab-cdef01234567",
-        "accounts": [
-          {
-            "brand": {
-              "domain": "nova-brands.com",
-              "brand_id": "spark"
+          "accounts": [
+            {
+              "brand": {
+                "domain": "nova-brands.com",
+                "brand_id": "spark",
+                "countries": ["DE", "NL"]
+              },
+              "operator": "pinnacle-media.com",
+              "operator_unit": {
+                "id": "seat_emea_01",
+                "name": "EMEA"
+              },
+              "currency": "EUR",
+              "billing": "operator"
             },
-            "operator": "pinnacle-media.com",
-            "billing": "operator"
-          },
           {
             "brand": {
               "domain": "nova-brands.com",
