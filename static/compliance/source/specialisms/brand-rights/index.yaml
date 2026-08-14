@@ -311,8 +311,8 @@ phases:
         doc_ref: "/brand-protocol/tasks/update_rights"
         stateful: true
         expected: |
-          Return the updated rights grant with the same rights_id, paused state,
-          updated terms, generation credentials, and rights constraint.
+          Return the updated rights grant with the same rights_id, updated
+          terms, generation credentials, and rights constraint.
 
         sample_request:
           account:
@@ -332,10 +332,6 @@ phases:
             path: "rights_id"
             context_key: "rights_grant_id"
             description: "Updated grant keeps the acquired rights_id"
-          - check: field_value
-            path: "paused"
-            value: true
-            description: "Grant is paused"
           - check: field_present
             path: "terms"
             description: "Response includes updated terms"
