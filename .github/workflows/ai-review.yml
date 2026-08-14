@@ -96,4 +96,4 @@ jobs:
           app-id: ${{ secrets.SECRETARIAT_APP_ID }}
           app-private-key: ${{ secrets.SECRETARIAT_APP_PRIVATE_KEY }}
           # Optional; defaults to the review action's pinned model.
-          model: claude-opus-5
+          model: claude-opus-4-8
