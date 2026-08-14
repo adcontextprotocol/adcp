@@ -191,7 +191,8 @@ describe('relationship-scoped indicators', () => {
         idempotency: { supported: false }
       },
       account: {
-        supported_billing: ['operator']
+        supported_billing: ['operator'],
+        supported_account_currency_modes: ['fixed', 'per_media_buy']
       },
       media_buy: {
         supported_indicator_types: [
@@ -225,7 +226,10 @@ describe('relationship-scoped indicators', () => {
       status: 'completed',
       supported_protocols: ['media_buy'],
       adcp: { major_versions: [3], idempotency: { supported: false } },
-      account: { supported_billing: ['operator'] },
+      account: {
+        supported_billing: ['operator'],
+        supported_account_currency_modes: ['fixed', 'per_media_buy']
+      },
       media_buy: { supported_indicator_types: ['pacing_risk'] }
     };
     assertValid(validateCapabilities, pollOnlyCapabilities);
@@ -237,7 +241,10 @@ describe('relationship-scoped indicators', () => {
         major_versions: [3],
         idempotency: { supported: false }
       },
-      account: { supported_billing: ['operator'] },
+      account: {
+        supported_billing: ['operator'],
+        supported_account_currency_modes: ['fixed', 'per_media_buy']
+      },
       media_buy: {
         supported_indicator_types: ['creative_fatigue'],
         relationship_notifications: {
@@ -268,7 +275,10 @@ describe('relationship-scoped indicators', () => {
       status: 'completed',
       supported_protocols: ['media_buy'],
       adcp: { major_versions: [3], idempotency: { supported: false } },
-      account: { supported_billing: ['operator'] },
+      account: {
+        supported_billing: ['operator'],
+        supported_account_currency_modes: ['fixed', 'per_media_buy']
+      },
       media_buy: {
         supported_indicator_types: ['budget_constrained'],
         relationship_notifications: {
