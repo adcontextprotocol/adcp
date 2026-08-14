@@ -13545,6 +13545,49 @@ describe('proposal lifecycle', () => {
       refinements: [{ ...refineRequest.refinements[0], alternatives: { count: 2 } }],
     })).toMatchObject({ field: 'results.0.proposals' });
 
+    const unrequestedAlternativesFailure = structuredClone(refined);
+    const unrequestedAlternativesResult = (
+      unrequestedAlternativesFailure.results as Array<Record<string, unknown>>
+    )[0];
+    unrequestedAlternativesResult.outcome = 'partial';
+    unrequestedAlternativesResult.reason_code = 'alternatives_unavailable';
+    unrequestedAlternativesResult.reason = 'No alternatives were available.';
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      unrequestedAlternativesFailure,
+      refineRequest,
+    )).toMatchObject({ field: 'results.0.reason_code' });
+
+    const completeAlternativesFailure = structuredClone(uniqueAlternatives);
+    const completeAlternativesResult = (
+      completeAlternativesFailure.results as Array<Record<string, unknown>>
+    )[0];
+    completeAlternativesResult.outcome = 'partial';
+    completeAlternativesResult.reason_code = 'alternatives_unavailable';
+    completeAlternativesResult.reason = 'Both alternatives were available.';
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', completeAlternativesFailure, {
+      refinements: [{ ...refineRequest.refinements[0], alternatives: { count: 2 } }],
+    })).toMatchObject({ field: 'results.0.reason_code' });
+
+    const partialAlternatives = structuredClone(refined);
+    const partialAlternativesResult = (partialAlternatives.results as Array<Record<string, unknown>>)[0];
+    partialAlternativesResult.outcome = 'partial';
+    partialAlternativesResult.reason_code = 'alternatives_unavailable';
+    partialAlternativesResult.reason = 'Only one of two alternatives was available.';
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', partialAlternatives, {
+      refinements: [{ ...refineRequest.refinements[0], alternatives: { count: 2 } }],
+    })).toBeUndefined();
+
+    const unavailableAlternatives = structuredClone(refined);
+    const unavailableAlternativesResult = (unavailableAlternatives.results as Array<Record<string, unknown>>)[0];
+    unavailableAlternativesResult.outcome = 'unable';
+    unavailableAlternativesResult.reason_code = 'alternatives_unavailable';
+    unavailableAlternativesResult.reason = 'No alternatives were available.';
+    delete unavailableAlternativesResult.proposals;
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', unavailableAlternatives, {
+      refinements: [{ ...refineRequest.refinements[0], alternatives: { count: 2 } }],
+    })).toBeUndefined();
+
     expect(validateProductDiscoverySourceResponse('refine-proposals-response', refined, {
       refinements: [
         refineRequest.refinements[0],
@@ -13573,8 +13616,8 @@ describe('proposal lifecycle', () => {
     const excessivePartial = structuredClone(uniqueAlternatives);
     const excessivePartialResult = (excessivePartial.results as Array<Record<string, unknown>>)[0];
     excessivePartialResult.outcome = 'partial';
-    excessivePartialResult.reason_code = 'alternatives_unavailable';
-    excessivePartialResult.reason = 'Only one proposal was requested.';
+    excessivePartialResult.reason_code = 'commercially_declined';
+    excessivePartialResult.reason = 'The seller declined the requested commercial terms.';
     expect(validateProductDiscoverySourceResponse(
       'refine-proposals-response',
       excessivePartial,
@@ -13617,64 +13660,44 @@ describe('proposal lifecycle', () => {
     })).toBeUndefined();
   });
 
-  it('reports unsupported typed refinement dimensions without claiming constraint satisfaction', async () => {
+  it.each([
+    ['constraints', { constraints: { total_budget: { max: 50000, currency: 'USD' } } }, 'total_budget'],
+    ['product_changes', { product_changes: { 'social-display': 'include' } }, 'product_selection'],
+    ['alternatives', { alternatives: { count: 3 } }, 'alternatives'],
+  ] as const)('rejects the unsupported typed %s refinement before mutation', async (field, typedInput, dimension) => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: requested } = await simulateCallTool(server, 'request_proposals', {
       brand: account.brand,
       brief: 'social engagement display',
     });
     const source = (requested.proposals as Array<Record<string, unknown>>)[0];
+
+    const storedProposalIds = () => runWithSessionContext(async () => {
+      const session = await getSession(
+        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+      );
+      return (session.lastGetProductsContext?.proposals ?? []).map(proposal => proposal.proposal_id);
+    });
+    const before = await storedProposalIds();
 
     const { result: refined, isError } = await simulateCallTool(server, 'refine_proposals', {
       refinements: [{
         proposal_id: source.proposal_id,
         action: 'revise',
-        constraints: { total_budget: { max: 50000, currency: 'USD' } },
-        product_changes: { 'social-display': 'include' },
-        alternatives: { count: 3 },
+        ...typedInput,
       }],
     });
 
-    expect(isError, JSON.stringify(refined)).toBeFalsy();
+    expect(isError, JSON.stringify(refined)).toBe(true);
     expect(refined).toMatchObject({
-      results: [{
-        source_proposal_id: source.proposal_id,
-        outcome: 'partial',
-        proposals: [{ proposal_status: 'draft' }],
-        reason_code: 'unsupported_dimension',
-      }],
+      code: 'UNSUPPORTED_FEATURE',
+      field: `refinements.0.${field}`,
+      details: {
+        unsupported_dimension: dimension,
+        supported_dimensions: [],
+      },
     });
-    expect(validateProductDiscoverySourceResponse('refine-proposals-response', refined)).toBeUndefined();
-  });
-
-  it('reports a partial result when fewer alternatives are produced than requested', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    const { result: requested } = await simulateCallTool(server, 'request_proposals', {
-      brand: account.brand,
-      brief: 'social engagement display',
-    });
-    const source = (requested.proposals as Array<Record<string, unknown>>)[0];
-    const refineRequest = {
-      refinements: [{
-        proposal_id: source.proposal_id,
-        action: 'revise',
-        alternatives: { count: 3 },
-      }],
-    };
-
-    const { result: refined, isError } = await simulateCallTool(server, 'refine_proposals', refineRequest);
-
-    expect(isError, JSON.stringify(refined)).toBeFalsy();
-    expect(refined).toMatchObject({
-      results: [{
-        source_proposal_id: source.proposal_id,
-        outcome: 'partial',
-        proposals: [{ proposal_status: 'draft' }],
-        reason_code: 'alternatives_unavailable',
-        reason: 'The training agent produced 1 of 3 requested alternatives.',
-      }],
-    });
-    expect(validateProductDiscoverySourceResponse('refine-proposals-response', refined, refineRequest)).toBeUndefined();
+    expect(await storedProposalIds()).toEqual(before);
   });
 
   it('rejects inverted hard budget ranges through shared source semantics', () => {

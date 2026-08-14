@@ -12538,6 +12538,31 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         flushable: true,
       };
     }
+
+    if (name === 'refine_proposals' && Array.isArray(initialHandlerArgs.refinements)) {
+      const typedDimensions = [
+        { field: 'constraints', dimension: 'total_budget' },
+        { field: 'product_changes', dimension: 'product_selection' },
+        { field: 'alternatives', dimension: 'alternatives' },
+      ] as const;
+      for (const [index, refinement] of initialHandlerArgs.refinements.entries()) {
+        if (!isRecord(refinement)) continue;
+        const unsupported = typedDimensions.find(({ field }) => refinement[field] !== undefined);
+        if (!unsupported) continue;
+        return {
+          result: adcpError('UNSUPPORTED_FEATURE', {
+            message: `The training seller does not support the ${unsupported.dimension} typed proposal-refinement dimension.`,
+            field: `refinements.${index}.${unsupported.field}`,
+            details: {
+              unsupported_dimension: unsupported.dimension,
+              supported_dimensions: [],
+            },
+            recovery: 'correctable',
+          }, callerContext, servedAdcpVersion),
+          flushable: true,
+        };
+      }
+    }
     const normalizedHandlerArgs = normalizeProductDiscoveryArgs(name, initialHandlerArgs);
 
     // Check for task-augmented request (explicit `task` field in params).

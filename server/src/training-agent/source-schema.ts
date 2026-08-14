@@ -342,9 +342,21 @@ export function validateProductDiscoverySourceResponse(
           }
         }
       }
-      if (!Array.isArray(result.proposals)) continue;
       const alternatives = isRecord(requested.alternatives) ? requested.alternatives : undefined;
-      const expectedCount = alternatives && typeof alternatives.count === 'number' ? alternatives.count : 1;
+      const requestedAlternativeCount = alternatives && typeof alternatives.count === 'number'
+        ? alternatives.count
+        : undefined;
+      if (result.reason_code === 'alternatives_unavailable') {
+        const returnedProposalCount = Array.isArray(result.proposals) ? result.proposals.length : 0;
+        if (requestedAlternativeCount === undefined || returnedProposalCount >= requestedAlternativeCount) {
+          return {
+            message: 'Invalid refine_proposals_response: alternatives_unavailable requires fewer proposals than requested',
+            field: `results.${resultIndex}.reason_code`,
+          };
+        }
+      }
+      if (!Array.isArray(result.proposals)) continue;
+      const expectedCount = requestedAlternativeCount ?? 1;
       const invalidCount = result.outcome === 'revised'
         ? result.proposals.length !== expectedCount
         : result.outcome === 'partial' && result.proposals.length > expectedCount;
