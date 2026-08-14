@@ -38,6 +38,15 @@
       ],
       "description": "Filter by status. Can be a single status or array of statuses. Defaults to [\"active\"] when media_buy_ids is omitted. When media_buy_ids is provided, no implicit status filter is applied."
     },
+    "indicator_types": {
+      "type": "array",
+      "description": "Return media buys with at least one matching current indicator on the media buy, a package, or a package–creative assignment. Values within this field use OR logic; this field composes with status_filter using AND logic. Buyers MUST NOT send this filter unless the seller advertises every requested type in get_adcp_capabilities.media_buy.supported_indicator_types. A seller MAY reject a request that violates this precondition with UNSUPPORTED_FEATURE rather than silently returning an unfiltered superset.",
+      "items": {
+        "$ref": "/schemas/enums/indicator-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "include_snapshot": {
       "type": "boolean",
       "description": "When true, include a near-real-time delivery snapshot for each package. Snapshots reflect the latest available entity-level stats from the platform (e.g., updated every ~15 minutes on GAM, ~1 hour on batch-only platforms). The staleness_seconds field on each snapshot indicates data freshness. If a snapshot cannot be returned, package.snapshot_unavailable_reason explains why. Defaults to false.",

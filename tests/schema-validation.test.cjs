@@ -764,7 +764,7 @@ async function runTests() {
     return true;
   });
 
-  await test('list_creatives accepts exactly one legacy or canonical creative identity', async () => {
+  await test('list_creatives projections preserve required metadata and exactly one format identity', async () => {
     const responseSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'creative/list-creatives-response.json'));
     const testAjv = new Ajv({
       allErrors: true,
@@ -808,6 +808,14 @@ async function runTests() {
       if (validate({ ...baseResponse, creatives: [{ ...creative, ...identity }] })) {
         return 'creative identity must contain exactly one of format_id or format_kind';
       }
+    }
+
+    const { status, ...missingStatus } = creative;
+    if (validate({
+      ...baseResponse,
+      creatives: [{ ...missingStatus, ...canonicalIdentity }]
+    })) {
+      return 'projected creative must retain the released required metadata fields';
     }
 
     return true;

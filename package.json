@@ -103,6 +103,7 @@
     "test:patch-3-0-compat-bundle": "node --test --test-force-exit --test-timeout=30000 tests/patch-3-0-compat-bundle.test.cjs",
     "test:error-codes": "node scripts/lint-error-codes.cjs",
     "test:error-code-drift": "node scripts/lint-error-code-drift.cjs",
+    "test:language-tag-refs": "node --test --test-force-exit --test-timeout=30000 tests/lint-language-tag-refs.test.cjs && node scripts/lint-language-tag-refs.cjs",
     "test:compliance-snippets": "node --test --test-force-exit --test-timeout=30000 tests/generate-compliance-snippets.node.mjs tests/link-compliance-symbols.node.mjs && npm run build:compliance -- --check",
     "test:doc-compliance-drift": "node --test --test-force-exit --test-timeout=30000 tests/lint-doc-compliance-drift.test.cjs",
     "test:substitution-vector-names": "node scripts/lint-substitution-vector-names.cjs",
@@ -154,7 +155,7 @@
     "docs:json-field-audit": "node scripts/docs-json-field-audit.cjs"
   },
   "dependencies": {
-    "@adcp/sdk": "13.0.0-rc.17",
+    "@adcp/sdk": "13.0.0-rc.18",
     "@anthropic-ai/sdk": "^0.115.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.8.3",

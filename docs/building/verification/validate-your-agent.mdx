@@ -112,16 +112,16 @@ Add `--json` for structured output.
 
 ### Select a compliance cache and test kit
 
-`--compliance-version` selects a cache bundled with the SDK. For an extracted cache, pass its versioned directory to `--compliance-dir`; `--test-kit` takes a YAML file from the `test-kits/` directory below that same cache root. After extracting the `@adcp/sdk` 13.0.0-rc.17 npm tarball in the current directory, use its versioned cache root like this:
+`--compliance-version` selects a cache bundled with the SDK. For an extracted cache, pass its versioned directory to `--compliance-dir`; `--test-kit` takes a YAML file from the `test-kits/` directory below that same cache root. After extracting the `@adcp/sdk` 13.0.0-rc.18 npm tarball in the current directory, use its versioned cache root like this:
 
 ```bash
-npx @adcp/sdk@13.0.0-rc.17 storyboard run my-agent \
+npx @adcp/sdk@13.0.0-rc.18 storyboard run my-agent \
   --compliance-dir ./package/compliance/cache/3.1.13 \
   --test-kit ./package/compliance/cache/3.1.13/test-kits/acme-outdoor.yaml
 ```
 
 <Note>
-`@adcp/sdk` 13.0.0-rc.17 infers the compliance line from test-kit metadata and rejects mixed or ambiguous `--test-kit`, `--compliance-version`, and `--compliance-dir` selections before contacting the agent. Keep the test kit and storyboard files under the same versioned cache root.
+`@adcp/sdk` 13.0.0-rc.18 infers the compliance line from test-kit metadata and rejects mixed or ambiguous `--test-kit`, `--compliance-version`, and `--compliance-dir` selections before contacting the agent. Keep the test kit and storyboard files under the same versioned cache root.
 </Note>
 
 The storyboard runner operates in two modes depending on whether your agent implements the optional [compliance test controller](/docs/building/by-layer/L3/comply-test-controller):

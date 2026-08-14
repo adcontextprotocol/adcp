@@ -46,7 +46,7 @@
     "status": "temporary",
     "owner": "training-agent",
     "upstream": "adcontextprotocol/adcp-client#2495, adcontextprotocol/adcp-client#2527",
-    "problem": "The rc.17 storyboard task map forces get_products onto a legacy-only wire, and scoped transports discover capabilities without carrying them into request adaptation. The latter makes 3.1 sellers look pre-3.1 and strips filters.pricing_currencies.",
+    "problem": "The rc.18 storyboard task map forces get_products onto a legacy-only wire, and scoped transports discover capabilities without carrying them into request adaptation. The latter makes 3.1 sellers look pre-3.1 and strips filters.pricing_currencies.",
     "localBehavior": "Patch both compiled SDK module formats after installation so the storyboard runner leaves get_products wire selection unspecified and request-local capabilities drive version adaptation without cross-tenant caching.",
     "removalCondition": "Remove the patch script, Docker invocations, and ledger entry after an SDK release fixes storyboard get_products routing and carries scoped capabilities into request adaptation, and both current and released-3.0 storyboard matrices pass without the patch.",
     "paths": [

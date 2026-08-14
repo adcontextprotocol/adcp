@@ -582,6 +582,34 @@
           "$ref": "/schemas/core/account-status-changed-webhook.json",
           "description": "Account-level webhook payload that invalidates a list_accounts account status snapshot"
         },
+        "indicator": {
+          "$ref": "/schemas/core/indicator.json",
+          "description": "Compact durable seller interpretation attached to an authoritative resource snapshot"
+        },
+        "creative-approval-scope": {
+          "$ref": "/schemas/core/creative-approval-scope.json",
+          "description": "Publisher- or placement-scoped creative approval outcome within an assignment"
+        },
+        "indicator-bearing": {
+          "$ref": "/schemas/core/indicator-bearing.json",
+          "description": "Reusable indicator snapshot fields, exact evaluated-type coverage, freshness, and optional scope coverage"
+        },
+        "indicator-scope": {
+          "$ref": "/schemas/core/indicator-scope.json",
+          "description": "Publisher and placement scope for an indicator assertion or evaluation"
+        },
+        "indicators-changed-webhook": {
+          "$ref": "/schemas/core/indicators-changed-webhook.json",
+          "description": "Account-level invalidation payload for a semantic indicator snapshot change"
+        },
+        "warning": {
+          "$ref": "/schemas/core/warning.json",
+          "description": "Structured non-blocking receipt returned only on synchronous mutation success"
+        },
+        "warning-resource": {
+          "$ref": "/schemas/core/warning-resource.json",
+          "description": "Typed identity of the resource affected by an operation warning"
+        },
         "destination": {
           "$ref": "/schemas/core/destination.json",
           "description": "A destination platform where signals can be activated (DSP, sales agent, etc.)"
@@ -1108,6 +1136,14 @@
         "notification-type": {
           "$ref": "/schemas/enums/notification-type.json",
           "description": "Shared notification registry for delivery, impairment, lifecycle, wholesale-feed, and capability-change events"
+        },
+        "indicator-type": {
+          "$ref": "/schemas/enums/indicator-type.json",
+          "description": "Closed AdCP 3.2 vocabulary for durable media-buy and creative-assignment indicators"
+        },
+        "warning-code": {
+          "$ref": "/schemas/enums/warning-code.json",
+          "description": "Closed AdCP 3.2 vocabulary for synchronous operation warnings"
         },
         "reporting-frequency": {
           "$ref": "/schemas/enums/reporting-frequency.json",
@@ -1703,6 +1739,12 @@
             "$ref": "/schemas/creative/validate-input-response.json",
             "description": "Response payload for validate_input task with per-target validation results"
           }
+        }
+      },
+      "webhooks": {
+        "creative-assignment-changed": {
+          "$ref": "/schemas/creative/creative-assignment-changed-webhook.json",
+          "description": "Account-level invalidation payload for creative assignment membership or approval changes"
         }
       },
       "asset_types": {

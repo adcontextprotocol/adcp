@@ -19,11 +19,13 @@
     },
     "event_types": {
       "type": "array",
-      "description": "Account-anchored notification types this subscriber wishes to receive on the registered `url`. The seller MUST NOT fire other types against this endpoint, and MUST NOT silently widen the filter when new account-anchored types are added. Creative lifecycle events, account status changes, and wholesale feed change payloads are valid here; media-buy-anchored types (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`) and agent-anchored types (`capabilities.changed`) are schema-invalid on this surface and sellers MUST reject those entries as per-account validation failures with `INVALID_REQUEST` or `VALIDATION_ERROR` and `error.field` pointing at the invalid `event_types` entry rather than silently dropping them.",
+      "description": "Account-anchored notification types this subscriber wishes to receive on the registered `url`. The seller MUST NOT fire other types against this endpoint, and MUST NOT silently widen the filter when new account-anchored types are added. Creative lifecycle, assignment, indicator, account status, and wholesale feed events are valid here; media-buy-anchored types (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`) and agent-anchored types (`capabilities.changed`) are schema-invalid on this surface and sellers MUST reject those entries as per-account validation failures with `INVALID_REQUEST` or `VALIDATION_ERROR` and `error.field` pointing at the invalid `event_types` entry rather than silently dropping them.",
       "items": {
         "type": "string",
         "enum": [
           "creative.status_changed",
+          "creative.assignment_changed",
+          "indicators.changed",
           "creative.purged",
           "account.status_changed",
           "product.created",

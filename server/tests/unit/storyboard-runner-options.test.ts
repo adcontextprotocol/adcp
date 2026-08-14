@@ -134,6 +134,22 @@ describe('storyboard runner option helpers', () => {
     });
   });
 
+  it('uses an SDK-allowlisted governance probe without required inputs', () => {
+    const kit: LoadedTestKit = {
+      auth: {
+        api_key: 'kit-api-key',
+        probe_task: 'list_creatives',
+      },
+    };
+
+    expect(testKitOptionsFromKit(kit, 'governance')).toEqual({
+      auth: {
+        api_key: 'kit-api-key',
+        probe_task: 'list_content_standards',
+      },
+    });
+  });
+
   it('requires probe_task when a test kit declares auth credentials', () => {
     const kit: LoadedTestKit = { auth: { api_key: 'kit-api-key' } };
 

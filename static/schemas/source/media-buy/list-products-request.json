@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/list-products-request.json",
   "title": "List Products Request",
-  "description": "Read seller offers synchronously using structured criteria. Product-feed webhooks registered through sync_accounts keep buyer mirrors current; use list_products to bootstrap or repair a mirror, not to poll it. Use request_proposals for proposals.",
+  "description": "Read seller offers with structured discovery criteria. Each invocation completes synchronously, while durable wholesale product-feed webhooks registered through sync_accounts keep buyer mirrors current without polling. list_products is the authoritative bootstrap and repair read for those subscriptions; proposal creation is handled by request_proposals.",
   "type": "object",
   "x-operation-family": "list_products",
   "x-added-in": "3.2.0",
@@ -26,7 +26,7 @@
     "push_notification_config": {
       "allOf": [{ "$ref": "/schemas/core/push-notification-config.json" }],
       "x-adcp-schema-uri": "/schemas/core/push-notification-config.json",
-      "description": "Per-call SDK envelope field. Register durable product.* and wholesale_feed.bulk_change subscriptions through sync_accounts notification_configs."
+      "description": "Uniform per-call envelope field accepted for SDK compatibility. This does not register a wholesale feed subscription; durable product.* and wholesale_feed.bulk_change subscribers are registered through sync_accounts notification_configs."
     },
     "account": {
       "allOf": [{ "$ref": "/schemas/core/canonical-account-ref.json" }],
@@ -39,7 +39,7 @@
     "max_results": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 },
     "if_feed_version": {
       "type": "string",
-      "description": "Feed version from list_products or its webhooks for the same cache scope and selection. Use for repair and conditional reconciliation, not webhook-backed polling."
+      "description": "Opaque feed version returned by a prior list_products response or wholesale product-feed webhook for the same cache scope and canonicalized selection. Used for repair and conditional reconciliation, not routine polling when webhooks are active."
     },
     "if_pricing_version": {
       "type": "string",
