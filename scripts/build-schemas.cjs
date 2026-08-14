@@ -2309,7 +2309,7 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
       manifestPath,
       urlVersion,
       schemaUrlPrefix: `${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}/profiles/${profileName}/model-context`,
-      annotationMode: 'structural',
+      annotationMode: 'model-context',
       schemaFields: ['inputSchema'],
       toolFilter: (toolName, tool) => selectedTools.has(toolName) && isActiveProductionTool(tool),
       manifestMetadata: {

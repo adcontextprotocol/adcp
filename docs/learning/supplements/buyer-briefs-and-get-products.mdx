@@ -1,7 +1,7 @@
 ---
 title: "Buyer briefs and get_products request shape"
 sidebarTitle: "Buyer briefs"
-description: "How buyer agents decide what belongs in the get_products brief string, structured filters, and follow-up refinement requests."
+description: "How buyer agents decompose campaign intent into get_products briefs, product filters, targeting overlays, future targeting support, and refinements."
 "og:title": "AdCP - Buyer briefs and get_products request shape"
 ---
 
@@ -11,12 +11,21 @@ This supplement prepares buyer-side implementers to turn a human campaign reques
 
 The goal is not to make the brief verbose. The goal is to put intent in the brief and hard constraints in typed fields so the seller can curate inventory without guessing which parts are negotiable.
 
+<Note>
+This module teaches the AdCP 3.2 targeting-aware discovery contract. Use it
+against sellers and SDKs that declare 3.2 support. The public training-agent lab
+will enable these calls after the 3.2 beta SDK release; implementation is
+tracked in [issue #6199](https://github.com/adcontextprotocol/adcp/issues/6199).
+</Note>
+
 ## Mental model
 
 | Input | Use it for | Avoid putting here |
 |---|---|---|
-| `brief` | Buyer intent, audience language, context, tone, business goal, and success definition | Machine-enforceable constraints that already have typed fields |
-| `filters` | Hard constraints that should silently exclude non-matching products | Soft preferences that a seller could satisfy through curation |
+| `brief` | Buyer intent, semantic audience language, context, tone, business goal, and requirements without a typed representation | Constraints that already have structured fields |
+| `filters` | Hard offer filters—metadata, dates, budget, availability, commercial fit, and reporting capabilities—that exclude non-matching products | Delivery targeting or soft preferences |
+| `targeting_overlay` | Exact delivery constraints known now; availability, pricing, and forecasts must account for them | Product characteristics or values the buyer has not chosen yet |
+| `required_overlay_support` | Targeting dimensions whose values will be selected independently on packages later | Current targeting values or a request for one product per value |
 | `brand` | The buyer brand identity the seller uses for eligibility, safety, and fit | A second copy of the campaign brief |
 | `catalog` | Commerce or product-set context when the campaign is catalog-driven | General brand positioning |
 | `refine` | Specific changes to a prior discovery response | New unrelated discovery goals |
@@ -47,11 +56,13 @@ Example:
 ## What goes in filters
 
 Use filters when a product that fails the condition should not come back.
+That exclusion rule is identical in `brief`, `wholesale`, and `refine`; the
+mode changes how the seller curates and versions the result, not whether a
+valid filter applies.
 
 Good filter candidates:
 
 - required channels or formats
-- required geo targeting support
 - required measurement or reporting capabilities
 - pricing currency constraints
 - budget ranges
@@ -78,6 +89,44 @@ Example:
 
 If the buyer says "ideally CTV, but display is okay," keep that preference in the brief. If they say "CTV only," use `filters.channels`.
 
+## What goes in targeting
+
+Use `targeting_overlay` for exact delivery constraints the buyer knows now:
+
+```json
+{
+  "targeting_overlay": {
+    "geo_countries": ["US"],
+    "demographics": {
+      "age": { "min": 25, "max": 44, "include_unknown": false }
+    }
+  }
+}
+```
+
+Use `required_overlay_support` when the dimension is mandatory but its values
+will be chosen later:
+
+```json
+{
+  "required_overlay_support": {
+    "geo_metros": { "systems": ["nielsen_dma"] },
+    "placement_selection": true
+  }
+}
+```
+
+This does not ask for products broken out by DMA or placement. It asks for
+products on which packages can select those values later.
+
+Hard prose targeting remains binding. If an exact constraint appears only in prose, the
+seller must infer its wire meaning. Prefer the structured field. When that
+structured interpretation materially affects eligibility, pricing, or
+forecasting, the seller must return response-level
+`targeting_resolution.brief_targeting`; inspect it before purchase. Also inspect sparse
+`targeting_resolution.modifications`; selecting that configured `product_id`
+accepts the disclosed differences.
+
 ## Brief vs. refine
 
 Use `buying_mode: "refine"` when the buyer is reacting to a previous discovery response. A refine request should point at what changed: remove a product, adjust budget, request more premium placements, narrow geography, or ask for alternatives.
@@ -86,9 +135,13 @@ Do not send a totally new campaign in `refine`; start a new `brief` request inst
 
 ## Implementation checklist
 
+- Read `get_adcp_capabilities.adcp.supported_versions`, pin a compatible 3.2 release in `adcp_version`, and validate the echoed served release before using targeting-aware discovery.
+- If release precision is absent, major-only, or 3.1-or-earlier, omit the 3.2 fields and fall back to retained legacy targeting filters or explicit brief prose; unknown fields may otherwise be silently ignored.
 - Normalize the human request into intent, hard constraints, and follow-up changes before calling the seller.
 - Preserve the buyer's business language in `brief`; do not collapse it into only keywords.
-- Put typed constraints in `filters` so sellers can explain exclusions through `filter_diagnostics`.
+- Put product characteristics in `filters` and exact delivery constraints in `targeting_overlay`.
+- Use `required_overlay_support` only for dimensions whose values will be supplied later.
+- Inspect every returned `targeting_resolution`; silence confirms an unchanged structured overlay, not prose interpretation.
 - Keep `brief` out of `wholesale` mode.
 - Persist the request tuple with the response so later `refine` calls and `wholesale_feed_version` comparisons are scoped correctly.
 
@@ -96,10 +149,12 @@ Do not send a totally new campaign in `refine`; start a new `brief` request inst
 
 A buyer says:
 
-> We need a six-week launch for Acme Meals' new family dinner kits. We want CTV or online video, only USD pricing, something suitable for parents with kids, and we need completion-rate reporting.
+> We need a six-week US launch for Acme Meals' new family dinner kits. We want CTV or online video, only USD pricing, something suitable for parents with kids, ages 25–44, and we need completion-rate reporting. We will choose DMAs after planning.
 
 Expected decomposition:
 
 - Brief: family dinner kit launch, parent audience, suitable contexts, six-week launch.
 - Filters: video-capable channel/format constraints, USD pricing, completion-rate reporting.
+- Targeting overlay: US and ages 25–44.
+- Required overlay support: Nielsen DMA selection later.
 - Brand: Acme Meals domain or BrandRef.

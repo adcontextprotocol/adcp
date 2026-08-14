@@ -44,6 +44,10 @@
             "type": "array",
             "items": { "type": "string", "minLength": 1 },
             "minItems": 1
+          },
+          "targeting_resolution": {
+            "$ref": "/schemas/media-buy/get-products-targeting-resolution.json",
+            "description": "Confirmation of structured targeting interpreted from this refinement's explicit hard prose instructions. Required when that interpretation materially affects the revised proposal's eligibility, pricing, or forecast; otherwise a best practice."
           }
         },
         "required": ["source_proposal_id", "outcome"],

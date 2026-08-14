@@ -31,6 +31,7 @@ const {
   measureSchema,
   projectDraft07Node,
   stripPresentationAnnotations,
+  stripModelContextAnnotations,
 } = require('../scripts/mcp-schema-projection.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -39,7 +40,11 @@ const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
 const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
-const PARITY_COMPILE_LIMIT = 1_000_000;
+// Keep parity compilation materially tighter than the 4 MiB protocol schema
+// bound while allowing example-bearing schemas to carry the complete Product
+// targeting contract. The test below still compiles both dialects and executes
+// every collected storyboard fixture.
+const PARITY_COMPILE_LIMIT = 1_250_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -163,6 +168,39 @@ test('structural presentation mode removes only schema annotations', () => {
       },
     },
   });
+});
+
+test('model-context presentation keeps request shape and omits validation-only detail', () => {
+  const projected = stripModelContextAnnotations({
+    title: 'Prompt fixture',
+    type: 'object',
+    properties: {
+      destination: {
+        type: 'string',
+        format: 'uri',
+        pattern: '^https://',
+        minLength: 1,
+        description: 'A destination URI.',
+        'x-adcp-validation': { verifier: 'uri' },
+      },
+      mode: { type: 'string', enum: ['direct', 'proposal'] },
+    },
+    required: ['destination'],
+    oneOf: [
+      { required: ['mode'] },
+      { not: { required: ['mode'] } },
+    ],
+  });
+
+  assert.equal(projected.title, undefined);
+  assert.equal(projected.properties.destination.description, undefined);
+  assert.equal(projected.properties.destination.format, undefined);
+  assert.equal(projected.properties.destination.pattern, undefined);
+  assert.equal(projected.properties.destination.minLength, undefined);
+  assert.equal(projected.properties.destination['x-adcp-validation'], undefined);
+  assert.deepEqual(projected.required, ['destination']);
+  assert.deepEqual(projected.properties.mode.enum, ['direct', 'proposal']);
+  assert.equal(projected.oneOf[1].not.required[0], 'mode');
 });
 
 test('draft-07 projection converts dialect-specific keywords without tightening', () => {
@@ -789,6 +827,7 @@ test('generated role profiles are active validation catalogs with bounded model-
 
     assert.equal(modelContext.profile, profileName);
     assert.equal(modelContext.view, 'client-prompt-inputs');
+    assert.equal(modelContext.annotation_mode, 'model-context');
     assert.equal(modelContext.validation_profile, '../manifest.json');
     assert.equal(
       path.resolve(modelContextDir, modelContext.validation_profile),

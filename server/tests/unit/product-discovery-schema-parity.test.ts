@@ -111,13 +111,31 @@ describe('product discovery MCP schema parity', () => {
       (sum, tool) => sum + Buffer.byteLength(JSON.stringify(tool.inputSchema)),
       0,
     );
-    expect(totalBytes).toBeLessThanOrEqual(40 * 1024);
+    // Structured targeting is intentionally present on listing, proposal, and
+    // revision requests. Standalone MCP schemas must bundle those refs, so
+    // retain strict validation while keeping the four-tool surface under 128 KiB.
+    expect(totalBytes).toBeLessThanOrEqual(128 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);
     expect(criteria.properties.offer_filters).toBeDefined();
-    expect(criteria.properties).not.toHaveProperty('targeting_overlay');
-    expect(criteria.properties).not.toHaveProperty('required_overlay_support');
+    expect(criteria.properties.targeting_overlay).toBeDefined();
+    expect(criteria.properties.required_overlay_support).toBeDefined();
+
+    const request = tools.find(tool => tool.name === 'request_proposals')!.inputSchema as JsonSchema;
+    const requestCriteria = resolveLocalRef(request, request.properties.criteria);
+    expect(requestCriteria.properties.targeting_overlay).toBeDefined();
+    expect(requestCriteria.properties.required_overlay_support).toBeDefined();
+
+    const refineTool = tools.find(tool => tool.name === 'refine_proposals')!.inputSchema as JsonSchema;
+    const refinement = resolveLocalRef(refineTool, refineTool.properties.refinements.items);
+    expect(refinement.properties.criteria).toBeDefined();
+    expect(refinement.oneOf).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        properties: { action: expect.objectContaining({ const: 'revise' }) },
+        anyOf: [{ required: ['instructions'] }, { required: ['criteria'] }],
+      }),
+    ]));
   });
 
   it('enforces URI formats from the normative source schema at dispatch', () => {

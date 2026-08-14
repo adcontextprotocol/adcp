@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/proposal-refinement.json",
   "title": "Proposal Refinement",
-  "description": "Fork an immutable proposal or finalize a draft into a held committed snapshot. Refining an accepted proposal creates a draft amendment or cancellation proposal against its MediaBuy; the source remains accepted and unchanged.",
+  "description": "Fork an immutable proposal or finalize a draft into a held committed snapshot. Revising with structured criteria and/or semantic instructions creates a new draft; finalizing changes no terms. Refining an accepted proposal creates a draft amendment or cancellation proposal against its MediaBuy; the source remains accepted and unchanged.",
   "type": "object",
   "properties": {
     "proposal_id": {
@@ -24,7 +24,11 @@
     "instructions": {
       "type": "string",
       "minLength": 1,
-      "description": "Requested commercial changes or cancellation reason for action revise. The seller returns a new draft proposal snapshot; this text never directly mutates the source proposal or MediaBuy."
+      "description": "Semantic commercial changes or a cancellation reason for action revise when no structured field represents the request. The seller returns a new draft proposal snapshot; this text never directly mutates the source proposal or MediaBuy."
+    },
+    "criteria": {
+      "$ref": "/schemas/media-buy/product-discovery-criteria.json",
+      "description": "Structured changes for action revise. Each present field replaces that criterion from the source proposal; omitted fields inherit. Concrete targeting, future targeting support, and offer filters belong here rather than being repeated in instructions."
     }
   },
   "required": ["proposal_id"],
@@ -35,13 +39,18 @@
       "not": {
         "anyOf": [
           { "required": ["change_kind"] },
-          { "required": ["instructions"] }
+          { "required": ["instructions"] },
+          { "required": ["criteria"] }
         ]
       }
     },
     {
       "properties": { "action": { "type": "string", "const": "revise" } },
-      "required": ["action", "instructions"]
+      "required": ["action"],
+      "anyOf": [
+        { "required": ["instructions"] },
+        { "required": ["criteria"] }
+      ]
     }
   ],
   "additionalProperties": false

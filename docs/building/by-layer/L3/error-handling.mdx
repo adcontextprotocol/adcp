@@ -491,7 +491,8 @@ The wire-level `recovery: "correctable"` on the sandbox-only path is the registe
 
 | Code | Recovery | Description | Resolution |
 |------|----------|-------------|------------|
-| `PRODUCT_NOT_FOUND` | correctable | Referenced product IDs are unknown or expired | Remove invalid IDs, or re-discover with [`get_products`](/docs/media-buy/task-reference/get_products) |
+| [`PRODUCT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-product-not-found) | correctable | Referenced product IDs are unknown | Remove invalid IDs, or re-discover with [`get_products`](/docs/media-buy/task-reference/get_products) |
+| [`PRODUCT_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-product-expired) | correctable | Referenced configured products passed `expires_at` and remain recognizable to the seller | Re-discover with [`get_products`](/docs/media-buy/task-reference/get_products) |
 | [`PRODUCT_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-product-unavailable) | correctable | Product is sold out or no longer available | Choose a different product |
 | [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired) | correctable | Referenced proposal has passed its `expires_at` | Call [`request_proposals`](/docs/media-buy/task-reference/request_proposals), then finalize a fresh proposal |
 | `PROPOSAL_NOT_FOUND` | correctable | `proposal_id` is unknown to the seller (never issued, wrong tenant, or evicted from cache) | Request and finalize a fresh proposal, then retry |

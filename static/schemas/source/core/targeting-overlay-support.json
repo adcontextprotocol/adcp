@@ -1,0 +1,169 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-overlay-support.json",
+  "title": "Targeting Overlay Support",
+  "description": "Product-scoped package targeting dimensions that may be supplied or changed after discovery. This is the seller response shape and may disclose seller limits such as max_values_per_package and max_packages. Product.overlay_support is the binding selectable-targeting contract: the seller can apply protocol-valid values subject to the disclosed limits, but does not guarantee inventory or a forecast for every possible value. Inherent product coverage alone does not satisfy a future-support requirement. Buyer minimums use targeting-overlay-requirements.json. A requirement value of true matches true or any valid support object; an object requirement matches true or a containing support object. Every valid structured support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Unrequested object fields and numeric seller limits do not participate in matching.",
+  "type": "object",
+  "definitions": {
+    "supported": {
+      "type": "boolean",
+      "const": true
+    },
+    "metroSupport": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/supported"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "systems": {
+              "type": "array",
+              "items": {
+                "$ref": "/schemas/enums/metro-system.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "max_values_per_package": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_packages": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Optional maximum number of independently targeted packages the seller will create from this configured product."
+            },
+            "ext": {
+              "$ref": "/schemas/core/ext.json"
+            }
+          },
+          "required": ["systems"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "keywordSupport": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/supported"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "supported_match_types": {
+              "type": "array",
+              "items": {
+                "$ref": "/schemas/enums/match-type.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "ext": {
+              "$ref": "/schemas/core/ext.json"
+            }
+          },
+          "required": ["supported_match_types"],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "properties": {
+    "geo_countries": { "$ref": "#/definitions/supported" },
+    "geo_countries_exclude": { "$ref": "#/definitions/supported" },
+    "geo_regions": { "$ref": "#/definitions/supported" },
+    "geo_regions_exclude": { "$ref": "#/definitions/supported" },
+    "geo_metros": { "$ref": "#/definitions/metroSupport" },
+    "geo_metros_exclude": { "$ref": "#/definitions/metroSupport" },
+    "geo_postal_areas": {
+      "anyOf": [
+        { "$ref": "#/definitions/supported" },
+        { "$ref": "/schemas/core/positive-postal-area-support.json" }
+      ]
+    },
+    "geo_postal_areas_exclude": {
+      "anyOf": [
+        { "$ref": "#/definitions/supported" },
+        { "$ref": "/schemas/core/positive-postal-area-support.json" }
+      ]
+    },
+    "geo_proximity": {
+      "anyOf": [
+        { "$ref": "#/definitions/supported" },
+        {
+          "type": "object",
+          "properties": {
+            "radius": { "$ref": "#/definitions/supported" },
+            "travel_time": { "$ref": "#/definitions/supported" },
+            "geometry": { "$ref": "#/definitions/supported" },
+            "transport_modes": {
+              "type": "array",
+              "items": { "$ref": "/schemas/enums/transport-mode.json" },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "ext": { "$ref": "/schemas/core/ext.json" }
+          },
+          "anyOf": [
+            { "required": ["radius"] },
+            { "required": ["travel_time"] },
+            { "required": ["geometry"] },
+            { "required": ["transport_modes"] }
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "daypart_targets": { "$ref": "#/definitions/supported" },
+    "audience_include": { "$ref": "#/definitions/supported" },
+    "audience_exclude": { "$ref": "#/definitions/supported" },
+    "signal_targeting_groups": { "$ref": "#/definitions/supported" },
+    "demographics": {
+      "anyOf": [
+        { "$ref": "#/definitions/supported" },
+        {
+          "type": "object",
+          "properties": {
+            "age": { "$ref": "#/definitions/supported" },
+            "ext": { "$ref": "/schemas/core/ext.json" }
+          },
+          "required": ["age"],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "frequency_cap": { "$ref": "#/definitions/supported" },
+    "property_list": { "$ref": "#/definitions/supported" },
+    "property_list_exclude": { "$ref": "#/definitions/supported" },
+    "collection_list": { "$ref": "#/definitions/supported" },
+    "collection_list_exclude": { "$ref": "#/definitions/supported" },
+    "placement_selection": {
+      "anyOf": [
+        { "$ref": "#/definitions/supported" },
+        {
+          "type": "object",
+          "properties": {
+            "max_values_per_package": { "type": "integer", "minimum": 1 },
+            "max_packages": { "type": "integer", "minimum": 1 },
+            "ext": { "$ref": "/schemas/core/ext.json" }
+          },
+          "minProperties": 1,
+          "additionalProperties": false
+        }
+      ]
+    },
+    "age_restriction": { "$ref": "#/definitions/supported" },
+    "device_platform": { "$ref": "#/definitions/supported" },
+    "device_platform_exclude": { "$ref": "#/definitions/supported" },
+    "device_type": { "$ref": "#/definitions/supported" },
+    "device_type_exclude": { "$ref": "#/definitions/supported" },
+    "store_catchments": { "$ref": "#/definitions/supported" },
+    "language": { "$ref": "#/definitions/supported" },
+    "keyword_targets": { "$ref": "#/definitions/keywordSupport" },
+    "negative_keywords": { "$ref": "#/definitions/keywordSupport" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "minProperties": 1,
+  "additionalProperties": true
+}

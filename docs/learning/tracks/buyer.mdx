@@ -47,6 +47,9 @@ How buyer agents orchestrate across multiple sales agents simultaneously: discov
   <Card title="Targeting" icon="crosshairs" href="/docs/media-buy/advanced-topics/targeting">
     Targeting options, audience overlays, and geo-targeting.
   </Card>
+  <Card title="Buyer briefs" icon="filter" href="/docs/learning/supplements/buyer-briefs-and-get-products">
+    Decide what belongs in briefs, filters, current targeting, and future targeting support.
+  </Card>
   <Card title="Version negotiation" icon="code-branch" href="/docs/reference/versioning#version-negotiation">
     Declare `adcp_major_version` on requests; sellers respond with `VERSION_UNSUPPORTED` when incompatible.
   </Card>
@@ -71,6 +74,8 @@ How buyer agents orchestrate across multiple sales agents simultaneously: discov
 - **Order lifecycle** — `pending_creatives` → `pending_start` → `active`; check `valid_actions` from `get_media_buys` before acting. S1 covers the full state machine and recovery
 - **Version negotiation** — declare `adcp_major_version` on every request; handle `VERSION_UNSUPPORTED` by selecting a compatible seller or downgrading the payload
 - **Pricing selection** — products return `pricing_options[]`; buyer selects one via `pricing_option_id` in `create_media_buy`
+- **Structured-first discovery** — use `filters` to decide which offers may be returned, `targeting_overlay` to constrain delivery, and `required_overlay_support` for dimensions selected on packages later
+- **Resolution acceptance** — no resolution means an exact structured overlay; review `modifications` and brief-derived targeting before selecting an opaque configured `product_id`
 - **Negotiated accountability** — for guaranteed buys, propose `measurement_terms` / `performance_standards`; seller accepts, adjusts, or returns `TERMS_REJECTED`. S1 covers the recovery patterns
 - **Account required on updates** — `update_media_buy` takes `account` + `media_buy_id`; omitting `account` is a protocol error
 - **Audience targeting** — `sync_audiences` for custom segments
@@ -249,8 +254,20 @@ New to running tool calls and reading JSON in a terminal? Do [A2b: Testing your 
 
 ### What you'll build
 
+<Note>
+The targeting-aware discovery portion is a 3.2 assessment objective. The public
+training seller will enable it after the 3.2 beta SDK release; follow
+[issue #6199](https://github.com/adcontextprotocol/adcp/issues/6199). Until
+then, validate this portion with schema fixtures rather than assuming the live
+training runtime enforces unknown fields.
+</Note>
+
 - Account setup with `sync_accounts`
 - Product discovery from at least 2 sellers
+- Decomposition of a messy human request into `brief`, `filters`,
+  `targeting_overlay`, and `required_overlay_support`
+- Acceptance/rejection of a disclosed targeting modification and verification
+  of effective package readback
 - Media buy creation with targeting and budget — including a fresh UUID v4 `idempotency_key` per logical buy, and correct retry behavior that resends the identical payload with the same key on network failure (the mechanics of what the seller does with the key — replay, conflict, expired — are taught in [S1: Media buy](/docs/learning/specialist/media-buy))
 - Creative sync with at least 1 format
 - Campaign monitoring via delivery reporting
@@ -278,10 +295,10 @@ Review the [Compliance Catalog](/docs/building/verification/compliance-catalog) 
 
 | Dimension | Weight | What Addie evaluates |
 |-----------|--------|---------------------|
-| Specification quality | 20% | Can you specify a buying workflow in AdCP terms? |
+| Specification quality | 20% | Can you decompose buyer intent into brief, offer filters, current targeting, and later-selectable support? |
 | Schema compliance | 25% | Agent requests and responses validate against schemas |
 | Error handling | 15% | Handles seller errors and async responses |
-| Design rationale | 20% | Can you explain orchestration and buying strategy? |
+| Design rationale | 20% | Can you explain targeting resolution, configured-product acceptance, orchestration, and buying strategy? |
 | Extension ability | 20% | Can you extend the agent with new buying capabilities? |
 
 Passing threshold: 70%.

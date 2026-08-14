@@ -11,28 +11,46 @@ This skill enables you to execute the AdCP Media Buy Protocol with sales agents.
 
 ## Overview
 
-The Media Buy Protocol provides 11 standardized tasks for managing advertising campaigns:
+> **3.2 preview:** Targeting-aware discovery fields are available only when the
+> seller serves AdCP 3.2+ and the installed SDK exposes the 3.2 schema. Check
+> `get_adcp_capabilities.adcp.supported_versions`, pin the selected release in
+> `adcp_version`, and validate the echoed served release before sending them.
+> A missing release-precision declaration, a 3.1-or-earlier result, or a
+> major-only declaration is not evidence of support: omit the 3.2 fields and use
+> legacy targeting filters or explicit brief prose. Do not probe by sending
+> unknown fields because a legacy open schema may accept and ignore them. The public
+> training agent will implement this flow after the 3.2 beta SDK release; until
+> then use its legacy brief exercise and do not treat ignored unknown fields as
+> acceptance.
 
-| Task                           | Purpose                                                               | Response Time |
-| ------------------------------ | --------------------------------------------------------------------- | ------------- |
-| `get_products`                 | Discover inventory using natural language                             | ~60s          |
-| `get_adcp_capabilities`        | See agent capabilities, supported protocols, and publisher properties | ~1s           |
-| `create_media_buy`             | Create campaigns                                                      | Minutes-Days  |
-| `update_media_buy`             | Modify campaigns                                                      | Minutes-Days  |
-| `get_media_buys`               | Retrieve campaign state and status                                    | ~1-5s         |
-| `sync_creatives`               | Upload creative assets                                                | Minutes-Days  |
-| `sync_catalogs`                | Sync product feeds and catalogs                                       | Minutes-Days  |
-| `list_creatives`               | Query creative library                                                | ~1s           |
-| `get_media_buy_delivery`       | Get performance data                                                  | ~60s          |
-| `provide_performance_feedback` | Share outcomes with publishers                                        | ~1-5s         |
+The Media Buy Protocol provides these common standardized tasks:
+
+| Task | Purpose | Response Time |
+|------|---------|---------------|
+| `list_products` | Read matching offers without seller curation | ~1-5s |
+| `request_proposals` | Request seller-authored draft plans | ~60s or async |
+| `refine_proposals` | Revise drafts or finalize unchanged terms into inventory holds | ~60s or async |
+| `decline_proposals` | Record terminal buyer disposition | ~1-5s |
+| `accept_proposal` | Accept a finalized proposal into a MediaBuy | Minutes-Days |
+| `get_products` | Use the 3.x compatibility facade for discovery and proposals | ~60s |
+| `get_adcp_capabilities` | See agent capabilities, supported protocols, and publisher properties | ~1s |
+| `create_media_buy` | Create direct buys or use the 3.x proposal adapter | Minutes-Days |
+| `update_media_buy` | Modify campaigns | Minutes-Days |
+| `get_media_buys` | Retrieve campaign state and status | ~1-5s |
+| `sync_creatives` | Upload creative assets | Minutes-Days |
+| `sync_catalogs` | Sync product feeds and catalogs | Minutes-Days |
+| `list_creatives` | Query creative library | ~1s |
+| `get_media_buy_delivery` | Get performance data | ~60s |
+| `provide_performance_feedback` | Share outcomes with publishers | ~1-5s |
 
 ## Typical Workflow
 
-1. **Discover products**: `get_products` with a natural language brief
-2. **Review formats**: read each returned product's canonical `format_options[]`
-3. **Create campaign**: `create_media_buy` with selected products and budget
-4. **Upload creatives**: `sync_creatives` to add creative assets
-5. **Monitor delivery**: `get_media_buy_delivery` to track performance
+1. **Discover products**: use `list_products`, or `request_proposals` with a brief
+2. **Verify the offer**: inspect formats, pricing, forecast, `overlay_support`, and any `targeting_resolution`
+3. **Negotiate and hold**: revise a draft as needed, then finalize it without changing terms
+4. **Accept or decline**: call `accept_proposal` for the held snapshot or `decline_proposals` when the buyer stops pursuing it
+5. **Upload creatives**: use `sync_creatives` to add creative assets
+6. **Monitor delivery**: use `get_media_buy_delivery` to track performance
 
 ---
 
@@ -46,7 +64,7 @@ Products carry `format_options[]`: a list of `ProductFormatDeclaration` entries 
 - Optional `v1_format_ref: [{agent_url, id}]` — array linking this v2 declaration to one or more v1 named formats (for dual emission during the v1↔v2 migration). Multi-size declarations should carry one ref per size
 - Optional `seller_preference: "preferred" | "accepted" | "discouraged"` — soft routing hint when a multi-format product has several options at the same price
 
-**Multi-format products.** A flexible publisher slot is one product with N format_options entries — e.g., NYTimes Homepage accepts image OR html5 OR display_tag at multiple sizes via three format_options, one per type. Buyer picks the creative type they ship.
+**Multi-format products.** A flexible publisher slot is one product with N format_options entries — e.g., Pinnacle Media's homepage accepts image OR html5 OR display_tag at multiple sizes via three format_options, one per type. Buyer picks the creative type they ship.
 
 **Size flexibility.** Display canonicals (image / html5 / display_tag) declare size in one of three modes: fixed (`width`+`height`), multi-size (`sizes: [{w,h}]` — mirrors OpenRTB `banner.format[]`), or responsive (`min_width`/`max_width`/`min_height`/`max_height`). Modes are mutually exclusive.
 
@@ -64,35 +82,73 @@ See `docs/creative/canonical-formats.mdx` for the full vocabulary, narrowing rul
 
 ### get_products
 
-Discover advertising products using natural language briefs.
+Discover buyable product configurations. Choose each request surface by what it
+means:
+
+- `brief`: goals, context, semantic audience intent, preferences, and
+  requirements without a structured representation.
+- `filters`: hard offer filters such as metadata, dates, budget, availability,
+  commercial fit, and reporting support. They decide which products may be
+  returned and apply in `brief`, `wholesale`, and `refine`.
+- `targeting_overlay`: exact delivery constraints known now. Use this for
+  countries, ages, placements, properties, collections, and other typed
+  targeting so availability, price, and forecast already reflect them.
+- `required_overlay_support`: targeting dimensions whose values will be chosen
+  independently on packages later. This requests capability, not one product
+  per value.
+
+Prefer a structured field whenever one exists. It uses fewer tokens, is applied
+by code, and avoids lossy inference. Explicit hard targeting written only in a
+brief is still binding; when a seller extracts a structured predicate from
+prose that materially affects eligibility, pricing, or forecasting, require one response-level confirmation in
+`GetProductsResponse.targeting_resolution.brief_targeting`.
 
 **Request:**
 
 ```json
 {
   "buying_mode": "brief",
-  "brief": "Looking for premium video inventory for a tech brand targeting developers",
+  "brief": "Premium video for a developer-tool launch; prioritize engineering and open-source contexts",
   "brand": {
     "domain": "example.com"
   },
   "filters": {
-    "channels": ["video", "ctv"],
-    "budget_range": { "min": 5000, "max": 50000 }
+    "channels": ["olv", "ctv"],
+    "delivery_type": "guaranteed",
+    "pricing_currencies": ["USD"]
+  },
+  "targeting_overlay": {
+    "geo_countries": ["US"],
+    "demographics": {
+      "age": { "min": 18, "max": 44, "include_unknown": false }
+    }
+  },
+  "required_overlay_support": {
+    "geo_metros": { "systems": ["nielsen_dma"] }
   }
 }
 ```
 
 **Key fields:**
-
-- `buying_mode` (string): Required discriminator - `"brief"` or `"wholesale"`
-- `brief` (string): Natural language description of campaign requirements
+- `buying_mode` (string): `"brief"`, `"wholesale"`, or `"refine"`
+- `brief` (string): Natural-language curation input; hard statements remain requirements
 - `brand` (object): Brand identity - `{ "domain": "acmecorp.com" }`
-- `filters` (object, optional): Filter by channels, budget, delivery_type
+- `filters` (object, optional): Hard offer filters that decide which products may be returned
+- `targeting_overlay` (object, optional): Concrete targeting applied during discovery and carried into purchase
+- `required_overlay_support` (object, optional): Dimensions the product must allow packages to select later
 
 **Response contains:**
 
 - `products`: Array of matching products with `product_id`, `name`, `description`, `pricing_options`
 - Each product includes canonical `format_options[]` and targeting capabilities
+- `overlay_support`: binding product-scoped dimensions selectable later
+- `targeting_resolution.modifications`: sparse differences from the requested structured overlay; selecting the product accepts them
+- Response `targeting_resolution.brief_targeting`: the seller's single structured interpretation of hard targeting inferred from prose
+- No `targeting_resolution` means exact acceptance of the structured overlay only; it does not prove how prose was interpreted
+
+Treat `product_id` as the opaque identity of this configured offer. Keep it
+within the same discovery/refinement context and purchase it before
+`expires_at`; do not assume it is a permanent cross-session ID.
 
 ---
 
@@ -109,9 +165,14 @@ Create an advertising campaign from selected products.
   },
   "packages": [
     {
-      "product_id": "premium_video_30s",
+      "product_id": "prod_configured_us_18_44",
       "pricing_option_id": "cpm-standard",
-      "budget": 10000
+      "budget": 10000,
+      "targeting_overlay": {
+        "geo_metros": [
+          { "system": "nielsen_dma", "values": ["501"] }
+        ]
+      }
     }
   ],
   "start_time": "asap",
@@ -127,7 +188,7 @@ Create an advertising campaign from selected products.
   - `pricing_option_id`: From product's `pricing_options`
   - `budget`: Amount in dollars
   - `bid_price`: Required for auction pricing
-  - `targeting_overlay`: Additional targeting constraints
+  - `targeting_overlay`: Package targeting permitted by the selected product's `overlay_support`; it composes with targeting already bound during discovery and must not silently broaden it
   - `creative_ids` or `creatives`: Creative assignments
 - `start_time` (string, required): `"asap"` or an ISO 8601 datetime (e.g., `"2024-06-01T00:00:00Z"`)
 - `end_time` (string, required): ISO 8601 datetime
