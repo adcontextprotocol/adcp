@@ -41,7 +41,7 @@ This is an account-level invoiced-party choice. It does not select a payment rai
 
 **2. Which account currency models do you support?** (`supported_account_currency_modes`)
 
-AdCP 3.2 sellers advertise one or both values:
+Sellers implementing AdCP 3.2 advertiser-account provisioning advertise one or both values. The field remains optional in the shared 3.x wire schema so existing 3.0 and 3.1 responses continue to validate; absence means the older seller's currency model is not discoverable and does not imply support for either mode.
 
 | Mode | Provisioning behavior |
 |------|------------------------|

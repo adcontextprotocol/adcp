@@ -657,7 +657,7 @@
         },
         "supported_account_currency_modes": {
           "type": "array",
-          "description": "Required in AdCP 3.2. Declares whether advertiser accounts are bound to one immutable currency (`fixed`), select currency independently per proposal or media buy (`per_media_buy`), or support both models. When only `fixed` is advertised, buyer-declared provisioning entries MUST include `currency`. When only `per_media_buy` is advertised, they MUST omit it. When both are advertised, presence of `currency` selects a fixed-currency account and omission selects per-media-buy currency.",
+          "description": "Required for sellers implementing AdCP 3.2 advertiser-account provisioning, but optional in this shared 3.x response schema so existing 3.0 and 3.1 capability responses remain valid. Declares whether advertiser accounts are bound to one immutable currency (`fixed`), select currency independently per proposal or media buy (`per_media_buy`), or support both models. When only `fixed` is advertised, buyer-declared provisioning entries MUST include `currency`. When only `per_media_buy` is advertised, they MUST omit it. When both are advertised, presence of `currency` selects a fixed-currency account and omission selects per-media-buy currency. Buyers MUST treat absence as an older seller whose currency mode is not discoverable, not as support for either mode.",
           "items": {
             "$ref": "/schemas/enums/account-currency-mode.json"
           },
@@ -763,7 +763,7 @@
           "default": false
         }
       },
-      "required": ["supported_billing", "supported_account_currency_modes"]
+      "required": ["supported_billing"]
     },
     "media_buy": {
       "type": "object",

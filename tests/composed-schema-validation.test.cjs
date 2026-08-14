@@ -1671,13 +1671,18 @@ async function runTests() {
     }
   };
 
-  await testSchemaRejection(
+  await testSchemaValidation(
     '/schemas/protocol/get-adcp-capabilities-response.json',
     {
       ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        supported_versions: ['3.1'],
+        idempotency: { supported: false }
+      },
       account: { supported_billing: ['operator', 'agent'] }
     },
-    'AdCP 3.2 account capabilities require currency-mode discovery'
+    'AdCP 3.1 capability responses may omit additive currency-mode discovery'
   );
 
   await testSchemaRejection(

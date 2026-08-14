@@ -56,7 +56,7 @@ How accounts are negotiated; whether one is required before product discovery; w
 - **`authorization_endpoint`** — OAuth/auth URL for account negotiation.
 - **`require_operator_auth`** — declares whether operator-level authentication is required.
 - **`supported_billing`** — invoiced parties the seller supports (`operator`, `agent`, `advertiser`).
-- **`supported_account_currency_modes`** — whether advertiser accounts use an immutable `fixed` currency, `per_media_buy` currency, or both.
+- **`supported_account_currency_modes`** — whether advertiser accounts use an immutable `fixed` currency, `per_media_buy` currency, or both. Required for 3.2 advertiser-account provisioning; older 3.x sellers may omit it, which means the mode is not discoverable.
 - **`account_financials`** — what financial data the seller exposes (credit limits, current balance, etc.).
 - **`sandbox`** — sandbox-account capabilities.
 
