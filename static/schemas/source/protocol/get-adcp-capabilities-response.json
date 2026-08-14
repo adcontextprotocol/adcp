@@ -655,6 +655,15 @@
           },
           "minItems": 1
         },
+        "supported_account_currency_modes": {
+          "type": "array",
+          "description": "Required in AdCP 3.2. Declares whether advertiser accounts are bound to one immutable currency (`fixed`), select currency independently per proposal or media buy (`per_media_buy`), or support both models. When only `fixed` is advertised, buyer-declared provisioning entries MUST include `currency`. When only `per_media_buy` is advertised, they MUST omit it. When both are advertised, presence of `currency` selects a fixed-currency account and omission selects per-media-buy currency.",
+          "items": {
+            "$ref": "/schemas/enums/account-currency-mode.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
         "required_for_products": {
           "type": "boolean",
           "description": "Whether an account reference is required for get_products. When true, the buyer must establish an account before browsing products. When false (default), the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller.",
@@ -754,7 +763,7 @@
           "default": false
         }
       },
-      "required": ["supported_billing"]
+      "required": ["supported_billing", "supported_account_currency_modes"]
     },
     "media_buy": {
       "type": "object",

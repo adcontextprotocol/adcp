@@ -170,6 +170,52 @@ describe('sync_accounts', () => {
     ]));
   });
 
+  it('uses only BrandKey fields from a broader 3.x BrandRef for account identity', async () => {
+    const base = {
+      operator: 'pinnacle-agency.example',
+      operator_unit: { id: 'seat_emea_01', name: 'EMEA' },
+      currency: 'EUR',
+      billing: 'operator',
+      sandbox: true,
+    };
+    const { result: first } = await simulateCallTool(server, 'sync_accounts', {
+      adcp_version: '3.1',
+      accounts: [{
+        ...base,
+        brand: {
+          domain: 'nova-athletics.example',
+          brand_id: 'running',
+          countries: ['DE', 'NL'],
+          industries: ['sports'],
+        },
+      }],
+    });
+    const firstAccount = (first.accounts as Record<string, unknown>[])[0];
+
+    const { result: second } = await simulateCallTool(server, 'sync_accounts', {
+      adcp_version: '3.1',
+      accounts: [{
+        ...base,
+        brand: {
+          domain: 'nova-athletics.example',
+          brand_id: 'running',
+          countries: ['DE', 'NL'],
+          industries: ['retail'],
+          brand_kit_override: { tagline: 'A mutable campaign tagline' },
+        },
+      }],
+    });
+    const secondAccount = (second.accounts as Record<string, unknown>[])[0];
+
+    expect(firstAccount.action).toBe('created');
+    expect(secondAccount.action).toBe('updated');
+    expect(secondAccount.account_id).toBe(firstAccount.account_id);
+    expect(secondAccount).toHaveProperty('brand');
+    expect(secondAccount).toHaveProperty('operator', 'pinnacle-agency.example');
+    expect(secondAccount).not.toHaveProperty('operator_identity');
+    expect(secondAccount).not.toHaveProperty('advertiser_identity');
+  });
+
   it('non-sandbox account is pending_approval with setup URL', async () => {
     const { result } = await simulateCallTool(server, 'sync_accounts', {
       accounts: [{

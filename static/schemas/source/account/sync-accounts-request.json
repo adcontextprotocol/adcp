@@ -31,7 +31,7 @@
           },
           "brand": {
             "$ref": "/schemas/core/brand-ref.json",
-            "description": "Brand reference identifying the advertiser. Required for **provisioning mode**; MUST be absent in settings-update mode."
+            "description": "Brand reference identifying the advertiser. Required for **provisioning mode**; MUST be absent in settings-update mode. Only the BrandKey projection — `domain`, `brand_id`, and the canonicalized `countries[]` set — participates in account identity. Mutable or per-call BrandRef fields such as `industries`, `data_subject_contestation`, and `brand_kit_override` MUST NOT affect lookup, idempotency, or account creation. New 3.2 producers SHOULD send only the BrandKey fields; the broader BrandRef remains accepted on this existing 3.x task for compatibility."
           },
           "operator": {
             "type": "string",
@@ -45,11 +45,11 @@
           "currency": {
             "type": "string",
             "pattern": "^[A-Z]{3}$",
-            "description": "Optional immutable ISO 4217 transaction currency for a currency-bound advertiser object. When supplied, it participates in the natural key and all media buys on the account use it. Omit for per-media-buy currency selection. MUST be absent in settings-update mode."
+            "description": "Optional immutable ISO 4217 transaction currency for a currency-bound advertiser object. Consult `account.supported_account_currency_modes` before provisioning. When supplied, it participates in the natural key and all media buys on the account use it. Omit for per-media-buy currency selection. MUST be absent in settings-update mode."
           },
           "billing": {
             "$ref": "/schemas/enums/billing-party.json",
-            "description": "Who should be invoiced. Required for **provisioning mode**; MUST be absent in settings-update mode (billing is fixed at provisioning time and cannot be changed via settings-update)."
+            "description": "Who the seller invoices for this buyer–storefront account relationship. Required for **provisioning mode**; MUST be absent in settings-update mode (the invoiced party is fixed at provisioning time and cannot be changed via settings-update). This field does not select a payment rail, clearing intermediary, or per-media-buy settlement route."
           },
           "billing_entity": {
             "$ref": "/schemas/core/business-entity.json",

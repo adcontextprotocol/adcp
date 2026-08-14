@@ -10156,6 +10156,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       // becomes a regular string array that the JSON-Schema
       // validator on the capabilities response accepts.
       supported_billing: [...SUPPORTED_BILLINGS],
+      supported_account_currency_modes: ['fixed', 'per_media_buy'],
       sandbox: true,
     },
     ...(wholesaleProfile.signalWholesale && {

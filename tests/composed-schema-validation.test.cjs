@@ -1665,8 +1665,32 @@ async function runTests() {
     status: 'completed',
     adcp: { major_versions: [3] },
     supported_protocols: ['media_buy'],
-    account: { supported_billing: ['operator', 'agent'] }
+    account: {
+      supported_billing: ['operator', 'agent'],
+      supported_account_currency_modes: ['fixed', 'per_media_buy']
+    }
   };
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      account: { supported_billing: ['operator', 'agent'] }
+    },
+    'AdCP 3.2 account capabilities require currency-mode discovery'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      account: {
+        supported_billing: ['operator'],
+        supported_account_currency_modes: ['account_default']
+      }
+    },
+    'Account currency modes reject non-standard values'
+  );
 
   await testSchemaValidation(
     '/schemas/protocol/get-adcp-capabilities-response.json',
@@ -1891,6 +1915,7 @@ async function runTests() {
       adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
       account: {
         supported_billing: ['operator', 'agent'],
+        supported_account_currency_modes: ['fixed', 'per_media_buy'],
         notifications: {
           supported: true,
           registration_task: 'sync_accounts',
@@ -1910,6 +1935,7 @@ async function runTests() {
       adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
       account: {
         supported_billing: ['operator', 'agent'],
+        supported_account_currency_modes: ['fixed', 'per_media_buy'],
         notifications: { supported: false }
       }
     },
@@ -1923,6 +1949,7 @@ async function runTests() {
       adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
       account: {
         supported_billing: ['operator', 'agent'],
+        supported_account_currency_modes: ['fixed', 'per_media_buy'],
         notifications: {
           supported: true,
           registration_task: 'sync_accounts',
@@ -1940,6 +1967,7 @@ async function runTests() {
       adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
       account: {
         supported_billing: ['operator', 'agent'],
+        supported_account_currency_modes: ['fixed', 'per_media_buy'],
         notifications: {
           supported: false,
           event_types: ['account.status_changed']

@@ -160,7 +160,8 @@ phases:
         expected: |
           Return capabilities including `account.supported_billing` listing
           which `billing` values the seller accepts at the wire-capability
-          level.
+          level and `account.supported_account_currency_modes` declaring
+          fixed versus per-media-buy account currency support.
 
         sample_request:
           context:
@@ -169,6 +170,8 @@ phases:
         context_outputs:
           - path: "account.supported_billing"
             key: "supported_billing"
+          - path: "account.supported_account_currency_modes"
+            key: "supported_account_currency_modes"
 
         validations:
           - check: response_schema
@@ -176,6 +179,9 @@ phases:
           - check: field_present
             path: "account.supported_billing"
             description: "Seller declares supported_billing"
+          - check: field_present
+            path: "account.supported_account_currency_modes"
+            description: "Seller declares supported account currency modes"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object"

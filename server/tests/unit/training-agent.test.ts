@@ -1566,6 +1566,7 @@ describe('createTrainingAgentServer', () => {
     expect(caps.account).toBeDefined();
     const account = caps.account as Record<string, unknown>;
     expect((account.supported_billing as unknown[]).length).toBeGreaterThan(0);
+    expect(account.supported_account_currency_modes).toEqual(['fixed', 'per_media_buy']);
 
     // portfolio present
     expect(mediaBuy.portfolio).toBeDefined();

@@ -37,7 +37,20 @@ The buyer must pass one of these values as `billing` in every `sync_accounts` en
 | `agent` | Agent | Agent consolidates billing across brands |
 | `advertiser` | Advertiser directly | Operator places orders but advertiser pays (common on social platforms and in DACH B2B workflows) |
 
-**2. Do you require operator-level auth?** (`require_operator_auth`)
+This is an account-level invoiced-party choice. It does not select a payment rail, clearing intermediary, or settlement route for an individual media buy; AdCP payment and settlement remain out of protocol.
+
+**2. Which account currency models do you support?** (`supported_account_currency_modes`)
+
+AdCP 3.2 sellers advertise one or both values:
+
+| Mode | Provisioning behavior |
+|------|------------------------|
+| `fixed` | Include one immutable ISO 4217 `currency`; it participates in the advertiser account natural key. |
+| `per_media_buy` | Omit account `currency`; select currency on each proposal or media buy. |
+
+When both are present, the buyer selects the model by including or omitting `currency`.
+
+**3. Do you require operator-level auth?** (`require_operator_auth`)
 
 This field determines the authentication model and the account reference shape:
 
@@ -55,7 +68,8 @@ Sellers can also declare `account_financials: true` to expose account-level fina
 {
   "account": {
     "require_operator_auth": false,
-    "supported_billing": ["operator", "agent"]
+    "supported_billing": ["operator", "agent"],
+    "supported_account_currency_modes": ["fixed", "per_media_buy"]
   }
 }
 ```
@@ -66,7 +80,8 @@ Sellers that support `advertiser` billing declare it explicitly:
 {
   "account": {
     "require_operator_auth": false,
-    "supported_billing": ["operator", "agent", "advertiser"]
+    "supported_billing": ["operator", "agent", "advertiser"],
+    "supported_account_currency_modes": ["fixed", "per_media_buy"]
   }
 }
 ```
@@ -94,6 +109,7 @@ The operator already has an account on the platform — an ad account, a busines
   "account": {
     "require_operator_auth": true,
     "supported_billing": ["operator"],
+    "supported_account_currency_modes": ["fixed"],
     "authorization_endpoint": "https://seller.example.com/oauth/authorize"
   }
 }
@@ -146,7 +162,8 @@ Many publishers also accept agent billing (`supported_billing: ["operator", "age
 ```json
 {
   "account": {
-    "supported_billing": ["operator", "agent"]
+    "supported_billing": ["operator", "agent"],
+    "supported_account_currency_modes": ["fixed", "per_media_buy"]
   }
 }
 ```
@@ -238,7 +255,8 @@ All billing flows through the agent. The agent has a standing relationship with 
 ```json
 {
   "account": {
-    "supported_billing": ["agent"]
+    "supported_billing": ["agent"],
+    "supported_account_currency_modes": ["per_media_buy"]
   }
 }
 ```

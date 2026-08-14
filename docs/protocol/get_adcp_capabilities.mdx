@@ -344,6 +344,7 @@ Account and authentication capabilities. All sellers should declare this section
 | Field | Type | Description |
 |-------|------|-------------|
 | `supported_billing` | string[] | **Required.** Billing models this seller supports: `operator`, `agent`, or `advertiser`. When the buyer calls `sync_accounts`, every entry must select one of these values. |
+| `supported_account_currency_modes` | string[] | **Required in 3.2.** Advertiser-account currency models this seller supports: `fixed`, `per_media_buy`, or both. A buyer includes `currency` in `sync_accounts` for `fixed` and omits it for `per_media_buy`. When both are advertised, presence or absence selects the model. |
 | `require_operator_auth` | boolean | Default: `false`. Declares who must authenticate; it does not by itself declare whether OAuth is used, whether `list_accounts` is exposed, or which `sync_accounts` modes are supported. When `true`, each operator authenticates independently and account-scoped calls use seller/storefront-assigned `account_id` values. When `false`, the agent is trusted and calls use the advertiser natural key: `brand` + `operator` + optional `operator_unit`, fixed `currency`, and `sandbox`. `operator_unit.id` belongs to the operator and is not the seller's `account_id`. Buyer-declared sellers normally provision through `sync_accounts`, MUST continue accepting the natural key, and SHOULD expose `list_accounts` so all key fields can be recovered after a cold start. |
 | `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
 | `required_for_products` | boolean | Default: `false`. When `true`, the buyer must establish an account before calling [`get_products`](/docs/media-buy/task-reference/get_products). When `false`, the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. |
@@ -359,6 +360,7 @@ Declares whether the seller supports durable account lifecycle invalidation webh
 {
   "account": {
     "supported_billing": ["operator", "agent"],
+    "supported_account_currency_modes": ["fixed", "per_media_buy"],
     "notifications": {
       "supported": true,
       "registration_task": "sync_accounts",
@@ -1392,7 +1394,8 @@ const buy = await client.createMediaBuy({
   "supported_protocols": ["media_buy"],
   "account": {
     "require_operator_auth": false,
-    "supported_billing": ["operator", "agent"]
+    "supported_billing": ["operator", "agent"],
+    "supported_account_currency_modes": ["fixed", "per_media_buy"]
   },
   "media_buy": {
     "creative_approval_mode": "auto_approve",
@@ -1543,7 +1546,8 @@ An agent can implement multiple protocols from a single endpoint. This is common
   "supported_protocols": ["media_buy", "creative"],
   "account": {
     "require_operator_auth": false,
-    "supported_billing": ["operator"]
+    "supported_billing": ["operator"],
+    "supported_account_currency_modes": ["fixed"]
   },
   "media_buy": {
     "creative_approval_mode": "require_human",

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/billing-party.json",
   "title": "Billing Party",
-  "description": "Which party the seller invoices for an account. Determines the billing entity and invoicing flow.",
+  "description": "Which party the seller invoices for a buyer–storefront account relationship. Determines the billing entity and invoicing flow, not a payment rail, clearing intermediary, or per-media-buy settlement route. AdCP does not perform in-protocol payment or settlement.",
   "type": "string",
   "enum": ["operator", "agent", "advertiser"],
   "enumDescriptions": {
