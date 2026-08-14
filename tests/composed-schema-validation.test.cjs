@@ -1665,8 +1665,37 @@ async function runTests() {
     status: 'completed',
     adcp: { major_versions: [3] },
     supported_protocols: ['media_buy'],
-    account: { supported_billing: ['operator', 'agent'] }
+    account: {
+      supported_billing: ['operator', 'agent'],
+      supported_account_currency_modes: ['fixed', 'per_media_buy']
+    }
   };
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        supported_versions: ['3.1'],
+        idempotency: { supported: false }
+      },
+      account: { supported_billing: ['operator', 'agent'] }
+    },
+    'AdCP 3.1 capability responses may omit additive currency-mode discovery'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      account: {
+        supported_billing: ['operator'],
+        supported_account_currency_modes: ['account_default']
+      }
+    },
+    'Account currency modes reject non-standard values'
+  );
 
   await testSchemaValidation(
     '/schemas/protocol/get-adcp-capabilities-response.json',
@@ -1891,6 +1920,7 @@ async function runTests() {
       adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
       account: {
         supported_billing: ['operator', 'agent'],
+        supported_account_currency_modes: ['fixed', 'per_media_buy'],
         notifications: {
           supported: true,
           registration_task: 'sync_accounts',
@@ -1910,6 +1940,7 @@ async function runTests() {
       adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
       account: {
         supported_billing: ['operator', 'agent'],
+        supported_account_currency_modes: ['fixed', 'per_media_buy'],
         notifications: { supported: false }
       }
     },
@@ -1923,6 +1954,7 @@ async function runTests() {
       adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
       account: {
         supported_billing: ['operator', 'agent'],
+        supported_account_currency_modes: ['fixed', 'per_media_buy'],
         notifications: {
           supported: true,
           registration_task: 'sync_accounts',
@@ -1940,6 +1972,7 @@ async function runTests() {
       adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
       account: {
         supported_billing: ['operator', 'agent'],
+        supported_account_currency_modes: ['fixed', 'per_media_buy'],
         notifications: {
           supported: false,
           event_types: ['account.status_changed']
@@ -3067,13 +3100,43 @@ async function runTests() {
     {
       idempotency_key: 'request-proposals-natural-account-0001',
       account: {
-        brand: { domain: 'acmeoutdoor.example' },
+        brand: { domain: 'acmeoutdoor.example', countries: ['NL'] },
         operator: 'buyer.example',
+        operator_unit: { id: '234284238', name: 'Acme EMEA' },
+        currency: 'EUR',
         sandbox: true
       },
       brief: 'Reach streaming audio listeners in Rome'
     },
-    'request_proposals accepts a natural-key account as the single brand source'
+    'request_proposals accepts country, operator-unit, and currency qualifiers in its natural account key'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-request.json',
+    {
+      idempotency_key: 'request-proposals-invalid-account-key-0001',
+      account: {
+        brand: { domain: 'acmeoutdoor.example', countries: ['nl'] },
+        operator: 'buyer.example',
+        operator_unit: { id: '234284238', name: 'Acme EMEA' },
+        currency: 'eur'
+      },
+      brief: 'Reach streaming audio listeners in Rome'
+    },
+    'request_proposals rejects non-canonical country and currency identifiers'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-operator-unit-0001',
+      accounts: [{
+        brand: { domain: 'nova-athletics.example', countries: ['NL'] },
+        operator: 'nova-athletics.example',
+        operator_unit: { id: '234284238', name: 'Nova EMEA' },
+        currency: 'EUR',
+        billing: 'operator'
+      }]
+    },
+    'sync_accounts provisions the same advertiser natural key used by compact tools'
   );
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-request.json',

@@ -1566,6 +1566,7 @@ describe('createTrainingAgentServer', () => {
     expect(caps.account).toBeDefined();
     const account = caps.account as Record<string, unknown>;
     expect((account.supported_billing as unknown[]).length).toBeGreaterThan(0);
+    expect(account.supported_account_currency_modes).toEqual(['fixed', 'per_media_buy']);
 
     // portfolio present
     expect(mediaBuy.portfolio).toBeDefined();
@@ -3231,6 +3232,39 @@ describe('create_media_buy handler', () => {
     expect(result.media_buy_status).toBe('pending_creatives');
     // Error field should not be present on success
     expect(result.errors).toBeUndefined();
+  });
+
+  it('enforces an advertiser account\'s immutable currency', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'currency-bound.example' },
+      operator: 'currency-bound.example',
+      currency: 'EUR',
+      sandbox: true,
+    };
+    await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{ ...account, billing: 'operator' }],
+    });
+
+    const { result, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      total_budget: { amount: 50000, currency: 'USD' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 50000,
+      }],
+    });
+
+    expect(isError).toBe(true);
+    expect(result).toMatchObject({
+      code: 'INVALID_REQUEST',
+      field: 'total_budget.currency',
+    });
   });
 
   it('accepts every advertised legacy selector whose canonical kind is intentionally non-equivalent', async () => {

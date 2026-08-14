@@ -639,7 +639,7 @@
       "properties": {
         "require_operator_auth": {
           "type": "boolean",
-          "description": "Whether the seller requires operator-level credentials. This declares who must authenticate; it does not by itself declare whether OAuth is used, whether list_accounts is exposed, or which sync_accounts modes are supported. When true, operators authenticate independently with the seller and account-scoped calls use seller-assigned account_id values because the seller or upstream platform owns the canonical account namespace. If a credential may access more than one account, the seller MUST expose list_accounts and buyers MUST resolve an explicit account_id before the first account-scoped request. If a credential is bound to exactly one account, the seller SHOULD expose list_accounts returning that singleton; a seller MAY omit list_accounts only when it provides the same explicit account_id through another declared path or out-of-band onboarding. When false (default, buyer-declared accounts), the seller trusts the agent's identity claims and account-scoped calls use the natural key. The seller normally provisions through sync_accounts, but MAY lazily provision on the first account-scoped request when billing and other required settings are unambiguous from capabilities or onboarding defaults. A lazy-provisioning seller MUST keep accepting the natural key and MUST expose list_accounts for recovery; if buyer input is needed before use, the seller MUST expose sync_accounts.",
+          "description": "Whether the seller requires operator-level credentials. This declares who must authenticate; it does not by itself declare whether OAuth is used, whether list_accounts is exposed, or which sync_accounts modes are supported. When true, operators authenticate independently with the seller and account-scoped calls use seller/storefront-assigned account_id values because the seller or upstream platform owns the canonical account namespace. If a credential may access more than one account, the seller MUST expose list_accounts and buyers MUST resolve an explicit account_id before the first account-scoped request. If a credential is bound to exactly one account, the seller SHOULD expose list_accounts returning that singleton; a seller MAY omit list_accounts only when it provides the same explicit account_id through another declared path or out-of-band onboarding. When false (default, buyer-declared accounts), the seller trusts the agent's identity claims and account-scoped calls use the advertiser natural key: brand + operator + optional operator_unit, fixed currency, and sandbox. operator_unit.id is owned by the operator and is distinct from the seller's account_id. The seller normally provisions through sync_accounts, but MAY lazily provision on the first account-scoped request when billing and other required settings are unambiguous from capabilities or onboarding defaults. A lazy-provisioning seller MUST keep accepting the natural key and MUST expose list_accounts for recovery; if buyer input is needed before use, the seller MUST expose sync_accounts.",
           "default": false
         },
         "authorization_endpoint": {
@@ -654,6 +654,15 @@
             "$ref": "/schemas/enums/billing-party.json"
           },
           "minItems": 1
+        },
+        "supported_account_currency_modes": {
+          "type": "array",
+          "description": "Required for sellers implementing AdCP 3.2 advertiser-account provisioning, but optional in this shared 3.x response schema so existing 3.0 and 3.1 capability responses remain valid. Declares whether advertiser accounts are bound to one immutable currency (`fixed`), select currency independently per proposal or media buy (`per_media_buy`), or support both models. When only `fixed` is advertised, buyer-declared provisioning entries MUST include `currency`. When only `per_media_buy` is advertised, they MUST omit it. When both are advertised, presence of `currency` selects a fixed-currency account and omission selects per-media-buy currency. Buyers MUST treat absence as an older seller whose currency mode is not discoverable, not as support for either mode.",
+          "items": {
+            "$ref": "/schemas/enums/account-currency-mode.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
         },
         "required_for_products": {
           "type": "boolean",

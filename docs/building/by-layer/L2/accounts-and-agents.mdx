@@ -8,14 +8,14 @@ AdCP distinguishes four entities in every billable operation:
 
 | Entity | Question | How identified |
 |--------|----------|----------------|
-| **Brand** | Whose products are advertised? | Brand reference: `domain` + optional `brand_id` ([brand.json](/docs/brand-protocol/brand-json)) |
+| **Brand** | Whose products are advertised? | Brand reference: `domain` + optional `brand_id` and commercial-identity `countries[]` ([brand.json](/docs/brand-protocol/brand-json)) |
 | **Account** | Who gets billed? What rates apply? | [Account reference](#account-references) |
 | **Operator** | Who operates on the brand's behalf? | Domain (e.g., `pinnacle-media.com`) |
 | **Agent** | What software is placing the buy? | Authenticated session |
 
-**Brand** — The advertiser whose products or services are promoted. Identified by a `brand` reference (`domain` + optional `brand_id`), resolved via `/.well-known/brand.json`. Single-brand houses use the domain alone (no `brand_id`).
+**Brand** — The advertiser whose products or services are promoted. Identified by a `brand` reference (`domain` + optional `brand_id` and ISO country `countries[]`), resolved via `/.well-known/brand.json`. Countries distinguish commercial advertiser identities without becoming delivery targeting.
 
-**Account** — A billing relationship between a buyer and seller. Determines rate card, payment terms, credit limit, and who receives invoices. Every billable operation requires an account reference — a seller-assigned `account_id` when the seller or upstream platform owns the canonical account namespace, or a natural key (`brand`, `operator`) when that tuple is the durable protocol key for buyer-declared accounts. Sandbox accounts follow the same model — account-id namespaces use pre-existing sandbox IDs from `list_accounts` or out-of-band setup, while buyer-declared sandboxes use the natural key with `sandbox: true`.
+**Account** — A billing relationship between a buyer and seller. Determines rate card, payment terms, credit limit, and who receives invoices. Every billable operation requires an account reference — a seller/storefront-assigned `account_id` when the seller or upstream platform owns the canonical account namespace, or an advertiser natural key (`brand`, `operator`, optional `operator_unit`, `currency`, `sandbox`) for buyer-declared accounts.
 
 **Operator** — The entity driving buys — an agency trading desk, the brand's internal team, or another entity acting on behalf of the advertiser. Identified by domain and verifiable via [authorized operators](#authorized-operators) in `brand.json`.
 
@@ -37,7 +37,20 @@ The buyer must pass one of these values as `billing` in every `sync_accounts` en
 | `agent` | Agent | Agent consolidates billing across brands |
 | `advertiser` | Advertiser directly | Operator places orders but advertiser pays (common on social platforms and in DACH B2B workflows) |
 
-**2. Do you require operator-level auth?** (`require_operator_auth`)
+This is an account-level invoiced-party choice. It does not select a payment rail, clearing intermediary, or settlement route for an individual media buy; AdCP payment and settlement remain out of protocol.
+
+**2. Which account currency models do you support?** (`supported_account_currency_modes`)
+
+Sellers implementing AdCP 3.2 advertiser-account provisioning advertise one or both values. The field remains optional in the shared 3.x wire schema so existing 3.0 and 3.1 responses continue to validate; absence means the older seller's currency model is not discoverable and does not imply support for either mode.
+
+| Mode | Provisioning behavior |
+|------|------------------------|
+| `fixed` | Include one immutable ISO 4217 `currency`; it participates in the advertiser account natural key. |
+| `per_media_buy` | Omit account `currency`; select currency on each proposal or media buy. |
+
+When both are present, the buyer selects the model by including or omitting `currency`.
+
+**3. Do you require operator-level auth?** (`require_operator_auth`)
 
 This field determines the authentication model and the account reference shape:
 
@@ -55,7 +68,8 @@ Sellers can also declare `account_financials: true` to expose account-level fina
 {
   "account": {
     "require_operator_auth": false,
-    "supported_billing": ["operator", "agent"]
+    "supported_billing": ["operator", "agent"],
+    "supported_account_currency_modes": ["fixed", "per_media_buy"]
   }
 }
 ```
@@ -66,7 +80,8 @@ Sellers that support `advertiser` billing declare it explicitly:
 {
   "account": {
     "require_operator_auth": false,
-    "supported_billing": ["operator", "agent", "advertiser"]
+    "supported_billing": ["operator", "agent", "advertiser"],
+    "supported_account_currency_modes": ["fixed", "per_media_buy"]
   }
 }
 ```
@@ -94,6 +109,7 @@ The operator already has an account on the platform — an ad account, a busines
   "account": {
     "require_operator_auth": true,
     "supported_billing": ["operator"],
+    "supported_account_currency_modes": ["fixed"],
     "authorization_endpoint": "https://seller.example.com/oauth/authorize"
   }
 }
@@ -146,7 +162,8 @@ Many publishers also accept agent billing (`supported_billing: ["operator", "age
 ```json
 {
   "account": {
-    "supported_billing": ["operator", "agent"]
+    "supported_billing": ["operator", "agent"],
+    "supported_account_currency_modes": ["fixed", "per_media_buy"]
   }
 }
 ```
@@ -238,7 +255,8 @@ All billing flows through the agent. The agent has a standing relationship with 
 ```json
 {
   "account": {
-    "supported_billing": ["agent"]
+    "supported_billing": ["agent"],
+    "supported_account_currency_modes": ["per_media_buy"]
   }
 }
 ```
@@ -385,7 +403,7 @@ Some sellers use `account_id` without exposing an account discovery surface. In 
 
 The agent manages the buying relationship. It calls `sync_accounts` to tell the seller who's advertising, who's operating on the brand's behalf, and who's paying. The seller provisions accounts and responds with status — the account IDs are a byproduct of the declaration, not something the buyer needs to know upfront.
 
-Buyer-declared-account sellers SHOULD also expose `list_accounts` as the recovery read for stateless buyers. Replaying `sync_accounts` is not a cold-start recovery mechanism when the buyer has lost the `(brand, operator, sandbox)` natural keys required to compose that replay. `list_accounts` returns the relationships the seller already acknowledged; it does not change the natural-key contract or make the seller-issued `account_id` mandatory on later calls.
+Buyer-declared-account sellers SHOULD also expose `list_accounts` as the recovery read for stateless buyers. Replaying `sync_accounts` is not a cold-start recovery mechanism when the buyer has lost the advertiser natural keys required to compose that replay. `list_accounts` returns those acknowledged natural-key fields so they round-trip into later calls; it does not make the seller-issued `account_id` mandatory.
 
 **Typical sellers:** Traditional publishers, retail media networks, DSPs — anywhere the buying relationship is established programmatically.
 
@@ -393,8 +411,10 @@ Buyer-declared-account sellers SHOULD also expose `list_accounts` as the recover
 
 | Flag | What it tells the seller |
 |------|-------------------------|
-| `brand` (`domain` + optional `brand_id`) | Which brand is advertising |
+| `brand` (`domain` + optional `brand_id`/`countries[]`) | Which commercial advertiser entity is advertising; countries do not target delivery |
 | `operator` | Who operates on the brand's behalf (agency, trading desk, or the brand itself) |
+| `operator_unit` | Optional operator-owned business unit, seat, or platform account; stable `id` plus mutable display `name` |
+| `currency` | Optional immutable account currency when the seller's advertiser object is currency-bound |
 | `billing` | Who gets the invoice — `operator`, `agent`, or `advertiser` |
 | `billing_entity` | Structured business entity details for the party responsible for payment — legal name, VAT ID, tax ID, address, contacts, and bank details. Used for formal B2B invoicing. Bank details are write-only (never echoed in responses). |
 | `payment_terms` | Payment terms for this account (`net_15`, `net_30`, `net_45`, `net_60`, `net_90`, `prepay`). The seller must accept these terms or reject the account — terms are never silently remapped. |
@@ -427,7 +447,9 @@ The agent may be directly responsible for billing when `billing` is `"agent"`. W
 
 ### Natural key semantics
 
-The tuple `(brand, operator, sandbox)` uniquely identifies an account relationship. The `brand` is a nested object with `domain` and optional `brand_id`. `operator` is always required — when the brand operates directly, set `operator` to the brand's domain. `sandbox` defaults to `false` when omitted. For example, `{brand: {domain: "acme-corp.com"}, operator: "acme-corp.com"}` (brand buying direct) is a different account from `{brand: {domain: "acme-corp.com"}, operator: "pinnacle-media.com"}` (brand via agency). Adding `sandbox: true` references the sandbox account for the same pair.
+The tuple `(brand, operator, operator_unit.id, currency, sandbox)` identifies the advertiser object in the seller system. The nested `brand` carries `domain`, optional `brand_id`, and optional ISO country `countries[]`; these countries qualify commercial identity and never target delivery. `operator_unit` identifies the operator's own business unit, agency seat, or buying-platform account. Its stable `id` participates in identity, while its optional `name` is display metadata and may change without creating a new account. `currency` participates only when the seller's advertiser object is locked to one currency. Omit it when currency is selected per media buy.
+
+This separates two account namespaces that must not be conflated: `operator_unit.id` is assigned by the buyer-side operator, while `account_id` is assigned by the AdCP seller/storefront. Both may be opaque values, but they identify different objects and are not interchangeable.
 
 See [sync_accounts task reference](/docs/accounts/tasks/sync_accounts) for the full request/response schema.
 
@@ -457,7 +479,7 @@ The agent does not choose the scope — the seller assigns it based on its own a
 
 When multiple natural keys resolve to the same scope, the `account_scope` explains why.
 
-For buyer-declared accounts (`require_operator_auth: false`), use natural keys (`brand` + `operator`) on subsequent requests — adding `sandbox: true` for sandbox accounts. A seller may also return an `account_id` from `sync_accounts` as its internal handle, but the seller MUST continue accepting the natural-key `AccountRef` for every account provisioned this way. For account-id namespaces (`require_operator_auth: true`), discover account IDs via `list_accounts` for upstream-managed namespaces, or receive them out-of-band for seller-defined namespaces — including sandbox test accounts.
+For buyer-declared accounts (`require_operator_auth: false`), use the complete natural key (`brand` + `operator` + optional `operator_unit`, `currency`, and `sandbox`) on subsequent requests. A seller may also return an `account_id` from `sync_accounts` as its internal handle, but the seller MUST continue accepting the natural-key `AccountRef` for every account provisioned this way and MUST return its natural-key fields from `list_accounts`. For account-id namespaces (`require_operator_auth: true`), discover seller/storefront account IDs via `list_accounts` for upstream-managed namespaces, or receive them out-of-band for seller-defined namespaces — including sandbox test accounts.
 
 ## Error codes
 

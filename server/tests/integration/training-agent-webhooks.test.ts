@@ -760,7 +760,11 @@ describe('Training Agent webhook emission', () => {
         return response;
       };
 
-      const account = { brand: { domain: 'creative-lifecycle.example' }, operator: 'pinnacle-agency.example' };
+      const account = {
+        brand: { domain: 'creative-lifecycle.example' },
+        operator: 'pinnacle-agency.example',
+        sandbox: true,
+      };
 
       await callTool(10, 'sync_accounts', {
         idempotency_key: randomUUID(),
@@ -768,7 +772,7 @@ describe('Training Agent webhook emission', () => {
           brand: account.brand,
           operator: account.operator,
           billing: 'operator',
-          sandbox: true,
+          sandbox: account.sandbox,
           notification_configs: [{
             subscriber_id: 'buyer-primary',
             url: webhookUrl,
@@ -798,7 +802,7 @@ describe('Training Agent webhook emission', () => {
       });
 
       await callTool(12, 'comply_test_controller', {
-        account: { ...account, sandbox: true },
+        account,
         brand: account.brand,
         scenario: 'force_creative_status',
         params: {
@@ -898,12 +902,14 @@ describe('Training Agent webhook emission', () => {
       };
 
       const brand = { domain: 'creative-lifecycle-scoped.example' };
+      const ownerAccount = { brand, operator: 'agency-one.example', sandbox: true };
+      const otherAccount = { brand, operator: 'agency-two.example', sandbox: true };
       await callTool(20, 'sync_accounts', {
         idempotency_key: randomUUID(),
         accounts: [
           {
             brand,
-            operator: 'agency-one.example',
+            operator: ownerAccount.operator,
             billing: 'operator',
             sandbox: true,
             notification_configs: [{
@@ -915,7 +921,7 @@ describe('Training Agent webhook emission', () => {
           },
           {
             brand,
-            operator: 'agency-two.example',
+            operator: otherAccount.operator,
             billing: 'operator',
             sandbox: true,
             notification_configs: [{
@@ -930,7 +936,7 @@ describe('Training Agent webhook emission', () => {
 
       await callTool(21, 'sync_creatives', {
         idempotency_key: randomUUID(),
-        account: { brand, operator: 'agency-one.example' },
+        account: ownerAccount,
         creatives: [{
           creative_id: 'creative_lifecycle_scoped_test',
           name: 'Creative lifecycle scoped test',
@@ -940,7 +946,7 @@ describe('Training Agent webhook emission', () => {
       });
 
       await callTool(22, 'comply_test_controller', {
-        account: { brand, operator: 'agency-one.example', sandbox: true },
+        account: ownerAccount,
         brand,
         scenario: 'force_creative_status',
         params: {
@@ -955,7 +961,7 @@ describe('Training Agent webhook emission', () => {
       expect(body.subscriber_id).toBe('owner');
 
       const ownerList = structuredToolResult(await callTool(23, 'list_creatives', {
-        account: { brand, operator: 'agency-one.example' },
+        account: ownerAccount,
         creative_ids: ['creative_lifecycle_scoped_test'],
         include_webhook_activity: true,
       }));
@@ -963,14 +969,14 @@ describe('Training Agent webhook emission', () => {
       expect(ownerCreative.webhook_activity).toHaveLength(1);
 
       const otherList = structuredToolResult(await callTool(24, 'list_creatives', {
-        account: { brand, operator: 'agency-two.example' },
+        account: otherAccount,
         creative_ids: ['creative_lifecycle_scoped_test'],
         include_webhook_activity: true,
       }));
       expect(otherList.creatives).toEqual([]);
 
       const crossPrincipalList = structuredToolResult(await callTool(25, 'list_creatives', {
-        account: { brand, operator: 'agency-one.example' },
+        account: ownerAccount,
         creative_ids: ['creative_lifecycle_scoped_test'],
         include_webhook_activity: true,
       }, OTHER_BILLABLE_AUTH));

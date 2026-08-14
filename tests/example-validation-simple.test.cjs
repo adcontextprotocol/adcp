@@ -1568,7 +1568,8 @@ async function runTests() {
       "supported_protocols": ["measurement"],
       "experimental_features": ["measurement.core"],
       "account": {
-        "supported_billing": ["operator"]
+        "supported_billing": ["operator"],
+        "supported_account_currency_modes": ["fixed", "per_media_buy"]
       },
       "measurement": {
         "produces_performance_feedback": true,
@@ -1613,7 +1614,8 @@ async function runTests() {
       },
       "supported_protocols": ["measurement"],
       "account": {
-        "supported_billing": ["operator"]
+        "supported_billing": ["operator"],
+        "supported_account_currency_modes": ["fixed", "per_media_buy"]
       },
       "measurement": {
         "metrics": [

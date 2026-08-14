@@ -1724,11 +1724,13 @@ import {
   handleValidateContentDelivery,
 } from './content-standards-handlers.js';
 import {
+  ACCOUNT_REF_SCHEMA,
   ACCOUNT_TOOLS,
   SUPPORTED_BILLINGS,
   handleListAccounts,
   sandboxAccountRefForId,
   resolveAccountIdForRef,
+  resolveAccountCurrencyForRef,
   resolveGovernanceAgentsForAccount,
   handleSyncAccounts,
   handleSyncGovernance,
@@ -2375,11 +2377,13 @@ async function deriveProductDiscoveryAccountScope(
   const scopes = new Set<string>();
   for (const proposalId of proposalIds) {
     const internal = proposalsById.get(proposalId) as unknown as Record<string, unknown> | undefined;
-    if (typeof internal?.__account_id === 'string') scopes.add(`a:${internal.__account_id}`);
+    if (typeof internal?.__account_scope === 'string') scopes.add(internal.__account_scope);
+    else if (typeof internal?.__account_id === 'string') scopes.add(`a:${internal.__account_id}`);
     else if (typeof internal?.__brand_domain === 'string') {
       scopes.add(compactBrandScope({
         domain: internal.__brand_domain,
         ...(typeof internal.__brand_id === 'string' && { brand_id: internal.__brand_id }),
+        ...(Array.isArray(internal.__brand_countries) && { countries: internal.__brand_countries }),
       })!);
     }
   }
@@ -3957,21 +3961,6 @@ function vendorMetricBriefScore(product: Product, briefLower: string): number {
 
 // ── Shared schema fragments ──────────────────────────────────────
 
-const ACCOUNT_REF_SCHEMA = {
-  type: 'object',
-  oneOf: [
-    { properties: { account_id: { type: 'string' } }, required: ['account_id'] },
-    {
-      properties: {
-        brand: { type: 'object', properties: { domain: { type: 'string' } }, required: ['domain'] },
-        operator: { type: 'string' },
-        sandbox: { type: 'boolean' },
-      },
-      required: ['brand', 'operator'],
-    },
-  ],
-} as const;
-
 const FORMAT_ID_INPUT_SCHEMA = {
   type: 'object',
   properties: {
@@ -4208,7 +4197,10 @@ function isProductDiscoveryTool(toolName: string): boolean {
 function compactBrandScope(brand: unknown): string | undefined {
   if (!isRecord(brand) || typeof brand.domain !== 'string' || brand.domain.length === 0) return undefined;
   const brandId = typeof brand.brand_id === 'string' ? brand.brand_id : '';
-  return `b:${brand.domain.toLowerCase()}#${brandId}`;
+  const countries = Array.isArray(brand.countries)
+    ? brand.countries.filter((country): country is string => typeof country === 'string').sort()
+    : [];
+  return `b:${brand.domain.toLowerCase()}#${brandId}${countries.length ? `@${countries.join(',')}` : ''}`;
 }
 
 function productDiscoverySourceSchemaName(toolName: string): string | undefined {
@@ -4398,7 +4390,7 @@ function proposalTermsDigest(commercialTerms: Record<string, unknown>): string {
 function buildCanonicalCommercialTerms(
   proposal: Proposal,
   products: Map<string, Product>,
-  brand: { domain: string; brand_id?: string },
+  brand: { domain: string; brand_id?: string; countries?: string[] },
 ): Record<string, unknown> {
   const internal = proposal as unknown as Record<string, unknown>;
   if (isRecord(internal.__canonical_commercial_terms)) {
@@ -4449,7 +4441,7 @@ function buildCanonicalCommercialTerms(
 function withCanonicalProposalEnvelope(
   proposal: Proposal,
   products: Map<string, Product>,
-  brand: { domain: string; brand_id?: string },
+  brand: { domain: string; brand_id?: string; countries?: string[] },
   options: { rebuild?: boolean } = {},
 ): Proposal {
   const internal = { ...proposal } as unknown as Record<string, unknown>;
@@ -4477,6 +4469,7 @@ function outwardProposal(proposal: Record<string, unknown>, products: Map<string
   const brand = {
     domain: typeof proposal.__brand_domain === 'string' ? proposal.__brand_domain : 'advertiser.example',
     ...(typeof proposal.__brand_id === 'string' && { brand_id: proposal.__brand_id }),
+    ...(Array.isArray(proposal.__brand_countries) && { countries: proposal.__brand_countries }),
   };
   const terms = isRecord(proposal.__canonical_commercial_terms)
     ? structuredClone(proposal.__canonical_commercial_terms)
@@ -6297,14 +6290,26 @@ async function handleGetProductsUnlocked(
     );
     const requestRecord = req as unknown as Record<string, unknown>;
     const requestAccount = isRecord(requestRecord.account) ? requestRecord.account : undefined;
-    const requestBrand = isRecord(requestRecord.brand) ? requestRecord.brand : undefined;
+    const accountBrand = isRecord(requestAccount?.brand) ? requestAccount.brand : undefined;
+    const requestBrand = isRecord(requestRecord.brand) ? requestRecord.brand : accountBrand;
     const requestOpportunity = isRecord(requestRecord.opportunity) ? requestRecord.opportunity : undefined;
+    const proposalAccountScope = requestAccount
+      ? accountScopeFromRef(requestAccount)
+      : compactBrandScope(requestBrand);
     const proposalOwner = JSON.stringify({
       ...(typeof requestAccount?.account_id === 'string' && { account_id: requestAccount.account_id }),
       brand: {
         domain: typeof requestBrand?.domain === 'string' ? requestBrand.domain.toLowerCase() : '',
         ...(typeof requestBrand?.brand_id === 'string' && { brand_id: requestBrand.brand_id }),
+        ...(Array.isArray(requestBrand?.countries)
+          && { countries: [...requestBrand.countries].filter(country => typeof country === 'string').sort() }),
       },
+      ...(typeof requestAccount?.operator === 'string' && { operator: requestAccount.operator.toLowerCase() }),
+      ...(isRecord(requestAccount?.operator_unit)
+        && typeof requestAccount.operator_unit.id === 'string'
+        && { operator_unit_id: requestAccount.operator_unit.id }),
+      ...(typeof requestAccount?.currency === 'string' && { currency: requestAccount.currency }),
+      ...(typeof requestAccount?.sandbox === 'boolean' && { sandbox: requestAccount.sandbox }),
     });
     proposals = proposals.map((proposal, index) => {
       const digest = createHash('sha256')
@@ -6317,7 +6322,10 @@ async function handleGetProductsUnlocked(
         proposal_id: proposalId,
         ...(typeof requestBrand?.domain === 'string' && { __brand_domain: requestBrand.domain.toLowerCase() }),
         ...(typeof requestBrand?.brand_id === 'string' && { __brand_id: requestBrand.brand_id }),
+        ...(Array.isArray(requestBrand?.countries)
+          && { __brand_countries: [...requestBrand.countries].filter(country => typeof country === 'string').sort() }),
         ...(typeof requestAccount?.account_id === 'string' && { __account_id: requestAccount.account_id }),
+        ...(proposalAccountScope && { __account_scope: proposalAccountScope }),
         ...(typeof requestOpportunity?.opportunity_id === 'string'
           && { __opportunity_id: requestOpportunity.opportunity_id }),
       } as unknown as Proposal;
@@ -6330,6 +6338,8 @@ async function handleGetProductsUnlocked(
               ? requestBrand.domain.toLowerCase()
               : 'advertiser.example',
             ...(typeof requestBrand?.brand_id === 'string' && { brand_id: requestBrand.brand_id }),
+            ...(Array.isArray(requestBrand?.countries)
+              && { countries: [...requestBrand.countries].filter(country => typeof country === 'string').sort() }),
           },
         );
     });
@@ -6400,6 +6410,7 @@ async function handleGetProductsUnlocked(
       if (existingSuccessor) return [existingSuccessor];
       const brandDomain = (proposal as unknown as Record<string, unknown>).__brand_domain;
       const brandId = (proposal as unknown as Record<string, unknown>).__brand_id;
+      const brandCountries = (proposal as unknown as Record<string, unknown>).__brand_countries;
       let successor = refinement?.action === 'finalize'
         ? executableProposalSnapshot(
           revision,
@@ -6411,6 +6422,7 @@ async function handleGetProductsUnlocked(
           {
             domain: typeof brandDomain === 'string' ? brandDomain : 'advertiser.example',
             ...(typeof brandId === 'string' && { brand_id: brandId }),
+            ...(Array.isArray(brandCountries) && { countries: brandCountries }),
           },
           { rebuild: true },
         );
@@ -7507,10 +7519,31 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
 async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as CreateMediaBuyRequest & ToolArgs & { paused?: boolean };
+  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const session = await getSession(
-    sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+    sessionKey,
     controllerFixtureSessionKey(req, ctx),
   );
+  const accountCurrency = resolveAccountCurrencyForRef(
+    sessionKey,
+    ctx.principal,
+    ctx.resolvedAccount ?? req.account,
+  );
+  if (
+    accountCurrency
+    && req.total_budget?.currency
+    && req.total_budget.currency !== accountCurrency
+  ) {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: `total_budget.currency must match the account currency (${accountCurrency}).`,
+        field: 'total_budget.currency',
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
+  const mediaBuyCurrency = accountCurrency ?? req.total_budget?.currency ?? 'USD';
   let executedCompactProposal: Proposal | undefined;
 
   // Consume any single-shot directive registered by
@@ -7580,7 +7613,7 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
       `${getCanonicalBase()}/sales`,
       governedRequestPayload(ctx, req as unknown as Record<string, unknown>),
       buyBudget ?? 0,
-      req.total_budget?.currency ?? 'USD',
+      mediaBuyCurrency,
     );
     if (commitmentError) return { errors: [commitmentError] };
   } else if (session.governancePlans.size > 0 || governanceAgents.length > 0) {
@@ -7887,10 +7920,11 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
     if (proposal) {
       const internal = proposal as unknown as Record<string, unknown>;
       const accountRef = req.account as unknown as { account_id?: string };
-      const requestBrand = req.brand as unknown as { domain?: string; brand_id?: string };
+      const requestBrand = req.brand as unknown as { domain?: string; brand_id?: string; countries?: string[] };
       const boundAccountId = internal.__account_id;
       const boundBrandDomain = internal.__brand_domain;
       const boundBrandId = internal.__brand_id;
+      const boundBrandCountries = internal.__brand_countries;
       const hasCompactOwnerBinding = typeof boundAccountId === 'string'
         || typeof boundBrandDomain === 'string'
         || typeof boundBrandId === 'string';
@@ -7901,6 +7935,8 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
           requestBrand?.domain?.toLowerCase() === boundBrandDomain
           && (typeof requestBrand.brand_id === 'string' ? requestBrand.brand_id : undefined)
             === (typeof boundBrandId === 'string' ? boundBrandId : undefined)
+          && JSON.stringify([...(requestBrand.countries ?? [])].sort())
+            === JSON.stringify(Array.isArray(boundBrandCountries) ? [...boundBrandCountries].sort() : [])
         );
       if (hasCompactOwnerBinding && (!accountMatches || !brandMatches)) proposal = undefined;
     }
@@ -7921,6 +7957,7 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
     const internalProposal = proposal as unknown as Record<string, unknown>;
     const compactProposal = typeof internalProposal.__brand_domain === 'string'
       || typeof internalProposal.__brand_id === 'string'
+      || Array.isArray(internalProposal.__brand_countries)
       || typeof internalProposal.__account_id === 'string';
     if (internalProposal.__declined === true) {
       return {
@@ -8146,6 +8183,15 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
 
     const pricingView = pricing as unknown as PricingOptionView;
     const pricingStructure = pricingStructureForOption(pricing);
+    if (pricingView.currency !== mediaBuyCurrency) {
+      errors.push({
+        code: 'INVALID_REQUEST',
+        message: `${pkgLabel}: pricing option ${pkg.pricing_option_id} is denominated in ${pricingView.currency}, but the media buy uses ${mediaBuyCurrency}.`,
+        field: `packages[${i}].pricing_option_id`,
+        recovery: 'correctable',
+      } as TaskError);
+      continue;
+    }
     const floorPrice = pricingStructure === 'auction' ? pricingView.floor_price : undefined;
     const isAuction = pricingStructure === 'auction';
     const seededPricingKey = `${pkg.product_id}:${pkg.pricing_option_id}`;
@@ -8321,7 +8367,7 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
     accountRef: persistedAccountRef,
     brandRef: req.brand,
     status: req.paused === true ? 'paused' : 'active',
-    currency: req.total_budget?.currency ?? 'USD',
+    currency: mediaBuyCurrency,
     totalBudget: req.total_budget?.amount
       ?? createdPackages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0),
     ...((req as unknown as { budget_allocation?: Record<string, unknown> }).budget_allocation
@@ -10110,6 +10156,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       // becomes a regular string array that the JSON-Schema
       // validator on the capabilities response accepts.
       supported_billing: [...SUPPORTED_BILLINGS],
+      supported_account_currency_modes: ['fixed', 'per_media_buy'],
       sandbox: true,
     },
     ...(wholesaleProfile.signalWholesale && {

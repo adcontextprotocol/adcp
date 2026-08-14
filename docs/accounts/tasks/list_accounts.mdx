@@ -5,7 +5,7 @@ description: "list_accounts returns all advertiser accounts an authenticated age
 testable: false
 ---
 
-Returns all accounts the authenticated agent can operate on this vendor agent. Use this to discover existing accounts, check status changes on pending accounts, and retrieve `account_id` values for use in protocol operations.
+Returns all accounts the authenticated agent can operate on this vendor agent. Use this to discover existing accounts, check status changes on pending accounts, and recover the exact account reference expected on protocol operations.
 
 For upstream-managed account namespaces, `list_accounts` is not optional discovery polish; it is the namespace discovery contract. The upstream platform owns the accessible account set, so buyers MUST resolve an explicit `account_id` before the first account-scoped request. If the authenticated credential can access more than one account, the seller MUST expose `list_accounts`; if it can access exactly one account, the seller SHOULD expose `list_accounts` returning that singleton so SDKs can auto-select it and still send `{ "account_id": "..." }` on required-account calls. [`sync_accounts`](/docs/accounts/tasks/sync_accounts) provisioning does not create account-id accounts in 3.0.x unless a future explicit capability declares that mode; if `sync_accounts` is exposed on these sellers today, use it only for settings updates against an account already identified by `account_id`.
 
@@ -65,11 +65,11 @@ asyncio.run(main())
 
 All parameters are optional. An empty request returns all accounts visible to
 the authenticated caller. Use `account` when re-reading one known account by
-`account_id` or by natural key (`brand` + `operator`, optionally `sandbox`).
+seller-assigned `account_id` or by the complete buyer-declared natural key.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account` | object | No | Exact account filter. Pass `{ "account_id": "..." }` after discovery, or a natural key with `brand`, `operator`, and optional `sandbox` for buyer-declared account sellers. The seller returns only matching accounts visible to the authenticated caller. |
+| `account` | object | No | Exact account filter. Pass `{ "account_id": "..." }` after seller/storefront discovery, or the complete natural key (`brand`, `operator`, and optional `operator_unit`, `currency`, and `sandbox`) for buyer-declared accounts. The seller returns only matching accounts visible to the authenticated caller. |
 | `status` | string | No | Filter by account status: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. |
 | `sandbox` | boolean | No | When true, return only sandbox accounts. When false, return only production accounts. Omit to return both. Primarily used with account-id namespaces where sandbox accounts are pre-existing test accounts on the platform. |
 | `include_webhook_activity` | boolean | No | When true, request recent webhook delivery attempts for each returned account in `webhook_activity[]`. |
@@ -88,10 +88,12 @@ the authenticated caller. Use `account` when re-reading one known account by
 
 | Field | Description |
 |-------|-------------|
-| `account_id` | Vendor agent's identifier. Pass this to protocol tasks: [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy), [`get_signals`](/docs/signals/tasks/get_signals), [`activate_signal`](/docs/signals/tasks/activate_signal), [`report_usage`](/docs/accounts/tasks/report_usage), and other operations. May be absent when `status: "rejected"`. |
+| `account_id` | Seller/storefront identifier. Use it on protocol tasks when the seller declares an account-id namespace. It is distinct from `operator_unit.id`, which belongs to the buyer-side operator. May be absent when `status: "rejected"`. |
 | `name` | Vendor agent's display name for the account |
-| `brand` | Brand reference object: `domain` (the [brand registry](/docs/brand-protocol/brand-json) house domain) and optional `brand_id` (sub-brand within the house) |
+| `brand` | Brand reference: `domain`, optional `brand_id`, and optional commercial-identity `countries[]`. Countries are not delivery targeting. |
 | `operator` | Operator domain. Always present — when the brand operates directly, `operator` equals the brand's domain. |
+| `operator_unit` | Optional operator-owned unit. `id` is stable identity; `name` is mutable display metadata. |
+| `currency` | Optional immutable account currency. When present, media buys on the account must use it. |
 | `status` | Current account state: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed` |
 | `billing` | Billing model in effect: `operator` or `agent` |
 | `account_scope` | How the seller scoped this account: `operator`, `brand`, `operator_brand`, or `agent`. See [account scope](/docs/building/by-layer/L2/accounts-and-agents#account-scope). |
@@ -101,6 +103,8 @@ the authenticated caller. Use `account` when re-reading one known account by
 | `authorization` | Optional. The calling agent's scope grant for this account — `allowed_tasks`, `field_scopes`, `scope_name`, `read_only`. Applies to every vendor agent type (media-buy, signals, governance, creative, brand) — the Accounts Protocol surface is shared. Vendor agents that support scope introspection SHOULD populate this; media-buy sales agents claiming the `attestation_verifier` standard scope MUST populate it. Absence means the vendor agent does not advertise introspectable scope for this account; callers MUST NOT infer access from absence and fall back to error-driven discovery via the RBAC error codes. See [Caller authorization](/docs/accounts/overview#caller-authorization) for the full shape and semantics. |
 | `notification_configs` | Account-level webhook subscribers registered via [`sync_accounts`](/docs/accounts/tasks/sync_accounts#account-level-webhook-subscriptions). Each entry carries `subscriber_id`, `url`, `event_types[]`, and `active`. Present when the account has any persisted subscribers. `subscriber_id` is the account-scoped logical key; re-registering the same subscriber replaces that subscriber's config. `authentication.credentials` is omitted on every entry (write-only). Use this surface to verify what's active after a sync, audit fan-out across multiple subscribers, and detect drift between buyer-side expectations and seller-side persisted state. `account.status_changed` subscribers receive status invalidation fires and repair by re-reading this `status` field. |
 | `webhook_activity` | Optional recent webhook delivery attempts for this account, returned when `include_webhook_activity: true` and the seller exposes the debug log. Omitted means unsupported or not requested; `[]` means supported but no retained fires; non-empty records are most recent first. |
+
+For buyer-declared accounts, `list_accounts` MUST return the natural-key fields needed to use the account again. A stateless buyer can therefore take `brand`, `operator`, `operator_unit`, `currency`, and `sandbox` from the response and send the same shape as `account` on a later task. `operator_unit.name` may change without changing which account the key identifies.
 
 ### Single-publisher cardinality
 

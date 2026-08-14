@@ -416,13 +416,21 @@ export interface ToolArgs { account?: AccountRef; brand?: BrandRef }
 
 export interface AccountRef {
   account_id?: string;
-  brand?: { domain: string; brand_id?: string };
+  brand?: { domain: string; brand_id?: string; countries?: string[] };
   operator?: string;
+  operator_unit?: OperatorUnit;
+  currency?: string;
   sandbox?: boolean;
+}
+
+export interface OperatorUnit {
+  id: string;
+  name?: string;
 }
 
 export interface BrandRef {
   domain: string;
+  countries?: string[];
   name?: string;
 }
 

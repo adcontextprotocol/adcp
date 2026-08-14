@@ -24,12 +24,13 @@
     "owner": "compliance",
     "upstream": "adcontextprotocol/adcp-client#2105",
     "problem": "The SDK package ships a snapshot of compliance bundles, schema bundles, and generated validators. Current PR storyboard runs need to grade current repo source before a new protocol bundle exists.",
-    "localBehavior": "Build current compliance/schema bundles, copy them into the SDK cache, and patch generated validators for same-PR controller enums and request/response schema additions.",
+    "localBehavior": "Build current compliance/schema bundles, copy them into the SDK cache, and patch generated validators for same-PR controller enums and request/response schema additions. The patch regression suite also loads the installed generated response validator to prove the additive account response remains consumable by the pinned 3.1 SDK.",
     "releaseFollowUp": "This overlay is validation-only and does not publish generated types. After the protocol release, regenerate and publish @adcp/sdk, then explicitly upgrade pinned downstream consumers including agentic-api.",
     "removalCondition": "Remove when the storyboard matrix passes current compliance and schema roots through public SDK options instead of overlaying the SDK cache.",
     "paths": [
       "scripts/overlay-compliance-cache.sh",
-      "scripts/run-storyboards-matrix.sh"
+      "scripts/run-storyboards-matrix.sh",
+      "tests/patch-sdk-rc15.test.cjs"
     ],
     "terms": [
       "node_modules/@adcp/sdk/compliance/cache",

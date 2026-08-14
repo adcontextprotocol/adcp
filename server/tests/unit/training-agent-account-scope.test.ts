@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { createHash } from 'node:crypto';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -29,7 +30,7 @@ describe('canonical AccountRef scope', () => {
     expect(accountScopeFromRef({
       brand: { domain: 'House.Example', brand_id: 'spark' },
       operator: 'Pinnacle.Example',
-    })).toBe('n:house.example:spark:pinnacle.example:0');
+    })).toBe('n:{"brand":{"domain":"house.example","brand_id":"spark"},"operator":"pinnacle.example","operator_unit_id":null,"currency":null,"sandbox":false}');
   });
 
   it('partitions every natural-key discriminator', () => {
@@ -39,8 +40,50 @@ describe('canonical AccountRef scope', () => {
       accountScopeFromRef({ ...base, operator: 'two.example' }),
       accountScopeFromRef({ ...base, sandbox: true }),
       accountScopeFromRef({ ...base, brand: { ...base.brand, brand_id: 'spark' } }),
+      accountScopeFromRef({ ...base, brand: { ...base.brand, countries: ['NL'] } }),
+      accountScopeFromRef({ ...base, operator_unit: { id: '234284238', name: 'Nova EMEA' } }),
+      accountScopeFromRef({ ...base, currency: 'EUR' }),
     ]);
-    expect(scopes.size).toBe(4);
+    expect(scopes.size).toBe(7);
+  });
+
+  it('represents a country-scoped brand under an operator unit and fixed currency', () => {
+    const account = {
+      brand: { domain: 'Nova-Athletics.Example', countries: ['NL', 'BE'] },
+      operator: 'Nova-Athletics.Example',
+      operator_unit: { id: '234284238', name: 'Nova EMEA' },
+      currency: 'EUR',
+    };
+    expect(canonicalizeAccountRef(account)).toEqual({
+      kind: 'natural',
+      brand: { domain: 'nova-athletics.example', countries: ['BE', 'NL'] },
+      operator: 'nova-athletics.example',
+      operator_unit: { id: '234284238', name: 'Nova EMEA' },
+      currency: 'EUR',
+      sandbox: false,
+    });
+    expect(accountScopeFromRef(account))
+      .toBe('n:{"brand":{"domain":"nova-athletics.example","countries":["BE","NL"]},"operator":"nova-athletics.example","operator_unit_id":"234284238","currency":"EUR","sandbox":false}');
+    expect(accountScopeFromRef({
+      ...account,
+      brand: { ...account.brand, countries: ['BE', 'NL'] },
+      operator_unit: { ...account.operator_unit, name: 'Renamed EMEA seat' },
+    })).toBe(accountScopeFromRef(account));
+  });
+
+  it('excludes permitted BrandRef inline overrides from account identity', () => {
+    const base = {
+      brand: { domain: 'house.example', countries: ['NL'] },
+      operator: 'pinnacle.example',
+    };
+    expect(accountScopeFromRef({
+      ...base,
+      brand: {
+        ...base.brand,
+        industries: ['retail'],
+        data_subject_contestation: { url: 'https://house.example/privacy' },
+      },
+    })).toBe(accountScopeFromRef(base));
   });
 
   it.each([
@@ -49,6 +92,10 @@ describe('canonical AccountRef scope', () => {
     [{ account_id: 'acct_123', sandbox: false }, 'exactly one identity'],
     [{ brand: { domain: 'house.example' } }, 'exactly one identity'],
     [{ brand: { domain: 'house.example' }, operator: 'one.example', unexpected: true }, "field 'unexpected'"],
+    [{ brand: { domain: 'house.example', countries: ['nl'] }, operator: 'one.example' }, 'ISO 3166-1'],
+    [{ brand: { domain: 'house.example', countries: ['NL', 'NL'] }, operator: 'one.example' }, 'unique'],
+    [{ brand: { domain: 'house.example' }, operator: 'one.example', operator_unit: { id: '' } }, 'stable operator-defined'],
+    [{ brand: { domain: 'house.example' }, operator: 'one.example', currency: 'eur' }, 'ISO 4217'],
     [{ account_id: 'acct_123', unexpected: true }, "field 'unexpected'"],
   ])('rejects invalid closed-union shape %#', (value, message) => {
     expect(() => canonicalizeAccountRef(value)).toThrow(AccountRefValidationError);
@@ -58,13 +105,18 @@ describe('canonical AccountRef scope', () => {
 
 describe('canonical session scope', () => {
   it('uses the complete account identity without requiring a principal', () => {
+    const naturalScope = accountScopeFromRef({
+      brand: { domain: 'House.Example', brand_id: 'spark' },
+      operator: 'Pinnacle.Example',
+      sandbox: true,
+    });
     expect(getProductsSessionKeyFromArgs({
       account: {
         brand: { domain: 'House.Example', brand_id: 'spark' },
         operator: 'Pinnacle.Example',
         sandbox: true,
       },
-    }, 'open')).toBe('open:n:house.example:spark:pinnacle.example:1');
+    }, 'open')).toBe(`open:h:${createHash('sha256').update(naturalScope).digest('hex')}`);
     expect(getProductsSessionKeyFromArgs({ account: { account_id: 'acct_123' } }, 'open'))
       .toBe('open:a:acct_123');
     expect(getProductsSessionKeyFromArgs({
@@ -96,7 +148,7 @@ describe('canonical session scope', () => {
     }, 'open', undefined, undefined, 'workos:org_one');
 
     expect(first).toBe(same);
-    expect(first).toMatch(/^open:p:[a-f0-9]{64}:n:house\.example:-:one\.example:0$/);
+    expect(first).toMatch(/^open:p:[a-f0-9]{64}:h:[a-f0-9]{64}$/);
     expect(new Set([first, otherPrincipal, otherOperator]).size).toBe(3);
   });
 
@@ -132,9 +184,9 @@ describe('custom-tool account scoping', () => {
       sandbox: true,
     };
     expect(deriveAccountScope({ account }))
-      .toBe('n:house.example:spark:pinnacle.example:1');
+      .toBe('n:{"brand":{"domain":"house.example","brand_id":"spark"},"operator":"pinnacle.example","operator_unit_id":null,"currency":null,"sandbox":true}');
     expect(deriveAccountScope({ usage: [{ account }] }))
-      .toBe('n:house.example:spark:pinnacle.example:1');
+      .toBe('n:{"brand":{"domain":"house.example","brand_id":"spark"},"operator":"pinnacle.example","operator_unit_id":null,"currency":null,"sandbox":true}');
   });
 
   it('does not silently fall through an explicit invalid top-level account', () => {

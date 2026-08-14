@@ -36,6 +36,15 @@
       "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
       "x-entity": "operator"
     },
+    "operator_unit": {
+      "$ref": "/schemas/core/operator-unit.json",
+      "description": "Operator-owned business unit, agency seat, or platform account associated with this advertiser account. The id round-trips from the natural key; name is mutable display metadata. This is distinct from account_id, which belongs to the seller/storefront namespace."
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "Immutable transaction currency when the seller's advertiser object is currency-bound. Media buys on this account MUST use this currency. Omit when the account selects currency independently per media buy."
+    },
     "billing": {
       "$ref": "/schemas/enums/billing-party.json",
       "description": "Who is invoiced on this account. See billing_entity for the invoiced party's business details."

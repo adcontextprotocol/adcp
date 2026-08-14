@@ -245,7 +245,10 @@ describe("compact performance feedback and measurement-agent discovery", () => {
         supported_versions: ["3.2"],
         idempotency: { supported: true, replay_ttl_seconds: 86400 },
       },
-      account: { supported_billing: ["operator"] },
+      account: {
+        supported_billing: ["operator"],
+        supported_account_currency_modes: ["fixed", "per_media_buy"],
+      },
     };
 
     for (const capabilities of [

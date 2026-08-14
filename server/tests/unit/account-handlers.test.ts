@@ -125,6 +125,97 @@ describe('sync_accounts', () => {
     expect(acct.setup).toBeUndefined();
   });
 
+  it('keeps brand countries, operator units, and fixed currency in the natural key', async () => {
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [
+        {
+          brand: { domain: 'nova-athletics.example', countries: ['NL'] },
+          operator: 'nova-athletics.example',
+          operator_unit: { id: '234284238', name: 'Nova EMEA' },
+          currency: 'EUR',
+          billing: 'operator',
+          sandbox: true,
+        },
+        {
+          brand: { domain: 'nova-athletics.example', countries: ['BE'] },
+          operator: 'nova-athletics.example',
+          operator_unit: { id: '234284238', name: 'Nova EMEA' },
+          currency: 'EUR',
+          billing: 'operator',
+          sandbox: true,
+        },
+      ],
+    });
+
+    const accounts = result.accounts as Record<string, unknown>[];
+    expect(accounts).toHaveLength(2);
+    expect(new Set(accounts.map(account => account.account_id)).size).toBe(2);
+    expect(accounts[0]).toMatchObject({
+      brand: { domain: 'nova-athletics.example', countries: ['NL'] },
+      operator: 'nova-athletics.example',
+      operator_unit: { id: '234284238', name: 'Nova EMEA' },
+      currency: 'EUR',
+    });
+
+    const { result: listed } = await simulateCallTool(server, 'list_accounts', {});
+    expect((listed.accounts as Record<string, unknown>[])).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        account_id: accounts[0].account_id,
+        brand: { domain: 'nova-athletics.example', countries: ['NL'] },
+        operator: 'nova-athletics.example',
+        operator_unit: { id: '234284238', name: 'Nova EMEA' },
+        currency: 'EUR',
+        sandbox: true,
+      }),
+    ]));
+  });
+
+  it('uses only BrandKey fields from a broader 3.x BrandRef for account identity', async () => {
+    const base = {
+      operator: 'pinnacle-agency.example',
+      operator_unit: { id: 'seat_emea_01', name: 'EMEA' },
+      currency: 'EUR',
+      billing: 'operator',
+      sandbox: true,
+    };
+    const { result: first } = await simulateCallTool(server, 'sync_accounts', {
+      adcp_version: '3.1',
+      accounts: [{
+        ...base,
+        brand: {
+          domain: 'nova-athletics.example',
+          brand_id: 'running',
+          countries: ['DE', 'NL'],
+          industries: ['sports'],
+        },
+      }],
+    });
+    const firstAccount = (first.accounts as Record<string, unknown>[])[0];
+
+    const { result: second } = await simulateCallTool(server, 'sync_accounts', {
+      adcp_version: '3.1',
+      accounts: [{
+        ...base,
+        brand: {
+          domain: 'nova-athletics.example',
+          brand_id: 'running',
+          countries: ['DE', 'NL'],
+          industries: ['retail'],
+          brand_kit_override: { tagline: 'A mutable campaign tagline' },
+        },
+      }],
+    });
+    const secondAccount = (second.accounts as Record<string, unknown>[])[0];
+
+    expect(firstAccount.action).toBe('created');
+    expect(secondAccount.action).toBe('updated');
+    expect(secondAccount.account_id).toBe(firstAccount.account_id);
+    expect(secondAccount).toHaveProperty('brand');
+    expect(secondAccount).toHaveProperty('operator', 'pinnacle-agency.example');
+    expect(secondAccount).not.toHaveProperty('operator_identity');
+    expect(secondAccount).not.toHaveProperty('advertiser_identity');
+  });
+
   it('non-sandbox account is pending_approval with setup URL', async () => {
     const { result } = await simulateCallTool(server, 'sync_accounts', {
       accounts: [{
@@ -688,7 +779,7 @@ describe('sync_accounts', () => {
     const { result: created } = await simulateCallTool(server, 'sync_accounts', {
       accounts: [
         {
-          brand: { domain: 'acme.com', brand_id: 'acme-main' },
+          brand: { domain: 'acme.com', brand_id: 'acme_main' },
           operator: 'agency-one',
           billing: 'operator',
           sandbox: true,
@@ -712,7 +803,7 @@ describe('sync_accounts', () => {
 
     const { result: byNaturalKey } = await simulateCallTool(server, 'list_accounts', {
       account: {
-        brand: { domain: 'acme.com', brand_id: 'acme-main' },
+        brand: { domain: 'acme.com', brand_id: 'acme_main' },
         operator: 'agency-one',
         sandbox: true,
       },
@@ -915,7 +1006,7 @@ describe('sync_governance', () => {
 
     const { result } = await simulateCallTool(server, 'sync_governance', {
       accounts: [{
-        account: { brand: { domain: 'acme.com' }, operator: 'agency-one' },
+        account: { brand: { domain: 'acme.com' }, operator: 'agency-one', sandbox: true },
         governance_agents: [{
           url: 'https://governance.example.com/mcp',
           authentication: { schemes: ['bearer'], credentials: 'tok_123' },
@@ -935,7 +1026,7 @@ describe('sync_governance', () => {
   it('replaces the governance agent on second call', async () => {
     await createSandboxAccount();
 
-    const ref = { brand: { domain: 'acme.com' }, operator: 'agency-one' };
+    const ref = { brand: { domain: 'acme.com' }, operator: 'agency-one', sandbox: true };
 
     // First sync — one agent
     await simulateCallTool(server, 'sync_governance', {

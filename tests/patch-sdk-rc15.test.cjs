@@ -319,3 +319,28 @@ test('installed SDK uses request-local scoped capabilities for get_products adap
     }
   }
 });
+
+test('installed 3.1 SDK accepts the additive flat advertiser natural-key response', async () => {
+  const schemasPath = path.resolve(
+    __dirname,
+    '..',
+    'node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js',
+  );
+  const { SyncAccountsResponseSchema } = await import(pathToFileURL(schemasPath).href);
+  const parsed = SyncAccountsResponseSchema.safeParse({
+    status: 'completed',
+    accounts: [{
+      account_id: 'acc_nova_nl',
+      brand: { domain: 'nova-athletics.example', countries: ['NL'] },
+      operator: 'pinnacle-agency.example',
+      operator_unit: { id: '234284238', name: 'EMEA' },
+      currency: 'EUR',
+      sandbox: true,
+      action: 'created',
+      status: 'active',
+      billing: 'operator',
+    }],
+  });
+
+  assert.equal(parsed.success, true, parsed.success ? undefined : parsed.error.toString());
+});

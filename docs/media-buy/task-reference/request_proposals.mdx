@@ -7,7 +7,7 @@ testable: false
 
 `request_proposals` creates one or more immutable draft media-plan proposal snapshots from a brief. It can begin a consultative workflow directly or use `product_ids` returned by [`list_products`](/docs/media-buy/task-reference/list_products). Success always contains at least one proposal; returning products without a proposal does not satisfy this task.
 
-`brand` contains only the stable BrandKey (`domain` plus optional `brand_id`); the seller resolves the canonical brand manifest rather than receiving a full brand file in every call. `account` is optional and adds seller-specific commercial terms. A natural-key account (`brand` plus `operator`) can supply the request's sole brand identity instead of repeating top-level `brand`.
+`brand` contains only the stable BrandKey (`domain`, optional `brand_id`, and optional ISO country `countries[]`); the seller resolves the canonical brand manifest rather than receiving a full brand file in every call. Countries qualify commercial advertiser identity and do not target delivery. `account` is optional and adds seller-specific commercial terms. A natural-key account can supply the request's sole brand identity and qualify it with an operator-owned unit and fixed account currency.
 
 **Request schema:** [`/schemas/v3/media-buy/request-proposals-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/request-proposals-request.json)
 
@@ -15,7 +15,18 @@ testable: false
 {
   "idempotency_key": "550e8400-e29b-41d4-a716-446655441001",
   "brief": "Reach outdoor enthusiasts with premium video inventory.",
-  "brand": { "domain": "acmeoutdoor.example" },
+  "account": {
+    "brand": {
+      "domain": "nova-athletics.example",
+      "countries": ["DE", "NL"]
+    },
+    "operator": "pinnacle-media.example",
+    "operator_unit": {
+      "id": "seat_emea_01",
+      "name": "EMEA"
+    },
+    "currency": "EUR"
+  },
   "opportunity": {
     "opportunity_id": "opp_spring_launch_2027",
     "phase": "active_sourcing",

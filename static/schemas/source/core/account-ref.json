@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/account-ref.json",
   "title": "Account Reference",
-  "description": "Reference to an account by seller-assigned ID or natural key. Use account_id when the seller or upstream platform owns the canonical account namespace: either a seller-defined account supplied out-of-band, or an upstream-managed namespace discovered with list_accounts before account-scoped calls. If a credential may access more than one account, the seller MUST expose list_accounts; if a credential is bound to exactly one account, the seller SHOULD expose list_accounts returning that singleton and MAY omit it only when the same explicit account_id is provided through another declared path or out-of-band onboarding. Use the natural key (brand + operator) when brand + operator (+ sandbox) is the durable protocol key for buyer-declared accounts (require_operator_auth: false), whether provisioned explicitly through sync_accounts or lazily on the first account-scoped request under the unambiguous-default rules. For sandbox: account_id namespaces use pre-existing test accounts discovered via list_accounts or supplied out-of-band; buyer-declared accounts use the natural key with sandbox: true.",
+  "description": "Reference to an advertiser account by seller-assigned ID or natural key. account_id is the seller/storefront handle returned by list_accounts. The natural key is brand + operator + optional operator_unit.id + optional fixed currency + sandbox; it describes the advertiser object the seller resolves or provisions. brand.countries qualifies the advertiser's geographic identity. operator_unit identifies the operator-owned buying seat or business unit and is distinct from the seller account. operator_unit.name is display metadata and does not participate in identity. Use account_id when the seller or upstream platform owns the canonical account namespace; use the natural key for buyer-declared accounts (require_operator_auth: false).",
   "type": "object",
   "oneOf": [
     {
@@ -28,6 +28,15 @@
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
           "x-entity": "operator"
         },
+        "operator_unit": {
+          "$ref": "/schemas/core/operator-unit.json",
+          "description": "Optional operator-owned business unit, agency seat, or platform account. Only id participates in the natural account key; name is mutable display metadata."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "Immutable ISO 4217 transaction currency when the seller's advertiser object is currency-bound. When present, this is part of the natural account key and media buys on the account MUST use it. Omit when currency is selected independently per media buy."
+        },
         "sandbox": {
           "type": "boolean",
           "description": "When true, references the sandbox account for this brand/operator pair. Defaults to false (production account).",
@@ -42,6 +51,7 @@
     { "account_id": "acc_acme_001" },
     { "brand": { "domain": "acme-corp.com" }, "operator": "acme-corp.com" },
     { "brand": { "domain": "nova-brands.com", "brand_id": "spark" }, "operator": "pinnacle-media.com" },
+    { "brand": { "domain": "nova-athletics.example", "countries": ["NL"] }, "operator": "nova-athletics.example", "operator_unit": { "id": "234284238", "name": "Nova EMEA" }, "currency": "EUR" },
     { "brand": { "domain": "acme-corp.com" }, "operator": "acme-corp.com", "sandbox": true }
   ]
 }

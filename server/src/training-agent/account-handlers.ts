@@ -6,7 +6,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { TrainingContext, ToolArgs, AccountRef } from './types.js';
+import type { TrainingContext, ToolArgs, AccountRef, OperatorUnit } from './types.js';
+import { accountScopeFromRef } from './account-scope.js';
 import { sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
@@ -38,8 +39,10 @@ interface SyncAccountsInput extends ToolArgs {
 
 interface SyncAccountInput {
   account?: AccountRef;
-  brand?: { domain: string; brand_id?: string; name?: string };
+  brand?: { domain: string; brand_id?: string; countries?: string[]; name?: string };
   operator?: string;
+  operator_unit?: OperatorUnit;
+  currency?: string;
   billing?: 'operator' | 'agent' | 'advertiser';
   billing_entity?: Record<string, unknown>;
   payment_terms?: string;
@@ -49,8 +52,10 @@ interface SyncAccountInput {
 
 interface AccountState {
   accountId: string;
-  brand: { domain: string; brand_id?: string; name?: string };
+  brand: { domain: string; brand_id?: string; countries?: string[]; name?: string };
   operator: string;
+  operatorUnit?: OperatorUnit;
+  currency?: string;
   billing: string;
   billingEntity?: Record<string, unknown>;
   paymentTerms: string;
@@ -131,9 +136,24 @@ function getAccountMap(sessionKey: string, principal?: string): Map<string, Acco
   return map;
 }
 
-function accountKey(brand: { domain: string; brand_id?: string }, operator: string): string {
-  const brandPart = brand.brand_id ? `${brand.domain}:${brand.brand_id}` : brand.domain;
-  return `${brandPart}::${operator}`;
+function accountKey(
+  brand: { domain: string; brand_id?: string; countries?: string[] },
+  operator: string,
+  operatorUnit?: OperatorUnit,
+  currency?: string,
+  sandbox = false,
+): string {
+  return accountScopeFromRef({
+    brand: {
+      domain: brand.domain,
+      ...(brand.brand_id && { brand_id: brand.brand_id }),
+      ...(brand.countries && { countries: brand.countries }),
+    },
+    operator,
+    ...(operatorUnit && { operator_unit: operatorUnit }),
+    ...(currency && { currency }),
+    sandbox,
+  });
 }
 
 function findAccountByRef(accounts: Map<string, AccountState>, ref: AccountRef): AccountState | undefined {
@@ -144,7 +164,13 @@ function findAccountByRef(accounts: Map<string, AccountState>, ref: AccountRef):
     return undefined;
   }
   if (ref.brand?.domain && ref.operator) {
-    return accounts.get(accountKey(ref.brand, ref.operator));
+    return accounts.get(accountKey(
+      ref.brand,
+      ref.operator,
+      ref.operator_unit,
+      ref.currency,
+      ref.sandbox === true,
+    ));
   }
   return undefined;
 }
@@ -180,8 +206,11 @@ export function sandboxAccountRefForId(
     brand: {
       domain: account.brand.domain.toLowerCase(),
       ...(account.brand.brand_id && { brand_id: account.brand.brand_id }),
+      ...(account.brand.countries && { countries: [...account.brand.countries] }),
     },
     operator: account.operator.toLowerCase(),
+    ...(account.operatorUnit && { operator_unit: { ...account.operatorUnit } }),
+    ...(account.currency && { currency: account.currency }),
     sandbox: true,
   };
 }
@@ -215,6 +244,8 @@ function accountStateFromWire(wire: AccountWireShape, now: string): AccountState
     accountId: wire.account_id,
     brand: wire.brand,
     operator: wire.operator,
+    operatorUnit: wire.operator_unit,
+    currency: wire.currency,
     billing: wire.billing,
     paymentTerms: wire.payment_terms ?? 'net_30',
     status: wire.status,
@@ -243,10 +274,12 @@ interface AccountWireShape {
   account_id: string;
   name: string;
   advertiser: string;
-  // brand-ref.json defines this object; it carries domain + optional brand_id
+  // brand-ref.json defines this object; it carries domain + optional brand_id/countries
   // only — `name` is not in the schema and additionalProperties is false.
-  brand: { domain: string; brand_id?: string };
+  brand: { domain: string; brand_id?: string; countries?: string[] };
   operator: string;
+  operator_unit?: OperatorUnit;
+  currency?: string;
   billing: string;
   account_scope: string;
   status: string;
@@ -260,20 +293,23 @@ interface AccountWireShape {
 function accountStateToWire(account: AccountState): AccountWireShape {
   const advertiser = account.brand.name ?? account.brand.domain;
   const displayName = account.brand.domain === account.operator
-    ? advertiser
-    : `${advertiser} c/o ${account.operator}`;
+    ? account.operatorUnit?.name ? `${advertiser} — ${account.operatorUnit.name}` : advertiser
+    : `${advertiser} c/o ${account.operatorUnit?.name ?? account.operator}`;
   // brand-ref.json forbids `name` on the wire (additionalProperties: false),
   // so emit only the schema-declared fields. AccountState.brand.name is an
   // operational hint we use to derive `name`/`advertiser` above; it never
   // reaches the buyer.
-  const wireBrand: { domain: string; brand_id?: string } = { domain: account.brand.domain };
+  const wireBrand: { domain: string; brand_id?: string; countries?: string[] } = { domain: account.brand.domain };
   if (account.brand.brand_id !== undefined) wireBrand.brand_id = account.brand.brand_id;
+  if (account.brand.countries !== undefined) wireBrand.countries = [...account.brand.countries];
   const wire: AccountWireShape = {
     account_id: account.accountId,
     name: displayName,
     advertiser,
     brand: wireBrand,
     operator: account.operator,
+    ...(account.operatorUnit && { operator_unit: { ...account.operatorUnit } }),
+    ...(account.currency && { currency: account.currency }),
     billing: account.billing,
     account_scope: account.accountScope,
     status: account.status,
@@ -320,7 +356,14 @@ function sanitizeNotificationConfigs(configs: NotificationConfigState[]): Array<
 
 function validationFailure(input: SyncAccountInput, field: string, message: string): Record<string, unknown> {
   return {
-    ...(input.account ? { account: input.account } : { brand: input.brand, operator: input.operator }),
+    ...(input.account
+      ? { account: input.account }
+      : {
+          brand: input.brand,
+          operator: input.operator,
+          ...(input.operator_unit && { operator_unit: input.operator_unit }),
+          ...(input.currency && { currency: input.currency }),
+        }),
     action: 'failed',
     status: 'rejected',
     errors: [{ code: 'VALIDATION_ERROR', field, message }],
@@ -515,7 +558,23 @@ export function getAccountNotificationSubscribers(
   for (const accounts of accountMaps) {
     for (const account of accounts.values()) {
       if (accountId && account.accountId !== accountId) continue;
-      if (!accountId && canUseNaturalKey && accountKey(accountRef!.brand!, accountRef!.operator!) !== accountKey(account.brand, account.operator)) continue;
+      if (
+        !accountId
+        && canUseNaturalKey
+        && accountKey(
+          accountRef!.brand!,
+          accountRef!.operator!,
+          accountRef!.operator_unit,
+          accountRef!.currency,
+          accountRef!.sandbox === true,
+        ) !== accountKey(
+          account.brand,
+          account.operator,
+          account.operatorUnit,
+          account.currency,
+          account.sandbox,
+        )
+      ) continue;
       for (const config of account.notificationConfigs) {
         if (!config.active || !config.eventTypes.includes(notificationType)) continue;
         const subscriberKey = `${account.accountId}\u001F${config.subscriberId}\u001F${notificationType}`;
@@ -546,6 +605,23 @@ export function resolveAccountIdForRef(
   }
   return ref.account_id
     ? findAccountByIdAcrossSessions(ref.account_id, principal)?.accountId
+    : undefined;
+}
+
+/** Resolve the immutable currency of a currency-bound advertiser account. */
+export function resolveAccountCurrencyForRef(
+  sessionKey: string,
+  principal: string | undefined,
+  ref: AccountRef | undefined,
+): string | undefined {
+  if (!ref) return undefined;
+  if (ref.currency) return ref.currency;
+  for (const accounts of accountMapsForPrincipal(sessionKey, principal)) {
+    const account = findAccountByRef(accounts, ref);
+    if (account) return account.currency;
+  }
+  return ref.account_id
+    ? findAccountByIdAcrossSessions(ref.account_id, principal)?.currency
     : undefined;
 }
 
@@ -586,8 +662,12 @@ export function seedAccountFixture(
   }
 
   const fixture = (params.fixture ?? {}) as Record<string, unknown>;
-  const brand = fixture.brand as { domain?: string; brand_id?: string; name?: string } | undefined;
+  const brand = fixture.brand as { domain?: string; brand_id?: string; countries?: string[]; name?: string } | undefined;
   const operator = fixture.operator;
+  const operatorUnit = fixture.operator_unit && typeof fixture.operator_unit === 'object'
+    ? fixture.operator_unit as unknown as OperatorUnit
+    : undefined;
+  const currency = typeof fixture.currency === 'string' ? fixture.currency : undefined;
   if (!brand?.domain) {
     return { success: false, error: 'INVALID_PARAMS', error_detail: 'params.fixture.brand.domain is required for seed_account' };
   }
@@ -600,19 +680,28 @@ export function seedAccountFixture(
   const now = new Date().toISOString();
   const sessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
   const accounts = getAccountMap(sessionKey, ctx.principal);
-  const key = accountKey(brand as { domain: string; brand_id?: string }, operator);
+  const sandbox = fixture.sandbox !== false;
+  const key = accountKey(
+    brand as { domain: string; brand_id?: string; countries?: string[] },
+    operator,
+    operatorUnit,
+    currency,
+    sandbox,
+  );
   const existing = accounts.get(key)
     ?? findAccountByIdAcrossSessions(accountId, ctx.principal);
 
   const state: AccountState = {
     accountId,
-    brand: brand as { domain: string; brand_id?: string; name?: string },
+    brand: brand as { domain: string; brand_id?: string; countries?: string[]; name?: string },
     operator,
+    operatorUnit,
+    currency,
     billing,
     paymentTerms: typeof fixture.payment_terms === 'string' ? fixture.payment_terms : 'net_30',
     status,
     accountScope: typeof fixture.account_scope === 'string' ? fixture.account_scope : 'operator_brand',
-    sandbox: fixture.sandbox !== false,
+    sandbox,
     rateCard: typeof fixture.rate_card === 'string' ? fixture.rate_card : 'sandbox',
     creditLimit: undefined,
     governanceAgents: [],
@@ -695,11 +784,27 @@ export const ACCOUNT_REF_SCHEMA = {
           properties: {
             domain: { type: 'string' },
             brand_id: { type: 'string' },
+            countries: {
+              type: 'array',
+              items: { type: 'string', pattern: '^[A-Z]{2}$' },
+              minItems: 1,
+              uniqueItems: true,
+            },
           },
           required: ['domain'],
           additionalProperties: false,
         },
         operator: { type: 'string' },
+        operator_unit: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', minLength: 1, maxLength: 255, pattern: '^[A-Za-z0-9][A-Za-z0-9._:/-]*$' },
+            name: { type: 'string', minLength: 1, maxLength: 200 },
+          },
+          required: ['id'],
+          additionalProperties: false,
+        },
+        currency: { type: 'string', pattern: '^[A-Z]{3}$' },
         sandbox: { type: 'boolean' },
       },
       required: ['brand', 'operator'],
@@ -759,12 +864,28 @@ export const ACCOUNT_TOOLS = [
                 properties: {
                   domain: { type: 'string' },
                   brand_id: { type: 'string' },
+                  countries: {
+                    type: 'array',
+                    items: { type: 'string', pattern: '^[A-Z]{2}$' },
+                    minItems: 1,
+                    uniqueItems: true,
+                  },
                   name: { type: 'string' },
                 },
                 required: ['domain'],
               },
               account: ACCOUNT_REF_SCHEMA,
               operator: { type: 'string' },
+              operator_unit: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', minLength: 1, maxLength: 255, pattern: '^[A-Za-z0-9][A-Za-z0-9._:/-]*$' },
+                  name: { type: 'string', minLength: 1, maxLength: 200 },
+                },
+                required: ['id'],
+                additionalProperties: false,
+              },
+              currency: { type: 'string', pattern: '^[A-Z]{3}$' },
               billing: { type: 'string', enum: ['operator', 'agent', 'advertiser'] },
               billing_entity: { type: 'object' },
               payment_terms: { type: 'string', enum: ['net_15', 'net_30', 'net_45', 'net_60', 'net_90', 'prepay'] },
@@ -802,6 +923,8 @@ export const ACCOUNT_TOOLS = [
                 allOf: [
                   { not: { required: ['brand'] } },
                   { not: { required: ['operator'] } },
+                  { not: { required: ['operator_unit'] } },
+                  { not: { required: ['currency'] } },
                   { not: { required: ['billing'] } },
                 ],
               },
@@ -911,6 +1034,8 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       const mixedProvisioningFields = [
         input.brand !== undefined && 'brand',
         input.operator !== undefined && 'operator',
+        input.operator_unit !== undefined && 'operator_unit',
+        input.currency !== undefined && 'currency',
         input.billing !== undefined && 'billing',
         input.sandbox !== undefined && 'sandbox',
       ].filter(Boolean);
@@ -944,7 +1069,13 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         continue;
       }
       if (!req.dry_run && !findAccountByRef(accounts, input.account)) {
-        accounts.set(accountKey(existing.brand, existing.operator), existing);
+        accounts.set(accountKey(
+          existing.brand,
+          existing.operator,
+          existing.operatorUnit,
+          existing.currency,
+          existing.sandbox,
+        ), existing);
       }
 
       if (input.payment_terms && !SUPPORTED_PAYMENT_TERMS.includes(input.payment_terms)) {
@@ -980,6 +1111,8 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         account: input.account,
         brand: existing.brand,
         operator: existing.operator,
+        ...(existing.operatorUnit && { operator_unit: existing.operatorUnit }),
+        ...(existing.currency && { currency: existing.currency }),
         action: 'updated',
         status: existing.status,
         billing: existing.billing,
@@ -1124,7 +1257,13 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       continue;
     }
 
-    const key = accountKey(input.brand, input.operator);
+    const key = accountKey(
+      input.brand,
+      input.operator,
+      input.operator_unit,
+      input.currency,
+      input.sandbox === true,
+    );
     const existing = accounts.get(key);
     const isSandbox = input.sandbox === true;
     const accountId = existing?.accountId || `acc_${input.brand.domain.replace(/\./g, '_')}_${randomUUID().slice(0, 8)}`;
@@ -1143,6 +1282,8 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       results.push({
         brand: input.brand,
         operator: input.operator,
+        ...(input.operator_unit && { operator_unit: input.operator_unit }),
+        ...(input.currency && { currency: input.currency }),
         action: existing ? 'updated' : 'created',
         status: isSandbox ? 'active' : 'pending_approval',
         billing: input.billing,
@@ -1168,6 +1309,8 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       accountId,
       brand: input.brand,
       operator: input.operator,
+      operatorUnit: input.operator_unit,
+      currency: input.currency,
       billing: input.billing!,
       billingEntity: input.billing_entity,
       paymentTerms: input.payment_terms || 'net_30',
@@ -1175,7 +1318,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       accountScope: 'operator_brand',
       sandbox: isSandbox,
       rateCard: isSandbox ? 'sandbox' : 'standard',
-      creditLimit: isSandbox ? undefined : { amount: 100000, currency: 'USD' },
+      creditLimit: isSandbox ? undefined : { amount: 100000, currency: input.currency ?? 'USD' },
       governanceAgents: existing?.governanceAgents || [],
       notificationConfigs: Array.isArray(notificationConfigs)
         ? notificationConfigs
@@ -1192,7 +1335,11 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       account_id: accountId,
       brand: input.brand,
       operator: input.operator,
-      name: `${input.brand.name || input.brand.domain} (via ${input.operator})`,
+      ...(input.operator_unit && { operator_unit: input.operator_unit }),
+      ...(input.currency && { currency: input.currency }),
+      name: input.operator_unit?.name
+        ? `${input.brand.name || input.brand.domain} (via ${input.operator_unit.name})`
+        : `${input.brand.name || input.brand.domain} (via ${input.operator})`,
       action,
       status,
       billing: input.billing,
@@ -1248,7 +1395,13 @@ function wireAccountMatchesRef(account: AccountWireShape, ref: AccountRef): bool
   if (!ref.brand?.domain || !ref.operator) return false;
   if (account.brand.domain !== ref.brand.domain) return false;
   if (ref.brand.brand_id !== undefined && account.brand.brand_id !== ref.brand.brand_id) return false;
+  if (
+    JSON.stringify([...(account.brand.countries ?? [])].sort())
+    !== JSON.stringify([...(ref.brand.countries ?? [])].sort())
+  ) return false;
   if (account.operator !== ref.operator) return false;
+  if ((account.operator_unit?.id ?? undefined) !== (ref.operator_unit?.id ?? undefined)) return false;
+  if ((account.currency ?? undefined) !== (ref.currency ?? undefined)) return false;
   if (typeof ref.sandbox === 'boolean') return (account.sandbox === true) === ref.sandbox;
   return true;
 }

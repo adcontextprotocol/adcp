@@ -168,7 +168,19 @@ function bundleSchema(root: JsonSchema): JsonSchema {
 /** Load the normative source request schema and bundle every repository-local
  * reference for MCP tools/list consumers, which cannot resolve AdCP paths. */
 export function loadProductDiscoveryInputSchema(fileName: string): JsonSchema {
-  return bundleSchema(readSchema(`media-buy/${fileName}.json`));
+  const bundled = bundleSchema(readSchema(`media-buy/${fileName}.json`));
+  const {
+    $schema: _schema,
+    $id: _id,
+    title: _title,
+    description: _description,
+    'x-operation-family': _operationFamily,
+    'x-added-in': _addedIn,
+    'x-legacy-fallback': _legacyFallback,
+    'x-mutates-state': _mutatesState,
+    ...inputSchema
+  } = bundled;
+  return inputSchema;
 }
 
 function schemaFiles(directory: string): string[] {
