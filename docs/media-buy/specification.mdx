@@ -79,6 +79,45 @@ Every media buy request involves three entities:
 
 ### Identifiers
 
+- **`product_id`**: Opaque identifier for a product returned by `get_products`. A non-custom wholesale ID remains stable for the same logical offer within the seller and declared `cache_scope`, including across reads and wholesale-feed webhooks; feed and pricing versions communicate temporal catalog mutation, while retirement or replacement may end the identity. Binding commercial terms are immutable under `pricing_option_id`, so changed price, floor, currency, model, or priced applicability receives a new option ID. An `is_custom: true` ID remains stable only in its issuing discovery/refinement lineage through its promised lifetime. Creating a package with the product and pricing-option IDs accepts the disclosed configuration and commercial option. A caller-authorized custom ID past `expires_at` returns `PRODUCT_EXPIRED`; after its tombstone is no longer retained or outside its account/lineage, `PRODUCT_NOT_FOUND` applies without disclosing cross-tenant existence.
+
+### Structured requirements and briefs
+
+Buyers SHOULD use a structured request field whenever one represents their
+requirement. Structured input is compact, machine-validatable, and avoids lossy
+natural-language inference. Briefs carry goals, context, semantic intent,
+preferences, and requirements without a structured representation.
+
+An explicit hard requirement in a brief remains binding. Sellers MUST apply it
+even when the buyer did not duplicate it in a structured field. When structured
+hard targeting inferred from prose materially affects product eligibility,
+pricing, or forecasting, sellers MUST confirm the resulting predicate once in
+`request_proposals` or `get_products` response-root
+`targeting_resolution.brief_targeting`, or in the corresponding
+`refine_proposals.results[]` entry when the interpretation came from that
+refinement's instructions. Otherwise confirmation remains a best practice. Absence of
+Product targeting resolution confirms exact acceptance of a structured overlay
+for that product only; it does not confirm how the seller interpreted prose.
+
+`required_overlay_support` requests later-selectable capability, not concrete
+values, value-specific availability, or a forecast for every possible value. A
+requirement `true` matches support `true` or any valid support object; an object
+requirement matches `true` or a support object containing every requested
+boolean and array subset. Unrequested fields and numeric seller limits do not
+participate. Forecasts without concrete values describe the product's
+discovery/default scope; buyers rediscover with concrete `targeting_overlay`
+values for value-specific forecasts. Fixed prices and floors remain binding
+uniformly for supported selections, while price guidance remains non-binding.
+Sellers with value-dependent rates return a concretely targeted configured
+product, split rate tiers into products, or withhold binding prices until
+concrete rediscovery; they never reuse a selected `pricing_option_id` at new
+terms.
+
+Placement selection follows the same exact-outcome rule across discovery,
+create, and update. A selected set exactly equal to the product's complete
+`mode: "included"` set is an inherent restatement and does not require
+`overlay_support.placement_selection`; partial selection does.
+
 - **`media_buy_id`**: Unique identifier for a media buy. Sales agents MUST return this on successful creation. Orchestrators MUST use this for all subsequent operations on the media buy. A `media_buy_id` is a stable handle to any order in the seller's ad server that the authenticated account owns — not only orders originally booked via AdCP.
 
 - **`package_id`**: Unique identifier for a package within a media buy. Sales agents MUST return this for each package created.
@@ -472,6 +511,7 @@ Common error codes:
 - `MEDIA_BUY_NOT_FOUND`: Referenced media buy does not exist
 - `PACKAGE_NOT_FOUND`: Referenced package does not exist
 - `PRODUCT_NOT_FOUND`: Referenced product does not exist
+- `PRODUCT_EXPIRED`: Referenced configured product passed `expires_at`; re-run `get_products`
 - `BUDGET_EXCEEDED`: Operation would exceed allocated budget
 - `CREATIVE_REJECTED`: Creative failed content policy review
 - `CREATIVE_DEADLINE_EXCEEDED`: Creative change submitted after the package's `creative_deadline`
@@ -521,6 +561,10 @@ A conformant Media Buy Protocol sales agent MUST:
 4. Use specified error codes
 5. Handle asynchronous operations appropriately
 6. Enforce authentication and authorization
+7. Apply `get_products.targeting_overlay` to product availability, pricing, and forecasts
+8. Omit `targeting_resolution` for exact matches and disclose only modifications for configured alternatives
+9. Treat placement, property, and collection selection as targeting and return complete effective package targeting on readback
+10. Return dimension-specific execution details, including demographics, inside the generic package `targeting_resolution` envelope
 
 See [Required tasks by protocol](/docs/protocol/required-tasks) for a consolidated view of required and optional tasks across all AdCP protocols.
 
@@ -533,6 +577,7 @@ A conformant Media Buy Protocol orchestrator MUST:
 3. Handle asynchronous task-level responses (`submitted`, `working`, `input-required`) including webhook delivery of completion artifacts
 4. Use `media_buy_id` to reference media buys in subsequent operations
 5. Respect `creative_deadline` for creative uploads
+6. Treat a selected context-scoped `product_id` as acceptance of its disclosed `targeting_resolution`
 
 ## Implementation Notes
 

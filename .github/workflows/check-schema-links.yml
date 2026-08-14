@@ -33,16 +33,6 @@ jobs:
             fi
           done
 
-          # Also flag /schemas/latest/ in docs/. Docs describe a specific
-          # major version and must pin to its alias (e.g. /schemas/v3/) so
-          # links stay stable across major releases. The one historical
-          # reference in release-notes.mdx documenting the alias concept
-          # itself is excluded.
-          LATEST_MATCHES=$(grep -rn "schemas/latest/" docs/ --include='*.md' --include='*.mdx' | grep -v 'docs/reference/release-notes' || true)
-          if [ -n "$LATEST_MATCHES" ]; then
-            STALE_FOUND="$STALE_FOUND\n$LATEST_MATCHES"
-          fi
-
           if [ -n "$STALE_FOUND" ]; then
             echo "❌ Found stale schema version references in docs/ (current major version is v${CURRENT_MAJOR}):"
             echo -e "$STALE_FOUND"
@@ -72,7 +62,7 @@ jobs:
           # Find all schema URLs in docs (excluding dist/docs which are versioned snapshots)
           # Note: Use [^"')`] instead of [^")\s] for grep compatibility
           # The backtick is needed to handle markdown links like [`url`](url)
-          SCHEMA_URLS=$(grep -rhoE 'https://adcontextprotocol\.org/schemas/v[0-9]+/[^"'"'"')\` ]+\.json' docs/ 2>/dev/null | sort -u || true)
+          SCHEMA_URLS=$(grep -rhoE 'https://adcontextprotocol\.org/schemas/(v[0-9]+|latest)/[^"'"'"')\` ]+\.json' docs/ 2>/dev/null | sort -u || true)
           
           if [ -z "$SCHEMA_URLS" ]; then
             echo "No schema URLs found in docs/"
@@ -104,6 +94,21 @@ jobs:
             SOURCE_PATH="static/schemas/source/$SCHEMA_PATH"
             if [ ! -f "$SOURCE_PATH" ]; then
               ERRORS="$ERRORS\n- \`$url\`\n  - Schema not found in source: \`$SOURCE_PATH\`"
+              continue
+            fi
+
+            # `latest` is reserved for source schemas that have not shipped in
+            # the current major release yet. Once released, docs must switch to
+            # the stable major alias.
+            if [ "$VERSION" = "latest" ]; then
+              CURRENT_MAJOR=$(node -p "require('./package.json').version.split('.')[0]")
+              CURRENT_RELEASE_PATH=$(ls -d dist/schemas/${CURRENT_MAJOR}.* 2>/dev/null | sort -V | tail -1)
+              CURRENT_RELEASE=$(basename "$CURRENT_RELEASE_PATH" 2>/dev/null || echo "")
+              if [ -n "$CURRENT_RELEASE" ] && [ -f "dist/schemas/$CURRENT_RELEASE/$SCHEMA_PATH" ]; then
+                ERRORS="$ERRORS\n- \`$url\`\n  - Schema is already released in $CURRENT_RELEASE\n  - **Action**: Change URL to /schemas/v${CURRENT_MAJOR}/$SCHEMA_PATH"
+              else
+                echo "  ✓ Unreleased schema exists in source"
+              fi
               continue
             fi
             

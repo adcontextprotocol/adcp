@@ -20,27 +20,39 @@ Sam starts with what he knows: the campaign objectives.
 
 <img src="/images/walkthrough/media-buy-02-brief-radiates.png" alt="Sam's brief glows on screen and radiates outward as clean teal rays to three seller agent robots, each standing at their own podium examining the incoming request" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-In AdCP, the brief is natural language inside `get_products`. Sam doesn't need to learn each publisher's targeting taxonomy or inventory categories — he describes what he wants, and each sales agent interprets it against their own inventory:
+In AdCP, Sam sends one `get_products` request to every seller. He uses the brief for goals and semantic intent, while AdCP's structured fields carry exact constraints without requiring him to learn each publisher's targeting taxonomy:
 
 ```javascript
 const products = await Promise.all(
   sellers.map(seller => seller.getProducts({
     idempotency_key: "550e8400-e29b-41d4-a716-446655442037",
     buying_mode: "brief",
-    brief: "Premium video inventory on sports and outdoor lifestyle publishers. Q2 flight, $50K budget. Adults 25-54, US and Canada.",
+    brief: "Premium video on trusted sports and outdoor lifestyle publishers. Q2 flight, $50K budget.",
+    filters: {
+      channels: ["olv"],
+      pricing_currencies: ["USD"]
+    },
+    targeting_overlay: {
+      geo_countries: ["US", "CA"],
+      demographics: {
+        age: { min: 25, max: 54, include_unknown: false }
+      }
+    },
     brand: { domain: "acmeoutdoor.com" },
     account: { brand: { domain: "acmeoutdoor.com" }, operator: "pinnacle-agency.com" }
   }))
 );
 ```
 
-One brief. Three sellers. Same JSON structure back.
+One request. Three sellers. Same structured constraints and response model.
 
 <Accordion title="Agency language → protocol terms">
 
 | What Sam says | What the protocol calls it |
 |---|---|
 | Campaign brief | `brief` field on `get_products` |
+| Exact audience or inventory constraint | `targeting_overlay` on `get_products` |
+| Targeting dimension chosen later | `required_overlay_support` on `get_products` |
 | Media plan | Products returned from `get_products` |
 | IO / insertion order | `create_media_buy` |
 | Trafficking creatives | `sync_creatives` for library-backed sellers, or inline `packages[].creatives` for inline-only sellers |
@@ -251,7 +263,7 @@ Sam went from four dashboards to one protocol. The same tasks that bought CTV in
 
 ## Go deeper
 
-- **Product discovery**: [How `get_products` works](/docs/media-buy/product-discovery/media-products) — briefs, wholesale mode, proposals, and refinement
+- **Product discovery**: [How `get_products` works](/docs/media-buy/product-discovery/media-products) — briefs, real targeting overlays, later-selectable targeting support, wholesale mode, proposals, and refinement
 - **Campaign lifecycle**: [Managing media buys](/docs/media-buy/media-buys/index) — status transitions, updates, and approvals
 - **Optimization**: [Delivery and reporting](/docs/media-buy/media-buys/optimization-reporting) — metrics, dimensional breakdowns, and feedback loops
 - **Governance**: [Campaign governance](/docs/governance/overview) — how the three-party trust model protects Sam's spend

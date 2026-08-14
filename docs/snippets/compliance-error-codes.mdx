@@ -795,7 +795,7 @@ Fatal producer-side error raised when a public placement object (<code>{"Product
 
 **Suggested action:** re-discover with get_products to find current inventory
 
-One or more referenced products have passed their expires_at timestamp and are no longer available for purchase. Recovery: correctable (re-discover with get_products to find current inventory).
+The seller still recognizes one or more configured product IDs as issued to the authenticated account and referenced discovery/refinement lineage, and they have passed their expires_at timestamps. Sellers are not required to retain expiry tombstones indefinitely; an ID that is no longer resolvable, or is inaccessible to this caller because it belongs to another account or lineage, uses PRODUCT_NOT_FOUND. This distinction MUST NOT become a cross-tenant existence oracle. Recovery: correctable (re-discover through list_products, request_proposals, or the get_products compatibility facade to find current inventory).
 
 </Accordion>
 <a id="error-code-product-not-found"></a>
@@ -804,7 +804,7 @@ One or more referenced products have passed their expires_at timestamp and are n
 
 **Suggested action:** remove invalid IDs and retry, or re-discover with get_products
 
-One or more referenced product IDs are unknown or expired. Recovery: correctable (remove invalid IDs and retry, or re-discover with get_products).
+One or more referenced product IDs are unknown or are not resolvable within the authenticated account and configured-offer lineage. A caller-authorized configured ID that is still recognized as expired uses PRODUCT_EXPIRED; once no expiry tombstone remains, or whenever the ID belongs to another account or lineage, PRODUCT_NOT_FOUND applies. Sellers MUST NOT reveal cross-tenant product existence through error choice. Recovery: correctable (remove invalid IDs and retry, or re-discover with get_products).
 
 </Accordion>
 <a id="error-code-product-unavailable"></a>

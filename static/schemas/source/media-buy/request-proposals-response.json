@@ -34,6 +34,10 @@
       "minItems": 1,
       "items": { "$ref": "/schemas/core/canonical-product.json" }
     },
+    "targeting_resolution": {
+      "$ref": "/schemas/media-buy/get-products-targeting-resolution.json",
+      "description": "Response-level confirmation of structured targeting interpreted from explicit hard requirements in the brief. Sellers MUST emit this when that interpretation materially affects eligibility, pricing, or forecasting; otherwise it remains a best practice. Product-specific changes to explicit criteria.targeting_overlay values remain on Product.targeting_resolution."
+    },
     "status": { "type": "string", "enum": ["completed", "submitted"] },
     "task_id": { "type": "string", "minLength": 1, "x-entity": "task" },
     "message": { "type": "string", "maxLength": 2000 },

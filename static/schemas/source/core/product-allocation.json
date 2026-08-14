@@ -33,7 +33,7 @@
     },
     "pricing_option_id": {
       "type": "string",
-      "description": "Recommended pricing option ID from the product's pricing_options array"
+      "description": "Selected pricing option ID from the product's pricing_options array. Required when the containing proposal is committed so create_media_buy executes the exact disclosed commercial terms; optional on legacy draft proposals."
     },
     "rationale": {
       "type": "string",

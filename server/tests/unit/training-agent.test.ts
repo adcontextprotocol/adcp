@@ -13014,6 +13014,69 @@ describe('proposal lifecycle', () => {
     });
   });
 
+  it('fails closed on split targeting until the 3.2 training runtime ships', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const listed = await simulateCallTool(server, 'list_products', {
+      brand: account.brand,
+      criteria: { targeting_overlay: { geo_countries: ['US'] } },
+    });
+    expect(listed).toMatchObject({
+      isError: true,
+      result: { code: 'UNSUPPORTED_FEATURE', field: 'criteria.targeting_overlay' },
+    });
+
+    const targetedRequest = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: `test-${randomUUID()}`,
+      brand: account.brand,
+      brief: 'social engagement display',
+      criteria: {
+        required_overlay_support: {
+          geo_metros: { systems: ['nielsen_dma'] },
+        },
+      },
+    });
+    expect(targetedRequest).toMatchObject({
+      isError: true,
+      result: { code: 'UNSUPPORTED_FEATURE', field: 'criteria.required_overlay_support' },
+    });
+
+    const { result: requested, isError: requestError } = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: `test-${randomUUID()}`,
+      brand: account.brand,
+      brief: 'social engagement display',
+    });
+    expect(requestError).toBeFalsy();
+    const source = (requested.proposals as Array<Record<string, unknown>>)[0];
+
+    const refined = await simulateCallTool(server, 'refine_proposals', {
+      idempotency_key: `test-${randomUUID()}`,
+      refinements: [{
+        proposal_id: source.proposal_id,
+        action: 'revise',
+        criteria: { targeting_overlay: { geo_countries: ['CA'] } },
+      }],
+    });
+    expect(refined).toMatchObject({
+      isError: true,
+      result: { code: 'UNSUPPORTED_FEATURE', field: 'refinements.0.criteria' },
+    });
+  });
+
+  it('applies exact list product IDs before pagination', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const requestedProductId = 'pinnacle_news_display_premium';
+    const listed = await simulateCallTool(server, 'list_products', {
+      criteria: { product_ids: [requestedProductId] },
+      max_results: 1,
+    });
+    expect(listed.isError).toBeFalsy();
+    expect(listed.result).toMatchObject({
+      outcome: 'listed',
+      products: [{ product_id: requestedProductId }],
+    });
+    expect(listed.result).not.toHaveProperty('next_cursor');
+  });
+
   it('connects the compact request, refine, and purchase lifecycle', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const lifecycleOpportunity = {
@@ -13664,6 +13727,7 @@ describe('proposal lifecycle', () => {
     ['constraints', { constraints: { total_budget: { max: 50000, currency: 'USD' } } }, 'total_budget'],
     ['product_changes', { product_changes: { 'social-display': 'include' } }, 'product_selection'],
     ['alternatives', { alternatives: { count: 3 } }, 'alternatives'],
+    ['criteria', { criteria: { targeting_overlay: { geo_countries: ['CA'] } } }, 'criteria'],
   ] as const)('rejects the unsupported typed %s refinement before mutation', async (field, typedInput, dimension) => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: requested } = await simulateCallTool(server, 'request_proposals', {
@@ -13704,6 +13768,7 @@ describe('proposal lifecycle', () => {
     ['constraints', { constraints: { total_budget: { max: 50000, currency: 'USD' } } }, 'total_budget'],
     ['product_changes', { product_changes: { 'social-display': 'include' } }, 'product_selection'],
     ['alternatives', { alternatives: { count: 3 } }, 'alternatives'],
+    ['criteria', { criteria: { targeting_overlay: { geo_countries: ['CA'] } } }, 'criteria'],
   ] as const)(
     'rejects the unsupported typed %s refinement through direct execution before mutation',
     async (field, typedInput, dimension) => {
@@ -15734,7 +15799,7 @@ describe('AdCP protocol compliance', () => {
     expect(second.parsed.adcp_version).toBe('3.0');
   });
 
-  it('persists property_list and collection_list in package targeting', async () => {
+  it('persists typed and extension fields in package targeting', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = { brand: { domain: 'acmeoutdoor.example' }, operator: 'pinnacle-agency.com' };
     const productsResponse = await simulateCallTool(server, 'get_products', {
@@ -15753,6 +15818,7 @@ describe('AdCP protocol compliance', () => {
     const targeting = {
       property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_allow_v1' },
       collection_list: { agent_url: 'https://gov.example/mcp', list_id: 'cl_shows_v1' },
+      seller_extension: { inventory_tier: 'premium' },
     };
 
     const created = await simulateCallTool(server, 'create_media_buy', {
@@ -15812,7 +15878,19 @@ describe('AdCP protocol compliance', () => {
       }],
     });
     const createdPackages = created.result.packages as Array<{ targeting_overlay?: unknown }>;
-    expect(createdPackages[0]!.targeting_overlay).toEqual(targeting);
+    expect(createdPackages[0]!.targeting_overlay).toEqual({
+      collection_list_exclude: {
+        agent_url: 'https://gov.example/mcp',
+        list_id: 'cl_block_v1',
+      },
+    });
+    expect(JSON.stringify(created.result)).not.toContain('tok_secret');
+
+    const fetched = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      media_buy_ids: [created.result.media_buy_id as string],
+    });
+    expect(JSON.stringify(fetched.result)).not.toContain('tok_secret');
   });
 
   it('update_media_buy round-trips targeting changes', async () => {
@@ -15850,6 +15928,7 @@ describe('AdCP protocol compliance', () => {
     const newTargeting = {
       property_list: { agent_url: 'https://gov.example/mcp', list_id: 'pl_v2' },
       collection_list: { agent_url: 'https://gov.example/mcp', list_id: 'cl_v2' },
+      seller_extension: { inventory_tier: 'standard' },
     };
     await simulateCallTool(server, 'update_media_buy', {
       account,

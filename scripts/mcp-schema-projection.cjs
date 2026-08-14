@@ -20,6 +20,31 @@ const PRESENTATION_ANNOTATIONS = new Set([
   'title',
 ]);
 
+// Model prompt views communicate request shape while the parent role profile
+// remains the validation authority. Omit low-signal primitive constraints and
+// implementation extensions, but preserve properties, required fields,
+// discriminators, enums, composition branches, and conditional structure.
+const MODEL_CONTEXT_OMISSIONS = new Set([
+  'default',
+  'deprecated',
+  'exclusiveMaximum',
+  'exclusiveMinimum',
+  'format',
+  'maxItems',
+  'maxLength',
+  'maxProperties',
+  'maximum',
+  'minItems',
+  'minLength',
+  'minProperties',
+  'minimum',
+  'multipleOf',
+  'pattern',
+  'readOnly',
+  'uniqueItems',
+  'writeOnly',
+]);
+
 const POST_DRAFT_07_KEYWORDS = new Set([
   '$anchor',
   '$dynamicAnchor',
@@ -530,6 +555,18 @@ function stripPresentationAnnotations(schema) {
   return stripped;
 }
 
+function stripModelContextAnnotations(schema) {
+  const stripped = stripPresentationAnnotations(schema);
+  walkSchema(stripped, node => {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+    for (const keyword of MODEL_CONTEXT_OMISSIONS) delete node[keyword];
+    for (const keyword of Object.keys(node)) {
+      if (keyword.startsWith('x-')) delete node[keyword];
+    }
+  });
+  return stripped;
+}
+
 function enforceSchemaBounds(schema, label) {
   const metrics = measureSchema(schema);
   if (metrics.depth > MAX_SCHEMA_DEPTH) {
@@ -556,9 +593,14 @@ function projectSourceSchema(
   const compact = compactDraft07Schema(schema, rootFile, sourceDir);
   let projected = projectDraft07Node(compact);
   if (annotationMode === 'structural') projected = stripPresentationAnnotations(projected);
+  else if (annotationMode === 'model-context') projected = stripModelContextAnnotations(projected);
   else if (annotationMode !== 'full') throw new Error(`Unknown annotation mode ${JSON.stringify(annotationMode)}`);
   projected.$schema = JSON_SCHEMA_2020_12;
   projected.$id = `${SCHEMA_ORIGIN}/schemas/${schemaUrlPrefix}/${relativePath}`;
+  if (annotationMode === 'model-context') {
+    delete projected.$schema;
+    delete projected.$id;
+  }
   delete projected._bundled;
 
   const externalRefs = collectExternalRefs(projected);
@@ -704,5 +746,6 @@ module.exports = {
   measureSchema,
   projectDraft07Node,
   projectSourceSchema,
+  stripModelContextAnnotations,
   stripPresentationAnnotations,
 };

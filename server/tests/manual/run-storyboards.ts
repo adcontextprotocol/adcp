@@ -143,6 +143,10 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
  * removal so the skip list doesn't silently grow.
  */
 const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
+  [
+    'media_buy_seller/targeting_aware_discovery',
+    'adcontextprotocol/adcp#6199: this 3.2 compliance contract is schema- and path-validated now, but the training-agent runtime must remain unimplemented until published 3.2 SDK types expose the targeting-aware discovery fields. Remove after #6199 lands.',
+  ],
 ]);
 
 /**

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "schema": "/schemas/media-buy/get-media-buys-response.json",
-  "description": "Positive wire-level vectors for PackageStatus targeting readback in get_media_buys responses, including targeting_overlay and AdCP 3.2 demographic_targeting_resolution. Vectors are dedicated JSON payloads that MUST validate against the bundled schema and whose shape is asserted by SDK code generators. Each vector contains a stable `id` (kebab-case; the stable reference for cross-SDK conformance), a human-readable `description`, the `payload` returned by the seller, and `assertions` — dotted JSON paths that MUST be present with the given value. Downstream tests SHOULD look up vectors by `id`; `description` prose may be revised without notice. Covers the `SHOULD` echo path for plain overlay fields, the `MUST` echo path for sellers claiming the property-lists / collection-lists specialisms, and lossless requested/applied demographic readback.",
+  "description": "Positive wire-level vectors for PackageStatus targeting readback in get_media_buys responses, including audience targeting, purchased inventory selection, and demographic execution under targeting_resolution.demographics. Vectors are dedicated JSON payloads that MUST validate against the bundled schema and whose shape is asserted by SDK code generators. Each vector contains a stable `id` (kebab-case; the stable reference for cross-SDK conformance), a human-readable `description`, the `payload` returned by the seller, and `assertions` — dotted JSON paths that MUST be present with the given value. Downstream tests SHOULD look up vectors by `id`; `description` prose may be revised without notice.",
   "vectors": [
     {
       "id": "property-and-collection-list-echo",
@@ -231,6 +231,63 @@
       ]
     },
     {
+      "id": "placement-selection-echo",
+      "description": "Purchased-inventory targeting — seller echoes the committed publisher-scoped placement selection under packages[0].targeting_overlay; creative routing remains a separate package concern.",
+      "payload": {
+        "status": "completed",
+        "media_buys": [
+          {
+            "media_buy_id": "mb_social_placement_001",
+            "status": "active",
+            "currency": "USD",
+            "total_budget": 30000,
+            "confirmed_at": "2026-08-01T10:00:00Z",
+            "revision": 2,
+            "start_time": "2026-08-01T10:00:00Z",
+            "end_time": "2026-08-31T23:59:59Z",
+            "created_at": "2026-08-01T10:00:00Z",
+            "updated_at": "2026-08-03T12:00:00Z",
+            "packages": [
+              {
+                "package_id": "pkg_social_placement_video",
+                "product_id": "prod_configured_social_video_001",
+                "budget": 30000,
+                "currency": "USD",
+                "start_time": "2026-08-01T10:00:00Z",
+                "end_time": "2026-08-31T23:59:59Z",
+                "targeting_overlay": {
+                  "geo_countries": ["US"],
+                  "placement_selection": {
+                    "mode": "selected",
+                    "placement_refs": [
+                      {
+                        "publisher_domain": "pinnacle-media.example",
+                        "placement_id": "short_video"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.placement_selection.mode",
+          "value": "selected"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.placement_selection.placement_refs[0].publisher_domain",
+          "value": "pinnacle-media.example"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.placement_selection.placement_refs[0].placement_id",
+          "value": "short_video"
+        }
+      ]
+    },
+    {
       "id": "demographic-targeting-exact-readback",
       "description": "AdCP 3.2 — seller echoes the applied canonical demographic predicate and lossless requested/applied continuous-bounds resolution.",
       "payload": {
@@ -264,24 +321,26 @@
                     }
                   }
                 },
-                "demographic_targeting_resolution": {
-                  "requested": {
-                    "age": {
-                      "min": 21,
-                      "max": 35,
-                      "include_unknown": false
+                "targeting_resolution": {
+                  "demographics": {
+                    "requested": {
+                      "age": {
+                        "min": 21,
+                        "max": 35,
+                        "include_unknown": false
+                      }
+                    },
+                    "applied": {
+                      "age": {
+                        "min": 21,
+                        "max": 35,
+                        "include_unknown": false
+                      }
+                    },
+                    "equivalent": true,
+                    "execution": {
+                      "type": "continuous_bounds"
                     }
-                  },
-                  "applied": {
-                    "age": {
-                      "min": 21,
-                      "max": 35,
-                      "include_unknown": false
-                    }
-                  },
-                  "equivalent": true,
-                  "execution": {
-                    "type": "continuous_bounds"
                   }
                 }
               }
@@ -299,11 +358,11 @@
           "value": false
         },
         {
-          "path": "media_buys[0].packages[0].demographic_targeting_resolution.equivalent",
+          "path": "media_buys[0].packages[0].targeting_resolution.demographics.equivalent",
           "value": true
         },
         {
-          "path": "media_buys[0].packages[0].demographic_targeting_resolution.execution.type",
+          "path": "media_buys[0].packages[0].targeting_resolution.demographics.execution.type",
           "value": "continuous_bounds"
         }
       ]

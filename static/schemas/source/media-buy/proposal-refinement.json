@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/proposal-refinement.json",
   "title": "Proposal Refinement",
-  "description": "Fork an immutable proposal or finalize a draft into a held committed snapshot. Refining an accepted proposal creates a draft amendment or cancellation proposal against its MediaBuy; the source remains accepted and unchanged.",
+  "description": "Fork an immutable proposal or finalize a draft into a held committed snapshot. Revising with structured criteria, typed boundaries, product changes, requested alternatives, and/or a semantic ask creates one or more new drafts; finalizing changes no terms. Refining an accepted proposal creates a draft amendment or cancellation proposal against its MediaBuy; the source remains accepted and unchanged.",
   "type": "object",
   "properties": {
     "proposal_id": {
@@ -16,6 +16,7 @@
       "description": "revise creates a new draft snapshot with changed commercial terms. finalize MUST target a draft; it creates a new committed snapshot without changing terms and reserves inventory until its expires_at."
     },
     "change_kind": {
+      "type": "string",
       "enum": ["amendment", "cancellation"],
       "default": "amendment",
       "description": "Desired successor proposal. cancellation is valid only when the source proposal is accepted and attached to a non-terminal MediaBuy."
@@ -53,6 +54,10 @@
       "type": "string",
       "minLength": 1,
       "description": "What the buyer is asking for on this proposal, or the cancellation reason for action revise. The seller returns a new draft proposal snapshot; this text never directly mutates the source proposal or MediaBuy."
+    },
+    "criteria": {
+      "$ref": "/schemas/media-buy/product-discovery-criteria.json",
+      "description": "Structured discovery changes for action revise. Each present field replaces that criterion from the source proposal; omitted fields inherit. Concrete targeting, future targeting support, and offer filters belong here rather than being repeated in ask."
     }
   },
   "required": ["proposal_id"],
@@ -66,7 +71,8 @@
           { "required": ["constraints"] },
           { "required": ["product_changes"] },
           { "required": ["alternatives"] },
-          { "required": ["ask"] }
+          { "required": ["ask"] },
+          { "required": ["criteria"] }
         ]
       }
     },
@@ -78,6 +84,7 @@
         { "required": ["product_changes"] },
         { "required": ["alternatives"] },
         { "required": ["ask"] },
+        { "required": ["criteria"] },
         {
           "properties": { "change_kind": { "type": "string", "const": "cancellation" } },
           "required": ["change_kind"]

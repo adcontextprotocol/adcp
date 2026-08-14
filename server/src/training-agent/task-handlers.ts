@@ -1072,6 +1072,7 @@ function validateTargeting(t: unknown, pathLabel: string): { targeting?: Package
   const src = t as Record<string, unknown>;
   const errors: TaskError[] = [];
   const pl = validateListRef(src.property_list, `${pathLabel}.property_list`);
+  const ple = validateListRef(src.property_list_exclude, `${pathLabel}.property_list_exclude`);
   const cl = validateListRef(src.collection_list, `${pathLabel}.collection_list`);
   const cle = validateListRef(src.collection_list_exclude, `${pathLabel}.collection_list_exclude`);
   const validateAudienceIds = (value: unknown, field: string): string[] | undefined => {
@@ -1093,13 +1094,16 @@ function validateTargeting(t: unknown, pathLabel: string): { targeting?: Package
   const audienceInclude = validateAudienceIds(src.audience_include, 'audience_include');
   const audienceExclude = validateAudienceIds(src.audience_exclude, 'audience_exclude');
   if (pl.error) errors.push(pl.error);
+  if (ple.error) errors.push(ple.error);
   if (cl.error) errors.push(cl.error);
   if (cle.error) errors.push(cle.error);
   if (errors.length) return { errors };
-  if (!pl.ref && !cl.ref && !cle.ref && !audienceInclude && !audienceExclude) return { errors: [] };
+  if (Object.keys(src).length === 0) return { errors: [] };
   return {
     targeting: {
+      ...structuredClone(src),
       ...(pl.ref && { property_list: pl.ref }),
+      ...(ple.ref && { property_list_exclude: ple.ref }),
       ...(cl.ref && { collection_list: cl.ref }),
       ...(cle.ref && { collection_list_exclude: cle.ref }),
       ...(audienceInclude && { audience_include: audienceInclude }),
@@ -1107,6 +1111,20 @@ function validateTargeting(t: unknown, pathLabel: string): { targeting?: Package
     },
     errors: [],
   };
+}
+
+function targetingForWire(targeting: PackageTargeting): PackageTargeting {
+  const outward = structuredClone(targeting) as unknown as Record<string, unknown>;
+  for (const field of [
+    'property_list',
+    'property_list_exclude',
+    'collection_list',
+    'collection_list_exclude',
+  ]) {
+    const reference = outward[field];
+    if (isRecord(reference)) delete reference.auth_token;
+  }
+  return outward as unknown as PackageTargeting;
 }
 
 interface VendorMetricRefView {
@@ -4309,6 +4327,7 @@ export function normalizeProductDiscoveryArgs(
               ...(entry.action !== 'finalize' && isRecord(entry.constraints) && { constraints: entry.constraints }),
               ...(entry.action !== 'finalize' && isRecord(entry.product_changes) && { product_changes: entry.product_changes }),
               ...(entry.action !== 'finalize' && isRecord(entry.alternatives) && { alternatives: entry.alternatives }),
+              ...(entry.action !== 'finalize' && isRecord(entry.criteria) && { criteria: entry.criteria }),
               ...(entry.action !== 'finalize'
                 && typeof entry.ask === 'string'
                 && { ask: entry.ask }),
@@ -4716,7 +4735,7 @@ function idempotencyPayloadForServedVersion(
 export function validateProductDiscoveryAliasInput(
   toolName: string,
   args: Record<string, unknown>,
-): { message: string; field?: string } | undefined {
+): { message: string; field?: string; code?: 'UNSUPPORTED_FEATURE' } | undefined {
   if (args.account !== undefined && !isRecord(args.account)) {
     return { message: 'account must be an object', field: 'account' };
   }
@@ -4764,6 +4783,15 @@ export function validateProductDiscoveryAliasInput(
       return { message: 'if_pricing_version requires if_feed_version', field: 'if_feed_version' };
     }
     const criteria = isRecord(args.criteria) ? args.criteria : undefined;
+    if (criteria?.targeting_overlay !== undefined || criteria?.required_overlay_support !== undefined) {
+      return {
+        code: 'UNSUPPORTED_FEATURE',
+        message: 'The training agent does not execute split-task targeting criteria until the 3.2 SDK rollout; use schema fixtures for preview validation.',
+        field: criteria.targeting_overlay !== undefined
+          ? 'criteria.targeting_overlay'
+          : 'criteria.required_overlay_support',
+      };
+    }
     if (isRecord(criteria?.catalog) && args.brand === undefined && !hasNaturalAccountBrand) {
       return { message: 'brand is required when catalog criteria are present', field: 'brand' };
     }
@@ -4779,6 +4807,15 @@ export function validateProductDiscoveryAliasInput(
       return { message: 'brand is required for request_proposals', field: 'brand' };
     }
     const criteria = isRecord(args.criteria) ? args.criteria : undefined;
+    if (criteria?.targeting_overlay !== undefined || criteria?.required_overlay_support !== undefined) {
+      return {
+        code: 'UNSUPPORTED_FEATURE',
+        message: 'The training agent does not execute split-task targeting criteria until the 3.2 SDK rollout; use schema fixtures for preview validation.',
+        field: criteria.targeting_overlay !== undefined
+          ? 'criteria.targeting_overlay'
+          : 'criteria.required_overlay_support',
+      };
+    }
     if (isRecord(criteria?.catalog) && args.brand === undefined && !hasNaturalAccountBrand) {
       return { message: 'brand is required when catalog criteria are present', field: 'brand' };
     }
@@ -4811,12 +4848,13 @@ export function validateProductDiscoveryAliasInput(
       }
       const hasTypedRevision = isRecord(entry.constraints)
         || isRecord(entry.product_changes)
-        || isRecord(entry.alternatives);
+        || isRecord(entry.alternatives)
+        || isRecord(entry.criteria);
       const hasAsk = typeof entry.ask === 'string' && entry.ask.length > 0;
       const isCancellation = entry.change_kind === 'cancellation';
       if (entry.action === 'revise' && !hasTypedRevision && !hasAsk && !isCancellation) {
         return {
-          message: 'each revision requires constraints, product_changes, alternatives, ask, or change_kind cancellation',
+          message: 'each revision requires constraints, product_changes, alternatives, criteria, ask, or change_kind cancellation',
           field: `refinements[${index}]`,
         };
       }
@@ -4826,6 +4864,7 @@ export function validateProductDiscoveryAliasInput(
         || entry.constraints !== undefined
         || entry.product_changes !== undefined
         || entry.alternatives !== undefined
+        || entry.criteria !== undefined
       )) {
         return {
           message: 'finalize cannot be combined with revision fields',
@@ -4852,7 +4891,9 @@ export function validateProductDiscoveryAliasInput(
         }
       }
       const unknown = Object.keys(entry).find(
-        field => !['proposal_id', 'action', 'change_kind', 'constraints', 'product_changes', 'alternatives', 'ask'].includes(field),
+        field => ![
+          'proposal_id', 'action', 'change_kind', 'constraints', 'product_changes', 'alternatives', 'criteria', 'ask',
+        ].includes(field),
       );
       if (unknown) {
         return { message: `${unknown} is not supported on proposal refinements`, field: `refinements[${index}].${unknown}` };
@@ -5689,6 +5730,14 @@ async function handleGetProductsUnlocked(
   if (buyingMode !== 'wholesale') overlayNegotiatedPricingOptions(session, productMap);
   products = Array.from(productMap.values());
   const registryProducts = products;
+
+  const requestedProductIds = Array.isArray((req as unknown as Record<string, unknown>).product_ids)
+    ? new Set(((req as unknown as Record<string, unknown>).product_ids as unknown[])
+        .filter((id): id is string => typeof id === 'string'))
+    : undefined;
+  if (requestedProductIds) {
+    products = products.filter(product => requestedProductIds.has(product.product_id));
+  }
 
   // Apply filters
   if (req.filters) {
@@ -8542,7 +8591,7 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
       end_time: pkg.endTime,
       ...packageFormatSelectorForWire(pkg, ctx),
       ...packageReadinessFields(pkg, session),
-      ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
+      ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
       ...(pkg.context && { context: pkg.context }),
       ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
       creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
@@ -8677,7 +8726,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
               creative_id: cid,
               approval_status: 'approved' as const,
             })),
-            ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
+            ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
             ...(pkg.context && { context: pkg.context }),
             ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
             ...(pkg.canceledAt && {
@@ -9999,7 +10048,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     end_time: pkg.endTime,
     ...packageFormatSelectorForWire(pkg, ctx),
     ...packageReadinessFields(pkg, session),
-    ...(pkg.targeting && { targeting_overlay: pkg.targeting }),
+    ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
     ...(pkg.context && { context: pkg.context }),
     ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
     creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
@@ -12234,8 +12283,8 @@ function applyThreeZeroGetProductsIdempotencyCompatibility(
 }
 
 type UnsupportedTrainingRefinement = {
-  field: 'constraints' | 'product_changes' | 'alternatives';
-  dimension: 'total_budget' | 'product_selection' | 'alternatives';
+  field: 'constraints' | 'product_changes' | 'alternatives' | 'criteria';
+  dimension: 'total_budget' | 'product_selection' | 'alternatives' | 'criteria';
   index: number;
 };
 
@@ -12248,6 +12297,7 @@ function unsupportedTrainingProposalRefinement(
     { field: 'constraints', dimension: 'total_budget' },
     { field: 'product_changes', dimension: 'product_selection' },
     { field: 'alternatives', dimension: 'alternatives' },
+    { field: 'criteria', dimension: 'criteria' },
   ] as const;
   for (const [index, refinement] of args.refinements.entries()) {
     if (!isRecord(refinement)) continue;
@@ -12561,7 +12611,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     const aliasValidationError = validateProductDiscoveryAliasInput(name, initialHandlerArgs);
     if (aliasValidationError) {
       return {
-        result: adcpError('INVALID_REQUEST', {
+        result: adcpError(aliasValidationError.code ?? 'INVALID_REQUEST', {
           message: aliasValidationError.message,
           ...(aliasValidationError.field && { field: aliasValidationError.field }),
           recovery: 'correctable',

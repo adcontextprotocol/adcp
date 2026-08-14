@@ -340,11 +340,11 @@
                 },
                 "targeting_overlay": {
                   "$ref": "/schemas/core/targeting.json",
-                  "description": "Targeting overlay applied to this package, echoed from the most recent create_media_buy or update_media_buy. Sellers SHOULD echo any persisted targeting so buyers can verify what was stored without replaying their own request. Sellers claiming the property-lists or collection-lists specialisms MUST include, within this targeting_overlay, the PropertyListReference / CollectionListReference they persisted."
+                  "description": "Complete effective targeting applied to this package, including configured-product targeting and the most recent package-specific overlay. Sellers SHOULD echo persisted targeting so buyers can verify stored state without replaying requests. Sellers using placement, property-list, or collection-list targeting MUST include the committed inventory selection here. placement_selection mode default SHOULD resolve to mode selected with committed refs when enumerable."
                 },
-                "demographic_targeting_resolution": {
-                  "$ref": "/schemas/core/demographic-targeting-resolution.json",
-                  "description": "Lossless requested-versus-applied demographic readback. Sellers MUST include this whenever demographic targeting was requested or applied. targeting_overlay.demographics preserves the buyer predicate and determination constraints; this object's applied predicate and applied_bases report the effective booked state."
+                "targeting_resolution": {
+                  "$ref": "/schemas/core/package-targeting-resolution.json",
+                  "description": "Execution details for accepted package targeting. Sellers MUST include targeting_resolution.demographics whenever demographic targeting was requested or applied; its applied predicate and execution fields report the effective booked state."
                 },
                 "start_time": {
                   "type": "string",

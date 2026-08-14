@@ -14,7 +14,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 
 ## The Product Model
 
-- `product_id` (string, required)
+- `product_id` (string, required): Opaque buyable identifier. Non-custom wholesale IDs remain stable for the same logical offer within seller and declared cache scope, including across reads and webhooks. Custom IDs remain stable only within their issuing discovery/refinement lineage.
 - `name` (string, required)
 - `description` (string, required)
 - `publisher_properties` (list[PublisherPropertySelector], required): Publisher properties covered by this product. See [Property Targeting](#property-targeting).
@@ -30,12 +30,14 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `episodes` (list[Episode], optional): Specific episodes available within this product. See [Collections and installments](/docs/media-buy/product-discovery/collections-and-installments).
 - `delivery_type` (string, required): Either `"guaranteed"` or `"non_guaranteed"`.
 - `exclusivity` (string, optional): Whether this product offers exclusive access. `"none"` (default when absent) — multiple advertisers can buy simultaneously. `"category"` — one advertiser per industry category. `"exclusive"` — sole sponsorship. Most relevant for guaranteed products tied to specific shows or placements.
-- `pricing_options` (list[PricingOption], required): Array of available pricing models for this product. See [Pricing Models](#pricing-models).
+- `pricing_options` (list[PricingOption], required): Array of available pricing models for this product. A binding option applies uniformly across later values permitted by `overlay_support`; a changed fixed price, floor, currency, model, or priced applicability receives a new `pricing_option_id`. Sellers with value-dependent rates use concretely targeted configured products, separate rate-tier products, or non-binding guidance. See [Pricing Models](#pricing-models).
 - `delivery_measurement` (object, optional): Who measures ad delivery — the ad server and viewability vendor used to count impressions. New implementations populate `vendors` as a structured `BrandRef` array (e.g., `[{ "domain": "googleadmanager.com" }, { "domain": "integralads.com" }]`); the legacy `provider` string is deprecated. When absent, buyers should apply their own measurement defaults. See [Delivery Measurement](#delivery-measurement).
 - `outcome_measurement` (OutcomeMeasurement, **deprecated**): Legacy field for declaring business outcome measurement (lift, brand lift, foot traffic). New implementations declare outcome metrics via `reporting_capabilities.available_metrics` and pin attribution methodology + window via the `qualifier` slot on `committed_metrics`. Retained for one-minor backwards compatibility; removed at the next major. See [Commerce Media](/docs/media-buy/commerce-media) for the migration pattern.
 - `creative_policy` (CreativePolicy, optional): Creative requirements and restrictions.
-- `is_custom` (bool, optional): `true` if the product was generated for a specific brief.
-- `expires_at` (datetime, optional): If `is_custom`, the time the product is no longer valid.
+- `is_custom` (bool, optional): `true` for any request-specific configured offer, including exact structured targeting, disclosed targeting changes, or request-bound price, forecast, inventory, or terms.
+- `expires_at` (datetime, conditionally required): Required for a request-specific product issued through targeting-aware discovery and whenever `targeting_resolution` is present. Earlier custom products remain schema-valid when it is absent. After this time, a recognized expired ID issued to the authenticated account and lineage returns `PRODUCT_EXPIRED`; an ID whose tombstone is no longer retained or belongs to another account/lineage returns `PRODUCT_NOT_FOUND`, preventing cross-tenant existence disclosure.
+- `overlay_support` (TargetingOverlaySupport, optional): Product-scoped targeting dimensions whose values may be selected later. Required when requested through `required_overlay_support`. It guarantees selectable capability subject to disclosed limits, not inventory or a forecast for every value.
+- `targeting_resolution` (ProductTargetingResolution, optional): Sparse differences from a structured overlay. Absence confirms exact acceptance of that product's structured overlay, but not how prose was interpreted; response-level `targeting_resolution.brief_targeting` confirms hard brief interpretation once for the result set when that interpretation materially affects eligibility, pricing, or forecasting. Presence requires `is_custom: true` and `expires_at`.
 - `property_targeting_allowed` (bool, optional, default: false): Whether buyers can filter this product to a subset of its `publisher_properties`. When `false` (default), the product is "all or nothing" - buyers must accept all properties or the product is excluded from `property_list` filtering results. See [Property Targeting](#property-targeting).
 - `collection_targeting_allowed` (bool, optional, default: false): Whether buyers can target a subset of this product's `shows`. When `false` (default), the product is a bundle — buyers get all listed shows. When `true`, buyers can select specific shows in the media buy.
 - `data_provider_signals` (list[DataProviderSignalSelector], **deprecated**): Legacy/non-selectable metadata for data-provider signals already bundled into or associated with this product. New implementations should use `included_signals`.
@@ -254,16 +256,16 @@ Products can optionally declare specific public ad placements within their inven
 - **`kind: "seller_inline"`** - Public buyer-facing placement metadata defined inline by the sales agent; requires `name`
 - **`publisher_domain`** - Domain whose `adagents.json` defines the referenced placement. New multi-publisher products SHOULD include it so the placement namespace is explicit.
 - **`placement_id`** - Placement ID in the publisher namespace. Buyers reference it with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `placement_ids` strings are only unambiguous in single-publisher contexts.
-- **`mode: "targetable"`** - The buyer may reference this publisher-scoped placement when assigning creatives or otherwise selecting placements within the product
-- **`mode: "included"`** - The public placement is part of the product's described composition, but the buyer cannot cherry-pick it by `placement_id`
+- **`mode: "targetable"`** - The buyer may select this publisher-scoped placement with `targeting_overlay.placement_selection`
+- **`mode: "included"`** - The public placement is fixed product inventory and cannot be cherry-picked. Across discovery, create, and update, a selected request exactly equal to the product's complete included set is an inherent match and may be echoed without `overlay_support.placement_selection`; partial selection requires a selectable product.
 - **`video_placement_types`** - Declared video placement types for OLV and other video placements. Concrete placements usually declare one value; aggregate placements may declare multiple.
 - **`audio_distribution_types`** - Declared audio distribution types for radio, streaming-audio, podcast, gaming, and other audio placements. Concrete placements usually declare one value; aggregate placements may declare multiple.
 - **`sponsored_placement_types`** - Declared sponsored-placement types for catalog-driven retail-media placements. Concrete placements usually declare one value; aggregate placements may declare multiple.
 - **`social_placement_surfaces`** - Declared social-placement surfaces for social placements. Concrete placements usually declare one value; aggregate placements may declare multiple.
 - **Publisher reference rule** - Publisher-referenced product placements resolve to `{publisher_domain, placement_id}` in the publisher's `adagents.json`
 - **Private inventory rule** - Seller-private delivery objects, ad-server mappings, and source/origin details must stay out of `get_products`
-- **Creative assignment** - Different creatives can be assigned to targetable placements
-- **Omitting placement targeting** - Creatives without `placement_refs` or legacy `placement_ids` run on all buyer-targetable placements in the package, and the seller still controls included-only delivery composition
+- **Creative assignment** - Different creatives can be routed to selected placements with `creative_assignments[].placement_refs`; assignment does not select inventory
+- **Omitting placement targeting** - `placement_selection.mode: "default"` leaves the product's default placement composition intact. Creatives without placement refs run across the package's selected/default placements.
 - **Use registered IDs when available** - If the publisher declares canonical `placements` in `adagents.json`, product placements SHOULD use the catalog ID as `placement_id`
 - **Preserve registry semantics** - When a product references a registered placement, it is referring to that same placement. The product may narrow canonical `format_options` or add operational detail, but it should not change the placement's meaning incompatibly
 - **Tags stay useful at product level** - Product placements can carry `tags` for grouping and should align with registry tags when the placement comes from the publisher registry
@@ -719,7 +721,7 @@ A wholesale product with a large or account-specific signal menu can point buyer
 }
 ```
 
-In that shape, because `signal_targeting_allowed` is true and no inline `signal_targeting_options` are returned, the buyer calls `get_signals` to discover candidate signals. Before committing spend, the buyer SHOULD confirm product eligibility by calling `get_products` for the target product or using `filters.signal_targeting` with the candidate `signal_ref` entries and intended include/exclude modes. The buyer then passes selected `signal_ref` entries in `packages[].targeting_overlay.signal_targeting_groups`. The seller validates that the selected signals are available for the product and account, but storefronts should use `get_products` first so unsupported signal combinations fail during product discovery rather than at `create_media_buy`.
+In that shape, because `signal_targeting_allowed` is true and no inline `signal_targeting_options` are returned, the buyer calls `get_signals` to discover candidate signals. Before committing spend, the buyer SHOULD confirm product eligibility by calling `get_products` with the candidate selections in `targeting_overlay.signal_targeting_groups`, or request later-selectable support with `required_overlay_support.signal_targeting_groups`. The legacy `filters.signal_targeting` path is deprecated.
 
 At buy time, package-level `signal_targeting_groups` carries the selected `signal_ref`, value expression, optional seller execution handle (`signal_agent_segment_id`), and signal `pricing_option_id` when the signal has its own price. A simple include-only selection is represented as one child group with `operator: "any"`; grouped inclusion/exclusion uses additional `any` and `none` groups, such as `(A OR B) AND NOT (C)`. This is separate from the package's `pricing_option_id`, which prices the media product itself. Product-scoped signal pricing in `signal_targeting_options[].pricing_options` is authoritative for that product; broader `get_signals` pricing is a default discovery view unless the product omits a price. Sellers MUST echo all applied package signal groups in the resulting package state, including fixed/default selections the seller applied without buyer edits.
 
@@ -735,7 +737,7 @@ The `seller_planned` model applies to any supply type where inventory is schedul
 
 A server can offer a general catalog, but it can also return:
 - **Account-Specific Products**: Products reserved for or negotiated with specific accounts (buyers, agencies, or brands)
-- **Custom Products**: Dynamically generated products with `is_custom: true` and an `expires_at` timestamp
+- **Custom Products**: Dynamically generated products with `is_custom: true`; targeting-aware discovery products also carry an `expires_at` timestamp, while legacy custom products may omit it
 
 ## Product Examples
 
@@ -1233,7 +1235,7 @@ Proposals are optional — publishers may return only products if allocation gui
 
 ### Delivery Forecasts
 
-Publishers can attach delivery forecasts to proposals and individual allocations to help buyers evaluate expected performance before committing budget.
+Publishers can attach delivery forecasts to proposals and individual allocations to help buyers evaluate expected performance before committing budget. For targeting-aware discovery, every forecast and availability statement reflects concrete effective targeting after any disclosed `targeting_resolution` modifications. A dimension requested only through `required_overlay_support` has no concrete values, so the forecast describes the product's discovery/default scope rather than every possible later selection; buyers rediscover with concrete `targeting_overlay` values for a value-specific forecast.
 
 Each forecast contains a `points` array of one or more ForecastPoints. For spend curves, each point pairs a budget level with metric ranges (low/mid/high) — multiple points at ascending budgets show how delivery scales with spend. For availability forecasts, points omit budget and express total available inventory for the requested targeting and dates.
 
@@ -1443,7 +1445,7 @@ A buyer agent turns a chosen dimensional row into a buy through the existing buy
 - `kind: "geo"` rows map to `packages[].targeting_overlay.geo_countries`, `geo_regions`, `geo_metros`, or `geo_postal_areas`, depending on `geo_level` and seller support. Country rows use ISO 3166-1 alpha-2 `geo_code`; region rows use ISO 3166-2 `geo_code`; metro rows include the corresponding targeting `system` enum; native postal rows include `country` plus the country-local `system`.
 - `kind: "device_type"` and `kind: "device_platform"` rows map to the corresponding targeting overlay fields when the seller supports device targeting.
 - `kind: "audience"` rows map to `audience_include` or signal targeting only when the audience is selectable for that product; informational audience rows are planning signals, not automatic targeting handles.
-- `kind: "placement"` rows map first to product refinement or seller-supported placement targeting for the package. `dimensions[].placement_ref` identifies the inventory slice the forecast row describes; it does not by itself narrow the purchased package and buyers SHOULD NOT treat it as a shortcut for `creative_assignments[].placement_refs`. If the buyer wants to buy only that placement, the product must expose the placement as `mode: "targetable"` or the buyer should request a refined product/proposal. `creative_assignments[].placement_refs` is only the creative-routing surface after the buy's inventory scope is established; it does not by itself narrow the purchased inventory. Proposal-level forecast points with placement dimensions should include `product_id` when the placement maps to one allocation's product; without product context, placement rows on proposal-level forecasts are informational planning rows, not directly executable choices.
+- `kind: "placement"` rows map to `targeting_overlay.placement_selection` when the product exposes the placement as `mode: "targetable"`. `dimensions[].placement_ref` describes an inventory slice but does not select it. `creative_assignments[].placement_refs` is only the creative-routing surface after package inventory is selected. Proposal-level forecast points with placement dimensions should include `product_id` when the placement maps to one allocation's product.
 
 `kind: "signal"` rows use canonical `signal_ref` plus optional `signal_value` to describe a signal bucket. Use `presence: "present"` for rows where the signal is available with the supplied value, and `presence: "absent"` with `signal_value: null` for the explicit not-present bucket. `signal_id` is only a shorthand when the enclosing object already identifies the signal unambiguously, such as a coverage forecast nested directly under a single `get_signals` item. Product-level forecasts use `ForecastPoint.product_id` for product context; do not add a separate product dimension item.
 

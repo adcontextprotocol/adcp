@@ -7,7 +7,9 @@ testable: false
 
 `list_products` is the side-effect-free entry point to the compact product lifecycle. Each invocation completes synchronously, while account-level wholesale feed webhooks keep long-lived buyer mirrors current without polling. It returns products only—never proposals. Buyers can purchase listed products through [`buy_products`](/docs/media-buy/task-reference/buy_products) or pass returned `product_id` values to [`request_proposals`](/docs/media-buy/task-reference/request_proposals) for seller planning.
 
-**Request schema:** [`/schemas/v3/media-buy/list-products-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/list-products-request.json)
+{/* Using latest because this schema is not yet released in any version.
+    Update to the correct version alias after the next release. */}
+**Request schema:** [`/schemas/latest/media-buy/list-products-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/list-products-request.json)
 
 ```json
 {
@@ -16,6 +18,12 @@ testable: false
     "offer_filters": {
       "channels": ["olv"],
       "pricing_currencies": ["USD"]
+    },
+    "targeting_overlay": {
+      "geo_countries": ["US"]
+    },
+    "required_overlay_support": {
+      "geo_metros": { "systems": ["nielsen_dma"] }
     }
   },
   "max_results": 25
@@ -24,7 +32,9 @@ testable: false
 
 `brand` is an identity-only key. Sellers resolve its canonical manifest from the domain; callers do not send logos, colors, or governance overrides in this request. Catalog ingestion belongs to [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs); discovery accepts only a compact catalog selection under `criteria.catalog`.
 
-The compact criteria deliberately contain only offer characteristics, catalog selection, and policy requirements. The targeting-aware discovery contract is being developed separately in [PR #6203](https://github.com/adcontextprotocol/adcp/pull/6203), so this task does not advertise targeting fields before sellers can enforce them.
+`offer_filters` select commercial offers. `targeting_overlay` instead constrains the inventory or impressions that may deliver, so every returned price and forecast must account for the effective overlay. `required_overlay_support` asks for targeting dimensions the buyer can select independently on packages later; it does not request one product per metro or guarantee availability for every future value.
+
+When a product can honor the overlay exactly, it does not echo the request. A product that proposes a different executable overlay returns sparse `targeting_resolution.modifications`; selecting that configured product accepts those disclosed changes.
 
 ## Response
 
@@ -62,6 +72,9 @@ To check whether the same selection has changed, repeat the request with `if_fee
     "offer_filters": {
       "channels": ["olv"],
       "pricing_currencies": ["USD"]
+    },
+    "targeting_overlay": {
+      "geo_countries": ["US"]
     }
   },
   "if_feed_version": "feed_2026_08_10_1",

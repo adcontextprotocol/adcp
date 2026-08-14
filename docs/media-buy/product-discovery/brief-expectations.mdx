@@ -1,412 +1,188 @@
 ---
 title: Brief expectations
-description: "AdCP brief expectations — how to write campaign briefs for get_products. Required fields, optional details, and implementation guidance for publishers and buyer agents."
-"og:title": "AdCP — Brief Expectations"
+description: "How buyers and sellers use briefs alongside offer filters, targeting overlays, future targeting requirements, and refinement."
+"og:title": "AdCP — Brief expectations"
 ---
 
+A brief gives a seller the campaign meaning needed for curation. It is not a
+second schema written in prose. Buyers preserve goals, context, semantic intent,
+preferences, and requirements without a structured AdCP representation in the
+brief; they put machine-representable facts in typed fields.
 
-A comprehensive brief is essential for effective media buying through AdCP. This document defines the expectations and requirements for briefs in the `get_products` specification, providing implementation guidance for publishers and clear expectations for buyers.
+## When a brief is used
 
-## Overview
+| Task | Brief rule | Purpose |
+|---|---|---|
+| `list_products` | Not accepted | Read matching product offers without seller curation |
+| `request_proposals` | Required | Ask the seller to curate one or more draft plans |
+| `refine_proposals` | Not repeated | Revise a proposal with structured fields, a semantic `ask`, or both; or finalize a draft without changing terms |
+| `get_products` | Depends on `buying_mode` | Compatibility facade for the same list, proposal, and refinement behaviors |
 
-A brief in AdCP is a natural language description of campaign requirements that helps publishers understand and fulfill media buying requests. While briefs can be as simple or detailed as needed, complete briefs enable better product recommendations and more efficient campaign execution.
+For `buying_mode: "brief"`, `brief` is required.
+For `buying_mode: "wholesale"`, omit `brief`.
+For `buying_mode: "refine"`, omit `brief` and use the `refine` array instead.
 
-## Request requirements
+The `brand` field is optional for `get_products` unless the request includes `catalog`. When supplied, the seller may use it to apply general policy rules or limit discovery. A `create_media_buy` request always must include `brand`.
 
-Every `get_products` request MUST include `buying_mode`. For `buying_mode: "brief"`, `brief` is required. For `buying_mode: "wholesale"`, omit `brief`. For `buying_mode: "refine"`, omit `brief` and use the `refine` array instead.
+Offer filters remain hard in every lifecycle. The task changes curation and
+state behavior, not whether filters apply. The split tasks name them
+`criteria.offer_filters`; legacy `get_products` names the equivalent field
+`filters`.
 
-### Brand context
+## Decompose the buyer request
 
-The `brand` field is optional for `get_products` unless the request includes `catalog`, in which case `brand` is required. Include `brand` whenever the advertiser is known so the publisher can provide advertiser-specific recommendations and policy checks. A context-rich discovery request looks like this:
+| Input | Use it for | Example |
+|---|---|---|
+| `brief` | Goals, semantic audience descriptions, context, soft preferences, untyped hard requirements | “Build consideration among outdoor enthusiasts in trusted adventure contexts” |
+| `criteria.offer_filters` | Which offers may be returned: channel, format, commercial terms, dates, budget, reporting | `channels: ["ctv"]` |
+| `criteria.targeting_overlay` | Which inventory or impressions may deliver; values known now | `geo_countries: ["US"]` |
+| `criteria.required_overlay_support` | Targeting dimensions the buyer must select independently on packages later | Nielsen DMA support |
+| refinement `criteria` | Structured changes to a referenced proposal | Replace the country overlay |
+| refinement `ask` | Semantic changes without a structured field | Favor premium adventure contexts |
 
-```json
-{
-  "buying_mode": "brief",
-  "brand": {
-    "domain": "acmecorp.com"
-  },
-  "brief": "Build awareness for Acme Corp's new commuter bicycle among urban professionals"
-}
-```
+Anything that has a structured AdCP field SHOULD use it. This costs fewer
+tokens, can be validated and applied by code, and avoids lossy prose extraction.
 
-This enables publishers to:
-- Apply policy restrictions (age-gated, prohibited categories, etc.)
-- Verify brand identity
-- Enforce brand safety standards
-
-If `brand` is absent, a seller may apply general policy rules or limit discovery rather than perform advertiser-specific checks. The `create_media_buy` request always requires `brand`, even if the preceding discovery request omitted it.
-
-### Brief field
-
-The `brief` field describes **what is being promoted** and **campaign requirements**:
-
-```json
-{
-  "idempotency_key": "550e8400-e29b-41d4-a716-446655442020",
-  "buying_mode": "brief",
-  "brief": "Nova Run shoes feature plant-based materials and target recreational runners"
-}
-```
-
-## Brief requirements by mode
-
-The `brief` field is required in brief mode and omitted in the other modes. For wholesale discovery without publisher curation, set `buying_mode: "wholesale"` explicitly:
-
-### Wholesale buying mode
-
-When the buyer will apply their own audience targeting and does not want publisher curation:
+### Structured-first example
 
 ```json
 {
-  "idempotency_key": "550e8400-e29b-41d4-a716-446655442021",
-  "brand": {
-    "domain": "acmecorp.com"
-  },
-  "buying_mode": "wholesale",
-  "filters": {
-    "delivery_type": "non_guaranteed",
-    "standard_formats_only": true
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441001",
+  "brand": { "domain": "acmeoutdoor.example" },
+  "brief": "Launch a premium trail shoe to outdoor enthusiasts. Favor trusted adventure and fitness contexts and optimize for completed video views.",
+  "criteria": {
+    "offer_filters": {
+      "channels": ["ctv", "olv"],
+      "pricing_currencies": ["USD"],
+      "required_metrics": ["completed_views"],
+      "start_date": "2027-03-01",
+      "end_date": "2027-03-31",
+      "budget_range": { "max": 50000, "currency": "USD" }
+    },
+    "targeting_overlay": {
+      "geo_countries": ["US"],
+      "demographics": {
+        "age": { "min": 25, "max": 44, "include_unknown": false }
+      }
+    },
+    "required_overlay_support": {
+      "geo_metros": { "systems": ["nielsen_dma"] }
+    }
   }
 }
 ```
 
-`buying_mode: "wholesale"` and `brief` are mutually exclusive — providing both is an error. If `buying_mode: "brief"` is set explicitly, `brief` is required.
+The seller curates for the semantic audience and contexts, excludes offers that
+fail the product filters, scopes every returned forecast and price to the US
+age predicate, and returns only products that let packages select Nielsen DMA
+values later. The request does not ask for one product per DMA.
 
-### Refine mode
+## Hard requirements in prose
 
-Use `buying_mode: "refine"` with a `refine` array to iterate on products or proposals from an earlier response. Omit `brief`; each `refine` entry describes the requested change and its scope.
+An explicit hard requirement remains binding even when the buyer puts it only
+in the brief. A seller MUST NOT downgrade “US only” or “must exclude news” to a
+preference merely because it was written in prose.
 
-When a publisher receives `buying_mode: "wholesale"`:
-1. Returns products that support buyer-directed targeting
-2. Does not apply AI curation or personalization
-3. Does not return proposals
-4. Buyer applies their own audiences, e.g. through [TMP](/docs/trusted-match)
+When hard targeting came from prose and the seller's structured interpretation
+materially affects product eligibility, pricing, or forecasting, the seller
+MUST confirm that interpretation in response-root
+`targeting_resolution.brief_targeting` for `request_proposals` and
+`get_products`, or in the affected `refine_proposals.results[]` entry when the
+interpretation came from the refinement `ask`. In other cases the
+seller SHOULD still confirm it as a best practice. Requirements without a typed
+AdCP representation remain visible in the natural-language response.
 
-## Core Brief Components
+`brief_targeting` is confirmation, not a counteroffer. If a product cannot
+honor the seller's literal interpretation of a hard prose constraint, the
+seller omits that product. Structured `modifications` apply only to a buyer's
+explicit `targeting_overlay` proposal flow.
 
-When a `brief` IS provided, it should include these essential elements:
+If prose contradicts a structured field, the seller MUST reject the request as
+`INVALID_REQUEST` rather than silently choose one interpretation. The buyer
+corrects the contradiction and retries.
 
-### 1. Business Objectives
+## How buyers evaluate targeting resolution
 
-**What you're trying to achieve** with the campaign:
-
-- **Awareness**: Build brand recognition or product awareness
-- **Consideration**: Drive interest and research
-- **Conversion**: Generate sales or sign-ups
-- **Retention**: Re-engage existing customers
-- **App installs**: Drive mobile app downloads
-- **Lead generation**: Capture contact information
-- **Traffic**: Drive website or store visits
-
-Example in brief: *"Drive awareness for our new product launch among young professionals"*
-
-### 2. Success Metrics
-
-**How you'll measure success** of the campaign:
-
-- **CTR** (Click-Through Rate): Engagement measurement
-- **CPA** (Cost Per Acquisition): Conversion efficiency
-- **ROAS** (Return on Ad Spend): Revenue generation
-- **Brand lift**: Awareness and perception improvement
-- **Video completion rate**: Content engagement
-- **Conversion rate**: Action completion
-- **Reach and frequency**: Audience coverage
-
-Example in brief: *"Success measured by achieving 2% CTR and $50 CPA"*
-
-### 3. Flight Dates
-
-**When the campaign should run**:
-
-- **Start date**: Campaign launch date
-- **End date**: Campaign completion date
-- **Specific periods**: Holiday seasons, events, promotions
-- **Blackout dates**: Dates to avoid
-- **Dayparting requirements**: Time-of-day preferences
-
-Example in brief: *"Run from March 1-31, focusing on weekday morning commutes"*
-
-## Optional Brief Components
-
-These elements enhance brief quality and enable better recommendations:
-
-### Target Audience
-
-**Who you want to reach**:
-
-#### Demographics
-- Age ranges (e.g., 25-34, 35-44)
-- Gender identity
-- Household income levels
-- Education level
-- Parental status
-- Employment status
-
-#### Psychographics
-- Interests and hobbies
-- Lifestyle attributes
-- Values and beliefs
-- Purchase behaviors
-- Media consumption habits
-- Technology adoption
-
-#### Behavioral Signals
-- Past purchase behavior
-- Website visit history
-- App usage patterns
-- Content engagement
-- Shopping cart abandonment
-
-Example in brief: *"Target pet owners aged 25-45 with household income over $75K who have shown interest in premium pet products"*
-
-### Budget Information
-
-**Spending parameters**:
-
-- **Total budget**: Overall campaign spend
-- **Daily budget**: Maximum daily spend
-- **Budget flexibility**: Ability to adjust
-- **Cost constraints**: CPM limits, efficiency requirements
-- **Budget allocation**: Split across products or time periods
-
-Example in brief: *"$50,000 total budget with flexibility to increase by 20% for high-performing inventory"*
-
-### Geographic Markets
-
-**Where ads should appear**:
-
-- **Countries**: Target nations
-- **Regions/States**: Specific areas within countries
-- **Cities/DMAs**: Metropolitan areas
-- **Postal codes**: Hyperlocal targeting
-- **Exclusions**: Areas to avoid
-
-Example in brief: *"Focus on California and New York, specifically Los Angeles and New York City metros"*
-
-### Creative Constraints
-
-**Format and content requirements**:
-
-- **Available formats**: Video, audio, display, native
-- **Creative variations**: Number of versions available
-- **Language versions**: Multilingual capabilities
-- **Technical limitations**: File sizes, durations
-- **Brand guidelines**: Color, logo, messaging requirements
-
-Example in brief: *"We have 30-second and 15-second video creatives in English and Spanish"*
-
-### Brand Safety Requirements
-
-**Content to avoid**:
-
-- **Blocked categories**: Content types to exclude
-- **Sensitive topics**: Subjects to avoid
-- **Competitor separation**: Competing brands to avoid
-- **Quality standards**: Viewability, fraud prevention
-- **Certification requirements**: Industry certifications and standards
-
-Example in brief: *"Avoid news, political content, and competitive automotive brands"*
-
-## Brief Quality Levels
-
-Publishers should handle briefs at different completeness levels:
-
-### Wholesale Product Feed
-```json
-{
-  "idempotency_key": "550e8400-e29b-41d4-a716-446655442022",
-  "brand": {"domain": "acmecorp.com"},
-  "buying_mode": "wholesale",
-  "filters": {
-    "delivery_type": "non_guaranteed",
-    "standard_formats_only": true
-  }
-}
-```
-**Publisher Response**: Return wholesale products (broad reach inventory optimized for scale). No AI curation, no proposals. Buyer applies their own targeting.
-
-### Minimal Brief
-```json
-{
-  "idempotency_key": "550e8400-e29b-41d4-a716-446655442023",
-  "brand": {"domain": "acmecorp.com"},
-  "buying_mode": "brief",
-  "brief": "Reach business decision makers"
-}
-```
-**Publisher Response**: Request clarification on budget, timing, and specific objectives.
-
-### Standard Brief
-```json
-{
-  "idempotency_key": "550e8400-e29b-41d4-a716-446655442024",
-  "brand": {"domain": "acmecorp.com"},
-  "buying_mode": "brief",
-  "brief": "Acme Corp project management software - cloud-based solution for remote teams. Reach IT decision makers in tech companies with 50-500 employees, $25K budget for Q1, focusing on driving free trial signups"
-}
-```
-**Publisher Response**: Provide relevant product recommendations with clear rationale.
-
-### Comprehensive Brief
-```json
-{
-  "idempotency_key": "550e8400-e29b-41d4-a716-446655442025",
-  "brand": {"domain": "acmecorp.com"},
-  "buying_mode": "brief",
-  "brief": "Acme Corp project management software - cloud-based solution for remote teams with AI-powered automation. Drive 500 free trial signups from IT decision makers and project managers at tech companies (50-500 employees) in SF Bay Area and NYC. $25K budget for March 1-31, measured by $50 CPA. We have video and display creatives. Avoid competitor content and news sites."
-}
-```
-**Publisher Response**: Provide optimized product mix with detailed performance projections.
-
-## Delivery Preferences
-
-Buyers can signal delivery type preference without excluding inventory. `preferred_delivery_types` is an ordered array that tells the publisher what the buyer wants most, while still allowing the publisher to include alternatives when they match the brief well.
-
-```json
-{
-  "idempotency_key": "550e8400-e29b-41d4-a716-446655442026",
-  "buying_mode": "brief",
-  "brief": "Exclusive podcast sponsorship for a fintech brand — we want guaranteed placement on business shows",
-  "preferred_delivery_types": ["guaranteed"]
-}
-```
-
-This differs from `filters.delivery_type`, which is a hard filter:
-
-| Field | Effect |
+| Response state | Buyer conclusion and action |
 |---|---|
-| `filters.delivery_type` | Excludes products that don't match |
-| `preferred_delivery_types` | Signals preference — publisher may still include other types |
+| Structured overlay; no `targeting_resolution` | Overlay accepted exactly |
+| `targeting_resolution.modifications` | Compare the ordered proposed changes; selecting the configured product accepts them |
+| Hard prose plus `brief_targeting` | Verify the seller’s structured interpretation before selection |
+| Hard prose without confirmation | Do not infer acceptance; inspect the seller’s prose or clarify before purchase |
 
-When both are present, `filters.delivery_type` takes precedence (it removes non-matching products before preference is applied).
+Unchanged structured overlays are not repeated. This prevents large values such
+as hundreds of postal codes from bouncing through discovery responses.
 
-### For publishers
+## What belongs in the brief
 
-When a buyer includes `preferred_delivery_types`, rank preferred types first in results but include strong matches of other types lower in the response. If a buyer prefers guaranteed but you have a non-guaranteed product that matches the brief well, include it with a clear `brief_relevance` explanation of why it's worth considering.
+Useful brief content includes:
 
-## Implementation Guidelines
+- business objective and why the campaign exists;
+- semantic audience meaning such as “outdoor enthusiasts” or “IT decision
+  makers modernizing cloud infrastructure”;
+- creative and product context;
+- success priorities and tradeoffs not captured by typed metrics;
+- sensitive adjacency or competitive context without a typed control;
+- soft preferences, clearly distinguished from hard requirements.
 
-### For Publishers
+Do not duplicate exact dates, budget, currency, channels, formats, geography,
+demographic predicates, or other values already carried in structured fields.
 
-1. **Parse Brief Elements**: Extract key components programmatically
-2. **Handle Incompleteness**: Gracefully request missing critical information
-3. **Provide Guidance**: Suggest what additional information would help
-4. **Match Intelligently**: Use AI to interpret natural language and match products
-5. **Explain Relevance**: Always provide `brief_relevance` field in responses
+## Seller processing
 
-### For Buyers
+For `request_proposals`, sellers:
 
-1. **Be Specific**: More detail enables better recommendations
-2. **Prioritize Goals**: Clearly state primary vs secondary objectives
-3. **Provide Context**: Include market conditions or competitive landscape
-4. **Update Iteratively**: Refine brief based on publisher feedback
-5. **Maintain Consistency**: Ensure brief aligns with campaign objectives
+1. Validate structured fields before natural-language interpretation.
+2. Reject contradictions between hard prose and structured fields.
+3. Apply filters, targeting, and required future-support matching.
+4. Interpret the remaining brief for curation and relevance.
+5. Scope product pricing and forecasts to effective targeting.
+6. Return draft proposals with `brief_relevance` where useful and disclose targeting resolution.
 
-## Brief Processing Flow
+Sellers may ask focused clarification questions when semantic intent is too
+ambiguous to curate responsibly. They do not need clarification for exact
+values already supplied structurally.
 
 ```mermaid
 graph TD
-    A[Receive Request] --> B{Request Valid?}
-    B -->|No| C[Return Policy Error]
-    B -->|Yes| W{Wholesale Mode?}
-    W -->|Yes| M[Return All Products Matching Filters]
-    W -->|No| D{Brief Provided?}
-    D -->|No| F[Request Clarification]
-    D -->|Yes| E{Brief Complete?}
-    E -->|No| F
-    E -->|Yes| G[Process Requirements]
-    F --> H[Provide Specific Questions]
-    G --> I[Match Products]
-    I --> J{Products Found?}
-    J -->|No| K[Suggest Alternatives]
-    J -->|Yes| L[Return Recommendations]
-    L --> N[Include Relevance Explanation]
+    A[Receive discovery task] --> B[Validate structured fields]
+    B --> C{Contradiction?}
+    C -->|Yes| D[INVALID_REQUEST]
+    C -->|No| E[Apply filters and targeting]
+    E --> F{Task}
+    F -->|list_products| G[Return matching feed products]
+    F -->|request_proposals| H[Interpret semantic brief and curate]
+    F -->|refine_proposals| I[Resolve proposal IDs and apply refinement]
+    H --> J[Return configured products and resolution]
+    I --> J
 ```
 
-## Clarification Handling
+## Listing and refinement
 
-When briefs need clarification, publishers should:
+Listing is not “targeting later.” It is non-curated product-feed behavior.
+Buyers may still send `offer_filters`, `targeting_overlay`, and
+`required_overlay_support`; returned products must honor them exactly as in
+proposal mode. The legacy `get_products` wholesale mode has the same rule.
 
-1. **Ask Specific Questions**: Target missing critical information
-2. **Provide Examples**: Show what complete information looks like
-3. **Maintain Context**: Remember previous brief elements
-4. **Suggest Defaults**: Offer reasonable assumptions
-5. **Progressive Disclosure**: Don't overwhelm with all questions at once
+For `action: "revise"`, refine requests are self-contained through opaque
+product/proposal IDs plus structured fields, a semantic `ask`, or both.
+`action: "finalize"` changes no commercial or targeting terms and cannot carry
+revision fields. See [Refining products and proposals](/docs/media-buy/product-discovery/refinement).
 
-Example clarification response:
-```json
-{
-  "message": "I'd be happy to help find the right products for your campaign. To provide the best recommendations, could you share:\n\n• What's your campaign budget?\n• When do you want the campaign to run?\n• Which geographic markets are you targeting?\n• What are your success metrics (awareness, conversions, etc.)?",
-  "clarification_needed": true
-}
-```
+## Implementation checklist
 
-## Natural Language Processing
+### Buyers
 
-Publishers should implement NLP to extract:
+- Preserve business language and semantic intent in `brief`.
+- Extract machine-representable facts into structured fields.
+- Mark hard versus preferred requirements clearly.
+- Inspect every targeting resolution before selecting a product.
+- Treat configured product IDs as opaque and context-bound until `expires_at`.
 
-- **Temporal expressions**: "next quarter", "holiday season", "ASAP"
-- **Budget indicators**: "$50K", "low budget", "premium spend"
-- **Audience descriptors**: "millennials", "high-income", "parents"
-- **Geographic references**: "west coast", "major cities", "nationwide"
-- **Objective keywords**: "awareness", "drive sales", "generate leads"
+### Sellers
 
-## Best practices
-
-### Do
-- ✅ Include the advertiser as `brand` when known and describe the promoted product in the brief
-- ✅ Specify measurable success criteria
-- ✅ Provide clear timing requirements
-- ✅ Describe target audience in detail
-- ✅ Mention creative format availability
-- ✅ State budget or budget constraints
-- ✅ Include brand safety requirements
-
-### Don't
-- ❌ Provide vague objectives like "good performance"
-- ❌ Omit timing without expecting clarification requests
-- ❌ Use undefined abbreviations or jargon
-- ❌ Contradict between brief and brand
-- ❌ Include sensitive or confidential information
-- ❌ Assume publisher knowledge of your business
-
-## Examples
-
-### Wholesale buying
-```json
-{
-  "idempotency_key": "550e8400-e29b-41d4-a716-446655442027",
-  "brand": {"domain": "acmecorp.com"},
-  "buying_mode": "wholesale",
-  "filters": {
-    "delivery_type": "non_guaranteed",
-    "channels": ["display", "ctv"]
-  }
-}
-```
-**Use Case**: Buyer has sophisticated audience segments in their DMP/CDP and will apply targeting through [TMP](/docs/trusted-match). They need raw inventory without publisher curation.
-
-### E-commerce Brief
-```
-"Launch our new sustainable fashion line targeting environmentally conscious millennials in urban markets. $75K budget for April, focused on driving online sales with a target ROAS of 4:1. We have video and carousel creatives showcasing the manufacturing process."
-```
-
-### B2B Software Brief
-```
-"Generate qualified leads for our enterprise CRM solution among sales leaders at companies with 500+ employees. Q2 campaign with $100K budget, targeting 2% conversion rate from landing page visits. Display and native formats available."
-```
-
-### Local Services Brief
-```
-"Drive appointment bookings for our dental practice in Chicago suburbs. $5K monthly budget targeting families with children within 10 miles of our locations. Focus on Saturday availability."
-```
-
-## Conclusion
-
-Briefs serve different purposes for different buyers:
-
-- **Discovery-focused buyers** benefit from detailed briefs that help publishers recommend the best products
-- **Targeting-focused buyers** may skip briefs entirely, using filters to get broad inventory and applying their own targeting
-- **Hybrid approaches** can use minimal briefs to narrow the field while retaining control over targeting
-
-Publishers should implement robust brief processing to handle all these scenarios, from no brief at all to comprehensive campaign descriptions, while maintaining a conversational, helpful approach when clarification would add value.
+- Apply hard requirements in every request surface.
+- Never infer a structured value when the buyer already supplied it.
+- Never silently resolve a contradiction or unsupported constraint.
+- Confirm brief-derived targeting when possible.
+- Bind effective targeting, price, forecast, and terms to the returned product.
