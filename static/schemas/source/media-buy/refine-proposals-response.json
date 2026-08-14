@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/refine-proposals-response.json",
   "title": "Refine Proposals Response",
-  "description": "One ordered immutable revision or finalization result per requested source proposal, plus compact canonical products needed to evaluate the resulting terms. Products always carry product_id and name and never carry legacy named-format identifiers.",
+  "description": "One ordered result per requested source proposal. Revision results may carry multiple immutable draft proposals when alternatives were requested; finalization remains one committed proposal per source. Products contains the compact canonical products needed to evaluate the resulting terms.",
   "type": "object",
   "anyOf": [
     {
@@ -38,8 +38,21 @@
             "enum": ["revised", "partial", "finalized", "unable"]
           },
           "proposal": { "$ref": "/schemas/core/canonical-proposal.json" },
+          "proposals": {
+            "type": "array",
+            "items": { "$ref": "/schemas/core/canonical-proposal.json" },
+            "minItems": 1,
+            "description": "Draft successors produced for a revision. Without alternatives this contains one proposal. When alternatives.count was requested, revised contains exactly that many proposals; fewer proposals require outcome partial."
+          },
+          "reason_code": { "$ref": "/schemas/enums/proposal-refinement-reason.json" },
           "reason": { "type": "string", "minLength": 1 },
-          "notes": { "type": "string", "minLength": 1 },
+          "unsatisfied_constraints": {
+            "type": "array",
+            "description": "Stable keys from the request constraints object that were not satisfied by every returned draft. A result carrying any key here MUST use outcome partial or unable, never revised.",
+            "items": { "type": "string", "enum": ["total_budget"] },
+            "minItems": 1,
+            "uniqueItems": true
+          },
           "suggestions": {
             "type": "array",
             "items": { "type": "string", "minLength": 1 },
@@ -51,29 +64,35 @@
           {
             "properties": {
               "outcome": { "type": "string", "const": "revised" },
-              "proposal": {
-                "properties": { "proposal_status": { "type": "string", "const": "draft" } },
-                "required": ["proposal_status"]
+              "proposals": {
+                "items": {
+                  "properties": { "proposal_status": { "type": "string", "const": "draft" } },
+                  "required": ["proposal_status"]
+                }
               }
             },
-            "required": ["outcome", "proposal"],
+            "required": ["outcome", "proposals"],
             "not": {
               "anyOf": [
+                { "required": ["proposal"] },
+                { "required": ["reason_code"] },
                 { "required": ["reason"] },
-                { "required": ["notes"] }
+                { "required": ["unsatisfied_constraints"] }
               ]
             }
           },
           {
             "properties": {
               "outcome": { "type": "string", "const": "partial" },
-              "proposal": {
-                "properties": { "proposal_status": { "type": "string", "const": "draft" } },
-                "required": ["proposal_status"]
+              "proposals": {
+                "items": {
+                  "properties": { "proposal_status": { "type": "string", "const": "draft" } },
+                  "required": ["proposal_status"]
+                }
               }
             },
-            "required": ["outcome", "proposal", "notes"],
-            "not": { "required": ["reason"] }
+            "required": ["outcome", "proposals", "reason_code", "reason"],
+            "not": { "required": ["proposal"] }
           },
           {
             "properties": {
@@ -89,15 +108,22 @@
             "required": ["outcome", "proposal"],
             "not": {
               "anyOf": [
+                { "required": ["proposals"] },
+                { "required": ["reason_code"] },
                 { "required": ["reason"] },
-                { "required": ["notes"] }
+                { "required": ["unsatisfied_constraints"] }
               ]
             }
           },
           {
             "properties": { "outcome": { "type": "string", "const": "unable" } },
-            "required": ["outcome", "reason"],
-            "not": { "required": ["proposal"] }
+            "required": ["outcome", "reason_code", "reason"],
+            "not": {
+              "anyOf": [
+                { "required": ["proposal"] },
+                { "required": ["proposals"] }
+              ]
+            }
           }
         ],
         "additionalProperties": false

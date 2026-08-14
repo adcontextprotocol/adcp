@@ -28,6 +28,10 @@ Refinement is not required. Simple campaigns can go straight from discovery to p
 
 ## The refine array
 
+<Note>
+  This is the deprecated `get_products` compatibility grammar. New compact-lifecycle integrations use [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals). The surfaces share `ask`, product `include`/`omit` verbs, and the `budget_range` shape, but their response envelopes are intentionally different.
+</Note>
+
 The `refine` array is a list of change requests. Each entry declares a `scope` and what the buyer is asking for:
 
 | Scope | Purpose | Required fields |
@@ -171,7 +175,7 @@ Use the free-text `ask` field for commercial requests such as a lower price or a
 }
 ```
 
-Buyers discover refinement support when `get_adcp_capabilities.media_buy.buying_modes` includes `"refine"`. That declaration means the seller can receive this free-text ask; it does not guarantee that the seller understands every negotiation strategy or has commercial flexibility on price. There is no finer-grained price-negotiation capability flag.
+Buyers discover this legacy refinement mode when `get_adcp_capabilities.media_buy.buying_modes` includes `"refine"`. That declaration means the seller can receive this free-text ask; it does not guarantee that the seller understands every negotiation strategy or has commercial flexibility on price. There is no finer-grained price-negotiation capability flag. Compact `refine_proposals` integrations separately inspect `media_buy.proposal_refinement.supported_dimensions` for typed parse-and-validate support.
 
 When the seller returns `refinement_applied`, read the matching entry's `status` (`applied`, `partial`, or `unable`) and optional `notes` to learn how it handled this specific request. These fields acknowledge handling; they are not the executable commercial terms. Inspect the returned proposal's pricing and allocations before finalizing or buying.
 

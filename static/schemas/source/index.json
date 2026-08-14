@@ -626,6 +626,10 @@
           "$ref": "/schemas/core/product-filters.json",
           "description": "Structured filters for product discovery"
         },
+        "budget-range": {
+          "$ref": "/schemas/core/budget-range.json",
+          "description": "Shared currency-denominated inclusive budget bounds"
+        },
         "product-offer-filters": {
           "$ref": "/schemas/core/product-offer-filters.json",
           "description": "Offer-only product filters used by the compact product-discovery tools"
@@ -924,6 +928,10 @@
         "proposal-decline-reason": {
           "$ref": "/schemas/enums/proposal-decline-reason.json",
           "description": "Machine-readable terminal proposal feedback"
+        },
+        "proposal-refinement-reason": {
+          "$ref": "/schemas/enums/proposal-refinement-reason.json",
+          "description": "Machine-readable partial or unable proposal-refinement outcome"
         },
         "media-buy-status": {
           "$ref": "/schemas/enums/media-buy-status.json",

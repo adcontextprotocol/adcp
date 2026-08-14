@@ -3176,6 +3176,31 @@ async function runTests() {
     },
     'refine_proposals accepts plural proposal-scoped immutable refinements'
   );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-typed-0001',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        constraints: { total_budget: { max: 50000, currency: 'USD' } },
+        product_changes: [
+          { product_id: 'premium-video', action: 'include' },
+          { product_id: 'display-ros', action: 'omit' }
+        ],
+        alternatives: { count: 3 }
+      }]
+    },
+    'refine_proposals accepts deterministic typed revision dimensions without free text'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-empty-amendment-0001',
+      refinements: [{ proposal_id: 'proposal-1', action: 'revise', change_kind: 'amendment' }]
+    },
+    'refine_proposals rejects an amendment with no requested change'
+  );
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-request.json',
     {
@@ -3524,10 +3549,28 @@ async function runTests() {
     {
       ...splitCapabilityBase,
       media_buy: {
-        lifecycle_tools: ['request_proposals', 'refine_proposals']
+        lifecycle_tools: ['request_proposals', 'refine_proposals'],
+        proposal_refinement: {
+          supported_dimensions: ['total_budget', 'product_selection', 'alternatives'],
+          max_alternatives: 4
+        }
       }
     },
-    'compact proposal capability advertises supported split tools'
+    'compact proposal capability advertises typed refinement dimensions'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...splitCapabilityBase,
+      media_buy: {
+        lifecycle_tools: ['refine_proposals'],
+        proposal_refinement: {
+          supported_dimensions: ['total_budget'],
+          max_alternatives: 4
+        }
+      }
+    },
+    'proposal refinement cannot advertise an alternatives limit without alternatives support'
   );
   await testSchemaValidation(
     '/schemas/media-buy/list-products-response.json',
@@ -3667,23 +3710,53 @@ async function runTests() {
     },
     'request_proposals success cannot carry rejection fields'
   );
-  await testSchemaRejection(
+  const canonicalDraftRevision = {
+    proposal_id: 'proposal-2',
+    proposal_kind: 'new_media_buy',
+    proposal_status: 'draft',
+    name: 'Revised premium video plan',
+    commercial_terms: {
+      brand: { domain: 'buyer.example' },
+      purchases: [{
+        product_id: 'premium-video',
+        pricing_option_id: 'fixed-cpm',
+        pricing: { pricing_option_id: 'fixed-cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 28 },
+        start_time: '2027-06-01T12:00:00Z',
+        end_time: '2027-07-01T00:00:00Z'
+      }],
+      start_time: '2027-06-01T12:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      total_budget: { amount: 50000, currency: 'USD' }
+    },
+    terms_digest: `sha256:${'A'.repeat(43)}`
+  };
+  await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
     {
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'partial',
-        proposal: {
-          proposal_id: 'proposal-2',
-          name: 'Partially revised premium video plan',
-          allocations: [{ product_id: 'premium-video', allocation_percentage: 100 }],
-          proposal_status: 'committed',
-          expires_at: '2027-06-30T23:59:59Z'
-        }
+        proposals: [canonicalDraftRevision],
+        reason_code: 'constraint_unsatisfiable',
+        reason: 'The requested budget floor could not be met.',
+        unsatisfied_constraints: ['total_budget']
       }],
       products: []
     },
-    'refine_proposals partial results require explanatory notes'
+    'refine_proposals partial results identify unsatisfied keyed constraints'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'revised',
+        proposals: [canonicalDraftRevision],
+        unsatisfied_constraints: ['total_budget']
+      }],
+      products: []
+    },
+    'refine_proposals cannot label a constraint-violating draft revised'
   );
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
@@ -3745,6 +3818,7 @@ async function runTests() {
       }, {
         source_proposal_id: 'proposal-draft-2',
         outcome: 'unable',
+        reason_code: 'source_unavailable',
         reason: 'Inventory could not be held.'
       }],
       products: []

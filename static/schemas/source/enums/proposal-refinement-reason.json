@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/proposal-refinement-reason.json",
+  "title": "Proposal Refinement Reason",
+  "description": "Machine-readable reason a proposal revision was only partially applied or could not be produced.",
+  "type": "string",
+  "enum": [
+    "commercially_declined",
+    "constraint_unsatisfiable",
+    "unsupported_dimension",
+    "uninterpreted",
+    "alternatives_unavailable",
+    "source_unavailable"
+  ],
+  "enumDescriptions": {
+    "commercially_declined": "The seller understood the request but declined to offer the requested commercial terms.",
+    "constraint_unsatisfiable": "The seller could not produce a draft satisfying one or more typed hard constraints or product changes.",
+    "unsupported_dimension": "The seller cannot parse or validate one or more typed refinement dimensions used by the request.",
+    "uninterpreted": "The seller could not interpret some or all of the free-text ask.",
+    "alternatives_unavailable": "The seller produced fewer distinct draft alternatives than requested.",
+    "source_unavailable": "The source proposal was not found, visible, or eligible for revision by this caller."
+  }
+}

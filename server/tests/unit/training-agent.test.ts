@@ -13043,9 +13043,10 @@ describe('proposal lifecycle', () => {
     expect(refinement).toMatchObject({
       source_proposal_id: source.proposal_id,
       outcome: 'partial',
-      proposal: { proposal_status: 'draft' },
+      proposals: [{ proposal_status: 'draft' }],
+      reason_code: 'uninterpreted',
     });
-    const revision = refinement.proposal as Record<string, unknown>;
+    const revision = (refinement.proposals as Array<Record<string, unknown>>)[0];
     expect(revision.proposal_id).not.toBe(source.proposal_id);
     expect((refined.results as Array<Record<string, unknown>>)[1]).toMatchObject({
       source_proposal_id: 'proposal-not-visible-to-caller',
@@ -13139,13 +13140,13 @@ describe('proposal lifecycle', () => {
       results: [{
         source_proposal_id: committed.proposal_id,
         outcome: expect.stringMatching(/^(revised|partial)$/),
-        proposal: {
+        proposals: [{
           proposal_kind: 'media_buy_update',
           proposal_status: 'draft',
           parent_proposal_id: committed.proposal_id,
           media_buy_id: purchased.media_buy_id,
           base_media_buy_revision: 1,
-        },
+        }],
       }],
     });
 
@@ -13161,7 +13162,7 @@ describe('proposal lifecycle', () => {
     expect(cancellationAfterExecution.result).toMatchObject({
       results: [{
         source_proposal_id: committed.proposal_id,
-        proposal: {
+        proposals: [{
           proposal_kind: 'media_buy_cancellation',
           proposal_status: 'draft',
           commercial_terms: {
@@ -13170,7 +13171,7 @@ describe('proposal lifecycle', () => {
               reason: 'Cancel by mutual agreement before the next billing period.',
             },
           },
-        },
+        }],
       }],
     });
     expect(
@@ -13293,7 +13294,7 @@ describe('proposal lifecycle', () => {
       }],
     });
     expect(refineError).toBeFalsy();
-    const revision = ((refined.results as Array<Record<string, unknown>>)[0].proposal) as Record<string, unknown>;
+    const revision = (((refined.results as Array<Record<string, unknown>>)[0].proposals as Array<Record<string, unknown>>)[0]);
     const compactSessionKey = sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous');
     await runWithSessionContext(async () => {
       const session = await getSession(compactSessionKey);
@@ -13474,7 +13475,7 @@ describe('proposal lifecycle', () => {
     });
   });
 
-  it('omits partial-only notes from a fully revised proposal result', async () => {
+  it('omits partial-only reasons from a fully revised proposal result', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: requested, isError: requestError } = await simulateCallTool(server, 'request_proposals', {
       brand: account.brand,
@@ -13495,9 +13496,60 @@ describe('proposal lifecycle', () => {
     expect(revision).toMatchObject({
       source_proposal_id: source.proposal_id,
       outcome: 'revised',
-      proposal: { proposal_status: 'draft' },
+      proposals: [{ proposal_status: 'draft' }],
     });
-    expect(revision).not.toHaveProperty('notes');
+    expect(revision).not.toHaveProperty('reason_code');
+    expect(revision).not.toHaveProperty('reason');
+  });
+
+  it('reports unsupported typed refinement dimensions without claiming constraint satisfaction', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: requested } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+    });
+    const source = (requested.proposals as Array<Record<string, unknown>>)[0];
+
+    const { result: refined, isError } = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: source.proposal_id,
+        action: 'revise',
+        constraints: { total_budget: { max: 50000, currency: 'USD' } },
+        product_changes: [{ product_id: 'social-display', action: 'include' }],
+        alternatives: { count: 3 },
+      }],
+    });
+
+    expect(isError, JSON.stringify(refined)).toBeFalsy();
+    expect(refined).toMatchObject({
+      results: [{
+        source_proposal_id: source.proposal_id,
+        outcome: 'partial',
+        proposals: [{ proposal_status: 'draft' }],
+        reason_code: 'unsupported_dimension',
+      }],
+    });
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', refined)).toBeUndefined();
+  });
+
+  it('rejects duplicate product IDs in typed proposal changes', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const duplicate = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        product_changes: [
+          { product_id: 'premium-video', action: 'include' },
+          { product_id: 'premium-video', action: 'omit' },
+        ],
+      }],
+    });
+
+    expect(duplicate.isError).toBe(true);
+    expect(duplicate.result).toMatchObject({
+      code: 'INVALID_REQUEST',
+      field: 'refinements[0].product_changes[1].product_id',
+    });
   });
 
   it('binds compact proposals to both the seller account and full BrandKey', async () => {

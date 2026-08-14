@@ -394,6 +394,20 @@ Media-buy protocol capabilities. Only present if `media_buy` is in `supported_pr
 
 AdCP 3.2 sellers use `lifecycle_tools` to advertise any supported subset of `get_products`, `list_products`, `request_proposals`, `refine_proposals`, `decline_proposals`, `buy_products`, `accept_proposal`, and `control_media_buy`. When absent, buyers use the legacy `get_products`, `create_media_buy`, and `update_media_buy` facades. The compact tools share the authorization framework with their legacy peers, but grants remain task-specific and each stateful tool has its own idempotency identity: retry with the same tool name and payload. SDKs use the release manifest's `legacy_fallback` metadata to distinguish a direct one-call translation from a stateful orchestration or an unsupported fallback; see [Same-major tool replacements](/docs/building/cross-cutting/version-adaptation#same-major-tool-replacements).
 
+#### proposal_refinement
+
+When `lifecycle_tools` includes `refine_proposals`, `proposal_refinement` optionally advertises which typed revision dimensions the seller can parse and mechanically validate:
+
+| Dimension | Request field | Deterministic check |
+|---|---|---|
+| `total_budget` | `constraints.total_budget` | Compare the inclusive range and currency with `commercial_terms.total_budget`. |
+| `product_selection` | `product_changes[]` | Check `include`/`omit` against `commercial_terms.purchases[].product_id`. |
+| `alternatives` | `alternatives.count` | Count the draft proposals returned for the source proposal. |
+
+`max_alternatives` may accompany `alternatives` to publish a pre-flight count ceiling. An explicit `supported_dimensions` list is authoritative: buyers SHOULD NOT send omitted dimensions, and sellers SHOULD reject them with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). When `proposal_refinement` is absent, support is unknown; sellers report unsupported dimensions through `partial` or `unable` results instead.
+
+This capability is about parse and validation support, never commercial willingness. Free-text `ask` interpretation remains seller competence rather than a boolean capability. Multi-proposal finalization deliberately retains its separate failure-as-discovery model through [`MULTI_FINALIZE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-multi-finalize-unsupported): it describes atomic infrastructure topology, while the core typed revision fields must be discoverable before a deterministic buyer constructs a request.
+
 :::note 3.0 breaking changes
 The following fields have been removed from the capabilities response:
 

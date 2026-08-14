@@ -4306,6 +4306,9 @@ export function normalizeProductDiscoveryArgs(
               scope: 'proposal',
               proposal_id: entry.proposal_id,
               action: entry.action === 'finalize' ? 'finalize' : 'include',
+              ...(entry.action !== 'finalize' && isRecord(entry.constraints) && { constraints: entry.constraints }),
+              ...(entry.action !== 'finalize' && Array.isArray(entry.product_changes) && { product_changes: entry.product_changes }),
+              ...(entry.action !== 'finalize' && isRecord(entry.alternatives) && { alternatives: entry.alternatives }),
               ...(entry.action !== 'finalize'
                 && typeof entry.ask === 'string'
                 && { ask: entry.ask }),
@@ -4582,9 +4585,9 @@ export function projectProductDiscoveryResult(
     const sourceIds = requestedRefinements
       .map(entry => entry.proposal_id)
       .filter((id): id is string => typeof id === 'string');
-    const actionBySource = new Map(requestedRefinements
+    const requestBySource = new Map(requestedRefinements
       .filter((entry): entry is Record<string, unknown> & { proposal_id: string } => typeof entry.proposal_id === 'string')
-      .map(entry => [entry.proposal_id, entry.action === 'finalize' ? 'finalize' : 'revise'] as const));
+      .map(entry => [entry.proposal_id, entry] as const));
     const proposalsBySource = new Map(proposals.map(proposal => [
       proposal.__source_proposal_id,
       proposal,
@@ -4593,24 +4596,63 @@ export function projectProductDiscoveryResult(
       .map(proposal => outwardProposal(proposal, proposalProducts));
     return {
       results: sourceIds.map(sourceProposalId => {
+        const request = requestBySource.get(sourceProposalId);
         const internalProposal = proposalsBySource.get(sourceProposalId);
         const proposal = internalProposal && outwardProposal(internalProposal, proposalProducts);
-        const outcome = actionBySource.get(sourceProposalId) === 'finalize'
+        const isFinalize = request?.action === 'finalize';
+        const constraints = isRecord(request?.constraints) ? request.constraints : undefined;
+        const hasTypedRevision = constraints !== undefined
+          || Array.isArray(request?.product_changes)
+          || isRecord(request?.alternatives);
+        const hasNonAlternativeTypedRevision = constraints !== undefined
+          || Array.isArray(request?.product_changes);
+        const requestedAlternativeCount = isRecord(request?.alternatives)
+          && typeof request.alternatives.count === 'number'
+          ? request.alternatives.count
+          : undefined;
+        const outcome = isFinalize
           ? 'finalized'
-          : internalProposal?.__refinement_outcome === 'partial' ? 'partial' : 'revised';
-        return proposal
-          ? {
-              source_proposal_id: sourceProposalId,
-              outcome,
-              proposal,
-              ...(outcome === 'partial' && typeof internalProposal?.__refinement_notes === 'string'
-                && { notes: internalProposal.__refinement_notes }),
-            }
-          : {
-              source_proposal_id: sourceProposalId,
-              outcome: 'unable',
-              reason: 'The source proposal was not found or could not be revised under the requested terms.',
-            };
+          : internalProposal?.__refinement_outcome === 'partial' || hasTypedRevision ? 'partial' : 'revised';
+        if (!proposal) {
+          return {
+            source_proposal_id: sourceProposalId,
+            outcome: 'unable',
+            reason_code: 'source_unavailable',
+            reason: 'The source proposal was not found or could not be revised under the requested terms.',
+          };
+        }
+        if (outcome === 'finalized') {
+          return {
+            source_proposal_id: sourceProposalId,
+            outcome,
+            proposal,
+          };
+        }
+        if (outcome === 'partial') {
+          const reasonCode = hasNonAlternativeTypedRevision
+            ? 'unsupported_dimension'
+            : requestedAlternativeCount !== undefined && requestedAlternativeCount > 1
+              ? 'alternatives_unavailable'
+              : hasTypedRevision ? 'unsupported_dimension' : 'uninterpreted';
+          return {
+            source_proposal_id: sourceProposalId,
+            outcome,
+            proposals: [proposal],
+            reason_code: reasonCode,
+            reason: reasonCode === 'alternatives_unavailable'
+              ? `The training agent produced 1 of ${requestedAlternativeCount} requested alternatives.`
+              : typeof internalProposal?.__refinement_notes === 'string'
+                ? internalProposal.__refinement_notes
+                : reasonCode === 'unsupported_dimension'
+                  ? 'The training agent does not implement the requested typed refinement dimension.'
+                  : 'The training agent could not fully interpret the free-text ask.',
+          };
+        }
+        return {
+          source_proposal_id: sourceProposalId,
+          outcome,
+          proposals: [proposal],
+        };
       }),
       products: supportingProductsForProposals(outwardProposals, products).map(compactCanonicalProduct),
     };
@@ -4761,20 +4803,32 @@ export function validateProductDiscoveryAliasInput(
         return { message: 'proposal_id values in refinements must be unique', field: `refinements[${index}].proposal_id` };
       }
       proposalIds.add(entry.proposal_id);
-      if (!(typeof entry.ask === 'string' && entry.ask.length > 0)) {
-        if (entry.action !== 'finalize') {
-          return { message: 'each revision requires an ask', field: `refinements[${index}].ask` };
-        }
-      }
       if (entry.action !== 'revise' && entry.action !== 'finalize') {
         return {
           message: 'action is required and must be revise or finalize',
           field: `refinements[${index}].action`,
         };
       }
-      if (entry.action === 'finalize' && (entry.ask !== undefined || entry.change_kind !== undefined)) {
+      const hasTypedRevision = isRecord(entry.constraints)
+        || Array.isArray(entry.product_changes)
+        || isRecord(entry.alternatives);
+      const hasAsk = typeof entry.ask === 'string' && entry.ask.length > 0;
+      const isCancellation = entry.change_kind === 'cancellation';
+      if (entry.action === 'revise' && !hasTypedRevision && !hasAsk && !isCancellation) {
         return {
-          message: 'finalize cannot be combined with ask or change_kind',
+          message: 'each revision requires constraints, product_changes, alternatives, ask, or change_kind cancellation',
+          field: `refinements[${index}]`,
+        };
+      }
+      if (entry.action === 'finalize' && (
+        entry.ask !== undefined
+        || entry.change_kind !== undefined
+        || entry.constraints !== undefined
+        || entry.product_changes !== undefined
+        || entry.alternatives !== undefined
+      )) {
+        return {
+          message: 'finalize cannot be combined with revision fields',
           field: `refinements[${index}].action`,
         };
       }
@@ -4788,8 +4842,31 @@ export function validateProductDiscoveryAliasInput(
           field: `refinements[${index}].change_kind`,
         };
       }
+      if (isRecord(entry.constraints) && isRecord(entry.constraints.total_budget)) {
+        const { min, max } = entry.constraints.total_budget;
+        if (typeof min === 'number' && typeof max === 'number' && min > max) {
+          return {
+            message: 'constraints.total_budget.min must be less than or equal to max',
+            field: `refinements[${index}].constraints.total_budget`,
+          };
+        }
+      }
+      if (Array.isArray(entry.product_changes)) {
+        const productIds = new Set<string>();
+        for (let productIndex = 0; productIndex < entry.product_changes.length; productIndex += 1) {
+          const change = entry.product_changes[productIndex];
+          if (!isRecord(change) || typeof change.product_id !== 'string') continue;
+          if (productIds.has(change.product_id)) {
+            return {
+              message: 'product_id values in product_changes must be unique',
+              field: `refinements[${index}].product_changes[${productIndex}].product_id`,
+            };
+          }
+          productIds.add(change.product_id);
+        }
+      }
       const unknown = Object.keys(entry).find(
-        field => !['proposal_id', 'action', 'change_kind', 'ask'].includes(field),
+        field => !['proposal_id', 'action', 'change_kind', 'constraints', 'product_changes', 'alternatives', 'ask'].includes(field),
       );
       if (unknown) {
         return { message: `${unknown} is not supported on proposal refinements`, field: `refinements[${index}].${unknown}` };
@@ -5747,6 +5824,9 @@ async function handleGetProductsUnlocked(
         action?: 'include' | 'omit' | 'finalize' | 'decline';
         ask?: string;
         change_kind?: 'amendment' | 'cancellation';
+        constraints?: { total_budget?: { min?: number; max?: number; currency?: string } };
+        product_changes?: Array<{ product_id: string; action: 'include' | 'omit' }>;
+        alternatives?: { count?: number };
         reason?: string;
         detail?: string;
       };
@@ -6038,6 +6118,9 @@ async function handleGetProductsUnlocked(
             continue;
           }
           const concreteCpmAsk = parseConcreteCpmAsk(op.ask);
+          const hasTypedRevision = op.constraints !== undefined
+            || op.product_changes !== undefined
+            || op.alternatives !== undefined;
           if (concreteCpmAsk) {
             const stagedProducts = new Map<string, ReturnType<typeof concreteCpmPricing>>();
             let allAllocationsPriced = true;
@@ -6075,17 +6158,31 @@ async function handleGetProductsUnlocked(
                 return `${allocation.product_id}: ${pricing.currency} ${pricing.fixedPrice} CPM`;
               }).join('; ');
               const budgetNote = budget ? ` Recommended total set to ${budget.currency} ${budget.amount}.` : '';
-              refinementApplied.push({
-                scope: 'proposal',
-                proposal_id: op.proposal_id,
-                status: 'applied',
-                notes: `Concrete fixed CPM pricing applied (${rates}).${budgetNote}`,
-              });
+              refinementApplied.push(hasTypedRevision
+                ? {
+                    scope: 'proposal',
+                    proposal_id: op.proposal_id,
+                    status: 'partial',
+                    notes: `Concrete fixed CPM pricing applied (${rates}).${budgetNote} Typed refinement dimensions are not implemented by the training agent.`,
+                  }
+                : {
+                    scope: 'proposal',
+                    proposal_id: op.proposal_id,
+                    status: 'applied',
+                    notes: `Concrete fixed CPM pricing applied (${rates}).${budgetNote}`,
+                  });
             } else {
               refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'partial', ...askAckNotes(op.ask) });
             }
           } else {
-            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: op.ask ? 'partial' : 'applied', ...askAckNotes(op.ask) });
+            refinementApplied.push({
+              scope: 'proposal',
+              proposal_id: op.proposal_id,
+              status: op.ask || hasTypedRevision ? 'partial' : 'applied',
+              ...(hasTypedRevision
+                ? { notes: 'Typed refinement dimensions are not implemented by the training agent' }
+                : askAckNotes(op.ask)),
+            });
           }
         } else if (action === 'finalize') {
           const status = proposalLifecycle(proposal).proposal_status;

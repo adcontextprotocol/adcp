@@ -16,10 +16,56 @@
       "description": "revise creates a new draft snapshot with changed commercial terms. finalize MUST target a draft; it creates a new committed snapshot without changing terms and reserves inventory until its expires_at."
     },
     "change_kind": {
-      "type": "string",
       "enum": ["amendment", "cancellation"],
       "default": "amendment",
       "description": "Desired successor proposal. cancellation is valid only when the source proposal is accepted and attached to a non-terminal MediaBuy."
+    },
+    "constraints": {
+      "type": "object",
+      "description": "Hard requirements for every revised proposal. Keys are echoed in unsatisfied_constraints on partial or unable results.",
+      "properties": {
+        "total_budget": {
+          "$ref": "/schemas/core/budget-range.json",
+          "description": "Inclusive bounds checked against commercial_terms.total_budget; currencies MUST match."
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "product_changes": {
+      "type": "array",
+      "description": "Product membership changes checked against commercial_terms.purchases[].product_id. product_id values MUST be unique.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "minLength": 1,
+            "x-entity": "product"
+          },
+          "action": {
+            "enum": ["include", "omit"],
+            "description": "include requires the product in every revised proposal; omit requires it to be absent. These verbs are shared with legacy get_products refine mode."
+          }
+        },
+        "required": ["product_id", "action"],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "alternatives": {
+      "type": "object",
+      "description": "Request distinct draft proposals by count; diversity preferences remain in ask.",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 2,
+          "description": "Number of draft alternatives requested."
+        }
+      },
+      "required": ["count"],
+      "additionalProperties": false
     },
     "ask": {
       "type": "string",
@@ -35,13 +81,26 @@
       "not": {
         "anyOf": [
           { "required": ["change_kind"] },
+          { "required": ["constraints"] },
+          { "required": ["product_changes"] },
+          { "required": ["alternatives"] },
           { "required": ["ask"] }
         ]
       }
     },
     {
       "properties": { "action": { "type": "string", "const": "revise" } },
-      "required": ["action", "ask"]
+      "required": ["action"],
+      "anyOf": [
+        { "required": ["constraints"] },
+        { "required": ["product_changes"] },
+        { "required": ["alternatives"] },
+        { "required": ["ask"] },
+        {
+          "properties": { "change_kind": { "type": "string", "const": "cancellation" } },
+          "required": ["change_kind"]
+        }
+      ]
     }
   ],
   "additionalProperties": false

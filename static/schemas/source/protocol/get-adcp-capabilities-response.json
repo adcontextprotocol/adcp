@@ -799,6 +799,39 @@
           "minItems": 1,
           "uniqueItems": true
         },
+        "proposal_refinement": {
+          "type": "object",
+          "description": "Pre-flight support for typed refine_proposals revision dimensions. These declarations mean the seller can parse and mechanically validate a dimension; they never promise that the seller will commercially concede it. Absence means typed-dimension support is unknown and buyers must handle per-result partial or unable outcomes. A buyer that sends a dimension omitted from an explicit supported_dimensions list should expect task-level UNSUPPORTED_FEATURE.",
+          "properties": {
+            "supported_dimensions": {
+              "type": "array",
+              "description": "Typed revision dimensions the seller can parse and validate. total_budget covers constraints.total_budget; product_selection covers product_changes; alternatives covers alternatives.count. Free-text ask interpretation is competence, not a capability declared here.",
+              "items": {
+                "type": "string",
+                "enum": ["total_budget", "product_selection", "alternatives"]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "max_alternatives": {
+              "type": "integer",
+              "minimum": 2,
+              "description": "Optional maximum alternatives.count the seller accepts. Valid only when supported_dimensions includes alternatives."
+            }
+          },
+          "required": ["supported_dimensions"],
+          "allOf": [
+            {
+              "if": { "required": ["max_alternatives"] },
+              "then": {
+                "properties": {
+                  "supported_dimensions": { "contains": { "const": "alternatives" } }
+                }
+              }
+            }
+          ],
+          "additionalProperties": true
+        },
         "reporting_delivery_methods": {
           "type": "array",
           "description": "How this seller delivers reporting data to buyers. Polling via get_media_buy_delivery is always available as a baseline regardless of this field. This array declares additional push-based delivery methods the seller supports. 'webhook': seller pushes to buyer-provided URL (configured per buy via reporting_webhook). 'offline': seller pushes batch files to a cloud storage bucket (seller-provisioned per account via reporting_bucket on the account object). When absent, only polling is available.",

@@ -44,15 +44,7 @@
     "start_date": { "type": "string", "format": "date" },
     "end_date": { "type": "string", "format": "date" },
     "budget_range": {
-      "type": "object",
-      "properties": {
-        "min": { "type": "number", "minimum": 0 },
-        "max": { "type": "number", "minimum": 0 },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
-      },
-      "required": ["currency"],
-      "anyOf": [{ "required": ["min"] }, { "required": ["max"] }],
-      "additionalProperties": true
+      "$ref": "/schemas/core/budget-range.json"
     },
     "countries": {
       "type": "array",
