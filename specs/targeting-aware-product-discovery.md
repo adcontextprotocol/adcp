@@ -656,9 +656,9 @@ Sellers must mint or derive a distinct configured `product_id` whenever the
 state accepted by purchasing it differs. The ID may remain stable only when it
 still identifies the same complete buyable configuration unambiguously.
 
-When a product is request-specific, it carries `is_custom: true` and
-`expires_at`, even when it accepts a structured overlay exactly and therefore
-has no targeting-resolution echo:
+When targeting-aware discovery issues a request-specific product, it carries
+`is_custom: true` and `expires_at`, even when it accepts a structured overlay
+exactly and therefore has no targeting-resolution echo:
 
 ```json
 {
@@ -692,11 +692,14 @@ product ID binds the targeting resolution, forecast, and non-pricing terms; the
 selected `(product_id, pricing_option_id)` pair binds the commercial terms.
 
 The existing `is_custom` flag may continue to describe whether a seller created
-the request-specific configured offer. It is the explicit marker that the
-opaque product is lineage-bound and expiring; `targeting_resolution` therefore
-requires `is_custom: true`. This design intentionally does not introduce a
-“catalog product” identifier: AdCP already uses catalogs for promoted creative
-items, and overloading that term would obscure the configured-offer model.
+the request-specific configured offer. In targeting-aware discovery it marks
+the opaque product as lineage-bound and expiring; `targeting_resolution`
+therefore requires both `is_custom: true` and `expires_at`. The generic Product
+schema does not infer expiry from `is_custom` alone, preserving compatibility
+with earlier custom products for which `expires_at` was optional. This design
+intentionally does not introduce a “catalog product” identifier: AdCP already
+uses catalogs for promoted creative items, and overloading that term would
+obscure the configured-offer model.
 
 ## What remains in filters
 
@@ -969,8 +972,9 @@ The implemented schema surface is:
   - add `overlay_support` using `targeting-overlay-support.json`
   - add sparse `targeting_resolution` using
     `product-targeting-resolution.json`
-  - require request-specific products to carry `is_custom: true` and
-    `expires_at`
+  - require targeting-aware request-specific products to carry
+    `is_custom: true` and `expires_at`, without tightening legacy `is_custom`
+    products
 - `package.json` and `get-media-buys-response.json`
   - use `package-targeting-resolution.json` for execution-only readback
   - retain `property_list`, `property_list_exclude`, `collection_list`, and
@@ -983,7 +987,9 @@ The implemented schema surface is:
 
 - `product.json`
   - clarify scoped-stable wholesale and lineage-bound custom `product_id`
-  - require `expires_at` for request-specific products
+  - require `expires_at` when `targeting_resolution` is present; the
+    targeting-aware task contract also requires it for exact request-specific
+    products without changing the legacy `is_custom` schema contract
   - add optional sparse `targeting_resolution`
   - add optional `overlay_support`
 

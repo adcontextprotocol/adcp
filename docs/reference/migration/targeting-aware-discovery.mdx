@@ -130,9 +130,12 @@ confirm how prose was interpreted. Brief-derived hard targeting may therefore
 produce response-root `targeting_resolution.brief_targeting` on
 `request_proposals` or `get_products`, or per-result confirmation on
 `refine_proposals`, even when no overlay was sent.
-An exact request-specific configured product still returns `is_custom: true`
-and `expires_at`; absence of a resolution echo does not make its price,
-forecast, or inventory assumptions permanent.
+An exact request-specific configured product issued through targeting-aware
+discovery still returns `is_custom: true` and `expires_at`; absence of a
+resolution echo does not make its price, forecast, or inventory assumptions
+permanent. The generic Product schema continues accepting legacy custom
+products without `expires_at`; the requirement belongs to this new discovery
+flow and to every product that carries `targeting_resolution`.
 
 A seller offering an alternative returns only the changed paths:
 

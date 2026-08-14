@@ -988,7 +988,7 @@ test("product and package targeting resolutions reject cross-lifecycle fields", 
   assert.equal(validatePackage({ demographics }), true, errors(validatePackage));
 });
 
-test("configured products with targeting resolution require expiration", async () => {
+test("targeting resolution requires expiration without tightening legacy custom products", async () => {
   const validate = await compile("/schemas/core/product.json");
   const base = {
     product_id: "prod_configured_age_456",
@@ -1070,13 +1070,8 @@ test("configured products with targeting resolution require expiration", async (
   delete exactConfigured.targeting_resolution;
   assert.equal(
     validate(exactConfigured),
-    false,
-    "an exact request-specific configured product still requires expires_at"
-  );
-  assert.equal(
-    validate({ ...exactConfigured, expires_at: "2026-08-05T12:00:00Z" }),
     true,
-    errors(validate)
+    "a legacy is_custom product without targeting_resolution remains schema-valid"
   );
 
   const missingPropertyCapability = { ...valid };

@@ -272,9 +272,11 @@ rather than silently substituting or repricing it.
 
 If the seller can honor a structured overlay exactly, the returned product
 omits Product `targeting_resolution`. Request-level brief confirmation appears
-once on the response, not on each product. Every request-specific configured product still carries
-`is_custom: true` and `expires_at`, including exact products without a
-resolution echo. If a product offers a different executable structured
+once on the response, not on each product. Every request-specific configured
+product issued through targeting-aware discovery carries `is_custom: true` and
+`expires_at`, including exact products without a resolution echo. The generic
+Product schema still accepts legacy custom products without an expiry. If a
+product offers a different executable structured
 constraint, it contains only the changed paths. Selecting that request-scoped
 `product_id` accepts the disclosed resolution.
 
@@ -550,7 +552,7 @@ result set. Otherwise confirmation remains a best practice.
 | Field | Type | Description |
 |-------|------|-------------|
 | `product_id` | string | Opaque buyable identifier. A non-custom wholesale ID remains stable for the same logical offer within the seller and declared `cache_scope`, including across reads and webhooks. A custom ID is stable only in its issuing discovery/refinement lineage. Selecting it accepts any disclosed `targeting_resolution`. |
-| `is_custom` | boolean | `true` for a request-specific configured offer. Custom products always include `expires_at`, including exact targeting configurations with no Product resolution echo. |
+| `is_custom` | boolean | `true` for a request-specific configured offer. Products issued through targeting-aware discovery include `expires_at`, including exact targeting configurations with no Product resolution echo. Legacy custom products remain schema-valid when expiry is absent. |
 | `name` | string | Human-readable product name |
 | `description` | string | Detailed product description |
 | `publisher_properties` | PublisherProperty[] | Array of publisher entries, each with `publisher_domain` and either `property_ids` or `property_tags` |
@@ -1444,7 +1446,7 @@ Key rules to know before sending:
 - **Proposals are actionable through status.** `proposal_status: "draft"` requires finalization before create; `proposal_status: "committed"` can be executed with `create_media_buy(proposal_id)` before `expires_at`; absent status is legacy ready-to-buy.
 - **Proposals are ephemeral.** Proposals typically include an `expires_at` timestamp. After expiration, the seller returns [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired).
 - **Wholesale product IDs are scoped stable identifiers.** A non-custom product keeps the same ID for the same logical offer within the seller and declared `cache_scope`, including across reads and webhooks. Feed and pricing versions communicate mutation; retirement or replacement may end that identity.
-- **Custom product IDs are ephemeral configurations.** A request-specific product sets `is_custom: true`, is usable only in the authenticated account and discovery/refinement lineage that issued it, and includes `expires_at`. After expiration, a seller that still recognizes the caller-authorized ID returns [`PRODUCT_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-product-expired); after the seller no longer retains a tombstone—or when the ID is outside the caller's account/lineage—it returns [`PRODUCT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-product-not-found) without revealing whether another tenant has that ID.
+- **Targeting-aware custom product IDs are ephemeral configurations.** A request-specific product issued by this flow sets `is_custom: true`, is usable only in the authenticated account and discovery/refinement lineage that issued it, and includes `expires_at`. The generic Product schema remains compatible with earlier custom products that omitted expiry. After expiration, a seller that still recognizes the caller-authorized ID returns [`PRODUCT_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-product-expired); after the seller no longer retains a tombstone—or when the ID is outside the caller's account/lineage—it returns [`PRODUCT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-product-not-found) without revealing whether another tenant has that ID.
 
 ## Seller Declines
 

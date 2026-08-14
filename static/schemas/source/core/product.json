@@ -187,7 +187,7 @@
     },
     "is_custom": {
       "type": "boolean",
-      "description": "Whether this product is a request-specific configured offer rather than a reusable baseline product. Sellers MUST set true when targeting, disclosed resolution, pricing, forecast assumptions, inventory, or terms are bound for a particular discovery/refinement lineage. Custom products require expires_at, including exact configured products that omit targeting_resolution."
+      "description": "Whether this product is a request-specific configured offer rather than a reusable baseline product. Sellers MUST set true when targeting, disclosed resolution, pricing, forecast assumptions, inventory, or terms are bound for a particular discovery/refinement lineage. Products issued through targeting-aware discovery include expires_at even when exact acceptance omits targeting_resolution. For backward compatibility, is_custom alone does not make expires_at schema-required."
     },
     "property_targeting_allowed": {
       "type": "boolean",
@@ -659,14 +659,6 @@
         "properties": { "is_custom": { "const": true } },
         "required": ["is_custom", "expires_at"]
       }
-    },
-    {
-      "description": "Request-specific custom products are time-bound, including exact configured products that do not need a targeting-resolution echo.",
-      "if": {
-        "properties": { "is_custom": { "const": true } },
-        "required": ["is_custom"]
-      },
-      "then": { "required": ["expires_at"] }
     },
     {
       "description": "Property inclusion support requires selectable product properties.",

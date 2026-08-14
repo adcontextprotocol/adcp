@@ -35,7 +35,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `outcome_measurement` (OutcomeMeasurement, **deprecated**): Legacy field for declaring business outcome measurement (lift, brand lift, foot traffic). New implementations declare outcome metrics via `reporting_capabilities.available_metrics` and pin attribution methodology + window via the `qualifier` slot on `committed_metrics`. Retained for one-minor backwards compatibility; removed at the next major. See [Commerce Media](/docs/media-buy/commerce-media) for the migration pattern.
 - `creative_policy` (CreativePolicy, optional): Creative requirements and restrictions.
 - `is_custom` (bool, optional): `true` for any request-specific configured offer, including exact structured targeting, disclosed targeting changes, or request-bound price, forecast, inventory, or terms.
-- `expires_at` (datetime, conditionally required): Required when `is_custom` is true; the configured product is no longer valid after this time. A recognized expired ID issued to the authenticated account and lineage returns `PRODUCT_EXPIRED`; an ID whose tombstone is no longer retained or belongs to another account/lineage returns `PRODUCT_NOT_FOUND`, preventing cross-tenant existence disclosure.
+- `expires_at` (datetime, conditionally required): Required for a request-specific product issued through targeting-aware discovery and whenever `targeting_resolution` is present. Earlier custom products remain schema-valid when it is absent. After this time, a recognized expired ID issued to the authenticated account and lineage returns `PRODUCT_EXPIRED`; an ID whose tombstone is no longer retained or belongs to another account/lineage returns `PRODUCT_NOT_FOUND`, preventing cross-tenant existence disclosure.
 - `overlay_support` (TargetingOverlaySupport, optional): Product-scoped targeting dimensions whose values may be selected later. Required when requested through `required_overlay_support`. It guarantees selectable capability subject to disclosed limits, not inventory or a forecast for every value.
 - `targeting_resolution` (ProductTargetingResolution, optional): Sparse differences from a structured overlay. Absence confirms exact acceptance of that product's structured overlay, but not how prose was interpreted; response-level `targeting_resolution.brief_targeting` confirms hard brief interpretation once for the result set when that interpretation materially affects eligibility, pricing, or forecasting. Presence requires `is_custom: true` and `expires_at`.
 - `property_targeting_allowed` (bool, optional, default: false): Whether buyers can filter this product to a subset of its `publisher_properties`. When `false` (default), the product is "all or nothing" - buyers must accept all properties or the product is excluded from `property_list` filtering results. See [Property Targeting](#property-targeting).
@@ -737,7 +737,7 @@ The `seller_planned` model applies to any supply type where inventory is schedul
 
 A server can offer a general catalog, but it can also return:
 - **Account-Specific Products**: Products reserved for or negotiated with specific accounts (buyers, agencies, or brands)
-- **Custom Products**: Dynamically generated products with `is_custom: true` and an `expires_at` timestamp
+- **Custom Products**: Dynamically generated products with `is_custom: true`; targeting-aware discovery products also carry an `expires_at` timestamp, while legacy custom products may omit it
 
 ## Product Examples
 
