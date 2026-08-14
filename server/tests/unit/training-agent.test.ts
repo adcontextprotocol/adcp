@@ -13700,6 +13700,46 @@ describe('proposal lifecycle', () => {
     expect(await storedProposalIds()).toEqual(before);
   });
 
+  it.each([
+    ['constraints', { constraints: { total_budget: { max: 50000, currency: 'USD' } } }, 'total_budget'],
+    ['product_changes', { product_changes: { 'social-display': 'include' } }, 'product_selection'],
+    ['alternatives', { alternatives: { count: 3 } }, 'alternatives'],
+  ] as const)(
+    'rejects the unsupported typed %s refinement through direct execution before mutation',
+    async (field, typedInput, dimension) => {
+      const requested = await executeTrainingAgentTool('request_proposals', {
+        idempotency_key: `direct-refinement-request-${field}-0001`,
+        brand: account.brand,
+        brief: 'social engagement display',
+      }, DEFAULT_CTX);
+      expect(requested.success, requested.error).toBe(true);
+      const source = (requested.data?.proposals as Array<Record<string, unknown>>)[0];
+
+      const storedProposalIds = () => runWithSessionContext(async () => {
+        const session = await getSession(
+          sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+        );
+        return (session.lastGetProductsContext?.proposals ?? []).map(proposal => proposal.proposal_id);
+      });
+      const before = await storedProposalIds();
+
+      const refined = await executeTrainingAgentTool('refine_proposals', {
+        idempotency_key: `direct-refinement-reject-${field}-0001`,
+        refinements: [{
+          proposal_id: source.proposal_id,
+          action: 'revise',
+          ...typedInput,
+        }],
+      }, DEFAULT_CTX);
+
+      expect(refined.success).toBe(false);
+      expect(refined.error).toContain('UNSUPPORTED_FEATURE');
+      expect(refined.error).toContain(`refinements.0.${field}`);
+      expect(refined.error).toContain(dimension);
+      expect(await storedProposalIds()).toEqual(before);
+    },
+  );
+
   it('rejects inverted hard budget ranges through shared source semantics', () => {
     const invalid = validateProductDiscoverySourceInput('refine-proposals-request', {
       idempotency_key: 'inverted-hard-budget-range-0001',

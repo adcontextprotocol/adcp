@@ -12233,6 +12233,30 @@ function applyThreeZeroGetProductsIdempotencyCompatibility(
   };
 }
 
+type UnsupportedTrainingRefinement = {
+  field: 'constraints' | 'product_changes' | 'alternatives';
+  dimension: 'total_budget' | 'product_selection' | 'alternatives';
+  index: number;
+};
+
+function unsupportedTrainingProposalRefinement(
+  toolName: string,
+  args: Record<string, unknown>,
+): UnsupportedTrainingRefinement | undefined {
+  if (toolName !== 'refine_proposals' || !Array.isArray(args.refinements)) return undefined;
+  const typedDimensions = [
+    { field: 'constraints', dimension: 'total_budget' },
+    { field: 'product_changes', dimension: 'product_selection' },
+    { field: 'alternatives', dimension: 'alternatives' },
+  ] as const;
+  for (const [index, refinement] of args.refinements.entries()) {
+    if (!isRecord(refinement)) continue;
+    const unsupported = typedDimensions.find(({ field }) => refinement[field] !== undefined);
+    if (unsupported) return { ...unsupported, index };
+  }
+  return undefined;
+}
+
 /**
  * Execute a training agent tool in-process (no HTTP round-trip).
  * Used by Addie's adcp-tools during certification demos.
@@ -12291,6 +12315,13 @@ async function executeTrainingAgentToolInContext(
   const aliasValidationError = validateProductDiscoveryAliasInput(toolName, initialHandlerArgs);
   if (aliasValidationError) {
     return { success: false, error: aliasValidationError.message };
+  }
+  const unsupportedRefinement = unsupportedTrainingProposalRefinement(toolName, initialHandlerArgs);
+  if (unsupportedRefinement) {
+    return {
+      success: false,
+      error: `UNSUPPORTED_FEATURE at refinements.${unsupportedRefinement.index}.${unsupportedRefinement.field}: The training seller does not support the ${unsupportedRefinement.dimension} typed proposal-refinement dimension.`,
+    };
   }
   const normalizedHandlerArgs = normalizeProductDiscoveryArgs(toolName, initialHandlerArgs);
   const authPrincipal = ctx.principal ?? ctx.userId ?? 'anonymous';
@@ -12539,29 +12570,20 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       };
     }
 
-    if (name === 'refine_proposals' && Array.isArray(initialHandlerArgs.refinements)) {
-      const typedDimensions = [
-        { field: 'constraints', dimension: 'total_budget' },
-        { field: 'product_changes', dimension: 'product_selection' },
-        { field: 'alternatives', dimension: 'alternatives' },
-      ] as const;
-      for (const [index, refinement] of initialHandlerArgs.refinements.entries()) {
-        if (!isRecord(refinement)) continue;
-        const unsupported = typedDimensions.find(({ field }) => refinement[field] !== undefined);
-        if (!unsupported) continue;
-        return {
-          result: adcpError('UNSUPPORTED_FEATURE', {
-            message: `The training seller does not support the ${unsupported.dimension} typed proposal-refinement dimension.`,
-            field: `refinements.${index}.${unsupported.field}`,
-            details: {
-              unsupported_dimension: unsupported.dimension,
-              supported_dimensions: [],
-            },
-            recovery: 'correctable',
-          }, callerContext, servedAdcpVersion),
-          flushable: true,
-        };
-      }
+    const unsupportedRefinement = unsupportedTrainingProposalRefinement(name, initialHandlerArgs);
+    if (unsupportedRefinement) {
+      return {
+        result: adcpError('UNSUPPORTED_FEATURE', {
+          message: `The training seller does not support the ${unsupportedRefinement.dimension} typed proposal-refinement dimension.`,
+          field: `refinements.${unsupportedRefinement.index}.${unsupportedRefinement.field}`,
+          details: {
+            unsupported_dimension: unsupportedRefinement.dimension,
+            supported_dimensions: [],
+          },
+          recovery: 'correctable',
+        }, callerContext, servedAdcpVersion),
+        flushable: true,
+      };
     }
     const normalizedHandlerArgs = normalizeProductDiscoveryArgs(name, initialHandlerArgs);
 
