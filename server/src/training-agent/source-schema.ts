@@ -282,29 +282,62 @@ export function validateProductDiscoverySourceResponse(
     }
     for (let resultIndex = 0; resultIndex < response.results.length; resultIndex += 1) {
       const result = response.results[resultIndex];
-      if (!isRecord(result) || !Array.isArray(result.proposals)) continue;
-      const termsDigests = new Set<string>();
-      for (let proposalIndex = 0; proposalIndex < result.proposals.length; proposalIndex += 1) {
-        const proposal = result.proposals[proposalIndex];
-        if (!isRecord(proposal) || typeof proposal.terms_digest !== 'string') continue;
-        if (termsDigests.has(proposal.terms_digest)) {
-          const field = `results.${resultIndex}.proposals.${proposalIndex}.terms_digest`;
-          return {
-            message: 'Invalid refine_proposals_response: alternative proposals must have unique terms_digest values',
-            field,
-          };
+      if (!isRecord(result)) continue;
+      if (Array.isArray(result.proposals)) {
+        const termsDigests = new Set<string>();
+        for (let proposalIndex = 0; proposalIndex < result.proposals.length; proposalIndex += 1) {
+          const proposal = result.proposals[proposalIndex];
+          if (!isRecord(proposal) || typeof proposal.terms_digest !== 'string') continue;
+          if (termsDigests.has(proposal.terms_digest)) {
+            const field = `results.${resultIndex}.proposals.${proposalIndex}.terms_digest`;
+            return {
+              message: 'Invalid refine_proposals_response: alternative proposals must have unique terms_digest values',
+              field,
+            };
+          }
+          termsDigests.add(proposal.terms_digest);
         }
-        termsDigests.add(proposal.terms_digest);
       }
-      if (result.outcome !== 'revised' || typeof result.source_proposal_id !== 'string') continue;
+      if (typeof result.source_proposal_id !== 'string') continue;
       const requested = requestedBySource.get(result.source_proposal_id);
       if (!requested) continue;
+      const requestedConstraints = isRecord(requested.constraints) ? requested.constraints : undefined;
+      if (Array.isArray(result.unsatisfied_constraints)) {
+        for (let constraintIndex = 0; constraintIndex < result.unsatisfied_constraints.length; constraintIndex += 1) {
+          const constraint = result.unsatisfied_constraints[constraintIndex];
+          if (typeof constraint === 'string' && !Object.hasOwn(requestedConstraints ?? {}, constraint)) {
+            const field = `results.${resultIndex}.unsatisfied_constraints.${constraintIndex}`;
+            return {
+              message: 'Invalid refine_proposals_response: unsatisfied constraint was not present in the request',
+              field,
+            };
+          }
+        }
+      }
+      const requestedProductChanges = isRecord(requested.product_changes) ? requested.product_changes : undefined;
+      if (isRecord(result.unsatisfied_product_changes)) {
+        for (const [productId, action] of Object.entries(result.unsatisfied_product_changes)) {
+          if (!requestedProductChanges || requestedProductChanges[productId] !== action) {
+            const field = `results.${resultIndex}.unsatisfied_product_changes.${productId}`;
+            return {
+              message: 'Invalid refine_proposals_response: unsatisfied product change was not present in the request',
+              field,
+            };
+          }
+        }
+      }
+      if (!Array.isArray(result.proposals)) continue;
       const alternatives = isRecord(requested.alternatives) ? requested.alternatives : undefined;
       const expectedCount = alternatives && typeof alternatives.count === 'number' ? alternatives.count : 1;
-      if (result.proposals.length !== expectedCount) {
+      const invalidCount = result.outcome === 'revised'
+        ? result.proposals.length !== expectedCount
+        : result.outcome === 'partial' && result.proposals.length > expectedCount;
+      if (invalidCount) {
         const field = `results.${resultIndex}.proposals`;
         return {
-          message: `Invalid refine_proposals_response: revised result requires ${expectedCount} proposal${expectedCount === 1 ? '' : 's'}`,
+          message: result.outcome === 'revised'
+            ? `Invalid refine_proposals_response: revised result requires exactly ${expectedCount} proposal${expectedCount === 1 ? '' : 's'}`
+            : `Invalid refine_proposals_response: partial result permits at most ${expectedCount} proposal${expectedCount === 1 ? '' : 's'}`,
           field,
         };
       }

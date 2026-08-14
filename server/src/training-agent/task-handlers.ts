@@ -10160,6 +10160,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       buying_modes: wholesaleProfile.productWholesale ? ['brief', 'wholesale', 'refine'] : ['brief', 'refine'],
       ...(supportsGetProductsRejected(servedAdcpVersion) && {
         lifecycle_tools: [...PRODUCT_DISCOVERY_TOOLS],
+        proposal_refinement: { supported_dimensions: [] },
       }),
       supports_proposals: true,
       performance_feedback: {

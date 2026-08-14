@@ -11842,6 +11842,19 @@ describe('get_adcp_capabilities handler', () => {
     expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand']);
   });
 
+  it('advertises known refinement support when lifecycle tools are available', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {
+      adcp_version: GET_PRODUCTS_REJECTED_ADCP_VERSION,
+    });
+
+    expect(result.adcp_version).toBe(GET_PRODUCTS_REJECTED_ADCP_VERSION);
+    expect(result.media_buy).toMatchObject({
+      lifecycle_tools: expect.arrayContaining(['refine_proposals']),
+      proposal_refinement: { supported_dimensions: [] },
+    });
+  });
+
   it('advertises wholesale feed versioning, modes, and webhooks', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
@@ -13531,6 +13544,52 @@ describe('proposal lifecycle', () => {
     expect(validateProductDiscoverySourceResponse('refine-proposals-response', shortAlternatives, {
       refinements: [{ ...refineRequest.refinements[0], alternatives: { count: 2 } }],
     })).toMatchObject({ field: 'results.0.proposals' });
+
+    const excessivePartial = structuredClone(uniqueAlternatives);
+    const excessivePartialResult = (excessivePartial.results as Array<Record<string, unknown>>)[0];
+    excessivePartialResult.outcome = 'partial';
+    excessivePartialResult.reason_code = 'alternatives_unavailable';
+    excessivePartialResult.reason = 'Only one proposal was requested.';
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      excessivePartial,
+      refineRequest,
+    )).toMatchObject({ field: 'results.0.proposals' });
+
+    const unrequestedConstraint = structuredClone(refined);
+    const unrequestedConstraintResult = (unrequestedConstraint.results as Array<Record<string, unknown>>)[0];
+    unrequestedConstraintResult.outcome = 'partial';
+    unrequestedConstraintResult.reason_code = 'constraint_unsatisfiable';
+    unrequestedConstraintResult.reason = 'The budget constraint could not be satisfied.';
+    unrequestedConstraintResult.unsatisfied_constraints = ['total_budget'];
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      unrequestedConstraint,
+      refineRequest,
+    )).toMatchObject({ field: 'results.0.unsatisfied_constraints.0' });
+
+    const unrequestedProductChange = structuredClone(refined);
+    const unrequestedProductChangeResult = (unrequestedProductChange.results as Array<Record<string, unknown>>)[0];
+    unrequestedProductChangeResult.outcome = 'partial';
+    unrequestedProductChangeResult.reason_code = 'constraint_unsatisfiable';
+    unrequestedProductChangeResult.reason = 'The product change could not be satisfied.';
+    unrequestedProductChangeResult.unsatisfied_product_changes = { 'unrequested-product': 'include' };
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      unrequestedProductChange,
+      refineRequest,
+    )).toMatchObject({ field: 'results.0.unsatisfied_product_changes.unrequested-product' });
+
+    const matchingFailures = structuredClone(unrequestedConstraint);
+    const matchingFailureResult = (matchingFailures.results as Array<Record<string, unknown>>)[0];
+    matchingFailureResult.unsatisfied_product_changes = { 'social-display': 'include' };
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', matchingFailures, {
+      refinements: [{
+        ...refineRequest.refinements[0],
+        constraints: { total_budget: { max: 50000, currency: 'USD' } },
+        product_changes: { 'social-display': 'include' },
+      }],
+    })).toBeUndefined();
   });
 
   it('reports unsupported typed refinement dimensions without claiming constraint satisfaction', async () => {
