@@ -13545,6 +13545,31 @@ describe('proposal lifecycle', () => {
       refinements: [{ ...refineRequest.refinements[0], alternatives: { count: 2 } }],
     })).toMatchObject({ field: 'results.0.proposals' });
 
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', refined, {
+      refinements: [
+        refineRequest.refinements[0],
+        { ...refineRequest.refinements[0], proposal_id: 'proposal-missing-result' },
+      ],
+    })).toMatchObject({ field: 'results' });
+
+    const extraResult = structuredClone(refined);
+    const extraResults = extraResult.results as Array<Record<string, unknown>>;
+    extraResults.push({ ...extraResults[0], source_proposal_id: 'proposal-extra-result' });
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      extraResult,
+      refineRequest,
+    )).toMatchObject({ field: 'results' });
+
+    const mismatchedResult = structuredClone(refined);
+    const mismatchedResults = mismatchedResult.results as Array<Record<string, unknown>>;
+    mismatchedResults[0].source_proposal_id = 'proposal-out-of-order';
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      mismatchedResult,
+      refineRequest,
+    )).toMatchObject({ field: 'results.0.source_proposal_id' });
+
     const excessivePartial = structuredClone(uniqueAlternatives);
     const excessivePartialResult = (excessivePartial.results as Array<Record<string, unknown>>)[0];
     excessivePartialResult.outcome = 'partial';

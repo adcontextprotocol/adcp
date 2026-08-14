@@ -272,13 +272,22 @@ export function validateProductDiscoverySourceResponse(
     };
   }
   if (fileName === 'refine-proposals-response' && Array.isArray(response.results)) {
-    const requestedBySource = new Map<string, Record<string, unknown>>();
+    let requestedRefinements: Record<string, unknown>[] | undefined;
     if (request && Array.isArray(request.refinements)) {
-      for (const refinement of request.refinements) {
-        if (isRecord(refinement) && typeof refinement.proposal_id === 'string') {
-          requestedBySource.set(refinement.proposal_id, refinement);
-        }
+      const validRefinements = request.refinements.filter(
+        (refinement): refinement is Record<string, unknown> => (
+          isRecord(refinement) && typeof refinement.proposal_id === 'string'
+        ),
+      );
+      if (validRefinements.length === request.refinements.length) {
+        requestedRefinements = validRefinements;
       }
+    }
+    if (requestedRefinements && response.results.length !== requestedRefinements.length) {
+      return {
+        message: 'Invalid refine_proposals_response: results must contain one ordered entry per requested refinement',
+        field: 'results',
+      };
     }
     for (let resultIndex = 0; resultIndex < response.results.length; resultIndex += 1) {
       const result = response.results[resultIndex];
@@ -299,8 +308,15 @@ export function validateProductDiscoverySourceResponse(
         }
       }
       if (typeof result.source_proposal_id !== 'string') continue;
-      const requested = requestedBySource.get(result.source_proposal_id);
+      const requested = requestedRefinements?.[resultIndex];
       if (!requested) continue;
+      if (result.source_proposal_id !== requested.proposal_id) {
+        const field = `results.${resultIndex}.source_proposal_id`;
+        return {
+          message: 'Invalid refine_proposals_response: result source proposal IDs must preserve request order',
+          field,
+        };
+      }
       const requestedConstraints = isRecord(requested.constraints) ? requested.constraints : undefined;
       if (Array.isArray(result.unsatisfied_constraints)) {
         for (let constraintIndex = 0; constraintIndex < result.unsatisfied_constraints.length; constraintIndex += 1) {
