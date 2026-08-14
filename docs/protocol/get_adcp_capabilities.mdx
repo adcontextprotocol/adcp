@@ -401,10 +401,10 @@ When `lifecycle_tools` includes `refine_proposals`, `proposal_refinement` option
 | Dimension | Request field | Deterministic check |
 |---|---|---|
 | `total_budget` | `constraints.total_budget` | Compare the inclusive range and currency with `commercial_terms.total_budget`. |
-| `product_selection` | `product_changes[]` | Check `include`/`omit` against `commercial_terms.purchases[].product_id`. |
-| `alternatives` | `alternatives.count` | Count the draft proposals returned for the source proposal. |
+| `product_selection` | `product_changes` | Check each keyed `include`/`omit` action against `commercial_terms.purchases[].product_id`. |
+| `alternatives` | `alternatives.count` | Count drafts and verify that their `terms_digest` values are unique. |
 
-`max_alternatives` may accompany `alternatives` to publish a pre-flight count ceiling. An explicit `supported_dimensions` list is authoritative: buyers SHOULD NOT send omitted dimensions, and sellers SHOULD reject them with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). When `proposal_refinement` is absent, support is unknown; sellers report unsupported dimensions through `partial` or `unable` results instead.
+`max_alternatives` may accompany `alternatives` to publish a pre-flight count ceiling. An explicit `supported_dimensions` list is authoritative, including an empty list meaning the seller supports `ask`-only refinement but no typed dimensions. Buyers SHOULD NOT send omitted dimensions, and sellers SHOULD reject them with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). When `proposal_refinement` is absent, support is unknown; sellers report unsupported dimensions through `partial` or `unable` results instead. `proposal_refinement` is valid only when `lifecycle_tools` includes `refine_proposals`.
 
 This capability is about parse and validation support, never commercial willingness. Free-text `ask` interpretation remains seller competence rather than a boolean capability. Multi-proposal finalization deliberately retains its separate failure-as-discovery model through [`MULTI_FINALIZE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-multi-finalize-unsupported): it describes atomic infrastructure topology, while the core typed revision fields must be discoverable before a deterministic buyer constructs a request.
 

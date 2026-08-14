@@ -29,7 +29,7 @@ Refinement is not required. Simple campaigns can go straight from discovery to p
 ## The refine array
 
 <Note>
-  This is the deprecated `get_products` compatibility grammar. New compact-lifecycle integrations use [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals). The surfaces share `ask`, product `include`/`omit` verbs, and the `budget_range` shape, but their response envelopes are intentionally different.
+  This is the deprecated `get_products` compatibility grammar. New compact-lifecycle integrations use [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals). The surfaces share `ask`, product `include`/`omit` verbs, and the `budget_range` shape. Compact hard constraints are strict while these legacy filters remain extension-tolerant, and their response envelopes are intentionally different.
 </Note>
 
 The `refine` array is a list of change requests. Each entry declares a `scope` and what the buyer is asking for:

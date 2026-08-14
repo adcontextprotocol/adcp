@@ -3184,14 +3184,41 @@ async function runTests() {
         proposal_id: 'proposal-1',
         action: 'revise',
         constraints: { total_budget: { max: 50000, currency: 'USD' } },
-        product_changes: [
-          { product_id: 'premium-video', action: 'include' },
-          { product_id: 'display-ros', action: 'omit' }
-        ],
+        product_changes: {
+          'premium-video': 'include',
+          'display-ros': 'omit'
+        },
         alternatives: { count: 3 }
       }]
     },
     'refine_proposals accepts deterministic typed revision dimensions without free text'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-contradictory-product-0001',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        product_changes: [
+          { product_id: 'premium-video', action: 'include' },
+          { product_id: 'premium-video', action: 'omit' }
+        ]
+      }]
+    },
+    'refine_proposals rejects the array shape that could express contradictory product actions'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-unknown-budget-member-0001',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        constraints: { total_budget: { max: 50000, currency: 'USD', tolerance: 0.1 } }
+      }]
+    },
+    'refine_proposals hard budget constraints reject unknown members'
   );
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-request.json',
@@ -3558,6 +3585,28 @@ async function runTests() {
     },
     'compact proposal capability advertises typed refinement dimensions'
   );
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...splitCapabilityBase,
+      media_buy: {
+        lifecycle_tools: ['refine_proposals'],
+        proposal_refinement: { supported_dimensions: [] }
+      }
+    },
+    'compact proposal capability can authoritatively advertise ask-only refinement'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...splitCapabilityBase,
+      media_buy: {
+        lifecycle_tools: ['request_proposals'],
+        proposal_refinement: { supported_dimensions: ['total_budget'] }
+      }
+    },
+    'proposal refinement capabilities require the refine_proposals lifecycle tool'
+  );
   await testSchemaRejection(
     '/schemas/protocol/get-adcp-capabilities-response.json',
     {
@@ -3744,6 +3793,49 @@ async function runTests() {
       products: []
     },
     'refine_proposals partial results identify unsatisfied keyed constraints'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'unable',
+        reason_code: 'constraint_unsatisfiable',
+        reason: 'The required product cannot be included.',
+        unsatisfied_product_changes: { 'premium-video': 'include' }
+      }],
+      products: []
+    },
+    'refine_proposals unable results identify unsatisfied keyed product changes'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'partial',
+        proposals: [canonicalDraftRevision],
+        reason_code: 'constraint_unsatisfiable',
+        reason: 'A structured request was not satisfied.'
+      }],
+      products: []
+    },
+    'refine_proposals constraint failures require machine-readable failed identifiers'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'revised',
+        proposals: [
+          canonicalDraftRevision,
+          { ...canonicalDraftRevision, proposal_id: 'proposal-3', terms_digest: `sha256:${'B'.repeat(43)}` }
+        ]
+      }],
+      products: []
+    },
+    'refine_proposals accepts multiple commercially distinct revised alternatives'
   );
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-response.json',

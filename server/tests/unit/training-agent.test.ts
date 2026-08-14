@@ -49,7 +49,10 @@ import { TrainingSalesPlatform } from '../../src/training-agent/v6-sales-platfor
 import { TrainingCreativePlatform } from '../../src/training-agent/v6-creative-platform.js';
 import { TrainingCreativeBuilderPlatform } from '../../src/training-agent/v6-creative-builder-platform.js';
 import { clearAudienceStore } from '../../src/training-agent/audience-handlers.js';
-import { validateProductDiscoverySourceResponse } from '../../src/training-agent/source-schema.js';
+import {
+  validateProductDiscoverySourceInput,
+  validateProductDiscoverySourceResponse,
+} from '../../src/training-agent/source-schema.js';
 import {
   projectCreativeForDelivery,
   projectMediaBuyCreativesForDelivery,
@@ -13484,13 +13487,14 @@ describe('proposal lifecycle', () => {
     expect(requestError).toBeFalsy();
     const source = (requested.proposals as Array<Record<string, unknown>>)[0];
 
-    const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', {
+    const refineRequest = {
       refinements: [{
         proposal_id: source.proposal_id,
         action: 'revise',
         ask: 'Provide concrete fixed CPM pricing in USD.',
       }],
-    });
+    };
+    const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', refineRequest);
     expect(refineError).toBeFalsy();
     const revision = (refined.results as Array<Record<string, unknown>>)[0];
     expect(revision).toMatchObject({
@@ -13500,6 +13504,33 @@ describe('proposal lifecycle', () => {
     });
     expect(revision).not.toHaveProperty('reason_code');
     expect(revision).not.toHaveProperty('reason');
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', refined, refineRequest)).toBeUndefined();
+
+    const duplicateTerms = structuredClone(refined);
+    const duplicateResults = duplicateTerms.results as Array<Record<string, unknown>>;
+    const duplicateProposals = duplicateResults[0].proposals as Array<Record<string, unknown>>;
+    duplicateProposals.push({ ...duplicateProposals[0], proposal_id: 'proposal-duplicate-terms' });
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', duplicateTerms)).toMatchObject({
+      field: 'results.0.proposals.1.terms_digest',
+    });
+
+    const uniqueAlternatives = structuredClone(refined);
+    const uniqueResults = uniqueAlternatives.results as Array<Record<string, unknown>>;
+    const uniqueProposals = uniqueResults[0].proposals as Array<Record<string, unknown>>;
+    uniqueProposals.push({
+      ...uniqueProposals[0],
+      proposal_id: 'proposal-distinct-terms',
+      terms_digest: `sha256:${'B'.repeat(43)}`,
+    });
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', uniqueAlternatives)).toBeUndefined();
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', uniqueAlternatives, {
+      refinements: [{ ...refineRequest.refinements[0], alternatives: { count: 2 } }],
+    })).toBeUndefined();
+
+    const shortAlternatives = structuredClone(refined);
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', shortAlternatives, {
+      refinements: [{ ...refineRequest.refinements[0], alternatives: { count: 2 } }],
+    })).toMatchObject({ field: 'results.0.proposals' });
   });
 
   it('reports unsupported typed refinement dimensions without claiming constraint satisfaction', async () => {
@@ -13515,7 +13546,7 @@ describe('proposal lifecycle', () => {
         proposal_id: source.proposal_id,
         action: 'revise',
         constraints: { total_budget: { max: 50000, currency: 'USD' } },
-        product_changes: [{ product_id: 'social-display', action: 'include' }],
+        product_changes: { 'social-display': 'include' },
         alternatives: { count: 3 },
       }],
     });
@@ -13532,23 +13563,47 @@ describe('proposal lifecycle', () => {
     expect(validateProductDiscoverySourceResponse('refine-proposals-response', refined)).toBeUndefined();
   });
 
-  it('rejects duplicate product IDs in typed proposal changes', async () => {
+  it('reports a partial result when fewer alternatives are produced than requested', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const duplicate = await simulateCallTool(server, 'refine_proposals', {
+    const { result: requested } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+    });
+    const source = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const refineRequest = {
+      refinements: [{
+        proposal_id: source.proposal_id,
+        action: 'revise',
+        alternatives: { count: 3 },
+      }],
+    };
+
+    const { result: refined, isError } = await simulateCallTool(server, 'refine_proposals', refineRequest);
+
+    expect(isError, JSON.stringify(refined)).toBeFalsy();
+    expect(refined).toMatchObject({
+      results: [{
+        source_proposal_id: source.proposal_id,
+        outcome: 'partial',
+        proposals: [{ proposal_status: 'draft' }],
+        reason_code: 'alternatives_unavailable',
+        reason: 'The training agent produced 1 of 3 requested alternatives.',
+      }],
+    });
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', refined, refineRequest)).toBeUndefined();
+  });
+
+  it('rejects inverted hard budget ranges through shared source semantics', () => {
+    const invalid = validateProductDiscoverySourceInput('refine-proposals-request', {
+      idempotency_key: 'inverted-hard-budget-range-0001',
       refinements: [{
         proposal_id: 'proposal-1',
         action: 'revise',
-        product_changes: [
-          { product_id: 'premium-video', action: 'include' },
-          { product_id: 'premium-video', action: 'omit' },
-        ],
+        constraints: { total_budget: { min: 50000, max: 10000, currency: 'USD' } },
       }],
     });
-
-    expect(duplicate.isError).toBe(true);
-    expect(duplicate.result).toMatchObject({
-      code: 'INVALID_REQUEST',
-      field: 'refinements[0].product_changes[1].product_id',
+    expect(invalid).toMatchObject({
+      field: 'refinements.0.constraints.total_budget',
     });
   });
 

@@ -4307,7 +4307,7 @@ export function normalizeProductDiscoveryArgs(
               proposal_id: entry.proposal_id,
               action: entry.action === 'finalize' ? 'finalize' : 'include',
               ...(entry.action !== 'finalize' && isRecord(entry.constraints) && { constraints: entry.constraints }),
-              ...(entry.action !== 'finalize' && Array.isArray(entry.product_changes) && { product_changes: entry.product_changes }),
+              ...(entry.action !== 'finalize' && isRecord(entry.product_changes) && { product_changes: entry.product_changes }),
               ...(entry.action !== 'finalize' && isRecord(entry.alternatives) && { alternatives: entry.alternatives }),
               ...(entry.action !== 'finalize'
                 && typeof entry.ask === 'string'
@@ -4602,10 +4602,10 @@ export function projectProductDiscoveryResult(
         const isFinalize = request?.action === 'finalize';
         const constraints = isRecord(request?.constraints) ? request.constraints : undefined;
         const hasTypedRevision = constraints !== undefined
-          || Array.isArray(request?.product_changes)
+          || isRecord(request?.product_changes)
           || isRecord(request?.alternatives);
         const hasNonAlternativeTypedRevision = constraints !== undefined
-          || Array.isArray(request?.product_changes);
+          || isRecord(request?.product_changes);
         const requestedAlternativeCount = isRecord(request?.alternatives)
           && typeof request.alternatives.count === 'number'
           ? request.alternatives.count
@@ -4810,7 +4810,7 @@ export function validateProductDiscoveryAliasInput(
         };
       }
       const hasTypedRevision = isRecord(entry.constraints)
-        || Array.isArray(entry.product_changes)
+        || isRecord(entry.product_changes)
         || isRecord(entry.alternatives);
       const hasAsk = typeof entry.ask === 'string' && entry.ask.length > 0;
       const isCancellation = entry.change_kind === 'cancellation';
@@ -4849,20 +4849,6 @@ export function validateProductDiscoveryAliasInput(
             message: 'constraints.total_budget.min must be less than or equal to max',
             field: `refinements[${index}].constraints.total_budget`,
           };
-        }
-      }
-      if (Array.isArray(entry.product_changes)) {
-        const productIds = new Set<string>();
-        for (let productIndex = 0; productIndex < entry.product_changes.length; productIndex += 1) {
-          const change = entry.product_changes[productIndex];
-          if (!isRecord(change) || typeof change.product_id !== 'string') continue;
-          if (productIds.has(change.product_id)) {
-            return {
-              message: 'product_id values in product_changes must be unique',
-              field: `refinements[${index}].product_changes[${productIndex}].product_id`,
-            };
-          }
-          productIds.add(change.product_id);
         }
       }
       const unknown = Object.keys(entry).find(
@@ -5825,7 +5811,7 @@ async function handleGetProductsUnlocked(
         ask?: string;
         change_kind?: 'amendment' | 'cancellation';
         constraints?: { total_budget?: { min?: number; max?: number; currency?: string } };
-        product_changes?: Array<{ product_id: string; action: 'include' | 'omit' }>;
+        product_changes?: Record<string, 'include' | 'omit'>;
         alternatives?: { count?: number };
         reason?: string;
         detail?: string;

@@ -25,7 +25,7 @@
       "description": "Hard requirements for every revised proposal. Keys are echoed in unsatisfied_constraints on partial or unable results.",
       "properties": {
         "total_budget": {
-          "$ref": "/schemas/core/budget-range.json",
+          "$ref": "/schemas/media-buy/proposal-budget-constraint.json",
           "description": "Inclusive bounds checked against commercial_terms.total_budget; currencies MUST match."
         }
       },
@@ -33,30 +33,12 @@
       "additionalProperties": false
     },
     "product_changes": {
-      "type": "array",
-      "description": "Product membership changes checked against commercial_terms.purchases[].product_id. product_id values MUST be unique.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "product_id": {
-            "type": "string",
-            "minLength": 1,
-            "x-entity": "product"
-          },
-          "action": {
-            "enum": ["include", "omit"],
-            "description": "include requires the product in every revised proposal; omit requires it to be absent. These verbs are shared with legacy get_products refine mode."
-          }
-        },
-        "required": ["product_id", "action"],
-        "additionalProperties": false
-      },
-      "minItems": 1,
-      "uniqueItems": true
+      "$ref": "/schemas/core/product-change-map.json",
+      "description": "Product IDs mapped to membership actions checked against commercial_terms.purchases. include requires presence; omit requires absence. The verbs match legacy get_products refinement."
     },
     "alternatives": {
       "type": "object",
-      "description": "Request distinct draft proposals by count; diversity preferences remain in ask.",
+      "description": "Request commercially distinct drafts by count. Every returned alternative MUST have a unique terms_digest; diversity preferences remain in ask.",
       "properties": {
         "count": {
           "type": "integer",

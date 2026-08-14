@@ -42,7 +42,7 @@
             "type": "array",
             "items": { "$ref": "/schemas/core/canonical-proposal.json" },
             "minItems": 1,
-            "description": "Draft successors produced for a revision. Without alternatives this contains one proposal. When alternatives.count was requested, revised contains exactly that many proposals; fewer proposals require outcome partial."
+            "description": "Draft successors produced for a revision. Without alternatives this contains one proposal. With alternatives.count, revised contains exactly that many proposals with unique terms_digest values; fewer or commercially duplicate proposals require partial."
           },
           "reason_code": { "$ref": "/schemas/enums/proposal-refinement-reason.json" },
           "reason": { "type": "string", "minLength": 1 },
@@ -52,6 +52,10 @@
             "items": { "type": "string", "enum": ["total_budget"] },
             "minItems": 1,
             "uniqueItems": true
+          },
+          "unsatisfied_product_changes": {
+            "allOf": [{ "$ref": "/schemas/core/product-change-map.json" }],
+            "description": "Requested product actions not satisfied by every returned draft. This is a subset of the request product_changes map and is valid only on partial or unable results."
           },
           "suggestions": {
             "type": "array",
@@ -77,7 +81,8 @@
                 { "required": ["proposal"] },
                 { "required": ["reason_code"] },
                 { "required": ["reason"] },
-                { "required": ["unsatisfied_constraints"] }
+                { "required": ["unsatisfied_constraints"] },
+                { "required": ["unsatisfied_product_changes"] }
               ]
             }
           },
@@ -111,7 +116,8 @@
                 { "required": ["proposals"] },
                 { "required": ["reason_code"] },
                 { "required": ["reason"] },
-                { "required": ["unsatisfied_constraints"] }
+                { "required": ["unsatisfied_constraints"] },
+                { "required": ["unsatisfied_product_changes"] }
               ]
             }
           },
@@ -122,6 +128,20 @@
               "anyOf": [
                 { "required": ["proposal"] },
                 { "required": ["proposals"] }
+              ]
+            }
+          }
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": { "reason_code": { "const": "constraint_unsatisfiable" } },
+              "required": ["reason_code"]
+            },
+            "then": {
+              "anyOf": [
+                { "required": ["unsatisfied_constraints"] },
+                { "required": ["unsatisfied_product_changes"] }
               ]
             }
           }

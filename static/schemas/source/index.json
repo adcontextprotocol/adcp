@@ -630,6 +630,10 @@
           "$ref": "/schemas/core/budget-range.json",
           "description": "Shared currency-denominated inclusive budget bounds"
         },
+        "product-change-map": {
+          "$ref": "/schemas/core/product-change-map.json",
+          "description": "Contradiction-proof product membership actions keyed by product ID"
+        },
         "product-offer-filters": {
           "$ref": "/schemas/core/product-offer-filters.json",
           "description": "Offer-only product filters used by the compact product-discovery tools"
@@ -1438,6 +1442,10 @@
         "proposal-refinement": {
           "$ref": "/schemas/media-buy/proposal-refinement.json",
           "description": "One immutable proposal revision request"
+        },
+        "proposal-budget-constraint": {
+          "$ref": "/schemas/media-buy/proposal-budget-constraint.json",
+          "description": "Strict inclusive budget bounds for proposal negotiation"
         },
         "proposal-decline": {
           "$ref": "/schemas/media-buy/proposal-decline.json",

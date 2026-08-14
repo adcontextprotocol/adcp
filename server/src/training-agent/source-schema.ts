@@ -5,6 +5,10 @@ import addFormats from 'ajv-formats';
 
 type JsonSchema = Record<string, unknown>;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 const schemaRoot = join(process.cwd(), 'static/schemas/source');
 const parsedSchemas = new Map<string, JsonSchema>();
 const sourceValidators = new Map<string, ValidateFunction>();
@@ -224,13 +228,30 @@ export function validateProductDiscoverySourceInput(
   args: Record<string, unknown>,
 ): { message: string; field?: string } | undefined {
   const validator = productDiscoverySourceValidator(fileName);
-  if (validator(args)) return undefined;
-  const error = validator.errors?.[0];
-  const field = error && errorField(error);
-  return {
-    message: `Invalid ${fileName.replaceAll('-', '_')}${field ? ` at ${field}` : ''}: ${error?.message ?? 'schema validation failed'}`,
-    ...(field && { field }),
-  };
+  if (!validator(args)) {
+    const error = validator.errors?.[0];
+    const field = error && errorField(error);
+    return {
+      message: `Invalid ${fileName.replaceAll('-', '_')}${field ? ` at ${field}` : ''}: ${error?.message ?? 'schema validation failed'}`,
+      ...(field && { field }),
+    };
+  }
+  if (fileName === 'refine-proposals-request' && Array.isArray(args.refinements)) {
+    for (let index = 0; index < args.refinements.length; index += 1) {
+      const refinement = args.refinements[index];
+      if (!isRecord(refinement) || !isRecord(refinement.constraints)) continue;
+      const budget = refinement.constraints.total_budget;
+      if (!isRecord(budget)) continue;
+      if (typeof budget.min === 'number' && typeof budget.max === 'number' && budget.min > budget.max) {
+        const field = `refinements.${index}.constraints.total_budget`;
+        return {
+          message: 'Invalid refine_proposals_request: total_budget min must be less than or equal to max',
+          field,
+        };
+      }
+    }
+  }
+  return undefined;
 }
 
 /** Validate a split-tool response against its normative source schema. This
@@ -239,13 +260,55 @@ export function validateProductDiscoverySourceInput(
 export function validateProductDiscoverySourceResponse(
   fileName: string,
   response: Record<string, unknown>,
+  request?: Record<string, unknown>,
 ): { message: string; field?: string } | undefined {
   const validator = productDiscoverySourceValidator(fileName);
-  if (validator(response)) return undefined;
-  const error = validator.errors?.[0];
-  const field = error && errorField(error);
-  return {
-    message: `Invalid ${fileName.replaceAll('-', '_')}${field ? ` at ${field}` : ''}: ${error?.message ?? 'schema validation failed'}`,
-    ...(field && { field }),
-  };
+  if (!validator(response)) {
+    const error = validator.errors?.[0];
+    const field = error && errorField(error);
+    return {
+      message: `Invalid ${fileName.replaceAll('-', '_')}${field ? ` at ${field}` : ''}: ${error?.message ?? 'schema validation failed'}`,
+      ...(field && { field }),
+    };
+  }
+  if (fileName === 'refine-proposals-response' && Array.isArray(response.results)) {
+    const requestedBySource = new Map<string, Record<string, unknown>>();
+    if (request && Array.isArray(request.refinements)) {
+      for (const refinement of request.refinements) {
+        if (isRecord(refinement) && typeof refinement.proposal_id === 'string') {
+          requestedBySource.set(refinement.proposal_id, refinement);
+        }
+      }
+    }
+    for (let resultIndex = 0; resultIndex < response.results.length; resultIndex += 1) {
+      const result = response.results[resultIndex];
+      if (!isRecord(result) || !Array.isArray(result.proposals)) continue;
+      const termsDigests = new Set<string>();
+      for (let proposalIndex = 0; proposalIndex < result.proposals.length; proposalIndex += 1) {
+        const proposal = result.proposals[proposalIndex];
+        if (!isRecord(proposal) || typeof proposal.terms_digest !== 'string') continue;
+        if (termsDigests.has(proposal.terms_digest)) {
+          const field = `results.${resultIndex}.proposals.${proposalIndex}.terms_digest`;
+          return {
+            message: 'Invalid refine_proposals_response: alternative proposals must have unique terms_digest values',
+            field,
+          };
+        }
+        termsDigests.add(proposal.terms_digest);
+      }
+      if (result.outcome !== 'revised' || typeof result.source_proposal_id !== 'string') continue;
+      const requested = requestedBySource.get(result.source_proposal_id);
+      if (!requested) continue;
+      const alternatives = isRecord(requested.alternatives) ? requested.alternatives : undefined;
+      const expectedCount = alternatives && typeof alternatives.count === 'number' ? alternatives.count : 1;
+      if (result.proposals.length !== expectedCount) {
+        const field = `results.${resultIndex}.proposals`;
+        return {
+          message: `Invalid refine_proposals_response: revised result requires ${expectedCount} proposal${expectedCount === 1 ? '' : 's'}`,
+          field,
+        };
+      }
+    }
+  }
+  return undefined;
 }

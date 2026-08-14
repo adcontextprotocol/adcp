@@ -805,12 +805,11 @@
           "properties": {
             "supported_dimensions": {
               "type": "array",
-              "description": "Typed revision dimensions the seller can parse and validate. total_budget covers constraints.total_budget; product_selection covers product_changes; alternatives covers alternatives.count. Free-text ask interpretation is competence, not a capability declared here.",
+              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget covers constraints.total_budget; product_selection covers product_changes; alternatives covers alternatives.count. Free-text ask interpretation is competence, not a capability declared here.",
               "items": {
                 "type": "string",
                 "enum": ["total_budget", "product_selection", "alternatives"]
               },
-              "minItems": 1,
               "uniqueItems": true
             },
             "max_alternatives": {
@@ -1467,6 +1466,15 @@
         }
       },
       "allOf": [
+        {
+          "if": { "required": ["proposal_refinement"] },
+          "then": {
+            "properties": {
+              "lifecycle_tools": { "contains": { "const": "refine_proposals" } }
+            },
+            "required": ["lifecycle_tools"]
+          }
+        },
         {
           "if": {
             "properties": {
