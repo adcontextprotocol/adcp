@@ -4,6 +4,7 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const { createRequire } = require("node:module");
 const path = require("node:path");
 const test = require("node:test");
 const Ajv2020 = require("ajv/dist/2020");
@@ -176,6 +177,35 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
   validator.addSchema(view.dictionary);
   for (const [toolName, tool] of Object.entries(view.tools)) {
     assert.doesNotThrow(() => validator.compile(tool.inputSchema), toolName);
+  }
+});
+
+test("official MCP TypeScript v2 validator accepts a pre-registered local dictionary", () => {
+  const adcpSdkRequire = createRequire(require.resolve("@adcp/sdk/package.json"));
+  const { AjvJsonSchemaValidator } = adcpSdkRequire(
+    "@modelcontextprotocol/client/validators/ajv"
+  );
+  const { schemas, tools } = loadRepresentativeMediaBuyRuntime();
+  const view = buildSharedDefinitionsView({
+    schemas,
+    tools,
+    dictionaryId: DICTIONARY_ID,
+  });
+  const firstSchema = Object.values(view.tools)[0].inputSchema;
+
+  assert.throws(
+    () => new AjvJsonSchemaValidator().getValidator(firstSchema),
+    /can't resolve reference/
+  );
+
+  const ajv = new Ajv2020({ strict: false, validateFormats: false });
+  ajv.addSchema(view.dictionary);
+  const provider = new AjvJsonSchemaValidator(ajv);
+  for (const [toolName, tool] of Object.entries(view.tools)) {
+    assert.doesNotThrow(
+      () => provider.getValidator(tool.inputSchema),
+      toolName
+    );
   }
 });
 

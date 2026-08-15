@@ -79,6 +79,12 @@ The repository test establishes the compatibility boundary deliberately:
 - all 16 tool roots compile when the dictionary is registered;
 - compilation fails with an unresolved external reference when it is absent.
 
+The same boundary is verified against the official MCP TypeScript v2 client
+validator. Its default validator throws `MissingRefError`; a caller-supplied
+Ajv 2020 instance with the dictionary pre-registered compiles all 16 tool
+roots. This requires no network fetch, but it does require host integration
+before the SDK constructs its tool validators.
+
 Consequently this is not a replacement for standard `tools/list` today. It is
 an opt-in client experiment for hosts that can place a resource in model
 context and register it with their JSON Schema implementation.
@@ -157,10 +163,13 @@ There is direct prior art, but no current interoperable mechanism:
   the [MCP contributor Discord](https://modelcontextprotocol.io/community/communication#discord)
   to establish renewed interest and sponsorship.
 - [MCP SEP-834](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/834)
-  is the complementary effort to make JSON Schema 2020-12 support explicit.
-  Full JSON Schema support makes the references legal schema, but does not by
-  itself define how an MCP client discovers, transports, registers, or places
-  an external schema resource in model context.
+  was closed without merging and superseded by the finalized JSON Schema work
+  in SEP-2106. The current
+  [MCP JSON Schema rules](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/draft/basic/index.mdx#json-schema-usage)
+  permit absolute-URI `$ref`s, prohibit automatic network dereferencing, and
+  recommend rejecting unresolved references. This makes a pre-registered
+  local dictionary legal, but does not define how a client discovers,
+  transports, or registers it.
 - The [Skills over MCP Working Group](https://github.com/modelcontextprotocol/modelcontextprotocol/discussions/2628)
   is actively addressing adjacent tool-bloat and dependency-loading problems
   with resource-backed, lazily loaded skills. Its early tests covered
@@ -175,6 +184,18 @@ narrow proposal: capability negotiation, dictionary transport and identity,
 external-reference resolution, caching, and fail-closed behavior. AdCP should
 not advertise external references in ordinary `tools/list` until clients
 negotiate that support.
+
+Current implementation evidence reinforces that boundary:
+
+| Official implementation | Observed external-reference behavior |
+| --- | --- |
+| TypeScript client 2.0.0 | Default validation fails closed; injecting an Ajv 2020 registry containing `adcp://schemas/shared` succeeds for all experiment tools. |
+| Ruby SDK | Explicitly accepts only same-document `$ref`s beginning with `#`; the shared dictionary is rejected. |
+| Java SDK 2.x | Preserves arbitrary JSON Schema maps and exposes a validator abstraction, making it a candidate for a follow-up probe; local registration is not yet verified here. |
+
+The TypeScript result proves feasibility inside an implementation, not MCP
+interoperability. A portable design still needs a negotiated capability and a
+standard association between a tool schema and the local dictionary resource.
 
 ### A2A
 
