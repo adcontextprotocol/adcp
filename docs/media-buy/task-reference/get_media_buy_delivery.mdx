@@ -32,6 +32,25 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 
 > **Date Range Behavior**: The date range is **start-inclusive, end-exclusive**. For example, `start_date: "2026-01-01"` and `end_date: "2026-01-02"` returns delivery data for January 1st only (from `2026-01-01 00:00:00` up to, but not including, `2026-01-02 00:00:00`). To get a full week of data (Jan 1-7), use `end_date: "2026-01-08"`.
 
+### Deterministic filter contract
+
+When a seller accepts deterministic filters, it MUST scope the response to every
+supplied filter. Every `media_buy_deliveries[]` row MUST have a `media_buy_id` in
+`media_buy_ids` when that filter is present and a lifecycle `status` in
+`status_filter` when that filter is present. Multiple filters apply
+conjunctively; a seller MUST NOT accept them and return an unfiltered result.
+
+For an accepted `start_date` and `end_date`, `reporting_period.start` and
+`reporting_period.end` MUST represent those exact UTC day boundaries, and all
+aggregates, per-buy totals, daily rows, and requested window slices MUST be
+computed only from delivery in the start-inclusive, end-exclusive interval.
+Delivery outside that interval MUST NOT contribute to the response.
+
+A filtered request can legitimately return the same rows and values as a less
+restrictive request when all underlying delivery already matches. Conformance is
+therefore established from returned membership, status, and date boundaries—not
+by requiring two response payloads to differ.
+
 **Date Range Examples**:
 
 | start_date | end_date | Data Returned |

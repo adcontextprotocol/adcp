@@ -39,6 +39,19 @@ Sellers that need to partition inventory away from a caller MUST do so at the **
 
 When `media_buy_ids` are provided, no implicit status filtering is applied. Pass `status_filter` explicitly if you want to filter identified buys by status.
 
+### Deterministic filter contract
+
+Every returned `media_buys[]` row MUST have a `media_buy_id` in
+`media_buy_ids` when that filter is present and a `status` in `status_filter`
+when that filter is present. When both are supplied, both predicates apply to
+every row, across every page. A seller MUST NOT accept a schema-valid filter and
+return unfiltered account results.
+
+A filter can validly leave the result unchanged when every accessible buy
+already matches. Conformance is established from the returned rows' ID and
+status membership—not by requiring filtered and unfiltered response payloads to
+differ.
+
 ## Response
 
 Returns an array of media buys with current status, creative approval state, and optionally delivery snapshots:
