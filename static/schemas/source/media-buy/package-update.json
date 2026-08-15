@@ -173,7 +173,20 @@
     },
     "creative_assignments": {
       "type": "array",
-      "description": "Replace creative assignments for this package with optional weights and placement routing. Uses replacement semantics - omit to leave assignments unchanged. When the same mutation narrows targeting_overlay.placement_selection, this complete replacement MUST remove or reroute every assignment reference that would otherwise be orphaned; the seller validates both changes atomically.",
+      "description": "Replace creative assignments for this package with optional rotation, grouping, weights, and placement routing. Uses replacement semantics - omit to leave assignments unchanged. rotation_mode is package-scoped: omission resolves to weighted, and every assignment MUST resolve to the same effective mode. In sequential mode, sequence_position MUST be unique within each package-local group. Sellers reject conflicts with VALIDATION_ERROR before mutation. When the same mutation narrows targeting_overlay.placement_selection, this complete replacement MUST remove or reroute every assignment reference that would otherwise be orphaned; the seller validates both changes atomically.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "package_rotation_policy": {
+            "effective_mode": "assignment.rotation_mode_or_weighted_default",
+            "mode_consistency": "all_assignments_equal",
+            "sequence_positions": "required_and_unique_per_effective_group_when_sequential",
+            "effective_group": "assignment.group_id_or_package_default",
+            "group_namespace": "package_id",
+            "on_violation": "reject_before_mutation_with_VALIDATION_ERROR"
+          }
+        },
+        "spec": "docs/reference/migration/creatives.mdx#rotation-modes-and-groups"
+      },
       "items": {
         "$ref": "/schemas/core/creative-assignment.json"
       }

@@ -159,7 +159,20 @@
     },
     "creative_assignments": {
       "type": "array",
-      "description": "Creative assets assigned to this package",
+      "description": "Creative assets assigned to this package, including the committed package-scoped rotation policy. Omitted rotation_mode reads as weighted for backward compatibility; all assignments resolve to one effective mode, and sequential positions are unique within each package-local group.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "package_rotation_policy": {
+            "effective_mode": "assignment.rotation_mode_or_weighted_default",
+            "mode_consistency": "all_assignments_equal",
+            "sequence_positions": "required_and_unique_per_effective_group_when_sequential",
+            "effective_group": "assignment.group_id_or_package_default",
+            "group_namespace": "package_id",
+            "on_violation": "reject_invalid_readback"
+          }
+        },
+        "spec": "docs/reference/migration/creatives.mdx#rotation-modes-and-groups"
+      },
       "items": {
         "$ref": "/schemas/core/creative-assignment.json"
       }
