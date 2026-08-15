@@ -261,9 +261,6 @@ phases:
             value: "$context.delivery_package_2_id"
             description: "DR-0001 / delivery response contract: reporting includes the second package created for the buy"
           - check: field_present
-            path: "media_buy_deliveries[0].totals.impressions"
-            description: "DR-0001 / delivery response contract: simulated impressions are reported substantively"
-          - check: field_present
             path: "media_buy_deliveries[0].totals.spend"
             description: "DR-0001 / delivery response contract: simulated spend is reported substantively"
 

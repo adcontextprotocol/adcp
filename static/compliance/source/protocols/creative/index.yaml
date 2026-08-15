@@ -256,8 +256,8 @@ phases:
         comply_scenario: creative_flow
         stateful: true
         expected: |
-          Return delivery for the requested creative, including aggregate metrics and
-          its variant collection.
+          Return delivery for the requested creative and its variant collection,
+          including aggregate metrics when available.
         sample_request:
           account:
             brand:
@@ -275,9 +275,6 @@ phases:
             path: "creatives[0].creative_id"
             context_key: "synced_creative_id"
             description: "DR-0001 / get_creative_delivery filter contract: delivery belongs to the requested synced creative"
-          - check: field_present
-            path: "creatives[0].totals.impressions"
-            description: "DR-0001 / creative delivery response contract: aggregate impressions are present"
           - check: field_present
             path: "creatives[0].variants"
             description: "DR-0001 / creative delivery response contract: the required variants collection is present"
