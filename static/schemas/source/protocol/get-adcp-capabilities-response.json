@@ -772,14 +772,14 @@
         },
         "proposal_refinement": {
           "type": "object",
-          "description": "Pre-flight support for typed refine_proposals revision dimensions. These declarations mean the seller can parse and mechanically validate a dimension; they never promise that the seller will commercially concede it. Absence means typed-dimension support is unknown and buyers must handle per-result partial or unable outcomes. A buyer that sends a dimension omitted from an explicit supported_dimensions list should expect task-level UNSUPPORTED_FEATURE.",
+          "description": "Pre-flight support for typed refine_proposals revision dimensions. These declarations mean the seller can parse and mechanically validate a dimension; they never promise that the seller will commercially concede it. Absence means typed-dimension support is unknown and buyers must handle per-result partial or unable outcomes. A dimension omitted from an explicit supported_dimensions list MUST be rejected at task level with UNSUPPORTED_FEATURE before any proposal is created.",
           "properties": {
             "supported_dimensions": {
               "type": "array",
-              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget covers constraints.total_budget; product_selection covers product_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
+              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget, cpm, impressions, and flight cover the same-named constraints keys; product_changes covers product_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
               "items": {
                 "type": "string",
-                "enum": ["total_budget", "product_selection", "alternatives", "criteria"]
+                "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "alternatives", "criteria"]
               },
               "uniqueItems": true
             },

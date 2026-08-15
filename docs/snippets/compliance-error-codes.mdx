@@ -1028,7 +1028,7 @@ A creative transformer build targets an output capability that no pricing option
 
 **Suggested action:** check get_adcp_capabilities and remove unsupported fields
 
-A requested feature or field is not supported by this seller. Recovery: correctable (check get_adcp_capabilities and remove unsupported fields).
+A requested feature or field is not supported by this seller. When rejecting a <code>{"refine_proposals"}</code> request that uses a typed dimension omitted from an explicit <code>{"proposal_refinement.supported_dimensions"}</code> declaration, the error details SHOULD follow <code>{"error-details/unsupported-refinement-dimension.json"}</code> — <code>{"unsupported_dimension"}</code> names the offending dimension and <code>{"supported_dimensions"}</code> echoes the seller's declaration so the buyer can remove or translate the field without another capability round trip. Recovery: correctable (check get_adcp_capabilities and remove unsupported fields).
 
 </Accordion>
 <a id="error-code-unsupported-granularity"></a>

@@ -23,11 +23,43 @@
     },
     "constraints": {
       "type": "object",
-      "description": "Hard requirements for every revised proposal. Keys are echoed in unsatisfied_constraints on partial or unable results.",
+      "description": "Hard requirements for every revised proposal. Keys are echoed in unsatisfied_constraints on partial or unable results. A draft that fails any present constraint MUST NOT be returned as revised: the result is partial or unable with reason_code constraint_unsatisfiable — which takes precedence over every other reason code — and the failing keys in unsatisfied_constraints.",
       "properties": {
         "total_budget": {
           "$ref": "/schemas/media-buy/proposal-budget-constraint.json",
-          "description": "Inclusive bounds checked against commercial_terms.total_budget. A returned draft satisfies this constraint only when commercial_terms.total_budget is present, its currency matches, and its amount falls within every supplied bound. Otherwise the result MUST be partial or unable with reason_code constraint_unsatisfiable and unsatisfied_constraints containing total_budget; it MUST NOT be revised."
+          "description": "Inclusive bounds checked against commercial_terms.total_budget. Satisfied only when commercial_terms.total_budget is present, its currency matches, and its amount falls within every supplied bound."
+        },
+        "cpm": {
+          "type": "object",
+          "description": "Hard ceiling on fixed CPM rates. Satisfied only when every entry of commercial_terms.purchases carries pricing with pricing_model cpm or vcpm, a matching currency, and a fixed_price no greater than max. Auction-priced, missing, or non-CPM pricing on any purchase leaves the constraint unsatisfied.",
+          "properties": {
+            "max": { "type": "number", "exclusiveMinimum": 0 },
+            "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+          },
+          "required": ["max", "currency"],
+          "additionalProperties": false
+        },
+        "impressions": {
+          "type": "object",
+          "description": "Hard minimum contracted impression volume. Satisfied only when every entry of commercial_terms.purchases carries impressions and their sum is at least min.",
+          "properties": {
+            "min": { "type": "number", "exclusiveMinimum": 0 }
+          },
+          "required": ["min"],
+          "additionalProperties": false
+        },
+        "flight": {
+          "type": "object",
+          "description": "Hard flight-window bounds checked against commercial_terms.start_time and end_time. start_no_later_than is satisfied only by a concrete start_time at or before the bound; an asap start is unverifiable and therefore unsatisfied. end_no_earlier_than is satisfied only by an end_time at or after the bound.",
+          "properties": {
+            "start_no_later_than": { "type": "string", "format": "date-time" },
+            "end_no_earlier_than": { "type": "string", "format": "date-time" }
+          },
+          "anyOf": [
+            { "required": ["start_no_later_than"] },
+            { "required": ["end_no_earlier_than"] }
+          ],
+          "additionalProperties": false
         }
       },
       "minProperties": 1,
@@ -39,7 +71,7 @@
     },
     "alternatives": {
       "type": "object",
-      "description": "Request commercially distinct drafts by count. Every returned alternative MUST have a unique terms_digest; diversity preferences remain in ask.",
+      "description": "Request drafts with distinct commercial terms by count. Every returned alternative MUST carry distinct commercial_terms and therefore a unique terms_digest; diversity preferences remain in ask.",
       "properties": {
         "count": {
           "type": "integer",

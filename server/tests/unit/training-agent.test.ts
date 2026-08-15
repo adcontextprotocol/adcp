@@ -37,7 +37,14 @@ import {
   clearIdempotencyCache,
   REPLAY_TTL_SECONDS,
 } from '../../src/training-agent/idempotency.js';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { canonicalize } from '@adcp/sdk';
+
+function resignTermsDigest(proposal: Record<string, unknown>): void {
+  proposal.terms_digest = `sha256:${createHash('sha256')
+    .update(canonicalize(proposal.commercial_terms as Record<string, unknown>), 'utf8')
+    .digest('base64url')}`;
+}
 import { getAgentUrl } from '../../src/training-agent/config.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 import {
@@ -13587,16 +13594,35 @@ describe('proposal lifecycle', () => {
     const duplicateProposals = duplicateResults[0].proposals as Array<Record<string, unknown>>;
     duplicateProposals.push({ ...duplicateProposals[0], proposal_id: 'proposal-duplicate-terms' });
     expect(validateProductDiscoverySourceResponse('refine-proposals-response', duplicateTerms)).toMatchObject({
-      field: 'results.0.proposals.1.terms_digest',
+      field: 'results.0.proposals.1.commercial_terms',
+    });
+
+    const fabricatedDigest = structuredClone(refined);
+    const fabricatedResults = fabricatedDigest.results as Array<Record<string, unknown>>;
+    const fabricatedProposal = (fabricatedResults[0].proposals as Array<Record<string, unknown>>)[0];
+    fabricatedProposal.terms_digest = `sha256:${'Z'.repeat(43)}`;
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', fabricatedDigest)).toMatchObject({
+      field: 'results.0.proposals.0.terms_digest',
+    });
+
+    const orphanedLineage = structuredClone(refined);
+    const orphanedResults = orphanedLineage.results as Array<Record<string, unknown>>;
+    const orphanedProposal = (orphanedResults[0].proposals as Array<Record<string, unknown>>)[0];
+    orphanedProposal.parent_proposal_id = 'proposal-someone-else';
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', orphanedLineage)).toMatchObject({
+      field: 'results.0.proposals.0.parent_proposal_id',
     });
 
     const uniqueAlternatives = structuredClone(refined);
     const uniqueResults = uniqueAlternatives.results as Array<Record<string, unknown>>;
     const uniqueProposals = uniqueResults[0].proposals as Array<Record<string, unknown>>;
+    const distinctTerms = structuredClone(uniqueProposals[0].commercial_terms) as Record<string, unknown>;
+    distinctTerms.total_budget = { amount: 42000, currency: 'USD' };
     uniqueProposals.push({
       ...uniqueProposals[0],
       proposal_id: 'proposal-distinct-terms',
-      terms_digest: `sha256:${'B'.repeat(43)}`,
+      commercial_terms: distinctTerms,
+      terms_digest: `sha256:${createHash('sha256').update(canonicalize(distinctTerms), 'utf8').digest('base64url')}`,
     });
     expect(validateProductDiscoverySourceResponse('refine-proposals-response', uniqueAlternatives)).toBeUndefined();
     expect(validateProductDiscoverySourceResponse('refine-proposals-response', uniqueAlternatives, {
@@ -13670,6 +13696,9 @@ describe('proposal lifecycle', () => {
     const mismatchedResult = structuredClone(refined);
     const mismatchedResults = mismatchedResult.results as Array<Record<string, unknown>>;
     mismatchedResults[0].source_proposal_id = 'proposal-out-of-order';
+    for (const proposal of mismatchedResults[0].proposals as Array<Record<string, unknown>>) {
+      proposal.parent_proposal_id = 'proposal-out-of-order';
+    }
     expect(validateProductDiscoverySourceResponse(
       'refine-proposals-response',
       mismatchedResult,
@@ -13735,6 +13764,7 @@ describe('proposal lifecycle', () => {
       amount: 50000,
       currency: 'USD',
     };
+    resignTermsDigest(budgetedProposal);
     expect(validateProductDiscoverySourceResponse(
       'refine-proposals-response',
       refined,
@@ -13746,6 +13776,7 @@ describe('proposal lifecycle', () => {
       (absentBudget.results as Array<Record<string, unknown>>)[0].proposals as Array<Record<string, unknown>>
     )[0];
     delete (absentBudgetProposal.commercial_terms as Record<string, unknown>).total_budget;
+    resignTermsDigest(absentBudgetProposal);
     expect(validateProductDiscoverySourceResponse(
       'refine-proposals-response',
       absentBudget,
@@ -13758,6 +13789,7 @@ describe('proposal lifecycle', () => {
     )[0];
     const mismatchedCurrencyTerms = mismatchedCurrencyProposal.commercial_terms as Record<string, unknown>;
     mismatchedCurrencyTerms.total_budget = { amount: 50000, currency: 'EUR' };
+    resignTermsDigest(mismatchedCurrencyProposal);
     expect(validateProductDiscoverySourceResponse(
       'refine-proposals-response',
       mismatchedBudgetCurrency,
@@ -13770,6 +13802,7 @@ describe('proposal lifecycle', () => {
     )[0];
     const excessiveBudgetTerms = excessiveBudgetProposal.commercial_terms as Record<string, unknown>;
     excessiveBudgetTerms.total_budget = { amount: 50001, currency: 'USD' };
+    resignTermsDigest(excessiveBudgetProposal);
     expect(validateProductDiscoverySourceResponse(
       'refine-proposals-response',
       excessiveBudget,
@@ -13798,11 +13831,27 @@ describe('proposal lifecycle', () => {
       disclosedBudgetFailure,
       budgetRequest,
     )).toBeUndefined();
+
+    const impossibleTypedConstraints = [
+      { cpm: { max: 0.01, currency: 'USD' } },
+      { impressions: { min: Number.MAX_SAFE_INTEGER } },
+      { flight: { end_no_earlier_than: '2999-01-01T00:00:00Z' } },
+    ];
+    for (const constraints of impossibleTypedConstraints) {
+      expect(validateProductDiscoverySourceResponse('refine-proposals-response', refined, {
+        refinements: [{ ...refineRequest.refinements[0], constraints }],
+      })).toMatchObject({
+        message: `Invalid refine_proposals_response: revised proposal does not satisfy ${Object.keys(constraints)[0]}`,
+      });
+    }
   });
 
   it.each([
-    ['constraints', { constraints: { total_budget: { max: 50000, currency: 'USD' } } }, 'total_budget'],
-    ['product_changes', { product_changes: { 'social-display': 'include' } }, 'product_selection'],
+    ['constraints.total_budget', { constraints: { total_budget: { max: 50000, currency: 'USD' } } }, 'total_budget'],
+    ['constraints.cpm', { constraints: { cpm: { max: 18, currency: 'USD' } } }, 'cpm'],
+    ['constraints.impressions', { constraints: { impressions: { min: 1000000 } } }, 'impressions'],
+    ['constraints.flight', { constraints: { flight: { end_no_earlier_than: '2027-06-30T23:59:59Z' } } }, 'flight'],
+    ['product_changes', { product_changes: { 'social-display': 'include' } }, 'product_changes'],
     ['alternatives', { alternatives: { count: 3 } }, 'alternatives'],
     ['criteria', { criteria: { targeting_overlay: { geo_countries: ['CA'] } } }, 'criteria'],
   ] as const)('rejects the unsupported typed %s refinement before mutation', async (field, typedInput, dimension) => {
@@ -13880,7 +13929,7 @@ describe('proposal lifecycle', () => {
     expect(isError, JSON.stringify(refined)).toBe(true);
     expect(refined).toMatchObject({
       code: 'UNSUPPORTED_FEATURE',
-      field: 'refinements.2.constraints',
+      field: 'refinements.2.constraints.total_budget',
       details: {
         unsupported_dimension: 'total_budget',
         supported_dimensions: [],
@@ -13891,8 +13940,11 @@ describe('proposal lifecycle', () => {
   });
 
   it.each([
-    ['constraints', { constraints: { total_budget: { max: 50000, currency: 'USD' } } }, 'total_budget'],
-    ['product_changes', { product_changes: { 'social-display': 'include' } }, 'product_selection'],
+    ['constraints.total_budget', { constraints: { total_budget: { max: 50000, currency: 'USD' } } }, 'total_budget'],
+    ['constraints.cpm', { constraints: { cpm: { max: 18, currency: 'USD' } } }, 'cpm'],
+    ['constraints.impressions', { constraints: { impressions: { min: 1000000 } } }, 'impressions'],
+    ['constraints.flight', { constraints: { flight: { end_no_earlier_than: '2027-06-30T23:59:59Z' } } }, 'flight'],
+    ['product_changes', { product_changes: { 'social-display': 'include' } }, 'product_changes'],
     ['alternatives', { alternatives: { count: 3 } }, 'alternatives'],
     ['criteria', { criteria: { targeting_overlay: { geo_countries: ['CA'] } } }, 'criteria'],
   ] as const)(

@@ -3193,6 +3193,46 @@ async function runTests() {
     },
     'refine_proposals accepts deterministic typed revision dimensions without free text'
   );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-typed-0002',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        constraints: {
+          cpm: { max: 18, currency: 'USD' },
+          impressions: { min: 2000000 },
+          flight: { start_no_later_than: '2027-06-01T00:00:00Z', end_no_earlier_than: '2027-06-30T23:59:59Z' }
+        }
+      }]
+    },
+    'refine_proposals accepts rate, volume, and flight hard constraints'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-typed-0003',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        constraints: { cpm: { max: 18 } }
+      }]
+    },
+    'refine_proposals cpm constraint requires an explicit currency'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-typed-0004',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        constraints: { flight: {} }
+      }]
+    },
+    'refine_proposals flight constraint requires at least one bound'
+  );
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-request.json',
     {
@@ -3602,7 +3642,7 @@ async function runTests() {
       media_buy: {
         lifecycle_tools: ['request_proposals', 'refine_proposals'],
         proposal_refinement: {
-          supported_dimensions: ['total_budget', 'product_selection', 'alternatives', 'criteria'],
+          supported_dimensions: ['total_budget', 'cpm', 'impressions', 'flight', 'product_changes', 'alternatives', 'criteria'],
           max_alternatives: 4
         }
       }
@@ -3799,6 +3839,7 @@ async function runTests() {
   );
   const canonicalDraftRevision = {
     proposal_id: 'proposal-2',
+    parent_proposal_id: 'proposal-1',
     proposal_kind: 'new_media_buy',
     proposal_status: 'draft',
     name: 'Revised premium video plan',
@@ -3826,7 +3867,7 @@ async function runTests() {
         proposals: [canonicalDraftRevision],
         reason_code: 'constraint_unsatisfiable',
         reason: 'The requested budget floor could not be met.',
-        unsatisfied_constraints: ['total_budget']
+        unsatisfied_constraints: ['total_budget', 'cpm']
       }],
       products: []
     },
@@ -3888,6 +3929,18 @@ async function runTests() {
     },
     'refine_proposals cannot label a constraint-violating draft revised'
   );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'revised',
+        proposals: [(() => { const { parent_proposal_id, ...orphan } = canonicalDraftRevision; return orphan; })()]
+      }],
+      products: []
+    },
+    'refine_proposals rejects returned proposals without negotiation lineage'
+  );
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
     {
@@ -3896,6 +3949,7 @@ async function runTests() {
         outcome: 'finalized',
         proposal: {
           proposal_id: 'proposal-committed-1',
+          parent_proposal_id: 'proposal-draft-1',
           proposal_kind: 'new_media_buy',
           proposal_status: 'committed',
           expires_at: '2027-06-30T23:59:59Z',
@@ -3927,6 +3981,7 @@ async function runTests() {
         outcome: 'finalized',
         proposal: {
           proposal_id: 'proposal-committed-1',
+          parent_proposal_id: 'proposal-draft-1',
           proposal_kind: 'new_media_buy',
           proposal_status: 'committed',
           expires_at: '2027-06-30T23:59:59Z',

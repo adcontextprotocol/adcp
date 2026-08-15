@@ -10,14 +10,18 @@
     "unsupported_dimension",
     "uninterpreted",
     "alternatives_unavailable",
-    "source_unavailable"
+    "source_unavailable",
+    "hold_unavailable",
+    "batch_aborted"
   ],
   "enumDescriptions": {
-    "commercially_declined": "The seller understood the request but declined to offer the requested commercial terms.",
-    "constraint_unsatisfiable": "The seller could not produce a draft satisfying one or more typed hard constraints or product changes.",
+    "commercially_declined": "The seller understood terms requested through the free-text ask but declined to offer them. An unmet typed constraint or product change always uses constraint_unsatisfiable instead, whether the seller cannot or will not meet it.",
+    "constraint_unsatisfiable": "One or more typed hard constraints or product changes were not satisfied. Takes precedence over every other code when failures co-occur.",
     "unsupported_dimension": "The seller cannot parse or validate one or more typed refinement dimensions used by the request.",
     "uninterpreted": "The seller could not interpret some or all of the free-text ask.",
     "alternatives_unavailable": "The seller produced fewer distinct draft alternatives than requested.",
-    "source_unavailable": "The source proposal was not found, visible, or eligible for revision by this caller."
+    "source_unavailable": "The source proposal was not found, visible, or eligible for revision by this caller.",
+    "hold_unavailable": "The seller declined or failed to reserve inventory for this finalize, whether from sell-through since drafting or from hold policy such as a concurrent-hold cap.",
+    "batch_aborted": "This entry failed only because a sibling entry in the all-or-none finalize batch failed; the entry itself was otherwise eligible."
   }
 }

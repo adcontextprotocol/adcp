@@ -6519,13 +6519,13 @@ async function handleGetProductsUnlocked(
         ...proposal,
         proposal_id: `proposal_revision_${digest}`,
         __source_proposal_id: sourceId,
+        __parent_proposal_id: sourceId,
         __refinement_outcome: outcome?.status === 'partial' ? 'partial' : 'revised',
         ...(outcome?.notes && { __refinement_notes: outcome.notes }),
         ...(isAcceptedSource && {
           __proposal_kind: refinement?.changeKind === 'cancellation'
             ? 'media_buy_cancellation'
             : 'media_buy_update',
-          __parent_proposal_id: sourceId,
           __media_buy_id: sourceInternal.__media_buy_id,
           __base_media_buy_revision: sourceInternal.__media_buy_revision,
         }),
@@ -12282,9 +12282,11 @@ function applyThreeZeroGetProductsIdempotencyCompatibility(
   };
 }
 
+const REFINEMENT_CONSTRAINT_DIMENSIONS = ['total_budget', 'cpm', 'impressions', 'flight'] as const;
+
 type UnsupportedTrainingRefinement = {
-  field: 'constraints' | 'product_changes' | 'alternatives' | 'criteria';
-  dimension: 'total_budget' | 'product_selection' | 'alternatives' | 'criteria';
+  field: string;
+  dimension: (typeof REFINEMENT_CONSTRAINT_DIMENSIONS)[number] | 'product_changes' | 'alternatives' | 'criteria';
   index: number;
 };
 
@@ -12293,16 +12295,17 @@ function unsupportedTrainingProposalRefinement(
   args: Record<string, unknown>,
 ): UnsupportedTrainingRefinement | undefined {
   if (toolName !== 'refine_proposals' || !Array.isArray(args.refinements)) return undefined;
-  const typedDimensions = [
-    { field: 'constraints', dimension: 'total_budget' },
-    { field: 'product_changes', dimension: 'product_selection' },
-    { field: 'alternatives', dimension: 'alternatives' },
-    { field: 'criteria', dimension: 'criteria' },
-  ] as const;
   for (const [index, refinement] of args.refinements.entries()) {
     if (!isRecord(refinement)) continue;
-    const unsupported = typedDimensions.find(({ field }) => refinement[field] !== undefined);
-    if (unsupported) return { ...unsupported, index };
+    if (isRecord(refinement.constraints)) {
+      const dimension = REFINEMENT_CONSTRAINT_DIMENSIONS.find(
+        key => (refinement.constraints as Record<string, unknown>)[key] !== undefined,
+      );
+      if (dimension) return { field: `constraints.${dimension}`, dimension, index };
+    }
+    if (refinement.product_changes !== undefined) return { field: 'product_changes', dimension: 'product_changes', index };
+    if (refinement.alternatives !== undefined) return { field: 'alternatives', dimension: 'alternatives', index };
+    if (refinement.criteria !== undefined) return { field: 'criteria', dimension: 'criteria', index };
   }
   return undefined;
 }
