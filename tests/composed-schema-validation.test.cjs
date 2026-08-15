@@ -5478,8 +5478,8 @@ async function runTests() {
   );
   log('');
 
-  // daily_budget_cap threads through the package request/update shapes (#5983)
-  log('Daily budget cap (package request/update):', 'info');
+  // daily_budget_cap follows the aggregate/package budget hierarchy (#5983)
+  log('Daily budget cap hierarchy:', 'info');
   await testSchemaValidation(
     '/schemas/media-buy/package-request.json',
     {
@@ -5487,10 +5487,9 @@ async function runTests() {
       pricing_option_id: 'po_cpm_fixed',
       budget: 50000,
       pacing: 'asap',
-      daily_budget_cap: 2500,
-      budget_cap_timezone: 'America/Chicago'
+      daily_budget_cap: 2500
     },
-    'Accepts package request with daily_budget_cap + budget_cap_timezone (orthogonal to asap pacing)'
+    'Accepts a subordinate package daily cap with asap pacing'
   );
   await testSchemaRejection(
     '/schemas/media-buy/package-request.json',
@@ -5502,13 +5501,23 @@ async function runTests() {
     },
     'Rejects negative daily_budget_cap'
   );
+  await testSchemaRejection(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'prod_ctv_sports',
+      pricing_option_id: 'po_cpm_fixed',
+      budget: 50000,
+      budget_cap_timezone: 'America/Chicago'
+    },
+    'Rejects package-specific cap timezone overrides'
+  );
   await testSchemaValidation(
     '/schemas/media-buy/package-update.json',
     {
       package_id: 'pkg_001',
-      daily_budget_cap: 1800
+      daily_budget_cap: null
     },
-    'Accepts package update raising daily_budget_cap'
+    'Accepts removing a package daily cap'
   );
   await testSchemaValidation(
     '/schemas/core/package.json',
@@ -5516,10 +5525,121 @@ async function runTests() {
       package_id: 'pkg_001',
       product_id: 'prod_ctv_sports',
       budget: 50000,
-      daily_budget_cap: 2500,
-      budget_cap_timezone: 'America/New_York'
+      daily_budget_cap: 2500
     },
-    'Package response object (create/update echo) carries daily_budget_cap + budget_cap_timezone'
+    'Package readback carries the subordinate daily cap without its own timezone'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'daily-cap-create-0001',
+      account: { account_id: 'acc_daily_cap' },
+      brand: { domain: 'example.com' },
+      packages: [{
+        product_id: 'prod_ctv_sports',
+        pricing_option_id: 'po_cpm_fixed',
+        budget: 50000,
+        daily_budget_cap: 2500
+      }],
+      daily_budget_cap: 4000,
+      budget_cap_timezone: 'America/Chicago',
+      start_time: '2099-08-01T00:00:00Z',
+      end_time: '2099-08-31T23:59:59Z'
+    },
+    'Accepts aggregate and subordinate package daily caps with one shared timezone'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'daily-cap-create-0002',
+      account: { account_id: 'acc_daily_cap' },
+      brand: { domain: 'example.com' },
+      packages: [{
+        product_id: 'prod_ctv_sports',
+        pricing_option_id: 'po_cpm_fixed',
+        budget: 50000
+      }],
+      daily_budget_cap: -1,
+      start_time: '2099-08-01T00:00:00Z',
+      end_time: '2099-08-31T23:59:59Z'
+    },
+    'Rejects a negative aggregate daily cap'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'daily-cap-update-0001',
+      account: { account_id: 'acc_daily_cap' },
+      media_buy_id: 'mb_daily_cap',
+      daily_budget_cap: null,
+      budget_cap_timezone: null
+    },
+    'Accepts removing the aggregate cap and timezone override'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/buy-products-request.json',
+    {
+      idempotency_key: 'daily-cap-buy-products-0001',
+      account: { account_id: 'acc_daily_cap' },
+      brand: { domain: 'example.com' },
+      feed_version: 'feed-daily-cap-1',
+      purchases: [{
+        product_id: 'prod_ctv_sports',
+        pricing_option_id: 'po_cpm_fixed',
+        budget: 50000,
+        daily_budget_cap: 2500
+      }],
+      daily_budget_cap: 4000,
+      budget_cap_timezone: 'America/Chicago',
+      start_time: 'asap',
+      end_time: '2099-08-31T23:59:59Z'
+    },
+    'Compact direct purchase carries aggregate and purchase daily caps'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/control-media-buy-request.json',
+    {
+      idempotency_key: 'daily-cap-control-0001',
+      account: { account_id: 'acc_daily_cap' },
+      media_buy_id: 'mb_daily_cap',
+      revision: 4,
+      daily_budget_cap: null,
+      budget_cap_timezone: null,
+      packages: [{ package_id: 'pkg_001', daily_budget_cap: null }]
+    },
+    'Compact control removes aggregate and package caps atomically'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/accept-proposal-request.json',
+    {
+      idempotency_key: 'daily-cap-accept-0001',
+      account: { account_id: 'acc_daily_cap' },
+      proposal_id: 'proposal_daily_cap',
+      proposal_terms_digest: 'sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      daily_budget_cap: 4000,
+      budget_cap_timezone: 'America/Chicago'
+    },
+    'Compact proposal acceptance can set the aggregate execution cap'
+  );
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      status: 'completed',
+      adcp: {
+        major_versions: [3],
+        idempotency: { supported: false }
+      },
+      supported_protocols: ['media_buy'],
+      media_buy: {
+        budget_capping: {
+          supported_scopes: ['media_buy', 'package'],
+          supported_periods: ['day'],
+          effective_timezone: 'America/New_York',
+          buyer_timezone_override: true
+        }
+      }
+    },
+    'Accepts hard daily-cap capabilities with explicit supported scopes'
   );
   log('');
 

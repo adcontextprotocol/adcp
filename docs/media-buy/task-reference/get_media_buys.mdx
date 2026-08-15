@@ -80,6 +80,8 @@ Returns an array of media buys with current status, creative approval state, and
 | `status_as_of` | ISO 8601 timestamp when the seller last refreshed the returned media-buy-level `status` from its source of truth. For rolled-up statuses, this MUST NOT be later than the oldest upstream status observation that could affect the returned roll-up. Optional; omitted or `null` makes no freshness assertion, and buyers MUST NOT infer live status from absence. Use this to interpret cached or rolled-up statuses separately from `updated_at`, which means the media buy's last modification time. |
 | `currency` | ISO 4217 currency for media-buy-level monetary values |
 | `total_budget` | Hard aggregate lifetime budget (in `currency`) |
+| `daily_budget_cap` | Current hard aggregate spend ceiling per calendar day. It limits total buy spend without allocating package amounts. |
+| `budget_cap_timezone` | Shared IANA calendar-day boundary for every aggregate and package daily cap. Present whenever any daily cap is set. |
 | `budget_allocation` | Fixed or seller-optimized cross-package allocation configuration. Omission means fixed for legacy buys. |
 | `pacing` | Aggregate media-buy pacing strategy |
 | `bidding` | Media-buy-authored bidding policy. Packages that inherit it omit their own `bidding` block. |
@@ -102,6 +104,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `package_id` | Seller's package identifier |
 | `product_id` | Product identifier this package is purchased from. For packages created from an explicit `create_media_buy` package request, sellers MUST echo the request package's `product_id` on every response package object that represents that requested package. |
 | `budget` | Hard lifetime package spend cap in `media_buy.currency`. In seller-optimized mode this is not a current allocation and may be absent. |
+| `daily_budget_cap` | Optional subordinate hard package ceiling per shared media-buy cap day. It is not a reserved allocation. |
 | `min_spend_target` | Soft lifetime package spend target in `media_buy.currency` accepted for seller-optimized allocation. |
 | `pacing` | Package pacing preference. It is subordinate to media-buy aggregate `pacing` and cannot cause aggregate delivery to exceed that strategy. |
 | `currency` | Legacy/external-buy package denomination. For AdCP-authored buys this equals `media_buy.currency`; it does not reinterpret canonical budget or bidding amounts. |

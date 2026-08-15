@@ -20,17 +20,22 @@ Per-purchase flight dates, `measurement_terms`, and `performance_standards` may 
   "brand": { "domain": "acmeoutdoor.example" },
   "feed_version": "products-2027-06-01T12:00:00Z",
   "pricing_version": "pricing-42",
+  "daily_budget_cap": 5000,
+  "budget_cap_timezone": "America/New_York",
   "purchases": [
     {
       "product_id": "product_display_standard",
       "pricing_option_id": "cpm_usd",
-      "budget": 50000
+      "budget": 50000,
+      "daily_budget_cap": 3000
     }
   ],
   "start_time": "asap",
   "end_time": "2027-07-01T00:00:00Z"
 }
 ```
+
+The media-buy `daily_budget_cap` is a hard aggregate ceiling and does not allocate its value among purchases. A purchase-level cap is an optional subordinate ceiling, not a reservation. Every cap shares the accepted media-buy `budget_cap_timezone`; sellers reject undeclared scopes with `UNSUPPORTED_FEATURE`.
 
 Success returns the MediaBuy identity and an `accepted_proposal` snapshot. Its typed `commercial_terms` preserve the exact feed and pricing versions, product and format selections, catalogs, budgets, targeting, flight, billing, and reporting commitments; `terms_digest` binds that envelope for governance and audit. The separate `purchase_bindings[]` maps each zero-based purchase position to its seller-assigned `package_id`, which SDKs use for later creative assignment without placing execution IDs inside the immutable digest. The seller creates this snapshot even though the buyer did not negotiate first, giving every MediaBuy the same commercial history for later [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals).
 

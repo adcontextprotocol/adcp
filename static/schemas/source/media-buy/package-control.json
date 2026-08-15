@@ -14,6 +14,11 @@
       "type": ["number", "null"],
       "minimum": 0
     },
+    "daily_budget_cap": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "Replace this package's subordinate hard daily cap; null removes it. Numeric changes apply immediately with package spend already incurred in the shared current cap day counted."
+    },
     "min_spend_target": {
       "type": ["number", "null"],
       "minimum": 0
@@ -88,6 +93,7 @@
   "required": ["package_id"],
   "anyOf": [
     { "required": ["budget"] },
+    { "required": ["daily_budget_cap"] },
     { "required": ["min_spend_target"] },
     { "required": ["impressions"] },
     { "required": ["pacing"] },
@@ -126,6 +132,7 @@
         "not": {
           "anyOf": [
             { "required": ["budget"] },
+            { "required": ["daily_budget_cap"] },
             { "required": ["min_spend_target"] },
             { "required": ["impressions"] },
             { "required": ["pacing"] },

@@ -51,6 +51,11 @@
       "minimum": 0,
       "description": "Hard spend cap for this selection in the media-buy currency."
     },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Optional hard daily spend ceiling for this purchase. It is subordinate to the media-buy aggregate daily cap and is not a reserved daily allocation. Its day boundary is the media buy's budget_cap_timezone."
+    },
     "min_spend_target": {
       "type": "number",
       "minimum": 0,
