@@ -18,6 +18,8 @@ requires_scenarios:
   - media_buy_seller/product_signal_targeting
   - media_buy_seller/demographic_targeting
   - media_buy_seller/product_filter_behavior
+  - media_buy_seller/read_filter_behavior
+  - media_buy_seller/list_creatives_filter_behavior
   - media_buy_seller/targeting_aware_discovery
   - media_buy_seller/geo_place_targeting
   - media_buy_seller/geo_region_all_values_support

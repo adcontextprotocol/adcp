@@ -6919,6 +6919,65 @@ describe('list_creatives handler', () => {
     expect(pg.total_count).toBe(1);
   });
 
+  it('filters creatives by status and media buy assignment with AND semantics', async () => {
+    const account = {
+      brand: { domain: 'creative-read-filters.example' },
+      operator: 'creative-read-filters.example',
+      sandbox: true,
+    };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    for (const [creativeId, status] of [
+      ['cr_filter_match', 'rejected'],
+      ['cr_filter_wrong_status', 'approved'],
+      ['cr_filter_wrong_buy', 'rejected'],
+    ] as const) {
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        scenario: 'seed_creative',
+        params: {
+          creative_id: creativeId,
+          fixture: { status, format_kind: 'image' },
+        },
+      });
+    }
+
+    for (const [mediaBuyId, creativeAssignments] of [
+      ['mb_filter_target', ['cr_filter_match', 'cr_filter_wrong_status']],
+      ['mb_filter_other', ['cr_filter_wrong_buy']],
+    ] as const) {
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        scenario: 'seed_media_buy',
+        params: {
+          media_buy_id: mediaBuyId,
+          fixture: {
+            status: 'active',
+            packages: [{
+              package_id: `${mediaBuyId}_package`,
+              creative_assignments: creativeAssignments,
+            }],
+          },
+        },
+      });
+    }
+
+    const { result } = await simulateCallTool(server, 'list_creatives', {
+      account,
+      adcp_version: '3.1',
+      ext: { adcp: { creative_wire: 'legacy' } },
+      filters: {
+        statuses: ['rejected'],
+        media_buy_ids: ['mb_filter_target'],
+      },
+    });
+
+    expect((result.creatives as Array<{ creative_id: string; status: string }>)).toEqual([
+      expect.objectContaining({ creative_id: 'cr_filter_match', status: 'rejected' }),
+    ]);
+    expect(result.query_summary).toEqual({ total_matching: 1, returned: 1 });
+  });
+
   it('filters by top-level asset type and composes with format_ids', async () => {
     const account = { brand: { domain: 'assetfilters.example' }, operator: 'assetfilters.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);

@@ -1,0 +1,259 @@
+id: media_buy_seller/read_filter_behavior
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Seller applies deterministic media-buy read filters"
+category: media_buy_seller
+summary: "Verifies get_media_buys membership filters and half-open get_media_buy_delivery date bounds instead of accepting them as no-ops."
+track: reporting
+
+required_tools:
+  - get_media_buys
+  - get_media_buy_delivery
+  - comply_test_controller
+
+narrative: |
+  Deterministic read filters are protocol behavior, not request decoration.
+  The controller seeds positive, excluded, and boundary rows so an
+  implementation that accepts a filter but returns an unfiltered superset
+  fails an observable membership or boundary assertion.
+
+  These checks implement the DR-0001 conformance contract with exact
+  membership and half-open range properties. They do not require two
+  arbitrary response payloads to differ.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - delivery_reporting
+  examples:
+    - "Any media-buy seller with deterministic status and delivery reads"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The controller seeds two differently-statused media buys and one creative
+    assignment per buy. Dated delivery rows fall before, on, and at the
+    exclusive end boundary of the requested interval.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "read_filter_product"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
+  pricing_options:
+    - product_id: "read_filter_product"
+      pricing_option_id: "read_filter_pricing"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 10
+  creatives:
+    - creative_id: "read_filter_active_creative"
+      status: "approved"
+      format_kind: "image"
+    - creative_id: "read_filter_paused_creative"
+      status: "approved"
+      format_kind: "image"
+  media_buys:
+    - media_buy_id: "read_filter_active_buy"
+      account: &seed_account
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "acmeoutdoor.example"
+        sandbox: true
+      status: "active"
+      currency: "USD"
+      start_time: "2026-01-01T00:00:00Z"
+      end_time: "2099-12-31T00:00:00Z"
+      packages:
+        - package_id: "read_filter_active_package"
+          product_id: "read_filter_product"
+          pricing_option_id: "read_filter_pricing"
+          budget: 1000
+          creative_assignments: ["read_filter_active_creative"]
+    - media_buy_id: "read_filter_paused_buy"
+      account: *seed_account
+      status: "paused"
+      currency: "USD"
+      start_time: "2026-01-01T00:00:00Z"
+      end_time: "2099-12-31T00:00:00Z"
+      packages:
+        - package_id: "read_filter_paused_package"
+          product_id: "read_filter_product"
+          pricing_option_id: "read_filter_pricing"
+          budget: 1000
+          creative_assignments: ["read_filter_paused_creative"]
+
+phases:
+  - id: media_buy_membership
+    title: "Apply ID and status filters conjunctively"
+    steps:
+      - id: filter_media_buys
+        title: "Exclude an explicitly named buy with the wrong status"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          media_buy_ids:
+            - "read_filter_active_buy"
+            - "read_filter_paused_buy"
+          status_filter: ["paused"]
+          account: &buyer_account
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
+            sandbox: true
+          context:
+            correlation_id: "read_filter_behavior--media_buys"
+        expected: |
+          Return only the requested paused buy. The active buy is an explicit
+          negative control for status filtering, while an implementation that
+          ignores media_buy_ids cannot satisfy the exact one-row result.
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].media_buy_id"
+            value: "read_filter_paused_buy"
+            description: "DR-0001 / get_media_buys filter contract: the returned ID belongs to the requested set"
+          - check: field_value
+            path: "media_buys[0].status"
+            value: "paused"
+            description: "DR-0001 / get_media_buys filter contract: the returned row satisfies status_filter"
+          - check: field_absent
+            path: "media_buys[1]"
+            description: "The active negative-control row is excluded"
+
+  - id: delivery_boundaries
+    title: "Apply a half-open delivery date range"
+    steps:
+      - id: seed_delivery_before_range
+        title: "Seed delivery before the requested range"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          account: *buyer_account
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "read_filter_active_buy"
+            delivery_date: "2026-04-01"
+            impressions: 100
+            clicks: 10
+            reported_spend:
+              amount: 10
+              currency: "USD"
+        expected: "The controller stores the pre-range negative-control row."
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Pre-range delivery simulation succeeds"
+
+      - id: seed_delivery_at_start
+        title: "Seed delivery on the inclusive start boundary"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          account: *buyer_account
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "read_filter_active_buy"
+            delivery_date: "2026-04-15"
+            impressions: 200
+            clicks: 20
+            reported_spend:
+              amount: 20
+              currency: "USD"
+        expected: "The controller stores the row that must be included."
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Start-boundary delivery simulation succeeds"
+
+      - id: seed_delivery_at_end
+        title: "Seed delivery on the exclusive end boundary"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          account: *buyer_account
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "read_filter_active_buy"
+            delivery_date: "2026-04-16"
+            impressions: 400
+            clicks: 40
+            reported_spend:
+              amount: 40
+              currency: "USD"
+        expected: "The controller stores the end-boundary negative-control row."
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "End-boundary delivery simulation succeeds"
+
+      - id: get_filtered_delivery
+        title: "Return only delivery inside the requested half-open range"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        sample_request:
+          account: *buyer_account
+          media_buy_ids: ["read_filter_active_buy"]
+          start_date: "2026-04-15"
+          end_date: "2026-04-16"
+          context:
+            correlation_id: "read_filter_behavior--delivery"
+        expected: |
+          Include the row dated April 15 and exclude both April 1 and the
+          April 16 exclusive boundary. The reporting period echoes the exact
+          UTC boundaries used for aggregation.
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json"
+          - check: field_value
+            path: "reporting_period.start"
+            value: "2026-04-15T00:00:00.000Z"
+            description: "DR-0001 / delivery filter contract: reporting starts at the inclusive requested boundary"
+          - check: field_value
+            path: "reporting_period.end"
+            value: "2026-04-16T00:00:00.000Z"
+            description: "DR-0001 / delivery filter contract: reporting ends at the exclusive requested boundary"
+          - check: field_value
+            path: "media_buy_deliveries[0].media_buy_id"
+            value: "read_filter_active_buy"
+            description: "Only the requested media buy is reported"
+          - check: field_value
+            path: "media_buy_deliveries[0].totals.impressions"
+            value: 200
+            description: "Only the start-boundary impressions contribute"
+          - check: field_value
+            path: "media_buy_deliveries[0].totals.clicks"
+            value: 20
+            description: "Only the start-boundary clicks contribute"
+          - check: field_value
+            path: "media_buy_deliveries[0].totals.spend"
+            value: 20
+            description: "Both out-of-range spend rows are excluded"
+          - check: field_absent
+            path: "media_buy_deliveries[1]"
+            description: "No unrequested media buy leaks into the result"

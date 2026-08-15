@@ -1306,6 +1306,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   const targetsControllerFixtureState = scenario === 'seed_product'
     || scenario === 'seed_pricing_option'
     || scenario === 'seed_measurement_catalog';
+  const targetsPublicTaskState = scenario === 'seed_media_buy'
+    || scenario === 'seed_creative';
   // The frozen 3.0 runner injects a synthetic natural account into controller
   // and fixture calls, sometimes without copying its brand to the top level.
   // Platform methods on that compatibility surface historically key by brand.
@@ -1320,7 +1322,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     ? args.account.account_id
     : undefined;
   let staticFixtureAccount: ToolArgs['account'] | undefined;
-  if (targetsControllerFixtureState && ctx.principal?.startsWith('static:') && args.account) {
+  let staticTaskAccount: ToolArgs['account'] | undefined;
+  if ((targetsControllerFixtureState || targetsPublicTaskState) && ctx.principal?.startsWith('static:') && args.account) {
     try {
       const canonical = canonicalizeAccountRef(args.account);
       if (canonical.kind === 'natural' && canonical.sandbox) {
@@ -1329,11 +1332,20 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
         // task examples may name the buyer operator. Canonicalize only this
         // fixture projection to the brand-owned sandbox partition; real
         // principals keep the complete natural account identity.
-        staticFixtureAccount = {
+        const brandOwnedAccount = {
           brand: canonical.brand,
           operator: canonical.brand.domain,
-          sandbox: true,
         };
+        if (targetsControllerFixtureState) {
+          staticFixtureAccount = { ...brandOwnedAccount, sandbox: true };
+        } else {
+          // The SDK strips the controller-only sandbox assertion before
+          // ordinary media-buy reads. Store public demo entity fixtures in
+          // that exact brand-owned task partition so seed_media_buy and
+          // seed_creative remain observable without projecting entity state
+          // across the isolated controller-fixture boundary.
+          staticTaskAccount = { ...brandOwnedAccount, sandbox: false };
+        }
       }
     } catch {
       staticFixtureAccount = undefined;
@@ -1351,7 +1363,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       ? { ...args, account: { account_id: opaqueAccountId }, brand: undefined }
       : staticFixtureAccount
         ? { ...args, account: staticFixtureAccount }
-        : args;
+        : staticTaskAccount
+          ? { ...args, account: staticTaskAccount }
+          : args;
   let sessionKey = targetsGetProductsState
     ? getProductsSessionKeyFromArgs(sessionArgs, ctx.mode, ctx.userId, ctx.moduleId)
     : sessionKeyFromArgs(

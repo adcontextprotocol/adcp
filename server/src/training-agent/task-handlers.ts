@@ -8833,8 +8833,10 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
 
     const { model: pricingModel, rate } = derivePricing(pkg, productMap);
     const isRevenueShare = pricingModel === 'revenue_share';
+    const useScopedSimulation = simDelivery !== undefined
+      && Boolean(req.start_date || req.end_date);
     const budget = pkg.budget;
-    const spend = isRevenueShare
+    const spend = isRevenueShare || useScopedSimulation
       ? (simDelivery?.reportedSpend.amount ?? 0)
       : Math.round(budget * elapsed * 100) / 100;
 
@@ -8850,12 +8852,14 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     else if (channels?.some(c => ['print'].includes(c))) ctr = 0;
     else ctr = 0.001;
 
-    const impressions = isRevenueShare
+    const impressions = isRevenueShare || useScopedSimulation
       ? (simDelivery?.impressions ?? 0)
       : rate > 0 ? Math.round((spend / rate) * 1000) : 0;
-    const clicks = isRevenueShare ? (simDelivery?.clicks ?? 0) : Math.round(impressions * ctr);
+    const clicks = isRevenueShare || useScopedSimulation
+      ? (simDelivery?.clicks ?? 0)
+      : Math.round(impressions * ctr);
 
-    if (!isRevenueShare) {
+    if (!isRevenueShare && !useScopedSimulation) {
       totalImpressions += impressions;
       totalSpend += spend;
       totalClicks += clicks;
@@ -9379,6 +9383,7 @@ function accountRefsOverlap(stored: AccountRef | undefined, requested: AccountRe
 type CreativeListFilters = {
   creative_ids?: string[];
   statuses?: string[];
+  media_buy_ids?: string[];
   format_ids?: FormatID[];
   asset_types?: string[];
 };
@@ -9501,6 +9506,17 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   if (filters.statuses?.length) {
     const statuses = new Set(filters.statuses);
     creatives = creatives.filter(c => statuses.has(c.status));
+  }
+  if (filters.media_buy_ids?.length) {
+    const requestedMediaBuyIds = new Set(filters.media_buy_ids);
+    const assignedCreativeIds = new Set<string>();
+    for (const mediaBuy of session.mediaBuys.values()) {
+      if (!requestedMediaBuyIds.has(mediaBuy.mediaBuyId)) continue;
+      for (const pkg of mediaBuy.packages) {
+        for (const creativeId of pkg.creativeAssignments) assignedCreativeIds.add(creativeId);
+      }
+    }
+    creatives = creatives.filter(c => assignedCreativeIds.has(c.creativeId));
   }
   const formatKinds = (req.filters as unknown as { format_kinds?: string[] } | undefined)?.format_kinds;
   const filterProjectionAdapters = formatKinds?.length || filters.format_ids?.length
