@@ -72,8 +72,7 @@
           }
         }
       },
-      "required": ["role"],
-      "additionalProperties": true
+      "required": ["role"]
     },
     "declared_at": {
       "type": "string",
@@ -95,8 +94,7 @@
           "description": "URL to the C2PA manifest store for this content"
         }
       },
-      "required": ["manifest_url"],
-      "additionalProperties": true
+      "required": ["manifest_url"]
     },
     "embedded_provenance": {
       "type": "array",
@@ -141,8 +139,7 @@
             "description": "When the provenance data was embedded (ISO 8601)"
           }
         },
-        "required": ["method", "provider"],
-        "additionalProperties": true
+        "required": ["method", "provider"]
       }
     },
     "watermarks": {
@@ -188,8 +185,7 @@
             "description": "When the watermark was applied (ISO 8601)"
           }
         },
-        "required": ["media_type", "provider"],
-        "additionalProperties": true
+        "required": ["media_type", "provider"]
       }
     },
     "disclosure": {
@@ -248,18 +244,15 @@
                   "ext": {
                     "$ref": "/schemas/core/ext.json"
                   }
-                },
-                "additionalProperties": true
+                }
               }
             },
-            "required": ["country", "regulation"],
-            "additionalProperties": true
+            "required": ["country", "regulation"]
           },
           "minItems": 1
         }
       },
-      "required": ["required"],
-      "additionalProperties": true
+      "required": ["required"]
     },
     "verification": {
       "type": "array",
@@ -294,8 +287,7 @@
             "description": "URL to the full verification report"
           }
         },
-        "required": ["verified_by", "result"],
-        "additionalProperties": true
+        "required": ["verified_by", "result"]
       }
     },
     "ext": {
