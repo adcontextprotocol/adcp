@@ -81,7 +81,7 @@ If your 3.1 toolchain doesn't surface the deprecation, the storyboard gate is yo
 - **3.2** ([#4906](https://github.com/adcontextprotocol/adcp/issues/4906)): the deprecated top-level `status: MediaBuyStatus` is **removed** from `CreateMediaBuySuccess` and `UpdateMediaBuySuccess`. After 3.2, top-level `status` on these responses unambiguously carries envelope TaskStatus only. The deprecation window is short by design — the storyboard gate already forces 3.1-conformant sellers off the legacy field.
 - **4.0** ([#4905](https://github.com/adcontextprotocol/adcp/issues/4905)): the nested `status` cascade lands — `media_buys[].status` on `get-media-buys-response`, `media_buy_deliveries[].status` on `get-media-buy-delivery-response`, and `status` on `core/media-buy.json` rename to `media_buy_status`. Genuinely breaking (a `required[]` swap), held to the major.
 
-This removal is an approved same-major compatibility exception from [#4906](https://github.com/adcontextprotocol/adcp/issues/4906). The repository records it with a `minor` changeset so it is mechanically released as AdCP 3.2 after the enforced 3.1 deprecation window. The broader nested status cascade remains reserved for 4.0.
+This removal is the narrow same-major compatibility exception ratified in DR-0011 and tracked by [#4906](https://github.com/adcontextprotocol/adcp/issues/4906). The repository records it with a `minor` changeset so it is mechanically released as AdCP 3.2 after the enforced 3.1 deprecation window. The broader nested status cascade remains reserved for 4.0.
 
 ## Forward-compatible buyer code
 
