@@ -776,17 +776,17 @@
           "properties": {
             "supported_dimensions": {
               "type": "array",
-              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget covers constraints.total_budget; product_selection covers product_changes; alternatives covers alternatives.count. Free-text ask interpretation is competence, not a capability declared here.",
+              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget covers constraints.total_budget; product_selection covers product_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
               "items": {
                 "type": "string",
-                "enum": ["total_budget", "product_selection", "alternatives"]
+                "enum": ["total_budget", "product_selection", "alternatives", "criteria"]
               },
               "uniqueItems": true
             },
             "max_alternatives": {
               "type": "integer",
               "minimum": 2,
-              "description": "Optional maximum alternatives.count the seller accepts. Valid only when supported_dimensions includes alternatives."
+              "description": "Optional maximum alternatives.count the seller accepts. Valid only when supported_dimensions includes alternatives. Requests above this ceiling fail at task level with VALIDATION_ERROR identifying refinements[i].alternatives.count; sellers MUST NOT silently clamp the request or return alternatives_unavailable for the declared ceiling violation."
             }
           },
           "required": ["supported_dimensions"],

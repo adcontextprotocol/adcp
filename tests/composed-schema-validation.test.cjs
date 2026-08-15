@@ -3578,7 +3578,7 @@ async function runTests() {
       media_buy: {
         lifecycle_tools: ['request_proposals', 'refine_proposals'],
         proposal_refinement: {
-          supported_dimensions: ['total_budget', 'product_selection', 'alternatives'],
+          supported_dimensions: ['total_budget', 'product_selection', 'alternatives', 'criteria'],
           max_alternatives: 4
         }
       }

@@ -13721,6 +13721,83 @@ describe('proposal lifecycle', () => {
         product_changes: { 'social-display': 'include' },
       }],
     })).toBeUndefined();
+
+    const budgetRequest = {
+      refinements: [{
+        ...refineRequest.refinements[0],
+        constraints: { total_budget: { max: 50000, currency: 'USD' } },
+      }],
+    };
+    const budgetedProposal = (
+      ((refined.results as Array<Record<string, unknown>>)[0]).proposals as Array<Record<string, unknown>>
+    )[0];
+    (budgetedProposal.commercial_terms as Record<string, unknown>).total_budget = {
+      amount: 50000,
+      currency: 'USD',
+    };
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      refined,
+      budgetRequest,
+    )).toBeUndefined();
+
+    const absentBudget = structuredClone(refined);
+    const absentBudgetProposal = (
+      (absentBudget.results as Array<Record<string, unknown>>)[0].proposals as Array<Record<string, unknown>>
+    )[0];
+    delete (absentBudgetProposal.commercial_terms as Record<string, unknown>).total_budget;
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      absentBudget,
+      budgetRequest,
+    )).toMatchObject({ field: 'results.0.proposals.0.commercial_terms.total_budget' });
+
+    const mismatchedBudgetCurrency = structuredClone(refined);
+    const mismatchedCurrencyProposal = (
+      (mismatchedBudgetCurrency.results as Array<Record<string, unknown>>)[0].proposals as Array<Record<string, unknown>>
+    )[0];
+    const mismatchedCurrencyTerms = mismatchedCurrencyProposal.commercial_terms as Record<string, unknown>;
+    mismatchedCurrencyTerms.total_budget = { amount: 50000, currency: 'EUR' };
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      mismatchedBudgetCurrency,
+      budgetRequest,
+    )).toMatchObject({ field: 'results.0.proposals.0.commercial_terms.total_budget' });
+
+    const excessiveBudget = structuredClone(refined);
+    const excessiveBudgetProposal = (
+      (excessiveBudget.results as Array<Record<string, unknown>>)[0].proposals as Array<Record<string, unknown>>
+    )[0];
+    const excessiveBudgetTerms = excessiveBudgetProposal.commercial_terms as Record<string, unknown>;
+    excessiveBudgetTerms.total_budget = { amount: 50001, currency: 'USD' };
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      excessiveBudget,
+      budgetRequest,
+    )).toMatchObject({ field: 'results.0.proposals.0.commercial_terms.total_budget' });
+
+    const undisclosedBudgetFailure = structuredClone(absentBudget);
+    const undisclosedBudgetResult = (undisclosedBudgetFailure.results as Array<Record<string, unknown>>)[0];
+    undisclosedBudgetResult.outcome = 'partial';
+    undisclosedBudgetResult.reason_code = 'commercially_declined';
+    undisclosedBudgetResult.reason = 'The seller declined the requested commercial terms.';
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      undisclosedBudgetFailure,
+      budgetRequest,
+    )).toMatchObject({ field: 'results.0.proposals.0.commercial_terms.total_budget' });
+
+    const disclosedBudgetFailure = structuredClone(absentBudget);
+    const disclosedBudgetResult = (disclosedBudgetFailure.results as Array<Record<string, unknown>>)[0];
+    disclosedBudgetResult.outcome = 'partial';
+    disclosedBudgetResult.reason_code = 'constraint_unsatisfiable';
+    disclosedBudgetResult.reason = 'The returned draft has no mechanically verifiable total budget.';
+    disclosedBudgetResult.unsatisfied_constraints = ['total_budget'];
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      disclosedBudgetFailure,
+      budgetRequest,
+    )).toBeUndefined();
   });
 
   it.each([

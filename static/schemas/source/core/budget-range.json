@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/budget-range.json",
   "title": "Budget Range",
-  "description": "Inclusive currency bounds. At least one bound is required; min MUST be less than or equal to max.",
+  "description": "Extension-tolerant inclusive currency bounds used by legacy discovery filters. At least one bound is required; min MUST be less than or equal to max. The strict negotiation peer that rejects unknown members is media-buy/proposal-budget-constraint.json.",
   "type": "object",
   "properties": {
     "min": { "type": "number", "minimum": 0 },

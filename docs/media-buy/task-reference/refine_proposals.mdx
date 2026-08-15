@@ -50,7 +50,7 @@ Typed fields are deliberately small and mechanically verifiable:
 
 | Field | Meaning |
 |---|---|
-| `constraints.total_budget` | Inclusive `min`/`max` bounds checked against `commercial_terms.total_budget`; `currency` must match and `min` must not exceed `max`. The `total_budget` key is the stable constraint identifier. |
+| `constraints.total_budget` | Inclusive `min`/`max` bounds checked against a present `commercial_terms.total_budget`; `currency` must match and `min` must not exceed `max`. The `total_budget` key is the stable constraint identifier. |
 | `product_changes` | Map keyed by product ID. `include` requires a product in `commercial_terms.purchases`; `omit` requires it to be absent. Keying makes contradictory actions unrepresentable. |
 | `alternatives.count` | Number of commercially distinct drafts requested. Returned alternatives have unique `terms_digest` values; diversity strategy remains free text. |
 | `criteria` | Structured discovery criteria to replace on the source proposal. Omitted criteria fields remain inherited; concrete targeting and offer filters belong here. |
@@ -80,7 +80,23 @@ The response contains one ordered `results[]` entry per requested source proposa
 | `alternatives_unavailable` | Fewer distinct drafts were produced than requested. |
 | `source_unavailable` | The source proposal was unavailable or ineligible for this caller. |
 
-A draft that violates a hard constraint MUST NOT be returned as `revised`. The seller returns `partial`, or `unable` when it cannot produce an honest draft. A `constraint_unsatisfiable` result MUST identify failures through `unsatisfied_constraints` (for example `["total_budget"]`), `unsatisfied_product_changes` (a subset of the requested product-action map), or both. Every returned proposal carries typed `commercial_terms` and a `terms_digest`.
+A draft that violates a hard constraint MUST NOT be returned as `revised`. For `constraints.total_budget`, satisfaction requires a present `commercial_terms.total_budget`, the requested currency, and an amount inside every supplied bound. An absent total, currency mismatch, or out-of-range amount is unsatisfied: the seller returns `partial`, or `unable` when it cannot produce an honest draft, with `reason_code: "constraint_unsatisfiable"` and `unsatisfied_constraints: ["total_budget"]`.
+
+Other `constraint_unsatisfiable` results similarly identify failures through `unsatisfied_constraints`, `unsatisfied_product_changes` (a subset of the requested product-action map), or both. Every returned proposal carries typed `commercial_terms` and a `terms_digest`.
+
+## A realistic negotiation
+
+Sam is buying a $50,000 Acme Outdoor campaign from StreamHaus. Capability discovery says StreamHaus supports `total_budget`, `product_selection`, `alternatives`, and `criteria`, with `max_alternatives: 3`. Sam can therefore construct one mechanically checkable request: cap spend at USD 50,000, include premium video, omit run-of-site display, narrow geography to the US and Canada, and ask for three distinct mixes.
+
+Suppose StreamHaus can satisfy the budget and targeting but can produce only two commercially distinct drafts. It returns `partial` with two proposals, `reason_code: "alternatives_unavailable"`, and unique `terms_digest` values. Sam does not need to parse sales prose to understand the counteroffer: the typed budget and product checks still pass, while the requested alternative count does not. Sam can compare the two drafts, revise one again, or finalize the preferred draft.
+
+The failure paths are equally deterministic:
+
+- If a returned draft omits `commercial_terms.total_budget`, uses another currency, or exceeds the cap, the result identifies `total_budget` as unsatisfied and cannot be `revised`.
+- If Sam requests four alternatives against the advertised ceiling of three, the whole call fails with [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) at `refinements[0].alternatives.count`; StreamHaus creates no draft.
+- If StreamHaus omits `criteria` from `supported_dimensions`, the whole call fails with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) before mutation. Sam can remove or translate that field and retry with a new valid payload.
+
+This separation is the value of the compact negotiation surface: capabilities prevent impossible asks, typed fields make compliance testable, and `ask` remains available for the commercial nuance that cannot be reduced to a reliable boolean.
 
 Pass only a finalized committed proposal to [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal), or use [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) when the buyer stops pursuing it.
 

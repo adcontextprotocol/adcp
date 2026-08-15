@@ -220,6 +220,21 @@ function errorField(error: ErrorObject): string | undefined {
   return typeof missing === 'string' ? missing : undefined;
 }
 
+function proposalSatisfiesBudgetConstraint(
+  proposal: Record<string, unknown>,
+  constraint: Record<string, unknown>,
+): boolean {
+  const commercialTerms = isRecord(proposal.commercial_terms) ? proposal.commercial_terms : undefined;
+  const totalBudget = isRecord(commercialTerms?.total_budget) ? commercialTerms.total_budget : undefined;
+  if (!totalBudget || typeof totalBudget.amount !== 'number' || typeof totalBudget.currency !== 'string') {
+    return false;
+  }
+  if (totalBudget.currency !== constraint.currency) return false;
+  if (typeof constraint.min === 'number' && totalBudget.amount < constraint.min) return false;
+  if (typeof constraint.max === 'number' && totalBudget.amount > constraint.max) return false;
+  return true;
+}
+
 /** Validate the actual split-tool call against the normative source schema.
  * MCP tools/list intentionally projects large linked objects to compact type
  * hints, so dispatch must still enforce the complete canonical contract. */
@@ -356,6 +371,38 @@ export function validateProductDiscoverySourceResponse(
         }
       }
       if (!Array.isArray(result.proposals)) continue;
+
+      const requestedBudgetConstraint = isRecord(requestedConstraints?.total_budget)
+        ? requestedConstraints.total_budget
+        : undefined;
+      if (requestedBudgetConstraint) {
+        const unsatisfiedProposalIndex = result.proposals.findIndex(proposal => (
+          isRecord(proposal) && !proposalSatisfiesBudgetConstraint(proposal, requestedBudgetConstraint)
+        ));
+        if (unsatisfiedProposalIndex !== -1) {
+          const field = `results.${resultIndex}.proposals.${unsatisfiedProposalIndex}.commercial_terms.total_budget`;
+          if (result.outcome === 'revised') {
+            return {
+              message: 'Invalid refine_proposals_response: revised proposal does not satisfy total_budget',
+              field,
+            };
+          }
+          if (
+            result.outcome === 'partial'
+            && (
+              result.reason_code !== 'constraint_unsatisfiable'
+              || !Array.isArray(result.unsatisfied_constraints)
+              || !result.unsatisfied_constraints.includes('total_budget')
+            )
+          ) {
+            return {
+              message: 'Invalid refine_proposals_response: an unsatisfied total_budget requires constraint_unsatisfiable and unsatisfied_constraints',
+              field,
+            };
+          }
+        }
+      }
+
       const expectedCount = requestedAlternativeCount ?? 1;
       const invalidCount = result.outcome === 'revised'
         ? result.proposals.length !== expectedCount

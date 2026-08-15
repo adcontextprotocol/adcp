@@ -27,7 +27,7 @@
       "properties": {
         "total_budget": {
           "$ref": "/schemas/media-buy/proposal-budget-constraint.json",
-          "description": "Inclusive bounds checked against commercial_terms.total_budget; currencies MUST match."
+          "description": "Inclusive bounds checked against commercial_terms.total_budget. A returned draft satisfies this constraint only when commercial_terms.total_budget is present, its currency matches, and its amount falls within every supplied bound. Otherwise the result MUST be partial or unable with reason_code constraint_unsatisfiable and unsatisfied_constraints containing total_budget; it MUST NOT be revised."
         }
       },
       "minProperties": 1,
@@ -44,7 +44,7 @@
         "count": {
           "type": "integer",
           "minimum": 2,
-          "description": "Number of draft alternatives requested."
+          "description": "Number of draft alternatives requested. Buyers MUST NOT exceed a seller's advertised proposal_refinement.max_alternatives; sellers reject an excessive count at task level with VALIDATION_ERROR rather than clamping it."
         }
       },
       "required": ["count"],

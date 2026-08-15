@@ -1461,6 +1461,8 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   // Track S: Specialist deep dives
   S1: [
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
+    { label: 'Proposal negotiation with refine_proposals', url: `${DOCS_BASE}/docs/media-buy/task-reference/refine_proposals` },
+    { label: 'Proposal refinement capabilities', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities#proposal-refinement` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
     { label: 'Targeting strategies', url: `${DOCS_BASE}/docs/media-buy/advanced-topics/targeting` },
     { label: 'Trusted Match Protocol', url: `${DOCS_BASE}/docs/trusted-match` },

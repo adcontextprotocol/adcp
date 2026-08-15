@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/proposal-budget-constraint.json",
   "title": "Proposal Budget Constraint",
-  "description": "Strict inclusive budget bounds for proposal negotiation. At least one bound is required. When both are present, min MUST be less than or equal to max; implementations must enforce this semantic comparison because JSON Schema draft-07 cannot compare sibling values.",
+  "description": "Strict inclusive budget bounds for proposal negotiation. At least one bound is required. When both are present, min MUST be less than or equal to max; implementations must enforce this semantic comparison because JSON Schema draft-07 cannot compare sibling values. The extension-tolerant legacy discovery peer is core/budget-range.json.",
   "type": "object",
   "properties": {
     "min": { "type": "number", "minimum": 0 },
