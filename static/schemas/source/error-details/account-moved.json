@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/error-details/account-moved.json",
+  "title": "Account Moved Details",
+  "description": "Recommended details shape for ACCOUNT_MOVED. Provides the current canonical account reference after an authorized caller used a tombstoned natural key.",
+  "type": "object",
+  "properties": {
+    "current_account": {
+      "$ref": "/schemas/core/canonical-account-ref.json",
+      "description": "Current canonical reference. Buyer-declared account sellers return the complete current natural key; account-id namespaces may return account_id."
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Current account revision when the seller exposes account revisions."
+    }
+  },
+  "required": [
+    "current_account"
+  ],
+  "additionalProperties": true
+}

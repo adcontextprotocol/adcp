@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/sync-accounts-request.json",
   "title": "Sync Accounts Request",
-  "description": "Sync advertiser account state with a seller. Two modes, distinguished by the key on each per-account entry:\n\n- **Provisioning mode** (`brand` + `operator` + `billing` at the entry root): the agent declares the advertiser identity, operator, optional operator-owned buying unit, optional fixed account currency, sandbox disposition, and billing model. The seller provisions or links the corresponding advertiser object via upsert. `brand.countries`, `operator_unit.id`, `currency`, and `sandbox` participate in the buyer-declared natural key when present; `operator_unit.name` is display metadata only. The seller MAY echo a seller-assigned account_id but MUST continue accepting the complete natural-key AccountRef.\n\n- **Settings-update mode** (`account` field carrying an [`AccountRef`](/schemas/core/account-ref.json)): targets an existing account by seller/storefront `account_id` or buyer-declared natural key. The seller updates settable state without provisioning side effects.\n\nExactly one key shape is allowed per entry. Sellers that do not implement one mode return `UNSUPPORTED_PROVISIONING` for that mode.",
+  "description": "Sync advertiser account state with a seller. Two modes, distinguished by the key on each per-account entry:\n\n- **Provisioning mode** (`brand` + `operator` + `billing` at the entry root): the agent declares the advertiser identity, operator, optional operator-owned buying unit, optional fixed account currency, sandbox disposition, and billing model. The seller provisions or links the corresponding advertiser object via upsert. `brand.countries`, `operator_unit.id`, `currency`, and `sandbox` participate in the buyer-declared natural key when present; `operator_unit.name` is display metadata only. The seller MAY echo a seller-assigned account_id but MUST continue accepting the complete natural-key AccountRef.\n\n- **Settings-update mode** (`account` field carrying an [`AccountRef`](/schemas/core/account-ref.json)): targets an existing account by seller/storefront `account_id` or buyer-declared natural key. The seller updates settable state without provisioning side effects. A complete `operator_identity` value reconciles the existing account to the buyer's desired operator domain and optional operator unit; omission leaves identity unchanged.\n\nExactly one key shape is allowed per entry. Sellers that do not implement one mode return `UNSUPPORTED_PROVISIONING` for that mode. Identity reconciliation is additionally gated by `get_adcp_capabilities.account.identity_updates`.",
   "x-tool-summary": "Provision advertiser accounts or update settings for existing accounts through declarative synchronization.",
   "type": "object",
   "allOf": [
@@ -21,7 +21,7 @@
     },
     "accounts": {
       "type": "array",
-      "description": "Per-account sync entries. Each entry uses one of two key shapes: the `account` field (AccountRef) for settings-update mode, or the flat `brand` + `operator` + `billing` trio for provisioning mode.",
+      "description": "Per-account sync entries. Each entry uses one of two key shapes: the `account` field (AccountRef) for settings-update mode, or the flat `brand` + `operator` + `billing` trio for provisioning mode. Settings updates MAY carry the latest account revision and a complete desired operator_identity.",
       "items": {
         "type": "object",
         "description": "An advertiser account entry — either provisions/upserts a new account (natural key) or updates an existing one (AccountRef key).",
@@ -29,6 +29,15 @@
           "account": {
             "$ref": "/schemas/core/account-ref.json",
             "description": "Settings-update key. When present, this entry targets an existing account by `account_id` (seller-owned account namespace) or natural key (buyer-declared account settings-update against a previously-provisioned account). Mutually exclusive with the flat `brand` + `operator` + `billing` provisioning trio. When `account` is present, the seller MUST NOT create a new account — entries that would otherwise trigger provisioning are rejected with `UNSUPPORTED_PROVISIONING`."
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Expected current account revision for optimistic concurrency in settings-update mode. Optional for backward compatibility. When provided, the seller MUST compare it atomically with the write, reject a mismatch with CONFLICT, and leave the account unchanged. Obtain it from list_accounts or the most recent sync_accounts result. Reads, dry runs, validation failures, and exact idempotency replays do not increment revision; every persisted settings or identity-change state transition does. MUST be absent in provisioning mode."
+          },
+          "operator_identity": {
+            "$ref": "/schemas/core/operator-identity.json",
+            "description": "Complete desired operator identity for settings-update mode. Omit this field to leave operator identity unchanged. When present, omission of operator_unit within the object removes the existing unit. Changing only operator_unit.name updates display metadata; changing operator_unit.id, adding/removing a unit, or changing operator rekeys the same account atomically. The seller MUST preserve account_id and all account-scoped resources and state, MUST reject collisions without merging, and MUST apply no identity change if continuity cannot be preserved. Operator-domain changes MUST be revalidated against the brand's authorized_operators policy and MAY remain pending seller approval. MUST be absent in provisioning mode."
           },
           "brand": {
             "$ref": "/schemas/core/brand-ref.json",
@@ -100,17 +109,35 @@
         "oneOf": [
           {
             "title": "ProvisioningMode",
-            "description": "Provisioning-mode entry — natural-key trio is required, `account` is forbidden.",
+            "description": "Provisioning-mode entry — natural-key trio is required; account, revision, and operator_identity are forbidden.",
             "required": [
               "brand",
               "operator",
               "billing"
             ],
-            "not": {
-              "required": [
-                "account"
-              ]
-            }
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "account"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "revision"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "operator_identity"
+                  ]
+                }
+              }
+            ]
           },
           {
             "title": "SettingsUpdateMode",

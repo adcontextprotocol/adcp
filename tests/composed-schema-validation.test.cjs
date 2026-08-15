@@ -3138,6 +3138,158 @@ async function runTests() {
     },
     'sync_accounts provisions the same advertiser natural key used by compact tools'
   );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-identity-update-0001',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        revision: 7,
+        operator_identity: {
+          operator: 'pinnacle-media.example',
+          operator_unit: { id: 'east-coast', name: 'East Coast' }
+        }
+      }]
+    },
+    'sync_accounts settings-update mode accepts a revisioned complete desired operator identity'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-remove-unit-0001',
+      accounts: [{
+        account: {
+          brand: { domain: 'nova-athletics.example' },
+          operator: 'pinnacle-media.example',
+          operator_unit: { id: 'legacy-seat' }
+        },
+        operator_identity: { operator: 'pinnacle-media.example' }
+      }]
+    },
+    'sync_accounts expresses operator-unit removal by omitting the unit from the complete desired identity'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-confused-rekey-0001',
+      accounts: [{
+        brand: { domain: 'nova-athletics.example' },
+        operator: 'pinnacle-media.example',
+        billing: 'operator',
+        operator_identity: { operator: 'new-operator.example' }
+      }]
+    },
+    'sync_accounts rejects identity replacement fields in provisioning mode'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-stale-revision-0001',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        revision: 0,
+        operator_identity: { operator: 'pinnacle-media.example' }
+      }]
+    },
+    'sync_accounts rejects invalid account revisions'
+  );
+  await testSchemaValidation(
+    '/schemas/core/account.json',
+    {
+      account_id: 'seller-account-123',
+      name: 'Nova via Pinnacle',
+      status: 'active',
+      brand: { domain: 'nova-athletics.example' },
+      operator: 'pinnacle-media.example',
+      revision: 8,
+      identity_change: {
+        status: 'pending_approval',
+        requested_operator_identity: { operator: 'new-operator.example' }
+      }
+    },
+    'account reads expose canonical identity alongside a pending desired operator transition'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account_id: 'seller-account-123',
+        brand: { domain: 'nova-athletics.example' },
+        operator: 'pinnacle-media.example',
+        revision: 8,
+        identity_change: {
+          status: 'pending_approval',
+          requested_operator_identity: { operator: 'new-operator.example' }
+        },
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts returns canonical identity and revision while a desired transition awaits approval'
+  );
+  await testSchemaRejection(
+    '/schemas/core/account.json',
+    {
+      account_id: 'seller-account-123',
+      name: 'Nova via Pinnacle',
+      status: 'active',
+      operator: 'pinnacle-media.example',
+      revision: 9,
+      identity_change: {
+        status: 'rejected',
+        requested_operator_identity: { operator: 'new-operator.example' }
+      }
+    },
+    'rejected account identity changes require a reason'
+  );
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        idempotency: { supported: false }
+      },
+      account: {
+        supported_billing: ['operator'],
+        identity_updates: {
+          supported: true,
+          supported_changes: ['operator_unit_name', 'operator_unit', 'operator']
+        }
+      }
+    },
+    'account capabilities advertise supported operator identity transitions'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        idempotency: { supported: false }
+      },
+      account: {
+        supported_billing: ['operator'],
+        identity_updates: {
+          supported: false,
+          supported_changes: ['operator']
+        }
+      }
+    },
+    'unsupported account identity-update capabilities reject supported_changes'
+  );
+  await testSchemaValidation(
+    '/schemas/error-details/account-moved.json',
+    {
+      current_account: {
+        brand: { domain: 'nova-athletics.example' },
+        operator: 'new-operator.example'
+      },
+      revision: 8
+    },
+    'ACCOUNT_MOVED details provide an authorized repair reference and current revision'
+  );
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-request.json',
     {

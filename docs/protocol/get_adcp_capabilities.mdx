@@ -349,6 +349,7 @@ Account and authentication capabilities. All sellers should declare this section
 | `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
 | `required_for_products` | boolean | Default: `false`. When `true`, the buyer must establish an account before calling [`get_products`](/docs/media-buy/task-reference/get_products). When `false`, the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. |
 | `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
+| `identity_updates` | object | Optional capability gate for reconciling an existing account's buyer-controlled operator identity through `sync_accounts` settings-update mode. `supported_changes` declares `operator_unit_name`, `operator_unit`, and/or `operator`. |
 | `notifications` | object | Optional. Declares durable account lifecycle webhook support. When `supported: true`, buyers may register `account.status_changed` subscribers with `sync_accounts.accounts[].notification_configs[]` and repair by re-reading `list_accounts`. |
 | `sandbox` | boolean | Default: `false`. Strongly recommended for production sales agents. When `true`, the seller supports sandbox accounts for testing. Account-id namespaces discover pre-existing test accounts through `list_accounts` or out-of-band setup. Buyer-declared accounts use `sandbox: true` in `sync_accounts`, or in the natural-key account reference when the seller uses unambiguous lazy provisioning — no real platform calls or spend. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox). |
 
@@ -375,6 +376,26 @@ Declares whether the seller supports durable account lifecycle invalidation webh
 When `supported: false` or absent, buyers MUST NOT assume durable account status webhooks are available. They can still use the one-shot `sync_accounts.push_notification_config` callback for the initial provisioning result when offered, and poll `list_accounts` for later account status changes.
 
 See [Provision a seller-mediated account](/docs/accounts/provisioning-walkthrough) for the complete discovery, registration, human setup, webhook, and repair sequence.
+
+#### account.identity_updates
+
+Declares whether the seller accepts a complete desired `operator_identity` on an existing account through `sync_accounts` settings-update mode.
+
+```json
+{
+  "account": {
+    "supported_billing": ["operator", "agent"],
+    "identity_updates": {
+      "supported": true,
+      "supported_changes": ["operator_unit_name", "operator_unit", "operator"]
+    }
+  }
+}
+```
+
+`operator_unit_name` covers display-name-only changes. `operator_unit` covers adding, removing, or changing the stable unit ID and also implies name changes. `operator` covers changing the operator domain and may require seller approval. Sellers declaring support MUST return account `revision` from `sync_accounts` and `list_accounts`, atomically enforce a submitted revision, preserve account identity and account-scoped resources during rekeying, and expose any pending or rejected transition as `identity_change`. When the capability is absent or `supported: false`, buyers MUST NOT submit `operator_identity`; sellers reject it with `UNSUPPORTED_FEATURE`.
+
+See [`sync_accounts` identity reconciliation](/docs/accounts/tasks/sync_accounts#reconciling-operator-identity) for replacement, approval, collision, and stale-key semantics.
 
 #### Auth models
 

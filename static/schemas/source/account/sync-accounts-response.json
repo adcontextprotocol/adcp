@@ -35,15 +35,24 @@
               },
               "brand": {
                 "$ref": "/schemas/core/brand-ref.json",
-                "description": "Brand reference, echoed from the request"
+                "description": "Current canonical brand reference for the account."
               },
               "operator": {
                 "type": "string",
-                "description": "Operator domain, echoed from request"
+                "description": "Current canonical operator domain. When an identity change is pending or rejected, this remains the current value rather than echoing the requested value."
               },
               "operator_unit": {
                 "$ref": "/schemas/core/operator-unit.json",
-                "description": "Operator-owned business unit, agency seat, or platform account, echoed when supplied. The stable id participates in the natural key; name is mutable display metadata. This is distinct from the seller/storefront account_id."
+                "description": "Current canonical operator-owned business unit, agency seat, or platform account. The stable id participates in the natural key; name is mutable display metadata. This is distinct from the seller/storefront account_id. When an identity change is pending or rejected, this remains the current value rather than echoing the requested value."
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Current account revision after this operation. Incremented by each persisted settings change, identity-change request, or identity-change disposition; not incremented by dry runs, validation failures, or exact idempotency replays. Pass this value in the next settings-update entry to prevent lost updates."
+              },
+              "identity_change": {
+                "$ref": "/schemas/core/account-identity-change.json",
+                "description": "Pending or rejected desired operator identity. The top-level operator and operator_unit remain canonical until an approved change is applied."
               },
               "currency": {
                 "type": "string",

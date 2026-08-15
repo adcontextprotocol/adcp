@@ -40,6 +40,15 @@
       "$ref": "/schemas/core/operator-unit.json",
       "description": "Operator-owned business unit, agency seat, or platform account associated with this advertiser account. The id round-trips from the natural key; name is mutable display metadata. This is distinct from account_id, which belongs to the seller/storefront namespace."
     },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonically increasing optimistic-concurrency token for this account. Incremented on every persisted settings change, identity-change request, and identity-change disposition; reads, dry runs, validation failures, and exact idempotency replays do not increment it. Pass the latest observed value in a sync_accounts settings-update entry to prevent lost updates."
+    },
+    "identity_change": {
+      "$ref": "/schemas/core/account-identity-change.json",
+      "description": "Pending or rejected operator-identity transition. While present, the top-level operator and operator_unit remain the current canonical identity. Re-read list_accounts until the request is applied (canonical fields change and this object disappears) or rejected."
+    },
     "currency": {
       "type": "string",
       "pattern": "^[A-Z]{3}$",

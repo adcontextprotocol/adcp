@@ -345,6 +345,7 @@ const CODE_RECOVERY = {
   CREATIVE_REJECTED: 'correctable',
   UNSUPPORTED_FEATURE: 'correctable',
   AUDIENCE_TOO_SMALL: 'correctable',
+  ACCOUNT_MOVED: 'correctable',
   ACCOUNT_SETUP_REQUIRED: 'correctable',
   ACCOUNT_AMBIGUOUS: 'correctable',
   COMPLIANCE_UNSATISFIED: 'correctable',
@@ -547,12 +548,13 @@ JSON Schemas for all recommended `details` shapes are published alongside the er
 - [`/schemas/v3/error-details/rate-limited.json`](https://adcontextprotocol.org/schemas/v3/error-details/rate-limited.json)
 - [`/schemas/v3/error-details/budget-too-low.json`](https://adcontextprotocol.org/schemas/v3/error-details/budget-too-low.json)
 - [`/schemas/v3/error-details/audience-too-small.json`](https://adcontextprotocol.org/schemas/v3/error-details/audience-too-small.json)
+- [`/schemas/v3/error-details/account-moved.json`](https://adcontextprotocol.org/schemas/v3/error-details/account-moved.json)
 - [`/schemas/v3/error-details/account-setup-required.json`](https://adcontextprotocol.org/schemas/v3/error-details/account-setup-required.json)
 - [`/schemas/v3/error-details/creative-rejected.json`](https://adcontextprotocol.org/schemas/v3/error-details/creative-rejected.json)
 - [`/schemas/v3/error-details/policy-violation.json`](https://adcontextprotocol.org/schemas/v3/error-details/policy-violation.json)
 - [`/schemas/v3/error-details/conflict.json`](https://adcontextprotocol.org/schemas/v3/error-details/conflict.json)
 
-These schemas are recommended, not required. Sellers that omit `details` entirely are conformant. Agents MUST NOT require specific `details` keys — fall back to `code`, `message`, and `recovery` when `details` is absent or has unexpected shape.
+These schemas are recommended unless the code's canonical definition explicitly requires a repair field. `ACCOUNT_MOVED`, for example, requires `details.current_account`; without it the caller cannot repair a tombstoned natural-key reference safely. For codes without such a requirement, sellers that omit `details` entirely are conformant and agents fall back to `code`, `message`, and `recovery` when details are absent or unexpected.
 
 ## Seller-Specific Error Codes
 

@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/account-identity-change.json",
+  "title": "Account Identity Change",
+  "description": "A requested operator-identity change that has not been applied. The account's top-level operator and operator_unit remain canonical until this object disappears after approval and the canonical fields advance. Rejected changes remain visible until replaced by a later request so buyers polling list_accounts can observe the outcome.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending_approval",
+        "rejected"
+      ],
+      "description": "pending_approval means the seller is reviewing the requested transition; rejected means the current canonical identity was retained."
+    },
+    "requested_operator_identity": {
+      "$ref": "/schemas/core/operator-identity.json",
+      "description": "Complete desired operator identity submitted by the buyer."
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller recorded the request."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Human-readable rejection reason. Required when status is rejected.",
+      "minLength": 1,
+      "maxLength": 1000
+    }
+  },
+  "required": [
+    "status",
+    "requested_operator_identity"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "rejected"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "reason"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

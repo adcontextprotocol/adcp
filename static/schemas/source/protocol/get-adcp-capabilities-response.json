@@ -728,6 +728,60 @@
             }
           ]
         },
+        "identity_updates": {
+          "type": "object",
+          "description": "Whether the seller accepts buyer-desired operator identity reconciliation through sync_accounts settings-update entries. Sellers declaring support expose the exact identity transitions they implement and MUST return account revisions from sync_accounts and list_accounts.",
+          "oneOf": [
+            {
+              "title": "AccountIdentityUpdatesSupported",
+              "properties": {
+                "supported": {
+                  "type": "boolean",
+                  "const": true,
+                  "description": "Discriminator. True means the seller accepts operator_identity in sync_accounts settings-update mode."
+                },
+                "supported_changes": {
+                  "type": "array",
+                  "description": "Identity changes the seller accepts. operator_unit_name covers display-name-only reconciliation; operator_unit covers adding, removing, or changing the stable unit id and also implies name updates; operator covers changing the operator domain.",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "operator_unit_name",
+                      "operator_unit",
+                      "operator"
+                    ]
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                }
+              },
+              "required": [
+                "supported",
+                "supported_changes"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "title": "AccountIdentityUpdatesUnsupported",
+              "properties": {
+                "supported": {
+                  "type": "boolean",
+                  "const": false,
+                  "description": "Discriminator. False means buyers must not submit operator_identity settings updates."
+                }
+              },
+              "required": [
+                "supported"
+              ],
+              "not": {
+                "required": [
+                  "supported_changes"
+                ]
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
         "sandbox": {
           "type": "boolean",
           "description": "Whether this seller supports sandbox accounts for testing. Buyer-declared accounts use sandbox: true in sync_accounts or, for an unambiguous lazy-provisioning seller, in the natural-key account reference. Sellers with account_id namespaces expose sandbox accounts as pre-existing test accounts through list_accounts or supply them out-of-band. Requests using a sandbox account perform no real platform calls or spend.",
