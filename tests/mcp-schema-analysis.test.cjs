@@ -215,7 +215,7 @@ test("experiment report keeps all alternatives smaller than standalone model con
   assert.equal(report.status, "non-normative");
   assert.equal(report.prompt_cleanup_adapter.required, true);
   assert.equal(report.selection.tools.length, 16);
-  assert.equal(variants.standalone.context_bytes, 294_495);
+  assert.equal(variants.standalone.context_bytes, 292_612);
   assert.ok(
     variants.prompt_cleanup.context_bytes <
       variants.standalone.context_bytes * 0.82

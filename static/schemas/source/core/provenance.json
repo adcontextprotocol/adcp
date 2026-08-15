@@ -9,6 +9,10 @@
       "$ref": "/schemas/enums/digital-source-type.json",
       "description": "IPTC-aligned classification of AI involvement in producing this content"
     },
+    "synthetic_depiction": {
+      "type": "boolean",
+      "description": "Assessed declaration of whether the content synthetically depicts a real or fictional person performing or appearing in a way that was generated or materially manipulated rather than captured as depicted. `true` covers both a fully synthetic performer and material manipulation of a real performer; `false` is an assessed declaration that the content does not contain such a depiction. Absence means the content has not been assessed for synthetic depiction. This field does not claim consent, legality, or independent verification, and receivers MUST NOT derive it solely from `digital_source_type`."
+    },
     "ai_tool": {
       "type": "object",
       "description": "AI system used to generate or modify this content. Aligns with IPTC 2025.1 AI metadata fields and C2PA claim_generator.",
@@ -26,8 +30,7 @@
           "description": "Organization that provides the AI tool (e.g., 'OpenAI', 'Stability AI', 'Google')"
         }
       },
-      "required": ["name"],
-      "additionalProperties": true
+      "required": ["name"]
     },
     "human_oversight": {
       "type": "string",
@@ -298,6 +301,5 @@
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
-  },
-  "additionalProperties": true
+  }
 }
