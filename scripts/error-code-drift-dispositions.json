@@ -265,6 +265,21 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.2",
       "note": "Per-record usage validation rejection for report_usage (#5892). Additive standard vocabulary; held for 3.2."
+    },
+    "SIGNED_RESPONSE_ENVELOPE_EXPIRED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Designated-task signed-response freshness rejection (#6147). New verifier vocabulary for the 3.2 response-signing profile; held for 3.2."
+    },
+    "SIGNED_RESPONSE_REQUEST_HASH_MISMATCH": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Designated-task signed-response request-binding rejection (#6147). New verifier vocabulary for the 3.2 response-signing profile; held for 3.2."
+    },
+    "SIGNED_RESPONSE_TENANT_MISMATCH": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Designated-task signed-response tenant-binding rejection (#6147). New verifier vocabulary for the 3.2 response-signing profile; held for 3.2."
     }
   }
 }
