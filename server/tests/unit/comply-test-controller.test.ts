@@ -1852,7 +1852,7 @@ describe('comply_test_controller', () => {
         brand: BRAND,
       });
       expect(emptyRange).toEqual(expect.objectContaining({
-        code: 'INVALID_REQUEST',
+        code: 'VALIDATION_ERROR',
         field: 'start_date',
       }));
     });
