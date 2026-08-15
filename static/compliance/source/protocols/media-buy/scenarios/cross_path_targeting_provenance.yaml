@@ -1,0 +1,413 @@
+id: media_buy_seller/cross_path_targeting_provenance
+version: "1.0.0"
+title: "Seller preserves synced-audience and seller-signal targeting provenance"
+category: media_buy_seller
+summary: "Verifies that a seller keeps buyer-managed sync_audiences resources on audience_include/audience_exclude, keeps get_signals results on signal_targeting_groups, rejects cross-path substitutions, and preserves exact signal identity and pricing on readback."
+track: media_buy
+
+# A scenario-level signal gate plus step-level audience gates forms the
+# conjunction without extending the runner's single requires_capability shape.
+# Signal-only sellers still exercise exact signal readback; both cross-path
+# rejection probes run only when the seller also advertises audience targeting.
+requires_capability:
+  path: signals.discovery_modes
+  present: true
+
+required_tools:
+  - get_products
+  - get_signals
+  - sync_audiences
+  - create_media_buy
+  - get_media_buys
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  Provider interfaces often call buyer-uploaded CRM lists and seller-native
+  selectable segments "audiences," but their AdCP provenance and lifecycle are
+  different. A buyer-managed audience is registered through sync_audiences and
+  selected by audience_id through audience_include or audience_exclude. A
+  seller-, provider-, or source-native signal is discovered through get_signals
+  (or an inline product option) and selected through signal_targeting_groups
+  using signal_ref plus any execution, pricing, or activation identity.
+
+  The existing audience_buy_flow and product_signal_targeting scenarios prove
+  each positive path. This optional cross-path scenario adds the discriminating
+  checks: exact signal identity and price survive readback, a discovered signal
+  cannot masquerade as a synced audience, and a synced audience cannot
+  masquerade as a seller-offered signal.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - audience_targeting
+    - wholesale_signal_targeting
+  examples:
+    - "Professional-network sellers exposing native seniority signals alongside buyer-uploaded CRM lists"
+    - "Retail-media sellers supporting both loyalty-list suppression and seller-native shopper signals"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller advertises signals.discovery_modes. Cross-path rejection steps
+    additionally require media_buy.audience_targeting. The runner seeds a
+    signal-targetable wholesale product; the seller's get_signals feed supplies
+    the canonical seller-signal identities used by the scenario.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "provenance_targeted_display_q2"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
+      signal_targeting_allowed: true
+      signal_targeting_rules:
+        resolution_model: "direct_targeting"
+        selection_mode: "optional"
+        max_signal_targeting_groups: 2
+        max_signals_per_targeting_group: 3
+  pricing_options:
+    - product_id: "provenance_targeted_display_q2"
+      pricing_option_id: "auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 3.00
+
+phases:
+  - id: discover_native_signal
+    title: "Discover a product and its seller-native signal"
+    steps:
+      - id: get_products_for_provenance
+        title: "Discover a product that accepts signal targeting"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        expected: |
+          Return a signal-targetable product and a selectable media pricing
+          option for the later positive and negative create requests.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#cross_path_targeting_provenance_get_products"
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            is_fixed_price: false
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "cross_path_targeting_provenance--get_products"
+        context_outputs:
+          - name: "product_id"
+            path: "products[0].product_id"
+          - name: "media_pricing_option_id"
+            path: "products[0].pricing_options[0].pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "DR-0001 / get-products-response.json: discovery response matches the normative schema"
+          - check: field_value
+            path: "products[0].signal_targeting_allowed"
+            value: true
+            description: "DR-0001 / Product signal targeting contract: selected product permits signal_targeting_groups"
+          - check: field_present
+            path: "products[0].pricing_options[0].pricing_option_id"
+            description: "DR-0001 / Product pricing contract: selected product exposes a media pricing identity"
+
+      - id: get_signals_for_provenance
+        title: "Discover a seller-native signal"
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        stateful: false
+        expected: |
+          Return a signal with canonical signal_ref, execution identity, and a
+          selectable pricing option. These values must remain on the signal
+          targeting path and round-trip without substitution.
+        sample_request:
+          discovery_mode: "wholesale"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          destinations:
+            - type: "agent"
+              agent_url: "https://wonderstruck.salesagents.example"
+          countries: ["US"]
+          context:
+            correlation_id: "cross_path_targeting_provenance--get_signals"
+        context_outputs:
+          - name: "signal_ref"
+            path: "signals[0].signal_ref"
+          - name: "signal_agent_segment_id"
+            path: "signals[0].signal_agent_segment_id"
+          - name: "signal_pricing_option_id"
+            path: "signals[0].pricing_options[0].pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "DR-0001 / get-signals-response.json: signal discovery response matches the normative schema"
+          - check: field_present
+            path: "signals[0].signal_ref.scope"
+            description: "DR-0001 / Signals specification identity contract: result has canonical signal_ref identity"
+          - check: field_present
+            path: "signals[0].signal_agent_segment_id"
+            description: "DR-0001 / Signals specification execution contract: result has its opaque execution handle"
+          - check: field_present
+            path: "signals[0].pricing_options[0].pricing_option_id"
+            description: "DR-0001 / Signals specification pricing contract: result has selectable signal pricing identity"
+
+  - id: exact_signal_readback
+    title: "Preserve exact signal identity and pricing through booking"
+    steps:
+      - id: create_with_native_signal
+        title: "Create a buy with the discovered signal"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Accept the signal_targeting_groups expression with its exact
+          signal_ref, signal_agent_segment_id, and signal pricing option.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-07-31T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.media_pricing_option_id"
+              bid_price: 4.25
+              budget: 12000
+              targeting_overlay:
+                signal_targeting_groups:
+                  operator: "all"
+                  groups:
+                    - operator: "any"
+                      signals:
+                        - signal_ref: "$context.signal_ref"
+                          signal_agent_segment_id: "$context.signal_agent_segment_id"
+                          pricing_option_id: "$context.signal_pricing_option_id"
+                          value_type: "binary"
+                          value: true
+          idempotency_key: "$generate:uuid_v4#cross_path_targeting_provenance_create_signal"
+          context:
+            correlation_id: "cross_path_targeting_provenance--create_signal"
+        context_outputs:
+          - name: "media_buy_id"
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "DR-0001 / create-media-buy-response.json: accepted booking matches the normative schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "DR-0001 / create_media_buy success contract: seller assigns media_buy_id"
+
+      - id: read_native_signal
+        title: "Read back exact signal selection"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        expected: |
+          Return the booked package with the same signal_ref, execution handle,
+          price identity, group operators, and binary predicate.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids:
+            - "$context.media_buy_id"
+          context:
+            correlation_id: "cross_path_targeting_provenance--read_signal"
+        validations:
+          - check: response_schema
+            description: "DR-0001 / get-media-buys-response.json: readback matches the normative schema"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[0].signals[0].signal_ref"
+            value: "$context.signal_ref"
+            description: "DR-0001 / targeting signal-reference contract: readback preserves the exact discovered signal_ref"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[0].signals[0].signal_agent_segment_id"
+            value: "$context.signal_agent_segment_id"
+            description: "DR-0001 / targeting execution-handle contract: readback preserves exact signal_agent_segment_id"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[0].signals[0].pricing_option_id"
+            value: "$context.signal_pricing_option_id"
+            description: "DR-0001 / targeting pricing contract: readback preserves exact signal pricing_option_id"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[0].operator"
+            value: "any"
+            description: "DR-0001 / signal_targeting_groups Boolean contract: include selection remains an any group"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[0].signals[0].value"
+            value: true
+            description: "DR-0001 / binary signal predicate contract: booked predicate remains true"
+
+  - id: register_buyer_audience
+    title: "Register a buyer-managed CRM audience"
+    steps:
+      - id: sync_buyer_audience
+        title: "Create a buyer-managed audience identity"
+        task: sync_audiences
+        schema_ref: "media-buy/sync-audiences-request.json"
+        response_schema_ref: "media-buy/sync-audiences-response.json"
+        doc_ref: "/media-buy/task-reference/sync_audiences"
+        requires_capability:
+          path: media_buy.audience_targeting
+          present: true
+        stateful: true
+        expected: |
+          Register the buyer-managed CRM list and return its audience_id. That
+          identity is valid only on audience_include or audience_exclude.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          audiences:
+            - audience_id: "acmeoutdoor-provenance-crm"
+              name: "Acme Outdoor provenance CRM list"
+              audience_type: "crm"
+              add:
+                - external_id: "provenance-customer-0001"
+                  hashed_email: "b000000000000000000000000000000000000000000000000000000000000001"
+                - external_id: "provenance-customer-0002"
+                  hashed_email: "b000000000000000000000000000000000000000000000000000000000000002"
+          idempotency_key: "$generate:uuid_v4#cross_path_targeting_provenance_sync_audience"
+          context:
+            correlation_id: "cross_path_targeting_provenance--sync_audience"
+        context_outputs:
+          - name: "audience_id"
+            path: "audiences[0].audience_id"
+        validations:
+          - check: response_schema
+            description: "DR-0001 / sync-audiences-response.json: audience registration matches the normative schema"
+          - check: field_value
+            path: "audiences[0].audience_id"
+            value: "acmeoutdoor-provenance-crm"
+            description: "DR-0001 / sync_audiences identity contract: seller returns the buyer-managed audience_id"
+
+  - id: reject_cross_path_substitution
+    title: "Reject identities submitted through the wrong targeting path"
+    steps:
+      - id: reject_signal_as_audience
+        title: "Reject a discovered signal handle in audience_include"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/advanced-topics/targeting#audience_include"
+        requires_capability:
+          path: media_buy.audience_targeting
+          present: true
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject with INVALID_REQUEST because the discovered seller signal was
+          never registered as a buyer-managed audience. Point error.field at
+          the offending audience_include entry.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-07-31T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.media_pricing_option_id"
+              bid_price: 4.25
+              budget: 5000
+              targeting_overlay:
+                audience_include:
+                  - "$context.signal_agent_segment_id"
+          idempotency_key: "$generate:uuid_v4#cross_path_targeting_provenance_signal_as_audience"
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "DR-0001 / audience_include registered-identity contract: seller rejects get_signals identity as an audience"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.audience_include[0]"
+            description: "DR-0001 / core/error.json field contract: error identifies the cross-path audience_include entry"
+
+      - id: reject_audience_as_signal
+        title: "Reject a synced audience identity in signal_targeting_groups"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/advanced-topics/targeting#signal_targeting_groups"
+        requires_capability:
+          path: media_buy.audience_targeting
+          present: true
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject with INVALID_REQUEST because the buyer-managed audience was
+          never advertised as a selectable seller signal. Point error.field at
+          the fabricated signal_ref.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-07-31T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.media_pricing_option_id"
+              bid_price: 4.25
+              budget: 5000
+              targeting_overlay:
+                signal_targeting_groups:
+                  operator: "all"
+                  groups:
+                    - operator: "any"
+                      signals:
+                        - signal_ref:
+                            scope: "product"
+                            signal_id: "$context.audience_id"
+                          value_type: "binary"
+                          value: true
+          idempotency_key: "$generate:uuid_v4#cross_path_targeting_provenance_audience_as_signal"
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "DR-0001 / signal targeting eligibility contract: seller rejects sync_audiences identity as a signal"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.signal_targeting_groups.groups[0].signals[0].signal_ref"
+            description: "DR-0001 / core/error.json field contract: error identifies the fabricated cross-path signal_ref"
