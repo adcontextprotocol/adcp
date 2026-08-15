@@ -23,8 +23,7 @@
     "supported_catalog_types": {
       "type": "array",
       "items": {
-        "type": "string",
-        "enum": ["product", "store", "offering", "hotel", "flight", "vehicle", "real_estate", "education", "destination", "app", "job", "inventory"]
+        "$ref": "/schemas/enums/catalog-type.json"
       },
       "description": "Catalog types this product accepts."
     },
